@@ -903,6 +903,7 @@ impl DatabaseAdapter for DynamoAdapter {
                 rows: Vec::new(),
                 rows_affected: Some(1),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             });
         }
         let mut columns: Vec<String> = Vec::new();
@@ -918,6 +919,7 @@ impl DatabaseAdapter for DynamoAdapter {
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 }
@@ -1034,6 +1036,7 @@ impl DynamoTx {
             rows: Vec::new(),
             rows_affected: Some(1),
             execution_time_ms: 0,
+            truncated: false,
         })
     }
 

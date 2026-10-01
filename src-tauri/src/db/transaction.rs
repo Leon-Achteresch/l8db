@@ -567,6 +567,7 @@ impl TransactionManager {
                 rows,
                 rows_affected,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         })
         .await;

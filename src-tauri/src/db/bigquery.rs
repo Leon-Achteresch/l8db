@@ -563,7 +563,7 @@ impl BigqueryAdapter {
         let schema = response["schema"].clone();
         let mut rows = convert_rows(&schema, &response["rows"]);
         let mut token = response["pageToken"].as_str().map(str::to_string);
-        while let Some(page_token) = token.filter(|_| rows.len() < PAGE_SIZE && !job_id.is_empty())
+        while let Some(page_token) = token.filter(|_| rows.len() <= PAGE_SIZE && !job_id.is_empty())
         {
             let mut page = query.clone();
             page.push(("pageToken", page_token));
@@ -899,6 +899,7 @@ impl DatabaseAdapter for BigqueryAdapter {
             columns,
             rows_affected: number(&response["numDmlAffectedRows"]).map(|n| n as u64),
             execution_time_ms: started.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

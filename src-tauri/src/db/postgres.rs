@@ -1374,6 +1374,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     rows,
                     rows_affected,
                     execution_time_ms: start.elapsed().as_millis() as u64,
+                    truncated: false,
                 })
             })
             .await;
@@ -4423,6 +4424,7 @@ pub async fn run_params_query(
             rows: Vec::new(),
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         });
     }
 
@@ -4451,6 +4453,7 @@ pub async fn run_params_query(
         rows,
         rows_affected: Some(count),
         execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
     })
 }
 

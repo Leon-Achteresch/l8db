@@ -306,6 +306,7 @@ pub struct QueryResult {
     pub rows: Vec<serde_json::Value>,
     pub rows_affected: Option<u64>,
     pub execution_time_ms: u64,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1688,6 +1689,36 @@ pub(crate) fn pretty_bytes(bytes: i64) -> String {
     } else {
         format!("{value:.1} {}", units[unit])
     }
+}
+
+pub(crate) fn interval_text(months: i32, days: i32, nanos: i64) -> String {
+    let mut parts = Vec::new();
+    let (years, months) = (months / 12, months % 12);
+    for (amount, unit) in [(years, "year"), (months, "month"), (days, "day")] {
+        if amount != 0 {
+            parts.push(format!(
+                "{amount} {unit}{}",
+                if amount.abs() == 1 { "" } else { "s" }
+            ));
+        }
+    }
+    if nanos != 0 || parts.is_empty() {
+        let sign = if nanos < 0 { "-" } else { "" };
+        let total = nanos.unsigned_abs();
+        let seconds = total / 1_000_000_000;
+        let fraction = total % 1_000_000_000;
+        let mut clock = format!(
+            "{sign}{:02}:{:02}:{:02}",
+            seconds / 3600,
+            seconds / 60 % 60,
+            seconds % 60
+        );
+        if fraction != 0 {
+            clock.push_str(format!(".{fraction:09}").trim_end_matches('0'));
+        }
+        parts.push(clock);
+    }
+    parts.join(" ")
 }
 
 pub(crate) fn hex_blob(bytes: &[u8]) -> String {

@@ -431,6 +431,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
             rows_affected: if columns.is_empty() { written } else { None },
             columns,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

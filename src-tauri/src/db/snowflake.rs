@@ -529,7 +529,7 @@ impl SnowflakeAdapter {
             .map(Vec::len)
             .unwrap_or(1);
         let mut partition = 1;
-        while partition < partitions && rows.len() < MAX_ROWS && !handle.is_empty() {
+        while partition < partitions && rows.len() <= MAX_ROWS && !handle.is_empty() {
             let (_, page) = timed(self.call(
                 reqwest::Method::GET,
                 &format!("/{handle}"),
@@ -841,6 +841,7 @@ impl DatabaseAdapter for SnowflakeAdapter {
             columns,
             rows_affected: statement.rows_affected,
             execution_time_ms: started.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

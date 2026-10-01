@@ -832,6 +832,7 @@ impl TxSession for PgTx {
                 rows,
                 rows_affected: affected,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         })
         .await
@@ -1594,6 +1595,7 @@ mod tests {
                 },
                 rows_affected: None,
                 execution_time_ms: 0,
+                truncated: false,
             })
         }
         async fn commit(&mut self) -> Result<(), String> {

@@ -210,6 +210,7 @@ fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 rows: rows_to_objects(&columns, rows),
                 rows_affected: None,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         }
         Ok(mut stmt) => {
@@ -219,6 +220,7 @@ fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 rows: vec![],
                 rows_affected: Some(affected as u64),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         }
         Err(rusqlite::Error::MultipleStatement) => {
@@ -228,6 +230,7 @@ fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 rows: vec![],
                 rows_affected: Some(c.changes()),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         }
         Err(e) => Err(map_err(e)),

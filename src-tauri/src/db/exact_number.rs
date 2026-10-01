@@ -72,6 +72,64 @@ pub(crate) fn uint(value: u64) -> Value {
     }
 }
 
+pub(crate) fn signed_be_text(bytes: &[u8]) -> String {
+    let negative = bytes.first().is_some_and(|b| b & 0x80 != 0);
+    let mut magnitude: Vec<u8> = bytes
+        .iter()
+        .map(|b| if negative { !b } else { *b })
+        .collect();
+    if negative {
+        for byte in magnitude.iter_mut().rev() {
+            let (sum, carry) = byte.overflowing_add(1);
+            *byte = sum;
+            if !carry {
+                break;
+            }
+        }
+    }
+    let mut digits = Vec::new();
+    while magnitude.iter().any(|b| *b != 0) {
+        let mut rest = 0u32;
+        for byte in magnitude.iter_mut() {
+            let current = (rest << 8) | u32::from(*byte);
+            *byte = (current / 10) as u8;
+            rest = current % 10;
+        }
+        digits.push(b'0' + rest as u8);
+    }
+    if digits.is_empty() {
+        digits.push(b'0');
+    } else if negative {
+        digits.push(b'-');
+    }
+    digits.reverse();
+    String::from_utf8(digits).unwrap_or_default()
+}
+
+pub(crate) fn scaled_text(unscaled: &str, scale: i32) -> String {
+    let (sign, digits) = match unscaled.strip_prefix('-') {
+        Some(digits) => ("-", digits),
+        None => ("", unscaled),
+    };
+    if digits == "0" || scale.unsigned_abs() > 1000 {
+        return if scale == 0 || digits == "0" {
+            unscaled.to_string()
+        } else {
+            format!("{unscaled}E{}", -i64::from(scale))
+        };
+    }
+    if scale <= 0 {
+        return format!(
+            "{sign}{digits}{}",
+            "0".repeat(scale.unsigned_abs() as usize)
+        );
+    }
+    let scale = scale as usize;
+    let padded = format!("{digits:0>width$}", width = scale + 1);
+    let (whole, fraction) = padded.split_at(padded.len() - scale);
+    format!("{sign}{whole}.{fraction}")
+}
+
 pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
     let bytes = json.as_bytes();
     let mut out: Option<String> = None;
@@ -196,6 +254,22 @@ mod tests {
         assert_eq!(int(i64::MAX), json!(i64::MAX.to_string()));
         assert_eq!(int(-42), json!(-42));
         assert_eq!(uint(u64::MAX), json!(u64::MAX.to_string()));
+    }
+
+    #[test]
+    fn renders_arbitrary_precision_numbers() {
+        assert_eq!(signed_be_text(&[]), "0");
+        assert_eq!(signed_be_text(&[0x00]), "0");
+        assert_eq!(signed_be_text(&[0x7f]), "127");
+        assert_eq!(signed_be_text(&[0x80, 0x00]), "-32768");
+        assert_eq!(signed_be_text(&[0xff]), "-1");
+        let big = (1u128 << 100).to_be_bytes();
+        assert_eq!(signed_be_text(&big), (1u128 << 100).to_string());
+        assert_eq!(scaled_text("12345", 2), "123.45");
+        assert_eq!(scaled_text("-5", 3), "-0.005");
+        assert_eq!(scaled_text("7", -2), "700");
+        assert_eq!(scaled_text("0", 5), "0");
+        assert_eq!(scaled_text("1", 5000), "1E-5000");
     }
 
     #[test]
