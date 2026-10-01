@@ -14,7 +14,8 @@ import {
   usePaneSourceKey,
 } from "@/lib/master-detail";
 import { ensurePassword } from "@/lib/password-prompt";
-import { usePaneConnectionId, useSplitView } from "@/lib/split-view";
+import { sameTable } from "@/lib/split-links";
+import { usePaneConnectionId, usePaneTabs, useSplitView } from "@/lib/split-view";
 import { ensureSshTunnel } from "@/lib/ssh";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -62,6 +63,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
     linkKey ? state.sourceColumns[linkKey] : undefined,
   );
   const feedsNext = useSplitView((state) => state.masters.includes(index));
+  const synced = usePaneTabs().some((other, pane) => pane !== index && sameTable(tab, other));
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
   const { ref: dropRef, isDropTarget } = useDroppable({
@@ -124,7 +126,10 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
       >
         <div
           ref={dragRef}
-          className="@container flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40 px-1"
+          className={cn(
+            "@container flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40",
+            synced ? "px-3" : "px-1",
+          )}
           style={override ? { backgroundColor: `${override.color ?? "#64748b"}1a` } : undefined}
           title={override ? `Verbindung: ${override.name}` : undefined}
         >
