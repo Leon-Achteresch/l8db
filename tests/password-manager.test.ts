@@ -1196,6 +1196,14 @@ describe("openbao", () => {
         "openbao",
       ),
     ).rejects.toThrow("Adresse des OpenBao-Servers");
+    await expect(
+      extension.vaultSetup(
+        client(fakeBao(), []).api,
+        { bw: null, op: null },
+        { action: "login", server: "http://bao.firma.de" },
+        "openbao",
+      ),
+    ).rejects.toThrow("mit https://");
   });
 
   test("types a pasted token into the CLI prompt and revokes it on logout", async () => {
@@ -1238,7 +1246,7 @@ describe("openbao", () => {
       {
         ref: "secret/l8db/team/billing",
         connection: expect.objectContaining({
-          id: "pm-openbao-team_billing",
+          id: "pm-openbao-team_2f_billing",
           name: "Billing",
           connectionString: "postgres://app@db.firma.local:5432/billing",
           password: "pw",

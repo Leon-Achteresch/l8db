@@ -615,7 +615,9 @@ export function openBao(api: L8dbApi, auth: VaultSession = { bw: null, op: null 
             raw.metadata && raw.data && typeof raw.data === "object" ? raw.data : raw
           ) as Record<string, unknown>;
           const connection = readEntry("openbao", {
-            ref: path.slice(base.length + 1).replace(/[^\w-]/g, "_"),
+            ref: path
+              .slice(base.length + 1)
+              .replace(/[^a-zA-Z0-9-]/gu, (char) => `_${char.codePointAt(0)?.toString(16)}_`),
             title: data.title ?? key,
             notes: data.notes,
             username: data.username,
@@ -1141,9 +1143,13 @@ export const accounts: Record<string, VaultAccount> = {
     },
     async login(api, auth, input) {
       const address = (input.server ?? "").trim().replace(/\/+$/, "");
-      if (!/^https?:\/\/[^/\s]+/.test(address))
+      if (
+        !/^(https:\/\/[^/\s]+|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?)(\/\S*)?$/.test(
+          address,
+        )
+      )
         throw new Error(
-          "Bitte gib die Adresse des OpenBao-Servers an, z. B. https://bao.firma.de.",
+          "Bitte gib die Adresse des OpenBao-Servers mit https:// an, z. B. https://bao.firma.de.",
         );
       const settings: BaoSettings = {
         address,
