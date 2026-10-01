@@ -1,8 +1,11 @@
+use std::future::Future;
 use std::ops::{Deref, DerefMut};
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use futures_util::FutureExt;
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, FromSql, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
@@ -92,6 +95,62 @@ fn map_err(e: tiberius::error::Error) -> String {
             )
         }
         other => format!("SQL Server: {other}"),
+    }
+}
+
+const UNREADABLE_TYPE: &str = "SQL Server: Das Ergebnis enthält eine Spalte, deren Datentyp der Treiber nicht lesen kann (geography, geometry, hierarchyid, sql_variant oder ein CLR-Typ). Spalte umwandeln, z. B. CAST(spalte AS NVARCHAR(MAX)) oder spalte.ToString().";
+
+const BUILTIN_TYPES: &[&str] = &[
+    "bigint",
+    "binary",
+    "bit",
+    "char",
+    "date",
+    "datetime",
+    "datetime2",
+    "datetimeoffset",
+    "decimal",
+    "float",
+    "image",
+    "int",
+    "money",
+    "nchar",
+    "ntext",
+    "numeric",
+    "nvarchar",
+    "real",
+    "rowversion",
+    "smalldatetime",
+    "smallint",
+    "smallmoney",
+    "sysname",
+    "text",
+    "time",
+    "timestamp",
+    "tinyint",
+    "uniqueidentifier",
+    "varbinary",
+    "varchar",
+    "xml",
+];
+
+async fn guarded<T>(future: impl Future<Output = Result<T, String>>) -> Result<T, String> {
+    AssertUnwindSafe(future)
+        .catch_unwind()
+        .await
+        .unwrap_or_else(|_| Err(UNREADABLE_TYPE.to_string()))
+}
+
+fn select_expression(name: &str, data_type: &str) -> String {
+    let column = quote(name);
+    let data_type = data_type.to_ascii_lowercase();
+    match data_type.as_str() {
+        "geography" | "geometry" => format!("{column}.STAsText() AS {column}"),
+        "hierarchyid" => format!("{column}.ToString() AS {column}"),
+        "sql_variant" => format!("CAST({column} AS NVARCHAR(4000)) AS {column}"),
+        "json" | "vector" => format!("CAST({column} AS NVARCHAR(MAX)) AS {column}"),
+        _ if BUILTIN_TYPES.contains(&data_type.as_str()) => column,
+        _ => format!("{column}.ToString() AS {column}"),
     }
 }
 
@@ -377,10 +436,10 @@ impl MssqlAdapter {
 
     async fn rows(&self, sql: &str) -> Result<Vec<Row>, String> {
         let mut client = self.connect().await?;
-        let result = timed(async {
+        let result = guarded(timed(async {
             let stream = client.simple_query(sql).await.map_err(map_err)?;
             stream.into_first_result().await.map_err(map_err)
-        })
+        }))
         .await;
         if result.is_err() {
             client.discard();
@@ -390,13 +449,13 @@ impl MssqlAdapter {
 
     async fn exec(&self, sql: &str) -> Result<u64, String> {
         let mut client = self.connect().await?;
-        let result = timed(async {
+        let result = guarded(timed(async {
             client
                 .execute(sql, &[])
                 .await
                 .map_err(map_err)
                 .map(|r| r.total())
-        })
+        }))
         .await;
         if result.is_err() {
             client.discard();
@@ -479,7 +538,7 @@ fn starts_batch(sql: &str) -> bool {
 
 async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
-    timed(async {
+    guarded(timed(async {
         if is_tx_control(sql) || starts_batch(sql) {
             client
                 .simple_query(sql)
@@ -529,7 +588,7 @@ async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, Stri
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
         })
-    })
+    }))
     .await
 }
 
@@ -669,6 +728,15 @@ impl DatabaseAdapter for MssqlAdapter {
             .filter(|c| c.is_primary_key)
             .map(|c| c.name.clone())
             .collect();
+        let select_list = if detailed.is_empty() {
+            "*".to_string()
+        } else {
+            detailed
+                .iter()
+                .map(|c| select_expression(&c.name, &c.data_type))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
         let order_sql = match order_by {
             Some(col) if columns.iter().any(|c| c == col) => format!(
@@ -679,7 +747,8 @@ impl DatabaseAdapter for MssqlAdapter {
             _ => " ORDER BY (SELECT NULL)".to_string(),
         };
         let sql = format!(
-            "SELECT * FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+            "SELECT {} FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+            select_list,
             Self::object(schema, table),
             where_sql,
             order_sql,
@@ -1365,7 +1434,7 @@ impl DatabaseAdapter for MssqlAdapter {
         let object = Self::object(&request.schema, &request.table);
         let sql = super::snapshot::select_sql(request, &object, quote)?;
         let mut client = self.connect().await?;
-        let result = async {
+        let result = guarded(async {
             let mut stream = client.simple_query(sql).await.map_err(map_err)?;
             let columns: Vec<String> = stream
                 .columns()
@@ -1385,7 +1454,7 @@ impl DatabaseAdapter for MssqlAdapter {
                 )?;
             }
             collector.finish(columns)
-        }
+        })
         .await;
         if result.is_err() {
             client.discard();
@@ -1408,6 +1477,76 @@ mod catalog;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unreadable_types_are_converted_for_browsing() {
+        assert_eq!(select_expression("id", "int"), "[id]");
+        assert_eq!(
+            select_expression("Shape", "geography"),
+            "[Shape].STAsText() AS [Shape]"
+        );
+        assert_eq!(
+            select_expression("node", "HierarchyId"),
+            "[node].ToString() AS [node]"
+        );
+        assert_eq!(
+            select_expression("v", "sql_variant"),
+            "CAST([v] AS NVARCHAR(4000)) AS [v]"
+        );
+        assert_eq!(select_expression("p", "Point"), "[p].ToString() AS [p]");
+        assert_eq!(select_expression("a]b", "nvarchar"), "[a]]b]");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_unreadable_types_do_not_crash() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new(&url, Some("master"), pool.clone(), "variant".into()).unwrap();
+        for sql in [
+            "IF OBJECT_ID('dbo.l8db_variant') IS NOT NULL DROP TABLE dbo.l8db_variant",
+            "CREATE TABLE dbo.l8db_variant (id int PRIMARY KEY, v sql_variant)",
+            "INSERT INTO dbo.l8db_variant VALUES (1, CAST(42 AS sql_variant))",
+            "INSERT INTO dbo.l8db_variant VALUES (2, CAST(N'text' AS sql_variant))",
+        ] {
+            adapter.rows(sql).await.expect(sql);
+        }
+        let error = adapter
+            .execute_query("SELECT * FROM dbo.l8db_variant")
+            .await
+            .unwrap_err();
+        assert_eq!(error, UNREADABLE_TYPE);
+        let data = adapter
+            .fetch_rows(
+                "dbo",
+                "l8db_variant",
+                None,
+                10,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(data.rows.len(), 2);
+        assert_eq!(data.rows[1]["v"], serde_json::json!("text"));
+        adapter.test_connection().await.expect("pool still healthy");
+        adapter
+            .rows("DROP TABLE dbo.l8db_variant")
+            .await
+            .expect("cleanup");
+    }
+
+    #[tokio::test]
+    async fn driver_panics_become_errors() {
+        let result: Result<(), String> = guarded(async { panic!("not yet implemented") }).await;
+        assert_eq!(result.unwrap_err(), UNREADABLE_TYPE);
+    }
 
     #[test]
     fn numeric_text_keeps_sign_and_scale() {
