@@ -319,6 +319,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
             columns,
             rows_affected,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     })
     .await

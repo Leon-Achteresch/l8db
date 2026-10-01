@@ -70,36 +70,6 @@ fn instant(unit: TimeUnit, value: i64) -> Option<chrono::NaiveDateTime> {
     chrono::DateTime::from_timestamp_micros(micros).map(|dt| dt.naive_utc())
 }
 
-fn interval_text(months: i32, days: i32, nanos: i64) -> String {
-    let mut parts = Vec::new();
-    let (years, months) = (months / 12, months % 12);
-    for (amount, unit) in [(years, "year"), (months, "month"), (days, "day")] {
-        if amount != 0 {
-            parts.push(format!(
-                "{amount} {unit}{}",
-                if amount.abs() == 1 { "" } else { "s" }
-            ));
-        }
-    }
-    if nanos != 0 || parts.is_empty() {
-        let sign = if nanos < 0 { "-" } else { "" };
-        let total = nanos.unsigned_abs();
-        let seconds = total / 1_000_000_000;
-        let fraction = total % 1_000_000_000;
-        let mut clock = format!(
-            "{sign}{:02}:{:02}:{:02}",
-            seconds / 3600,
-            seconds / 60 % 60,
-            seconds % 60
-        );
-        if fraction != 0 {
-            clock.push_str(format!(".{fraction:09}").trim_end_matches('0'));
-        }
-        parts.push(clock);
-    }
-    parts.join(" ")
-}
-
 fn owned_to_json(value: duckdb::types::Value) -> serde_json::Value {
     use super::exact_number::{decimal, int, uint};
     use duckdb::types::Value as V;
@@ -142,7 +112,7 @@ fn owned_to_json(value: duckdb::types::Value) -> serde_json::Value {
             months,
             days,
             nanos,
-        } => text(interval_text(months, days, nanos)),
+        } => text(super::interval_text(months, days, nanos)),
         V::Text(s) | V::Enum(s) => J::String(s),
         V::Blob(b) | V::Geometry(b) => J::String(hex_blob(&b)),
         V::List(items) | V::Array(items) => {
@@ -289,6 +259,7 @@ fn run_sql(c: &Connection, sql: &str) -> Result<QueryResult, String> {
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         });
     }
     let affected = c.execute(sql, []).map_err(map_err)?;
@@ -297,6 +268,7 @@ fn run_sql(c: &Connection, sql: &str) -> Result<QueryResult, String> {
         rows: vec![],
         rows_affected: Some(affected as u64),
         execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
     })
 }
 

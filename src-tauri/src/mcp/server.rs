@@ -853,6 +853,7 @@ mod tests {
             ],
             rows_affected: None,
             execution_time_ms: 1,
+            truncated: false,
         };
         let text = format_result(&result, &config, &redactor, 2);
         let lines: Vec<&str> = text.lines().collect();

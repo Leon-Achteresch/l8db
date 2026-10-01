@@ -1484,6 +1484,7 @@ impl DatabaseAdapter for OracleAdapter {
                 columns,
                 rows_affected: None,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             });
         }
         let affected = self.exec(statement).await?;
@@ -1492,6 +1493,7 @@ impl DatabaseAdapter for OracleAdapter {
             rows: vec![],
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 
@@ -1525,6 +1527,7 @@ impl DatabaseAdapter for OracleAdapter {
                     columns,
                     rows_affected: None,
                     execution_time_ms: start.elapsed().as_millis() as u64,
+                    truncated: false,
                 })
             } else {
                 let affected = conn
@@ -1537,6 +1540,7 @@ impl DatabaseAdapter for OracleAdapter {
                     rows: vec![],
                     rows_affected: Some(affected),
                     execution_time_ms: start.elapsed().as_millis() as u64,
+                    truncated: false,
                 })
             }
         })
@@ -4242,6 +4246,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         });
     }
     let affected = c
@@ -4254,6 +4259,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
         rows: vec![],
         rows_affected: Some(affected),
         execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
     })
 }
 

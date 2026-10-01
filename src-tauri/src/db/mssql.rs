@@ -552,6 +552,7 @@ async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, Stri
                 rows: vec![],
                 rows_affected: None,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             });
         }
         if !is_result_statement(sql) {
@@ -561,6 +562,7 @@ async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, Stri
                 rows: vec![],
                 rows_affected: Some(affected),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             });
         }
         let rows = client
@@ -587,6 +589,7 @@ async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, Stri
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }))
     .await

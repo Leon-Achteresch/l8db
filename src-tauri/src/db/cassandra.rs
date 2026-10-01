@@ -3,14 +3,19 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use scylla::client::session::Session;
 use scylla::client::session_builder::SessionBuilder;
+use scylla::response::{PagingState, PagingStateResponse};
+use scylla::statement::Statement;
 use scylla::value::{CqlValue, Row};
 
 use super::pool::PoolState;
 use super::{
     hex_blob, rows_to_objects, timed, unsupported, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo,
-    IndexInfo, QueryResult, TableData, TableInfo,
+    IndexInfo, QueryResult, RowCount, TableData, TableInfo,
 };
+
+const PAGE_SIZE: i32 = 1000;
+const MAX_QUERY_ROWS: usize = 10_000;
 
 pub struct CassandraAdapter {
     nodes: Vec<String>,
@@ -40,7 +45,7 @@ fn value_to_json(value: Option<CqlValue>) -> serde_json::Value {
         CqlValue::Ascii(s) | CqlValue::Text(s) => serde_json::Value::String(s),
         CqlValue::Boolean(b) => serde_json::Value::Bool(b),
         CqlValue::Blob(b) => serde_json::Value::String(hex_blob(&b)),
-        CqlValue::Counter(c) => serde_json::Value::from(c.0),
+        CqlValue::Counter(c) => super::exact_number::int(c.0),
         CqlValue::Double(d) => serde_json::Number::from_f64(d)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
@@ -48,7 +53,33 @@ fn value_to_json(value: Option<CqlValue>) -> serde_json::Value {
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
         CqlValue::Int(i) => serde_json::Value::from(i),
-        CqlValue::BigInt(i) => serde_json::Value::from(i),
+        CqlValue::BigInt(i) => super::exact_number::int(i),
+        CqlValue::Varint(v) => super::exact_number::decimal(&super::exact_number::signed_be_text(
+            v.as_signed_bytes_be_slice(),
+        )),
+        CqlValue::Decimal(d) => {
+            let (bytes, scale) = d.as_signed_be_bytes_slice_and_exponent();
+            super::exact_number::decimal(&super::exact_number::scaled_text(
+                &super::exact_number::signed_be_text(bytes),
+                scale,
+            ))
+        }
+        CqlValue::Date(d) => {
+            let days = i64::from(d.0) - (1 << 31);
+            chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                .and_then(|epoch| epoch.checked_add_signed(chrono::Duration::days(days)))
+                .map(|date| serde_json::Value::String(date.format("%Y-%m-%d").to_string()))
+                .unwrap_or_else(|| serde_json::Value::from(days))
+        }
+        CqlValue::Time(t) => chrono::NaiveTime::from_num_seconds_from_midnight_opt(
+            (t.0 / 1_000_000_000) as u32,
+            (t.0 % 1_000_000_000) as u32,
+        )
+        .map(|time| serde_json::Value::String(time.format("%H:%M:%S%.f").to_string()))
+        .unwrap_or_else(|| serde_json::Value::from(t.0)),
+        CqlValue::Duration(d) => {
+            serde_json::Value::String(super::interval_text(d.months, d.days, d.nanoseconds))
+        }
         CqlValue::SmallInt(i) => serde_json::Value::from(i),
         CqlValue::TinyInt(i) => serde_json::Value::from(i),
         CqlValue::Timestamp(ts) => serde_json::Value::String(
@@ -59,7 +90,7 @@ fn value_to_json(value: Option<CqlValue>) -> serde_json::Value {
         CqlValue::Inet(ip) => serde_json::Value::String(ip.to_string()),
         CqlValue::Uuid(u) => serde_json::Value::String(u.to_string()),
         CqlValue::Timeuuid(u) => serde_json::Value::String(u.to_string()),
-        CqlValue::List(items) | CqlValue::Set(items) => {
+        CqlValue::List(items) | CqlValue::Set(items) | CqlValue::Vector(items) => {
             serde_json::Value::Array(items.into_iter().map(|v| value_to_json(Some(v))).collect())
         }
         CqlValue::Map(pairs) => serde_json::Value::Object(
@@ -166,29 +197,80 @@ impl CassandraAdapter {
             .await
     }
 
-    async fn query(&self, cql: &str) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+    async fn scan(
+        &self,
+        cql: &str,
+        mut on_row: impl FnMut(Row) -> bool + Send,
+    ) -> Result<(Vec<String>, bool), String> {
         let session = self.session().await?;
-        let result =
-            timed(async { session.query_unpaged(cql, &[]).await.map_err(map_err) }).await?;
-        let rows_result = match result.into_rows_result() {
-            Ok(r) => r,
-            Err(scylla::response::query_result::IntoRowsResultError::ResultNotRows(_)) => {
-                return Ok((vec![], vec![]))
+        let mut statement = Statement::new(cql);
+        statement.set_page_size(PAGE_SIZE);
+        timed(async {
+            let mut paging = PagingState::start();
+            let mut columns = Vec::new();
+            loop {
+                let (result, response) = session
+                    .query_single_page(statement.clone(), &[], paging)
+                    .await
+                    .map_err(map_err)?;
+                let rows_result = match result.into_rows_result() {
+                    Ok(r) => r,
+                    Err(scylla::response::query_result::IntoRowsResultError::ResultNotRows(_)) => {
+                        return Ok((columns, false))
+                    }
+                    Err(e) => return Err(map_err(e)),
+                };
+                if columns.is_empty() {
+                    columns = super::unique_column_names(
+                        rows_result
+                            .column_specs()
+                            .iter()
+                            .map(|c| c.name().to_string())
+                            .collect(),
+                    );
+                }
+                for row in rows_result.rows::<Row>().map_err(map_err)? {
+                    if !on_row(row.map_err(map_err)?) {
+                        return Ok((columns, true));
+                    }
+                }
+                match response {
+                    PagingStateResponse::HasMorePages { state } => paging = state,
+                    PagingStateResponse::NoMorePages => return Ok((columns, false)),
+                }
             }
-            Err(e) => return Err(map_err(e)),
-        };
-        let columns: Vec<String> = rows_result
-            .column_specs()
-            .iter()
-            .map(|c| c.name().to_string())
-            .collect();
-        let columns = super::unique_column_names(columns);
+        })
+        .await
+    }
+
+    async fn query_window(
+        &self,
+        cql: &str,
+        skip: usize,
+        take: usize,
+    ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>, bool), String> {
         let mut rows = Vec::new();
-        for row in rows_result.rows::<Row>().map_err(map_err)? {
-            let row = row.map_err(map_err)?;
-            rows.push(row.columns.into_iter().map(value_to_json).collect());
-        }
-        Ok((columns, rows))
+        let mut seen = 0usize;
+        let (columns, more) = self
+            .scan(cql, |row| {
+                seen += 1;
+                if seen <= skip {
+                    return true;
+                }
+                if rows.len() >= take {
+                    return false;
+                }
+                rows.push(row.columns.into_iter().map(value_to_json).collect());
+                true
+            })
+            .await?;
+        Ok((columns, rows, more))
+    }
+
+    async fn query(&self, cql: &str) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+        self.query_window(cql, 0, usize::MAX)
+            .await
+            .map(|(columns, rows, _)| (columns, rows))
     }
 
     async fn exec(&self, cql: &str) -> Result<(), String> {
@@ -356,8 +438,7 @@ impl DatabaseAdapter for CassandraAdapter {
             ),
             !where_sql.is_empty(),
         );
-        let (cols, rows) = self.query(&cql).await?;
-        let page: Vec<Vec<serde_json::Value>> = rows.into_iter().skip(offset).take(limit).collect();
+        let (cols, page, _) = self.query_window(&cql, offset, limit).await?;
         Ok(TableData {
             columns: if columns.is_empty() {
                 cols.clone()
@@ -389,14 +470,60 @@ impl DatabaseAdapter for CassandraAdapter {
         Ok(rows.first().and_then(|r| r[0].as_i64()).unwrap_or(0))
     }
 
+    async fn count_rows_capped(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        allow_raw_filter: bool,
+        cap: i64,
+    ) -> Result<RowCount, String> {
+        let where_sql = where_clause(filter, allow_raw_filter)?;
+        let key = self
+            .list_table_columns_detailed(schema, table)
+            .await?
+            .into_iter()
+            .find(|c| c.is_primary_key)
+            .map(|c| quote(&c.name))
+            .unwrap_or_else(|| "*".to_string());
+        let cql = with_filtering(
+            format!(
+                "SELECT {key} FROM {}.{}{}",
+                quote(schema),
+                quote(table),
+                where_sql
+            ),
+            !where_sql.is_empty(),
+        );
+        let mut count = 0i64;
+        let (_, more) = self
+            .scan(&cql, |_| {
+                count += 1;
+                count <= cap
+            })
+            .await?;
+        Ok(if more {
+            RowCount {
+                count: cap.saturating_add(1),
+                exact: false,
+                estimate: None,
+            }
+        } else {
+            RowCount::exact(count)
+        })
+    }
+
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let (columns, rows) = self.query(sql.trim().trim_end_matches(';')).await?;
+        let (columns, rows, truncated) = self
+            .query_window(sql.trim().trim_end_matches(';'), 0, MAX_QUERY_ROWS)
+            .await?;
         Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated,
         })
     }
 
@@ -527,6 +654,63 @@ impl DatabaseAdapter for CassandraAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_values_paging_and_capped_count() {
+        let url = std::env::var("L8DB_E2E_CASSANDRA_URL")
+            .unwrap_or_else(|_| "cassandra://127.0.0.1:9042".into());
+        let db = CassandraAdapter::new(&url, crate::db::pool::create_pool_state(), "live".into())
+            .unwrap();
+        db.exec("CREATE KEYSPACE IF NOT EXISTS l8db_live WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}").await.unwrap();
+        db.exec("DROP TABLE IF EXISTS l8db_live.t").await.unwrap();
+        db.exec("CREATE TABLE l8db_live.t (id int PRIMARY KEY, big varint, price decimal, day date, at time, span duration, n bigint)").await.unwrap();
+        db.exec("INSERT INTO l8db_live.t (id, big, price, day, at, span, n) VALUES (0, 123456789012345678901234567890, 12345678901234567890.125, '2024-01-02', '13:14:15.5', 1mo2d3h, 9007199254740993)").await.unwrap();
+        for id in 1..2501 {
+            db.exec(&format!(
+                "INSERT INTO l8db_live.t (id, price) VALUES ({id}, 1.50)"
+            ))
+            .await
+            .unwrap();
+        }
+        let row = db
+            .execute_query("SELECT big, price, day, at, span, n FROM l8db_live.t WHERE id = 0")
+            .await
+            .unwrap()
+            .rows
+            .remove(0);
+        assert_eq!(
+            row["big"],
+            serde_json::json!("123456789012345678901234567890")
+        );
+        assert_eq!(row["price"], serde_json::json!("12345678901234567890.125"));
+        assert_eq!(row["day"], serde_json::json!("2024-01-02"));
+        assert_eq!(row["at"], serde_json::json!("13:14:15.500"));
+        assert_eq!(row["span"], serde_json::json!("1 month 2 days 03:00:00"));
+        assert_eq!(row["n"], serde_json::json!("9007199254740993"));
+        let all = db
+            .execute_query("SELECT id FROM l8db_live.t")
+            .await
+            .unwrap();
+        assert_eq!(all.rows.len(), 2501);
+        assert!(!all.truncated);
+        let page = db
+            .fetch_rows("l8db_live", "t", None, 10, 2000, None, false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), 10);
+        let capped = db
+            .count_rows_capped("l8db_live", "t", None, false, 1500)
+            .await
+            .unwrap();
+        assert_eq!((capped.count, capped.exact), (1501, false));
+        let exact = db
+            .count_rows_capped("l8db_live", "t", None, false, 5000)
+            .await
+            .unwrap();
+        assert_eq!((exact.count, exact.exact), (2501, true));
+        db.exec("DROP KEYSPACE l8db_live").await.unwrap();
+    }
 
     #[test]
     fn parses_nodes_and_keyspace() {
