@@ -4,7 +4,7 @@ import { useExtensionSnapshot } from "@/lib/extensions/react-context";
 
 export const PASSWORD_MANAGER_ID = "l8db.password-manager";
 
-export type VaultProvider = "bitwarden" | "1password" | "keeper";
+export type VaultProvider = "bitwarden" | "1password" | "keeper" | "openbao";
 
 export interface VaultStatus {
   provider: VaultProvider;
@@ -13,9 +13,11 @@ export interface VaultStatus {
   account?: string;
   server?: string;
   accounts?: { id: string; label: string }[];
-  needs?: "code" | "terminal" | "device" | "2fa";
+  needs?: "code" | "terminal" | "device" | "2fa" | "browser";
   channels?: { id: string; label: string }[];
   detail?: string;
+  url?: string;
+  settings?: Record<string, string>;
 }
 
 export interface VaultSyncResult {
@@ -70,6 +72,17 @@ export const VAULT_PROVIDERS: {
     team: "im geteilten Ordner",
     entry: "Login",
     website: "Website-Adresse",
+  },
+  {
+    id: "openbao",
+    name: "OpenBao",
+    tagline: "Anmeldung per SSO, z. B. Keycloak",
+    mark: "O",
+    tone: "bg-foreground text-background",
+    manual: "https://openbao.org/docs/install/",
+    team: "unter dem geteilten KV-Pfad",
+    entry: "Secret",
+    website: "„url“",
   },
 ];
 
