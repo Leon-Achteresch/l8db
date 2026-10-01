@@ -149,7 +149,7 @@ export function Onboarding() {
       title: "Mach l8db zu deinem Werkzeug",
       subtitle:
         "Offizielle Erweiterungen aus dem Marketplace – mit einem Klick installiert, geprüft per SHA-256.",
-      content: <OnboardingExtensions onFinish={() => setDone(true)} />,
+      content: <OnboardingExtensions />,
     },
   ];
   const current = steps[Math.max(step, 1) - 1];
@@ -163,6 +163,7 @@ export function Onboarding() {
           role="dialog"
           aria-modal="true"
           aria-label="Willkommen bei l8db"
+          data-onboarding
           className="fixed inset-0 z-[10000002] overflow-hidden bg-background text-foreground"
           exit={{ opacity: 0, scale: 1.04, filter: "blur(10px)" }}
           transition={{ duration: 0.6, ease: EASE_OUT }}
