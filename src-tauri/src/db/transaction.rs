@@ -979,7 +979,7 @@ mod tests {
     async fn sqlite_binary_roundtrip() {
         let dir = std::env::temp_dir().join(format!("l8db-bin-{}.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&dir);
-        let url = format!("sqlite://{}", dir.display());
+        let url = format!("sqlite://{}?mode=rwc", dir.display());
         let pool = super::super::pool::create_pool_state();
         let adapter = super::super::create_adapter_from_string(
             DatabaseKind::Sqlite,
@@ -1030,7 +1030,7 @@ mod tests {
     async fn sqlite_transaction_roundtrip() {
         let dir = std::env::temp_dir().join(format!("l8db-tx-{}.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&dir);
-        let url = format!("sqlite://{}", dir.display());
+        let url = format!("sqlite://{}?mode=rwc", dir.display());
         let pool = super::super::pool::create_pool_state();
         let adapter = super::super::create_adapter_from_string(
             DatabaseKind::Sqlite,
