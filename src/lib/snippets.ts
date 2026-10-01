@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface Snippet {
   id: string;
@@ -172,3 +173,5 @@ export const useSnippetsStore = create<SnippetsState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.snippets", () => void useSnippetsStore.persist.rehydrate());

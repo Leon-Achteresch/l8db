@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Upload } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import { useBaasConnections } from "@/features/baas/use-baas-connections";
@@ -20,6 +21,7 @@ import {
   sortConnectionsByName,
   useConnectionsStore,
 } from "@/lib/connections";
+import { openAppWindow } from "@/lib/db";
 import { supports } from "@/lib/providers";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { ConnectionBulkEditDialog } from "./connection-bulk-edit-dialog";
@@ -135,6 +137,14 @@ export function ConnectionsView() {
           if (activeId === connection.id) void connect(null);
           else void connect(connection.id);
         }}
+        onOpenWindow={
+          connection.temporary || activeId === connection.id
+            ? undefined
+            : () =>
+                void openAppWindow(connection.id).catch((error) =>
+                  toast.error(`Fenster konnte nicht geöffnet werden: ${String(error)}`),
+                )
+        }
         onEdit={() => openEditor(connection.id)}
         onDelete={() => setDeleteId(connection.id)}
         onDuplicate={() => duplicateConnection(connection.id)}
@@ -282,7 +292,7 @@ export function ConnectionsView() {
               renderGroup={renderGroup}
               extra={
                 baasCards.length > 0 && (
-                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
                     {baasCards}
                   </div>
                 )
@@ -290,7 +300,7 @@ export function ConnectionsView() {
             />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border/70 bg-card/20 p-4 md:p-6 shadow-xs">
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
                 {filtered.map(renderCard)}
                 {baasCards}
               </div>

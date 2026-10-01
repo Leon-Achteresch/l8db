@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Local main and connection windows",
+  "description": "Local main, connection and additional windows",
   "windows": [
     "main",
-    "conn-*"
+    "conn-*",
+    "win-*"
   ],
   "permissions": [
     "core:default",

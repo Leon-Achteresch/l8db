@@ -13,6 +13,7 @@ mod mcp;
 mod pocketbase;
 mod supabase;
 mod versioning;
+mod windows;
 
 #[cfg(target_os = "windows")]
 fn set_memory_target(window: &tauri::Window, low: bool) {
@@ -65,23 +66,23 @@ pub fn run() {
                 argv.get(1..).unwrap_or_default(),
                 std::path::Path::new(&cwd),
             );
-            file_open::enqueue(app, actions);
+            if !windows::handle_args(app, &argv, true) || !actions.is_empty() {
+                file_open::enqueue(app, actions);
+            }
         }));
     }
     #[cfg(target_os = "macos")]
     {
-        builder = builder.menu(desktop::app_menu).on_menu_event(|app, event| {
-            use tauri::{Emitter, Manager};
-            let label = app
-                .webview_windows()
-                .into_iter()
-                .find(|(_, window)| window.is_focused().unwrap_or(false))
-                .map(|(label, _)| label)
-                .unwrap_or_else(|| "main".to_string());
-            let _ = app.emit_to(label.as_str(), "menu-action", event.id().0.clone());
-        });
+        builder = builder
+            .menu(desktop::app_menu)
+            .on_menu_event(|app, event| windows::handle_menu_event(app, &event.id().0));
     }
     builder
+        .setup(move |app| {
+            windows::install_quick_menu();
+            windows::handle_args(app.handle(), &args, false);
+            Ok(())
+        })
         .plugin(desktop::log_plugin())
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -98,14 +99,18 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .on_window_event(|_window, _event| {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                windows::forget(window);
+            }
             #[cfg(target_os = "windows")]
-            if let tauri::WindowEvent::Focused(focused) = _event {
-                set_memory_target(_window, !focused);
+            if let tauri::WindowEvent::Focused(focused) = event {
+                set_memory_target(window, !focused);
             }
         })
         .manage(community_extensions::ExtensionStoreLock::default())
         .manage(file_open::PendingOpenFiles::new(initial_files))
+        .manage(windows::WindowConnections::default())
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
@@ -222,6 +227,10 @@ pub fn run() {
             extension_process::extension_process_stop,
             file_open::take_pending_open_files,
             file_open::resolve_open_files,
+            windows::open_app_window,
+            windows::set_dock_recents,
+            windows::set_window_connection,
+            windows::connection_in_other_window,
             mcp::config::mcp_config,
             mcp::config::mcp_save_config,
             mcp::config::mcp_default_redaction,
