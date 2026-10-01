@@ -60,6 +60,7 @@ chat/
 !/docs/performance.md
 !/docs/feature-videos-plan.md
 !/docs/ssh-network.md
+!/docs/release-1.0.md
 
 # Nested website repo (separates Projekt)
 l8db-website/
