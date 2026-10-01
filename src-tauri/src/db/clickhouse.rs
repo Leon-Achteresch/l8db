@@ -262,10 +262,8 @@ const WIDE_INT: [&str; 6] = ["Int64", "UInt64", "Int128", "UInt128", "Int256", "
 
 fn unquote_safe_ints(value: &mut serde_json::Value) {
     match value {
-        serde_json::Value::String(s) => {
-            if super::exact_number::is_exact_in_js(s) {
-                *value = super::exact_number::decimal(s);
-            }
+        serde_json::Value::String(s) if super::exact_number::is_exact_in_js(s) => {
+            *value = super::exact_number::decimal(s);
         }
         serde_json::Value::Array(items) => items.iter_mut().for_each(unquote_safe_ints),
         serde_json::Value::Object(map) => map.values_mut().for_each(unquote_safe_ints),
