@@ -22,7 +22,11 @@ export function OpenSourceLicensesDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (!open || text !== null) return;
     fetch("/third-party-licenses.txt")
-      .then((response) => (response.ok ? response.text() : Promise.reject(response.status)))
+      .then((response) =>
+        response.ok && !response.headers.get("content-type")?.includes("text/html")
+          ? response.text()
+          : Promise.reject(response.status),
+      )
       .then(setText)
       .catch(() => setFailed(true));
   }, [open, text]);
@@ -47,7 +51,8 @@ export function OpenSourceLicensesDialog({ open, onOpenChange }: Props) {
         <div className="min-h-0 flex-1 overflow-y-auto rounded-md border bg-muted/30">
           {failed ? (
             <p className="p-4 text-sm text-muted-foreground">
-              Die Lizenzliste ist nur in Release-Builds enthalten.
+              Die Lizenzliste ist nur in Release-Builds enthalten. Im Entwicklungsmodus mit „bun run
+              licenses“ erzeugen.
             </p>
           ) : text === null ? (
             <p className="p-4 text-sm text-muted-foreground">Lizenzen werden geladen…</p>
