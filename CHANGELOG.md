@@ -3,6 +3,17 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.8.24] - 2026-10-01
+
+### Features
+- open functions, packages and all other objects of another connection in a pane
+- add OpenBao with browser SSO login
+- show the app version in the status bar
+- sync horizontal scrolling between panes showing the same table
+
+### Fixes
+- require HTTPS for remote OpenBao servers and keep path-based IDs unique
+
 ## [0.8.13] - 2026-10-01
 
 ### Features
