@@ -21,21 +21,63 @@ pub use read::TransactionTableRead;
 #[path = "transaction_table_tests.rs"]
 mod table_tests;
 
+#[cfg(test)]
+#[path = "transaction_pg_row_tests.rs"]
+mod pg_row_tests;
+
 static TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-fn validate_ctid(ctid: &str) -> Result<String, String> {
-    let ctid = ctid.trim();
-    let valid = ctid.starts_with('(') && ctid.ends_with(')') && {
-        let inner = &ctid[1..ctid.len() - 1];
-        let parts: Vec<&str> = inner.splitn(2, ',').collect();
-        parts.len() == 2
-            && parts[0].trim().parse::<u64>().is_ok()
-            && parts[1].trim().parse::<u64>().is_ok()
-    };
-    if !valid {
-        return Err("Ungültige ctid".to_string());
+pub(crate) const PG_ROW_ID: &str = "ctid::text || '@' || tableoid::text";
+
+#[derive(Debug, PartialEq)]
+pub(crate) struct PgRowId {
+    ctid: String,
+    tableoid: Option<u32>,
+}
+
+impl PgRowId {
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
+        let raw = raw.trim();
+        let (ctid, tableoid) = match raw.split_once('@') {
+            Some((ctid, oid)) => (
+                ctid.trim(),
+                Some(
+                    oid.trim()
+                        .parse::<u32>()
+                        .map_err(|_| "Ungültige ctid".to_string())?,
+                ),
+            ),
+            None => (raw, None),
+        };
+        let parts = ctid
+            .strip_prefix('(')
+            .and_then(|rest| rest.strip_suffix(')'))
+            .and_then(|inner| inner.split_once(','))
+            .and_then(|(block, offset)| {
+                Some((
+                    block.trim().parse::<u32>().ok()?,
+                    offset.trim().parse::<u16>().ok()?,
+                ))
+            });
+        let Some((block, offset)) = parts else {
+            return Err("Ungültige ctid".to_string());
+        };
+        Ok(Self {
+            ctid: format!("({block},{offset})"),
+            tableoid,
+        })
     }
-    Ok(ctid.to_string())
+
+    pub(crate) fn filter(&self, schema: &str, table: &str) -> String {
+        let relation = match self.tableoid {
+            Some(oid) => format!("{oid}::oid"),
+            None => format!(
+                "{}::regclass",
+                super::quote_literal(&format!("{}.{}", quote_ident(schema), quote_ident(table)))
+            ),
+        };
+        format!("ctid = '{}'::tid AND tableoid = {relation}", self.ctid)
+    }
 }
 
 type OracleConn = Arc<std::sync::Mutex<oracle::Connection>>;
@@ -603,7 +645,7 @@ impl TransactionManager {
             TransactionEntry::Dynamo(d) => return d.update_row(table, ctid, updates).await,
         };
 
-        let ctid = validate_ctid(ctid)?;
+        let row_id = PgRowId::parse(ctid)?;
         let conn = conn.lock().await?;
 
         let col_rows = conn
@@ -635,11 +677,11 @@ impl TransactionManager {
         }
 
         let sql = format!(
-            "UPDATE {}.{} SET {} WHERE ctid = '{}'::tid RETURNING ctid::text",
+            "UPDATE {}.{} SET {} WHERE {} RETURNING {PG_ROW_ID}",
             quote_ident(schema),
             quote_ident(table),
             set_parts.join(", "),
-            ctid,
+            row_id.filter(schema, table),
         );
 
         conn.batch_execute("SAVEPOINT l8_op")
@@ -701,7 +743,7 @@ impl TransactionManager {
 
         let sql = if values.is_empty() {
             format!(
-                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, ctid AS __l8_ctid) \
+                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
             )
         } else {
@@ -718,7 +760,7 @@ impl TransactionManager {
                 });
             }
             format!(
-                "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, ctid AS __l8_ctid) \
+                "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
                 cols.join(", "),
                 vals.join(", "),
@@ -769,7 +811,7 @@ impl TransactionManager {
             }
         };
 
-        let ctid = validate_ctid(ctid)?;
+        let row_id = PgRowId::parse(ctid)?;
         let conn = conn.lock().await?;
 
         let col_rows = conn
@@ -793,15 +835,16 @@ impl TransactionManager {
 
         let sql = if cols.is_empty() {
             format!(
-                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, ctid AS __l8_ctid) \
+                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
             )
         } else {
             let col_list = cols.join(", ");
+            let row_filter = row_id.filter(schema, table);
             format!(
                 "WITH ins AS (INSERT INTO {target} ({col_list}) \
-                 SELECT {col_list} FROM {target} WHERE ctid = '{ctid}'::tid \
-                 RETURNING *, ctid AS __l8_ctid) \
+                 SELECT {col_list} FROM {target} WHERE {row_filter} \
+                 RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
             )
         };
@@ -848,14 +891,14 @@ impl TransactionManager {
             TransactionEntry::Dynamo(d) => return d.delete_row(table, ctid).await,
         };
 
-        let ctid = validate_ctid(ctid)?;
+        let row_id = PgRowId::parse(ctid)?;
         let conn = conn.lock().await?;
 
         let sql = format!(
-            "DELETE FROM {}.{} WHERE ctid = '{}'::tid",
+            "DELETE FROM {}.{} WHERE {}",
             quote_ident(schema),
             quote_ident(table),
-            ctid,
+            row_id.filter(schema, table),
         );
 
         conn.batch_execute("SAVEPOINT l8_op")
@@ -945,6 +988,41 @@ mod tests {
         );
         assert_eq!(quote(DatabaseKind::Mysql, "a`b"), "`a``b`");
         assert_eq!(lit(DatabaseKind::Mssql, "x"), "N'x'");
+    }
+
+    #[test]
+    fn pg_row_id_pins_the_physical_relation() {
+        let partition = PgRowId::parse(" (0, 1)@16384 ").unwrap();
+        assert_eq!(
+            partition.filter("public", "orders"),
+            "ctid = '(0,1)'::tid AND tableoid = 16384::oid"
+        );
+        let legacy = PgRowId::parse("(12,7)").unwrap();
+        assert_eq!(
+            legacy.filter("my'schema", "Or\"ders"),
+            r#"ctid = '(12,7)'::tid AND tableoid = '"my''schema"."Or""ders"'::regclass"#
+        );
+        for invalid in [
+            "",
+            "(0,1",
+            "0,1",
+            "(a,1)",
+            "(0,1)@",
+            "(0,1)@-1",
+            "(0,1)@1 OR true",
+            "(0,1)'; DROP TABLE x; --",
+            "(0,70000)",
+            "(0,1)@16384@1",
+        ] {
+            assert!(PgRowId::parse(invalid).is_err(), "{invalid}");
+        }
+        assert!(
+            !crate::db::postgres::table_page_sql("s", "t", "", None, true).contains("t.ctid AS")
+        );
+        assert!(
+            crate::db::postgres::table_page_sql("s", "t", "", None, true)
+                .contains("t.ctid::text || '@' || t.tableoid::text")
+        );
     }
 
     #[test]

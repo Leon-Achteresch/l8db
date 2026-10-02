@@ -362,7 +362,7 @@ pub(crate) fn table_page_sql(
     let (projection, ctid) = if with_ctid {
         (
             "to_jsonb(p) - '__l8db_ctid__' || jsonb_build_object('__ctid__', p.\"__l8db_ctid__\"::text)",
-            ", t.ctid AS \"__l8db_ctid__\"",
+            ", t.ctid::text || '@' || t.tableoid::text AS \"__l8db_ctid__\"",
         )
     } else {
         ("to_jsonb(p)", "")
@@ -1251,17 +1251,7 @@ impl DatabaseAdapter for PostgresAdapter {
         updates: &std::collections::HashMap<String, Option<String>>,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let ctid = ctid.trim();
-        let ctid_valid = ctid.starts_with('(') && ctid.ends_with(')') && {
-            let inner = &ctid[1..ctid.len() - 1];
-            let parts: Vec<&str> = inner.splitn(2, ',').collect();
-            parts.len() == 2
-                && parts[0].trim().parse::<u64>().is_ok()
-                && parts[1].trim().parse::<u64>().is_ok()
-        };
-        if !ctid_valid {
-            return Err("Ungültige ctid".to_string());
-        }
+        let row_id = super::transaction::PgRowId::parse(ctid)?;
 
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
@@ -1294,11 +1284,11 @@ impl DatabaseAdapter for PostgresAdapter {
             }
 
             let sql = format!(
-                "UPDATE {}.{} SET {} WHERE ctid = '{}'::tid",
+                "UPDATE {}.{} SET {} WHERE {}",
                 quote_ident(schema),
                 quote_ident(table),
                 set_parts.join(", "),
-                ctid,
+                row_id.filter(schema, table),
             );
 
             conn.execute(sql.as_str(), &[])
