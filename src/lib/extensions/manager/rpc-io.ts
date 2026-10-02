@@ -1,6 +1,7 @@
 import { matchesHost } from "../../../../packages/extension-api/src/manifest";
 import type { FetchOptions, Json, QueryRequest } from "../contracts";
 import { ExtensionError } from "../contracts";
+import type { QueryParam } from "../query-params";
 import { HTTP_METHODS, isWriteQuery, SECRET_KEY_PATTERN } from "./is-write-query";
 import type { RpcContext, RpcHandler } from "./rpc-context";
 
@@ -26,11 +27,11 @@ async function handleDatabaseQuery(ctx: RpcContext): Promise<Json | void> {
       ))
   )
     throw new ExtensionError("ProtocolError", "Invalid query params");
-  const write = isWriteQuery(sql);
+  const write = isWriteQuery(sql, ctx.core.database()?.kind);
   if (write) ctx.permissions.require(extension, "database:write");
   const request: QueryRequest = {
     sql,
-    params: params as (string | null)[] | undefined,
+    params: params as QueryParam[] | undefined,
     write,
   };
   return (await ctx.core.query(request)) as unknown as Json;
