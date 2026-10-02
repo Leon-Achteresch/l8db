@@ -110,15 +110,18 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
   };
 
   let snapshot = readSeen();
+  let changedAt = 0;
 
   const publish = (next: Set<NewFeatureId>) => {
     if (next.size === snapshot.size && [...next].every((id) => snapshot.has(id))) return;
     snapshot = next;
+    changedAt = Date.now();
     for (const listener of listeners) listener();
   };
 
   return {
     getSnapshot: () => snapshot,
+    changedWithin: (ms: number) => Date.now() - changedAt < ms,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -168,6 +171,10 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
 
 export function markNewFeatureSeen(id: NewFeatureId): void {
   store.markSeen(id);
+}
+
+export function newFeatureJustSeen(): boolean {
+  return store.changedWithin(250);
 }
 
 export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
