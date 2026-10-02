@@ -2,10 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
-import { executeQuery, validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { applyRoutine, checkRoutine, type RoutineEdit } from "./sql-object-edit/replace-routine";
 
 export type SqlEditState =
   | { status: "idle" }
@@ -31,6 +31,7 @@ export function useSqlObjectEdit(
   source: string,
   objectKey: string,
   onApplied?: () => Promise<void>,
+  schema?: string,
 ): SqlObjectEdit {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -51,33 +52,41 @@ export function useSqlObjectEdit(
     setState({ status: "idle" });
   }, [setDraft]);
 
+  const routineEdit = useCallback(
+    (): RoutineEdit | null =>
+      connection
+        ? {
+            kind: connection.kind,
+            connectionString: effectiveConnectionString(connection),
+            database: database ?? undefined,
+            schema,
+            original: source,
+            definition: sql,
+          }
+        : null,
+    [connection, database, schema, source, sql],
+  );
+
   const check = useCallback(async () => {
-    if (!connection) return;
+    const edit = routineEdit();
+    if (!edit) return;
     setState({ status: "checking" });
     try {
-      await validateSql(
-        connection.kind,
-        effectiveConnectionString(connection),
-        sql,
-        database ?? undefined,
-      );
+      await checkRoutine(edit);
       setState({ status: "checked" });
     } catch (e) {
       setState({ status: "error", scope: "check", message: String(e) });
     }
-  }, [connection, database, sql]);
+  }, [routineEdit]);
 
   const apply = useCallback(async () => {
-    if (!connection) return;
+    const edit = routineEdit();
+    if (!edit) return;
     setState({ status: "applying" });
     try {
-      const result = await executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        sql,
-        database ?? undefined,
-      );
-      setState({ status: "applied", time: result.execution_time_ms });
+      const { time, warning } = await applyRoutine(edit);
+      setState({ status: "applied", time });
+      if (warning) toast.warning(warning);
       toast.success(`${label} in der Datenbank gespeichert`, {
         description: "Das Objekt existiert jetzt in dieser Form in der Datenbank.",
       });
@@ -89,7 +98,7 @@ export function useSqlObjectEdit(
     } catch (e) {
       setState({ status: "error", scope: "apply", message: String(e) });
     }
-  }, [connection, database, label, queryClient, sql, clearSavedDraft, onApplied]);
+  }, [routineEdit, label, queryClient, sql, clearSavedDraft, onApplied]);
 
   return { editing, sql, setSql, state, start, cancel, check, apply };
 }
