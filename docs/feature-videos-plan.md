@@ -28,6 +28,7 @@ Zwei Szenarien sind enthalten:
 | --- | --- | --- |
 | Easy Mode | Vereinfachten Modus einschalten und die reduzierte Navigation zeigen | `64b344ea`, 0.6.128 |
 | Extension-Markt | Offizielles Paket installieren, Berechtigungen freigeben und aktivieren | `8aeb1658`, 0.6.132 |
+| Dashboard-Arbeitsbereich | Datenfelder zuordnen, Länder vergleichen, Live-Vorschau und Chartgalerie verwenden, Chart speichern | `19ca9d85`, 0.8.0 |
 
 Die Aufnahmen verwenden die gebaute echte React-App und vorbereitete Demo-Daten. Für den Extension-Clip werden Katalog und Paket aus einer lokalen Testdatei geliefert. Der Browser installiert und aktiviert das Paket über die echte Oberfläche; die vorbereiteten Tauri-Antworten verändern keine lokale Installation. Playwright zoomt auf die tatsächlichen Bedienelemente und prüft Easy Mode, Installation, Berechtigungen und Aktivierung als sichtbare Zustandswechsel. Die eingeblendeten Texte bleiben während der Zooms an ihrer Position. FFmpeg erzeugt MP4/H.264, WebM/VP9 und ein JPEG-Standbild. Die Clips haben keine Audiospur. Größe, Dauer und Encoding werden geprüft; die Rohaufnahme wird nach erfolgreichem Export gelöscht. [Playwright-Aufnahmen](https://playwright.dev/docs/videos), [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html)
 
@@ -43,6 +44,23 @@ bun run feature-videos:record
 Ergebnisse: `test-artifacts/feature-videos/fv-<id>-<revision>.mp4`, `.webm`, `.jpg` und `rendered.json`. `FEATURE_VIDEO_IDS='["easy-mode"]'` beschränkt die Aufnahme. Aufnahmen aus einem veränderten Arbeitsverzeichnis sind Vorschauen und werden vom Publisher nicht akzeptiert.
 
 Ein neues wichtiges Feature benötigt einen Eintrag in `scripts/feature-videos/catalog.json` und ein echtes Aufnahmeszenario in `record.ts`. Die stabile ID darf nicht für einen anderen Inhalt wiederverwendet werden; bei neuer Aufnahme `revision` erhöhen. Commit und erste App-Version dokumentieren. Kleine Fehlerkorrekturen erhalten kein Video. Vor dem Merge die erzeugten Clips bei 360 px Breite und vergrößert prüfen. Neue Szenarien sollten ungefähr 12–25 Sekunden dauern, maximal 30 Sekunden.
+
+### Ausführliche Dashboard-Tour
+
+Zusätzlich zum kurzen App-Clip gibt es eine umfangreiche, separat exportierte Dashboard-Tour. `scripts/feature-videos/dashboard-tour.json` enthält 50 Szenen mit deutschen Sprechertexten, Erklärtexten, Kapitelzuordnung und Zoom-Zielen. Die Tour verwendet alle 49 Screenshots aus dem Dashboard-Rundgang: Einstieg, visueller Builder, zweite Aufteilung, Filter, Darstellung, alle 16 Charttypen, SQL, Sammlungen, Bearbeitung, Lade-/Leer-/Fehlerzustände, Themes und kleineres Fenster. Beispieldaten und simulierte Abfragezustände werden im Video kenntlich gemacht.
+
+Die Screenshot-Galerie mit `manifest.json` und den Original-PNGs dient als Eingabe. Das Verzeichnis aus der Galerie oder dem entpackten Screenshot-ZIP wird als Argument übergeben. Die gerenderten Szenen enthalten die echten Screenshots; Zooms verändern ausschließlich den sichtbaren Ausschnitt. Die eingeblendeten Texte sind auch ohne Ton verständlich. Für die Produktion werden macOS mit der installierten deutschen Stimme `Anna`, FFmpeg und Playwright Chromium benötigt. Es werden keine Cloud-Dienste verwendet.
+
+```sh
+bun run feature-videos:dashboard-tour /pfad/zur/dashboard-screenshot-galerie
+FEATURE_VIDEO_IDS='["dashboard-workspace"]' bun run feature-videos:record
+```
+
+Die Langfassung wird unter `test-artifacts/feature-videos/dashboard-tour/` als `dashboard-feature-tour.mp4` in 1920 × 1080 Pixeln mit 30 Bildern pro Sekunde und deutscher synthetischer Tonspur erstellt. Sie enthält neun Kapitel und zuschaltbare deutsche Untertitel. `index.html` bietet einen lokalen Player mit anklickbaren Kapiteln und deutschen Untertiteln. `dashboard-tour.de.srt`, `.vtt`, `chapters.txt`, `script.txt`, ein JPEG-Poster und `tour-manifest.json` liegen daneben. Ein zweites Argument legt ein anderes Ausgabeverzeichnis fest. Zwischenstände bleiben in `work/`, damit ein erneuter Export vorhandene Tonspuren und unveränderte Szenen wiederverwenden kann.
+
+Die Langfassung ist ein lokal erzeugtes Tutorial und wird nicht in den automatischen Feature-Feed aufgenommen. Der Dashboard-App-Clip verwendet dagegen das vorhandene Release-Verfahren, bleibt stumm, unter 30 Sekunden und unter 5 MB pro Videoformat. Seine Aktion öffnet `/dashboard`. Ein lokaler Export veröffentlicht keine Medien; der bestehende Publisher verlangt weiterhin einen sauberen Checkout des veröffentlichten Release-Tags.
+
+Das zusätzliche, validierte Feld `actionTarget: "dashboard"` ergänzt die bekannte Aktion `settings`. Dadurch bleiben ältere Feed-Parser mit dem bisherigen Aktionsumfang kompatibel; die Mindestversion verhindert, dass ältere Installationen den neuen Dashboard-Clip anbieten. Neue Installationen öffnen das Dashboard ohne Settings-Suchparameter. Bei einer längeren Rohaufnahme wird der vollständige Dashboard-Rundgang auf höchstens 29,5 Sekunden beschleunigt, damit sein Ende erhalten bleibt.
 
 ## Veröffentlichung
 

@@ -37,6 +37,7 @@
     "production:check": "node scripts/production-check.mjs",
     "licenses": "node scripts/third-party-licenses.mjs",
     "feature-videos:record": "bun scripts/feature-videos/record.ts",
+    "feature-videos:dashboard-tour": "bun scripts/feature-videos/render-dashboard-tour.ts",
     "feature-videos:plan": "bun scripts/feature-videos/publish.ts plan",
     "feature-videos:cleanup": "bun scripts/feature-videos/publish.ts cleanup"
   },
