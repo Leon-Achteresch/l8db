@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { chromium } from "playwright";
-import { installVersioningLab } from "./fixtures/versioning-lab";
+import { installVersioningLab, versioningAppUrl } from "./fixtures/versioning-lab";
 
 const enabled = process.env.L8DB_VERSIONING_LAB;
 
@@ -22,7 +22,7 @@ test.skipIf(!enabled)(
     page.setDefaultTimeout(15000);
     try {
       await installVersioningLab(page, repo);
-      await page.goto("http://localhost:1420/versioning");
+      await page.goto(`${versioningAppUrl}/versioning`);
       const panel = await page.locator("#versioning-panel").boundingBox();
       expect(panel !== null && panel.width > 800).toBe(true);
       await page.getByRole("textbox", { name: "Projektname", exact: true }).fill("Kundenprodukt");
@@ -75,7 +75,7 @@ test.skipIf(!enabled)(
       await page.getByRole("button", { name: "Kundenziel speichern" }).click();
       await page
         .getByRole("alert")
-        .getByText("Kunde Nord · Produktion verwendet bereits dieselbe Datenbank und dasselbe Schema", {
+        .getByText("Kunde Nord verwendet bereits dieselbe Datenbank und dasselbe Schema", {
           exact: false,
         })
         .waitFor();
