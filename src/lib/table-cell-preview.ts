@@ -37,7 +37,7 @@ export function cellPreviewLimit(width: number, fontSize = 12): number {
 }
 
 export function truncateCellPreview(text: string, limit: number): string {
-  if (text.length <= limit) return text;
+  if (text.length <= limit + 1) return text;
   const last = text.charCodeAt(limit - 1);
   const end = last >= 0xd800 && last <= 0xdbff ? limit - 1 : limit;
   return `${text.slice(0, end)}…`;

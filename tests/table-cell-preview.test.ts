@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { TABLE_CELL_PREVIEW_LIMIT, tableCellPreview } from "../src/lib/table-cell-preview";
+import {
+  cellPreviewLimit,
+  TABLE_CELL_PREVIEW_LIMIT,
+  tableCellPreview,
+  truncateCellPreview,
+} from "../src/lib/table-cell-preview";
 
 test("large cell previews stay bounded without changing the source value", () => {
   const row = Object.freeze({ payload: "prefix:" + "x".repeat(1_000_000) });
@@ -37,4 +42,11 @@ test("narrow previews preserve type information and the original value", () => {
   const uuid = "01234567-89ab-cdef-0123-456789abcdef";
   expect(tableCellPreview(uuid, 8)).toEqual({ text: "01234567…", kind: "uuid" });
   expect(uuid).toHaveLength(36);
+});
+
+test("width-limited previews only add an ellipsis when the text does not fit", () => {
+  const limit = cellPreviewLimit(143, 12);
+  const fitting = "x".repeat(limit + 1);
+  expect(truncateCellPreview(fitting, limit)).toBe(fitting);
+  expect(truncateCellPreview(`${fitting}y`, limit)).toBe(`${"x".repeat(limit)}…`);
 });
