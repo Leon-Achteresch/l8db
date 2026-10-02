@@ -2470,16 +2470,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             let schema_rows = conn
-                .query(
-                    "SELECT n.nspname, \
-                            has_schema_privilege($1, n.nspname, 'USAGE') AS usage_priv, \
-                            has_schema_privilege($1, n.nspname, 'CREATE') AS create_priv \
-                     FROM pg_namespace n \
-                     WHERE n.nspname NOT LIKE 'pg_%' \
-                       AND n.nspname <> 'information_schema' \
-                     ORDER BY n.nspname",
-                    &[&role_name],
-                )
+                .query(privileges::SCHEMA_PRIVILEGES_SQL, &[&role_name])
                 .await
                 .map_err(map_pg_err)?;
 
@@ -2493,27 +2484,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 .collect();
 
             let table_rows = conn
-                .query(
-                    "SELECT c.relnamespace::regnamespace::text AS schema_name, \
-                            c.relname, \
-                            CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' \
-                                           WHEN 'm' THEN 'materialized_view' WHEN 'S' THEN 'sequence' \
-                                           ELSE 'other' END AS object_type, \
-                            has_table_privilege($1, c.oid, 'SELECT') AS sel, \
-                            has_table_privilege($1, c.oid, 'INSERT') AS ins, \
-                            has_table_privilege($1, c.oid, 'UPDATE') AS upd, \
-                            has_table_privilege($1, c.oid, 'DELETE') AS del, \
-                            has_table_privilege($1, c.oid, 'TRUNCATE') AS trunc, \
-                            has_table_privilege($1, c.oid, 'REFERENCES') AS refs, \
-                            has_table_privilege($1, c.oid, 'TRIGGER') AS trig \
-                     FROM pg_class c \
-                     JOIN pg_namespace n ON n.oid = c.relnamespace \
-                     WHERE c.relkind IN ('r', 'v', 'm', 'S') \
-                       AND n.nspname NOT LIKE 'pg_%' \
-                       AND n.nspname <> 'information_schema' \
-                     ORDER BY n.nspname, c.relname",
-                    &[&role_name],
-                )
+                .query(privileges::TABLE_PRIVILEGES_SQL, &[&role_name])
                 .await
                 .map_err(map_pg_err)?;
 
@@ -5008,6 +4979,9 @@ mod bind;
 
 #[path = "postgres_catalog.rs"]
 mod catalog;
+
+#[path = "postgres_privileges.rs"]
+mod privileges;
 
 pub async fn run_params_query(
     client: &tokio_postgres::Client,
