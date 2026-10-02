@@ -202,4 +202,30 @@ describe.skipIf(!BRIDGE)("Schema-Vergleich live: SQLite-Neuaufbau mit Fremdschl�
     },
     TIMEOUT,
   );
+
+  test(
+    "ein ungültiger Fremdschlüssel einer unbeteiligten Tabelle blockiert die Synchronisation nicht",
+    async () => {
+      const source = file();
+      const target = file();
+      const broken = [
+        "CREATE TABLE p (id INTEGER PRIMARY KEY, code TEXT)",
+        "CREATE TABLE c (pcode TEXT REFERENCES p(code))",
+      ];
+      await run(source, [...broken, "CREATE TABLE extra (id INTEGER PRIMARY KEY)"]);
+      await run(target, broken);
+      const result = await compare(source, target);
+      const dry = await sync(target, result, true);
+      expect(dry.steps.filter((step) => step.status === "error")).toEqual([]);
+      expect(dry.summary.failed).toBe(0);
+      const { summary, steps } = await sync(target, result);
+      expect(steps.filter((step) => step.status === "error")).toEqual([]);
+      expect(summary).toMatchObject({ failed: 0, rolledBack: false });
+      expect(await rows(target, "SELECT name FROM sqlite_master WHERE name = 'extra'")).toEqual([
+        { name: "extra" },
+      ]);
+      expect(await rows(target, "PRAGMA foreign_keys")).toEqual([{ foreign_keys: 1 }]);
+    },
+    TIMEOUT,
+  );
 });
