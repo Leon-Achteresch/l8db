@@ -248,7 +248,8 @@ impl Server {
             let mut out = Vec::new();
             for database in adapter.list_databases().await? {
                 if matches!(database.as_str(), "admin" | "config" | "local")
-                    || !(connection.schemas.is_empty() || connection.schemas.contains(&database))
+                    || !(connection.allowed_schemas().is_empty()
+                        || connection.allowed_schemas().contains(&database))
                 {
                     continue;
                 }
@@ -265,7 +266,8 @@ impl Server {
         columns
             .iter()
             .filter(|column| {
-                connection.schemas.is_empty() || connection.schemas.contains(&column.schema)
+                connection.allowed_schemas().is_empty()
+                    || connection.allowed_schemas().contains(&column.schema)
             })
             .cloned()
             .collect()
@@ -353,7 +355,7 @@ impl Server {
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
         match connection.kind {
             DatabaseKind::Mongodb => {
                 nosql::mongo_check(&nosql::mongo_command(sql)?, false, false, &redactor, &index)?
@@ -405,7 +407,8 @@ impl Server {
             DatabaseKind::Mongodb => {
                 let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
                 let columns = self.columns_for(config, connection).await?;
-                let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+                let index =
+                    redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
                 nosql::mongo_check(
                     &nosql::mongo_command(sql)?,
                     true,
@@ -418,7 +421,8 @@ impl Server {
             _ => {
                 let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
                 let columns = self.columns_for(config, connection).await?;
-                let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+                let index =
+                    redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
                 check_write_sql(sql, connection, &index)?;
             }
         }
@@ -587,15 +591,6 @@ pub(super) fn with_database(
     let database = arg_str(args, "database").trim();
     if database.is_empty() {
         return Ok(connection);
-    }
-    if connection.kind == DatabaseKind::Mongodb
-        && !connection.schemas.is_empty()
-        && !connection.schemas.iter().any(|s| s == database)
-    {
-        return Err(format!(
-            "Datenbank '{database}' ist für '{}' nicht freigegeben.",
-            connection.name
-        ));
     }
     if !database_allowed(&connection, database) {
         return Err(format!(
@@ -882,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn database_argument_respects_allowed_schemas() {
+    fn mongodb_database_argument_ignores_connection_browser_schemas() {
         let mut mongo = connection(true);
         mongo.kind = DatabaseKind::Mongodb;
         let plain = with_database(&mongo, &json!({})).unwrap();
@@ -892,7 +887,58 @@ mod tests {
         assert_ne!(cache_key(&plain), cache_key(&picked));
         mongo.schemas = vec!["shop".into()];
         assert!(with_database(&mongo, &json!({"database": "shop"})).is_ok());
-        assert!(with_database(&mongo, &json!({"database": "hr"})).is_err());
+        let picked = with_database(&mongo, &json!({"database": "inventory"})).unwrap();
+        assert_eq!(picked.database.as_deref(), Some("inventory"));
+        assert!(picked.allowed_schemas().is_empty());
+        assert_eq!(picked.schemas, mongo.schemas);
+        assert!(plain.read_only);
+        assert!(!plain.allow_ddl);
+    }
+
+    #[test]
+    fn mongodb_browser_filter_does_not_hide_mcp_collections() {
+        let columns = vec![
+            ColumnInfo {
+                schema: "shop".into(),
+                table: "orders".into(),
+                name: "id".into(),
+                data_type: "string".into(),
+            },
+            ColumnInfo {
+                schema: "inventory".into(),
+                table: "products".into(),
+                name: "id".into(),
+                data_type: "string".into(),
+            },
+        ];
+        let mut mongo = connection(true);
+        mongo.kind = DatabaseKind::Mongodb;
+        mongo.schemas = vec!["shop".into()];
+        assert_eq!(Server::visible_columns(&columns, &mongo).len(), 2);
+        let redactor = Redactor::new(&McpConfig::default().redaction, &[]);
+        let index = redact::SchemaIndex::new(&columns, &redactor, mongo.allowed_schemas());
+        assert!(nosql::mongo_check(
+            &nosql::mongo_command("db.products.find({})").unwrap(),
+            false,
+            false,
+            &redactor,
+            &index,
+        )
+        .is_ok());
+        assert!(nosql::mongo_check(
+            &nosql::mongo_command("db.products.deleteMany({})").unwrap(),
+            false,
+            false,
+            &redactor,
+            &index,
+        )
+        .is_err());
+        let mut sql = connection(true);
+        sql.schemas = mongo.schemas.clone();
+        assert_eq!(sql.allowed_schemas(), sql.schemas);
+        assert_eq!(Server::visible_columns(&columns, &sql).len(), 1);
+        let index = redact::SchemaIndex::new(&columns, &redactor, sql.allowed_schemas());
+        assert!(check_read_sql("SELECT id FROM inventory.products", &sql, &index).is_err());
     }
 
     #[test]

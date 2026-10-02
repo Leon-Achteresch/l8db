@@ -102,3 +102,26 @@ test("merge überträgt Umgebung, Maskierungsregeln und Produktionsfreigabe", ()
   expect(plain.environment).toBeNull();
   expect(plain.allowProductionWrites).toBe(false);
 });
+
+test("MongoDB MCP exposure covers all databases despite connection browser filters", () => {
+  const connection = saved({
+    kind: "mongodb",
+    schemas: ["shop"],
+    connectionString: "mongodb://u:secret@localhost/shop",
+  });
+  const existing = {
+    ...mergeMcpConnections([connection], [])[0],
+    schemas: ["shop"],
+    exposed: true,
+    redactColumns: ["secret"],
+  };
+  const [merged] = mergeMcpConnections([connection], [existing]);
+  expect(merged.schemas).toEqual([]);
+  expect(merged.exposed).toBe(true);
+  expect(merged.readOnly).toBe(true);
+  expect(merged.allowDdl).toBe(false);
+  expect(merged.redactColumns).toEqual(["secret"]);
+  expect(connection.schemas).toEqual(["shop"]);
+  expect(sameMcpConnections([existing], [merged])).toBe(false);
+  expect(sameMcpConnections([merged], mergeMcpConnections([connection], [merged]))).toBe(true);
+});

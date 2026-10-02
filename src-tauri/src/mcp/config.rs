@@ -55,6 +55,13 @@ pub struct McpConnection {
 pub const PRODUCTION: &str = "production";
 
 impl McpConnection {
+    pub fn allowed_schemas(&self) -> &[String] {
+        match self.kind {
+            DatabaseKind::Mongodb => &[],
+            _ => &self.schemas,
+        }
+    }
+
     pub fn sensitive_columns(&self) -> Vec<String> {
         self.redact_columns
             .iter()
