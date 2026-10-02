@@ -176,14 +176,15 @@ export function buildSimpleSql(
   const limit = Math.max(1, Math.floor(ds.limit || 50));
   const lines = [`SELECT ${kind === "mssql" ? `TOP ${limit} ` : ""}${select.join(", ")}`];
   const joins = datasetJoins(ds);
-  lines.push(`FROM ${table(ds.schema, ds.table)}${joins.length ? " AS t1" : ""}`);
+  const as = kind === "oracle" ? " " : " AS ";
+  lines.push(`FROM ${table(ds.schema, ds.table)}${joins.length ? `${as}t1` : ""}`);
   for (const join of joins) {
     const parent = aliasOf(
       joins.find((j) => j.id === join.parent),
       joins,
     );
     lines.push(
-      `LEFT JOIN ${table(join.schema, join.table)} AS ${aliasOf(join, joins)} ON ${aliasOf(join, joins)}.${q(join.toColumn)} = ${parent}.${q(join.fromColumn)}`,
+      `LEFT JOIN ${table(join.schema, join.table)}${as}${aliasOf(join, joins)} ON ${aliasOf(join, joins)}.${q(join.toColumn)} = ${parent}.${q(join.fromColumn)}`,
     );
   }
   const where = ds.filters
