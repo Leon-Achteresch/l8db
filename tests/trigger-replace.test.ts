@@ -214,9 +214,26 @@ describe("replaceTrigger", () => {
     }).catch((e: unknown) => String(e));
     expect(error).toContain("syntax error near BROKEN");
     expect(error).not.toContain("nicht wiederhergestellt");
+    expect(error).toContain("ohne seinen DEFINER wiederhergestellt");
     expect(committed.get("trg")).toBe(
       "CREATE TRIGGER trg BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1",
     );
+  });
+
+  test("mysql only drops the DEFINER clause when the server denies the definer", async () => {
+    const owned =
+      "CREATE DEFINER=`root`@`localhost` TRIGGER trg BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1 -- ORIGINAL";
+    committed = new Map([["trg", owned]]);
+    failRestore = true;
+    await replaceTrigger({
+      ...replacement("mysql", "CREATE TRIGGER trg BROKEN"),
+      original: owned,
+    }).catch(() => undefined);
+    const restores = calls.filter(
+      (c) => c.command === "execute_query" && c.sql?.includes("ORIGINAL"),
+    );
+    expect(restores).toHaveLength(1);
+    expect(restores[0].sql).toContain("DEFINER");
   });
 
   test("mysql keeps the DEFINER clause when the restore is allowed", async () => {

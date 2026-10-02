@@ -97,6 +97,10 @@ async function checkMysqlTrigger(r: TriggerReplacement, options: { confirmed: bo
   }
 }
 
+export function isDefinerDenied(error: unknown): boolean {
+  return /\b1227\b|SET_USER_ID|SET_ANY_DEFINER/i.test(String(error));
+}
+
 export function stripMysqlDefiner(sql: string): string {
   return sql.replace(MYSQL_DEFINER, "$1");
 }
@@ -151,16 +155,23 @@ export async function replaceTrigger(r: TriggerReplacement): Promise<number> {
     await executeQuery(r.kind, r.connectionString, r.definition, r.database, options);
   } catch (error) {
     const withoutDefiner = stripMysqlDefiner(r.original);
+    let restoredWithoutDefiner = false;
     try {
       await executeQuery(r.kind, r.connectionString, r.original, r.database, options).catch(
         (restoreError: unknown) => {
-          if (withoutDefiner === r.original) throw restoreError;
+          if (withoutDefiner === r.original || !isDefinerDenied(restoreError)) throw restoreError;
+          restoredWithoutDefiner = true;
           return executeQuery(r.kind, r.connectionString, withoutDefiner, r.database, options);
         },
       );
     } catch (restoreError) {
       throw new Error(
         `${String(error)}\nDer ursprüngliche Trigger konnte nicht wiederhergestellt werden: ${String(restoreError)}\nUrsprüngliche Definition:\n${withoutDefiner}`,
+      );
+    }
+    if (restoredWithoutDefiner) {
+      throw new Error(
+        `${String(error)}\nDer ursprüngliche Trigger wurde ohne seinen DEFINER wiederhergestellt und läuft jetzt mit den Rechten des aktuellen Benutzers.`,
       );
     }
     throw error;
