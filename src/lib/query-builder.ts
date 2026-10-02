@@ -137,16 +137,22 @@ export function buildSelectSql(state: QueryBuilderState): string {
     selectParts.push(join ? `${BASE_ALIAS}.*` : "*");
   }
 
+  const limit =
+    state.limit !== null && Number.isFinite(state.limit) && state.limit > 0
+      ? Math.floor(state.limit)
+      : null;
+  const top = limit !== null && state.kind === "mssql" ? `TOP (${limit}) ` : "";
+  const as = state.kind === "oracle" ? " " : " AS ";
   const lines: string[] = [];
-  lines.push(`SELECT ${selectParts.join(", ")}`);
+  lines.push(`SELECT ${top}${selectParts.join(", ")}`);
   const from = qualifiedTable(state.schema, state.table, style);
-  lines.push(join ? `FROM ${from} AS ${BASE_ALIAS}` : `FROM ${from}`);
+  lines.push(join ? `FROM ${from}${as}${BASE_ALIAS}` : `FROM ${from}`);
 
   if (join) {
     const target = qualifiedTable(join.schema, join.table, style);
     const left = `${JOIN_ALIAS}.${quoteIdentifier(join.toColumn, style)}`;
     const right = `${BASE_ALIAS}.${quoteIdentifier(join.fromColumn, style)}`;
-    lines.push(`${join.type} JOIN ${target} AS ${JOIN_ALIAS} ON ${left} = ${right}`);
+    lines.push(`${join.type} JOIN ${target}${as}${JOIN_ALIAS} ON ${left} = ${right}`);
   }
 
   const whereParts = state.conditions
@@ -174,9 +180,8 @@ export function buildSelectSql(state: QueryBuilderState): string {
     lines.push(`ORDER BY ${orderParts.join(", ")}`);
   }
 
-  if (state.limit !== null && Number.isFinite(state.limit) && state.limit > 0) {
-    lines.push(`LIMIT ${Math.floor(state.limit)}`);
-  }
+  if (limit !== null && state.kind === "oracle") lines.push(`FETCH FIRST ${limit} ROWS ONLY`);
+  else if (limit !== null && state.kind !== "mssql") lines.push(`LIMIT ${limit}`);
 
   return `${lines.join("\n")};`;
 }
