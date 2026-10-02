@@ -44,6 +44,77 @@ fn valid_binary(name: &str) -> bool {
         && name.as_bytes()[0].is_ascii_alphanumeric()
 }
 
+const BLOCKED_ENV: &[&str] = &[
+    "PATH",
+    "PATHEXT",
+    "COMSPEC",
+    "SYSTEMROOT",
+    "WINDIR",
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "ELECTRON_RUN_AS_NODE",
+    "PERL5OPT",
+    "PERL5LIB",
+    "PERLLIB",
+    "PERL5DB",
+    "RUBYOPT",
+    "RUBYLIB",
+    "JAVA_TOOL_OPTIONS",
+    "_JAVA_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+    "CLASSPATH",
+    "BASH_ENV",
+    "ENV",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "PS4",
+    "IFS",
+    "PROMPT_COMMAND",
+    "CDPATH",
+    "DOTNET_STARTUP_HOOKS",
+    "DOTNET_ADDITIONAL_DEPS",
+    "COR_ENABLE_PROFILING",
+    "LUA_INIT",
+];
+const BLOCKED_ENV_PREFIXES: &[&str] = &[
+    "LD_",
+    "DYLD_",
+    "NODE_",
+    "PYTHON",
+    "GIT_",
+    "BASH_FUNC_",
+    "NPM_CONFIG_",
+    "CORECLR_",
+    "COR_PROFILER",
+];
+const ALLOWED_ENV: &[&str] = &[
+    "NODE_EXTRA_CA_CERTS",
+    "NODE_NO_WARNINGS",
+    "PYTHONIOENCODING",
+    "PYTHONUTF8",
+    "PYTHONUNBUFFERED",
+    "PYTHONDONTWRITEBYTECODE",
+];
+
+fn allowed_env(key: &str, value: &str) -> bool {
+    if key.is_empty() || key.len() > 256 || key.contains(['=', '\0']) {
+        return false;
+    }
+    if value.len() > MAX_ARG_LEN || value.contains('\0') {
+        return false;
+    }
+    let upper = key.to_ascii_uppercase();
+    ALLOWED_ENV.contains(&upper.as_str())
+        || !(BLOCKED_ENV.contains(&upper.as_str())
+            || BLOCKED_ENV_PREFIXES
+                .iter()
+                .any(|prefix| upper.starts_with(prefix)))
+}
+
 pub fn validate(command: &str, options: &ProcessOptions) -> Result<u64, String> {
     if !valid_binary(command) {
         return Err("Invalid process command".into());
@@ -56,13 +127,14 @@ pub fn validate(command: &str, options: &ProcessOptions) -> Result<u64, String> 
     {
         return Err("Invalid process args".into());
     }
-    if options.env.len() > MAX_ENV_VARS
-        || options
-            .env
-            .iter()
-            .any(|(k, v)| k.is_empty() || k.len() > 256 || v.len() > MAX_ARG_LEN)
-    {
+    if options.env.len() > MAX_ENV_VARS {
         return Err("Invalid process env".into());
+    }
+    if let Some((key, _)) = options.env.iter().find(|(k, v)| !allowed_env(k, v)) {
+        return Err(format!(
+            "Invalid process env: {}",
+            key.escape_default().take(64).collect::<String>()
+        ));
     }
     if let Some(cwd) = &options.cwd {
         if cwd.is_empty() || cwd.len() > MAX_ARG_LEN || cwd.contains('\0') {
@@ -467,5 +539,57 @@ mod tests {
         let mut bad_timeout = options();
         bad_timeout.timeout_ms = Some(0);
         assert!(validate("git", &bad_timeout).is_err());
+    }
+    #[test]
+    fn rejects_env_vars_that_inject_code_or_change_resolution() {
+        for key in [
+            "PATH",
+            "Path",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+            "dyld_library_path",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+            "ELECTRON_RUN_AS_NODE",
+            "PYTHONSTARTUP",
+            "PYTHONPATH",
+            "PERL5OPT",
+            "RUBYOPT",
+            "JAVA_TOOL_OPTIONS",
+            "_JAVA_OPTIONS",
+            "BASH_ENV",
+            "ENV",
+            "SHELLOPTS",
+            "PS4",
+            "IFS",
+            "DOTNET_STARTUP_HOOKS",
+            "COMSPEC",
+            "PATHEXT",
+            "GIT_SSH_COMMAND",
+            "A=B",
+            "A\0B",
+        ] {
+            let mut opts = options();
+            opts.env.insert(key.into(), "x".into());
+            assert!(validate("bw", &opts).is_err(), "{key}");
+        }
+        let mut nul_value = options();
+        nul_value.env.insert("BW_SESSION".into(), "a\0b".into());
+        assert!(validate("bw", &nul_value).is_err());
+        let mut allowed = options();
+        for key in [
+            "BW_SESSION",
+            "BW_CLIENTID",
+            "L8DB_BW_PASSWORD",
+            "KEEPER_PASSWORD",
+            "BAO_ADDR",
+            "OP_SERVICE_ACCOUNT_TOKEN",
+            "PYTHONIOENCODING",
+            "NODE_EXTRA_CA_CERTS",
+        ] {
+            allowed.env.insert(key.into(), "x".into());
+        }
+        assert!(validate("bw", &allowed).is_ok());
     }
 }
