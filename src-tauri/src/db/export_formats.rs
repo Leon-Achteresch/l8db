@@ -506,11 +506,11 @@ impl RowSink {
                     .iter()
                     .map(
                         |column| match masks.iter().find(|mask| &mask.column == column) {
-                            Some(mask) if mask.mode == MaskMode::Null => serde_json::Value::Null,
-                            Some(mask) => {
-                                serde_json::Value::String(mask.text.clone().unwrap_or_default())
+                            Some(mask) if mask.mode != MaskMode::Shuffle => {
+                                masked_text(column, &value(column), masks)
+                                    .map_or(serde_json::Value::Null, serde_json::Value::String)
                             }
-                            None => value(column),
+                            _ => value(column),
                         },
                     )
                     .collect();
@@ -551,10 +551,13 @@ pub fn parquet_kinds(
         .iter()
         .enumerate()
         .map(|(index, column)| {
-            if masks
-                .iter()
-                .any(|mask| &mask.column == column && mask.mode == MaskMode::Text)
-            {
+            if masks.iter().any(|mask| {
+                &mask.column == column
+                    && matches!(
+                        mask.mode,
+                        MaskMode::Text | MaskMode::Hash | MaskMode::Partial | MaskMode::Fake
+                    )
+            }) {
                 return ParquetKind::Text;
             }
             match column_types.get(index).filter(|kind| !kind.is_empty()) {
@@ -587,7 +590,15 @@ pub fn write_rows_file(request: &RowsExportRequest) -> Result<u64, String> {
         csv: None,
         title: request.title.as_deref(),
     })?;
-    for row in &request.rows {
+    let mut rows = std::borrow::Cow::Borrowed(&request.rows);
+    for mask in request
+        .masks
+        .iter()
+        .filter(|mask| mask.mode == MaskMode::Shuffle)
+    {
+        super::masking::shuffle_column(rows.to_mut(), &mask.column, 0);
+    }
+    for row in rows.iter() {
         if let Err(error) = sink.write_row(&request.columns, row, &request.masks, None) {
             sink.abort();
             return Err(error);
@@ -780,6 +791,193 @@ pub mod tests {
         let text = row.to_string();
         assert!(text.contains("2024-01-02"), "{text}");
         assert!(text.contains("n: 7"), "{text}");
+    }
+
+    fn masked_request(format: FileFormat, path: &std::path::Path) -> RowsExportRequest {
+        let mode_columns = [
+            ("t", MaskMode::Text, Some("***")),
+            ("n", MaskMode::Null, None),
+            ("h", MaskMode::Hash, None),
+            ("p", MaskMode::Partial, None),
+            ("f", MaskMode::Fake, None),
+            ("s", MaskMode::Shuffle, None),
+            ("si", MaskMode::Shuffle, None),
+            ("hi", MaskMode::Hash, None),
+        ];
+        let mut columns = vec!["id".to_string()];
+        columns.extend(mode_columns.iter().map(|(name, _, _)| name.to_string()));
+        let rows = (0..40)
+            .map(|i| {
+                let text = format!("secret{i:02}@example.de");
+                let mut row = serde_json::json!({ "id": i, "si": i * 10, "hi": i });
+                for (name, _, _) in &mode_columns[..6] {
+                    row[*name] = serde_json::json!(text);
+                }
+                if i == 3 {
+                    row["h"] = serde_json::Value::Null;
+                }
+                row
+            })
+            .collect();
+        RowsExportRequest {
+            path: path.to_str().unwrap().into(),
+            format,
+            column_types: vec![
+                "integer".into(),
+                "text".into(),
+                "text".into(),
+                "text".into(),
+                "text".into(),
+                "text".into(),
+                "text".into(),
+                "bigint".into(),
+                "integer".into(),
+            ],
+            columns,
+            rows,
+            masks: mode_columns
+                .iter()
+                .map(|(column, mode, text)| ColumnMask {
+                    column: column.to_string(),
+                    mode: *mode,
+                    text: text.map(String::from),
+                })
+                .collect(),
+            title: None,
+        }
+    }
+
+    fn assert_masked_rows(request: &RowsExportRequest, rows: &[Vec<Option<String>>]) {
+        assert_eq!(rows.len(), request.rows.len());
+        let mut shuffled_texts = Vec::new();
+        let mut shuffled_ints = Vec::new();
+        let mut moved = false;
+        for (source, row) in request.rows.iter().zip(rows) {
+            let id = source["id"].as_i64().unwrap();
+            let original = source["t"].as_str().unwrap();
+            assert_eq!(row[0].as_deref(), Some(id.to_string().as_str()));
+            assert_eq!(row[1].as_deref(), Some("***"));
+            assert_eq!(row[2], None);
+            if id == 3 {
+                assert_eq!(row[3], None);
+            } else {
+                assert_eq!(
+                    row[3].as_deref(),
+                    Some(super::super::masking::hash_text(original).as_str())
+                );
+            }
+            assert_eq!(
+                row[4].as_deref(),
+                Some(super::super::masking::partial_text(original).as_str())
+            );
+            let fake = row[5].clone().unwrap();
+            assert!(!fake.is_empty() && fake != original, "{fake}");
+            let shuffled = row[6].clone().unwrap();
+            moved |= shuffled != original;
+            shuffled_texts.push(shuffled);
+            let shuffled_int: i64 = row[7].as_deref().unwrap().parse().unwrap();
+            moved |= shuffled_int != id * 10;
+            shuffled_ints.push(shuffled_int);
+            assert_eq!(
+                row[8].as_deref(),
+                Some(super::super::masking::hash_text(&id.to_string()).as_str())
+            );
+        }
+        assert!(moved, "shuffle left every value in its original row");
+        shuffled_texts.sort();
+        let mut expected: Vec<String> = request
+            .rows
+            .iter()
+            .map(|row| row["s"].as_str().unwrap().to_string())
+            .collect();
+        expected.sort();
+        assert_eq!(shuffled_texts, expected);
+        shuffled_ints.sort();
+        assert_eq!(shuffled_ints, (0..40).map(|i| i * 10).collect::<Vec<_>>());
+    }
+
+    fn xml_rows(text: &str, columns: &[String]) -> Vec<Vec<Option<String>>> {
+        text.split("<row>")
+            .skip(1)
+            .map(|chunk| {
+                columns
+                    .iter()
+                    .map(|column| {
+                        let open = format!("<column name=\"{column}\">");
+                        chunk.find(&open).map(|start| {
+                            let rest = &chunk[start + open.len()..];
+                            rest[..rest.find("</column>").unwrap()].to_string()
+                        })
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn html_rows(text: &str) -> Vec<Vec<Option<String>>> {
+        text.split("<tr>")
+            .skip(2)
+            .map(|chunk| {
+                chunk
+                    .split("<td ")
+                    .skip(1)
+                    .map(|cell| {
+                        let content =
+                            &cell[cell.find('>').unwrap() + 1..cell.find("</td>").unwrap()];
+                        (!cell.contains("font-style:italic")).then(|| content.to_string())
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn xml_export_applies_every_mask_mode() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("rows.xml");
+        let request = masked_request(FileFormat::Xml, &path);
+        write_rows_file(&request).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_masked_rows(&request, &xml_rows(&text, &request.columns));
+    }
+
+    #[test]
+    fn html_export_applies_every_mask_mode() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("rows.html");
+        let request = masked_request(FileFormat::Html, &path);
+        write_rows_file(&request).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_masked_rows(&request, &html_rows(&text));
+    }
+
+    #[test]
+    fn parquet_export_applies_every_mask_mode() {
+        use parquet::record::Field;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("rows.parquet");
+        let request = masked_request(FileFormat::Parquet, &path);
+        write_rows_file(&request).unwrap();
+        let reader = parquet::file::serialized_reader::SerializedFileReader::new(
+            std::fs::File::open(&path).unwrap(),
+        )
+        .unwrap();
+        let rows: Vec<Vec<Option<String>>> = reader
+            .into_iter()
+            .map(|row| {
+                row.unwrap()
+                    .get_column_iter()
+                    .map(|(_, field)| match field {
+                        Field::Null => None,
+                        Field::Str(text) => Some(text.clone()),
+                        Field::Int(value) => Some(value.to_string()),
+                        Field::Long(value) => Some(value.to_string()),
+                        other => panic!("unexpected field {other:?}"),
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_masked_rows(&request, &rows);
     }
 
     #[test]
