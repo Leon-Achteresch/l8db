@@ -206,6 +206,7 @@ mod tests {
         roundtrip(&adapter, "main").await;
     }
 
+    #[cfg(feature = "duckdb")]
     #[tokio::test]
     async fn duckdb_saves_the_definition_it_shows() {
         let dir = tempfile::tempdir().unwrap();
