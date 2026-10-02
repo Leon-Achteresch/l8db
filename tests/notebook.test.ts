@@ -59,7 +59,7 @@ describe("Notebook-Variablen", () => {
     });
     expect(bound.sql).toBe("select * from orders where region = :region and n > :min");
     expect(bound.bound?.sql).toBe(
-      "select * from orders where region = $1::text and n > $2::bigint",
+      "select * from orders where region = $1 and n > $2::bigint",
     );
     expect(bound.bound?.values).toEqual(["Nord", "10"]);
     const inline = prepareCellSql("select :region, :min", values, {
