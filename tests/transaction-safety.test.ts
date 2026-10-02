@@ -419,6 +419,72 @@ describe("transaction snapshots tolerate trailing comments", () => {
     expect(executed.some((sql) => sql.includes(";"))).toBe(false);
   });
 
+  test("a WHERE inside a comment does not narrow the postgres snapshot", async () => {
+    const executed: string[] = [];
+    handler = (sql) => {
+      executed.push(sql);
+      if (sql.startsWith("SELECT * FROM big")) {
+        return result(Array.from({ length: 101 }, (_, id) => ({ id: String(id), a: "0" })));
+      }
+      return result();
+    };
+    let original = 0;
+    const tracked = await executeWithTransactionChanges(
+      connection,
+      null,
+      "tx",
+      "UPDATE big SET a = 1 -- WHERE id = 5",
+      async () => {
+        original += 1;
+        return result([], 101);
+      },
+    );
+    const snapshot = executed.find((sql) => sql.startsWith("SELECT * FROM big"));
+    expect(snapshot).toBeDefined();
+    expect(snapshot).not.toContain("id = 5");
+    expect(executed.some((sql) => /\bRETURNING\b/.test(sql))).toBe(false);
+    expect(original).toBe(1);
+    expect(tracked.changes).toEqual([]);
+  });
+
+  test("block comments are ignored when planning and executing the change", async () => {
+    const executed: string[] = [];
+    handler = (sql) => {
+      executed.push(sql);
+      if (sql.startsWith("SELECT")) return result([{ id: "1", a: "0" }]);
+      if (/\bRETURNING\b/.test(sql)) return result([{ id: "1", a: "1" }]);
+      return result();
+    };
+    const tracked = await executeWithTransactionChanges(
+      connection,
+      null,
+      "tx",
+      "UPDATE t /* WHERE id = 9 */ SET a = 1 /* note */ WHERE id = 1 -- RETURNING",
+      async () => result(),
+    );
+    const snapshot = executed.find((sql) => sql.startsWith("SELECT * FROM t"));
+    expect(snapshot).not.toContain("id = 9");
+    expect(snapshot).toContain("id = 1");
+    expect(tracked.changes).toHaveLength(1);
+  });
+
+  test("MySQL executable comments disable change tracking", async () => {
+    const executed: string[] = [];
+    handler = (sql) => {
+      executed.push(sql);
+      return result([{ id: "1", a: "0" }]);
+    };
+    const tracked = await executeWithTransactionChanges(
+      { ...connection, kind: "mysql" },
+      null,
+      "tx",
+      "UPDATE t SET a = 1 WHERE id = 1 /*!80000 AND a = 0 */",
+      async () => result([], 1),
+    );
+    expect(executed).toEqual([]);
+    expect(tracked.changes).toEqual([]);
+  });
+
   for (const [kind, comment, limitWords] of [
     ["mysql", "-- cleanup", ["LIMIT"]],
     ["mysql", "# cleanup", ["LIMIT"]],
