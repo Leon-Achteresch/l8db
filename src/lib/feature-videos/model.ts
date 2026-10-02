@@ -30,6 +30,7 @@ export interface FeatureVideo {
   requiredCapabilities: string[];
   modes: string[];
   actionId: (typeof ACTIONS)[number];
+  actionTarget?: "dashboard";
   durationSeconds: number;
   poster: string;
   sources: { url: string; type: string; bytes: number }[];
@@ -128,6 +129,8 @@ export function parseFeed(
       !item.modes.length ||
       !list(item.requiredCapabilities) ||
       !ACTIONS.includes(item.actionId as (typeof ACTIONS)[number]) ||
+      (item.actionTarget !== undefined &&
+        (item.actionTarget !== "dashboard" || item.actionId !== "settings")) ||
       typeof item.durationSeconds !== "number" ||
       item.durationSeconds < 1 ||
       item.durationSeconds > 30 ||

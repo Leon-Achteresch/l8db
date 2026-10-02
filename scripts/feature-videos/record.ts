@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { chromium, type Locator, type Page } from "playwright";
 import { ASSET_BASE, clipTag } from "../../src/lib/feature-videos/model";
 import { seedApp } from "../../tests/fixtures/perf-app";
+import { seedDashboardVideo } from "./dashboard-scenario";
 
 const output = resolve(process.env.FEATURE_VIDEO_OUTPUT ?? "test-artifacts/feature-videos");
 const catalog = JSON.parse(await readFile(new URL("catalog.json", import.meta.url), "utf8"));
@@ -30,18 +31,20 @@ const server = Bun.serve({
 const browser = await chromium.launch();
 const rendered = [];
 
-async function caption(page: Page, value: string) {
-  await page.evaluate((text) => {
-    let label = document.getElementById("demo-caption");
-    if (!label) {
-      label = document.createElement("div");
-      label.id = "demo-caption";
-      label.style.cssText =
-        "position:fixed;bottom:52px;left:50%;transform:translateX(-50%);z-index:20000000;max-width:900px;background:#171717f2;color:white;border:1px solid #555;border-radius:16px;padding:16px 28px;font:600 34px/1.15 system-ui;text-align:center;white-space:normal;pointer-events:none;box-shadow:0 8px 28px #0008";
-      document.body.append(label);
-    }
-    label.textContent = text;
-  }, value);
+async function caption(page: Page, value: string, fontSize = 34) {
+  await page.evaluate(
+    ({ text, fontSize }) => {
+      let label = document.getElementById("demo-caption");
+      if (!label) {
+        label = document.createElement("div");
+        label.id = "demo-caption";
+        label.style.cssText = `position:fixed;bottom:52px;left:50%;transform:translateX(-50%);z-index:20000000;max-width:900px;background:#171717f2;color:white;border:1px solid #555;border-radius:16px;padding:16px 28px;font:600 ${fontSize}px/1.15 system-ui;text-align:center;white-space:normal;pointer-events:none;box-shadow:0 8px 28px #0008`;
+        document.documentElement.append(label);
+      }
+      label.textContent = text;
+    },
+    { text: value, fontSize },
+  );
 }
 
 try {
@@ -66,6 +69,7 @@ try {
         JSON.stringify({ ...saved, state: { ...saved.state, autoFeatureVideos: false } }),
       );
     });
+    if (item.id === "dashboard-workspace") await seedDashboardVideo(page);
     await page.route("https://api.github.com/**", (route) =>
       route.fulfill({ status: 404, body: "{}" }),
     );
@@ -103,8 +107,12 @@ try {
       );
     }
     const tab = item.id === "easy-mode" ? "general" : "extensions";
-    await page.goto(`http://localhost:${server.port}/settings?tab=${tab}`);
-    await page.getByRole("heading", { name: "Einstellungen", exact: true }).waitFor();
+    await page.goto(
+      `http://localhost:${server.port}${item.id === "dashboard-workspace" ? "/dashboard" : `/settings?tab=${tab}`}`,
+    );
+    if (item.id === "dashboard-workspace")
+      await page.getByRole("button", { name: "Chart bearbeiten", exact: true }).waitFor();
+    else await page.getByRole("heading", { name: "Einstellungen", exact: true }).waitFor();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForTimeout(1000);
     const trimStart = (performance.now() - recordingStart) / 1000;
@@ -131,21 +139,24 @@ try {
         x: Math.max(1280 - 1280 * scale, Math.min(0, center.x - targetX * scale)),
         y: Math.max(720 - 720 * scale, Math.min(0, center.y - targetY * scale)),
       };
-      await page.evaluate(({ scale, x, y }) => {
-        const root = document.getElementById("root");
-        if (!root) throw new Error("App-Wurzel fehlt");
-        root.style.transformOrigin = "top left";
-        root.style.transition = "transform 850ms cubic-bezier(0.22, 1, 0.36, 1)";
-        root.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-      }, camera);
+      await page.evaluate(
+        ({ scale, x, y, includeDialogs }) => {
+          const root = includeDialogs ? document.body : document.getElementById("root");
+          if (!root) throw new Error("App-Wurzel fehlt");
+          root.style.transformOrigin = "top left";
+          root.style.transition = "transform 850ms cubic-bezier(0.22, 1, 0.36, 1)";
+          root.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        },
+        { ...camera, includeDialogs: item.id === "dashboard-workspace" },
+      );
     };
     const resetCamera = async () => {
       camera = { scale: 1, x: 0, y: 0 };
-      await page.evaluate(() => {
-        const root = document.getElementById("root");
+      await page.evaluate((includeDialogs) => {
+        const root = includeDialogs ? document.body : document.getElementById("root");
         if (!root) throw new Error("App-Wurzel fehlt");
         root.style.transform = "none";
-      });
+      }, item.id === "dashboard-workspace");
       await page.waitForTimeout(900);
     };
     const clickVisible = async (target: Locator) => {
@@ -222,9 +233,51 @@ try {
       await caption(page, "Die Erweiterung ist jetzt aktiviert.");
       await focus(installed.getByText("Jev Plan-Diagnose"), 2.9, undefined, true);
       await page.waitForTimeout(2600);
+    } else if (item.id === "dashboard-workspace") {
+      await caption(page, "Aus Daten wird dein eigener Überblick.", 42);
+      await page.waitForTimeout(1800);
+      await page.getByRole("button", { name: "Chart bearbeiten", exact: true }).click();
+      const builder = page.getByRole("region", { name: "Visueller Datenbuilder" });
+      await builder.waitFor();
+      await caption(page, "Felder zu Kennzahlen und Aufteilungen zuordnen.", 42);
+      await focus(page.getByRole("complementary", { name: "Verfügbare Datenfelder" }), 2.8);
+      await page.waitForTimeout(2300);
+      await resetCamera();
+      await clickVisible(page.getByRole("button", { name: /country Text/ }));
+      const assign = page.getByRole("button", { name: "country zu Zweite Aufteilung zuweisen" });
+      await assign.scrollIntoViewIfNeeded();
+      await clickVisible(assign);
+      await caption(page, "Die Live-Vorschau zeigt deinen Umsatz nach Land.", 42);
+      await resetCamera();
+      await focus(page.getByRole("complementary", { name: "Chart-Vorschau" }), 1.75);
+      await page.waitForTimeout(2700);
+      await resetCamera();
+      await page.getByRole("tab", { name: "Darstellung", exact: true }).click();
+      await caption(page, "16 Charttypen – passend zu deiner Frage.", 42);
+      await focus(page.getByRole("button", { name: /^Kennzahl / }), 2.8);
+      await page.waitForTimeout(2700);
+      await resetCamera();
+      await page.getByRole("button", { name: "Vergleich", exact: true }).click();
+      const columns = page.getByRole("button", { name: /^Säulen/ });
+      await columns.click();
+      if ((await columns.getAttribute("aria-pressed")) !== "true")
+        throw new Error("Säulendarstellung wurde nicht ausgewählt");
+      await caption(page, "Darstellung wählen und den fertigen Chart speichern.", 42);
+      await focus(page.getByRole("complementary", { name: "Chart-Vorschau" }), 1.6);
+      await page.waitForTimeout(2300);
+      await resetCamera();
+      await page.getByRole("button", { name: "Speichern", exact: true }).click();
+      await page.getByRole("dialog").waitFor({ state: "hidden" });
+      await caption(page, "Dein Chart ist im Dashboard. Jetzt selbst ausprobieren.", 42);
+      await page.waitForTimeout(2600);
     }
     if (errors.length) throw new Error(`App-Fehler während Aufnahme: ${errors.join("; ")}`);
-    const duration = Math.min(25, (performance.now() - recordingStart) / 1000 - trimStart);
+    const recordedDuration = (performance.now() - recordingStart) / 1000 - trimStart;
+    const duration = Math.min(item.id === "dashboard-workspace" ? 29.5 : 25, recordedDuration);
+    const videoFilter =
+      item.id === "dashboard-workspace"
+        ? `trim=duration=${recordedDuration.toFixed(3)},setpts=${duration / recordedDuration}*(PTS-STARTPTS),scale=1280:720`
+        : "scale=1280:720";
     const video = page.video();
     await context.close();
     const raw = await video?.path();
@@ -247,7 +300,7 @@ try {
           duration.toFixed(3),
           "-an",
           "-vf",
-          "scale=1280:720",
+          videoFilter,
           ...options,
           path,
         ],

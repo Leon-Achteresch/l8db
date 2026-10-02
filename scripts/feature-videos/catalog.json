@@ -24,5 +24,19 @@
     "requiredCapabilities": [],
     "modes": ["easy", "normal"],
     "actionId": "extensions"
+  },
+  {
+    "id": "dashboard-workspace",
+    "revision": "1",
+    "title": "Deine Daten visuell gestalten",
+    "summary": "Ordne Felder zu Kennzahlen und Aufteilungen zu, prüfe die Live-Vorschau und wähle aus 16 Charttypen.",
+    "sourceCommit": "19ca9d85",
+    "introducedIn": "0.8.0",
+    "priority": 95,
+    "platforms": ["macos", "windows", "linux"],
+    "requiredCapabilities": [],
+    "modes": ["easy", "normal"],
+    "actionId": "settings",
+    "actionTarget": "dashboard"
   }
 ]
