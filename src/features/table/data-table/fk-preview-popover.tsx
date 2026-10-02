@@ -62,7 +62,7 @@ export function FkPreviewPopover({
     if (value === null || value === undefined) return;
     setIsLoadingPreview(true);
     setHasLoaded(true);
-    const filterSql = formatFkFilter(primary.column, value);
+    const filterSql = formatFkFilter(primary.column, value, connection.kind);
     fetchTableRows(
       connection.kind,
       effectiveConnectionString(connection),
@@ -85,13 +85,17 @@ export function FkPreviewPopover({
 
   const handleModifierClick = (e: React.MouseEvent) => {
     if (!(e.ctrlKey || e.metaKey || e.altKey) || value === null || value === undefined) return;
-    if (!primary || !isSingle) return;
+    if (!connection || !primary || !isSingle) return;
     e.preventDefault();
     e.stopPropagation();
-    onNavigate(primary.schema, primary.table, formatFkFilter(primary.column, value));
+    onNavigate(
+      primary.schema,
+      primary.table,
+      formatFkFilter(primary.column, value, connection.kind),
+    );
   };
 
-  if (value === null || value === undefined || !primary) {
+  if (value === null || value === undefined || !primary || !connection) {
     return <>{children}</>;
   }
 
@@ -181,7 +185,7 @@ export function FkPreviewPopover({
                   onNavigate(
                     primary.schema,
                     primary.table,
-                    formatFkFilter(primary.column, value),
+                    formatFkFilter(primary.column, value, connection.kind),
                     true,
                   )
                 }
@@ -207,7 +211,12 @@ export function FkPreviewPopover({
                   type="button"
                   className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left hover:bg-muted/60 cursor-pointer transition-colors"
                   onClick={() =>
-                    onNavigate(link.schema, link.table, formatFkFilter(link.column, value), true)
+                    onNavigate(
+                      link.schema,
+                      link.table,
+                      formatFkFilter(link.column, value, connection.kind),
+                      true,
+                    )
                   }
                 >
                   <span className="min-w-0 truncate font-mono text-[11px]">
