@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { chromium } from "playwright";
-import { installVersioningLab } from "./fixtures/versioning-lab";
+import { installVersioningLab, versioningAppUrl } from "./fixtures/versioning-lab";
 
 const enabled = process.env.L8DB_VERSIONING_LAB;
 
@@ -20,7 +20,7 @@ test.skipIf(!enabled)(
     const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
     try {
       await installVersioningLab(page, repo);
-      await page.goto("http://localhost:1420/versioning");
+      await page.goto(`${versioningAppUrl}/versioning`);
       const result = await page.evaluate(
         async ({ repo }) => {
           const { runOracleScenario } = await import(

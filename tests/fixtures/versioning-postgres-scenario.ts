@@ -63,11 +63,16 @@ export async function runPostgresScenario(repo: string) {
     name: `Kunde ${name.toUpperCase()}`,
     connectionId: connection.id,
     database: `l8db_versioning_${name}`,
+    schema: "public",
     production: false,
     release: null,
     history: [],
   }));
-  await api.saveTargets(repo, { format: 1, projectId: project.id, targets }, null);
+  await api.saveTargets(
+    repo,
+    { format: 1, projectId: project.id, targets },
+    (await api.readTargets(repo, project.id)).text,
+  );
   for (const target of targets)
     await deployment.baselineTarget(repo, project, target.id, connection, "v1");
   const baseline = await api.resolveRelease(

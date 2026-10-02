@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { chromium, type Request } from "playwright";
-import { installVersioningLab } from "./fixtures/versioning-lab";
+import { installVersioningLab, versioningAppUrl } from "./fixtures/versioning-lab";
 
 const enabled = process.env.L8DB_VERSIONING_LAB;
 for (const kind of ["postgres", "oracle"] as const) {
@@ -29,7 +29,7 @@ for (const kind of ["postgres", "oracle"] as const) {
       page.on("requestfailed", (request) => pending.delete(request));
       try {
         await installVersioningLab(page, repo);
-        await page.goto("http://localhost:1420/versioning");
+        await page.goto(`${versioningAppUrl}/versioning`);
         const scenario = page.evaluate(
           async ({ repo, kind }) => {
             const { runOperationalScenario } = await import(
@@ -79,7 +79,7 @@ for (const kind of ["postgres", "oracle"] as const) {
         await page.getByRole("button", { name: "Regeln speichern", exact: true }).click();
         await page.getByText("main · Pausiert", { exact: true }).waitFor();
         await page.keyboard.press("Escape");
-        await page.getByTestId("versioning-badge").getByText("1", { exact: true }).waitFor();
+        await page.getByTestId("versioning-badge").getByText("2", { exact: true }).waitFor();
         await page.getByRole("tab", { name: "Releases", exact: true }).click();
         await page.getByRole("button", { name: "Release vorbereiten", exact: true }).click();
         await page.getByText("Betriebsplan und Datenprüfungen", { exact: true }).click();
@@ -96,7 +96,9 @@ for (const kind of ["postgres", "oracle"] as const) {
         expect(
           await page.getByRole("textbox", { name: "Betriebsplan", exact: true }).inputValue(),
         ).toContain("Session-Wechsel");
-        const safety = page.locator("details[open]").filter({ has: page.getByText("Betriebsplan und Datenprüfungen", { exact: true }) });
+        const safety = page
+          .locator("details[open]")
+          .filter({ has: page.getByText("Betriebsplan und Datenprüfungen", { exact: true }) });
         await page.screenshot({
           path: `/tmp/l8db-versioning-safety-${kind}.png`,
           animations: "disabled",
