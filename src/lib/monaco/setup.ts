@@ -3,6 +3,7 @@ import "monaco-editor/features/bracketMatching/register";
 import "monaco-editor/features/caretOperations/register";
 import "monaco-editor/features/clipboard/register";
 import "monaco-editor/features/codeAction/register";
+import "monaco-editor/features/codelens/register";
 import "monaco-editor/features/codeEditor/register";
 import "monaco-editor/features/codicon/register";
 import "monaco-editor/features/comment/register";
