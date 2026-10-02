@@ -43,7 +43,7 @@ export const ENVIRONMENTS: ConnectionEnvironment[] = [
 ];
 
 export const SECRET_PARAM =
-  /^(password|passwd|pwd|pass|token|secret|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
+  /^(password|passwd|pwd|pass|token|secret|api[_-]?key|api[_-]?token|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
 
 export interface ExportedSsh {
   host: string;
