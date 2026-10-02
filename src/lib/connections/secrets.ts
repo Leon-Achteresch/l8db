@@ -2,7 +2,7 @@ import { splitSecretParams, withSecretParams } from "@/lib/connection-export/exp
 import { sslModeFromUrl } from "@/lib/connection-url";
 import { capabilitiesFor } from "@/lib/providers";
 import { extractUrlPassword, injectUrlPassword, loadSecret, storeSecret } from "@/lib/secrets";
-import { loadQuerySecret, useConnectionsStore } from "./store";
+import { loadQuerySecret, markQuerySecretResolved, useConnectionsStore } from "./store";
 import type { SavedConnection } from "./types";
 
 let secretsInitialized = false;
@@ -83,6 +83,10 @@ export async function initConnectionSecrets(): Promise<void> {
       return hasUpdates ? { connections } : state;
     });
   }
+  const restored = new Map(next.map((connection) => [connection.id, connection.connectionString]));
+  for (const connection of useConnectionsStore.getState().connections)
+    if (restored.get(connection.id) === connection.connectionString)
+      markQuerySecretResolved(connection);
   if (plaintextParams) useConnectionsStore.setState({});
 }
 
