@@ -24,6 +24,8 @@ const { buildConnectionExport, parseConnectionImport, resolveImport } = await im
 const { mergeVaultConnections, toVaultConnection } = await import(
   "../../src/lib/connection-export/vault"
 );
+const { useConnectionsStore } = await import("../../src/lib/connections/store");
+const { connectionEnvironment } = await import("../../src/lib/environments");
 
 const maskRules = [
   { name: "Mail", pattern: "*email*", enabled: true, mask: "partial" as const },
@@ -147,5 +149,48 @@ describe("connection export keeps safety settings", () => {
     expect(updated.environment).toBe("production");
     expect(updated.readOnly).toBe(true);
     expect(updated.maskRules).toEqual(maskRules);
+  });
+});
+
+describe("host rules keep production protection on import and vault sync", () => {
+  const rules = [
+    { id: "r1", name: "Prod", pattern: "*.prod.corp", environment: "production" as const },
+  ];
+  const ruled = {
+    ...production,
+    connectionString: "postgres://app@db1.prod.corp/orders",
+    environment: undefined as unknown as "production",
+  };
+
+  test("a vault profile with a lower environment keeps a host-rule production connection", () => {
+    useConnectionsStore.setState({ hostGroupRules: rules });
+    expect(connectionEnvironment(ruled)).toBe("production");
+    const remote = toVaultConnection({ ...ruled, environment: "development" as never }, null);
+    const merge = mergeVaultConnections([remote], [ruled]);
+    const updated = merge.updated[0];
+    expect(connectionEnvironment(updated)).toBe("production");
+    useConnectionsStore.setState({ hostGroupRules: [] });
+  });
+
+  test("a new vault profile with a lower environment stays production through host rules", () => {
+    useConnectionsStore.setState({ hostGroupRules: rules });
+    const remote = toVaultConnection({ ...ruled, environment: "test" as never }, null);
+    const added = mergeVaultConnections([remote], []).added[0];
+    expect(connectionEnvironment(added)).toBe("production");
+    useConnectionsStore.setState({ hostGroupRules: [] });
+  });
+
+  test("a file import with a lower environment stays production through host rules", () => {
+    useConnectionsStore.setState({ hostGroupRules: rules });
+    const imported = roundTrip({ ...ruled, environment: "staging" as never });
+    expect(connectionEnvironment(imported)).toBe("production");
+    useConnectionsStore.setState({ hostGroupRules: [] });
+  });
+
+  test("without a matching host rule the imported environment is kept", () => {
+    useConnectionsStore.setState({ hostGroupRules: rules });
+    const imported = roundTrip({ ...production, environment: "staging" as never });
+    expect(imported.environment).toBe("staging");
+    useConnectionsStore.setState({ hostGroupRules: [] });
   });
 });
