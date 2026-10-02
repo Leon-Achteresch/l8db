@@ -56,6 +56,7 @@ pub mod ssh;
 pub mod table_copy;
 pub mod transaction;
 pub mod transfer;
+mod view_ddl;
 pub(crate) mod warehouse_auth;
 
 use async_trait::async_trait;

@@ -536,10 +536,10 @@ impl DatabaseAdapter for DuckdbAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         let ddl = format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
+            "CREATE OR REPLACE VIEW {}.{} {}",
             quote(schema),
             quote(view),
-            body
+            super::view_ddl::view_ddl_rest(body)
         );
         self.run(move |c| {
             c.execute_batch("BEGIN").map_err(map_err)?;
