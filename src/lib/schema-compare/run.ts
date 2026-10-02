@@ -11,6 +11,7 @@ import {
   rollbackTransaction,
 } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { quoteName } from "./diff";
 import { PRE_TRANSACTION_PHASE, type SyncStatement } from "./script";
 
 export type StepStatus = "pending" | "running" | "ok" | "warning" | "error" | "skipped";
@@ -125,15 +126,36 @@ interface SqliteForeignKeys {
   existing: Map<string, number>;
 }
 
+function countSqliteViolations(counts: Map<string, number>, rows: Record<string, unknown>[]) {
+  for (const row of rows) {
+    const key = `${row.table} → ${row.parent}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
 async function sqliteForeignKeyViolations(
   tx: string,
   execute: QueryExecutionOptions,
 ): Promise<Map<string, number>> {
-  const result = await executeInTransaction(tx, "PRAGMA foreign_key_check", execute);
+  const result = await executeInTransaction(tx, "PRAGMA foreign_key_check", execute).catch(
+    () => null,
+  );
+  if (result) return countSqliteViolations(new Map(), result.rows);
+  const tables = await executeInTransaction(
+    tx,
+    "SELECT name FROM \"main\".sqlite_master WHERE type = 'table'",
+    execute,
+  );
   const counts = new Map<string, number>();
-  for (const row of result.rows) {
-    const key = `${row.table} → ${row.parent}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+  for (const row of tables.rows) {
+    const table = String(row.name);
+    const scoped = await executeInTransaction(
+      tx,
+      `PRAGMA "main".foreign_key_check(${quoteName(table)})`,
+      execute,
+    ).catch(() => null);
+    if (scoped) countSqliteViolations(counts, scoped.rows);
   }
   return counts;
 }

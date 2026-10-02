@@ -51,14 +51,38 @@ function sqliteHandler(
     existing?: Record<string, unknown>[];
     violations?: Record<string, unknown>[];
     fail?: string;
+    mismatch?: string[];
   } = {},
 ): Handler {
   let checks = 0;
+  let tableChecks = 0;
   return (command, args) => {
     if (command === "begin_transaction") return "tx";
     if (command !== "execute_in_transaction") return undefined;
     const sql = String(args.sql);
     if (options.fail && sql === options.fail) throw new Error("SQLITE_ERROR: boom");
+    const mismatch = options.mismatch ?? [];
+    if (mismatch.length > 0 && sql === "PRAGMA foreign_key_check")
+      throw new Error(`SQLite: foreign key mismatch - "${mismatch[0]}" referencing "p"`);
+    if (sql.startsWith("SELECT name FROM"))
+      return {
+        ...empty,
+        columns: ["name"],
+        rows: ["p", ...mismatch, "child"].map((name) => ({ name })),
+      };
+    const scoped = /^PRAGMA "main"\.foreign_key_check\("(.+)"\)$/.exec(sql);
+    if (scoped) {
+      if (mismatch.includes(scoped[1]))
+        throw new Error(`SQLite: foreign key mismatch - "${scoped[1]}" referencing "p"`);
+      if (scoped[1] !== "child") return { ...empty, rows: [] };
+      tableChecks += 1;
+      const existing = options.existing ?? [];
+      return {
+        ...empty,
+        columns: ["fkid", "parent", "rowid", "table"],
+        rows: tableChecks === 1 ? existing : [...existing, ...(options.violations ?? [])],
+      };
+    }
     if (sql === "PRAGMA foreign_keys")
       return {
         ...empty,
@@ -225,5 +249,31 @@ describe("SQLite-Schemasynchronisation mit Fremdschlüsseln", () => {
     expect(summary.failed).toBe(1);
     expect(steps.at(-1)?.message).toContain("Fremdschlüssel");
     expect(sent().at(-1)).toBe("rollback_transaction");
+  });
+
+  test("übernimmt Änderungen, wenn eine fremde Tabelle einen ungültigen Fremdschlüssel hat", async () => {
+    handler = sqliteHandler({ mismatch: ["c"] });
+    const { summary, steps } = await execute(false);
+    expect(summary).toMatchObject({ failed: 0, rolledBack: false });
+    expect(steps.map((step) => step.status)).toEqual(REBUILD.map(() => "ok"));
+    expect(sent()).toContain('PRAGMA "main".foreign_key_check("child")');
+    expect(sent().at(-1)).toBe("commit_transaction");
+  });
+
+  test("Probelauf scheitert nicht an einem ungültigen Fremdschlüssel einer fremden Tabelle", async () => {
+    handler = sqliteHandler({ mismatch: ["c"] });
+    const { summary } = await execute(true);
+    expect(summary).toMatchObject({ dryRun: true, failed: 0, rolledBack: true });
+  });
+
+  test("meldet neue Verletzungen auch neben einem ungültigen Fremdschlüssel", async () => {
+    handler = sqliteHandler({
+      mismatch: ["c"],
+      violations: [{ table: "child", rowid: 11, parent: "parent", fkid: 0 }],
+    });
+    const { summary, steps } = await execute(false);
+    expect(summary).toMatchObject({ failed: 1, rolledBack: true });
+    expect(steps.at(-1)?.message).toContain("1 Zeile: child → parent");
+    expect(sent()).not.toContain("commit_transaction");
   });
 });
