@@ -294,11 +294,7 @@ function definesRoutine(words: Token[]): boolean {
   return object !== undefined && ROUTINE_WORDS.has(object.word);
 }
 
-function controlsTransaction(
-  words: Token[],
-  dialect: string,
-  managed: boolean,
-): boolean {
+function controlsTransaction(words: Token[], dialect: string, managed: boolean): boolean {
   const first = words[0]?.word;
   const second = words[1]?.word;
   if (
