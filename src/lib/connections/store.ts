@@ -1,12 +1,15 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { splitSecretParams, withSecretParams } from "@/lib/connection-export/export";
 import { type HostGroupRule, matchingHostRule } from "@/lib/connection-groups";
-import { closeSshTunnel } from "@/lib/db";
+import { closeSshTunnel, loadSecret as readKeychainSecret } from "@/lib/db";
 import {
   deleteSecret,
   extractUrlPassword,
   injectUrlPassword,
   loadSecret,
+  peekSecret,
+  rememberSecret,
   scrubUrlPassword,
   storeSecret,
 } from "@/lib/secrets";
@@ -50,7 +53,64 @@ export const isMainWindow = windowConnectionId === null && !windowParams.has("wi
 
 export const RECENT_CONNECTION_LIMIT = 10;
 
-export const NETWORK_SECRET_SUFFIXES = [":ssh", ":ssh-jumps", ":proxy"];
+export const QUERY_SECRET_SUFFIX = ":params";
+
+export const NETWORK_SECRET_SUFFIXES = [":ssh", ":ssh-jumps", ":proxy", QUERY_SECRET_SUFFIX];
+
+const storedQuerySecrets = new Map<string, string | null>();
+
+export function persistedConnectionString(value: string): string {
+  return splitSecretParams(scrubUrlPassword(value)).value;
+}
+
+export async function loadQuerySecret(
+  connection: Pick<SavedConnection, "id" | "vault">,
+): Promise<string | null> {
+  const account = `${connection.id}${QUERY_SECRET_SUFFIX}`;
+  if (connection.vault) return peekSecret(account);
+  try {
+    const secrets = await readKeychainSecret(account);
+    storedQuerySecrets.set(connection.id, secrets);
+    return secrets;
+  } catch {
+    return peekSecret(account);
+  }
+}
+
+const pendingQuerySecrets = new Map<string, string>();
+
+function querySecretInKeychain(connection: SavedConnection, secrets: string | null): boolean {
+  const account = `${connection.id}${QUERY_SECRET_SUFFIX}`;
+  const stored = storedQuerySecrets.get(connection.id);
+  if (secrets === null) {
+    pendingQuerySecrets.delete(connection.id);
+    if (!stored) return true;
+    storedQuerySecrets.set(connection.id, null);
+    void deleteSecret(account).catch(() => storedQuerySecrets.set(connection.id, stored));
+    return true;
+  }
+  if (stored === secrets) return true;
+  if (connection.vault) {
+    storedQuerySecrets.set(connection.id, secrets);
+    void rememberSecret(account, secrets).catch(() => undefined);
+    return true;
+  }
+  if (pendingQuerySecrets.get(connection.id) === secrets) return false;
+  pendingQuerySecrets.set(connection.id, secrets);
+  void storeSecret(account, secrets).then(
+    () => {
+      if (pendingQuerySecrets.get(connection.id) !== secrets) return;
+      pendingQuerySecrets.delete(connection.id);
+      storedQuerySecrets.set(connection.id, secrets);
+      useConnectionsStore.setState({});
+    },
+    () => {
+      if (pendingQuerySecrets.get(connection.id) === secrets)
+        pendingQuerySecrets.delete(connection.id);
+    },
+  );
+  return false;
+}
 
 function readStoredActiveId(): string | null {
   try {
@@ -88,7 +148,8 @@ export function mergeWindowSync(
   const connections = [
     ...saved.connections.map((connection) => {
       const known = live.get(connection.id);
-      return known && scrubUrlPassword(known.connectionString) === connection.connectionString
+      return known &&
+        persistedConnectionString(known.connectionString) === connection.connectionString
         ? { ...connection, connectionString: known.connectionString, tunnelPort: known.tunnelPort }
         : connection;
     }),
@@ -125,7 +186,11 @@ const scrubbingStorage: StateStorage = {
       if (Array.isArray(connections)) {
         for (const connection of connections) {
           if (typeof connection?.connectionString === "string") {
-            connection.connectionString = scrubUrlPassword(connection.connectionString);
+            const scrubbed = scrubUrlPassword(connection.connectionString);
+            const { value, secrets } = splitSecretParams(scrubbed);
+            connection.connectionString = querySecretInKeychain(connection, secrets)
+              ? value
+              : scrubbed;
           }
           if ("tunnelPort" in connection) {
             connection.tunnelPort = null;
@@ -186,6 +251,8 @@ export const useConnectionsStore = create<ConnectionsState>()(
           ),
         })),
       removeConnection: (id) => {
+        storedQuerySecrets.delete(id);
+        pendingQuerySecrets.delete(id);
         void deleteSecret(id).catch(() => undefined);
         for (const suffix of NETWORK_SECRET_SUFFIXES) {
           void deleteSecret(`${id}${suffix}`).catch(() => undefined);
@@ -277,20 +344,29 @@ export const useConnectionsStore = create<ConnectionsState>()(
 
 async function loadSyncedSecrets(previous: SavedConnection[]): Promise<void> {
   const known = new Map(previous.map((connection) => [connection.id, connection.connectionString]));
-  const missing = useConnectionsStore
+  const changed = useConnectionsStore
     .getState()
-    .connections.filter(
-      (connection) =>
-        known.get(connection.id) !== connection.connectionString &&
-        extractUrlPassword(connection.connectionString) === null,
-    );
-  for (const connection of missing) {
-    const secret = await loadSecret(connection.id).catch(() => null);
-    if (!secret) continue;
+    .connections.filter((connection) => known.get(connection.id) !== connection.connectionString);
+  for (const connection of changed) {
+    const secret =
+      extractUrlPassword(connection.connectionString) === null
+        ? await loadSecret(connection.id).catch(() => null)
+        : null;
+    const params =
+      splitSecretParams(connection.connectionString).secrets === null
+        ? await loadQuerySecret(connection)
+        : null;
+    if (!secret && !params) continue;
     useConnectionsStore.setState((state) => ({
       connections: state.connections.map((entry) =>
         entry.id === connection.id && entry.connectionString === connection.connectionString
-          ? { ...entry, connectionString: injectUrlPassword(entry.connectionString, secret) }
+          ? {
+              ...entry,
+              connectionString: withSecretParams(
+                secret ? injectUrlPassword(entry.connectionString, secret) : entry.connectionString,
+                params,
+              ),
+            }
           : entry,
       ),
     }));
@@ -305,6 +381,11 @@ export function syncConnectionsFromStorage(): void {
     rehydrated = useConnectionsStore.persist.rehydrate();
   } finally {
     syncingWindows = false;
+  }
+  const known = new Map(previous.map((connection) => [connection.id, connection.connectionString]));
+  for (const connection of useConnectionsStore.getState().connections) {
+    if (known.get(connection.id) !== connection.connectionString)
+      storedQuerySecrets.delete(connection.id);
   }
   void Promise.resolve(rehydrated).then(() => loadSyncedSecrets(previous));
 }
