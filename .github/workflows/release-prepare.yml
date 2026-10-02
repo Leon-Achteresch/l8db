@@ -9,8 +9,8 @@ on:
     inputs:
       bump:
         type: choice
-        options: [patch, minor, major]
-        default: patch
+        options: [auto, patch, minor, major]
+        default: auto
       version:
         description: Optional explicit stable version
         type: string
@@ -39,7 +39,7 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_BUMP: ${{ inputs.bump || 'patch' }}
+          RELEASE_BUMP: ${{ inputs.bump || 'auto' }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: node .github/scripts/release-plan.mjs prepare
       - name: Check release PR credentials

@@ -10,6 +10,7 @@ import {
   nextVersion,
   outputs,
   releases,
+  semanticBump,
   VERSION_PATTERN,
 } from "./release-utils.mjs";
 
@@ -96,8 +97,14 @@ function main() {
   }
   assert.equal(command, "prepare", "Usage: release-plan.mjs status|prepare");
   assert.equal(git("status", "--porcelain"), "", "Prepare a release from a clean checkout");
-  const bump = process.env.RELEASE_BUMP || "patch";
-  if (state.mode !== "prepare" && !process.env.RELEASE_VERSION && bump === "patch") {
+  const requested = ["patch", "minor", "major"].includes(process.env.RELEASE_BUMP)
+    ? process.env.RELEASE_BUMP
+    : "";
+  if (
+    state.mode !== "prepare" &&
+    !process.env.RELEASE_VERSION &&
+    ["", "patch"].includes(requested)
+  ) {
     outputs({ changed: "false", version: source });
     return;
   }
@@ -108,13 +115,23 @@ function main() {
     if (VERSION_PATTERN.test(planned) && (!floor || compareVersions(planned, floor) > 0))
       floor = planned;
   }
-  const version = process.env.RELEASE_VERSION || nextVersion(source, floor, bump);
+  const previous = newestRelease(all)?.tag_name;
+  let version = process.env.RELEASE_VERSION;
+  if (!version && requested) version = nextVersion(source, floor, requested);
+  if (!version) {
+    const base = previous?.slice(1) ?? source;
+    const range = previous ? `${previous}..${sha}` : sha;
+    const messages = git("log", range, "--no-merges", "--format=%B%x00")
+      .split("\0")
+      .map((message) => message.trim());
+    version = nextVersion(base, base, semanticBump(messages, base));
+    if (floor && compareVersions(version, floor) <= 0) version = nextVersion(floor, floor);
+  }
   assert(VERSION_PATTERN.test(version), "Release version must be stable SemVer");
   assert(
     !floor || compareVersions(version, floor) > 0,
     "Release version must exceed every published or reserved version",
   );
-  const previous = newestRelease(all)?.tag_name;
   if (previous) git("merge-base", "--is-ancestor", previous, sha);
   execFileSync(process.execPath, ["scripts/version.mjs", "set", version], { stdio: "inherit" });
   const date = new Date().toISOString().slice(0, 10);

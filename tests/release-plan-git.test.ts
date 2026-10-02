@@ -147,6 +147,21 @@ for (const file of ["app.ts", "package.json", "CHANGELOG.md", "new-app.ts"]) {
   }, 30000);
 }
 
+test("features since the last release raise the minor version once", () => {
+  const value = fixture();
+  writeFileSync(join(value.root, "app.ts"), "feature\n");
+  value.commit("feat(grid): new feature");
+  expect(value.run("prepare").status).toBe(0);
+  const plan = () =>
+    JSON.parse(readFileSync(join(value.root, ".github/release-plan.json"), "utf8")).version;
+  expect(plan()).toBe("0.9.0");
+  value.commit("chore(release): reserve v0.9.0");
+  writeFileSync(join(value.root, "app.ts"), "later\n");
+  value.commit("feat: another feature");
+  expect(value.run("prepare").status).toBe(0);
+  expect(plan()).toBe("0.9.1");
+}, 30000);
+
 test("stale requested versions and dirty checkouts fail without bumping source files", () => {
   const value = fixture();
   const file = join(value.root, "package.json");
