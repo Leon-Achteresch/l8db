@@ -1286,8 +1286,11 @@ impl DatabaseAdapter for MssqlAdapter {
         let object = Self::object(schema, table);
         let current = self
             .rows(&format!(
-                "SELECT TYPE_NAME(c.user_type_id), c.max_length, c.precision, c.scale, c.collation_name, c.is_nullable, t.is_user_defined, SCHEMA_NAME(t.schema_id) \
+                "SELECT TYPE_NAME(c.user_type_id), c.max_length, c.precision, c.scale, c.collation_name, c.is_nullable, t.is_user_defined, SCHEMA_NAME(t.schema_id), \
+                 c.is_xml_document, SCHEMA_NAME(x.schema_id), x.name, c.is_sparse, c.is_masked, mc.masking_function \
                  FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id \
+                 LEFT JOIN sys.xml_schema_collections x ON x.xml_collection_id = c.xml_collection_id AND c.xml_collection_id <> 0 \
+                 LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id \
                  WHERE c.object_id = OBJECT_ID({}) AND c.name = {}",
                 lit(&object),
                 lit(&changes.old_name)
@@ -1298,7 +1301,21 @@ impl DatabaseAdapter for MssqlAdapter {
             .ok_or_else(|| format!("Unbekannte Spalte: {}", changes.old_name))?;
         if changes.data_type.is_some() || changes.set_not_null.is_some() {
             let user_defined = int(&current, 6) == 1;
-            let current_type = if user_defined {
+            let xml_schema = text_opt(&current, 10).map(|name| {
+                let facet = if int(&current, 8) == 1 {
+                    "DOCUMENT"
+                } else {
+                    "CONTENT"
+                };
+                format!(
+                    "xml({facet} {}.{})",
+                    quote(&text(&current, 9)),
+                    quote(&name)
+                )
+            });
+            let current_type = if let Some(xml) = xml_schema {
+                xml
+            } else if user_defined {
                 format!(
                     "{}.{}",
                     quote(&text(&current, 7)),
@@ -1319,12 +1336,24 @@ impl DatabaseAdapter for MssqlAdapter {
                 collation.as_deref(),
             );
             let nullable = !changes.set_not_null.unwrap_or(int(&current, 5) != 1);
-            self.exec(&format!(
-                "ALTER TABLE {object} ALTER COLUMN {} {} {}",
-                quote(&changes.old_name),
-                data_type,
+            let sparse = if int(&current, 11) == 1 {
+                " SPARSE"
+            } else {
+                ""
+            };
+            let column = quote(&changes.old_name);
+            let alter = format!(
+                "ALTER TABLE {object} ALTER COLUMN {column} {data_type}{sparse} {}",
                 if nullable { "NULL" } else { "NOT NULL" }
-            ))
+            );
+            let mask = text_opt(&current, 13).filter(|_| int(&current, 12) == 1);
+            self.exec(&match mask {
+                Some(function) => format!(
+                    "SET XACT_ABORT ON; BEGIN TRANSACTION; {alter}; ALTER TABLE {object} ALTER COLUMN {column} ADD MASKED WITH (FUNCTION = {}); COMMIT TRANSACTION",
+                    lit(&function)
+                ),
+                None => alter,
+            })
             .await?;
         }
         if changes.drop_default || changes.new_default.is_some() {
@@ -2117,6 +2146,72 @@ mod tests {
             .iter()
             .map(|r| (text(r, 0), text(r, 1), text(r, 2)))
             .collect()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_keeps_xml_schema_sparse_and_mask() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new(&url, Some("master"), pool, "alter-attrs".into()).unwrap();
+        for sql in [
+            "IF OBJECT_ID('dbo.l8db_alter_attrs') IS NOT NULL DROP TABLE dbo.l8db_alter_attrs",
+            "IF EXISTS (SELECT 1 FROM sys.xml_schema_collections WHERE name = 'l8db_rpx') DROP XML SCHEMA COLLECTION dbo.l8db_rpx",
+            "CREATE XML SCHEMA COLLECTION dbo.l8db_rpx AS N'<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"a\" type=\"xs:int\"/></xs:schema>'",
+            "CREATE TABLE dbo.l8db_alter_attrs (x xml(CONTENT dbo.l8db_rpx) NULL, xd xml(DOCUMENT dbo.l8db_rpx) NULL, sp int SPARSE NULL, m varchar(20) MASKED WITH (FUNCTION = 'partial(1, \"xx\", 0)') NULL)",
+        ] {
+            adapter.rows(sql).await.expect(sql);
+        }
+        let state = || async {
+            adapter
+                .rows("SELECT c.name, CAST(c.xml_collection_id AS int), CAST(c.is_xml_document AS int), CAST(c.is_sparse AS int), CAST(c.is_masked AS int), ISNULL(mc.masking_function, '') FROM sys.columns c LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id WHERE c.object_id = OBJECT_ID('dbo.l8db_alter_attrs') ORDER BY c.column_id")
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| format!("{}/{}/{}/{}/{}/{}", text(r, 0), int(r, 1) != 0, int(r, 2), int(r, 3), int(r, 4), text(r, 5)))
+                .collect::<Vec<_>>()
+        };
+        let before = state().await;
+        for name in ["x", "xd", "sp", "m"] {
+            adapter
+                .alter_column(
+                    "dbo",
+                    "l8db_alter_attrs",
+                    &AlterColumnRequest {
+                        old_name: name.into(),
+                        new_name: None,
+                        data_type: None,
+                        set_not_null: Some(false),
+                        new_default: None,
+                        drop_default: false,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+        assert_eq!(state().await, before);
+        adapter
+            .alter_column(
+                "dbo",
+                "l8db_alter_attrs",
+                &AlterColumnRequest {
+                    old_name: "m".into(),
+                    new_name: None,
+                    data_type: Some("varchar(40)".into()),
+                    set_not_null: None,
+                    new_default: None,
+                    drop_default: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(state().await, before);
+        adapter
+            .rows("DROP TABLE dbo.l8db_alter_attrs; DROP XML SCHEMA COLLECTION dbo.l8db_rpx")
+            .await
+            .expect("cleanup");
     }
 
     #[tokio::test]
