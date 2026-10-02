@@ -284,6 +284,7 @@ const IMPLICIT_COMMIT_WORDS: Record<string, Set<string>> = {
 };
 
 const ROUTINE_WORDS = new Set(["PROC", "PROCEDURE", "TRIGGER", "FUNCTION"]);
+const GO_LINE = /^[ \t]*GO(?:[ \t]+\d+)?[ \t]*$/im;
 const END_COMMITS = new Set(["postgres", "sqlite", "sqlite_http"]);
 
 function definesRoutine(words: Token[]): boolean {
@@ -324,7 +325,7 @@ function controlsTransaction(
   )
     return true;
   if (!managed) return false;
-  if (dialect === "mssql" && !definesRoutine(words))
+  if (dialect === "mssql")
     return words.some(
       (token, index) =>
         ["COMMIT", "ROLLBACK"].includes(token.word) ||
@@ -352,7 +353,17 @@ function transactionIssue(
 ): "control" | "implicit" | null {
   if (dialect === "redis" || dialect === "mongodb") return null;
   let insideBody = false;
+  let routine = false;
   for (const statement of splitSqlStatements(sql, dialect).statements) {
+    if (dialect === "mssql") {
+      for (const [index, batch] of statement.text.split(GO_LINE).entries()) {
+        if (index > 0) routine = false;
+        const words = sqlTokens(batch, dialect);
+        routine ||= definesRoutine(words);
+        if (!routine && controlsTransaction(words, dialect, false, managed)) return "control";
+      }
+      continue;
+    }
     const words = sqlTokens(statement.text, dialect);
     if (controlsTransaction(words, dialect, insideBody, managed)) return "control";
     if (insideBody && words[0]?.word === "END") insideBody = false;

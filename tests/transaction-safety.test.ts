@@ -311,6 +311,26 @@ describe("transaction control detection", () => {
     expect(managedQueryIssue("ALTER TRIGGER tr ON t AFTER UPDATE AS ROLLBACK", "mssql")).toBeNull();
   });
 
+  test("T-SQL routine bodies with semicolons keep COMMIT and ROLLBACK inside the batch", () => {
+    const trigger =
+      "CREATE TRIGGER tr ON t AFTER UPDATE AS\nBEGIN\n IF EXISTS (SELECT 1 FROM inserted WHERE a < 0)\n BEGIN\n RAISERROR('neg',16,1);\n ROLLBACK TRANSACTION;\n END\nEND";
+    const procedure = "CREATE OR ALTER PROCEDURE p AS BEGIN TRAN; UPDATE t SET a=1; COMMIT; END";
+    for (const sql of [trigger, procedure, `${procedure}\nGO\n${trigger}\ngo`]) {
+      expect(managedQueryIssue(sql, "mssql")).toBeNull();
+      expect(scriptPolicyIssue(sql, "mssql", false)).toBeNull();
+      expect(scriptPolicyIssue(sql, "mssql", true)).toBeNull();
+    }
+    expect(managedQueryIssue(`${procedure}\nGO\nCOMMIT;`, "mssql")).toContain(
+      "Transaktionsbefehle",
+    );
+    expect(managedQueryIssue(`${trigger}\nGO\nUPDATE t SET a = 1; COMMIT`, "mssql")).toContain(
+      "Transaktionsbefehle",
+    );
+    expect(scriptPolicyIssue(`${procedure}\nGO 2\nBEGIN TRAN;`, "mssql", false)).toContain(
+      "Transaktionsbefehle",
+    );
+  });
+
   test("T-SQL batches that commit still count as transaction control", () => {
     expect(managedQueryIssue("UPDATE t SET a = 1 COMMIT", "mssql")).toContain(
       "Transaktionsbefehle",
