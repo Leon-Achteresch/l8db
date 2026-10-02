@@ -1,6 +1,12 @@
+import type { Update } from "@tauri-apps/plugin-updater";
 import { toast } from "sonner";
 import { recordDiagnosticError } from "@/lib/diagnostics";
 import { useSettingsStore } from "@/lib/settings";
+import {
+  collectUpdateBlockers,
+  describeUpdateBlockers,
+  updateCanRelaunch,
+} from "@/lib/update-blockers";
 import {
   checkForUpdates,
   getPendingUpdate,
@@ -44,7 +50,7 @@ async function maybeCheck(force = false): Promise<void> {
   }
 }
 
-async function runCheck(): Promise<void> {
+export async function runCheck(): Promise<void> {
   try {
     const { autoUpdateCheck, autoUpdateInstall, skippedUpdateVersion } =
       useSettingsStore.getState();
@@ -63,14 +69,30 @@ async function runCheck(): Promise<void> {
   }
 }
 
+function postpone(update: Update, reason: string): void {
+  toast.info(`Update auf Version ${update.version} wartet`, {
+    description: `Automatische Installation verschoben: ${reason}.`,
+  });
+  presentUpdate(update);
+}
+
 async function installSilently(): Promise<void> {
   const update = getPendingUpdate();
   if (!update) return;
+  const blocked = describeUpdateBlockers(await collectUpdateBlockers());
+  if (blocked) {
+    postpone(update, blocked);
+    return;
+  }
   toast.info(`Update auf Version ${update.version} wird installiert …`, {
     description: "Die App startet danach automatisch neu.",
   });
   try {
-    await installUpdateAndRelaunch(update);
+    if (await installUpdateAndRelaunch(update, undefined, updateCanRelaunch)) return;
+    postpone(
+      update,
+      describeUpdateBlockers(await collectUpdateBlockers()) ?? "offene Arbeit in der App",
+    );
   } catch (error) {
     recordDiagnosticError("updater", String(error));
     toast.error("Automatisches Update fehlgeschlagen", {

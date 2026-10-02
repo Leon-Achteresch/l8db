@@ -65,13 +65,20 @@ export async function checkForUpdates(timeoutMs = UPDATE_CHECK_TIMEOUT_MS): Prom
   return update;
 }
 
+function flushPendingState(): void {
+  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+  window.dispatchEvent(new Event("pagehide"));
+  window.dispatchEvent(new Event("pagehide"));
+}
+
 export async function installUpdateAndRelaunch(
   update: Update,
   onProgress?: (percent: number) => void,
-): Promise<void> {
+  canRelaunch?: () => Promise<boolean>,
+): Promise<boolean> {
   let downloaded = 0;
   let total = 0;
-  await update.downloadAndInstall((event) => {
+  await update.download((event) => {
     if (event.event === "Started") {
       total = event.data.contentLength ?? 0;
       downloaded = 0;
@@ -80,8 +87,12 @@ export async function installUpdateAndRelaunch(
     }
     if (total > 0) onProgress?.(Math.min(100, Math.round((downloaded / total) * 100)));
   });
+  if (canRelaunch && !(await canRelaunch())) return false;
+  flushPendingState();
+  await update.install();
   setPendingUpdate(null);
   await relaunch();
+  return true;
 }
 
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;

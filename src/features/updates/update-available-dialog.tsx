@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { extractHighlights } from "@/lib/markdown";
 import { useSettingsStore } from "@/lib/settings";
+import { collectUpdateBlockers, describeUpdateBlockers } from "@/lib/update-blockers";
 import { closeUpdatePrompt, getAppVersion, installUpdateAndRelaunch } from "@/lib/updater";
 
 function publishedLabel(date: string | undefined): string | null {
@@ -25,6 +26,7 @@ export function UpdateAvailableDialog() {
   const visibleUpdate = update && update.version !== skippedUpdateVersion ? update : null;
   const [percent, setPercent] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
+  const [blocked, setBlocked] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const busy = percent !== null;
   const visible = open && visibleUpdate !== null;
@@ -53,6 +55,13 @@ export function UpdateAvailableDialog() {
 
   async function onInstall(next: Update) {
     setFailed(false);
+    if (blocked === null) {
+      const pending = describeUpdateBlockers(await collectUpdateBlockers());
+      if (pending) {
+        setBlocked(pending);
+        return;
+      }
+    }
     setPercent(0);
     try {
       await installUpdateAndRelaunch(next, setPercent);
@@ -65,6 +74,7 @@ export function UpdateAvailableDialog() {
   function onDismiss() {
     if (busy) return;
     setFailed(false);
+    setBlocked(null);
     closeUpdatePrompt();
   }
 
@@ -170,6 +180,13 @@ export function UpdateAvailableDialog() {
               </p>
             ) : null}
 
+            {blocked && !busy ? (
+              <p className="rounded-2xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                {blocked}. Beim Neustart werden offene Transaktionen zurückgerollt und laufende
+                Aufgaben abgebrochen.
+              </p>
+            ) : null}
+
             <Button
               type="button"
               size="lg"
@@ -177,7 +194,11 @@ export function UpdateAvailableDialog() {
               disabled={busy}
               onClick={() => void onInstall(visibleUpdate)}
             >
-              {busy ? `Installiert … ${percent}%` : "Jetzt installieren"}
+              {busy
+                ? `Installiert … ${percent}%`
+                : blocked
+                  ? "Trotzdem installieren"
+                  : "Jetzt installieren"}
             </Button>
 
             <Link
