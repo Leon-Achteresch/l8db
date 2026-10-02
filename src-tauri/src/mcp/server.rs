@@ -416,20 +416,10 @@ impl Server {
             }
             DatabaseKind::Redis => nosql::redis_check(sql, true)?,
             _ => {
-                if redact::statement_count(sql) > 1 {
-                    return Err("Nur ein Statement pro Aufruf.".into());
-                }
-                if let Some(word) = redact::dangerous_word(sql) {
-                    return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
-                }
-                let index_ddl = connection.kind == DatabaseKind::Elasticsearch
-                    && db::elasticsearch::is_index_ddl(sql);
-                if !connection.allow_ddl && (index_ddl || redact::is_ddl(sql)) {
-                    return Err(format!(
-                        "DDL ist für '{}' nicht freigegeben.",
-                        connection.name
-                    ));
-                }
+                let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+                let columns = self.columns_for(config, connection).await?;
+                let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+                check_write_sql(sql, connection, &index)?;
             }
         }
         let adapter = adapter(connection, &self.pool)?;
@@ -448,12 +438,37 @@ impl Server {
     }
 }
 
+pub(super) fn check_write_sql(
+    sql: &str,
+    connection: &McpConnection,
+    index: &redact::SchemaIndex,
+) -> Result<(), String> {
+    if redact::statement_count(sql) > 1 {
+        return Err("Nur ein Statement pro Aufruf.".into());
+    }
+    if let Some(word) = redact::dangerous_word(sql) {
+        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+    }
+    let index_ddl =
+        connection.kind == DatabaseKind::Elasticsearch && db::elasticsearch::is_index_ddl(sql);
+    if !connection.allow_ddl && (index_ddl || redact::is_ddl(sql)) {
+        return Err(format!(
+            "DDL ist für '{}' nicht freigegeben.",
+            connection.name
+        ));
+    }
+    redact::check_references(sql, index)
+}
+
 pub(super) fn check_read_sql(
     sql: &str,
     connection: &McpConnection,
     index: &redact::SchemaIndex,
 ) -> Result<(), String> {
     match http_read_only(connection.kind, sql) {
+        Some(true) if connection.kind == DatabaseKind::S3 => {
+            return redact::check_s3_select(sql, index)
+        }
         Some(true) => return redact::check_references(sql, index),
         Some(false) => {
             return Err(format!(
@@ -582,8 +597,51 @@ pub(super) fn with_database(
             connection.name
         ));
     }
+    if !database_allowed(&connection, database) {
+        return Err(format!(
+            "Datenbank '{database}' ist für '{}' nicht freigegeben. Die Schema-Freigabe gilt nur für die Datenbank der Verbindung.",
+            connection.name
+        ));
+    }
     connection.database = Some(database.to_string());
     Ok(connection)
+}
+
+fn database_allowed(connection: &McpConnection, database: &str) -> bool {
+    let schemas = &connection.schemas;
+    if connection.kind == DatabaseKind::Mongodb || schemas.is_empty() {
+        return true;
+    }
+    let schema_is_database = matches!(
+        connection.kind,
+        DatabaseKind::Mysql | DatabaseKind::Clickhouse
+    );
+    (schema_is_database && schemas.iter().any(|s| s.eq_ignore_ascii_case(database)))
+        || configured_database(&connection.connection_string)
+            .is_some_and(|configured| configured.eq_ignore_ascii_case(database))
+}
+
+fn configured_database(raw: &str) -> Option<String> {
+    if let Ok(url) = url::Url::parse(raw) {
+        let path = url.path().trim_matches('/');
+        if !path.is_empty() && !path.contains('/') && raw.contains("://") {
+            return Some(
+                percent_encoding::percent_decode_str(path)
+                    .decode_utf8_lossy()
+                    .into_owned(),
+            );
+        }
+    }
+    raw.split(['?', '&', ';'])
+        .filter_map(|part| part.split_once('='))
+        .find(|(key, _)| {
+            matches!(
+                key.trim().to_ascii_lowercase().as_str(),
+                "database" | "dbname" | "db" | "initial catalog"
+            )
+        })
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub(super) fn find_connection<'a>(
@@ -1019,5 +1077,93 @@ mod tests {
             .contains("nicht freigegeben"));
         std::env::remove_var("L8DB_MCP_CONFIG");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn database_argument_is_limited_when_schemas_are_restricted() {
+        let mut pg = connection(true);
+        assert!(with_database(&pg, &json!({"database": "hr"})).is_ok());
+        pg.schemas = vec!["public".into()];
+        assert!(with_database(&pg, &json!({})).is_ok());
+        assert!(with_database(&pg, &json!({"database": "app"})).is_ok());
+        assert!(with_database(&pg, &json!({"database": "APP"})).is_ok());
+        let err = with_database(&pg, &json!({"database": "hr"})).unwrap_err();
+        assert!(err.contains("hr"), "{err}");
+        assert!(with_database(&pg, &json!({"database": "public"})).is_err());
+        let mut mssql = connection(true);
+        mssql.kind = DatabaseKind::Mssql;
+        mssql.schemas = vec!["dbo".into()];
+        mssql.connection_string = "Server=db;Database=Sales;User Id=sa".into();
+        assert!(with_database(&mssql, &json!({"database": "sales"})).is_ok());
+        assert!(with_database(&mssql, &json!({"database": "master"})).is_err());
+        mssql.connection_string = "sqlserver://db:1433?database=Sales".into();
+        assert!(with_database(&mssql, &json!({"database": "Sales"})).is_ok());
+        assert!(with_database(&mssql, &json!({"database": "hr"})).is_err());
+        let mut mysql = connection(true);
+        mysql.kind = DatabaseKind::Mysql;
+        mysql.connection_string = "mysql://u@h/shop".into();
+        mysql.schemas = vec!["shop".into(), "billing".into()];
+        assert!(with_database(&mysql, &json!({"database": "billing"})).is_ok());
+        assert!(with_database(&mysql, &json!({"database": "hr"})).is_err());
+    }
+
+    #[test]
+    fn execute_applies_schema_allowlist_and_redaction_checks() {
+        let columns = vec![
+            ColumnInfo {
+                schema: "public".into(),
+                table: "users".into(),
+                name: "id".into(),
+                data_type: "int".into(),
+            },
+            ColumnInfo {
+                schema: "public".into(),
+                table: "users".into(),
+                name: "password".into(),
+                data_type: "text".into(),
+            },
+            ColumnInfo {
+                schema: "public".into(),
+                table: "notes".into(),
+                name: "body".into(),
+                data_type: "text".into(),
+            },
+            ColumnInfo {
+                schema: "secret".into(),
+                table: "vault".into(),
+                name: "id".into(),
+                data_type: "int".into(),
+            },
+        ];
+        let mut rw = connection(false);
+        rw.schemas = vec!["public".into()];
+        let redactor = Redactor::new(&McpConfig::default().redaction, &[]);
+        let index = redact::SchemaIndex::new(&columns, &redactor, &rw.schemas);
+        for sql in [
+            "UPDATE secret.vault SET id = id",
+            "DELETE FROM vault",
+            "UPDATE users SET id = id RETURNING password AS p",
+            "UPDATE notes SET body = (SELECT password FROM users LIMIT 1)",
+            "INSERT INTO notes SELECT * FROM users",
+            "DELETE FROM users WHERE id = 1; DELETE FROM notes",
+            "SELECT set_config('default_transaction_read_only', 'off', false)",
+            "DROP TABLE notes",
+        ] {
+            assert!(check_write_sql(sql, &rw, &index).is_err(), "{sql}");
+        }
+        for sql in [
+            "UPDATE users SET id = id + 1 WHERE id = 1",
+            "INSERT INTO notes (body) VALUES ('x')",
+            "DELETE FROM public.notes WHERE body = 'x' RETURNING *",
+        ] {
+            assert!(check_write_sql(sql, &rw, &index).is_ok(), "{sql}");
+        }
+        let s3 = McpConnection {
+            kind: DatabaseKind::S3,
+            ..connection(true)
+        };
+        assert!(check_read_sql("SELECT s._2 FROM s3://b/users.csv s", &s3, &index).is_err());
+        assert!(check_read_sql("SELECT s.password FROM s3://b/users.csv s", &s3, &index).is_err());
+        assert!(check_read_sql("SELECT * FROM s3://b/users.csv", &s3, &index).is_ok());
     }
 }

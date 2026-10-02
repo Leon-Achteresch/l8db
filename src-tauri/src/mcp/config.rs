@@ -276,18 +276,41 @@ pub fn mcp_config() -> McpConfig {
     load()
 }
 
-#[tauri::command]
-pub fn mcp_save_config(config: McpConfig) -> Result<(), String> {
+fn validate(config: &McpConfig, previous: &McpConfig) -> Result<(), String> {
     for rule in config
         .redaction
         .columns
         .iter()
         .chain(&config.redaction.values)
-        .chain(config.connections.iter().flat_map(|c| c.mask_rules.iter()))
     {
         regex::Regex::new(&rule.pattern)
             .map_err(|e| format!("Ungültiges Muster „{}“: {e}", rule.name))?;
     }
+    for connection in &config.connections {
+        let stored = previous
+            .connections
+            .iter()
+            .find(|entry| entry.id == connection.id);
+        for pattern in &connection.redact_columns {
+            if pattern.trim().is_empty()
+                || stored.is_some_and(|entry| entry.redact_columns.contains(pattern))
+            {
+                continue;
+            }
+            super::redact::compile(pattern, true).map_err(|e| {
+                format!(
+                    "Ungültiges Spaltenmuster „{pattern}“ bei „{}“: {e}",
+                    connection.name
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mcp_save_config(config: McpConfig) -> Result<(), String> {
+    validate(&config, &load())?;
     save(&config)
 }
 
@@ -367,5 +390,36 @@ mod tests {
         assert_eq!(parsed.redaction.columns.len(), COLUMN_RULES.len());
         let json = serde_json::to_string(&parsed).unwrap();
         assert_eq!(serde_json::from_str::<McpConfig>(&json).unwrap(), parsed);
+    }
+
+    fn connection(redact_columns: &[&str], mask: &str) -> McpConnection {
+        serde_json::from_value(serde_json::json!({
+            "id": "a",
+            "name": "A",
+            "kind": "postgres",
+            "connectionString": "postgres://u@h/db",
+            "redactColumns": redact_columns,
+            "maskRules": [{"name": "m", "pattern": mask, "enabled": true}],
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn validation_rejects_new_invalid_column_patterns_but_keeps_sync_working() {
+        let previous = McpConfig::default();
+        let mut config = McpConfig {
+            connections: vec![connection(&["kunden_.*"], "^(?!id$).*secret")],
+            ..McpConfig::default()
+        };
+        assert!(validate(&config, &previous).is_ok());
+        for bad in ["*email*", "kunde("] {
+            config.connections = vec![connection(&["kunden_.*", bad], "secret")];
+            let err = validate(&config, &previous).unwrap_err();
+            assert!(err.contains(bad), "{err}");
+        }
+        let stored = config.clone();
+        assert!(validate(&config, &stored).is_ok());
+        config.redaction.columns[0].pattern = "(".into();
+        assert!(validate(&config, &stored).is_err());
     }
 }
