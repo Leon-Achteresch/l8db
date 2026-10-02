@@ -17,17 +17,24 @@ concurrency:
 jobs:
   versions:
     name: Production configuration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
       - run: node scripts/production-check.mjs
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+        with:
+          tool: actionlint@1.7.12
+      - run: actionlint -shellcheck= -pyflakes=
 
   frontend:
     name: Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
       - run: bun install --frozen-lockfile
@@ -35,7 +42,7 @@ jobs:
       - run: bunx biome check ./src
       - run: bun run build
       - run: bun run test
-      - run: bunx playwright install --with-deps chromium webkit
+      - uses: ./.github/actions/setup-browsers
       - name: Install video test encoder
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Feature video playback
@@ -50,17 +57,17 @@ jobs:
 
   browser-smoke:
     name: Browser regressions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium webkit
+      - uses: ./.github/actions/setup-browsers
       - run: bun run build
       - run: bun run test:browser
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
           name: browser-diagnostics
@@ -72,29 +79,15 @@ jobs:
     name: Rust
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/install-linux-dependencies
+      - uses: ./.github/actions/setup-rust
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
+          cache: checks
+          components: rustfmt,clippy
       - run: cargo fmt --check
         working-directory: src-tauri
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
         with:
           tool: cargo-audit
       - name: RustSec audit
@@ -102,12 +95,12 @@ jobs:
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
         working-directory: src-tauri
-      - run: cargo clippy --all-targets --locked --no-default-features
-        working-directory: src-tauri
       - run: cargo test --locked
         working-directory: src-tauri
       - name: PostgreSQL and SSH integration
         run: bash scripts/test-postgres-ssh.sh
+      - run: cargo clippy --all-targets --locked --no-default-features
+        working-directory: src-tauri
 
   platform-build:
     name: Build (${{ matrix.platform }})
@@ -115,17 +108,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest]
+        platform: [macos-15, windows-2025]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup-rust
         with:
-          workspaces: "src-tauri -> target"
+          cache: pr-build
       - run: bun install --frozen-lockfile
       - run: bun run tauri build --no-bundle -- --locked
         env:
