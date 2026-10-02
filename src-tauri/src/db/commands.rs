@@ -2329,7 +2329,7 @@ pub async fn copy_schema_table_data(
     name: String,
     limit: i64,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<u64, String> {
+) -> Result<crate::db::SchemaDataCopy, String> {
     create_adapter_from_string(
         kind,
         &connection_string,
