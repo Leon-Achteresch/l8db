@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -195,6 +195,7 @@ describe.skipIf(!BRIDGE)("Datenvergleich SQLite live", () => {
   test(
     "gleicht Zeilen mit Blob- und Textwerten an",
     async () => {
+      writeFileSync(lab.url, "");
       await run(lab, [
         `CREATE TABLE dc_src (${columns})`,
         `CREATE TABLE dc_dst (${columns})`,
