@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { afterAll, expect, mock, test } from "bun:test";
 
 function provider(id: string, kind: string, schemes: string[], hosts: string[]) {
   return {
@@ -44,8 +44,10 @@ mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string) => (command === "list_providers" ? PROVIDERS : null),
 }));
 
-const { loadProviders } = await import("../src/lib/providers");
+const { loadProviders, useProvidersStore } = await import("../src/lib/providers");
+const initialProviders = useProvidersStore.getState();
 await loadProviders();
+afterAll(() => useProvidersStore.setState(initialProviders, true));
 const { connectionSummary, detectProvider, kindFromUrl, parseConnectionUrl } = await import(
   "../src/lib/connection-url"
 );
