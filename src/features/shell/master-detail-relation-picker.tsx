@@ -45,7 +45,8 @@ export function MasterDetailRelationPicker({
     relations.find((entry) => entry.schema === target?.schema && entry.table === target.table) ??
     relations.find((entry) => entry.columns.some((column) => column.source === selectedColumn)) ??
     relations[0];
-  const relation = relations.find((entry) => entry.id === chosen) ?? preferred;
+  const relation =
+    relations.find((entry) => entry.id === chosen) ?? (autoLoad ? preferred : undefined);
   const kind = connection?.kind;
   const preferredId = preferred?.id;
   useEffect(() => {
@@ -70,7 +71,7 @@ export function MasterDetailRelationPicker({
       <div className="mb-2 text-xs font-medium">Beziehung</div>
       <div className="flex items-center gap-2">
         <Select
-          value={`select:${String(relation?.id ?? "")}`}
+          value={relation ? `select:${String(relation.id)}` : relations.length ? "" : "select:"}
           disabled={!relations.length}
           onValueChange={(encodedValue) => {
             const selectedValue = encodedValue.slice(7);
@@ -119,7 +120,9 @@ export function MasterDetailRelationPicker({
       <p className="mt-2 text-xs text-muted-foreground">
         {relation
           ? `${table}.${relation.columns.map((column) => column.source).join(", ")} → ${relation.table}.${relation.columns.map((column) => column.target).join(", ")}`
-          : "Keine Beziehung gefunden · unten eigenes SQL schreiben."}
+          : relations.length
+            ? "Beziehung wählen, um das SQL unten neu vorzubelegen."
+            : "Keine Beziehung gefunden · unten eigenes SQL schreiben."}
       </p>
     </div>
   );
