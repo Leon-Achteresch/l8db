@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,15 @@ assert(
   "Inline scripts must remain hash restricted",
 );
 assert(!/(?:https?:|\*)/.test(csp["script-src"]), "Remote scripts must remain blocked");
+const sandboxFrame = readFileSync(
+  new URL("../src/lib/extensions/sandbox-frame.js", import.meta.url),
+  "utf8",
+).replace(/\r\n?/g, "\n");
+const sandboxHash = createHash("sha256").update(sandboxFrame).digest("base64");
+assert(
+  csp["script-src"].split(/\s+/).includes(`'sha256-${sandboxHash}'`),
+  "Production CSP must allow the current extension sandbox bootstrap hash",
+);
 for (const policy of [csp, security.devCsp]) {
   assert.equal(
     policy["media-src"],
