@@ -11,6 +11,7 @@ export interface SyncStatement {
   dangerous: boolean;
   phase: number;
   checks?: DataCheck[];
+  backup?: { guard: string; rename: string };
 }
 
 export interface SyncScript {
@@ -201,6 +202,7 @@ export function buildSyncScript(
       body?: string;
       checks?: (DataCheck | null)[];
       repeat?: boolean;
+      backup?: SyncStatement["backup"];
     } = {},
   ) => {
     const text = options.plsql ? sql.trim() : sql.trim().replace(/;\s*$/, "");
@@ -216,6 +218,7 @@ export function buildSyncScript(
       dangerous: Boolean(options.dangerous),
       phase,
       ...(checks.length > 0 ? { checks } : {}),
+      ...(options.backup ? { backup: options.backup } : {}),
     };
     statements.push(statement);
     if (options.name)
@@ -815,7 +818,13 @@ export function buildSyncScript(
         `INSERT OR ROLLBACK INTO ${qualified(table.name)} (${copied}) SELECT ${copied} FROM ${copy}`,
         { repeat: true },
       );
-      emit(phase, `DROP TABLE ${copy}`, { repeat: true });
+      emit(phase, `DROP TABLE ${copy}`, {
+        repeat: true,
+        backup: {
+          guard: qualified(`_l8db_guard_${table.name}`),
+          rename: q(`_l8db_guard_${table.name}`),
+        },
+      });
     }
     for (const child of result.items) {
       if (child.parent !== table.name || (child.type !== "index" && child.type !== "trigger"))
@@ -920,16 +929,30 @@ export function renderSyncScript(
     return `${lines.join("\n").trimEnd()}\n`;
   }
   if (kind === "sqlite") {
-    lines.push(
-      "-- Mit sqlite3 -bail ausführen oder beim ersten Fehler abbrechen.",
-      "",
-      "PRAGMA foreign_keys = OFF;",
-      "BEGIN;",
-      "",
+    const guards = script.statements.flatMap((statement) =>
+      statement.backup ? [statement.backup.guard] : [],
     );
+    lines.push("-- Mit sqlite3 -bail ausführen oder beim ersten Fehler abbrechen.");
+    if (guards.length > 0)
+      lines.push(
+        "-- Nach einem Abbruch bleiben leere Schutztabellen _l8db_guard_* zurück; Sicherungskopien _l8db_copy_* enthalten dann die ursprünglichen Daten.",
+      );
+    lines.push("");
+    for (const guard of guards)
+      lines.push(`CREATE TABLE IF NOT EXISTS ${guard} (l8db_guard INTEGER);`);
+    lines.push("PRAGMA foreign_keys = OFF;", "BEGIN;", "");
+    for (const guard of guards) lines.push(`DROP TABLE ${guard};`);
+    if (guards.length > 0) lines.push("");
     for (const statement of script.statements) {
       note(statement.dangerous);
-      lines.push(`${statement.sql};`, "");
+      if (statement.backup) {
+        const copy = statement.sql.replace(/^DROP TABLE /, "");
+        lines.push(
+          `ALTER TABLE ${copy} RENAME TO ${statement.backup.rename};`,
+          `DROP TABLE ${statement.backup.guard};`,
+          "",
+        );
+      } else lines.push(`${statement.sql};`, "");
     }
     lines.push("PRAGMA foreign_key_check;", "COMMIT;", "PRAGMA foreign_keys = ON;");
     return `${lines.join("\n").trimEnd()}\n`;

@@ -111,6 +111,55 @@ describe("SQLite-Skript bei fortgesetzter Ausführung nach Fehlern", () => {
     ).toEqual([]);
   });
 
+  test("behält die Daten weiterer Tabellen nach einem Rollback in der Sicherungskopie", () => {
+    const [source1, target1] = rebuildTable("t1");
+    const [source2, target2] = rebuildTable("t2");
+    const [source3, target3] = rebuildTable("t3");
+    const script = render(
+      result("sqlite", [...source1, ...source2, ...source3], [...target1, ...target2, ...target3]),
+    );
+    const db = new Database(":memory:");
+    db.run("ATTACH ':memory:' AS app");
+    for (const table of ["t1", "t2", "t3"])
+      db.run(`CREATE TABLE "app"."${table}" (id INTEGER PRIMARY KEY, a TEXT)`);
+    db.run("INSERT INTO app.t1 VALUES (1, NULL)");
+    db.run("INSERT INTO app.t2 VALUES (1, NULL), (2, 'x')");
+    db.run("INSERT INTO app.t3 VALUES (1, 'a'), (2, 'b')");
+    expect(runContinuingOnError(db, script).length).toBeGreaterThan(0);
+    expect(db.query("SELECT count(*) AS n FROM app.t1").get()).toEqual({ n: 1 });
+    const kept = (table: string) => {
+      const names = (
+        db.query("SELECT name FROM app.sqlite_master WHERE type = 'table'").all() as {
+          name: string;
+        }[]
+      ).map((row) => row.name);
+      return [table, `_l8db_copy_${table}`]
+        .filter((name) => names.includes(name))
+        .flatMap((name) => db.query(`SELECT id, a FROM "app"."${name}" ORDER BY id`).all());
+    };
+    expect(kept("t2")).toContainEqual({ id: 1, a: null });
+    expect(kept("t2")).toContainEqual({ id: 2, a: "x" });
+    expect(kept("t3")).toContainEqual({ id: 1, a: "a" });
+    expect(kept("t3")).toContainEqual({ id: 2, a: "b" });
+  });
+
+  test("hinterlässt nach erfolgreichem Lauf weder Kopien noch Schutztabellen", () => {
+    const [source1, target1] = rebuildTable("t1");
+    const [source2, target2] = rebuildTable("t2");
+    const script = render(result("sqlite", [...source1, ...source2], [...target1, ...target2]));
+    const db = new Database(":memory:");
+    db.run("ATTACH ':memory:' AS app");
+    for (const table of ["t1", "t2"]) {
+      db.run(`CREATE TABLE "app"."${table}" (id INTEGER PRIMARY KEY, a TEXT)`);
+      db.run(`INSERT INTO "app"."${table}" VALUES (1, 'a'), (2, 'b')`);
+    }
+    db.exec(script);
+    expect(
+      db.query("SELECT name FROM app.sqlite_master WHERE type = 'table' ORDER BY name").all(),
+    ).toEqual([{ name: "t1" }, { name: "t2" }]);
+    expect(db.query("SELECT count(*) AS n FROM app.t2").get()).toEqual({ n: 2 });
+  });
+
   test("übernimmt den Neuaufbau, wenn die Daten passen", () => {
     const [source, target] = rebuildTable("t");
     const script = render(result("sqlite", source, target));
