@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
+import { triggerStatus } from "@/features/triggers/trigger-status";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { buildInvalidSet, isTriggerInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery, useTriggersQuery } from "@/lib/queries";
@@ -81,16 +82,16 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
                 {trigger.timing} {trigger.event}
               </span>
               <Badge
-                variant={trigger.enabled === "DISABLED" ? "destructive" : "outline"}
+                variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "outline"}
                 className="shrink-0 text-[10px] px-1.5 py-0"
               >
                 {trigger.orientation}
               </Badge>
               <Badge
-                variant={trigger.enabled === "DISABLED" ? "destructive" : "secondary"}
+                variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "secondary"}
                 className="shrink-0 text-[10px] px-1.5 py-0"
               >
-                {trigger.enabled}
+                {triggerStatus(trigger.enabled).label}
               </Badge>
             </motion.button>
           ))}
