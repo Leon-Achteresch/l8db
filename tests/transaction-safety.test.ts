@@ -28,7 +28,7 @@ mock.module("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { analyzedSql, scriptPolicyIssue, sqlTokens, writesData } = await import(
+const { analyzedSql, managedQueryIssue, scriptPolicyIssue, sqlTokens, writesData } = await import(
   "../src/lib/sql-safety"
 );
 const { executeWithTransactionChanges } = await import("../src/lib/transaction-sql-changes");
@@ -291,6 +291,65 @@ describe("transaction control inside a managed transaction", () => {
     expect(
       scriptPolicyIssue("BEGIN UPDATE t SET a = 1; COMMIT; END;\n/", "oracle", true),
     ).toContain("Transaktionsbefehle");
+  });
+});
+
+describe("transaction control detection", () => {
+  const tsqlScript =
+    "CREATE PROCEDURE dbo.p AS\nBEGIN\n BEGIN TRANSACTION\n UPDATE t SET a = 1\n COMMIT TRANSACTION\nEND\nGO\nCREATE TRIGGER tr ON t AFTER UPDATE AS\nBEGIN IF EXISTS (SELECT 1 FROM inserted WHERE a < 0) ROLLBACK\nEND\nGO";
+
+  test("T-SQL routine bodies with COMMIT or ROLLBACK are not transaction control", () => {
+    expect(scriptPolicyIssue(tsqlScript, "mssql", false)).toBeNull();
+    expect(scriptPolicyIssue(tsqlScript, "mssql", true)).toBeNull();
+    expect(managedQueryIssue(tsqlScript, "mssql")).toBeNull();
+    expect(
+      managedQueryIssue(
+        "CREATE OR ALTER PROCEDURE p AS BEGIN TRY BEGIN TRAN UPDATE t SET a = 1 COMMIT END TRY BEGIN CATCH ROLLBACK END CATCH",
+        "mssql",
+      ),
+    ).toBeNull();
+    expect(managedQueryIssue("ALTER TRIGGER tr ON t AFTER UPDATE AS ROLLBACK", "mssql")).toBeNull();
+  });
+
+  test("T-SQL batches that commit still count as transaction control", () => {
+    expect(managedQueryIssue("UPDATE t SET a = 1 COMMIT", "mssql")).toContain(
+      "Transaktionsbefehle",
+    );
+    expect(managedQueryIssue("IF @@ROWCOUNT > 0 BEGIN TRANSACTION", "mssql")).toContain(
+      "Transaktionsbefehle",
+    );
+    expect(scriptPolicyIssue("BEGIN TRANSACTION", "mssql", false)).toContain("Transaktionsbefehle");
+  });
+
+  test("Oracle blocks with COMMIT are only rejected inside a managed transaction", () => {
+    const block = "BEGIN UPDATE t SET a = 1 WHERE id = 1; COMMIT; END;";
+    expect(scriptPolicyIssue(block, "oracle", false)).toBeNull();
+    expect(scriptPolicyIssue(block, "oracle", true)).toContain("Transaktionsbefehle");
+    expect(managedQueryIssue(block, "oracle")).toContain("Transaktionsbefehle");
+  });
+
+  for (const kind of ["sqlite", "sqlite_http"]) {
+    test(`${kind} END commits the transaction`, () => {
+      expect(managedQueryIssue("END", kind)).toContain("Transaktionsbefehle");
+      expect(managedQueryIssue("END TRANSACTION", kind)).toContain("Transaktionsbefehle");
+      expect(managedQueryIssue("UPDATE t SET a = 1; END;", kind)).toContain("Transaktionsbefehle");
+      expect(scriptPolicyIssue("END", kind, true)).toContain("Transaktionsbefehle");
+      expect(scriptPolicyIssue("END", kind, false)).toContain("Transaktionsbefehle");
+    });
+
+    test(`${kind} trigger bodies keep their END`, () => {
+      const trigger =
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN UPDATE c SET n = n + 1; INSERT INTO log VALUES (1); END;";
+      expect(managedQueryIssue(trigger, kind)).toBeNull();
+      expect(scriptPolicyIssue(trigger, kind, true)).toBeNull();
+      expect(managedQueryIssue(`${trigger} END;`, kind)).toContain("Transaktionsbefehle");
+    });
+  }
+
+  test("Postgres BEGIN ATOMIC bodies keep their END and a second END is control", () => {
+    const fn = "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1; END;";
+    expect(managedQueryIssue(fn, "postgres")).toBeNull();
+    expect(managedQueryIssue(`${fn} END;`, "postgres")).toContain("Transaktionsbefehle");
   });
 });
 
