@@ -33,8 +33,10 @@ for (const engine of [chromium, webkit]) {
         await page.keyboard.press("ControlOrMeta+a");
         await page.keyboard.insertText("select id from users");
         await page.keyboard.press("Shift+Alt+f");
-        await page.waitForFunction(() =>
-          document.querySelector(".cm-content")?.textContent?.startsWith("SELECT"),
+        await page.waitForFunction(
+          () =>
+            document.querySelector(".cm-content")?.textContent?.startsWith("SELECT") &&
+            document.querySelector('[aria-label="Editorwert"]')?.textContent?.startsWith("SELECT"),
         );
         expect(await page.getByLabel("Editorwert").textContent()).toMatch(
           /SELECT\s+id\s+FROM\s+users/,

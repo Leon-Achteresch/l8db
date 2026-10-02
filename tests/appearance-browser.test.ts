@@ -212,9 +212,12 @@ for (const engine of [chromium, webkit]) {
             await page.evaluate(() => document.documentElement.scrollWidth),
           ).toBeLessThanOrEqual(760);
           await page.screenshot({ path: `/tmp/l8db-appearance-app-${engine.name()}.png` });
-          await page.getByRole("button", { name: "Bereiche öffnen" }).click();
-          expect(await page.getByRole("menuitem").count()).toBe(11);
-          await page.keyboard.press("Escape");
+          const areas = page.getByRole("navigation", { name: "Bereiche" }).getByRole("link");
+          expect(await areas.count()).toBe(11);
+          await areas.last().scrollIntoViewIfNeeded();
+          const lastArea = await areas.last().boundingBox();
+          expect(lastArea!.y).toBeGreaterThanOrEqual(0);
+          expect(lastArea!.y + lastArea!.height).toBeLessThanOrEqual(560);
           await reset.click();
           expect(await page.getByRole("slider").inputValue()).toBe("100");
           await page.getByPlaceholder("Einstellungen durchsuchen …").fill("Oberflächengröße");
