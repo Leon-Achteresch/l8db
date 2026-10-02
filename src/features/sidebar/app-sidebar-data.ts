@@ -26,7 +26,7 @@ export type AppSidebarNavItem = {
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, featureScope: "dashboard" },
     { title: "Übersicht", url: "/", icon: Home, available: (caps) => caps.overview },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
     {

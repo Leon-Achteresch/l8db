@@ -1,8 +1,6 @@
-import { LayoutDashboardIcon, PlusIcon } from "lucide-react";
 import { memo } from "react";
 import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
-import { Button } from "@/components/ui/button";
 import {
   type Dashboard,
   GRID_COLS,
@@ -12,6 +10,7 @@ import {
   useDashboardsStore,
   type Widget,
 } from "@/lib/dashboards";
+import { DashboardEmptyCanvas } from "./dashboard-empty-canvas";
 import { WidgetCard } from "./widget-card";
 
 const EMPTY_WIDGETS: Widget[] = [];
@@ -20,10 +19,12 @@ export const DashboardCanvas = memo(function DashboardCanvas({
   dashboardId,
   onEdit,
   onAdd,
+  onOpenCharts,
 }: {
   dashboardId: string;
   onEdit?: (id: string) => void;
   onAdd?: () => void;
+  onOpenCharts?: () => void;
 }) {
   const widgets = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.widgets ?? EMPTY_WIDGETS,
@@ -55,8 +56,8 @@ export const DashboardCanvas = memo(function DashboardCanvas({
     }));
 
   return (
-    <div ref={containerRef} className="relative min-h-full p-4">
-      {mounted && (
+    <div ref={containerRef} className="relative min-h-full p-4 sm:p-6">
+      {mounted && widgets.length > 0 && (
         <GridLayout
           width={width}
           layout={layout}
@@ -84,21 +85,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
         </GridLayout>
       )}
       {dashboard.widgets.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center p-4">
-          <div className="pointer-events-auto max-w-md rounded-2xl border border-dashed bg-card/60 p-8 text-center">
-            <LayoutDashboardIcon className="mx-auto mb-3 size-8 text-muted-foreground/60" />
-            <p className="text-sm font-semibold">Noch ist hier leer</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Ein Chart beantwortet eine Frage an deine Daten, zum Beispiel „Wie viele Bestellungen
-              gab es pro Monat?“
-            </p>
-            {onAdd && (
-              <Button size="sm" className="mt-4" onClick={onAdd}>
-                <PlusIcon /> Ersten Chart erstellen
-              </Button>
-            )}
-          </div>
-        </div>
+        <DashboardEmptyCanvas onAdd={onAdd} onOpenCharts={onOpenCharts} />
       )}
     </div>
   );

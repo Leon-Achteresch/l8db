@@ -2,6 +2,8 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "dashboard.visual-builder": "0.8.0",
+  "dashboard.chart-gallery": "0.8.0",
   "versioning.overview": "0.8.0",
   "versioning.branches.swimlanes": "0.8.0",
   "versioning.releases.generate": "0.8.0",
