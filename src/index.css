@@ -220,8 +220,8 @@
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  min-height: 4.5rem;
-  padding: 1rem;
+  min-height: 3.5rem;
+  padding: 0.75rem;
   border-radius: var(--radius-2xl);
   font-family: var(--font-sans);
   font-size: 0.875rem;
@@ -241,13 +241,13 @@
 }
 
 .l8-toast:has(> .l8-toast-icon) {
-  padding-left: 3.75rem;
+  padding-left: 3.25rem;
 }
 
 .l8-toast > .l8-toast-icon {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  top: 0.75rem;
+  left: 0.75rem;
 }
 
 .l8-toast [data-content] {
@@ -256,14 +256,14 @@
 }
 
 .l8-toast[data-dismissible="true"]:has(> .l8-toast-close) {
-  padding-right: 3rem;
+  padding-right: 2.75rem;
   cursor: pointer;
 }
 
 .l8-toast-close {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  top: 0.5rem;
+  right: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
