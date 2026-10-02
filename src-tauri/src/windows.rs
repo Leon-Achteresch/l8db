@@ -20,6 +20,7 @@ const QUICK_ACTIONS: [(&str, &str); 3] = [
 #[cfg(any(target_os = "macos", windows))]
 const RECENTS_TITLE: &str = "Verbindung öffnen";
 const CASCADE_OFFSET: f64 = 28.0;
+pub const MAIN_LABEL: &str = "main";
 
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
@@ -90,6 +91,34 @@ pub fn target_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>>
     focused_window(app)
         .or_else(|| app.get_webview_window("main"))
         .or_else(|| app.webview_windows().into_values().next())
+}
+
+fn recreate_main(main_exists: bool, open_windows: usize) -> bool {
+    !main_exists && open_windows > 0
+}
+
+pub fn main_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
+    let existing = app.get_webview_window(MAIN_LABEL);
+    if !recreate_main(existing.is_some(), app.webview_windows().len()) {
+        return existing;
+    }
+    let mut config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == MAIN_LABEL)
+        .or_else(|| app.config().app.windows.first())
+        .cloned()
+        .unwrap_or_default();
+    config.label = MAIN_LABEL.to_string();
+    match WebviewWindowBuilder::from_config(app, &config).and_then(|builder| builder.build()) {
+        Ok(window) => Some(window),
+        Err(error) => {
+            log::error!("main window failed: {error}");
+            None
+        }
+    }
 }
 
 pub fn open<R: Runtime>(app: &AppHandle<R>, connection: Option<&str>) -> tauri::Result<()> {
@@ -400,6 +429,14 @@ mod jump_list {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_window_is_recreated_only_while_other_windows_are_open() {
+        assert!(recreate_main(false, 1));
+        assert!(recreate_main(false, 3));
+        assert!(!recreate_main(true, 2));
+        assert!(!recreate_main(false, 0));
+    }
 
     #[test]
     fn window_connections_track_other_windows() {
