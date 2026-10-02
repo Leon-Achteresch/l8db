@@ -59,6 +59,8 @@ export const NETWORK_SECRET_SUFFIXES = [":ssh", ":ssh-jumps", ":proxy", QUERY_SE
 
 const storedQuerySecrets = new Map<string, string | null>();
 
+const resolvedQuerySecrets = new Set<string>();
+
 export function persistedConnectionString(value: string): string {
   return splitSecretParams(scrubUrlPassword(value)).value;
 }
@@ -73,8 +75,23 @@ export async function loadQuerySecret(
     storedQuerySecrets.set(connection.id, secrets);
     return secrets;
   } catch {
+    storedQuerySecrets.delete(connection.id);
     return peekSecret(account);
   }
+}
+
+function querySecretKnown(connection: Pick<SavedConnection, "id" | "vault" | "connectionString">) {
+  return (
+    splitSecretParams(connection.connectionString).secrets !== null ||
+    connection.vault === true ||
+    storedQuerySecrets.has(connection.id)
+  );
+}
+
+export function markQuerySecretResolved(
+  connection: Pick<SavedConnection, "id" | "vault" | "connectionString">,
+): void {
+  if (querySecretKnown(connection)) resolvedQuerySecrets.add(connection.id);
 }
 
 const pendingQuerySecrets = new Map<string, string>();
@@ -84,11 +101,15 @@ function querySecretInKeychain(connection: SavedConnection, secrets: string | nu
   const stored = storedQuerySecrets.get(connection.id);
   if (secrets === null) {
     pendingQuerySecrets.delete(connection.id);
-    if (!stored) return true;
+    if (!resolvedQuerySecrets.has(connection.id) || stored === null) return true;
     storedQuerySecrets.set(connection.id, null);
-    void deleteSecret(account).catch(() => storedQuerySecrets.set(connection.id, stored));
+    void deleteSecret(account).catch(() => {
+      if (stored === undefined) storedQuerySecrets.delete(connection.id);
+      else storedQuerySecrets.set(connection.id, stored);
+    });
     return true;
   }
+  resolvedQuerySecrets.add(connection.id);
   if (stored === secrets) return true;
   if (connection.vault) {
     storedQuerySecrets.set(connection.id, secrets);
@@ -253,6 +274,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
       removeConnection: (id) => {
         storedQuerySecrets.delete(id);
         pendingQuerySecrets.delete(id);
+        resolvedQuerySecrets.delete(id);
         void deleteSecret(id).catch(() => undefined);
         for (const suffix of NETWORK_SECRET_SUFFIXES) {
           void deleteSecret(`${id}${suffix}`).catch(() => undefined);
@@ -356,20 +378,25 @@ async function loadSyncedSecrets(previous: SavedConnection[]): Promise<void> {
       splitSecretParams(connection.connectionString).secrets === null
         ? await loadQuerySecret(connection)
         : null;
-    if (!secret && !params) continue;
-    useConnectionsStore.setState((state) => ({
-      connections: state.connections.map((entry) =>
-        entry.id === connection.id && entry.connectionString === connection.connectionString
-          ? {
-              ...entry,
-              connectionString: withSecretParams(
-                secret ? injectUrlPassword(entry.connectionString, secret) : entry.connectionString,
-                params,
-              ),
-            }
-          : entry,
-      ),
-    }));
+    const next = withSecretParams(
+      secret ? injectUrlPassword(connection.connectionString, secret) : connection.connectionString,
+      params,
+    );
+    if (next !== connection.connectionString)
+      useConnectionsStore.setState((state) => ({
+        connections: state.connections.map((entry) =>
+          entry.id === connection.id && entry.connectionString === connection.connectionString
+            ? { ...entry, connectionString: next }
+            : entry,
+        ),
+      }));
+    if (
+      querySecretKnown(connection) &&
+      useConnectionsStore
+        .getState()
+        .connections.some((entry) => entry.id === connection.id && entry.connectionString === next)
+    )
+      resolvedQuerySecrets.add(connection.id);
   }
 }
 
@@ -384,8 +411,11 @@ export function syncConnectionsFromStorage(): void {
   }
   const known = new Map(previous.map((connection) => [connection.id, connection.connectionString]));
   for (const connection of useConnectionsStore.getState().connections) {
-    if (known.get(connection.id) !== connection.connectionString)
-      storedQuerySecrets.delete(connection.id);
+    if (known.get(connection.id) === connection.connectionString) continue;
+    storedQuerySecrets.delete(connection.id);
+    if (splitSecretParams(connection.connectionString).secrets === null)
+      resolvedQuerySecrets.delete(connection.id);
+    else resolvedQuerySecrets.add(connection.id);
   }
   void Promise.resolve(rehydrated).then(() => loadSyncedSecrets(previous));
 }
