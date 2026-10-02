@@ -812,7 +812,7 @@ export function buildSyncScript(
     if (copied) {
       emit(
         phase,
-        `INSERT INTO ${qualified(table.name)} (${copied}) SELECT ${copied} FROM ${copy}`,
+        `INSERT OR ROLLBACK INTO ${qualified(table.name)} (${copied}) SELECT ${copied} FROM ${copy}`,
         { repeat: true },
       );
       emit(phase, `DROP TABLE ${copy}`, { repeat: true });
@@ -901,16 +901,32 @@ export function renderSyncScript(
     return `${lines.join("\n").trimEnd()}\n`;
   }
   if (kind === "mssql") {
-    lines.push("SET XACT_ABORT ON;", "BEGIN TRANSACTION;", "GO", "");
+    const guard = [
+      "IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;",
+      "IF @@TRANCOUNT = 0",
+      "BEGIN",
+      "  RAISERROR(N'Schema-Synchronisation abgebrochen: Die Transaktion wurde zurückgerollt, weitere Anweisungen werden nicht ausgeführt.', 16, 1);",
+      "  SET NOEXEC ON;",
+      "END",
+      "GO",
+      "",
+    ];
+    lines.push("SET XACT_ABORT ON;", "SET NOEXEC OFF;", "BEGIN TRANSACTION;", "GO", "");
     for (const statement of script.statements) {
       note(statement.dangerous);
-      lines.push(statement.plsql ? statement.sql : `${statement.sql};`, "GO", "");
+      lines.push(statement.plsql ? statement.sql : `${statement.sql};`, "GO", ...guard);
     }
-    lines.push("COMMIT TRANSACTION;", "GO");
+    lines.push("COMMIT TRANSACTION;", "GO", "SET NOEXEC OFF;", "GO");
     return `${lines.join("\n").trimEnd()}\n`;
   }
   if (kind === "sqlite") {
-    lines.push("PRAGMA foreign_keys = OFF;", "BEGIN;", "");
+    lines.push(
+      "-- Mit sqlite3 -bail ausführen oder beim ersten Fehler abbrechen.",
+      "",
+      "PRAGMA foreign_keys = OFF;",
+      "BEGIN;",
+      "",
+    );
     for (const statement of script.statements) {
       note(statement.dangerous);
       lines.push(`${statement.sql};`, "");
