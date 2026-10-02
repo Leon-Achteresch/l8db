@@ -62,14 +62,14 @@ export function SidebarSearchInput({
         title="Regulären Ausdruck verwenden"
         onClick={() => onRegexEnabledChange(!regexEnabled)}
         className={cn(
-          "absolute right-1 top-1/2 inline-flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded hover:bg-accent",
+          "absolute right-1 top-1/2 inline-flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-xl hover:bg-accent",
           regexEnabled && "bg-primary/15 text-primary",
         )}
       >
         <RegexIcon className="size-3.5" />
       </button>
       {open && suggestions.length > 0 ? (
-        <ul className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-md border bg-popover py-1 shadow-md">
+        <ul className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border bg-popover py-1 shadow-md">
           {suggestions.map((entry) => (
             <li key={entry} className="flex items-center">
               <button
@@ -91,7 +91,7 @@ export function SidebarSearchInput({
                   e.preventDefault();
                   removeEntry(entry);
                 }}
-                className="mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground cursor-pointer hover:bg-accent"
+                className="mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-xl text-muted-foreground cursor-pointer hover:bg-accent"
               >
                 <XIcon className="size-3" />
               </button>
