@@ -260,6 +260,195 @@ async fn jump_chain_requires_complete_hops() {
     assert!(err.contains("Sprung-Host"), "{err}");
 }
 
+struct LocalSshServer;
+
+impl russh::server::Handler for LocalSshServer {
+    type Error = russh::Error;
+
+    async fn auth_password(
+        &mut self,
+        _user: &str,
+        password: &str,
+    ) -> Result<russh::server::Auth, Self::Error> {
+        if password == "local-pw" {
+            Ok(russh::server::Auth::Accept)
+        } else {
+            Ok(russh::server::Auth::reject())
+        }
+    }
+
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::server::Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: russh::server::ChannelOpenHandle,
+        _session: &mut russh::server::Session,
+    ) -> Result<(), Self::Error> {
+        let target = format!("{host_to_connect}:{port_to_connect}");
+        let Ok(mut upstream) = tokio::net::TcpStream::connect(target).await else {
+            reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+            return Ok(());
+        };
+        reply.accept().await;
+        tokio::spawn(async move {
+            let mut stream = channel.into_stream();
+            let _ = tokio::io::copy_bidirectional(&mut stream, &mut upstream).await;
+        });
+        Ok(())
+    }
+}
+
+type LocalSessions = std::sync::Arc<std::sync::Mutex<Vec<russh::server::Handle>>>;
+
+async fn local_ssh_server() -> (u16, LocalSessions) {
+    let key = russh::keys::PrivateKey::from(
+        russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7u8; 32]),
+    );
+    let config = std::sync::Arc::new(russh::server::Config {
+        keys: vec![key],
+        auth_rejection_time: std::time::Duration::from_millis(10),
+        inactivity_timeout: None,
+        ..Default::default()
+    });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let sessions: LocalSessions = Default::default();
+    let registry = sessions.clone();
+    tokio::spawn(async move {
+        while let Ok((socket, _)) = listener.accept().await {
+            let Ok(running) =
+                russh::server::run_stream(config.clone(), socket, LocalSshServer).await
+            else {
+                continue;
+            };
+            registry.lock().unwrap().push(running.handle());
+            tokio::spawn(running);
+        }
+    });
+    (port, sessions)
+}
+
+fn local_tunnel_request(
+    id: &str,
+    ssh_port: u16,
+    remote_port: u16,
+    jumps: usize,
+) -> SshTunnelRequest {
+    let auth = SshAuthRequest::Password {
+        password: "local-pw".to_string(),
+    };
+    SshTunnelRequest {
+        id: id.to_string(),
+        host: "127.0.0.1".to_string(),
+        port: ssh_port,
+        user: "tester".to_string(),
+        auth: auth.clone(),
+        jump_hosts: (0..jumps)
+            .map(|_| SshHopRequest {
+                host: "127.0.0.1".to_string(),
+                port: ssh_port,
+                user: "tester".to_string(),
+                auth: auth.clone(),
+            })
+            .collect(),
+        proxy: None,
+        remote_host: "127.0.0.1".to_string(),
+        remote_port,
+        accept_new_host_key: true,
+    }
+}
+
+async fn echo_roundtrip(port: u16, payload: &[u8]) -> Result<Vec<u8>, String> {
+    let exchange = async {
+        let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .map_err(|e| e.to_string())?;
+        socket.write_all(payload).await.map_err(|e| e.to_string())?;
+        let mut buf = vec![0u8; payload.len()];
+        socket
+            .read_exact(&mut buf)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok::<_, String>(buf)
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), exchange)
+        .await
+        .map_err(|_| "timeout".to_string())?
+}
+
+async fn disconnect_sessions(sessions: &LocalSessions) {
+    let handles: Vec<_> = sessions.lock().unwrap().drain(..).collect();
+    for handle in handles {
+        let _ = handle
+            .disconnect(
+                russh::Disconnect::ByApplication,
+                String::new(),
+                String::new(),
+            )
+            .await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+}
+
+async fn assert_tunnel_survives_session_loss(id: &str, jumps: usize) {
+    std::env::set_var(
+        "L8DB_KNOWN_HOSTS",
+        std::env::temp_dir().join(format!("l8db-local-known-hosts-{}", std::process::id())),
+    );
+    let echo_port = echo_server().await;
+    let (ssh_port, sessions) = local_ssh_server().await;
+    let manager = manager();
+    let info = manager
+        .open(local_tunnel_request(id, ssh_port, echo_port, jumps))
+        .await
+        .expect("tunnel open");
+    assert_eq!(
+        echo_roundtrip(info.local_port, b"first").await.unwrap(),
+        b"first"
+    );
+    assert_eq!(sessions.lock().unwrap().len(), jumps + 1);
+
+    disconnect_sessions(&sessions).await;
+    assert_eq!(
+        echo_roundtrip(info.local_port, b"after-loss")
+            .await
+            .unwrap(),
+        b"after-loss"
+    );
+    assert_eq!(sessions.lock().unwrap().len(), jumps + 1);
+
+    disconnect_sessions(&sessions).await;
+    assert_eq!(
+        echo_roundtrip(info.local_port, b"again").await.unwrap(),
+        b"again"
+    );
+    manager.close(id).await.expect("close");
+}
+
+#[tokio::test]
+async fn ssh_tunnel_reconnects_after_session_loss() {
+    assert_tunnel_survives_session_loss("local-reconnect", 0).await;
+}
+
+#[tokio::test]
+async fn ssh_tunnel_reconnects_jump_chain_after_session_loss() {
+    assert_tunnel_survives_session_loss("local-reconnect-jump", 1).await;
+}
+
+#[test]
+fn ssh_client_config_keeps_idle_sessions_alive() {
+    let config = super::client_config();
+    let interval = config.keepalive_interval.expect("keepalive interval");
+    assert!(interval <= std::time::Duration::from_secs(60));
+    assert!(config.keepalive_max > 0);
+    if let Some(timeout) = config.inactivity_timeout {
+        assert!(timeout > interval * (config.keepalive_max as u32 + 1));
+    }
+}
+
 #[test]
 fn tunnel_request_accepts_payload_without_network_fields() {
     let request: SshTunnelRequest = serde_json::from_str(
@@ -475,6 +664,48 @@ async fn tunnel_proxy_wrong_credentials_fail() {
         .await
         .expect_err("must fail");
     assert!(err.contains("407"), "{err}");
+}
+
+#[tokio::test]
+#[ignore]
+async fn ssh_idle_tunnel_survives_end_to_end() {
+    std::env::set_var("L8DB_KNOWN_HOSTS", lab_known_hosts());
+    let idle = std::env::var("L8DB_E2E_SSH_IDLE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(320);
+    let manager = manager();
+    let info = manager
+        .open(request("e2e-idle", lab_password()))
+        .await
+        .expect("tunnel open");
+    assert_eq!(
+        query_through_tunnel(info.local_port).await.expect("query"),
+        42
+    );
+    tokio::time::sleep(std::time::Duration::from_secs(idle)).await;
+    assert_eq!(
+        query_through_tunnel(info.local_port)
+            .await
+            .expect("query after idle"),
+        42
+    );
+    if let Ok(command) = std::env::var("L8DB_E2E_SSH_DROP_CMD") {
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .status()
+            .expect("drop command");
+        assert!(status.success());
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        assert_eq!(
+            query_through_tunnel(info.local_port)
+                .await
+                .expect("query after dropped session"),
+            42
+        );
+    }
+    manager.close("e2e-idle").await.expect("close");
 }
 
 #[tokio::test]

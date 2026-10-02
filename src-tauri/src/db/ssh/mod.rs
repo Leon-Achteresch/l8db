@@ -11,6 +11,7 @@ use std::time::Duration;
 use russh::client::{self, Handle};
 use russh::keys::known_hosts::{check_known_hosts_path, learn_known_hosts_path};
 use russh::keys::{HashAlg, PublicKey, PublicKeyOrCertificate};
+use russh::Channel;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
@@ -21,6 +22,7 @@ pub use auth::SshAuthRequest;
 pub use proxy::ProxyRequest;
 
 const HOP_TIMEOUT: Duration = Duration::from_secs(15);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone)]
 pub struct SshError(pub String);
@@ -253,6 +255,15 @@ async fn connect_hop(
     Ok(handle)
 }
 
+fn client_config() -> client::Config {
+    client::Config {
+        inactivity_timeout: None,
+        keepalive_interval: Some(KEEPALIVE_INTERVAL),
+        keepalive_max: 3,
+        ..Default::default()
+    }
+}
+
 async fn connect_chain(request: &SshTunnelRequest) -> Result<Vec<Handle<TunnelHandler>>, String> {
     let mut hops = request.jump_hosts.clone();
     hops.push(SshHopRequest {
@@ -269,10 +280,7 @@ async fn connect_chain(request: &SshTunnelRequest) -> Result<Vec<Handle<TunnelHa
             "Host, Port und Benutzer sind für jeden SSH- und Sprung-Host erforderlich.".to_string(),
         );
     }
-    let config = Arc::new(client::Config {
-        inactivity_timeout: Some(Duration::from_secs(300)),
-        ..Default::default()
-    });
+    let config = Arc::new(client_config());
     let total = hops.len();
     let mut handles: Vec<Handle<TunnelHandler>> = Vec::with_capacity(total);
     for (index, hop) in hops.iter().enumerate() {
@@ -295,30 +303,55 @@ async fn connect_chain(request: &SshTunnelRequest) -> Result<Vec<Handle<TunnelHa
     Ok(handles)
 }
 
-async fn run_ssh_forwarder(
-    listener: TcpListener,
-    chain: Arc<Mutex<Vec<Handle<TunnelHandler>>>>,
-    remote_host: String,
+struct SshForward {
+    request: SshTunnelRequest,
+    chain: Mutex<Vec<Handle<TunnelHandler>>>,
+}
+
+fn chain_is_closed(handles: &[Handle<TunnelHandler>]) -> bool {
+    handles.is_empty() || handles.iter().any(Handle::is_closed)
+}
+
+async fn open_forward_channel(
+    handles: &[Handle<TunnelHandler>],
+    remote_host: &str,
     remote_port: u16,
-) {
+) -> Result<Channel<client::Msg>, String> {
+    let handle = handles
+        .last()
+        .ok_or_else(|| "SSH-Verbindung ist nicht aufgebaut.".to_string())?;
+    handle
+        .channel_open_direct_tcpip(remote_host, u32::from(remote_port), "127.0.0.1", 0)
+        .await
+        .map_err(|e| format!("Weiterleitung zur Datenbank abgelehnt: {e}"))
+}
+
+impl SshForward {
+    async fn channel(&self) -> Result<Channel<client::Msg>, String> {
+        let remote_host = self.request.remote_host.as_str();
+        let remote_port = self.request.remote_port;
+        let mut handles = self.chain.lock().await;
+        if !chain_is_closed(&handles) {
+            match open_forward_channel(&handles, remote_host, remote_port).await {
+                Ok(channel) => return Ok(channel),
+                Err(e) if !chain_is_closed(&handles) => return Err(e),
+                Err(_) => {}
+            }
+        }
+        *handles = connect_chain(&self.request).await?;
+        open_forward_channel(&handles, remote_host, remote_port).await
+    }
+}
+
+async fn run_ssh_forwarder(listener: TcpListener, forward: Arc<SshForward>) {
     loop {
         let (mut socket, _) = match listener.accept().await {
             Ok(pair) => pair,
             Err(_) => break,
         };
-        let chain = chain.clone();
-        let remote_host = remote_host.clone();
+        let forward = forward.clone();
         tokio::spawn(async move {
-            let channel = {
-                let handles = chain.lock().await;
-                let Some(handle) = handles.last() else {
-                    return;
-                };
-                handle
-                    .channel_open_direct_tcpip(&remote_host, u32::from(remote_port), "127.0.0.1", 0)
-                    .await
-            };
-            let Ok(channel) = channel else {
+            let Ok(channel) = forward.channel().await else {
                 return;
             };
             let mut stream = channel.into_stream();
@@ -427,9 +460,10 @@ impl SshTunnelManager {
         };
         let task = tokio::spawn(run_ssh_forwarder(
             listener,
-            Arc::new(Mutex::new(chain)),
-            request.remote_host.clone(),
-            request.remote_port,
+            Arc::new(SshForward {
+                request,
+                chain: Mutex::new(chain),
+            }),
         ));
         self.register(info.clone(), signature, task).await;
         Ok(info)
