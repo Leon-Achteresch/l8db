@@ -180,12 +180,14 @@ export class UnsupportedValueError extends Error {
   }
 }
 
+const MYSQL_BACKSLASH = "LEFT('\\\\\\\\', 1)";
+
 export function quoteSqlString(text: string, kind?: DatabaseKind | null): string {
   if (kind === "mysql" && text.includes("\\")) {
     return `CONCAT(${text
       .split("\\")
       .map((part) => quoteSqlString(part, kind))
-      .join(", CHAR(92 USING utf8mb4), ")})`;
+      .join(`, ${MYSQL_BACKSLASH}, `)})`;
   }
   if (kind === "bigquery") {
     return `'${text

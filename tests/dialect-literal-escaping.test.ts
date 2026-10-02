@@ -9,15 +9,17 @@ const injectionValues = {
   o: { type: "text" as const, value: " OR 1=1 -- " },
 };
 
+const MYSQL_BACKSLASH = "LEFT('\\\\\\\\', 1)";
+
 function mysqlStringValue(literal: string): string | null {
   const parts: string[] = [];
   let rest = literal;
   const concat = rest.startsWith("CONCAT(") && rest.endsWith(")");
   if (concat) rest = rest.slice(7, -1);
   while (rest.length) {
-    if (rest.startsWith("CHAR(92 USING utf8mb4)")) {
+    if (rest.startsWith(MYSQL_BACKSLASH)) {
       parts.push("\\");
-      rest = rest.slice(22);
+      rest = rest.slice(MYSQL_BACKSLASH.length);
     } else if (rest.startsWith("'")) {
       let i = 1;
       let text = "";
@@ -97,6 +99,13 @@ describe("Dialekt-sichere String-Literale", () => {
     }
   });
 
+  test("MySQL-Backslashes behalten die Collation der Verbindung", () => {
+    const literal = quoteSqlString("C:\\tmp\\a", "mysql");
+    expect(literal).not.toContain("USING");
+    expect(literal).not.toContain("CHAR(");
+    expect(literal).toBe(`CONCAT('C:', ${MYSQL_BACKSLASH}, 'tmp', ${MYSQL_BACKSLASH}, 'a')`);
+  });
+
   for (const kind of ["clickhouse", "snowflake", "bigquery"] as const) {
     test(`${kind}: Backslash-Escapes werden verdoppelt`, () => {
       for (const sample of samples) {
@@ -139,7 +148,7 @@ describe("inlineBindValues nach Dialekt", () => {
   test("MySQL: Backslash am Ende öffnet keine Injection", () => {
     const sql = inlineBindValues(injection, injectionValues, "mysql");
     expect(sql).toBe(
-      "DELETE FROM files WHERE path = CONCAT('C:', CHAR(92 USING utf8mb4), 'tmp', CHAR(92 USING utf8mb4), '') AND owner = ' OR 1=1 -- '",
+      "DELETE FROM files WHERE path = CONCAT('C:', LEFT('\\\\\\\\', 1), 'tmp', LEFT('\\\\\\\\', 1), '') AND owner = ' OR 1=1 -- '",
     );
   });
 
@@ -221,7 +230,7 @@ describe("INSERT-Export nach Dialekt", () => {
       kind: "mysql",
     });
     expect(sql).toBe(
-      "INSERT INTO `users` (`id`, `path`, `flag`) VALUES (1, CONCAT('', CHAR(92 USING utf8mb4), '''); DROP TABLE users; -- '), TRUE);\n",
+      "INSERT INTO `users` (`id`, `path`, `flag`) VALUES (1, CONCAT('', LEFT('\\\\\\\\', 1), '''); DROP TABLE users; -- '), TRUE);\n",
     );
   });
 
@@ -247,7 +256,7 @@ describe("INSERT-Export nach Dialekt", () => {
 
   test("JSON und Datum nutzen das Dialekt-Quoting", () => {
     expect(sqlLiteral({ p: "a\\b" }, "c", "mysql")).toBe(
-      "CONCAT('{\"p\":\"a', CHAR(92 USING utf8mb4), '', CHAR(92 USING utf8mb4), 'b\"}')",
+      "CONCAT('{\"p\":\"a', LEFT('\\\\\\\\', 1), '', LEFT('\\\\\\\\', 1), 'b\"}')",
     );
     expect(sqlLiteral(new Date("2024-01-02T03:04:05.000Z"), "c", "mssql")).toBe(
       "N'2024-01-02T03:04:05.000Z'",
