@@ -209,7 +209,7 @@ BigQuery and Snowflake talk HTTPS to the vendor APIs; SSH tunnels and the SSL se
 - The workspace header's proxy-user switch lists `SHOW ROLES` and sends the choice as `proxy_user`, which overrides `role`. The warehouse is chosen in the connection editor.
 - Types: FIXED with scale 0 as numbers within ±2^53 (otherwise strings), DATE/TIME/TIMESTAMP_NTZ/LTZ/TZ converted from epoch values, VARIANT/OBJECT/ARRAY parsed as JSON, BINARY as `\x…` hex.
 
-Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with a `dataset1.table_a` fixture. Snowflake has no emulator; only the mocked tests exist.
+Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with the `dataset1.table_a` fixture from `tests/lab/bigquery/data.yaml`: `docker run -d --platform linux/amd64 --name l8db-bq -p 127.0.0.1:9050:9050 -v "$PWD/tests/lab/bigquery/data.yaml:/data.yaml" ghcr.io/goccy/bigquery-emulator:latest --project=test --data-from-yaml=/data.yaml`. Snowflake has no emulator; only the mocked tests exist.
 
 ## Default and optional builds
 
