@@ -947,9 +947,9 @@ impl DatabaseAdapter for MssqlAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         let ddl = format!(
-            "CREATE OR ALTER VIEW {} AS {}",
+            "CREATE OR ALTER VIEW {} {}",
             Self::object(schema, view),
-            body
+            super::view_ddl::view_ddl_rest(body)
         );
         let mut client = self.dedicated().await?;
         timed(async {
