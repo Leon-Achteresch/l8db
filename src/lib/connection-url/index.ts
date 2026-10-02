@@ -10,6 +10,7 @@ export {
   oracleConnectString,
   oracleKeyValueToUrl,
   updateOracleConnectionEndpoint,
+  updateOracleConnectionTarget,
 } from "./oracle-endpoint";
 export type { OracleKeyValue } from "./oracle-key-value";
 export { isOracleKeyValue, parseOracleKeyValue } from "./oracle-key-value";
