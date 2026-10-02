@@ -14,3 +14,17 @@ export type TableNodeData = {
 };
 
 export type TableNodeType = Node<TableNodeData, "tableNode">;
+
+export type ClusterNodeData = {
+  label: string;
+  schema: string;
+  tableCount: number;
+  relationCount: number;
+  preview: string[];
+  isolated: boolean;
+  expanded: boolean;
+  loading: boolean;
+};
+
+export type ClusterNodeType = Node<ClusterNodeData, "clusterNode">;
+export type ErNodeType = TableNodeType | ClusterNodeType;

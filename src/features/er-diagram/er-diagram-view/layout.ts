@@ -1,15 +1,9 @@
 import ELK, { type ElkNode } from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
-import {
-  HEADER_HEIGHT,
-  NODE_WIDTH,
-  ROW_HEIGHT,
-} from "@/features/er-diagram/er-diagram-view/constants";
+import { NODE_WIDTH } from "@/features/er-diagram/er-diagram-view/constants";
+import { estimateNodeHeight } from "@/features/er-diagram/er-diagram-view/node-dimensions";
 import type { ERTable, ForeignKeyInfo } from "@/lib/db";
-
-export function estimateNodeHeight(table: ERTable): number {
-  return HEADER_HEIGHT + table.columns.length * ROW_HEIGHT;
-}
+import { erForeignKeyKey } from "@/lib/er-clusters";
 
 const elk = new ELK({ workerUrl: elkWorkerUrl });
 
@@ -19,9 +13,9 @@ export async function computeElkLayout(
 ): Promise<Map<string, { x: number; y: number }>> {
   const edgeGroups = new Map<string, ForeignKeyInfo[]>();
   for (const fk of foreignKeys) {
-    const group = fk.constraint_name;
+    const group = erForeignKeyKey(fk);
     if (!edgeGroups.has(group)) edgeGroups.set(group, []);
-    edgeGroups.get(group)!.push(fk);
+    edgeGroups.get(group)?.push(fk);
   }
 
   const elkGraph: ElkNode = {

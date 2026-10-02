@@ -52,6 +52,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       title: "ER-Diagramm",
       url: "/er-diagram",
       icon: Network,
+      featureScope: "er-diagram",
       available: (caps) => caps.foreign_keys,
     },
     { title: "Vergleich", url: "/compare", icon: GitCompare, featureScope: "compare" },
