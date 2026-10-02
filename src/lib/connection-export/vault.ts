@@ -48,7 +48,7 @@ function strongerProtection(local: SavedConnection, remote: SavedConnection) {
 }
 
 function withSecret(item: VaultConnection): string {
-  if (!item.connectionString.includes("://") || !item.password) return item.connectionString;
+  if (!item.password) return item.connectionString;
   return injectUrlPassword(item.connectionString, item.password);
 }
 

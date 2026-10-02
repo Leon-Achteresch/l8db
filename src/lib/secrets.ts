@@ -33,23 +33,58 @@ export async function deleteSecret(account: string): Promise<void> {
   await removeSecret(account);
 }
 
-function unquoteOracleSecret(value: string): string {
+const REDACTED_SECRET = "***";
+
+interface KeyValueSecret {
+  start: number;
+  end: number;
+  raw: string;
+}
+
+function keyValueSecrets(value: string, key: string): KeyValueSecret[] {
+  const pattern = value.includes(";")
+    ? new RegExp(
+        `(^|;)(\\s*${key}\\s*=\\s*)(\\{(?:[^}]|\\}\\})*\\}|"(?:[^"]|"")*"|'[^']*'|[^;]*)`,
+        "gi",
+      )
+    : new RegExp(`(^|\\s)(${key}\\s*=\\s*)('(?:[^'\\\\]|\\\\.)*'|\\S*)`, "gi");
+  return [...value.matchAll(pattern)].map((match) => {
+    const start = (match.index ?? 0) + match[1].length + match[2].length;
+    return { start, end: start + match[3].length, raw: match[3] };
+  });
+}
+
+function keyValueSecret(value: string): KeyValueSecret | null {
+  return keyValueSecrets(value, "(?:password|pwd)")[0] ?? null;
+}
+
+function unquoteKeyValueSecret(value: string): string {
   const trimmed = value.trim();
-  if (
-    trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'")))
-  )
+  if (trimmed.length >= 2 && trimmed.startsWith("{") && trimmed.endsWith("}"))
+    return trimmed.slice(1, -1).replace(/\}\}/g, "}");
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"'))
+    return trimmed.slice(1, -1).replace(/""/g, '"');
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'"))
     return trimmed.slice(1, -1);
   return trimmed;
 }
 
+function quoteKeyValueSecret(value: string, password: string): string {
+  if (!value.includes(";")) {
+    if (!/[\s'\\]/.test(password) && password !== "") return password;
+    return `'${password.replace(/[\\']/g, "\\$&")}'`;
+  }
+  if (!/[;'"{}]|^\s|\s$/.test(password)) return password;
+  if (/(^|;)\s*(?:driver|dsn)\s*=/i.test(value)) return `{${password.replace(/\}/g, "}}")}}`;
+  return `"${password.replace(/"/g, '""')}"`;
+}
+
 export function extractUrlPassword(url: string): string | null {
   if (!url.includes("://")) {
-    const match = /(?:password|pwd)\s*=\s*("[^"]*"|'[^']*'|[^;]*)/i.exec(url);
-    if (!match) return null;
-    const password = unquoteOracleSecret(match[1]);
-    return password ? password : null;
+    const secret = keyValueSecret(url);
+    if (!secret) return null;
+    const password = unquoteKeyValueSecret(secret.raw);
+    return password && password !== REDACTED_SECRET ? password : null;
   }
   const scheme = url.indexOf("://");
   if (scheme < 0) return null;
@@ -71,8 +106,14 @@ export function extractUrlPassword(url: string): string | null {
 }
 
 export function scrubUrlPassword(url: string): string {
-  if (!url.includes("://"))
-    return url.replace(/((?:password|pwd)\s*=\s*)("[^"]*"|'[^']*'|[^;]*)/gi, "$1***");
+  if (!url.includes("://")) {
+    const key = url.includes(";") ? "[^;=]*?(?:password|pwd)" : "[^\\s=]*?(?:password|pwd)";
+    return keyValueSecrets(url, key).reduceRight(
+      (scrubbed, secret) =>
+        `${scrubbed.slice(0, secret.start)}${REDACTED_SECRET}${scrubbed.slice(secret.end)}`,
+      url,
+    );
+  }
   const scheme = url.indexOf("://");
   if (scheme < 0) return url;
   const prefix = url.slice(0, scheme + 3);
@@ -90,8 +131,13 @@ export function scrubUrlPassword(url: string): string {
 }
 
 export function injectUrlPassword(redactedUrl: string, password: string): string {
+  if (!password) return redactedUrl;
+  if (!redactedUrl.includes("://")) {
+    const secret = keyValueSecret(redactedUrl);
+    if (!secret) return redactedUrl;
+    return `${redactedUrl.slice(0, secret.start)}${quoteKeyValueSecret(redactedUrl, password)}${redactedUrl.slice(secret.end)}`;
+  }
   const scheme = redactedUrl.indexOf("://");
-  if (scheme < 0 || !password) return redactedUrl;
   const prefix = redactedUrl.slice(0, scheme + 3);
   const rest = redactedUrl.slice(scheme + 3);
   const authEnd = rest.search(/[/?#]/);

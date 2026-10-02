@@ -2,7 +2,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { splitSecretParams, withSecretParams } from "@/lib/connection-export/export";
 import { type HostGroupRule, matchingHostRule } from "@/lib/connection-groups";
-import { closeSshTunnel, loadSecret as readKeychainSecret } from "@/lib/db";
+import {
+  closeSshTunnel,
+  connectionInOtherWindow,
+  loadSecret as readKeychainSecret,
+} from "@/lib/db";
 import {
   deleteSecret,
   extractUrlPassword,
@@ -279,7 +283,10 @@ export const useConnectionsStore = create<ConnectionsState>()(
         for (const suffix of NETWORK_SECRET_SUFFIXES) {
           void deleteSecret(`${id}${suffix}`).catch(() => undefined);
         }
-        void closeSshTunnel(id).catch(() => undefined);
+        void connectionInOtherWindow(id)
+          .catch(() => false)
+          .then((shared) => (shared ? undefined : closeSshTunnel(id)))
+          .catch(() => undefined);
         set((state) => ({
           connections: state.connections.filter((connection) => connection.id !== id),
           activeId: state.activeId === id ? null : state.activeId,
