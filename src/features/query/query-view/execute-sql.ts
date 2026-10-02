@@ -10,6 +10,7 @@ import {
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
+import { analyzedSql, managedQueryIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, opensManagedTransaction } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { executeWithTransactionChanges } from "@/lib/transaction-sql-changes";
@@ -37,9 +38,15 @@ export async function executeSqlWithTransactions({
   const executionOptions = { onJob, confirmed: true };
   const store = useTransactionStore.getState();
   const existingTx = getQueryTransaction(connection.id, database);
-  const isDml = isTransactionalStatement(sql, connection.kind);
+  const classified = analyzedSql(sql, connection.kind);
+  const isDml = isTransactionalStatement(classified, connection.kind);
+  const rejectUnmanageable = () => {
+    const issue = managedQueryIssue(sql, connection.kind);
+    if (issue) throw new Error(issue);
+  };
 
   if (existingTx) {
+    rejectUnmanageable();
     const { result: res, changes } = await runManagedOperation(existingTx.txId, () =>
       executeWithTransactionChanges(connection, database, existingTx.txId, bound ? "" : sql, () =>
         bound
@@ -75,10 +82,11 @@ export async function executeSqlWithTransactions({
     return res;
   }
   if (
-    opensManagedTransaction(sql, connection.kind) &&
+    opensManagedTransaction(classified, connection.kind) &&
     transactionsCapable &&
     useSettingsStore.getState().transactionsEnabled
   ) {
+    rejectUnmanageable();
     const { txId } = await ensureManagedTransaction(connection, database ?? null, {
       type: "query",
     });
