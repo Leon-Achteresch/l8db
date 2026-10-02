@@ -33,7 +33,7 @@ function statement(sql: string) {
 function plan(sql: string, kind: SavedConnection["kind"]) {
   const split = splitSqlStatements(sql, kind);
   if (split.unterminated || split.statements.length !== 1) return null;
-  const clean = statement(sql);
+  const clean = statement(split.statements[0].text);
   if (
     clean.length > 20_000 ||
     /\bON\s+(?:CONFLICT|DUPLICATE\s+KEY)\b/i.test(clean) ||
@@ -121,11 +121,11 @@ function snapshotQuery(
   }
   if (kind === "oracle") {
     if (lock) {
-      return `SELECT * FROM ${target} WHERE ${where ? `(${where}) AND ` : ""}ROWNUM <= ${limit} FOR UPDATE`;
+      return `SELECT * FROM ${target} WHERE ${where ? `(${where}\n) AND ` : ""}ROWNUM <= ${limit} FOR UPDATE`;
     }
-    return `SELECT * FROM ${target}${where ? ` WHERE ${where}` : ""} FETCH FIRST ${limit} ROWS ONLY`;
+    return `SELECT * FROM ${target}${where ? ` WHERE ${where}\n` : ""} FETCH FIRST ${limit} ROWS ONLY`;
   }
-  return `SELECT * FROM ${target}${where ? ` WHERE ${where}` : ""} LIMIT ${limit}${lock && kind === "mysql" ? " FOR UPDATE" : ""}`;
+  return `SELECT * FROM ${target}${where ? ` WHERE ${where}\n` : ""} LIMIT ${limit}${lock && kind === "mysql" ? " FOR UPDATE" : ""}`;
 }
 
 function insertedRows(
@@ -455,7 +455,7 @@ export async function executeWithTransactionChanges(
     let keys: string[] = [];
     if (parsed.type === "update") {
       const selected = await internal(
-        `SELECT * FROM ${parsed.target}${parsed.where ? ` WHERE ${parsed.where}` : ""} LIMIT 101 FOR UPDATE`,
+        `SELECT * FROM ${parsed.target}${parsed.where ? ` WHERE ${parsed.where}\n` : ""} LIMIT 101 FOR UPDATE`,
       );
       before = selected.rows;
       if (before.length > 100) {
@@ -474,7 +474,7 @@ export async function executeWithTransactionChanges(
         }
       }
     }
-    const result = await internal(`${parsed.clean} RETURNING *`);
+    const result = await internal(`${parsed.clean}\nRETURNING *`);
     applied = true;
     await internal(`RELEASE SAVEPOINT ${savepoint}`);
     let changes: Change[] = [];
