@@ -2,6 +2,12 @@
 
 Treibt die laufende l8db-UI im Browser gegen eine echte ClickHouse-Instanz (echter Rust-Adapter, kein Mock).
 
+## Automatischer Lauf
+
+`bun run test:clickhouse` startet einen Wegwerf-Container auf Port 8124, spielt
+`scripts/clickhouse-seed-bigdata.sql` ein (ca. 1 Minute), startet Bridge und Vite und führt
+`tests/clickhouse-browser.test.ts` in Chromium und WebKit aus. Ports 8124, 27021 und 1420 müssen frei sein.
+
 ## 1. ClickHouse starten
 
 ```
