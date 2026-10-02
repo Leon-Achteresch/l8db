@@ -1,12 +1,16 @@
 import { Link } from "@tanstack/react-router";
+import { Plug } from "lucide-react";
 import { Tooltip } from "@/components/motion/tooltip";
-import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { type AppSidebarNavItem, appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { isEasyModeRouteVisible } from "@/lib/easy-mode";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+
+const connectItem: AppSidebarNavItem = { title: "Verbindungen", url: "/connections", icon: Plug };
 
 function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
@@ -16,13 +20,18 @@ export function AppNavRail() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const seenFeatures = useSeenNewFeatures();
-  const navItems = appSidebarData.navMain.filter(
-    (item) =>
-      isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
-  );
+  const hasConnections = useConnectionsStore((state) => state.connections.length > 0);
+  const navItems = hasConnections
+    ? appSidebarData.navMain.filter(
+        (item) =>
+          isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
+      )
+    : [connectItem];
   const activeUrl = useRouterSelect(
     (state) =>
-      appSidebarData.navMain.find((item) => isNavActive(item.url, state.location.pathname))?.url,
+      [...appSidebarData.navMain, connectItem].find((item) =>
+        isNavActive(item.url, state.location.pathname),
+      )?.url,
   );
 
   return (
