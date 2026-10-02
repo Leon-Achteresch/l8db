@@ -1032,7 +1032,7 @@ impl Server {
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
         server::check_read_sql(&sql, connection, &index)?;
         let result = self.run_sql(config, connection, &sql).await?;
         mapping.resolve(&result.columns, notes)?;
@@ -1232,7 +1232,7 @@ impl Server {
     ) -> Result<String, String> {
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
         let sql = sql
             .trim()
             .trim_end_matches(|c: char| c == ';' || c.is_whitespace());
