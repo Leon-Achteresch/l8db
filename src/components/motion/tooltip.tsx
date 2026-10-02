@@ -209,7 +209,7 @@ export function Tooltip({
   // cloned on: a handler written onto the child is the child's handler as far
   // as that child can tell, and a component that owns its activation —
   // hard-wiring onClick and spreading the rest of its props over it, as
-  // ThemeToggle does — then runs the tooltip's instead of its own. Composing
+  // some components do — then runs the tooltip's instead of its own. Composing
   // with `props.onClick` cannot save it either, because a component element's
   // props hold nothing the component does internally.
   const trigger = cloneElement(children as ReactElement<Record<string, unknown>>, {
