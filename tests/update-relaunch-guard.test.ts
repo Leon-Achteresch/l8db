@@ -9,11 +9,6 @@ const localStorageMock = {
 const windowMock = Object.assign(new EventTarget(), { localStorage: localStorageMock });
 Object.defineProperty(globalThis, "localStorage", { value: localStorageMock, configurable: true });
 Object.defineProperty(globalThis, "window", { value: windowMock, configurable: true });
-if (typeof globalThis.document === "undefined")
-  Object.defineProperty(globalThis, "document", {
-    value: Object.assign(new EventTarget(), { visibilityState: "visible", hidden: false }),
-    configurable: true,
-  });
 
 const events: string[] = [];
 let backendTransactions: string[] = [];
@@ -46,7 +41,7 @@ function fakeUpdate() {
       onDownloaded();
     },
     install: async () => {
-      events.push(`install:${storage.get("l8db.table-tabs") ? "flushed" : "unflushed"}`);
+      events.push(`install:${storage.get("probe") ? "flushed" : "unflushed"}`);
     },
     downloadAndInstall: async () => {
       events.push("downloadAndInstall");
@@ -71,6 +66,7 @@ mock.module("sonner", () => ({
   }),
 }));
 
+const { createBufferedJsonStorage } = await import("../src/lib/buffered-storage");
 const { useSettingsStore } = await import("../src/lib/settings");
 const { runCheck } = await import("../src/lib/auto-updater");
 const { getUpdatePromptState, installUpdateAndRelaunch, setPendingUpdate } = await import(
@@ -184,8 +180,11 @@ describe("silent auto-update", () => {
 
 describe("manual install", () => {
   test("flushes buffered stores before the installer replaces the app", async () => {
-    useTableTabs.setState({ tabsByConnection: { c1: [] } });
-    expect(storage.get("l8db.table-tabs")).toBeUndefined();
+    createBufferedJsonStorage<{ value: number }>(() => localStorageMock).setItem("probe", {
+      state: { value: 1 },
+      version: 0,
+    });
+    expect(storage.get("probe")).toBeUndefined();
     const installed = await installUpdateAndRelaunch(fakeUpdate() as never);
     expect(installed).toBe(true);
     expect(events).toEqual(["download", "install:flushed", "relaunch"]);

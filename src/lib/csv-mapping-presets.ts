@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CsvColumnMapping, CsvEmptyFieldMode } from "@/lib/csv-import";
+import { syncAcrossWindows } from "@/lib/window-sync";
 export interface CsvMappingPreset {
   id: string;
   name: string;
@@ -30,3 +31,5 @@ export function remapPreset(preset: CsvMappingPreset, headers: string[]): CsvCol
       null,
   }));
 }
+
+syncAcrossWindows("l8db.csv-mapping-presets", () => void useCsvMappingPresets.persist.rehydrate());
