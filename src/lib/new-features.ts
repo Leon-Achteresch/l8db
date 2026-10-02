@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",
   "er-diagram.clusters": "0.8.0",
