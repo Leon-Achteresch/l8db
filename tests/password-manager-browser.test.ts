@@ -1,7 +1,5 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import config from "../src-tauri/tauri.conf.json";
 import { bundleFixture } from "./fixtures/browser-bundle";
@@ -14,23 +12,21 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
       "utf8",
     );
     const output = await bundleFixture("tests/fixtures/password-manager-browser.tsx");
-    const frame = await readFile(resolve("src/lib/extensions/sandbox-frame.js"), "utf8");
-    const hash = createHash("sha256").update(frame).digest("base64");
-    const inline = "window.pmArchive = JSON.parse(document.getElementById('archive').textContent)";
-    const inlineHash = createHash("sha256").update(inline).digest("base64");
     const csp = Object.entries(config.app.security.csp)
-      .map(
-        ([key, value]) =>
-          `${key} ${value}${key === "script-src" ? ` 'sha256-${hash}' 'sha256-${inlineHash}'` : ""}`,
-      )
+      .map(([key, value]) => `${key} ${value}`)
       .join("; ");
     const server = Bun.serve({
       port: 0,
       fetch(request) {
         if (new URL(request.url).pathname === "/test.js")
           return new Response(output, { headers: { "Content-Type": "text/javascript" } });
+        if (new URL(request.url).pathname === "/start.js")
+          return new Response(
+            "window.pmArchive = JSON.parse(document.getElementById('archive').textContent)",
+            { headers: { "Content-Type": "text/javascript" } },
+          );
         return new Response(
-          `<div id="root"></div><script type="application/json" id="archive">${archive.replaceAll("<", "\\u003c")}</script><script>${inline}</script><script type="module" src="/test.js"></script>`,
+          `<div id="root"></div><script type="application/json" id="archive">${archive.replaceAll("<", "\\u003c")}</script><script src="/start.js"></script><script type="module" src="/test.js"></script>`,
           {
             headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": csp },
           },
