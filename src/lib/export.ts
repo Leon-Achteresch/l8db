@@ -51,8 +51,10 @@ export function csvValueText(value: unknown): string | null {
 }
 
 export function csvField(value: unknown, options: CsvOptions): string {
-  const text = csvValueText(value) ?? options.nullText;
+  const raw = csvValueText(value);
+  const text = raw ?? options.nullText;
   const needsQuote =
+    (raw !== null && (raw === "" || raw === options.nullText)) ||
     text.includes(options.delimiter) ||
     text.includes(options.quote) ||
     text.includes("\n") ||

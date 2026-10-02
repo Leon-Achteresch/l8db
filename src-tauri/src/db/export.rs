@@ -109,7 +109,8 @@ pub fn masked_text(
 
 pub fn csv_field(text: Option<&str>, options: &CsvExportOptions) -> String {
     let raw = text.unwrap_or(options.null_text.as_str());
-    let needs_quote = raw.contains(&options.delimiter)
+    let needs_quote = text.is_some_and(|value| value.is_empty() || value == options.null_text)
+        || raw.contains(&options.delimiter)
         || raw.contains(&options.quote)
         || raw.contains('\n')
         || raw.contains('\r')
@@ -341,6 +342,20 @@ mod tests {
         assert_eq!(csv_field(Some("a\"b"), &opts), "\"a\"\"b\"");
         assert_eq!(csv_field(Some("a\nb"), &opts), "\"a\nb\"");
         assert_eq!(csv_field(Some(" a "), &opts), "\" a \"");
+    }
+
+    #[test]
+    fn empty_strings_and_null_text_values_are_quoted() {
+        let mut opts = options();
+        assert_eq!(csv_field(Some(""), &opts), "\"\"");
+        assert_eq!(csv_field(None, &opts), "");
+        opts.null_text = "NULL".to_string();
+        assert_eq!(csv_field(Some("NULL"), &opts), "\"NULL\"");
+        assert_eq!(csv_field(Some(""), &opts), "\"\"");
+        assert_eq!(csv_field(None, &opts), "NULL");
+        let row = serde_json::json!({ "a": "", "b": null });
+        let columns = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(csv_row_line(&columns, &row, &[], &options()), "\"\",");
     }
 
     #[test]
