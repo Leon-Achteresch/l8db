@@ -99,6 +99,12 @@ impl SslMode {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchemaDataCopy {
+    pub rows: u64,
+    pub unvalidated: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
     pub kind: DatabaseKind,
@@ -1130,7 +1136,7 @@ pub trait DatabaseAdapter: Send + Sync {
         target_schema: &str,
         name: &str,
         limit: i64,
-    ) -> Result<u64, String> {
+    ) -> Result<SchemaDataCopy, String> {
         let _ = source_schema;
         let _ = target_schema;
         let _ = name;
