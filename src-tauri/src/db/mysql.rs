@@ -41,6 +41,7 @@ struct ColumnDefinition {
     generation: Option<String>,
     check: Option<String>,
     mariadb: bool,
+    legacy_mysql: bool,
 }
 
 const MULTI_STATEMENT_EXPLAIN: &str =
@@ -73,6 +74,14 @@ fn unescape_info_expr(value: &str) -> String {
         }
     }
     out
+}
+
+fn is_legacy_mysql(version: &str) -> bool {
+    version
+        .split('.')
+        .next()
+        .and_then(|major| major.trim().parse::<u32>().ok())
+        .is_some_and(|major| major < 8)
 }
 
 fn type_base(data_type: &str) -> String {
@@ -109,7 +118,9 @@ fn existing_default_sql(def: &ColumnDefinition) -> Option<String> {
         value.trim().to_string()
     } else if has_flag(&def.extra, "DEFAULT_GENERATED") {
         format!("({})", unescape_info_expr(value))
-    } else if matches!(base.as_str(), "bit" | "binary" | "varbinary") {
+    } else if base == "bit"
+        || (!def.legacy_mysql && matches!(base.as_str(), "binary" | "varbinary"))
+    {
         value.to_string()
     } else {
         lit(value)
@@ -153,7 +164,7 @@ fn change_column_sql(
         }
     }
     if let Some(expr) = generation {
-        let expr = if current.mariadb {
+        let expr = if current.mariadb || current.legacy_mysql {
             expr.to_string()
         } else {
             unescape_info_expr(expr)
@@ -547,7 +558,9 @@ impl MysqlAdapter {
         let Some(row) = self.rows(&sql).await?.into_iter().next() else {
             return Ok(None);
         };
-        let mariadb = cell(&row, 8).to_ascii_lowercase().contains("mariadb");
+        let version = cell(&row, 8);
+        let mariadb = version.to_ascii_lowercase().contains("mariadb");
+        let legacy_mysql = !mariadb && is_legacy_mysql(&version);
         let check = if mariadb {
             self.rows(&format!(
                 "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema = {} AND table_name = {} AND level = 'Column' AND constraint_name = {}",
@@ -573,6 +586,7 @@ impl MysqlAdapter {
             generation: cell_opt(&row, 7),
             check,
             mariadb,
+            legacy_mysql,
         }))
     }
 
@@ -1382,6 +1396,7 @@ mod tests {
             generation: None,
             check: None,
             mariadb: false,
+            legacy_mysql: false,
         }
     }
 
@@ -1516,6 +1531,36 @@ mod tests {
             change(&plain, &new_default),
             "`c` `c` int NOT NULL DEFAULT 42"
         );
+    }
+
+    #[test]
+    fn change_column_renders_mysql57_binary_defaults_and_plain_generation_expressions() {
+        let legacy = |data_type: &str, default: Option<&str>, extra: &str| ColumnDefinition {
+            legacy_mysql: true,
+            ..definition(data_type, default, extra)
+        };
+        let cases = [
+            ("varbinary(4)", Some("ab"), " DEFAULT 'ab'"),
+            ("binary(2)", Some("a'"), " DEFAULT 'a'''"),
+            ("varbinary(4)", Some("0x41"), " DEFAULT '0x41'"),
+            ("bit(3)", Some("b'101'"), " DEFAULT b'101'"),
+        ];
+        for (data_type, default, expected) in cases {
+            assert_eq!(
+                change(&legacy(data_type, default, ""), &rename("c", "c")),
+                format!("`c` `c` {data_type} NULL{expected}")
+            );
+        }
+        let mut generated = legacy("varchar(20)", None, "VIRTUAL GENERATED");
+        generated.generation = Some(r"concat(`base`,'x\'y\\n')".into());
+        assert_eq!(
+            change(&generated, &rename("g", "g")),
+            r"`g` `g` varchar(20) GENERATED ALWAYS AS (concat(`base`,'x\'y\\n')) VIRTUAL NULL"
+        );
+        assert!(is_legacy_mysql("5.7.44-log"));
+        assert!(!is_legacy_mysql("8.0.36"));
+        assert!(!is_legacy_mysql("8.4.11"));
+        assert!(!is_legacy_mysql(""));
     }
 
     #[test]
@@ -1710,6 +1755,74 @@ mod tests {
             );
             assert_eq!(before, after, "{url}");
             adapter.exec("DROP TABLE l8db_alter_keep").await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_keeps_binary_defaults_and_generated_literals() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_alter_bin")
+                .await
+                .unwrap();
+            adapter
+                .exec(
+                    r#"CREATE TABLE l8db_alter_bin (
+                     base VARCHAR(10),
+                     vb VARBINARY(4) DEFAULT 'ab',
+                     bn BINARY(2) DEFAULT 'a''',
+                     hx VARBINARY(4) DEFAULT '0x41',
+                     b BIT(3) DEFAULT b'101',
+                     g VARCHAR(20) GENERATED ALWAYS AS (concat(base, '\\n')) VIRTUAL,
+                     q VARCHAR(20) GENERATED ALWAYS AS (concat(base, 'x''y\\z')) VIRTUAL)"#,
+                )
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_alter_bin (base) VALUES ('a')")
+                .await
+                .unwrap();
+            let snapshot = || async {
+                (
+                    cell(
+                        &adapter
+                            .rows("SHOW CREATE TABLE l8db_alter_bin")
+                            .await
+                            .unwrap()[0],
+                        1,
+                    ),
+                    live_scalar(
+                        &adapter,
+                        "SELECT CONCAT(HEX(g), '/', HEX(q)) FROM l8db_alter_bin",
+                    )
+                    .await,
+                )
+            };
+            let before = snapshot().await;
+            for column in ["vb", "bn", "hx", "b", "g", "q"] {
+                for set_not_null in [None, Some(false)] {
+                    adapter
+                        .alter_column(
+                            &schema,
+                            "l8db_alter_bin",
+                            &AlterColumnRequest {
+                                old_name: column.into(),
+                                new_name: Some(column.into()),
+                                data_type: None,
+                                set_not_null,
+                                new_default: None,
+                                drop_default: false,
+                            },
+                        )
+                        .await
+                        .unwrap_or_else(|e| panic!("{url} {column}: {e}"));
+                }
+            }
+            assert_eq!(snapshot().await, before, "{url}");
+            adapter.exec("DROP TABLE l8db_alter_bin").await.unwrap();
         }
     }
 
