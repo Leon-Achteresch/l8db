@@ -4,8 +4,8 @@ import { type CSSProperties, useRef } from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { ToastDrop } from "@/components/motion/toast-drop";
 
-const OFFSET = { top: "calc(var(--app-header-height) + 10px)" };
-const WIDTH = { "--width": "400px" } as CSSProperties;
+const OFFSET = { top: "calc(var(--app-header-height) + 24px)" };
+const WIDTH = { "--width": "min(440px, calc(100vw - 32px))" } as CSSProperties;
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
@@ -33,7 +33,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           toastOptions={{
             unstyled: true,
             classNames: {
-              toast: "l8-toast",
+              toast: "l8-toast rounded-2xl",
               title: "l8-toast-title",
               description: "l8-toast-description",
               icon: "l8-toast-icon",
