@@ -125,10 +125,12 @@ export function DashboardEditor({
 
   const startEdit = useCallback(
     (widgetId: string) => {
-      const widget = dashboard.widgets.find((w) => w.id === widgetId);
+      const current =
+        useDashboardsStore.getState().dashboards.find((d) => d.id === dashboard.id) ?? dashboard;
+      const widget = current.widgets.find((w) => w.id === widgetId);
       if (!widget) return;
       const dataset =
-        dashboard.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
+        current.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
       startTransition(() => {
         setDraft({ widget, dataset });
         setDraftIsNew(false);
@@ -136,7 +138,7 @@ export function DashboardEditor({
         setDialogOpen(true);
       });
     },
-    [dashboard.datasets, dashboard.widgets],
+    [dashboard],
   );
 
   const saveDraft = (next: ChartDraft) => {
