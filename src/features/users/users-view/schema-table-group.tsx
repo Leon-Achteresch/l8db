@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { TABLE_PRIV_SHORT, TABLE_PRIVS } from "@/features/users/users-view/constants";
 import { PrivBar } from "@/features/users/users-view/priv-bar";
-import { privKey } from "@/features/users/users-view/priv-key";
+import { applicablePrivs, privKey } from "@/features/users/users-view/priv-key";
 import { TablePrivRow } from "@/features/users/users-view/table-priv-row";
 import type { PrivilegeChange, TablePrivileges } from "@/lib/db";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -28,14 +28,14 @@ export function SchemaTableGroup({
   const grantedCount = useMemo(() => {
     let count = 0;
     for (const tp of tables) {
-      for (const priv of TABLE_PRIVS) {
+      for (const priv of applicablePrivs(tp.object_type)) {
         if (privKey(tp, priv)) count++;
       }
     }
     return count;
   }, [tables]);
 
-  const totalCount = tables.length * TABLE_PRIVS.length;
+  const totalCount = tables.reduce((sum, tp) => sum + applicablePrivs(tp.object_type).length, 0);
 
   return (
     <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="rounded-lg border">
