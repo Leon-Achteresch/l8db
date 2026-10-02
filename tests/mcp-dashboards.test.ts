@@ -1,6 +1,8 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 
 const storage = new Map<string, string>();
+const prompts: string[] = [];
+let confirmAnswer = false;
 if (typeof window === "undefined")
   Object.defineProperty(globalThis, "window", {
     value: {
@@ -12,12 +14,22 @@ if (typeof window === "undefined")
     },
     configurable: true,
   });
+Object.defineProperty(window, "confirm", {
+  value: (message: string) => {
+    prompts.push(message);
+    return confirmAnswer;
+  },
+  configurable: true,
+  writable: true,
+});
 
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 let files: Record<string, unknown>[] = [];
 let saveCount = 0;
 
 mock.module("@tauri-apps/api/core", () => ({
+  Resource: class {},
+  Channel: class {},
   invoke: async (cmd: string, args: Record<string, unknown> = {}) => {
     calls.push({ cmd, args });
     if (cmd === "mcp_dashboards") return files;
@@ -78,6 +90,7 @@ function file(stamp: string, name = "Sales", id = "m1") {
       },
     ],
     stamp,
+    trusted: true as boolean | undefined,
   };
 }
 
@@ -90,6 +103,40 @@ beforeEach(async () => {
   files = [];
   applyMcpDashboards([]);
   calls.length = 0;
+  prompts.length = 0;
+  confirmAnswer = false;
+});
+
+test("untrusted dashboard files need confirmation before their SQL runs", async () => {
+  const untrusted = (stamp: string, sql = dataset.sql) => ({
+    ...file(stamp),
+    trusted: false,
+    datasets: [{ ...dataset, sql }],
+  });
+  applyMcpDashboards([untrusted("s1", "DELETE FROM orders RETURNING status, 1 AS n")]);
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]).toContain("DELETE FROM orders");
+  expect(mcpBoards()).toEqual([]);
+  applyMcpDashboards([untrusted("s1", "DELETE FROM orders RETURNING status, 1 AS n")]);
+  expect(prompts).toHaveLength(1);
+  expect(mcpBoards()).toEqual([]);
+  applyMcpDashboards([{ ...file("s2"), trusted: undefined }]);
+  expect(prompts).toHaveLength(2);
+  expect(mcpBoards()).toEqual([]);
+  confirmAnswer = true;
+  applyMcpDashboards([untrusted("s3")]);
+  expect(prompts).toHaveLength(3);
+  expect(mcpBoards().map((d) => d.mcpStamp)).toEqual(["s3"]);
+  confirmAnswer = false;
+  applyMcpDashboards([{ ...untrusted("s4"), name: "Renamed" }]);
+  expect(prompts).toHaveLength(3);
+  expect(mcpBoards()[0]).toMatchObject({ name: "Renamed", mcpStamp: "s4" });
+  applyMcpDashboards([untrusted("s5", "UPDATE orders SET status = 'x' RETURNING status, 1 AS n")]);
+  expect(prompts).toHaveLength(4);
+  expect(mcpBoards()[0]).toMatchObject({ mcpStamp: "s4" });
+  expect(mcpBoards()[0].datasets[0].sql).toBe(dataset.sql);
+  await Bun.sleep(450);
+  expect(writes()).toEqual([]);
 });
 
 test("imports new MCP dashboards locked and active", async () => {

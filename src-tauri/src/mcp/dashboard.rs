@@ -214,11 +214,36 @@ fn remove_file(id: &str) -> Result<(), String> {
     }
 }
 
+fn trusted(dashboard: &Value, config: &McpConfig) -> bool {
+    let Some(connection) = dashboard["connectionId"]
+        .as_str()
+        .and_then(|id| config.connections.iter().find(|c| c.id == id))
+    else {
+        return false;
+    };
+    let redactor = Redactor::new(&config.redaction, &[]);
+    let index = redact::SchemaIndex::new(&[], &redactor, &[]);
+    dashboard["datasets"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|dataset| dataset["mode"] == "expert")
+        .filter_map(|dataset| dataset["sql"].as_str())
+        .map(|sql| {
+            sql.trim()
+                .trim_end_matches(|c: char| c == ';' || c.is_whitespace())
+        })
+        .filter(|sql| !sql.is_empty())
+        .all(|sql| server::check_read_sql(sql, connection, &index).is_ok())
+}
+
 #[tauri::command]
 pub fn mcp_dashboards() -> Vec<Value> {
+    let config = config::load();
     read_all()
         .into_iter()
         .map(|(mut value, stamp)| {
+            value["trusted"] = json!(trusted(&value, &config));
             value["stamp"] = json!(stamp);
             value
         })
