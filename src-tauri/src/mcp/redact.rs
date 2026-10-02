@@ -8,6 +8,7 @@ pub struct Redactor {
     columns: Vec<Regex>,
     values: Vec<Regex>,
     replacement: String,
+    invalid: Option<String>,
 }
 
 pub fn compile(pattern: &str, case_insensitive: bool) -> Result<Regex, String> {
@@ -18,16 +19,31 @@ pub fn compile(pattern: &str, case_insensitive: bool) -> Result<Regex, String> {
         .map_err(|e| e.to_string())
 }
 
+fn invalid_pattern_error(pattern: &str) -> String {
+    format!(
+        "Maskierungsregel „{pattern}“ ist kein gültiger regulärer Ausdruck. Der MCP sperrt Abfragen auf dieser Verbindung, bis die Regel in l8db korrigiert ist."
+    )
+}
+
 impl Redactor {
     pub fn new(redaction: &Redaction, extra_columns: &[String]) -> Self {
-        let columns = redaction
+        let mut columns = Vec::new();
+        let mut invalid = None;
+        for pattern in redaction
             .columns
             .iter()
             .filter(|rule| rule.enabled)
             .map(|rule| rule.pattern.as_str())
             .chain(extra_columns.iter().map(String::as_str))
-            .filter_map(|pattern| compile(pattern, true).ok())
-            .collect();
+            .filter(|pattern| !pattern.trim().is_empty())
+        {
+            match compile(pattern, true) {
+                Ok(re) => columns.push(re),
+                Err(_) => {
+                    invalid.get_or_insert_with(|| pattern.to_string());
+                }
+            }
+        }
         let values = redaction
             .values
             .iter()
@@ -38,11 +54,19 @@ impl Redactor {
             columns,
             values,
             replacement: redaction.replacement.clone(),
+            invalid,
+        }
+    }
+
+    pub fn check_valid(&self) -> Result<(), String> {
+        match &self.invalid {
+            Some(pattern) => Err(invalid_pattern_error(pattern)),
+            None => Ok(()),
         }
     }
 
     pub fn column_is_sensitive(&self, name: &str) -> bool {
-        self.columns.iter().any(|re| re.is_match(name))
+        self.invalid.is_some() || self.columns.iter().any(|re| re.is_match(name))
     }
 
     pub fn redact_text(&self, text: &str) -> String {
@@ -393,9 +417,31 @@ const DANGEROUS_FUNCTIONS: &[&str] = &[
     "schema_to_xml",
     "table_to_xml",
     "xmltype",
+    "set_config",
+    "lo_create",
+    "lo_creat",
+    "lo_unlink",
+    "lo_from_bytea",
+    "lo_truncate",
+    "lo_truncate64",
+    "pg_notify",
+    "pg_logical_emit_message",
+    "txid_current",
+    "pg_current_xact_id",
 ];
 
-const DANGEROUS_PREFIXES: &[&str] = &["xp_", "sp_", "dbms_", "utl_", "pg_ls_"];
+const DANGEROUS_PREFIXES: &[&str] = &[
+    "xp_",
+    "sp_",
+    "dbms_",
+    "utl_",
+    "pg_ls_",
+    "pg_create_",
+    "pg_drop_",
+    "pg_replication_",
+    "pg_advisory_",
+    "pg_try_advisory_",
+];
 
 const DDL_WORDS: &[&str] = &[
     "create", "alter", "drop", "truncate", "rename", "grant", "revoke", "comment", "reindex",
@@ -544,6 +590,8 @@ pub struct SchemaIndex {
     pub sensitive_columns: HashSet<String>,
     pub tables: HashMap<String, HashSet<String>>,
     pub allowed_schemas: HashSet<String>,
+    column_rules: Vec<Regex>,
+    invalid_pattern: Option<String>,
 }
 
 impl SchemaIndex {
@@ -567,6 +615,8 @@ impl SchemaIndex {
             sensitive_columns,
             tables,
             allowed_schemas: allowed_schemas.iter().map(|s| s.to_lowercase()).collect(),
+            column_rules: redactor.columns.clone(),
+            invalid_pattern: redactor.invalid.clone(),
         }
     }
 
@@ -582,8 +632,182 @@ impl SchemaIndex {
     }
 }
 
+const RENAME_WORD_SKIP: &[&str] = &[
+    "partition",
+    "index",
+    "key",
+    "pivot",
+    "unpivot",
+    "match_recognize",
+];
+const RENAME_PREV_SKIP: &[&str] = &["apply"];
+const SET_OPERATORS: &[&str] = &["union", "intersect", "except", "minus"];
+const STATEMENT_HEADS: &[&str] = &[
+    "select", "insert", "update", "delete", "merge", "upsert", "replace", "create",
+];
+const POSITIONAL_HEADS: &[&str] = &["insert", "upsert", "replace", "merge", "create"];
+
+fn matching_close(tokens: &[Token], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    for (i, token) in tokens.iter().enumerate().skip(open) {
+        match token {
+            Token::Open => depth += 1,
+            Token::Close => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_select_star(tokens: &[Token], i: usize) -> bool {
+    if tokens.get(i) != Some(&Token::Other('*')) || i == 0 {
+        return false;
+    }
+    match &tokens[i - 1] {
+        Token::Comma | Token::Dot => true,
+        Token::Word(word) if matches!(word.as_str(), "select" | "distinct" | "all") => true,
+        Token::Word(word) if word.chars().all(|c| c.is_ascii_digit()) => {
+            i >= 2 && tokens[i - 2] == Token::Word("top".into())
+        }
+        _ => false,
+    }
+}
+
+fn check_renames(tokens: &[Token]) -> Result<(), String> {
+    let word_at = |i: usize| match tokens.get(i) {
+        Some(Token::Word(word)) => Some(word.as_str()),
+        _ => None,
+    };
+    let set_operation = tokens
+        .iter()
+        .any(|token| matches!(token, Token::Word(word) if SET_OPERATORS.contains(&word.as_str())));
+    let mut depth = 0i32;
+    let mut head = None;
+    for token in tokens {
+        match token {
+            Token::Open => depth += 1,
+            Token::Close => depth -= 1,
+            Token::Word(word) if depth == 0 && STATEMENT_HEADS.contains(&word.as_str()) => {
+                head = Some(word.as_str());
+                break;
+            }
+            _ => {}
+        }
+    }
+    let positional_head = head.is_some_and(|word| POSITIONAL_HEADS.contains(&word));
+    let rename = || {
+        Err("Spaltenlisten für Aliase (z. B. AS t(a, b) oder WITH x(a, b)) sind über den MCP gesperrt, weil sie redigierte Spalten umbenennen könnten.".to_string())
+    };
+    let star = || {
+        Err("SELECT * ist hier gesperrt: In UNION, INSERT … SELECT oder Vergleichs-Subqueries würden Spalten ohne ihren Namen weitergegeben. Spalten einzeln wählen.".to_string())
+    };
+    let mut in_from = false;
+    let mut stack: Vec<(bool, usize)> = Vec::new();
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::Word(word) if FROM_START.contains(&word.as_str()) => in_from = true,
+            Token::Word(word) if FROM_END.contains(&word.as_str()) => in_from = false,
+            Token::Open => {
+                stack.push((in_from, i));
+                in_from = false;
+            }
+            Token::Close => in_from = stack.pop().map(|(from, _)| from).unwrap_or(false),
+            _ => {}
+        }
+        if is_select_star(tokens, i) {
+            if set_operation {
+                return star();
+            }
+            match stack.last() {
+                None if positional_head => return star(),
+                None => {}
+                Some(&(from, open)) => {
+                    let opener = open.checked_sub(1).and_then(word_at);
+                    if !from && !matches!(opener, Some("exists" | "as" | "materialized")) {
+                        return star();
+                    }
+                }
+            }
+        }
+        let Token::Word(word) = token else { continue };
+        if tokens.get(i + 1) != Some(&Token::Open) {
+            continue;
+        }
+        let prev = i.checked_sub(1).and_then(|p| tokens.get(p));
+        let cte = match prev {
+            Some(Token::Word(p)) if p == "with" || p == "recursive" => true,
+            Some(Token::Comma) => matching_close(tokens, i + 1).is_some_and(|close| {
+                word_at(close + 1) == Some("as")
+                    && (tokens.get(close + 2) == Some(&Token::Open)
+                        || matches!(word_at(close + 2), Some("materialized" | "not")))
+            }),
+            _ => false,
+        };
+        if cte {
+            return rename();
+        }
+        if in_from
+            && !ALIAS_STOP.contains(&word.as_str())
+            && !RENAME_WORD_SKIP.contains(&word.as_str())
+        {
+            let alias = match prev {
+                Some(Token::Close) => true,
+                Some(Token::Word(p)) => {
+                    p == "as"
+                        || !(ALIAS_STOP.contains(&p.as_str())
+                            || FROM_START.contains(&p.as_str())
+                            || RENAME_PREV_SKIP.contains(&p.as_str()))
+                }
+                _ => false,
+            };
+            if alias {
+                return rename();
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_positional(word: &str) -> bool {
+    word.len() > 1 && word.starts_with('_') && word[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+pub fn check_s3_select(sql: &str, index: &SchemaIndex) -> Result<(), String> {
+    if let Some(pattern) = &index.invalid_pattern {
+        return Err(invalid_pattern_error(pattern));
+    }
+    let expression = match crate::db::s3::select::parse(sql, Some("bucket"))? {
+        crate::db::s3::select::Statement::Select { expression, .. } => expression,
+        _ => return Ok(()),
+    };
+    for word in sql_words(&expression) {
+        if is_positional(&word) {
+            return Err(format!(
+                "Positionsspalte '{word}' ist über den MCP gesperrt. Spalten per Namen wählen."
+            ));
+        }
+        if index.column_rules.iter().any(|re| re.is_match(&word)) {
+            return Err(format!(
+                "Spalte '{word}' ist redigiert und darf in SQL nicht referenziert werden. SELECT * liefert sie maskiert."
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
+    if let Some(pattern) = &index.invalid_pattern {
+        return Err(invalid_pattern_error(pattern));
+    }
     let tokens = tokenize(sql);
+    if !index.sensitive_columns.is_empty() {
+        check_renames(&tokens)?;
+    }
     for token in &tokens {
         if let Token::Word(word) = token {
             if index.sensitive_columns.contains(word) {
@@ -976,5 +1200,150 @@ mod tests {
         assert!(check_references("select * from users", &idx).is_ok());
         assert!(check_references("select * from public.users", &idx).is_ok());
         assert!(check_references("select u.name from users u where u.id = 1", &idx).is_ok());
+    }
+
+    #[test]
+    fn rejects_column_alias_lists_that_rename_redacted_columns() {
+        let idx = index(&[]);
+        for sql in [
+            "select * from users as u(i, n, p, e)",
+            "select * from users u(i, n, p, e)",
+            "select u.p from users as u(i, n, p, e)",
+            "select * from public.users as u(i, n, p, e)",
+            "select * from users u join orders as o(a, b) on o.a = u.id",
+            "with x(a, b, c, d) as (select * from users) select * from x",
+            "with recursive x(a, b, c, d) as (select * from users) select * from x",
+            "with y as (select 1), x(a, b, c, d) as (select * from users) select * from x",
+            "with x(a, b, c, d) as materialized (select * from users) select * from x",
+            "select * from (select * from users) t(a, b, c, d)",
+            "select * from (select * from users) as t(a, b, c, d)",
+            "select * from [users] as [u]([i], [n], [p], [e])",
+            "select 1, 2, 3, 4 union select * from users",
+            "select * from orders union select * from users",
+            "select id, status from orders union all select u.* from users u",
+            "select x.a from (select 1 a, 2 b, 3 c, 4 d union select * from users) x",
+            "select 1 from orders where (1, 'n', 'pw', 'e') in (select * from users)",
+            "select 1 from orders where row(1, 'n', 'pw', 'e') = (select * from users limit 1)",
+            "insert into notes select * from users",
+            "insert into notes (a, b, c, d) select u.* from users u",
+        ] {
+            assert!(check_references(sql, &idx).is_err(), "{sql}");
+        }
+        for sql in [
+            "select * from users u join orders o using (id)",
+            "select * from users partition (p0)",
+            "select * from users force index (users_idx)",
+            "select * from users ignore key (users_idx)",
+            "select * from users tablesample system (10)",
+            "with x as (select id from users) select id from x",
+            "with x as (select id from users), y as (select id from orders) select x.id from x, y",
+            "select coalesce(name, 'x') as label from users where id in (select id from orders)",
+            "insert into users (id, name) values (1, 'x')",
+            "insert into public.users(id, name) values (1, 'x')",
+            "select count(*) from users",
+            "select u.name from users u where exists (select 1 from orders o where o.id = u.id)",
+            "select * from users where exists (select * from orders o where o.id = users.id)",
+            "with x as (select * from users) select * from x",
+            "select id * 2 from orders union select id from orders",
+            "select count(*) from users union select count(*) from orders",
+            "select top 5 * from users",
+        ] {
+            assert!(check_references(sql, &idx).is_ok(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn alias_lists_are_allowed_without_redacted_columns() {
+        let columns = vec![
+            col("public", "orders", "id"),
+            col("public", "orders", "status"),
+        ];
+        let idx = SchemaIndex::new(
+            &columns,
+            &Redactor::new(&McpConfig::default().redaction, &[]),
+            &[],
+        );
+        assert!(check_references("select * from generate_series(1, 3) as g(n)", &idx).is_ok());
+        assert!(
+            check_references("with x(a) as (select id from orders) select a from x", &idx).is_ok()
+        );
+    }
+
+    #[test]
+    fn s3_select_rejects_positions_and_redacted_names() {
+        let idx = index(&[]);
+        for sql in [
+            "select s.password from s3://data/customers_email.csv s",
+            "select s.passwort_hash as h from s3://data/customers_email.csv s",
+            "select s.secret_token from s3://data/customers_email.csv s",
+            "select s._3 from s3://data/customers_email.csv s",
+            "select _3 from s3://data/customers_email.csv",
+            "select upper(s.api_key) from s3://data/customers_email.csv s",
+            "select s.name from s3://data/customers_email.csv s where s.email like 'a%'",
+        ] {
+            assert!(check_s3_select(sql, &idx).is_err(), "{sql}");
+        }
+        for sql in [
+            "select * from s3://data/customers_email.csv",
+            "select s.name, s.amount from s3://data/customers_email.csv s where s.amount > 10 limit 5",
+            "select count(*) from s3://data/customers_email.csv s",
+            "select s.name as label, cast(s.amount as int) from s3://data/customers_email.csv s",
+            "list s3://data/secret_tokens/",
+            "show buckets",
+        ] {
+            assert!(check_s3_select(sql, &idx).is_ok(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn invalid_column_patterns_fail_closed() {
+        let config = McpConfig::default();
+        for bad in ["*email*", "kunde(", "(?!x)secret"] {
+            let r = Redactor::new(&config.redaction, &[bad.to_string()]);
+            assert!(r.check_valid().unwrap_err().contains(bad));
+            assert!(r.column_is_sensitive("id"), "{bad}");
+            assert_eq!(
+                r.redact_cell("id", &Value::from("42")),
+                Value::from("[redacted]")
+            );
+            let columns = vec![col("public", "orders", "id")];
+            let idx = SchemaIndex::new(&columns, &r, &[]);
+            let err = check_references("select id from orders", &idx).unwrap_err();
+            assert!(err.contains(bad), "{err}");
+            assert!(check_s3_select("select * from s3://b/k.csv", &idx).is_err());
+        }
+        let mut broken = config.clone();
+        broken.redaction.columns[0].pattern = "(".into();
+        let r = Redactor::new(&broken.redaction, &[]);
+        assert!(r.check_valid().is_err());
+        assert!(r.column_is_sensitive("id"));
+        broken.redaction.columns[0].enabled = false;
+        assert!(Redactor::new(&broken.redaction, &[]).check_valid().is_ok());
+        let ok = Redactor::new(&config.redaction, &["kunden_.*".into(), " ".into()]);
+        assert!(ok.check_valid().is_ok());
+        assert!(!ok.column_is_sensitive("id"));
+    }
+
+    #[test]
+    fn blocks_postgres_session_and_large_object_writers() {
+        for sql in [
+            "select set_config('default_transaction_read_only', 'off', false)",
+            "SELECT pg_catalog.set_config('transaction_read_only', 'off', true)",
+            "select lo_from_bytea(0, 'x')",
+            "select lo_create(0)",
+            "select lo_creat(-1)",
+            "select lo_unlink(1)",
+            "select pg_notify('c', 'x')",
+            "select pg_create_logical_replication_slot('s', 'pgoutput')",
+            "select pg_drop_replication_slot('s')",
+            "select pg_advisory_lock(1)",
+        ] {
+            assert!(dangerous_word(sql).is_some(), "{sql}");
+        }
+        assert_eq!(
+            dangerous_word("select current_setting('search_path')"),
+            None
+        );
+        assert_eq!(dangerous_word("select set_config_name from settings"), None);
     }
 }
