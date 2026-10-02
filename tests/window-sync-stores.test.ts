@@ -73,6 +73,7 @@ describe("dashboards across windows", () => {
 
   test("undo never reverts a change that arrived from another window", () => {
     useDashboardsStore.setState({ dashboards: [dashboard("d1", "Mine")], active: {} });
+    flushBuffered();
     clearDashboardHistory();
     useDashboardsStore.getState().update("d1", { name: "Local edit" });
     otherWindowWrites(
