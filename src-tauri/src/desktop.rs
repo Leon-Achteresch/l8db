@@ -14,10 +14,13 @@ static URL_PATTERN: LazyLock<Regex> =
 
 static SECRET_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)(password|passwd|pwd|token|secret|api[_-]?key|apikey|authorization|bearer|passphrase)\s*[:=]\s*\S+",
+        r#"(?i)(password|passwd|pwd|token|secret|api[_-]?key|apikey|authorization|bearer|passphrase)["']?\s*[:=]\s*(?:(?:bearer|basic|digest|token)\s+)?(?:"[^"]*"?|'[^']*'?|\{[^}]*\}?|\S+)"#,
     )
     .expect("secret pattern")
 });
+
+static BEARER_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]+").expect("bearer pattern"));
 
 pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri_plugin_log::Builder::new()
@@ -43,9 +46,12 @@ pub fn install_panic_hook() {
 
 pub fn redact(text: &str) -> String {
     let text = URL_PATTERN.replace_all(text, "<url>");
-    SECRET_PATTERN
+    let text = SECRET_PATTERN.replace_all(&text, |caps: &regex::Captures| {
+        format!("{}=<redacted>", &caps[1])
+    });
+    BEARER_PATTERN
         .replace_all(&text, |caps: &regex::Captures| {
-            format!("{}=<redacted>", &caps[1])
+            format!("{} <redacted>", &caps[1])
         })
         .into_owned()
 }
@@ -178,5 +184,27 @@ mod tests {
         assert!(!text.contains("db.example.com"));
         assert!(text.contains("<url>"));
         assert!(text.contains("password=<redacted>"));
+    }
+
+    #[test]
+    fn redact_strips_bearer_tokens_and_quoted_secrets() {
+        let cases = [
+            ("Authorization: Bearer abc.def.ghi", "abc.def.ghi"),
+            ("authorization=Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"),
+            ("header Bearer eyJhbGciOi.payload.sig", "eyJhbGciOi"),
+            ("password='correct horse battery'", "horse"),
+            ("password=\"correct horse battery\"", "horse"),
+            ("{\"password\":\"s3cret value\",\"user\":\"app\"}", "value"),
+            ("Server=db;PWD={my secret};Database=x", "secret"),
+        ];
+        for (input, leaked) in cases {
+            let text = redact(input);
+            assert!(!text.contains(leaked), "{input} -> {text}");
+            assert!(text.contains("<redacted>"), "{input} -> {text}");
+        }
+        assert_eq!(
+            redact("password authentication failed for user \"app\""),
+            "password authentication failed for user \"app\""
+        );
     }
 }
