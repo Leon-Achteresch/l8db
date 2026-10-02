@@ -47,6 +47,8 @@ const CONFIGURED_COMMANDS = new Set([
 ]);
 
 const WRITE_COMMANDS = new Set([
+  "versioning_run",
+  "versioning_run_fleet",
   "versioning_run_seed",
   "debug_launch",
   "debug_action",
@@ -144,25 +146,54 @@ function needsProductionGuard(command: string): boolean {
   );
 }
 
+function nestedConnectionString(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const connection = (value as { connection?: { connectionString?: unknown } }).connection;
+  return typeof connection?.connectionString === "string" ? connection.connectionString : undefined;
+}
+
+function guardTargets(args: Record<string, unknown>): Record<string, unknown>[] {
+  const nested = [
+    nestedConnectionString(args.request),
+    ...(Array.isArray(args.requests) ? args.requests.map(nestedConnectionString) : []),
+  ].filter((value): value is string => Boolean(value) && value !== args.connectionString);
+  return [args, ...nested.map((connectionString) => ({ ...args, connectionString }))];
+}
+
+async function readOnlyGuard(args: Record<string, unknown>): Promise<void> {
+  const [{ operationConnections }, { isReadOnlyConnection }] = await Promise.all([
+    import("@/lib/operation-context"),
+    import("@/lib/connections"),
+  ]);
+  const targets = guardTargets(args);
+  if (
+    targets.some(
+      (target) =>
+        (target !== args && isReadOnlyActive(target.connectionString)) ||
+        operationConnections(target, "exact").some(isReadOnlyConnection),
+    )
+  )
+    throw new Error(READ_ONLY_MESSAGE);
+}
+
 async function productionGuard(command: string, args: Record<string, unknown>): Promise<void> {
   const sqlCommand = SQL_COMMANDS.has(command);
-  const [{ operationContext }, { useConnectionsStore }, { productionWriteBlock }] =
-    await Promise.all([
-      import("@/lib/operation-context"),
-      import("@/lib/connections/store"),
-      import("@/lib/environments"),
-    ]);
-  const { connectionId } = operationContext(args);
-  const connection = useConnectionsStore
-    .getState()
-    .connections.find((entry) => entry.id === connectionId);
-  const message = productionWriteBlock(connection, sqlCommand ? String(args.sql ?? "") : null);
-  if (message) throw new Error(message);
+  const [{ operationConnections }, { productionWriteBlock }] = await Promise.all([
+    import("@/lib/operation-context"),
+    import("@/lib/environments"),
+  ]);
+  for (const target of guardTargets(args)) {
+    for (const connection of operationConnections(target)) {
+      const message = productionWriteBlock(connection, sqlCommand ? String(args.sql ?? "") : null);
+      if (message) throw new Error(message);
+    }
+  }
 }
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString)) {
-    throw new Error(READ_ONLY_MESSAGE);
+  if (WRITE_COMMANDS.has(command)) {
+    if (isReadOnlyActive(args?.connectionString)) throw new Error(READ_ONLY_MESSAGE);
+    await readOnlyGuard(args ?? {});
   }
   if (needsProductionGuard(command)) await productionGuard(command, args ?? {});
   const settings = useSettingsStore.getState();
