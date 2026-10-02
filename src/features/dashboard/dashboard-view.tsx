@@ -8,6 +8,8 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { DashboardEditor } from "./dashboard-editor";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
 import { DashboardWelcome } from "./dashboard-welcome";
+import { useDashboardDatabase } from "./use-dashboard-database";
+
 export function DashboardView() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const connection = useActiveConnection();
@@ -16,6 +18,7 @@ export function DashboardView() {
   const mine = store.dashboards.filter((d) => d.connectionId === connection?.id);
   const activeId = connection ? store.active[connection.id] : undefined;
   const dashboard = mine.find((d) => d.id === activeId) ?? mine[0] ?? null;
+  const switching = useDashboardDatabase(connection?.id ?? null, dashboard, database);
 
   if (!connection)
     return (
@@ -48,6 +51,8 @@ export function DashboardView() {
         />
       </>
     );
+
+  if (switching) return null;
 
   return (
     <DashboardEditor
