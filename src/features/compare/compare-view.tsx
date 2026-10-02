@@ -3,6 +3,7 @@ import { PlusIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { DefinitionCompareView } from "@/features/compare/definition-compare-view";
+import { definitionDraftPatch } from "@/features/compare/definition-draft";
 import { EMPTY_COMPARE_SIDE } from "@/lib/compare-types";
 import { useActiveConnection } from "@/lib/connections";
 import {
@@ -149,14 +150,18 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         draftBase={workspace.draftBase ?? null}
         sourceBase={workspace.sourceBase ?? null}
         onDraftChange={(draft, sourceBaseline, targetBaseline) =>
-          update({
-            draft,
-            sourceBase: workspace.sourceBase ?? sourceBaseline,
-            draftBase: workspace.draftBase ?? targetBaseline,
-          })
+          update(
+            definitionDraftPatch(workspace, {
+              type: "edit",
+              draft,
+              sourceBaseline,
+              targetBaseline,
+            }),
+          )
         }
-        onApplied={(side) => update(side === "left" ? { sourceBase: null } : { draftBase: null })}
-        onDiscard={() => update({ draft: null, draftBase: null, sourceBase: null })}
+        onApplied={(side) => update(definitionDraftPatch(workspace, { type: "applied", side }))}
+        onReload={() => update(definitionDraftPatch(workspace, { type: "reload" }))}
+        onDiscard={() => update(definitionDraftPatch(workspace, { type: "discard" }))}
         onlyDifferences={workspace.onlyDifferences}
         onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
         syncScroll={workspace.syncScroll ?? false}
