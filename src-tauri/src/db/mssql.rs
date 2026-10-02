@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::panic::AssertUnwindSafe;
@@ -21,9 +22,12 @@ use super::{
 
 type MsClient = Client<Compat<TcpStream>>;
 type IdleClients = Mutex<Vec<(MsClient, Instant)>>;
+type SessionClients = Mutex<HashMap<String, (MsClient, Instant)>>;
 
 const IDLE_MAX: usize = 8;
 const IDLE_TTL: Duration = Duration::from_secs(300);
+const SESSION_TTL: Duration = Duration::from_secs(60);
+const SESSION_MAX: usize = 8;
 
 pub struct MssqlAdapter {
     config: Config,
@@ -433,6 +437,35 @@ impl MssqlAdapter {
             client: Some(client),
             idle,
         })
+    }
+
+    async fn sessions(&self) -> Result<Arc<SessionClients>, String> {
+        self.pool_state
+            .shared(&format!("{}#script-sessions", self.key), || async {
+                Ok::<SessionClients, String>(Mutex::new(HashMap::new()))
+            })
+            .await
+    }
+
+    async fn execute_in_session(&self, session: &str, sql: &str) -> Result<QueryResult, String> {
+        let sessions = self.sessions().await?;
+        let parked = {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            map.retain(|_, (_, since)| since.elapsed() < SESSION_TTL);
+            map.remove(session).map(|(client, _)| client)
+        };
+        let mut client = match parked {
+            Some(client) => client,
+            None => self.dedicated().await?,
+        };
+        let result = run_query(&mut client, sql).await;
+        if result.is_ok() || run_query(&mut client, "SELECT 1").await.is_ok() {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if map.len() < SESSION_MAX || map.contains_key(session) {
+                map.insert(session.to_string(), (client, Instant::now()));
+            }
+        }
+        result
     }
 
     async fn dedicated(&self) -> Result<MsClient, String> {
@@ -997,6 +1030,9 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(session) = super::execution::session_id() {
+            return self.execute_in_session(&session, sql).await;
+        }
         let mut client = self.connect().await?;
         let result = run_query(&mut client, sql).await;
         if result.is_err() || may_change_session(sql) {
@@ -2157,6 +2193,71 @@ mod tests {
         assert_eq!(row.rows[0]["body"], 9000);
         adapter
             .rows("DROP TABLE dbo.l8db_alter_keep; DROP TYPE dbo.l8db_phone")
+            .await
+            .expect("cleanup");
+    }
+
+    async fn in_script(
+        adapter: &MssqlAdapter,
+        session: &str,
+        sql: &str,
+    ) -> Result<QueryResult, String> {
+        crate::db::execution::with_session(Some(session.to_string()), adapter.execute_query(sql))
+            .await
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_script_sessions_keep_state_between_statements() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new(&url, Some("master"), pool, "script-session".into()).unwrap();
+        adapter
+            .execute_query("IF OBJECT_ID('dbo.l8db_rp') IS NOT NULL DROP TABLE dbo.l8db_rp; CREATE TABLE dbo.l8db_rp (id int IDENTITY PRIMARY KEY, d date)")
+            .await
+            .unwrap();
+        for sql in [
+            "SET IDENTITY_INSERT dbo.l8db_rp ON",
+            "INSERT INTO dbo.l8db_rp (id, d) VALUES (100, '2024-01-01')",
+            "SET IDENTITY_INSERT dbo.l8db_rp OFF",
+            "SELECT 1 AS x INTO #t",
+            "SELECT * FROM #t",
+            "SET DATEFORMAT dmy",
+            "INSERT INTO dbo.l8db_rp (d) VALUES ('01/02/2024')",
+        ] {
+            in_script(&adapter, "script-a", sql).await.expect(sql);
+        }
+        assert!(in_script(
+            &adapter,
+            "script-a",
+            "INSERT INTO dbo.l8db_rp (d) VALUES ('31/31/2024')"
+        )
+        .await
+        .is_err());
+        in_script(&adapter, "script-a", "SELECT * FROM #t")
+            .await
+            .expect("session survives a failed statement");
+        let stored = adapter
+            .execute_query("SELECT CONVERT(varchar(10), d, 23) AS d FROM dbo.l8db_rp ORDER BY id")
+            .await
+            .unwrap();
+        assert_eq!(stored.rows[0]["d"], "2024-01-01");
+        assert_eq!(stored.rows[1]["d"], "2024-02-01");
+        assert!(in_script(&adapter, "script-b", "SELECT * FROM #t")
+            .await
+            .is_err());
+        let probe = adapter
+            .execute_query(
+                "SELECT CASE WHEN OBJECT_ID('tempdb..#t') IS NULL THEN 0 ELSE 1 END AS tmp",
+            )
+            .await
+            .unwrap();
+        assert_eq!(probe.rows[0]["tmp"], 0);
+        adapter
+            .execute_query("DROP TABLE dbo.l8db_rp")
             .await
             .expect("cleanup");
     }

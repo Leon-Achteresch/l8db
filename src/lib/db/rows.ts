@@ -117,7 +117,14 @@ export async function executeQuery(
   database?: string,
   options?: QueryExecutionOptions,
 ): Promise<QueryResult> {
-  return invoke("execute_query", { kind, connectionString, database, sql, options });
+  return invoke("execute_query", {
+    kind,
+    connectionString,
+    database,
+    sql,
+    options,
+    ...(options?.session ? { session: options.session } : {}),
+  });
 }
 
 export async function executeQueryWithParams(
