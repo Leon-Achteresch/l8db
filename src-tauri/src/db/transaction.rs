@@ -1,10 +1,8 @@
-use futures_util::TryStreamExt;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
-use tokio_postgres::SimpleQueryMessage;
 
 use super::pool::PoolState;
 use super::provider::DatabaseKind;
@@ -570,48 +568,12 @@ impl TransactionManager {
             TransactionEntry::Dynamo(d) => return d.execute(sql).await,
         };
         let conn = session.lock().await?;
-        let outcome = super::execution::postgres(&conn, &ssl, Some(session), async {
-            let start = std::time::Instant::now();
-            let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
-            futures_util::pin_mut!(messages);
-
-            let mut columns: Vec<String> = Vec::new();
-            let mut rows: Vec<serde_json::Value> = Vec::new();
-            let mut rows_affected: Option<u64> = None;
-
-            while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
-                match msg {
-                    SimpleQueryMessage::Row(row) => {
-                        if columns.is_empty() {
-                            columns = super::unique_column_names(
-                                row.columns().iter().map(|c| c.name().to_string()).collect(),
-                            );
-                        }
-                        let mut obj = serde_json::Map::new();
-                        for (i, col) in columns.iter().enumerate() {
-                            let val = row
-                                .get(i)
-                                .map(|v| serde_json::Value::String(v.to_string()))
-                                .unwrap_or(serde_json::Value::Null);
-                            obj.insert(col.clone(), val);
-                        }
-                        rows.push(serde_json::Value::Object(obj));
-                    }
-                    SimpleQueryMessage::CommandComplete(count) => {
-                        rows_affected = Some(count);
-                    }
-                    _ => {}
-                }
-            }
-
-            Ok(QueryResult {
-                columns,
-                rows,
-                rows_affected,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                truncated: false,
-            })
-        })
+        let outcome = super::execution::postgres(
+            &conn,
+            &ssl,
+            Some(session),
+            super::postgres::run_simple_query(&conn, sql),
+        )
         .await;
         session.finish(outcome)
     }
