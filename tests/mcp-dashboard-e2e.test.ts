@@ -5,8 +5,8 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { ensureSeeded, PSQL, postgresUrl } from "./fixtures/psql-lab";
 
-const PSQL = process.env.L8DB_PSQL ?? "/opt/homebrew/opt/postgresql@18/bin/psql";
 const BASE = process.env.L8DB_DASH_URL ?? "http://localhost:1420";
 const DB = process.env.L8DB_DASH_DB ?? "l8db_dash";
 const BIN = process.env.L8DB_BIN ?? `${import.meta.dir}/../src-tauri/target/debug/l8db`;
@@ -60,7 +60,11 @@ function boardFiles(): Row[] {
     .filter((f) => f.endsWith(".json"))
     .map((f) => {
       const text = readFileSync(join(BOARDS, f), "utf8");
-      return { ...JSON.parse(text), stamp: createHash("sha1").update(text).digest("hex") };
+      return {
+        ...JSON.parse(text),
+        trusted: true,
+        stamp: createHash("sha1").update(text).digest("hex"),
+      };
     });
 }
 
@@ -116,7 +120,7 @@ window.__TAURI_INTERNALS__ = {
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 localStorage.setItem("l8db.settings", JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }));
-localStorage.setItem("l8db.connections", JSON.stringify({ state: { connections: [{ id: "c1", name: "Dash-Test", kind: "postgres", connectionString: "postgres://leon@localhost/${DB}", sslMode: "disable" }], activeId: "c1", favoriteServerKeys: [], serverOrder: [] }, version: 0 }));
+localStorage.setItem("l8db.connections", JSON.stringify({ state: { connections: [{ id: "c1", name: "Dash-Test", kind: "postgres", connectionString: "${postgresUrl(DB)}", sslMode: "disable" }], activeId: "c1", favoriteServerKeys: [], serverOrder: [] }, version: 0 }));
 `;
 
 const CHARTS = [
@@ -194,6 +198,7 @@ const CHARTS = [
 test.skipIf(!process.env.L8DB_MCP_DASH_E2E)(
   "dashboards built over MCP render live in the app and sync back",
   async () => {
+    ensureSeeded(DB, "public.orders", `${import.meta.dir}/fixtures/dashboard-e2e-seed.sql`);
     rmSync(DIR, { recursive: true, force: true });
     mkdirSync(BOARDS, { recursive: true });
     writeFileSync(
@@ -205,7 +210,7 @@ test.skipIf(!process.env.L8DB_MCP_DASH_E2E)(
             id: "c1",
             name: "Dash-Test",
             kind: "postgres",
-            connectionString: `postgres://leon@localhost:5432/${DB}?sslmode=disable`,
+            connectionString: postgresUrl(DB),
             exposed: true,
             readOnly: true,
           },
@@ -286,7 +291,9 @@ test.skipIf(!process.env.L8DB_MCP_DASH_E2E)(
 
       const [removed] = mcp({ action: "delete", dashboard: "Vom Nutzer umbenannt" });
       expect(removed.ok).toBe(true);
-      await page.getByText("Noch kein Dashboard für Dash-Test").waitFor({ timeout: 6000 });
+      await page
+        .getByRole("button", { name: "Dashboard erstellen", exact: true })
+        .waitFor({ timeout: 6000 });
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
