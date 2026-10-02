@@ -197,7 +197,7 @@ export function useRunSql({
       void runSql(pending, buildParameterizedQuery(pending, bindValues, connection?.kind));
     } else {
       markQueryTabExecuted(tabId, pending);
-      void runSql(inlineBindValues(pending, bindValues), undefined, true);
+      void runSql(inlineBindValues(pending, bindValues, connection?.kind), undefined, true);
     }
   }, [
     bindPendingSql,

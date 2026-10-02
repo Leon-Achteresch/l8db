@@ -180,13 +180,31 @@ export class UnsupportedValueError extends Error {
   }
 }
 
-function quoteSqlString(text: string): string {
-  return `'${text.split("'").join("''")}'`;
+export function quoteSqlString(text: string, kind?: DatabaseKind | null): string {
+  if (kind === "mysql" && text.includes("\\")) {
+    return `CONCAT(${text
+      .split("\\")
+      .map((part) => quoteSqlString(part, kind))
+      .join(", CHAR(92 USING utf8mb4), ")})`;
+  }
+  if (kind === "bigquery") {
+    return `'${text
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")}'`;
+  }
+  const escaped =
+    kind === "clickhouse" || kind === "snowflake" ? text.split("\\").join("\\\\") : text;
+  return `${kind === "mssql" ? "N" : ""}'${escaped.split("'").join("''")}'`;
 }
 
-export function sqlLiteral(value: unknown, column: string): string {
+export function sqlLiteral(value: unknown, column: string, kind?: DatabaseKind | null): string {
   if (value === null || value === undefined) return "NULL";
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value === "boolean") {
+    if (kind === "mssql") return value ? "1" : "0";
+    return value ? "TRUE" : "FALSE";
+  }
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "number") {
     if (!Number.isFinite(value))
@@ -196,17 +214,17 @@ export function sqlLiteral(value: unknown, column: string): string {
   if (typeof value === "string") {
     if (value.includes("\u0000"))
       throw new UnsupportedValueError(column, "Text enthält ein Nullbyte.");
-    return quoteSqlString(value);
+    return quoteSqlString(value, kind);
   }
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) throw new UnsupportedValueError(column, "Ungültiges Datum.");
-    return quoteSqlString(value.toISOString());
+    return quoteSqlString(value.toISOString(), kind);
   }
   if (typeof value === "object") {
     if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)
       throw new UnsupportedValueError(column, "Binärdaten werden nicht unterstützt.");
     try {
-      return quoteSqlString(JSON.stringify(value));
+      return quoteSqlString(JSON.stringify(value), kind);
     } catch {
       throw new UnsupportedValueError(column, "Wert lässt sich nicht als JSON abbilden.");
     }
@@ -240,7 +258,7 @@ export function buildInsertStatements(input: InsertExportInput): string {
   const columnList = columns.map((c) => quoteIdentifier(c, style)).join(", ");
   const eol = input.lineEnding ?? "\n";
   const statements = input.rows.map((row) => {
-    const values = columns.map((c) => sqlLiteral(row[c], c)).join(", ");
+    const values = columns.map((c) => sqlLiteral(row[c], c, input.kind)).join(", ");
     return `INSERT INTO ${target} (${columnList}) VALUES (${values});`;
   });
   return statements.length === 0 ? "" : `${statements.join(eol)}${eol}`;
