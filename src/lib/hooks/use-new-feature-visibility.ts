@@ -1,7 +1,22 @@
 import { useEffect, useRef } from "react";
-import { markNewFeatureSeen, type NewFeatureId, useHasNewFeatures } from "@/lib/new-features";
+import {
+  createFeatureDwell,
+  markNewFeatureSeen,
+  type NewFeatureId,
+  useHasNewFeatures,
+} from "@/lib/new-features";
 
-const VIEW_DURATION_MS = 3_000;
+const VIEW_DURATION_MS = 2_000;
+
+const startDwell = createFeatureDwell(VIEW_DURATION_MS, markNewFeatureSeen);
+
+function isInView(entry: IntersectionObserverEntry | undefined): boolean {
+  if (!entry?.isIntersecting || document.visibilityState !== "visible") return false;
+  if (entry.intersectionRatio >= 0.5) return true;
+  const rootHeight = entry.rootBounds?.height ?? window.innerHeight;
+  const rootWidth = entry.rootBounds?.width ?? window.innerWidth;
+  return entry.boundingClientRect.height > rootHeight || entry.boundingClientRect.width > rootWidth;
+}
 
 export function useNewFeatureVisibility<T extends HTMLElement>(featureId?: NewFeatureId) {
   const ref = useRef<T>(null);
@@ -9,52 +24,44 @@ export function useNewFeatureVisibility<T extends HTMLElement>(featureId?: NewFe
 
   useEffect(() => {
     const element = ref.current;
-    if (!featureId || !isNew || !element || typeof IntersectionObserver === "undefined") return;
+    if (!featureId || !isNew || !element) return;
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let inViewport = false;
+    const onUse = () => markNewFeatureSeen(featureId);
+    element.addEventListener("click", onUse);
 
-    const stopTimer = () => {
-      if (timer === undefined) return;
-      clearTimeout(timer);
-      timer = undefined;
+    let stopDwell: (() => void) | undefined;
+    const pause = () => {
+      stopDwell?.();
+      stopDwell = undefined;
     };
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries.at(-1);
-        inViewport =
-          document.visibilityState === "visible" &&
-          Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5);
-        if (!inViewport) {
-          stopTimer();
-          return;
-        }
-        if (timer !== undefined) return;
-        timer = setTimeout(() => {
-          timer = undefined;
-          if (inViewport && document.visibilityState === "visible") markNewFeatureSeen(featureId);
-        }, VIEW_DURATION_MS);
-      },
-      { threshold: 0.5 },
-    );
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? undefined
+        : new IntersectionObserver(
+            (entries) => {
+              if (!isInView(entries.at(-1))) pause();
+              else stopDwell ??= startDwell(featureId);
+            },
+            { threshold: [0, 0.5] },
+          );
 
     const onVisibilityChange = () => {
       if (document.visibilityState !== "visible") {
-        inViewport = false;
-        stopTimer();
+        pause();
         return;
       }
-      observer.unobserve(element);
-      observer.observe(element);
+      observer?.unobserve(element);
+      observer?.observe(element);
     };
 
-    observer.observe(element);
+    observer?.observe(element);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
-      stopTimer();
-      observer.disconnect();
+      pause();
+      observer?.disconnect();
+      element.removeEventListener("click", onUse);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [featureId, isNew]);
