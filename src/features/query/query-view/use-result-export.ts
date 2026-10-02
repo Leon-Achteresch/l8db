@@ -5,6 +5,8 @@ import { toast } from "sonner";
 
 import type { QueryResult } from "@/lib/db";
 import type { DataExportFormat } from "@/lib/export-formats";
+import { useActiveMasks } from "@/lib/masking-display";
+import { resultJsonRows } from "../query-result-masking";
 
 export function useResultExport(result: QueryResult | null) {
   const [exporting, setExporting] = useState(false);
@@ -12,6 +14,7 @@ export function useResultExport(result: QueryResult | null) {
   const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
   const [dataExportFormat, setDataExportFormat] = useState<DataExportFormat | null>(null);
   const openCsvExport = useCallback(() => setCsvExportOpen(true), []);
+  const { active: masks } = useActiveMasks(result?.columns ?? []);
 
   const exportRows = useMemo(() => {
     if (!result) return [] as Record<string, unknown>[];
@@ -31,7 +34,7 @@ export function useResultExport(result: QueryResult | null) {
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!filePath) return;
-      await writeTextFile(filePath, JSON.stringify(exportRows, null, 2));
+      await writeTextFile(filePath, JSON.stringify(resultJsonRows(result, masks), null, 2));
     } catch (error) {
       toast.error(`Export fehlgeschlagen: ${String(error)}`);
     } finally {

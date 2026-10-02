@@ -16,6 +16,7 @@ import { gridCellText } from "@/lib/grid-search";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { cn } from "@/lib/utils";
 import { QueryCellInspector } from "./query-cell-inspector";
+import { useMaskedQueryResult } from "./query-result-masking";
 import { QueryResultTable } from "./query-result-table";
 import type { ResultChartBinding } from "./result-chart/types";
 
@@ -50,22 +51,23 @@ export function QueryResultWorkbench({
     setSearch("");
     setCell(null);
   }
+  const { masked } = useMaskedQueryResult(result);
   const term = useDeferredValue(search).trim().toLowerCase();
   const filtered = useMemo(
     () =>
-      !result || !term
-        ? result
+      !masked || !term
+        ? masked
         : {
-            ...result,
-            rows: result.rows.filter((row) =>
-              result.columns.some((column) =>
+            ...masked,
+            rows: masked.rows.filter((row) =>
+              masked.columns.some((column) =>
                 gridCellText(row[column] ?? "NULL")
                   .toLowerCase()
                   .includes(term),
               ),
             ),
           },
-    [result, term],
+    [masked, term],
   );
   const visibleRows = filtered?.rows ?? [];
   const jsonVirtualizer = useVirtualizer({
@@ -200,7 +202,11 @@ export function QueryResultWorkbench({
       {chart && chartView ? (
         <div className="min-h-0 flex-1">
           <Suspense fallback={null}>
-            <ResultChartView columns={result.columns} rows={result.rows} binding={chart} />
+            <ResultChartView
+              columns={result.columns}
+              rows={masked?.rows ?? result.rows}
+              binding={chart}
+            />
           </Suspense>
         </div>
       ) : workspace.resultView === "json" ? (
@@ -247,6 +253,7 @@ export function QueryResultWorkbench({
             result={filtered}
             isLoading={false}
             error={null}
+            masked
             onInspect={(column, value, row) => setCell({ column, value, row })}
           />
         </div>
