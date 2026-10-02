@@ -34,6 +34,7 @@ tokio::task_local! {
     static CONTEXT: Context;
     static PROGRESS: Arc<dyn Fn(u64) + Send + Sync>;
     static SESSION: Option<String>;
+    static DEADLINE: Duration;
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;
@@ -178,12 +179,17 @@ where
         if native_cancel {
             future.await
         } else {
-            tokio::time::timeout(query_duration(), future)
+            let deadline = query_duration();
+            tokio::time::timeout(deadline, DEADLINE.scope(deadline, future))
                 .await
                 .map_err(|_| timeout_message())?
         }
     })
     .await
+}
+
+pub fn query_deadline() -> Option<Duration> {
+    DEADLINE.try_with(|deadline| *deadline).ok()
 }
 
 pub async fn connect<T, F>(future: F) -> Result<T, String>
