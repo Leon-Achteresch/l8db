@@ -180,7 +180,7 @@ describe("SQL Server", () => {
     });
     expect(text).toContain("BEGIN TRANSACTION;\nGO");
     expect(text).toContain("CREATE OR ALTER VIEW [app].[v] AS SELECT 1 AS a\nGO");
-    expect(text.trimEnd()).toEndWith("COMMIT TRANSACTION;\nGO");
+    expect(text.trimEnd()).toEndWith("COMMIT TRANSACTION;\nGO\nSET NOEXEC OFF;\nGO");
   });
 });
 
@@ -209,7 +209,7 @@ describe("SQLite", () => {
       'CREATE TABLE "app"."_l8db_copy_t" AS SELECT "a", "id" FROM "app"."t"',
       'DROP TABLE "app"."t"',
       'CREATE TABLE "app"."t" (id INTEGER PRIMARY KEY, a INTEGER NOT NULL)',
-      'INSERT INTO "app"."t" ("a", "id") SELECT "a", "id" FROM "app"."_l8db_copy_t"',
+      'INSERT OR ROLLBACK INTO "app"."t" ("a", "id") SELECT "a", "id" FROM "app"."_l8db_copy_t"',
       'DROP TABLE "app"."_l8db_copy_t"',
       'CREATE INDEX "app"."t_a" ON t (a)',
     ]);
