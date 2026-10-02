@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from "motion/react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { EASE_IN_OUT, EASE_OUT } from "@/lib/ease";
 
 type Phase = "idle" | "swell" | "fall" | "open" | "full";
@@ -12,24 +12,25 @@ type Drop = {
   center: number;
   edge: number;
   radius: number;
+  background: string;
+  border: string;
   target: { x: number; y: number; width: number; height: number };
 };
 
 const TOAST = "[data-sonner-toast]";
 const PAD = 24;
 const INSTANT = { duration: 0 };
-const SWELL = { duration: 0.38, ease: EASE_OUT };
-const SINK = { duration: 0.75, ease: EASE_IN_OUT };
-const INFLATE = { type: "spring", duration: 0.95, bounce: 0.2 } as const;
-const REVEAL_DELAY = 370;
+const SWELL = { duration: 0.16, ease: EASE_OUT };
+const SINK = { duration: 0.22, ease: EASE_IN_OUT };
+const INFLATE = { type: "spring", duration: 0.4, bounce: 0.12 } as const;
+const REVEAL_DELAY = 100;
 const NEXT: Partial<Record<Phase, Phase>> = { swell: "fall", fall: "open" };
-
-const reveal = (toast: HTMLElement) => toast.setAttribute("data-dropped", "");
 
 function measure(toast: HTMLElement) {
   const origin = document.querySelector("[data-toast-origin]")?.getBoundingClientRect();
   if (!origin?.width) return null;
   const target = toast.getBoundingClientRect();
+  const style = getComputedStyle(toast);
   const center = origin.left + origin.width / 2;
   const left = Math.min(center - 40, target.left) - PAD;
   const top = origin.bottom - PAD;
@@ -38,7 +39,9 @@ function measure(toast: HTMLElement) {
     box: { left, top, width: right - left, height: target.bottom + PAD - top },
     center: center - left,
     edge: PAD,
-    radius: Number.parseFloat(getComputedStyle(toast).borderTopLeftRadius) || 14,
+    radius: Number.parseFloat(style.borderTopLeftRadius) || 14,
+    background: style.backgroundColor,
+    border: style.borderTopColor,
     target: {
       x: target.left - left,
       y: target.top - top,
@@ -52,29 +55,55 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
   const reduce = useReducedMotion();
   const [drop, setDrop] = useState<Drop | null>(null);
   const current = useRef<Drop | null>(null);
-  current.current = drop;
+  const sequence = useRef(0);
+  const timers = useRef(new Map<HTMLElement, number>());
+  const reveal = useCallback((toast: HTMLElement) => {
+    window.clearTimeout(timers.current.get(toast));
+    timers.current.delete(toast);
+    toast.setAttribute("data-dropped", "");
+  }, []);
 
   useEffect(() => {
     const container = root.current;
     if (!container) return;
-    let key = 0;
+    const pending = timers.current;
     container.querySelectorAll<HTMLElement>(TOAST).forEach(reveal);
+    current.current = null;
+    setDrop(null);
+
+    const start = (next: Drop | null) => {
+      current.current = next;
+      setDrop(next);
+    };
 
     const enter = (toast: HTMLElement) => {
+      if (toast.dataset.front !== "true") return reveal(toast);
       const previous = current.current?.toast;
       if (previous && previous !== toast) reveal(previous);
-      window.setTimeout(() => reveal(toast), 2500);
       const geometry = reduce ? null : measure(toast);
-      if (!geometry) return reveal(toast);
-      key += 1;
-      setDrop({ key, from: "idle", phase: "swell", toast, ...geometry });
+      if (!geometry) {
+        start(null);
+        return reveal(toast);
+      }
+      pending.set(
+        toast,
+        window.setTimeout(() => reveal(toast), 1000),
+      );
+      sequence.current += 1;
+      start({ key: sequence.current, from: "idle", phase: "swell", toast, ...geometry });
     };
 
     const leave = (toast: HTMLElement) => {
+      if (current.current && current.current.toast !== toast) return;
+      if (!toast.hasAttribute("data-dropped")) {
+        reveal(toast);
+        start(null);
+        return;
+      }
       const geometry = reduce ? null : measure(toast);
       if (!geometry) return;
-      key += 1;
-      setDrop({ key, from: "full", phase: "idle", toast, ...geometry });
+      sequence.current += 1;
+      start({ key: sequence.current, from: "full", phase: "idle", toast, ...geometry });
     };
 
     const observer = new MutationObserver((records) => {
@@ -84,6 +113,10 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
             if (!(node instanceof HTMLElement)) continue;
             if (node.matches(TOAST)) enter(node);
             else node.querySelectorAll<HTMLElement>(TOAST).forEach(enter);
+          }
+          if (current.current && !current.current.toast.isConnected) {
+            reveal(current.current.toast);
+            start(null);
           }
           continue;
         }
@@ -98,14 +131,20 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
       attributes: true,
       attributeFilter: ["data-removed"],
     });
-    return () => observer.disconnect();
-  }, [root, reduce]);
+    return () => {
+      observer.disconnect();
+      pending.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      pending.clear();
+    };
+  }, [root, reduce, reveal]);
 
   useEffect(() => {
     if (drop?.phase !== "open") return;
     const timer = window.setTimeout(() => reveal(drop.toast), REVEAL_DELAY);
     return () => window.clearTimeout(timer);
-  }, [drop]);
+  }, [drop, reveal]);
 
   if (!drop) return null;
   const { center, edge, radius, target } = drop;
@@ -124,13 +163,14 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
       aria-hidden="true"
       initial={drop.from}
       animate={drop.phase}
-      onAnimationComplete={(label) =>
-        setDrop((state) => {
-          if (!state || state.phase !== label) return state;
-          const next = NEXT[state.phase];
-          return next ? { ...state, phase: next } : null;
-        })
-      }
+      onAnimationComplete={(label) => {
+        const state = current.current;
+        if (!state || state.key !== drop.key || state.phase !== label) return;
+        if (state.phase === "open") reveal(state.toast);
+        const next = NEXT[state.phase];
+        current.current = next ? { ...state, phase: next } : null;
+        setDrop(current.current);
+      }}
       className="pointer-events-none fixed z-[999999998]"
       style={{
         ...drop.box,
@@ -143,17 +183,18 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
           <feGaussianBlur in="SourceGraphic" stdDeviation="5" />
           <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 16 -7.5" result="goo" />
           <feMorphology operator="dilate" radius="1" result="grown" />
-          <feFlood style={{ floodColor: "var(--border)" }} />
+          <feFlood style={{ floodColor: drop.border }} />
           <feComposite in2="grown" operator="in" result="rim" />
           <feComposite in="goo" in2="rim" operator="over" />
         </filter>
       </svg>
       <div
-        className="absolute h-3 w-[60px] rounded-full bg-card"
-        style={{ left: center - 30, top: edge - 13 }}
+        className="absolute h-3 w-[60px] rounded-full"
+        style={{ left: center - 30, top: edge - 13, background: drop.background }}
       />
       <motion.div
-        className="absolute top-0 left-0 rounded-full bg-card"
+        className="absolute top-0 left-0 rounded-full"
+        style={{ background: drop.background }}
         variants={{
           idle: { x: center - 5, y: edge - 6, width: 10, height: 0, transition: INSTANT },
           swell: { x: center - 5, y: edge - 6, width: 10, height: 0, transition: INSTANT },
@@ -161,13 +202,14 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
           open: {
             x: center,
             width: 0,
-            transition: { duration: 0.4, ease: EASE_OUT, delay: 0.22 },
+            transition: { duration: 0.15, ease: EASE_OUT, delay: 0.08 },
           },
           full: { width: 0, height: 0, transition: INSTANT },
         }}
       />
       <motion.div
-        className="absolute top-0 left-0 bg-card"
+        className="absolute top-0 left-0"
+        style={{ background: drop.background }}
         variants={{
           idle: {
             x: center - 12,
@@ -175,7 +217,7 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
             width: 24,
             height: 16,
             borderRadius: 15,
-            transition: { duration: 0.3, ease: EASE_OUT },
+            transition: { duration: 0.18, ease: EASE_OUT },
           },
           swell: {
             x: center - 14,
