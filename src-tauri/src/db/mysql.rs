@@ -109,9 +109,7 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
                 }
             }
             if column.column_type() == ColumnType::MYSQL_TYPE_JSON {
-                if let Ok(json) = serde_json::from_str(&text) {
-                    return json;
-                }
+                return super::exact_number::json_document(&text);
             }
             serde_json::Value::String(text)
         }
