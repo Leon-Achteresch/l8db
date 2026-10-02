@@ -136,6 +136,18 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
   };
 }
 
+export function createFeatureDwell(durationMs: number, onDone: (id: NewFeatureId) => void) {
+  const elapsed = new Map<NewFeatureId, number>();
+  return (id: NewFeatureId) => {
+    const startedAt = Date.now();
+    const timer = setTimeout(() => onDone(id), Math.max(0, durationMs - (elapsed.get(id) ?? 0)));
+    return () => {
+      clearTimeout(timer);
+      elapsed.set(id, (elapsed.get(id) ?? 0) + Date.now() - startedAt);
+    };
+  };
+}
+
 function browserStorage(): FeatureStorage | null {
   if (typeof window === "undefined") return null;
   try {
