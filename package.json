@@ -32,6 +32,7 @@
     "test:clickhouse": "node scripts/test-clickhouse-browser.mjs",
     "test:http-families": "bash scripts/test-http-families.sh",
     "test:pocketbase": "bash scripts/test-pocketbase-live.sh",
+    "test:workload-live": "bash scripts/test-workload-live.sh",
     "test:perf:scroll": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 L8DB_PERF_DURATION=10000 bun test tests/perf-browser.test.ts",
     "test:perf": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 L8DB_PERF_APP=1 bun test tests/perf-browser.test.ts tests/perf-bundle.test.ts tests/perf-app.test.ts",
     "version:check": "node scripts/version.mjs check",
