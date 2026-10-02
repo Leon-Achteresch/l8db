@@ -2263,6 +2263,42 @@ mod tests {
             assert!(validate_table_filter(filter).is_err(), "{filter}");
         }
     }
+
+    #[test]
+    fn rejects_filters_hidden_by_dialect_specific_quoting() {
+        for filter in [
+            "name = 'a\\''; DROP TABLE t; SELECT '1'",
+            "name = E'\\'' UNION SELECT usename FROM pg_shadow WHERE '' = ''",
+            "name = \"a\\\"\" UNION SELECT 1 FROM dual WHERE \"\" = \"\"",
+            "$q$'$q$ UNION SELECT usename FROM pg_shadow $q$'$q$",
+            "$$'$$ UNION SELECT 1 $$'$$",
+            "1=1 #",
+            "1=1 # '\n; DROP TABLE t; SELECT '",
+            "`a'` = 1 UNION SELECT 1 -- '",
+            "[a'] = 1; DROP TABLE t --'",
+            "x = q'[it']' UNION SELECT 1 FROM dual --'",
+            "x = Nq'{it'}' UNION SELECT 1 FROM dual --'",
+        ] {
+            assert!(validate_table_filter(filter).is_err(), "{filter}");
+        }
+    }
+
+    #[test]
+    fn accepts_dialect_specific_builder_literals() {
+        for filter in [
+            "\"path\" = E'C:\\\\temp\\\\x'",
+            "`path` = CONCAT('C:', CHAR(92 USING utf8mb4), 'x')",
+            "`name` = 'it''s; fine'",
+            "\"name\" = 'a\\\\''' AND \"n\" = 1",
+            "`name` = 'it\\'s'",
+            "[name] = N'O''Brien -- not a comment'",
+            "\"tags\"[1] = 'x' AND \"a$b\" = 2",
+            "\"name\" IN ('a#b', '$q$', 'x;y')",
+            "\"freq\" > 2 AND \"q\" = 'q'",
+        ] {
+            assert!(validate_table_filter(filter).is_ok(), "{filter}");
+        }
+    }
 }
 
 pub fn redact_connection_string(input: &str) -> String {
@@ -2372,31 +2408,100 @@ fn scan_value(input: &str, cursor: usize) -> (usize, bool) {
     (end, false)
 }
 
-fn strip_quoted(input: &str, quote: char) -> String {
+#[derive(Clone, Copy)]
+struct FilterLexMode {
+    backslash: bool,
+    backtick: bool,
+    bracket: bool,
+    q_quote: bool,
+}
+
+fn skip_quoted(chars: &[char], start: usize, close: char, backslash: bool) -> usize {
+    let mut i = start + 1;
+    while i < chars.len() {
+        if backslash && chars[i] == '\\' {
+            i += 2;
+            continue;
+        }
+        if chars[i] == close {
+            if chars.get(i + 1) == Some(&close) {
+                i += 2;
+                continue;
+            }
+            return i + 1;
+        }
+        i += 1;
+    }
+    chars.len()
+}
+
+fn skip_q_quoted(chars: &[char], start: usize) -> usize {
+    let Some(&open) = chars.get(start + 2) else {
+        return chars.len();
+    };
+    let close = match open {
+        '[' => ']',
+        '(' => ')',
+        '{' => '}',
+        '<' => '>',
+        other => other,
+    };
+    let mut i = start + 3;
+    while i + 1 < chars.len() {
+        if chars[i] == close && chars[i + 1] == '\'' {
+            return i + 2;
+        }
+        i += 1;
+    }
+    chars.len()
+}
+
+fn filter_outside_literals(input: &str, mode: FilterLexMode) -> String {
     let chars: Vec<char> = input.chars().collect();
     let mut out = String::with_capacity(input.len());
     let mut i = 0;
     while i < chars.len() {
-        if chars[i] == quote {
-            i += 1;
-            while i < chars.len() {
-                if chars[i] == quote {
-                    if quote == '\'' && i + 1 < chars.len() && chars[i + 1] == '\'' {
-                        i += 2;
-                        continue;
-                    }
-                    i += 1;
-                    break;
-                }
+        let ch = chars[i];
+        let next = match ch {
+            'q' | 'Q' if mode.q_quote && chars.get(i + 1) == Some(&'\'') => {
+                Some(skip_q_quoted(&chars, i))
+            }
+            '\'' | '"' => Some(skip_quoted(&chars, i, ch, mode.backslash)),
+            '`' if mode.backtick => Some(skip_quoted(&chars, i, '`', false)),
+            '[' if mode.bracket => Some(skip_quoted(&chars, i, ']', false)),
+            _ => None,
+        };
+        match next {
+            Some(end) => {
+                out.push(' ');
+                i = end;
+            }
+            None => {
+                out.push(ch);
                 i += 1;
             }
-            out.push(' ');
-        } else {
-            out.push(chars[i]);
-            i += 1;
         }
     }
     out
+}
+
+fn contains_dollar_quote(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    chars.iter().enumerate().any(|(i, &ch)| {
+        if ch != '$'
+            || i.checked_sub(1)
+                .is_some_and(|p| is_word_char(chars[p]) || chars[p] == '$')
+        {
+            return false;
+        }
+        let mut j = i + 1;
+        if chars.get(j).is_some_and(|c| c.is_alphabetic() || *c == '_') {
+            while chars.get(j).is_some_and(|c| is_word_char(*c)) {
+                j += 1;
+            }
+        }
+        chars.get(j) == Some(&'$')
+    })
 }
 
 fn is_word_char(ch: char) -> bool {
@@ -2418,19 +2523,31 @@ fn contains_word(haystack: &str, word: &str) -> bool {
 }
 
 pub fn validate_table_filter(filter: &str) -> Result<(), String> {
-    let stripped = strip_quoted(&strip_quoted(filter, '\''), '"').to_lowercase();
-    for token in [";", "--", "/*", "*/"] {
-        if stripped.contains(token) {
-            return Err(format!(
-                "Filter abgelehnt: {token} ist im einfachen Filtermodus nicht erlaubt. Nutze den SQL-Modus für eigene Ausdrücke."
-            ));
+    let reject = |token: &str| {
+        Err(format!(
+            "Filter abgelehnt: {token} ist im einfachen Filtermodus nicht erlaubt. Nutze den SQL-Modus für eigene Ausdrücke."
+        ))
+    };
+    for bits in 0..16u8 {
+        let mode = FilterLexMode {
+            backslash: bits & 1 != 0,
+            backtick: bits & 2 != 0,
+            bracket: bits & 4 != 0,
+            q_quote: bits & 8 != 0,
+        };
+        let stripped = filter_outside_literals(filter, mode).to_lowercase();
+        for token in [";", "--", "/*", "*/", "#"] {
+            if stripped.contains(token) {
+                return reject(token);
+            }
         }
-    }
-    for word in ["union", "returning", "into"] {
-        if contains_word(&stripped, word) {
-            return Err(format!(
-                "Filter abgelehnt: {word} ist im einfachen Filtermodus nicht erlaubt. Nutze den SQL-Modus für eigene Ausdrücke."
-            ));
+        if contains_dollar_quote(&stripped) {
+            return reject("$$");
+        }
+        for word in ["union", "returning", "into"] {
+            if contains_word(&stripped, word) {
+                return reject(word);
+            }
         }
     }
     Ok(())
