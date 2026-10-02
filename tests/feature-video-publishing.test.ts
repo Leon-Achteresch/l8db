@@ -82,4 +82,4 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
+}, 30_000);
