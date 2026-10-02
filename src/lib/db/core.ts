@@ -12,6 +12,7 @@ export interface QueryExecutionOptions {
   onJob?: (id: string) => void;
   confirmed?: boolean;
   track?: boolean;
+  session?: string;
 }
 
 const SQL_COMMANDS = new Set([

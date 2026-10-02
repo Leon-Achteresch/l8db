@@ -33,6 +33,7 @@ struct Context {
 tokio::task_local! {
     static CONTEXT: Context;
     static PROGRESS: Arc<dyn Fn(u64) + Send + Sync>;
+    static SESSION: Option<String>;
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;
@@ -69,6 +70,18 @@ pub fn cancellation_token() -> CancellationToken {
     CONTEXT
         .try_with(|ctx| ctx.cancel.clone())
         .unwrap_or_default()
+}
+
+pub fn session_id() -> Option<String> {
+    SESSION.try_with(Clone::clone).ok().flatten()
+}
+
+pub async fn with_session<T, F>(session: Option<String>, future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let session = session.filter(|id| !id.is_empty() && id.len() <= 128);
+    SESSION.scope(session, future).await
 }
 
 pub fn query_duration() -> Duration {

@@ -597,17 +597,18 @@ pub async fn execute_query(
     sql: String,
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
+    session: Option<String>,
 ) -> Result<QueryResult, String> {
     super::execution::run_query(options, kind.capabilities().query_cancel, async {
-        create_adapter_from_string(
+        let adapter = create_adapter_from_string(
             kind,
             &connection_string,
             database.as_deref(),
             pool_state.inner().clone(),
-        )?
-        .execute_query(&sql)
-        .await
-        .map(truncate_rows)
+        )?;
+        super::execution::with_session(session, adapter.execute_query(&sql))
+            .await
+            .map(truncate_rows)
     })
     .await
 }
