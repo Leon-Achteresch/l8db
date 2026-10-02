@@ -1,11 +1,28 @@
 import { gt } from "semver";
 import { validateArchive } from "../../../packages/extension-api/src/manifest";
-import type { ExtensionArchive, ExtensionDescriptor, Json, Permission } from "./contracts";
+import type {
+  ExtensionArchive,
+  ExtensionDescriptor,
+  ExtensionManifest,
+  Json,
+  Permission,
+} from "./contracts";
 import { ExtensionError } from "./contracts";
 import { ExtensionManagerBase } from "./manager/extension-manager-base";
 import { isWriteQuery } from "./manager/is-write-query";
 
 export { isWriteQuery };
+
+function widenedGrants(previous: ExtensionManifest, next: ExtensionManifest): Permission[] {
+  const added = (before: string[] = [], after: string[] = []) =>
+    after.some((entry) => !before.includes(entry));
+  const widened: Permission[] = [];
+  if (added(previous.capabilities?.network?.hosts, next.capabilities?.network?.hosts))
+    widened.push("network");
+  if (added(previous.capabilities?.process?.commands, next.capabilities?.process?.commands))
+    widened.push("process:execute");
+  return widened;
+}
 
 export class ExtensionManager extends ExtensionManagerBase {
   installExtension(archive: ExtensionArchive, developmentPath?: string) {
@@ -93,14 +110,20 @@ export class ExtensionManager extends ExtensionManagerBase {
       const restore = structuredClone(extension);
       extension.archive = validated;
       extension.developmentPath = developmentPath;
-      extension.grants = extension.grants.filter((grant) => declared.includes(grant));
+      const widened = widenedGrants(restore.archive.manifest, validated.manifest);
+      extension.grants = extension.grants.filter(
+        (grant) => declared.includes(grant) && !widened.includes(grant),
+      );
       extension.configuration = Object.fromEntries(
         Object.entries(extension.configuration).filter(([key]) => Object.hasOwn(settings, key)),
       );
       extension.state = wasEnabled ? "validated" : "discovered";
       extension.error = undefined;
+      const revoked = restore.grants.filter((grant) => widened.includes(grant));
       try {
         this.prepare(extension);
+        if (revoked.length)
+          await this.storage.update(id, wasEnabled, extension.grants, extension.configuration);
         await this.storage.replace(id, validated, developmentPath);
       } catch (error) {
         this.release(id);
@@ -108,6 +131,8 @@ export class ExtensionManager extends ExtensionManagerBase {
         this.prepare(extension);
         throw error;
       }
+      if (revoked.length)
+        this.log(id, "warn", `capabilities widened, consent required again: ${revoked.join(", ")}`);
       this.log(id, "info", `updated ${previous} -> ${validated.manifest.version}`);
       this.changed();
       if (
