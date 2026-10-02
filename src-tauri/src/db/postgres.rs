@@ -721,6 +721,15 @@ pub(crate) fn table_page_sql(
     )
 }
 
+const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
+            format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL) \
+     FROM pg_catalog.pg_attribute a \
+     JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
+     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+     ORDER BY a.attnum";
+
 pub(crate) const LOCK_GUARD: &str = "lock_timeout = '5s'";
 pub(crate) const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
 pub(crate) const TRANSACTION_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '30min'";
@@ -1314,13 +1323,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let column_rows = conn
-                .query(
-                    "SELECT column_name \
-                     FROM information_schema.columns \
-                     WHERE table_schema = $1 AND table_name = $2 \
-                     ORDER BY ordinal_position",
-                    &[&schema, &table],
-                )
+                .query(RELATION_COLUMNS_SQL, &[&schema, &table])
                 .await
                 .map_err(map_pg_err)?;
             let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
@@ -1383,10 +1386,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let column_rows = conn
             .query(
-                "SELECT column_name, data_type \
-                 FROM information_schema.columns \
-                 WHERE table_schema = $1 AND table_name = $2 \
-                 ORDER BY ordinal_position",
+                RELATION_COLUMNS_SQL,
                 &[&request.schema.as_str(), &request.table.as_str()],
             )
             .await
@@ -1446,6 +1446,10 @@ impl DatabaseAdapter for PostgresAdapter {
         let mut truncated = false;
         let mut failure: Option<String> = None;
         let mut cancelled = false;
+        let shuffle_seed = std::hash::BuildHasher::hash_one(
+            &std::collections::hash_map::RandomState::new(),
+            &request.job_id,
+        );
 
         if let Err(e) =
             cancellable_export(&conn, &self.ssl, &request.job_id, conn.query(&sql, &[])).await
@@ -1486,7 +1490,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 .iter()
                 .filter(|mask| mask.mode == super::masking::MaskMode::Shuffle)
             {
-                super::masking::shuffle_column(&mut values, &mask.column, total as u64);
+                super::masking::shuffle_column(
+                    &mut values,
+                    &mask.column,
+                    shuffle_seed ^ total as u64,
+                );
             }
             for value in &values {
                 if let Err(e) =
@@ -2295,7 +2303,14 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             let rows = conn.query(
-                "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, c.ordinal_position, \
+                "SELECT c.column_name, \
+                        CASE WHEN c.character_maximum_length IS NOT NULL OR c.domain_name IS NOT NULL THEN c.data_type \
+                             ELSE COALESCE(( \
+                                 SELECT format_type(a.atttypid, a.atttypmod) FROM pg_catalog.pg_attribute a \
+                                 WHERE a.attrelid = format('%I.%I', c.table_schema, c.table_name)::regclass \
+                                   AND a.attnum = c.ordinal_position::int2), c.data_type) \
+                        END AS data_type, \
+                        c.is_nullable, c.column_default, c.ordinal_position, \
                         c.character_maximum_length, \
                         COALESCE(c.ordinal_position::int2 = ANY (pk.conkey), false) AS is_primary_key, \
                         col_description(format('%I.%I', c.table_schema, c.table_name)::regclass, c.ordinal_position::int) AS comment \
@@ -4110,10 +4125,7 @@ impl DatabaseAdapter for PostgresAdapter {
         if req.connection_string.trim().is_empty() {
             return Err("Der Connection-String darf nicht leer sein.".to_string());
         }
-        let escaped = req
-            .connection_string
-            .replace('\\', "\\\\")
-            .replace('\'', "\\'");
+        let connection = escape_string_literal(&req.connection_string);
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let publications = req
@@ -4139,9 +4151,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 options.push(format!("slot_name = {}", quote_literal(slot)));
             }
             let sql = format!(
-                "CREATE SUBSCRIPTION {} CONNECTION '{}' PUBLICATION {} WITH ({})",
+                "CREATE SUBSCRIPTION {} CONNECTION {} PUBLICATION {} WITH ({})",
                 quote_ident(name),
-                escaped,
+                connection,
                 publications,
                 options.join(", "),
             );
@@ -5016,15 +5028,14 @@ pub async fn run_params_query(
         });
     }
 
-    let columns: Vec<String> = statement
-        .columns()
-        .iter()
-        .map(|column| column.name().to_string())
-        .collect();
-    let wrapped = format!(
-        "WITH __l8_bind AS ({}) SELECT to_jsonb(__l8_bind) FROM __l8_bind",
-        trimmed
+    let columns = super::unique_column_names(
+        statement
+            .columns()
+            .iter()
+            .map(|column| column.name().to_string())
+            .collect(),
     );
+    let wrapped = bind_wrapped_sql(trimmed, columns.len());
     let wrapped_statement = client.prepare(&wrapped).await.map_err(map_pg_err)?;
     let data = client
         .query(&wrapped_statement, &values)
@@ -5032,7 +5043,7 @@ pub async fn run_params_query(
         .map_err(map_pg_err)?;
     let rows: Vec<serde_json::Value> = data
         .iter()
-        .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
+        .map(|row| bind_row(&columns, row.get::<_, super::exact_number::ExactJson>(0).0))
         .collect();
     let count = rows.len() as u64;
 
@@ -5043,6 +5054,34 @@ pub async fn run_params_query(
         execution_time_ms: start.elapsed().as_millis() as u64,
         truncated: false,
     })
+}
+
+fn escape_string_literal(value: &str) -> String {
+    format!("E'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
+}
+
+fn bind_wrapped_sql(sql: &str, width: usize) -> String {
+    let aliases = (0..width)
+        .map(|index| format!("c{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("WITH __l8_bind({aliases}) AS ({sql}) SELECT to_jsonb(__l8_bind) FROM __l8_bind")
+}
+
+fn bind_row(columns: &[String], mut values: serde_json::Value) -> serde_json::Value {
+    serde_json::Value::Object(
+        columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| {
+                let value = values
+                    .get_mut(format!("c{index}"))
+                    .map(serde_json::Value::take)
+                    .unwrap_or(serde_json::Value::Null);
+                (column.clone(), value)
+            })
+            .collect(),
+    )
 }
 
 fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
@@ -5064,11 +5103,45 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        capped_count, ends_transaction, infer_view_foreign_keys, like_pattern,
-        read_only_batch_guard, requalify_outside_literals, routine_ddl_in_pg_temp, session_guards,
-        source_snippet, PostgresAdapter, SimpleResult,
+        bind_row, bind_wrapped_sql, capped_count, ends_transaction, escape_string_literal,
+        infer_view_foreign_keys, like_pattern, read_only_batch_guard, requalify_outside_literals,
+        routine_ddl_in_pg_temp, session_guards, source_snippet, PostgresAdapter, SimpleResult,
     };
     use crate::db::RowCount;
+
+    #[test]
+    fn escaped_literal_survives_quotes_and_backslashes_in_any_string_mode() {
+        assert_eq!(escape_string_literal("plain"), "E'plain'");
+        assert_eq!(
+            escape_string_literal(r"password='it\'s' x\y"),
+            r"E'password=''it\\''s'' x\\y'"
+        );
+        assert_eq!(
+            escape_string_literal("'; DROP TABLE t; --"),
+            "E'''; DROP TABLE t; --'"
+        );
+    }
+
+    #[test]
+    fn bound_rows_keep_every_duplicate_column() {
+        assert_eq!(
+            bind_wrapped_sql("SELECT 1, 2", 2),
+            "WITH __l8_bind(c0, c1) AS (SELECT 1, 2) SELECT to_jsonb(__l8_bind) FROM __l8_bind"
+        );
+        let columns = vec![
+            "?column?".to_string(),
+            "?column?1".to_string(),
+            "x".to_string(),
+        ];
+        assert_eq!(
+            bind_row(&columns, serde_json::json!({"c0": 3, "c1": 4, "c2": null})),
+            serde_json::json!({"?column?": 3, "?column?1": 4, "x": null})
+        );
+        assert_eq!(
+            bind_row(&columns, serde_json::json!({"c0": "a"})),
+            serde_json::json!({"?column?": "a", "?column?1": null, "x": null})
+        );
+    }
 
     #[test]
     fn capped_count_reports_lower_bound_and_estimate_only_when_unfiltered() {
@@ -6774,5 +6847,181 @@ mod tests {
             "DROP SEQUENCE l8db_ro_switch_seq; DROP TABLE l8db_ro_switch",
         )
         .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn bound_query_keeps_duplicate_column_names_apart() {
+        let adapter = lab_adapter();
+        let result = adapter
+            .execute_query_with_params(
+                "SELECT $1::int + 1, $1::int + 2, $1::int AS x, 'y' AS x",
+                &[Some("2".to_string())],
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.columns, ["?column?", "?column?1", "x", "x1"]);
+        assert_eq!(result.rows.len(), 1);
+        let row = &result.rows[0];
+        assert_eq!(row["?column?"], serde_json::json!(3));
+        assert_eq!(row["?column?1"], serde_json::json!(4));
+        assert_eq!(row["x"], serde_json::json!(2));
+        assert_eq!(row["x1"], serde_json::json!("y"));
+        let empty = adapter
+            .execute_query_with_params(
+                "SELECT $1::int AS a, 2 AS a WHERE false",
+                &[Some("1".into())],
+            )
+            .await
+            .unwrap();
+        assert_eq!(empty.columns, ["a", "a1"]);
+        assert!(empty.rows.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn zero_row_select_reports_its_columns() {
+        let adapter = lab_adapter();
+        let result = adapter
+            .execute_query("SELECT 1 AS a, 2 AS b WHERE false")
+            .await
+            .unwrap();
+        assert_eq!(result.columns, ["a", "b"]);
+        assert!(result.rows.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn materialized_view_rows_report_columns_and_honor_sorting() {
+        let adapter = lab_adapter();
+        lab_execute(
+            &adapter,
+            "DROP MATERIALIZED VIEW IF EXISTS l8db_mv_sort; DROP MATERIALIZED VIEW IF EXISTS l8db_mv_empty; \
+             CREATE MATERIALIZED VIEW l8db_mv_sort AS SELECT * FROM (VALUES (1, 'b'), (2, 'a'), (3, 'c')) v(id, name); \
+             CREATE MATERIALIZED VIEW l8db_mv_empty AS SELECT 1 AS id, 'x'::text AS name WHERE false",
+        )
+        .await;
+        let sorted = adapter
+            .fetch_rows(
+                "public",
+                "l8db_mv_sort",
+                None,
+                10,
+                0,
+                Some("name"),
+                true,
+                true,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(sorted.columns, ["id", "name"]);
+        let names: Vec<_> = sorted.rows.iter().map(|r| r["name"].clone()).collect();
+        assert_eq!(
+            names,
+            [
+                serde_json::json!("c"),
+                serde_json::json!("b"),
+                serde_json::json!("a")
+            ]
+        );
+        let empty = adapter
+            .fetch_rows(
+                "public",
+                "l8db_mv_empty",
+                None,
+                10,
+                0,
+                None,
+                false,
+                true,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(empty.columns, ["id", "name"]);
+        lab_execute(
+            &adapter,
+            "DROP MATERIALIZED VIEW l8db_mv_sort; DROP MATERIALIZED VIEW l8db_mv_empty",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn detailed_columns_report_precise_postgres_types() {
+        let adapter = lab_adapter();
+        lab_execute(
+            &adapter,
+            "DROP TABLE IF EXISTS l8db_types; DROP TYPE IF EXISTS l8db_mood; DROP DOMAIN IF EXISTS l8db_posint; \
+             CREATE TYPE l8db_mood AS ENUM ('ok', 'sad'); \
+             CREATE DOMAIN l8db_posint AS integer CHECK (VALUE > 0); \
+             CREATE TABLE l8db_types (id serial PRIMARY KEY, amount numeric(12,3), tags text[], \
+               codes varchar(20)[], mood l8db_mood, name varchar(40), flag char(2), bits bit(3), \
+               at timestamp(3) with time zone, n l8db_posint, plain numeric, t text)",
+        )
+        .await;
+        let columns = adapter
+            .list_table_columns_detailed("public", "l8db_types")
+            .await
+            .unwrap();
+        let types: Vec<(String, String, Option<i32>)> = columns
+            .into_iter()
+            .map(|c| (c.name, c.data_type, c.character_maximum_length))
+            .collect();
+        let expected = [
+            ("id", "integer", None),
+            ("amount", "numeric(12,3)", None),
+            ("tags", "text[]", None),
+            ("codes", "character varying(20)[]", None),
+            ("mood", "l8db_mood", None),
+            ("name", "character varying", Some(40)),
+            ("flag", "character", Some(2)),
+            ("bits", "bit", Some(3)),
+            ("at", "timestamp(3) with time zone", None),
+            ("n", "integer", None),
+            ("plain", "numeric", None),
+            ("t", "text", None),
+        ];
+        let expected: Vec<(String, String, Option<i32>)> = expected
+            .iter()
+            .map(|(n, t, l)| (n.to_string(), t.to_string(), *l))
+            .collect();
+        assert_eq!(types, expected);
+        lab_execute(
+            &adapter,
+            "DROP TABLE l8db_types; DROP TYPE l8db_mood; DROP DOMAIN l8db_posint",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn subscription_connection_string_keeps_quotes_and_backslashes() {
+        use crate::db::CreateSubscriptionRequest;
+        let adapter = lab_adapter();
+        let _ = adapter
+            .execute_query("DROP SUBSCRIPTION IF EXISTS l8db_quote_sub")
+            .await;
+        let conninfo = r"host=127.0.0.1 dbname=testdb user=postgres password='it\'s a \\ pw'";
+        adapter
+            .create_subscription(&CreateSubscriptionRequest {
+                name: "l8db_quote_sub".to_string(),
+                connection_string: conninfo.to_string(),
+                publications: vec!["l8db_none".to_string()],
+                slot_name: None,
+                enabled: false,
+                connect: false,
+            })
+            .await
+            .unwrap();
+        let stored = adapter
+            .execute_query(
+                "SELECT subconninfo FROM pg_subscription WHERE subname = 'l8db_quote_sub'",
+            )
+            .await
+            .unwrap();
+        assert_eq!(stored.rows[0]["subconninfo"], serde_json::json!(conninfo));
+        lab_execute(&adapter, "ALTER SUBSCRIPTION l8db_quote_sub SET (slot_name = NONE); DROP SUBSCRIPTION l8db_quote_sub").await;
     }
 }
