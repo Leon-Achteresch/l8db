@@ -256,10 +256,11 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
             .some((entry) => entry.name.includes("editor.api")),
         ),
       ).toBe(false);
-      await app.page.getByRole("button", { name: "Chart", exact: true }).first().click();
-      await app.page.getByRole("dialog", { name: "Neuer Chart" }).waitFor();
+      const edit = app.page.getByRole("button", { name: "Dashboard bearbeiten", exact: true });
+      if (await edit.count()) await edit.click();
+      await app.page.getByRole("button", { name: "Chart erstellen", exact: true }).click();
+      await app.page.getByRole("dialog", { name: "Dein neuer Chart" }).waitFor();
       expect(await app.page.locator(".monaco-editor").count()).toBe(0);
-      await app.page.getByRole("button", { name: "Erweitert" }).click();
       await app.page.getByRole("tab", { name: "Quelle & SQL" }).click();
       await app.page.getByRole("button", { name: "Ich möchte selbst SQL schreiben" }).click();
       await app.page.locator('.monaco-editor[role="code"]').waitFor();
