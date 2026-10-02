@@ -47,6 +47,30 @@ impl PoolManager {
         ssl: &super::connection::PgTls,
         pool_use: PoolUse,
     ) -> Result<PgPool, String> {
+        let pool = self.pool(connection_key, config, ssl, pool_use).await?;
+        if pool.state().connections == 0 {
+            let timeout = super::execution::connection_duration();
+            let conn = tokio::time::timeout(timeout, pool.dedicated_connection())
+                .await
+                .map_err(|_| {
+                    format!(
+                        "Verbindung fehlgeschlagen: Zeitüberschreitung nach {} s",
+                        timeout.as_secs()
+                    )
+                })?
+                .map_err(|e| format!("Verbindung fehlgeschlagen: {}", super::map_pg_err(e)))?;
+            let _ = pool.add(conn);
+        }
+        Ok(pool)
+    }
+
+    async fn pool(
+        &self,
+        connection_key: &str,
+        config: tokio_postgres::Config,
+        ssl: &super::connection::PgTls,
+        pool_use: PoolUse,
+    ) -> Result<PgPool, String> {
         let timeout = super::execution::connection_duration();
         let entry = {
             let secs = timeout.as_secs();
@@ -243,13 +267,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_pool_reports_the_connect_error_instead_of_a_pool_timeout() {
+        let manager = PoolManager::new();
+        let config: tokio_postgres::Config =
+            "host=127.0.0.1 port=1 user=x dbname=x connect_timeout=2"
+                .parse()
+                .expect("config");
+        let started = std::time::Instant::now();
+        let error = match manager
+            .get_pool("key", config, &Default::default(), PoolUse::Query)
+            .await
+        {
+            Ok(pool) => pool.get().await.map(|_| ()).map_err(|e| e.to_string()),
+            Err(error) => Err(error),
+        }
+        .expect_err("connect must fail");
+        assert!(!error.contains("Timed out"), "{error}");
+        assert!(error.starts_with("Verbindung fehlgeschlagen:"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(3), "{error}");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn lab_get_pool_surfaces_wrong_password() {
+        let url = std::env::var("L8DB_E2E_PG_URL")
+            .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".to_string());
+        let mut config: tokio_postgres::Config = url.parse().expect("config");
+        config.password("definitely-wrong");
+        let manager = PoolManager::new();
+        let error = match manager
+            .get_pool("key", config.clone(), &Default::default(), PoolUse::Query)
+            .await
+        {
+            Ok(pool) => pool.get().await.map(|_| ()).map_err(|e| e.to_string()),
+            Err(error) => Err(error),
+        }
+        .expect_err("wrong password must fail");
+        assert!(error.contains("password authentication failed"), "{error}");
+        let mut config: tokio_postgres::Config = url.parse().expect("config");
+        config.dbname("l8db_missing_database");
+        let error = match PoolManager::new()
+            .get_pool("key", config, &Default::default(), PoolUse::Query)
+            .await
+        {
+            Ok(pool) => pool.get().await.map(|_| ()).map_err(|e| e.to_string()),
+            Err(error) => Err(error),
+        }
+        .expect_err("missing database must fail");
+        assert!(error.contains("l8db_missing_database"), "{error}");
+        let config: tokio_postgres::Config = url.parse().expect("config");
+        let pool = manager
+            .get_pool("ok", config.clone(), &Default::default(), PoolUse::Query)
+            .await
+            .expect("pool");
+        assert_eq!(pool.state().connections, 1);
+        let conn = pool.get().await.expect("conn");
+        conn.simple_query("SELECT 1").await.expect("query");
+        drop(conn);
+        let again = manager
+            .get_pool("ok", config, &Default::default(), PoolUse::Query)
+            .await
+            .expect("pool");
+        assert_eq!(again.state().connections, 1);
+    }
+
+    #[tokio::test]
     async fn get_pool_evicts_entries_with_stale_connection_timeout() {
         let manager = PoolManager::new();
         let config: tokio_postgres::Config = "host=127.0.0.1 port=1 user=x dbname=x"
             .parse()
             .expect("config");
         manager
-            .get_pool("key", config.clone(), &Default::default(), PoolUse::Query)
+            .pool("key", config.clone(), &Default::default(), PoolUse::Query)
             .await
             .expect("pool");
         {
@@ -268,7 +357,7 @@ mod tests {
             );
         }
         manager
-            .get_pool("key", config, &Default::default(), PoolUse::Query)
+            .pool("key", config, &Default::default(), PoolUse::Query)
             .await
             .expect("pool");
         let pools = manager.pools.lock().await;
