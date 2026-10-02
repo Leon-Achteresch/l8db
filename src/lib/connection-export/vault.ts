@@ -1,9 +1,10 @@
+import type { HostGroupRule } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
 import { extractUrlPassword, injectUrlPassword, scrubUrlPassword } from "@/lib/secrets";
 import type { Json, VaultConnection } from "../../../packages/extension-api/src";
 import { toExportedConnection } from "./export";
 import { parseConnectionImport } from "./parse";
-import { resolveImport } from "./resolve";
+import { keepRuleProduction, resolveImport } from "./resolve";
 import { CONNECTION_EXPORT_FORMAT, CONNECTION_EXPORT_VERSION } from "./types";
 
 export function toVaultConnection(
@@ -54,6 +55,7 @@ function withSecret(item: VaultConnection): string {
 export function mergeVaultConnections(
   items: VaultConnection[],
   existing: SavedConnection[],
+  rules?: HostGroupRule[],
 ): VaultMerge {
   const result: VaultMerge = { added: [], updated: [], skipped: [], passwords: new Map() };
   const valid = items.filter((item) => {
@@ -85,10 +87,11 @@ export function mergeVaultConnections(
       [{ ...candidate, duplicateOf: null }],
       new Set([candidate.index]),
       "skip",
+      rules,
     );
     const connectionString = withSecret(item);
     const target = candidate.duplicateOf;
-    const next: SavedConnection = target
+    const merged: SavedConnection = target
       ? {
           ...target,
           ...resolved,
@@ -98,6 +101,7 @@ export function mergeVaultConnections(
           vault: true,
         }
       : { ...resolved, connectionString, vault: true };
+    const next = keepRuleProduction(merged, rules);
     if (target) result.updated.push(next);
     else result.added.push(next);
     if (item.password) result.passwords.set(next.id, item.password);
