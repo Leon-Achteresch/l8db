@@ -97,7 +97,7 @@ describe("buildParameterizedQuery", () => {
       "1": { type: "int", value: " 7 " },
       "2": { type: "text", value: "foo" },
     });
-    expect(result.sql).toBe("SELECT * FROM t WHERE b = $2::text AND a = $1::bigint");
+    expect(result.sql).toBe("SELECT * FROM t WHERE b = $2 AND a = $1::bigint");
     expect(result.values).toEqual(["7", "foo"]);
   });
 
@@ -106,7 +106,7 @@ describe("buildParameterizedQuery", () => {
       name: { type: "text", value: "ada" },
       age: { type: "int", value: "36" },
     });
-    expect(result.sql).toBe("SELECT $1::text, $2::bigint, $1::text");
+    expect(result.sql).toBe("SELECT $1, $2::bigint, $1");
     expect(result.values).toEqual(["ada", "36"]);
   });
 
@@ -115,20 +115,20 @@ describe("buildParameterizedQuery", () => {
       "1": { type: "text", value: "a" },
       flag: { type: "bool", value: "T" },
     });
-    expect(result.sql).toBe("SELECT $1::text, $2::boolean");
+    expect(result.sql).toBe("SELECT $1, $2::boolean");
     expect(result.values).toEqual(["a", "true"]);
   });
 
   test("bindet NULL als null-Wert", () => {
     const result = buildParameterizedQuery("SELECT $1", { "1": { type: "null", value: "" } });
     expect(result.values).toEqual([null]);
-    expect(result.sql).toBe("SELECT $1::text");
+    expect(result.sql).toBe("SELECT $1");
   });
 
   test("lässt Strings und Kommentare unverändert", () => {
     const sql = "SELECT '$1', :x -- $2\n";
     const result = buildParameterizedQuery(sql, { x: { type: "text", value: "v" } });
-    expect(result.sql).toBe("SELECT '$1', $1::text -- $2\n");
+    expect(result.sql).toBe("SELECT '$1', $1 -- $2\n");
     expect(result.values).toEqual(["v"]);
   });
 });
