@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { DownloadIcon, PlayIcon, SearchIcon, Trash2Icon, UploadIcon } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { SegmentedControl } from "@/components/motion/segmented-control";
@@ -69,11 +69,15 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
   }, [savedQueries, search]);
 
   const visibleEntries = tab === "history" ? history : saved;
+  const getItemKey = useCallback(
+    (index: number) => `${tab}:${visibleEntries[index].id}`,
+    [tab, visibleEntries],
+  );
   const virtualizer = useVirtualizer({
     count: visibleEntries.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 64,
-    getItemKey: (index) => `${tab}:${visibleEntries[index].id}`,
+    getItemKey,
     overscan: 10,
   });
 
