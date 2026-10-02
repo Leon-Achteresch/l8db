@@ -22,6 +22,8 @@ use super::{
 
 const SEARCH_SNIPPET_LEN: usize = 240;
 
+const SCHEMA_COPY_PLACEHOLDER: &str = "\u{1}";
+
 const PG_CRON_MISSING: &str =
     "Die Erweiterung pg_cron ist in dieser Datenbank nicht installiert. Scheduler-Jobs stehen daher nicht zur Verfügung.";
 
@@ -330,15 +332,278 @@ pub(crate) async fn begin_guarded(
     conn.batch_execute(&format!("ROLLBACK; {begin}")).await
 }
 
-fn ends_transaction(sql: &str) -> bool {
-    let Ok(pattern) = regex::Regex::new(
-        r"(?is)^(?:\s|--[^\n]*|/\*.*?\*/)*(?:COMMIT|END|ROLLBACK|ABORT|PREPARE\s+TRANSACTION)\b",
-    ) else {
-        return true;
-    };
-    super::sql_script::split_postgres(sql)
-        .iter()
-        .any(|statement| pattern.is_match(statement))
+pub(crate) fn ends_transaction(sql: &str) -> bool {
+    [false, true].into_iter().any(|backslash_quotes| {
+        statement_heads(sql, backslash_quotes)
+            .iter()
+            .any(|words| match words.as_slice() {
+                [first, ..]
+                    if matches!(first.as_str(), "commit" | "end" | "rollback" | "abort") =>
+                {
+                    true
+                }
+                [first, second, ..] => first == "prepare" && second == "transaction",
+                _ => false,
+            })
+    })
+}
+
+fn statement_heads(sql: &str, backslash_quotes: bool) -> Vec<Vec<String>> {
+    let bytes = sql.as_bytes();
+    let ident_start = |b: u8| b.is_ascii_alphabetic() || b == b'_' || b >= 0x80;
+    let ident_cont = |b: u8| ident_start(b) || b.is_ascii_digit() || b == b'$';
+    let mut heads = vec![Vec::new()];
+    let mut open = true;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if bytes[i..].starts_with(b"--") {
+            i = skip_line_comment(bytes, i);
+        } else if bytes[i..].starts_with(b"/*") {
+            i = skip_block_comment(bytes, i);
+        } else if b.is_ascii_whitespace() || b == 0x0b {
+            i += 1;
+        } else if b == b';' {
+            heads.push(Vec::new());
+            open = true;
+            i += 1;
+        } else if ident_start(b) {
+            let start = i;
+            while i < bytes.len() && ident_cont(bytes[i]) {
+                i += 1;
+            }
+            let word = String::from_utf8_lossy(&bytes[start..i]).to_ascii_lowercase();
+            let next = bytes.get(i).copied();
+            let literal = match (word.as_str(), next) {
+                ("e", Some(b'\'')) => Some((i, b'\'', true, true)),
+                ("b" | "x", Some(b'\'')) => Some((i, b'\'', false, false)),
+                ("u", Some(b'&')) if matches!(bytes.get(i + 1), Some(b'\'' | b'"')) => {
+                    Some((i + 1, bytes[i + 1], false, bytes[i + 1] == b'\''))
+                }
+                _ => None,
+            };
+            if let Some((at, quote, backslash, doubled)) = literal {
+                i = skip_quoted(bytes, at, quote, backslash, doubled, quote == b'\'');
+                open = false;
+            } else if open {
+                if let Some(words) = heads.last_mut() {
+                    words.push(word);
+                }
+            }
+        } else {
+            open = false;
+            i = match b {
+                b'\'' => skip_quoted(bytes, i, b'\'', backslash_quotes, true, true),
+                b'"' => skip_quoted(bytes, i, b'"', false, true, false),
+                b'$' => skip_dollar(bytes, i),
+                _ => i + 1,
+            };
+        }
+    }
+    heads
+}
+
+fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && !matches!(bytes[i], b'\n' | b'\r') {
+        i += 1;
+    }
+    i
+}
+
+fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
+    let mut depth = 0usize;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(b"/*") {
+            depth += 1;
+            i += 2;
+        } else if bytes[i..].starts_with(b"*/") {
+            depth -= 1;
+            i += 2;
+            if depth == 0 {
+                return i;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_quoted(
+    bytes: &[u8],
+    mut i: usize,
+    quote: u8,
+    backslash: bool,
+    doubled: bool,
+    continues: bool,
+) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == quote {
+            if doubled && bytes.get(i + 1) == Some(&quote) {
+                i += 2;
+                continue;
+            }
+            match continues
+                .then(|| string_continuation(bytes, i + 1))
+                .flatten()
+            {
+                Some(next) => i = next + 1,
+                None => return i + 1,
+            }
+        } else if backslash && bytes[i] == b'\\' {
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    bytes.len()
+}
+
+fn string_continuation(bytes: &[u8], mut i: usize) -> Option<usize> {
+    loop {
+        match bytes.get(i) {
+            Some(b' ' | b'\t' | 0x0c) => i += 1,
+            Some(b'-') if bytes.get(i + 1) == Some(&b'-') => i = skip_line_comment(bytes, i),
+            _ => break,
+        }
+    }
+    if !matches!(bytes.get(i), Some(b'\n' | b'\r')) {
+        return None;
+    }
+    loop {
+        match bytes.get(i) {
+            Some(b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) => i += 1,
+            Some(b'-') if bytes.get(i + 1) == Some(&b'-') => i = skip_line_comment(bytes, i),
+            Some(b'\'') => return Some(i),
+            _ => return None,
+        }
+    }
+}
+
+fn skip_dollar(bytes: &[u8], i: usize) -> usize {
+    let mut end = i + 1;
+    if bytes.get(end).is_some_and(|b| b.is_ascii_digit()) {
+        while bytes.get(end).is_some_and(|b| b.is_ascii_digit()) {
+            end += 1;
+        }
+        return end;
+    }
+    if bytes
+        .get(end)
+        .is_some_and(|&b| b.is_ascii_alphabetic() || b == b'_' || b >= 0x80)
+    {
+        while bytes
+            .get(end)
+            .is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_' || b >= 0x80)
+        {
+            end += 1;
+        }
+    }
+    if bytes.get(end) != Some(&b'$') {
+        return i + 1;
+    }
+    let tag = &bytes[i..=end];
+    bytes[end + 1..]
+        .windows(tag.len())
+        .position(|window| window == tag)
+        .map(|offset| end + 1 + offset + tag.len())
+        .unwrap_or(bytes.len())
+}
+
+pub(crate) fn read_only_batch_guard(sql: &str) -> Result<(), String> {
+    if ends_transaction(sql) {
+        return Err("Lesemodus: Transaktionsbefehle (COMMIT, ROLLBACK, END, ABORT, PREPARE TRANSACTION) sind auf schreibgeschützten Verbindungen nicht erlaubt.".to_string());
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+pub(crate) struct SimpleResult {
+    columns: Option<Vec<String>>,
+    rows: Vec<serde_json::Value>,
+    rows_affected: Option<u64>,
+    collecting: bool,
+}
+
+impl SimpleResult {
+    fn describe(&mut self, names: Vec<String>) {
+        self.collecting = self.columns.is_none();
+        if self.collecting {
+            self.columns = Some(super::unique_column_names(names));
+        }
+    }
+
+    fn row(&mut self, values: Vec<Option<String>>) {
+        if !self.collecting {
+            return;
+        }
+        let Some(columns) = &self.columns else {
+            return;
+        };
+        let mut values = values.into_iter();
+        let object = columns
+            .iter()
+            .map(|column| {
+                let value = values
+                    .next()
+                    .flatten()
+                    .map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null);
+                (column.clone(), value)
+            })
+            .collect();
+        self.rows.push(serde_json::Value::Object(object));
+    }
+
+    fn complete(&mut self, count: u64) {
+        self.collecting = false;
+        self.rows_affected = Some(count);
+    }
+
+    pub(crate) fn push(&mut self, message: SimpleQueryMessage) {
+        match message {
+            SimpleQueryMessage::RowDescription(columns) => {
+                self.describe(columns.iter().map(|c| c.name().to_string()).collect())
+            }
+            SimpleQueryMessage::Row(row) => {
+                if self.columns.is_none() {
+                    self.describe(row.columns().iter().map(|c| c.name().to_string()).collect());
+                }
+                self.row(
+                    (0..row.len())
+                        .map(|i| row.try_get(i).ok().flatten().map(str::to_string))
+                        .collect(),
+                );
+            }
+            SimpleQueryMessage::CommandComplete(count) => self.complete(count),
+            _ => {}
+        }
+    }
+
+    pub(crate) fn finish(self, start: std::time::Instant) -> QueryResult {
+        QueryResult {
+            columns: self.columns.unwrap_or_default(),
+            rows: self.rows,
+            rows_affected: self.rows_affected,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
+        }
+    }
+}
+
+pub(crate) async fn run_simple_query(
+    client: &tokio_postgres::Client,
+    sql: &str,
+) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    let messages = client.simple_query_raw(sql).await.map_err(map_pg_err)?;
+    futures_util::pin_mut!(messages);
+    let mut result = SimpleResult::default();
+    while let Some(message) = messages.try_next().await.map_err(map_pg_err)? {
+        result.push(message);
+    }
+    Ok(result.finish(start))
 }
 
 pub(crate) fn table_page_sql(
@@ -1324,57 +1589,16 @@ impl DatabaseAdapter for PostgresAdapter {
             .await;
             return client.finish(outcome);
         }
+        if self.read_only {
+            read_only_batch_guard(sql)?;
+        }
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
-        let start = std::time::Instant::now();
         if self.read_only {
             conn.simple_query("BEGIN TRANSACTION READ ONLY")
                 .await
                 .map_err(map_pg_err)?;
         }
-
-        let outcome = self
-            .controlled(&conn, async {
-                let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
-                futures_util::pin_mut!(messages);
-
-                let mut columns: Vec<String> = Vec::new();
-                let mut rows: Vec<serde_json::Value> = Vec::new();
-                let mut rows_affected: Option<u64> = None;
-
-                while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
-                    match msg {
-                        SimpleQueryMessage::Row(row) => {
-                            if columns.is_empty() {
-                                columns = super::unique_column_names(
-                                    row.columns().iter().map(|c| c.name().to_string()).collect(),
-                                );
-                            }
-                            let mut obj = serde_json::Map::new();
-                            for (i, col) in columns.iter().enumerate() {
-                                let val = row
-                                    .get(i)
-                                    .map(|v| serde_json::Value::String(v.to_string()))
-                                    .unwrap_or(serde_json::Value::Null);
-                                obj.insert(col.clone(), val);
-                            }
-                            rows.push(serde_json::Value::Object(obj));
-                        }
-                        SimpleQueryMessage::CommandComplete(count) => {
-                            rows_affected = Some(count);
-                        }
-                        _ => {}
-                    }
-                }
-
-                Ok(QueryResult {
-                    columns,
-                    rows,
-                    rows_affected,
-                    execution_time_ms: start.elapsed().as_millis() as u64,
-                    truncated: false,
-                })
-            })
-            .await;
+        let outcome = self.controlled(&conn, run_simple_query(&conn, sql)).await;
         if self.read_only {
             let _ = conn.simple_query("ROLLBACK").await;
         }
@@ -2997,7 +3221,15 @@ impl DatabaseAdapter for PostgresAdapter {
             let (status, target_definition) = match existing {
                 None => ("missing".to_string(), String::new()),
                 Some(def) => {
-                    let same = normalize_definition(&rewritten) == normalize_definition(&def);
+                    let same = normalize_definition(&super::requalify_schema(
+                        &definition,
+                        source_schema,
+                        SCHEMA_COPY_PLACEHOLDER,
+                    )) == normalize_definition(&super::requalify_schema(
+                        &def,
+                        target_schema,
+                        SCHEMA_COPY_PLACEHOLDER,
+                    ));
                     let status = if same { "identical" } else { "different" };
                     (status.to_string(), def)
                 }
@@ -4177,34 +4409,8 @@ impl PostgresAdapter {
         }
         match object_type {
             "table" => {
-                let columns = self
-                    .list_table_columns_detailed(source_schema, name)
-                    .await?;
-                if columns.is_empty() {
-                    return Err(format!(
-                        "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
-                    ));
-                }
-                let request = super::CreateTableRequest {
-                    schema: target_schema.to_string(),
-                    name: name.to_string(),
-                    if_not_exists: false,
-                    columns: columns
-                        .iter()
-                        .map(|column| super::ColumnDefinition {
-                            name: column.name.clone(),
-                            data_type: column.data_type.clone(),
-                            is_nullable: column.is_nullable,
-                            default_value: column.column_default.as_ref().map(|value| {
-                                super::requalify_schema(value, source_schema, target_schema)
-                            }),
-                            is_primary_key: column.is_primary_key,
-                            is_unique: false,
-                        })
-                        .collect(),
-                    ..Default::default()
-                };
-                Self::build_create_table_sql(&request)
+                let ddl = self.get_table_ddl(source_schema, name).await?;
+                Ok(super::requalify_schema(&ddl, source_schema, target_schema))
             }
             "view" => {
                 let definition = self.get_view_definition(source_schema, name).await?;
@@ -4474,7 +4680,8 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 mod tests {
     use super::{
         capped_count, ends_transaction, infer_view_foreign_keys, like_pattern,
-        routine_ddl_in_pg_temp, session_guards, source_snippet, PostgresAdapter,
+        read_only_batch_guard, routine_ddl_in_pg_temp, session_guards, source_snippet,
+        PostgresAdapter, SimpleResult,
     };
     use crate::db::RowCount;
 
@@ -4513,6 +4720,113 @@ mod tests {
         ] {
             assert!(!ends_transaction(sql), "{sql}");
         }
+    }
+
+    #[test]
+    fn transaction_end_detection_follows_the_postgres_lexer() {
+        for sql in LEXER_HIDDEN_COMMITS {
+            assert!(ends_transaction(sql), "{sql}");
+        }
+        for sql in LEXER_NO_COMMITS {
+            assert!(!ends_transaction(sql), "{sql}");
+        }
+        for sql in [
+            "PREPARE /* x */ TRANSACTION 'x'",
+            "Rollback To Savepoint s",
+            r"SELECT 'a\''; COMMIT; SELECT 1 AS x",
+            "SELECT 1; \u{3b1}x; ABORT",
+        ] {
+            assert!(ends_transaction(sql), "{sql}");
+        }
+        assert!(read_only_batch_guard("SELECT 1; COMMIT").is_err());
+        assert!(read_only_batch_guard("SELECT 'COMMIT'; SELECT 2").is_ok());
+    }
+
+    const LEXER_HIDDEN_COMMITS: [&str; 12] = [
+        "SELECT 1 AS a$x$; COMMIT; SELECT 1 AS b$x$",
+        "SELECT ARRAY[1]; COMMIT; SELECT ARRAY[2]",
+        r"SELECT E'\''; COMMIT; SELECT 1",
+        r"SELECT '\'; COMMIT; SELECT '\'",
+        "SELECT E'a'\n'\\''; COMMIT; SELECT 1",
+        "SELECT E'a' -- c\n  '\\''; COMMIT; SELECT 1",
+        r"SELECT U&'d\0061t\+000061'; COMMIT; SELECT 1",
+        "SELECT B'101', X'1F'; COMMIT; SELECT 1",
+        "SELECT x'1F', 'a''b'; COMMIT; SELECT 1",
+        "/* a /* b */ c */ SELECT 1; /**/COMMIT",
+        r#"SELECT "a;""b" FROM (SELECT 1 AS "a;""b") t; COMMIT"#,
+        "SELECT 1 AS \"\u{e4}\"; COMMIT; SELECT 1 AS a$1",
+    ];
+
+    const LEXER_NO_COMMITS: [&str; 8] = [
+        "/* /* */ COMMIT; */ SELECT 1",
+        r"SELECT E'\'; COMMIT; SELECT 1'",
+        "SELECT 'a'\n'b; COMMIT; c'",
+        "SELECT $tag$ ; COMMIT; $tag$",
+        "SELECT $a$ $b$; COMMIT; $b$ $a$",
+        r#"SELECT "x;COMMIT" FROM (SELECT 1 AS "x;COMMIT") t"#,
+        "SELECT 1 --; COMMIT\n",
+        "SELECT 1 COMMIT",
+    ];
+
+    #[test]
+    fn simple_result_keeps_only_the_first_result_set() {
+        let names = |list: &[&str]| list.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        let values = |list: &[Option<&str>]| {
+            list.iter()
+                .map(|v| v.map(str::to_string))
+                .collect::<Vec<_>>()
+        };
+        let start = std::time::Instant::now();
+
+        let mut wide = SimpleResult::default();
+        wide.describe(names(&["a", "b"]));
+        wide.row(values(&[Some("1"), Some("2")]));
+        wide.complete(1);
+        wide.describe(names(&["c"]));
+        wide.row(values(&[Some("3")]));
+        wide.complete(1);
+        let wide = wide.finish(start);
+        assert_eq!(wide.columns, vec!["a", "b"]);
+        assert_eq!(wide.rows, vec![serde_json::json!({"a": "1", "b": "2"})]);
+
+        let mut narrow = SimpleResult::default();
+        narrow.describe(names(&["a"]));
+        narrow.row(values(&[Some("1")]));
+        narrow.complete(1);
+        narrow.describe(names(&["b", "c"]));
+        narrow.row(values(&[Some("2"), Some("3")]));
+        narrow.complete(1);
+        let narrow = narrow.finish(start);
+        assert_eq!(narrow.columns, vec!["a"]);
+        assert_eq!(narrow.rows, vec![serde_json::json!({"a": "1"})]);
+
+        let mut empty = SimpleResult::default();
+        empty.complete(0);
+        empty.describe(names(&["a"]));
+        empty.complete(0);
+        empty.describe(names(&["b"]));
+        empty.row(values(&[Some("2")]));
+        empty.complete(1);
+        let empty = empty.finish(start);
+        assert_eq!(empty.columns, vec!["a"]);
+        assert!(empty.rows.is_empty());
+        assert_eq!(empty.rows_affected, Some(1));
+
+        let mut ragged = SimpleResult::default();
+        ragged.describe(names(&["x", "x", "y"]));
+        ragged.row(values(&[Some("1"), None]));
+        let ragged = ragged.finish(start);
+        assert_eq!(ragged.columns, vec!["x", "x1", "y"]);
+        assert_eq!(
+            ragged.rows,
+            vec![serde_json::json!({"x": "1", "x1": null, "y": null})]
+        );
+
+        let mut dml = SimpleResult::default();
+        dml.complete(5);
+        let dml = dml.finish(start);
+        assert!(dml.columns.is_empty() && dml.rows.is_empty());
+        assert_eq!(dml.rows_affected, Some(5));
     }
 
     #[test]
@@ -5761,5 +6075,155 @@ mod tests {
             .drop_schema("e2e_schema", false)
             .await
             .expect("drop schema");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn multi_statement_batches_return_the_first_result_set() {
+        let adapter = lab_adapter();
+        for server_output in [false, true] {
+            adapter.set_server_output(server_output).await.unwrap();
+            let wide_first = adapter
+                .execute_query("SELECT 1 AS a, 2 AS b; SELECT 3 AS c")
+                .await
+                .expect("wide first");
+            assert_eq!(wide_first.columns, vec!["a", "b"]);
+            assert_eq!(
+                wide_first.rows,
+                vec![serde_json::json!({"a": "1", "b": "2"})]
+            );
+            let narrow_first = adapter
+                .execute_query("SELECT 1 AS a; SELECT 2 AS b, 3 AS c")
+                .await
+                .expect("narrow first");
+            assert_eq!(narrow_first.columns, vec!["a"]);
+            assert_eq!(narrow_first.rows, vec![serde_json::json!({"a": "1"})]);
+            let empty_first = adapter
+                .execute_query("SELECT 1 AS a WHERE false; SELECT 2 AS b")
+                .await
+                .expect("empty first");
+            assert_eq!(empty_first.columns, vec!["a"]);
+            assert!(empty_first.rows.is_empty());
+            let after_utility = adapter
+                .execute_query("SET search_path = public; SELECT 1 AS x, NULL AS x")
+                .await
+                .expect("after utility");
+            assert_eq!(after_utility.columns, vec!["x", "x1"]);
+            assert_eq!(
+                after_utility.rows,
+                vec![serde_json::json!({"x": "1", "x1": null})]
+            );
+        }
+        adapter.set_server_output(false).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn read_only_connection_rejects_batches_that_end_the_transaction() {
+        let writer = lab_adapter();
+        lab_execute(
+            &writer,
+            "DROP TABLE IF EXISTS l8db_read_only_batch; CREATE TABLE l8db_read_only_batch (id int); INSERT INTO l8db_read_only_batch VALUES (1)",
+        )
+        .await;
+        let reader = lab_read_only_adapter();
+        for server_output in [false, true] {
+            reader.set_server_output(server_output).await.unwrap();
+            for sql in [
+                "SET default_transaction_read_only = off; COMMIT; INSERT INTO l8db_read_only_batch VALUES (2)",
+                "COMMIT; BEGIN READ WRITE; DELETE FROM l8db_read_only_batch; COMMIT",
+                "ROLLBACK; BEGIN READ WRITE; INSERT INTO l8db_read_only_batch VALUES (3); END",
+                "SELECT 1 AS a$x$; ABORT; BEGIN READ WRITE; INSERT INTO l8db_read_only_batch VALUES (4); COMMIT; SELECT 1 AS b$x$",
+                "SELECT ARRAY[1]; COMMIT; BEGIN READ WRITE; INSERT INTO l8db_read_only_batch VALUES (5); COMMIT; SELECT ARRAY[2]",
+            ] {
+                assert!(reader.execute_query(sql).await.is_err(), "{sql}");
+                assert!(reader
+                    .execute_query("INSERT INTO l8db_read_only_batch VALUES (9)")
+                    .await
+                    .is_err());
+                let count = writer
+                    .execute_query("SELECT count(*) AS c FROM l8db_read_only_batch")
+                    .await
+                    .expect("count");
+                assert_eq!(count.rows[0]["c"], "1", "{sql}");
+            }
+            assert_eq!(
+                reader
+                    .execute_query("SELECT 'COMMIT; ROLLBACK' AS s; SELECT 2")
+                    .await
+                    .expect("literal")
+                    .rows[0]["s"],
+                "COMMIT; ROLLBACK"
+            );
+        }
+        reader.set_server_output(false).await.unwrap();
+        lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_batch").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn schema_copy_preserves_types_constraints_and_indexes() {
+        let adapter = lab_adapter();
+        lab_execute(
+            &adapter,
+            "DROP SCHEMA IF EXISTS l8db_copy_src CASCADE; DROP SCHEMA IF EXISTS l8db_copy_dst CASCADE; \
+             CREATE SCHEMA l8db_copy_src; CREATE SCHEMA l8db_copy_dst; \
+             CREATE TYPE l8db_copy_src.mood AS ENUM ('ok', 'bad'); CREATE TYPE l8db_copy_dst.mood AS ENUM ('ok', 'bad'); \
+             CREATE TABLE l8db_copy_src.parent (id serial PRIMARY KEY, code varchar(12) NOT NULL UNIQUE, amount numeric(10,2) CHECK (amount >= 0)); \
+             CREATE TABLE l8db_copy_src.child (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, \
+               parent_id int REFERENCES l8db_copy_src.parent(id) ON DELETE CASCADE, name varchar(50) NOT NULL DEFAULT 'x', \
+               tags text[] DEFAULT '{}', grid int[][], mood l8db_copy_src.mood, created timestamptz(3) DEFAULT now(), \
+               bits bit varying(8), UNIQUE (parent_id, name)); \
+             CREATE INDEX child_name_idx ON l8db_copy_src.child (lower(name)) WHERE parent_id IS NOT NULL",
+        )
+        .await;
+        for table in ["parent", "child"] {
+            adapter
+                .execute_schema_object_copy("l8db_copy_src", "l8db_copy_dst", "table", table)
+                .await
+                .unwrap_or_else(|err| panic!("{table}: {err}"));
+        }
+        let normalize = |ddl: &str| {
+            ddl.replace("\"l8db_copy_dst\".", "l8db_copy_dst.")
+                .replace(
+                    "CREATE TABLE \"l8db_copy_src\".",
+                    "CREATE TABLE l8db_copy_dst.",
+                )
+                .replace("l8db_copy_src.", "l8db_copy_dst.")
+        };
+        for table in ["parent", "child"] {
+            let source = adapter.get_table_ddl("l8db_copy_src", table).await.unwrap();
+            let target = adapter.get_table_ddl("l8db_copy_dst", table).await.unwrap();
+            assert_eq!(normalize(&source), normalize(&target), "{table}");
+        }
+        let entries = adapter
+            .list_schema_copy_objects("l8db_copy_src", "l8db_copy_dst", "table")
+            .await
+            .unwrap();
+        assert!(
+            entries.iter().all(|entry| entry.status == "identical"),
+            "{entries:?}"
+        );
+        let fk = adapter
+            .execute_query(
+                "SELECT confrelid::regclass::text AS target FROM pg_constraint WHERE conrelid = 'l8db_copy_dst.child'::regclass AND contype = 'f'",
+            )
+            .await
+            .unwrap();
+        assert_eq!(fk.rows[0]["target"], "l8db_copy_dst.parent");
+        lab_execute(
+            &adapter,
+            "INSERT INTO l8db_copy_dst.parent (code, amount) VALUES ('a', 1); INSERT INTO l8db_copy_dst.child (parent_id, name, mood) VALUES (1, 'n', 'ok')",
+        )
+        .await;
+        assert!(adapter
+            .execute_query("INSERT INTO l8db_copy_dst.parent (code, amount) VALUES ('b', -1)")
+            .await
+            .is_err());
+        lab_execute(
+            &adapter,
+            "DROP SCHEMA l8db_copy_src CASCADE; DROP SCHEMA l8db_copy_dst CASCADE",
+        )
+        .await;
     }
 }
