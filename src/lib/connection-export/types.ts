@@ -1,5 +1,12 @@
-import type { ConnectionTag, NetworkProxy, SshAuth, SshJumpHost } from "@/lib/connections";
+import type {
+  ConnectionEnvironment,
+  ConnectionTag,
+  NetworkProxy,
+  SshAuth,
+  SshJumpHost,
+} from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
+import type { MaskRule } from "@/lib/masking";
 
 export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
 
@@ -27,6 +34,13 @@ export const KINDS: DatabaseKind[] = [
 ];
 
 export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];
+
+export const ENVIRONMENTS: ConnectionEnvironment[] = [
+  "development",
+  "test",
+  "staging",
+  "production",
+];
 
 export const SECRET_PARAM =
   /^(password|passwd|pwd|pass|token|secret|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
@@ -56,6 +70,9 @@ export interface ExportedConnection {
   color: string | null;
   schemas: string[] | null;
   showSingleSchemaSwitcher: boolean;
+  environment?: ConnectionEnvironment | null;
+  readOnly?: boolean;
+  maskRules?: MaskRule[];
 }
 
 export interface ConnectionExportFile {

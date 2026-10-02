@@ -42,6 +42,9 @@ function toSavedConnection(profile: ExportedConnection): SavedConnection {
     color: profile.color,
     schemas: profile.schemas?.length ? profile.schemas : null,
     showSingleSchemaSwitcher: profile.showSingleSchemaSwitcher,
+    ...(profile.environment !== undefined ? { environment: profile.environment } : {}),
+    ...(profile.readOnly !== undefined ? { readOnly: profile.readOnly } : {}),
+    ...(profile.maskRules ? { maskRules: profile.maskRules.map((rule) => ({ ...rule })) } : {}),
   };
 }
 

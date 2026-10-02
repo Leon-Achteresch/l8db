@@ -97,6 +97,14 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
     color: connection.color ?? null,
     schemas: connection.schemas?.length ? [...connection.schemas] : null,
     showSingleSchemaSwitcher: connection.showSingleSchemaSwitcher ?? true,
+    environment: connection.environment ?? null,
+    readOnly: Boolean(connection.readOnly),
+    maskRules: (connection.maskRules ?? []).map((rule) => ({
+      name: rule.name,
+      pattern: rule.pattern,
+      enabled: rule.enabled,
+      mask: rule.mask ?? null,
+    })),
   };
 }
 
