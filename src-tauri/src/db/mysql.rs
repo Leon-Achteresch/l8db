@@ -1376,8 +1376,12 @@ mod tests {
                     .is_some_and(|v| !v.is_empty()),
             )
         };
-        let plain = "mysql://root:testpw@127.0.0.1:53306/mysql";
-        assert_eq!(cipher(plain.into()).await, Ok(false));
+        let port =
+            |name: &str, default: &str| std::env::var(name).unwrap_or_else(|_| default.into());
+        let plain_port = port("L8DB_E2E_MYSQL_PLAIN_PORT", "53306");
+        let tls_port = port("L8DB_E2E_MYSQL_TLS_PORT", "53307");
+        let plain = format!("mysql://root:testpw@127.0.0.1:{plain_port}/mysql");
+        assert_eq!(cipher(plain.clone()).await, Ok(false));
         assert_eq!(
             cipher(format!("{plain}?serverTimezone=UTC&useUnicode=true")).await,
             Ok(false)
@@ -1386,8 +1390,8 @@ mod tests {
             .await
             .unwrap_err()
             .contains("kein TLS"));
-        let tls = "mysql://root:testpw@127.0.0.1:53307/mysql";
-        assert_eq!(cipher(tls.into()).await, Ok(true));
+        let tls = format!("mysql://root:testpw@127.0.0.1:{tls_port}/mysql");
+        assert_eq!(cipher(tls.clone()).await, Ok(true));
         assert_eq!(cipher(format!("{tls}?sslmode=require")).await, Ok(true));
         assert_eq!(cipher(format!("{tls}?sslmode=disable")).await, Ok(false));
         assert!(cipher(format!("{tls}?sslmode=verify-ca")).await.is_err());
@@ -1400,7 +1404,7 @@ mod tests {
         ))
         .await
         .is_err());
-        let cert = "mysql://certuser@127.0.0.1:53307/";
+        let cert = format!("mysql://certuser@127.0.0.1:{tls_port}/");
         assert!(cipher(format!("{cert}?sslmode=require")).await.is_err());
         assert_eq!(
             cipher(format!(
