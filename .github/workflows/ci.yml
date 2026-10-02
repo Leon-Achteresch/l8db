@@ -24,10 +24,8 @@ jobs:
         with:
           node-version: 24.14.0
       - run: node scripts/production-check.mjs
-      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
-        with:
-          tool: actionlint@1.7.12
-      - run: actionlint -shellcheck= -pyflakes=
+      - run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP"
+      - run: '"$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes='
 
   frontend:
     name: Frontend
