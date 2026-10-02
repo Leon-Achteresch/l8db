@@ -13,6 +13,15 @@ type Options = {
   setActiveCell: Dispatch<SetStateAction<GridCellRef | null>>;
 };
 
+export function cellEditCommitValue(
+  editingCell: EditingCell,
+  emptyEditValue: string | undefined,
+): string | null {
+  if (editingCell.value !== "") return editingCell.value;
+  if (editingCell.originalValues[editingCell.columnId] === "") return "";
+  return emptyEditValue ?? null;
+}
+
 export function useCellEditing({
   onSaveRow,
   columnNames,
@@ -53,7 +62,7 @@ export function useCellEditing({
       editingCell.ctid,
       editingCell.columnId,
       editingCell.originalValues,
-      editingCell.value === "" ? (emptyEditValue ?? null) : editingCell.value,
+      cellEditCommitValue(editingCell, emptyEditValue),
     );
     if (ok) setEditingCell(null);
   }, [editingCell, onSaveRow, isSaving, saveCellValue, emptyEditValue]);
@@ -83,7 +92,7 @@ export function useCellEditing({
       });
       setActiveCell(null);
     },
-    [canEditCell],
+    [canEditCell, setActiveCell],
   );
 
   return {
