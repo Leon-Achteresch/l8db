@@ -24,6 +24,10 @@ const SEARCH_SNIPPET_LEN: usize = 240;
 
 const SCHEMA_COPY_PLACEHOLDER: &str = "\u{1}";
 
+pub(crate) const READ_ONLY_BEGIN: &str = "BEGIN TRANSACTION READ ONLY; SELECT 1";
+
+const EMPTY_SEARCH_PATH: &str = "SET LOCAL search_path = ''";
+
 const PG_CRON_MISSING: &str =
     "Die Erweiterung pg_cron ist in dieser Datenbank nicht installiert. Scheduler-Jobs stehen daher nicht zur Verfügung.";
 
@@ -348,10 +352,97 @@ pub(crate) fn ends_transaction(sql: &str) -> bool {
     })
 }
 
+fn ident_start(b: u8) -> bool {
+    b.is_ascii_alphabetic() || b == b'_' || b >= 0x80
+}
+
+fn ident_cont(b: u8) -> bool {
+    ident_start(b) || b.is_ascii_digit() || b == b'$'
+}
+
+fn prefixed_literal_end(bytes: &[u8], word: &str, i: usize) -> Option<usize> {
+    let (at, quote, backslash, doubled) = match (word, bytes.get(i).copied()) {
+        ("e", Some(b'\'')) => (i, b'\'', true, true),
+        ("b" | "x", Some(b'\'')) => (i, b'\'', false, false),
+        ("u", Some(b'&')) if matches!(bytes.get(i + 1), Some(b'\'' | b'"')) => {
+            (i + 1, bytes[i + 1], false, bytes[i + 1] == b'\'')
+        }
+        _ => return None,
+    };
+    Some(skip_quoted(
+        bytes,
+        at,
+        quote,
+        backslash,
+        doubled,
+        quote == b'\'',
+    ))
+}
+
+fn requalify_outside_literals(sql: &str, from_schema: &str, to_schema: &str) -> String {
+    if from_schema.is_empty() || from_schema == to_schema {
+        return sql.to_string();
+    }
+    let bytes = sql.as_bytes();
+    let quoted_from = format!("{}.", quote_ident(from_schema));
+    let target = format!("{}.", quote_ident(to_schema));
+    let qualifies = |at: usize| at == 0 || bytes[at - 1] != b'.';
+    let mut out = String::with_capacity(sql.len());
+    let mut copied = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if bytes[i..].starts_with(b"--") {
+            i = skip_line_comment(bytes, i);
+        } else if bytes[i..].starts_with(b"/*") {
+            i = skip_block_comment(bytes, i);
+        } else if b == b'"' && qualifies(i) && bytes[i..].starts_with(quoted_from.as_bytes()) {
+            out.push_str(&sql[copied..i]);
+            out.push_str(&target);
+            i += quoted_from.len();
+            copied = i;
+        } else if ident_start(b) {
+            let start = i;
+            while i < bytes.len() && ident_cont(bytes[i]) {
+                i += 1;
+            }
+            let word = sql[start..i].to_ascii_lowercase();
+            if let Some(end) = prefixed_literal_end(bytes, &word, i) {
+                i = end;
+            } else if word == from_schema && bytes.get(i) == Some(&b'.') && qualifies(start) {
+                out.push_str(&sql[copied..start]);
+                out.push_str(&target);
+                i += 1;
+                copied = i;
+            }
+        } else {
+            i = match b {
+                b'\'' => skip_quoted(bytes, i, b'\'', false, true, true),
+                b'"' => skip_quoted(bytes, i, b'"', false, true, false),
+                b'$' => skip_dollar(bytes, i),
+                _ => i + 1,
+            };
+        }
+    }
+    out.push_str(&sql[copied..]);
+    out
+}
+
+fn requalify_copy_definition(
+    object_type: &str,
+    sql: &str,
+    from_schema: &str,
+    to_schema: &str,
+) -> String {
+    if object_type == "routine" {
+        super::requalify_schema(sql, from_schema, to_schema)
+    } else {
+        requalify_outside_literals(sql, from_schema, to_schema)
+    }
+}
+
 fn statement_heads(sql: &str, backslash_quotes: bool) -> Vec<Vec<String>> {
     let bytes = sql.as_bytes();
-    let ident_start = |b: u8| b.is_ascii_alphabetic() || b == b'_' || b >= 0x80;
-    let ident_cont = |b: u8| ident_start(b) || b.is_ascii_digit() || b == b'$';
     let mut heads = vec![Vec::new()];
     let mut open = true;
     let mut i = 0;
@@ -373,17 +464,8 @@ fn statement_heads(sql: &str, backslash_quotes: bool) -> Vec<Vec<String>> {
                 i += 1;
             }
             let word = String::from_utf8_lossy(&bytes[start..i]).to_ascii_lowercase();
-            let next = bytes.get(i).copied();
-            let literal = match (word.as_str(), next) {
-                ("e", Some(b'\'')) => Some((i, b'\'', true, true)),
-                ("b" | "x", Some(b'\'')) => Some((i, b'\'', false, false)),
-                ("u", Some(b'&')) if matches!(bytes.get(i + 1), Some(b'\'' | b'"')) => {
-                    Some((i + 1, bytes[i + 1], false, bytes[i + 1] == b'\''))
-                }
-                _ => None,
-            };
-            if let Some((at, quote, backslash, doubled)) = literal {
-                i = skip_quoted(bytes, at, quote, backslash, doubled, quote == b'\'');
+            if let Some(end) = prefixed_literal_end(bytes, &word, i) {
+                i = end;
                 open = false;
             } else if open {
                 if let Some(words) = heads.last_mut() {
@@ -1594,7 +1676,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         if self.read_only {
-            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+            conn.simple_query(READ_ONLY_BEGIN)
                 .await
                 .map_err(map_pg_err)?;
         }
@@ -1623,7 +1705,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         if self.read_only {
-            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+            conn.simple_query(READ_ONLY_BEGIN)
                 .await
                 .map_err(map_pg_err)?;
         }
@@ -1693,97 +1775,9 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            let columns = conn
-                .query(
-                    "SELECT a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull, \
-                            pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text, \
-                            a.attidentity = '' AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL \
-                     FROM pg_attribute a \
-                     JOIN pg_class c ON c.oid = a.attrelid \
-                     JOIN pg_namespace n ON n.oid = c.relnamespace \
-                     LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
-                     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
-                     ORDER BY a.attnum",
-                    &[&schema, &table],
-                )
-                .await
-                .map_err(map_pg_err)?;
-            if columns.is_empty() {
-                return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
-            }
-            let mut parts: Vec<String> = columns
-                .iter()
-                .map(|r| {
-                    let data_type: String = r.get(1);
-                    let serial = r.get::<_, bool>(6);
-                    let data_type = match (serial, data_type.as_str()) {
-                        (true, "integer") => "serial".to_string(),
-                        (true, "bigint") => "bigserial".to_string(),
-                        (true, "smallint") => "smallserial".to_string(),
-                        _ => data_type,
-                    };
-                    let mut def = format!("{} {data_type}", quote_ident(&r.get::<_, String>(0)));
-                    let default: Option<String> = r.get::<_, Option<String>>(3).filter(|_| !serial);
-                    let identity: String = r.get(4);
-                    let generated: String = r.get(5);
-                    match (identity.as_str(), generated.as_str(), default) {
-                        ("a", _, _) => def.push_str(" GENERATED ALWAYS AS IDENTITY"),
-                        ("d", _, _) => def.push_str(" GENERATED BY DEFAULT AS IDENTITY"),
-                        (_, "s", Some(expr)) => {
-                            def.push_str(&format!(" GENERATED ALWAYS AS ({expr}) STORED"))
-                        }
-                        (_, _, Some(expr)) => def.push_str(&format!(" DEFAULT {expr}")),
-                        _ => {}
-                    }
-                    if r.get::<_, bool>(2) {
-                        def.push_str(" NOT NULL");
-                    }
-                    def
-                })
-                .collect();
-            let constraints = conn
-                .query(
-                    "SELECT con.conname, pg_get_constraintdef(con.oid) \
-                     FROM pg_constraint con \
-                     JOIN pg_class c ON c.oid = con.conrelid \
-                     JOIN pg_namespace n ON n.oid = c.relnamespace \
-                     WHERE n.nspname = $1 AND c.relname = $2 AND con.contype IN ('p', 'u', 'c', 'f', 'x') \
-                     ORDER BY position(con.contype::text IN 'pucfx'), con.conname",
-                    &[&schema, &table],
-                )
-                .await
-                .map_err(map_pg_err)?;
-            parts.extend(constraints.iter().map(|r| {
-                format!(
-                    "CONSTRAINT {} {}",
-                    quote_ident(&r.get::<_, String>(0)),
-                    r.get::<_, String>(1)
-                )
-            }));
-            let indexes = conn
-                .query(
-                    "SELECT pg_get_indexdef(i.indexrelid) \
-                     FROM pg_index i \
-                     JOIN pg_class c ON c.oid = i.indrelid \
-                     JOIN pg_namespace n ON n.oid = c.relnamespace \
-                     JOIN pg_class ic ON ic.oid = i.indexrelid \
-                     WHERE n.nspname = $1 AND c.relname = $2 \
-                       AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.indexrelid AND k.conrelid = i.indrelid) \
-                     ORDER BY ic.relname",
-                    &[&schema, &table],
-                )
-                .await
-                .map_err(map_pg_err)?;
-            let mut ddl = format!(
-                "CREATE TABLE {}.{} (\n  {}\n);\n",
-                quote_ident(schema),
-                quote_ident(table),
-                parts.join(",\n  ")
-            );
-            for r in &indexes {
-                ddl.push_str(&format!("\n{};\n", r.get::<_, String>(0)));
-            }
-            Ok(ddl)
+            Ok(load_table_ddl(&*conn, schema, table)
+                .await?
+                .create_sql(schema, table, true))
         })
         .await
     }
@@ -3213,7 +3207,8 @@ impl DatabaseAdapter for PostgresAdapter {
             .await?;
         let mut entries: Vec<super::SchemaObjectEntry> = Vec::with_capacity(source.len());
         for (name, definition) in source {
-            let rewritten = super::requalify_schema(&definition, source_schema, target_schema);
+            let rewritten =
+                requalify_copy_definition(object_type, &definition, source_schema, target_schema);
             let existing = target
                 .iter()
                 .find(|(other, _)| other == &name)
@@ -3221,11 +3216,13 @@ impl DatabaseAdapter for PostgresAdapter {
             let (status, target_definition) = match existing {
                 None => ("missing".to_string(), String::new()),
                 Some(def) => {
-                    let same = normalize_definition(&super::requalify_schema(
+                    let same = normalize_definition(&requalify_copy_definition(
+                        object_type,
                         &definition,
                         source_schema,
                         SCHEMA_COPY_PLACEHOLDER,
-                    )) == normalize_definition(&super::requalify_schema(
+                    )) == normalize_definition(&requalify_copy_definition(
+                        object_type,
                         &def,
                         target_schema,
                         SCHEMA_COPY_PLACEHOLDER,
@@ -3272,6 +3269,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 "Namenskonflikt: {name} existiert bereits im Zielschema {target_schema}."
             ));
         }
+        if object_type == "table" {
+            return self
+                .copy_table_structure(source_schema, target_schema, name)
+                .await;
+        }
         let ddl = self
             .schema_copy_ddl(source_schema, target_schema, object_type, name)
             .await?;
@@ -3303,47 +3305,132 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Die Zeilenbegrenzung muss größer als 0 sein.".to_string());
         }
         let limit = limit.min(SCHEMA_COPY_MAX_ROWS);
-        let source_columns = self
-            .list_table_columns_detailed(source_schema, name)
-            .await?;
-        if source_columns.is_empty() {
-            return Err(format!(
-                "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
-            ));
-        }
-        let target_columns = self
-            .list_table_columns_detailed(target_schema, name)
-            .await?;
-        if target_columns.is_empty() {
-            return Err(format!(
-                "Tabelle {target_schema}.{name} existiert nicht. Zuerst die Struktur kopieren."
-            ));
-        }
-        let shared: Vec<String> = source_columns
-            .iter()
-            .filter(|column| target_columns.iter().any(|other| other.name == column.name))
-            .map(|column| quote_ident(&column.name))
-            .collect();
-        if shared.is_empty() {
-            return Err(format!(
-                "Keine gemeinsamen Spalten zwischen {source_schema}.{name} und {target_schema}.{name}."
-            ));
-        }
-        let columns = shared.join(", ");
-        let sql = format!(
-            "INSERT INTO {}.{} ({}) SELECT {} FROM {}.{} LIMIT {}",
-            quote_ident(target_schema),
-            quote_ident(name),
-            columns,
-            columns,
-            quote_ident(source_schema),
-            quote_ident(name),
-            limit
-        );
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async move {
             let tx = conn.transaction().await.map_err(map_pg_err)?;
+            tx.batch_execute(EMPTY_SEARCH_PATH)
+                .await
+                .map_err(map_pg_err)?;
+            let columns_sql = "SELECT a.attname::text, a.attgenerated <> '', a.attidentity = 'a', \
+                    pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname), \
+                    a.atttypid, format_type(a.atttypid, a.atttypmod) \
+                 FROM pg_attribute a \
+                 JOIN pg_class c ON c.oid = a.attrelid \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+                 ORDER BY a.attnum";
+            let source_columns = tx
+                .query(columns_sql, &[&source_schema, &name])
+                .await
+                .map_err(map_pg_err)?;
+            if source_columns.is_empty() {
+                return Err(format!(
+                    "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
+                ));
+            }
+            let target_columns = tx
+                .query(columns_sql, &[&target_schema, &name])
+                .await
+                .map_err(map_pg_err)?;
+            if target_columns.is_empty() {
+                return Err(format!(
+                    "Tabelle {target_schema}.{name} existiert nicht. Zuerst die Struktur kopieren."
+                ));
+            }
+            let shared: Vec<(&tokio_postgres::Row, &tokio_postgres::Row)> = target_columns
+                .iter()
+                .filter(|column| !column.get::<_, bool>(1))
+                .filter_map(|column| {
+                    source_columns
+                        .iter()
+                        .find(|other| other.get::<_, String>(0) == column.get::<_, String>(0))
+                        .map(|other| (column, other))
+                })
+                .collect();
+            if shared.is_empty() {
+                return Err(format!(
+                    "Keine gemeinsamen Spalten zwischen {source_schema}.{name} und {target_schema}.{name}."
+                ));
+            }
+            let overriding = if shared.iter().any(|(column, _)| column.get::<_, bool>(2)) {
+                " OVERRIDING SYSTEM VALUE"
+            } else {
+                ""
+            };
+            let columns = shared
+                .iter()
+                .map(|(column, _)| quote_ident(&column.get::<_, String>(0)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let values = shared
+                .iter()
+                .map(|(column, source)| {
+                    let ident = quote_ident(&column.get::<_, String>(0));
+                    if column.get::<_, u32>(4) == source.get::<_, u32>(4) {
+                        ident
+                    } else {
+                        format!("{ident}::text::{}", column.get::<_, String>(5))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let table = format!("{}.{}", quote_ident(target_schema), quote_ident(name));
+            let foreign_keys = tx
+                .query(
+                    "SELECT con.conname::text, pg_get_constraintdef(con.oid), con.convalidated \
+                     FROM pg_constraint con \
+                     JOIN pg_class c ON c.oid = con.conrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2 AND con.contype = 'f' \
+                     ORDER BY con.conname",
+                    &[&target_schema, &name],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            for fk in &foreign_keys {
+                tx.batch_execute(&format!(
+                    "ALTER TABLE {table} DROP CONSTRAINT {}",
+                    quote_ident(&fk.get::<_, String>(0))
+                ))
+                .await
+                .map_err(map_pg_err)?;
+            }
+            let sql = format!(
+                "INSERT INTO {table} ({columns}){overriding} SELECT {values} FROM {}.{} LIMIT {limit}",
+                quote_ident(source_schema),
+                quote_ident(name),
+            );
             let affected = tx.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            for fk in &foreign_keys {
+                let constraint = quote_ident(&fk.get::<_, String>(0));
+                tx.batch_execute(&format!(
+                    "ALTER TABLE {table} ADD CONSTRAINT {constraint} {}",
+                    not_valid(&fk.get::<_, String>(1))
+                ))
+                .await
+                .map_err(map_pg_err)?;
+                if fk.get::<_, bool>(2) {
+                    try_in_savepoint(
+                        &tx,
+                        &format!("ALTER TABLE {table} VALIDATE CONSTRAINT {constraint}"),
+                    )
+                    .await?;
+                }
+            }
+            for (column, _) in &shared {
+                if let Some(sequence) = column.get::<_, Option<String>>(3) {
+                    tx.execute(
+                        format!(
+                            "SELECT setval($1::text::regclass, m) FROM (SELECT max({})::bigint AS m FROM {table}) s WHERE m IS NOT NULL",
+                            quote_ident(&column.get::<_, String>(0))
+                        )
+                        .as_str(),
+                        &[&sequence],
+                    )
+                    .await
+                    .map_err(map_pg_err)?;
+                }
+            }
             tx.commit().await.map_err(map_pg_err)?;
             Ok(affected)
         })
@@ -4329,6 +4416,278 @@ fn normalize_definition(definition: &str) -> String {
         .to_lowercase()
 }
 
+struct TableConstraint {
+    name: String,
+    kind: String,
+    definition: String,
+    referenced: Option<(String, String)>,
+}
+
+struct TableDdl {
+    columns: Vec<String>,
+    constraints: Vec<TableConstraint>,
+    indexes: Vec<String>,
+}
+
+impl TableDdl {
+    fn create_sql(&self, schema: &str, table: &str, foreign_keys: bool) -> String {
+        let parts: Vec<String> = self
+            .columns
+            .iter()
+            .cloned()
+            .chain(
+                self.constraints
+                    .iter()
+                    .filter(|constraint| foreign_keys || constraint.kind != "f")
+                    .map(|constraint| {
+                        format!(
+                            "CONSTRAINT {} {}",
+                            quote_ident(&constraint.name),
+                            constraint.definition
+                        )
+                    }),
+            )
+            .collect();
+        let mut ddl = format!(
+            "CREATE TABLE {}.{} (\n  {}\n);\n",
+            quote_ident(schema),
+            quote_ident(table),
+            parts.join(",\n  ")
+        );
+        for index in &self.indexes {
+            ddl.push_str(&format!("\n{index};\n"));
+        }
+        ddl
+    }
+}
+
+async fn load_table_ddl<C: tokio_postgres::GenericClient + Sync>(
+    conn: &C,
+    schema: &str,
+    table: &str,
+) -> Result<TableDdl, String> {
+    let columns = conn
+        .query(
+            "SELECT a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull, \
+                    pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text, \
+                    a.attidentity = '' AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL \
+             FROM pg_attribute a \
+             JOIN pg_class c ON c.oid = a.attrelid \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
+             WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+             ORDER BY a.attnum",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?;
+    if columns.is_empty() {
+        return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
+    }
+    let columns = columns
+        .iter()
+        .map(|r| {
+            let data_type: String = r.get(1);
+            let serial = r.get::<_, bool>(6);
+            let data_type = match (serial, data_type.as_str()) {
+                (true, "integer") => "serial".to_string(),
+                (true, "bigint") => "bigserial".to_string(),
+                (true, "smallint") => "smallserial".to_string(),
+                _ => data_type,
+            };
+            let mut def = format!("{} {data_type}", quote_ident(&r.get::<_, String>(0)));
+            let default: Option<String> = r.get::<_, Option<String>>(3).filter(|_| !serial);
+            let identity: String = r.get(4);
+            let generated: String = r.get(5);
+            match (identity.as_str(), generated.as_str(), default) {
+                ("a", _, _) => def.push_str(" GENERATED ALWAYS AS IDENTITY"),
+                ("d", _, _) => def.push_str(" GENERATED BY DEFAULT AS IDENTITY"),
+                (_, "s", Some(expr)) => {
+                    def.push_str(&format!(" GENERATED ALWAYS AS ({expr}) STORED"))
+                }
+                (_, _, Some(expr)) => def.push_str(&format!(" DEFAULT {expr}")),
+                _ => {}
+            }
+            if r.get::<_, bool>(2) {
+                def.push_str(" NOT NULL");
+            }
+            def
+        })
+        .collect();
+    let constraints = conn
+        .query(
+            "SELECT con.conname, pg_get_constraintdef(con.oid), con.contype::text, rn.nspname::text, rc.relname::text \
+             FROM pg_constraint con \
+             JOIN pg_class c ON c.oid = con.conrelid \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             LEFT JOIN pg_class rc ON rc.oid = con.confrelid \
+             LEFT JOIN pg_namespace rn ON rn.oid = rc.relnamespace \
+             WHERE n.nspname = $1 AND c.relname = $2 AND con.contype IN ('p', 'u', 'c', 'f', 'x') \
+             ORDER BY position(con.contype::text IN 'pucfx'), con.conname",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?
+        .iter()
+        .map(|r| TableConstraint {
+            name: r.get(0),
+            definition: r.get(1),
+            kind: r.get(2),
+            referenced: r
+                .get::<_, Option<String>>(3)
+                .zip(r.get::<_, Option<String>>(4)),
+        })
+        .collect();
+    let indexes = conn
+        .query(
+            "SELECT pg_get_indexdef(i.indexrelid) \
+             FROM pg_index i \
+             JOIN pg_class c ON c.oid = i.indrelid \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_class ic ON ic.oid = i.indexrelid \
+             WHERE n.nspname = $1 AND c.relname = $2 \
+               AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.indexrelid AND k.conrelid = i.indrelid) \
+             ORDER BY ic.relname",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    Ok(TableDdl {
+        columns,
+        constraints,
+        indexes,
+    })
+}
+
+struct TableCopyPlan {
+    create: String,
+    foreign_keys: Vec<String>,
+    incoming: Vec<(String, String)>,
+}
+
+impl TableCopyPlan {
+    fn script(&self) -> String {
+        let mut sql = self.create.clone();
+        for statement in self
+            .foreign_keys
+            .iter()
+            .chain(self.incoming.iter().map(|(add, _)| add))
+        {
+            sql.push_str(&format!("\n{statement};\n"));
+        }
+        sql
+    }
+}
+
+fn not_valid(definition: &str) -> String {
+    let definition = definition.trim_end();
+    if definition.ends_with(" NOT VALID") {
+        definition.to_string()
+    } else {
+        format!("{definition} NOT VALID")
+    }
+}
+
+async fn relation_exists<C: tokio_postgres::GenericClient + Sync>(
+    conn: &C,
+    schema: &str,
+    name: &str,
+) -> Result<bool, String> {
+    conn.query_one(
+        "SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p'))",
+        &[&schema, &name],
+    )
+    .await
+    .map(|row| row.get(0))
+    .map_err(map_pg_err)
+}
+
+async fn table_copy_plan<C: tokio_postgres::GenericClient + Sync>(
+    conn: &C,
+    source: &str,
+    target: &str,
+    name: &str,
+) -> Result<TableCopyPlan, String> {
+    let ddl = load_table_ddl(conn, source, name).await?;
+    let table = format!("{}.{}", quote_ident(target), quote_ident(name));
+    let create = requalify_outside_literals(&ddl.create_sql(target, name, false), source, target);
+    let mut foreign_keys = Vec::new();
+    for constraint in ddl.constraints.iter().filter(|c| c.kind == "f") {
+        let available = match &constraint.referenced {
+            Some((schema, referenced)) if schema == source => {
+                referenced == name || relation_exists(conn, target, referenced).await?
+            }
+            _ => true,
+        };
+        if available {
+            foreign_keys.push(format!(
+                "ALTER TABLE {table} ADD CONSTRAINT {} {}",
+                quote_ident(&constraint.name),
+                requalify_outside_literals(&constraint.definition, source, target)
+            ));
+        }
+    }
+    let incoming = conn
+        .query(
+            "SELECT c.relname::text, con.conname::text, pg_get_constraintdef(con.oid) \
+             FROM pg_constraint con \
+             JOIN pg_class c ON c.oid = con.conrelid \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_class rc ON rc.oid = con.confrelid \
+             JOIN pg_namespace rn ON rn.oid = rc.relnamespace \
+             WHERE con.contype = 'f' AND n.nspname = $1 AND rn.nspname = $1 \
+               AND rc.relname = $2 AND c.relname <> $2 \
+               AND EXISTS (SELECT 1 FROM pg_class tc JOIN pg_namespace tn ON tn.oid = tc.relnamespace \
+                 WHERE tn.nspname = $3 AND tc.relname = c.relname AND tc.relkind IN ('r', 'p')) \
+               AND NOT EXISTS (SELECT 1 FROM pg_constraint tk JOIN pg_class tc ON tc.oid = tk.conrelid \
+                 JOIN pg_namespace tn ON tn.oid = tc.relnamespace \
+                 WHERE tn.nspname = $3 AND tc.relname = c.relname AND tk.conname = con.conname) \
+             ORDER BY 1, 2",
+            &[&source, &name, &target],
+        )
+        .await
+        .map_err(map_pg_err)?
+        .iter()
+        .map(|row| {
+            let child = format!(
+                "{}.{}",
+                quote_ident(target),
+                quote_ident(&row.get::<_, String>(0))
+            );
+            let constraint = quote_ident(&row.get::<_, String>(1));
+            let definition = requalify_outside_literals(&row.get::<_, String>(2), source, target);
+            (
+                format!(
+                    "ALTER TABLE {child} ADD CONSTRAINT {constraint} {}",
+                    not_valid(&definition)
+                ),
+                format!("ALTER TABLE {child} VALIDATE CONSTRAINT {constraint}"),
+            )
+        })
+        .collect();
+    Ok(TableCopyPlan {
+        create,
+        foreign_keys,
+        incoming,
+    })
+}
+
+async fn try_in_savepoint(tx: &tokio_postgres::Transaction<'_>, sql: &str) -> Result<bool, String> {
+    tx.batch_execute("SAVEPOINT l8db_schema_copy")
+        .await
+        .map_err(map_pg_err)?;
+    let release = match tx.batch_execute(sql).await {
+        Ok(()) => "RELEASE SAVEPOINT l8db_schema_copy",
+        Err(_) => "ROLLBACK TO SAVEPOINT l8db_schema_copy; RELEASE SAVEPOINT l8db_schema_copy",
+    };
+    tx.batch_execute(release).await.map_err(map_pg_err)?;
+    Ok(release.starts_with("RELEASE"))
+}
+
 impl PostgresAdapter {
     async fn schema_copy_definitions(
         &self,
@@ -4397,6 +4756,40 @@ impl PostgresAdapter {
         .await
     }
 
+    async fn copy_table_structure(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        if source_schema.is_empty() || target_schema.is_empty() {
+            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+        }
+        let mut conn = self.get_conn().await?;
+        self.timed(conn.cancel_token(), async move {
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            tx.batch_execute(EMPTY_SEARCH_PATH)
+                .await
+                .map_err(map_pg_err)?;
+            let plan = table_copy_plan(&tx, source_schema, target_schema, name).await?;
+            tx.batch_execute(&plan.create).await.map_err(map_pg_err)?;
+            let mut executed = plan.create.clone();
+            for statement in &plan.foreign_keys {
+                tx.batch_execute(statement).await.map_err(map_pg_err)?;
+                executed.push_str(&format!("\n{statement};\n"));
+            }
+            for (add, validate) in &plan.incoming {
+                if try_in_savepoint(&tx, add).await? {
+                    try_in_savepoint(&tx, validate).await?;
+                    executed.push_str(&format!("\n{add};\n"));
+                }
+            }
+            tx.commit().await.map_err(map_pg_err)?;
+            Ok(executed)
+        })
+        .await
+    }
+
     async fn schema_copy_ddl(
         &self,
         source_schema: &str,
@@ -4409,12 +4802,21 @@ impl PostgresAdapter {
         }
         match object_type {
             "table" => {
-                let ddl = self.get_table_ddl(source_schema, name).await?;
-                Ok(super::requalify_schema(&ddl, source_schema, target_schema))
+                let mut conn = self.get_conn().await?;
+                self.timed(conn.cancel_token(), async move {
+                    let tx = conn.transaction().await.map_err(map_pg_err)?;
+                    tx.batch_execute(EMPTY_SEARCH_PATH)
+                        .await
+                        .map_err(map_pg_err)?;
+                    Ok(table_copy_plan(&tx, source_schema, target_schema, name)
+                        .await?
+                        .script())
+                })
+                .await
             }
             "view" => {
                 let definition = self.get_view_definition(source_schema, name).await?;
-                let body = super::requalify_schema(
+                let body = requalify_outside_literals(
                     definition.trim().trim_end_matches(';'),
                     source_schema,
                     target_schema,
@@ -4680,8 +5082,8 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 mod tests {
     use super::{
         capped_count, ends_transaction, infer_view_foreign_keys, like_pattern,
-        read_only_batch_guard, routine_ddl_in_pg_temp, session_guards, source_snippet,
-        PostgresAdapter, SimpleResult,
+        read_only_batch_guard, requalify_outside_literals, routine_ddl_in_pg_temp, session_guards,
+        source_snippet, PostgresAdapter, SimpleResult,
     };
     use crate::db::RowCount;
 
@@ -4720,6 +5122,36 @@ mod tests {
         ] {
             assert!(!ends_transaction(sql), "{sql}");
         }
+    }
+
+    #[test]
+    fn schema_requalify_skips_literals_and_quoted_identifiers() {
+        let sql = "CREATE TABLE \"dst\".t (url text CHECK ((url ~~ 'https://public.example.com/%'::text)), \
+                   m public.mood, \"public.x\" int, e text DEFAULT E'public.\\'public.x', \
+                   d text DEFAULT $q$public.y$q$, n text DEFAULT nextval('public.s'::regclass), \
+                   a$public.b int, \"Public\".z int, PUBLIC.w int, k int REFERENCES \"public\".p(id), q int REFERENCES x.public.z);\n\
+                   CREATE INDEX i ON public.t USING btree (a) WHERE (url <> U&'public.x'::text) -- public.c\n;";
+        assert_eq!(
+            requalify_outside_literals(sql, "public", "dst"),
+            "CREATE TABLE \"dst\".t (url text CHECK ((url ~~ 'https://public.example.com/%'::text)), \
+                   m \"dst\".mood, \"public.x\" int, e text DEFAULT E'public.\\'public.x', \
+                   d text DEFAULT $q$public.y$q$, n text DEFAULT nextval('public.s'::regclass), \
+                   a$public.b int, \"Public\".z int, \"dst\".w int, k int REFERENCES \"dst\".p(id), q int REFERENCES x.public.z);\n\
+                   CREATE INDEX i ON \"dst\".t USING btree (a) WHERE (url <> U&'public.x'::text) -- public.c\n;"
+        );
+        assert_eq!(
+            requalify_outside_literals(
+                "CHECK ((mail ~~ '%@app.de'::text)) AND app.f(x)",
+                "app",
+                "neu"
+            ),
+            "CHECK ((mail ~~ '%@app.de'::text)) AND \"neu\".f(x)"
+        );
+        assert_eq!(
+            requalify_outside_literals("\"My S\".t, my.t", "My S", "o\"k"),
+            "\"o\"\"k\".t, my.t"
+        );
+        assert_eq!(requalify_outside_literals("app.t", "app", "app"), "app.t");
     }
 
     #[test]
@@ -6223,6 +6655,129 @@ mod tests {
         lab_execute(
             &adapter,
             "DROP SCHEMA l8db_copy_src CASCADE; DROP SCHEMA l8db_copy_dst CASCADE",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn schema_copy_from_search_path_schema_targets_the_copy() {
+        let adapter = lab_adapter();
+        lab_execute(
+            &adapter,
+            "DROP TABLE IF EXISTS public.l8db_cpx_child, public.l8db_cpx_parent CASCADE; \
+             DROP TYPE IF EXISTS public.l8db_cpx_mood; DROP SCHEMA IF EXISTS l8db_cpx_dst CASCADE; \
+             CREATE SCHEMA l8db_cpx_dst; CREATE TYPE public.l8db_cpx_mood AS ENUM ('ok', 'bad'); \
+             CREATE TYPE l8db_cpx_dst.l8db_cpx_mood AS ENUM ('ok', 'bad'); \
+             CREATE TABLE public.l8db_cpx_parent (id int GENERATED ALWAYS AS IDENTITY PRIMARY KEY, \
+               url text CHECK (url LIKE 'https://public.example.com/%')); \
+             CREATE TABLE public.l8db_cpx_child (id bigserial PRIMARY KEY, \
+               parent_id int REFERENCES public.l8db_cpx_parent(id), m l8db_cpx_mood, price numeric, \
+               tax numeric GENERATED ALWAYS AS (price * 0.19) STORED); \
+             INSERT INTO public.l8db_cpx_parent (url) SELECT 'https://public.example.com/' || g FROM generate_series(1, 5) g; \
+             INSERT INTO public.l8db_cpx_child (parent_id, m, price) SELECT g, 'ok', g * 10 FROM generate_series(1, 5) g",
+        )
+        .await;
+        for table in ["l8db_cpx_child", "l8db_cpx_parent"] {
+            adapter
+                .execute_schema_object_copy("public", "l8db_cpx_dst", "table", table)
+                .await
+                .unwrap_or_else(|err| panic!("{table}: {err}"));
+        }
+        let probe = adapter
+            .execute_query(
+                "SELECT (SELECT confrelid::regclass::text FROM pg_constraint \
+                   WHERE conrelid = 'l8db_cpx_dst.l8db_cpx_child'::regclass AND contype = 'f') AS fk, \
+                 (SELECT format_type(atttypid, atttypmod) FROM pg_attribute \
+                   WHERE attrelid = 'l8db_cpx_dst.l8db_cpx_child'::regclass AND attname = 'm') AS mood, \
+                 (SELECT pg_get_constraintdef(oid) FROM pg_constraint \
+                   WHERE conrelid = 'l8db_cpx_dst.l8db_cpx_parent'::regclass AND contype = 'c') AS chk",
+            )
+            .await
+            .unwrap();
+        assert_eq!(probe.rows[0]["fk"], "l8db_cpx_dst.l8db_cpx_parent");
+        assert_eq!(probe.rows[0]["mood"], "l8db_cpx_dst.l8db_cpx_mood");
+        assert!(probe.rows[0]["chk"]
+            .as_str()
+            .unwrap()
+            .contains("'https://public.example.com/%'"));
+        assert_eq!(
+            adapter
+                .copy_schema_table_data("public", "l8db_cpx_dst", "l8db_cpx_parent", 2)
+                .await
+                .expect("parent data"),
+            2
+        );
+        assert_eq!(
+            adapter
+                .copy_schema_table_data("public", "l8db_cpx_dst", "l8db_cpx_child", 5)
+                .await
+                .expect("child data"),
+            5
+        );
+        let copied = adapter
+            .execute_query(
+                "SELECT (SELECT tax::text FROM l8db_cpx_dst.l8db_cpx_child WHERE id = 2) AS tax, \
+                 (SELECT count(*)::text FROM pg_constraint WHERE conrelid = 'l8db_cpx_dst.l8db_cpx_child'::regclass AND contype = 'f') AS fks",
+            )
+            .await
+            .unwrap();
+        assert_eq!(copied.rows[0]["tax"], "3.80");
+        assert_eq!(copied.rows[0]["fks"], "1");
+        let next = adapter
+            .execute_query(
+                "INSERT INTO l8db_cpx_dst.l8db_cpx_parent (url) VALUES ('https://public.example.com/x') RETURNING id",
+            )
+            .await
+            .unwrap();
+        assert_eq!(next.rows[0]["id"], "3");
+        assert!(adapter
+            .execute_query(
+                "INSERT INTO l8db_cpx_dst.l8db_cpx_child (parent_id, price) VALUES (99, 1)"
+            )
+            .await
+            .is_err());
+        lab_execute(
+            &adapter,
+            "DROP TABLE public.l8db_cpx_child, public.l8db_cpx_parent; DROP TYPE public.l8db_cpx_mood; \
+             DROP SCHEMA l8db_cpx_dst CASCADE",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn read_only_connection_rejects_switching_to_read_write() {
+        let writer = lab_adapter();
+        lab_execute(
+            &writer,
+            "DROP SEQUENCE IF EXISTS l8db_ro_switch_seq; DROP TABLE IF EXISTS l8db_ro_switch; \
+             CREATE SEQUENCE l8db_ro_switch_seq; CREATE TABLE l8db_ro_switch (id int)",
+        )
+        .await;
+        let reader = lab_read_only_adapter();
+        for server_output in [false, true] {
+            reader.set_server_output(server_output).await.unwrap();
+            for sql in [
+                "SET TRANSACTION READ WRITE; SELECT setval('l8db_ro_switch_seq', 4242); INSERT INTO l8db_ro_switch VALUES (1)",
+                "SET transaction_read_only = off; SELECT setval('l8db_ro_switch_seq', 777)",
+                "SET LOCAL transaction_read_only = off; INSERT INTO l8db_ro_switch VALUES (2)",
+            ] {
+                assert!(reader.execute_query(sql).await.is_err(), "{sql}");
+                let state = writer
+                    .execute_query(
+                        "SELECT last_value::text AS v, (SELECT count(*) FROM l8db_ro_switch)::text AS n FROM l8db_ro_switch_seq",
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(state.rows[0]["v"], "1", "{sql}");
+                assert_eq!(state.rows[0]["n"], "0", "{sql}");
+            }
+        }
+        reader.set_server_output(false).await.unwrap();
+        lab_execute(
+            &writer,
+            "DROP SEQUENCE l8db_ro_switch_seq; DROP TABLE l8db_ro_switch",
         )
         .await;
     }
