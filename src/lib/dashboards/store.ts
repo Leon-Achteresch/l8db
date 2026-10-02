@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { groupRapidEdits, HISTORY_LIMIT } from "@/lib/undo-history";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import type { Dashboard, Dataset } from "./model";
 import { createId } from "./sql";
 
@@ -199,3 +200,21 @@ export function withoutDashboardHistory(apply: () => void): void {
     history.clear();
   }
 }
+
+function applyDashboardsFromOtherWindow(value: string | null): void {
+  let dashboards: unknown;
+  try {
+    dashboards = (JSON.parse(value ?? "null") as { state?: { dashboards?: unknown } } | null)?.state
+      ?.dashboards;
+  } catch {
+    return;
+  }
+  if (!Array.isArray(dashboards)) return;
+  if (JSON.stringify(dashboards) === JSON.stringify(useDashboardsStore.getState().dashboards))
+    return;
+  withoutDashboardHistory(() =>
+    useDashboardsStore.setState({ dashboards: dashboards as Dashboard[] }),
+  );
+}
+
+syncAcrossWindows("l8db-dashboards", applyDashboardsFromOtherWindow);
