@@ -55,7 +55,7 @@ export function StorageOverview({
   };
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="flex h-full flex-col rounded-2xl border bg-card p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Speicher & Schemas</h2>
         <Database className="size-4 text-muted-foreground" />
@@ -76,8 +76,7 @@ export function StorageOverview({
             <section
               ref={scrollRef}
               aria-label="Schemas"
-              className="mt-5 overflow-y-auto"
-              style={{ height: Math.min(SCHEMA_LIST_HEIGHT, virtualizer.getTotalSize()) }}
+              className="mt-5 min-h-0 flex-1 overflow-y-auto"
             >
               <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualizer.getVirtualItems().map((row) => {

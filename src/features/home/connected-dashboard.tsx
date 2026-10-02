@@ -1,102 +1,35 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Database,
-  Eye,
-  FunctionSquare,
-  Layers,
-  ListOrdered,
-  Package,
-  Plus,
-  RefreshCw,
-  Search,
-  Table2,
-  Workflow,
-} from "lucide-react";
+import { ArrowRight, Check, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { DisconnectButton } from "@/features/connections/disconnect-button";
-import { connectionSummary, providerFor, queryErrorMessage } from "@/lib/connection-url";
+import { connectionSummary, providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
-import {
-  useDatabaseOverviewQuery,
-  useExtensionsQuery,
-  useFunctionsQuery,
-  useMaterializedViewsQuery,
-  useRefreshConnection,
-  useSequencesQuery,
-  useTablesQuery,
-  useViewsQuery,
-} from "@/lib/queries";
-import { useQueryHistoryStore } from "@/lib/query-history";
-import { useSettingsStore } from "@/lib/settings";
+import { useHomeLayoutStore } from "@/lib/home-layout";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useRefreshConnection, useTablesQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
-import { RecentQueries } from "./connected-dashboard/recent-queries";
-import { StorageOverview } from "./connected-dashboard/storage-overview";
-import { DashboardMetric } from "./dashboard-metric";
-import { DashboardTableList } from "./dashboard-table-list";
+import { HomeAddWidgetMenu } from "./home-add-widget-menu";
+import { HomeGrid } from "./home-grid";
 
-const TABLE_LIST_LIMIT = 50;
-const MIN_OVERVIEW_SIZE_BYTES = 1024;
 export function ConnectedDashboard({ connection }: { connection: SavedConnection }) {
-  const easyMode = useSettingsStore((state) => state.easyMode);
   const database = useActiveDatabase();
   const schema = useActiveSchema();
   const tables = useTablesQuery();
-  const views = useViewsQuery();
-  const functions = useFunctionsQuery();
-  const extensions = useExtensionsQuery();
-  const sequences = useSequencesQuery();
-  const matviews = useMaterializedViewsQuery();
-  const overview = useDatabaseOverviewQuery();
   const { refresh, isRefreshing } = useRefreshConnection();
-  const history = useQueryHistoryStore((state) => state.entries);
-  const recent = useMemo(() => {
-    const entries: typeof history = [];
-    for (const entry of history) {
-      if (entry.connectionId === connection.id && entry.database === database) {
-        entries.push(entry);
-        if (entries.length === 4) break;
-      }
-    }
-    return entries;
-  }, [history, connection.id, database]);
-  const [search, setSearch] = useState("");
+  const customized = useHomeLayoutStore((state) => connection.id in state.layouts);
+  const resetLayout = useHomeLayoutStore((state) => state.resetLayout);
+  const [editing, setEditing] = useState(false);
+  const customize = useNewFeatureVisibility<HTMLButtonElement>("home.customize");
   const navigate = useNavigate();
   const reduce = useReducedMotion();
   const endpoint = connectionSummary(connection.connectionString, connection.kind);
   const provider = providerFor(connection);
   const caps = provider.capabilities;
-  const showStorageOverview =
-    caps.overview &&
-    (overview.isPending ||
-      overview.isError ||
-      (overview.data?.size_bytes ?? 0) >= MIN_OVERVIEW_SIZE_BYTES ||
-      overview.data?.schemas.some((entry) => entry.size_bytes >= MIN_OVERVIEW_SIZE_BYTES));
-  const largestSchema = Math.max(
-    1,
-    ...(overview.data?.schemas.map((entry) => entry.size_bytes) ?? []),
-  );
-  const matching = useMemo(() => {
-    if (!tables.data) return [];
-    if (!search) return tables.data;
-    const needle = search.toLowerCase();
-    return tables.data.filter((table) => table.name.toLowerCase().includes(needle));
-  }, [tables.data, search]);
-  const filtered = matching.slice(0, TABLE_LIST_LIMIT);
-  const metrics = [
-    { label: "Tabellen", query: tables, icon: Database, enabled: true },
-    { label: "Views", query: views, icon: Eye, enabled: caps.views },
-    { label: "Funktionen", query: functions, icon: FunctionSquare, enabled: caps.functions },
-    { label: "Extensions", query: extensions, icon: Package, enabled: caps.extensions },
-    { label: "Sequenzen", query: sequences, icon: ListOrdered, enabled: caps.sequences },
-    { label: "Mat. Views", query: matviews, icon: Layers, enabled: caps.materialized_views },
-  ].filter((metric) => metric.enabled);
 
   function newQuery() {
     const id = useTableTabs.getState().openQueryTab();
@@ -133,6 +66,17 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
           <div className="flex items-center gap-2" data-tour="dashboard-actions">
             <DisconnectButton />
             <Button
+              ref={customize.ref}
+              variant="outline"
+              size="sm"
+              aria-pressed={editing}
+              onClick={() => setEditing((current) => !current)}
+            >
+              <SlidersHorizontal className="size-3.5" />
+              Anpassen
+              {customize.isNew && <NewBadge />}
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               onClick={() => void refresh()}
@@ -163,118 +107,42 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             {connection.sslMode === "disable" ? "deaktiviert" : connection.sslMode}
           </span>
         </div>
-        <section
-          aria-label="Datenbankobjekte"
-          className="mb-8 grid grid-cols-2 divide-x divide-border/70 overflow-hidden rounded-2xl border bg-card sm:grid-cols-3 xl:grid-cols-6"
+        {editing && (
+          <section
+            aria-label="Startseite anpassen"
+            className="sticky top-3 z-20 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-popover px-4 py-2.5 shadow-sm"
+          >
+            <p className="text-xs text-muted-foreground">
+              Widgets ziehen, an der Ecke in der Größe ändern oder entfernen.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!customized}
+                onClick={() => {
+                  if (window.confirm("Startseite dieser Verbindung auf den Standard zurücksetzen?"))
+                    resetLayout(connection.id);
+                }}
+              >
+                Zurücksetzen
+              </Button>
+              <HomeAddWidgetMenu connectionId={connection.id} />
+              <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+                <Check className="size-3.5" />
+                Fertig
+              </Button>
+            </div>
+          </section>
+        )}
+        <HomeGrid connectionId={connection.id} editing={editing} />
+        <Link
+          to="/connections"
+          className="mt-6 flex items-center justify-between rounded-xl border px-4 py-3 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
         >
-          {metrics.map(({ label, query, icon }) => (
-            <DashboardMetric
-              key={label}
-              label={label}
-              value={query.data?.length}
-              loading={query.isPending}
-              error={query.isError}
-              icon={icon}
-            />
-          ))}
-        </section>
-        <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1.55fr)_minmax(270px,1fr)]">
-          <div className="min-w-0 space-y-7">
-            <section className="overflow-hidden rounded-2xl border bg-card">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-                <h2 className="text-sm font-semibold">
-                  Tabellen{" "}
-                  <span className="ml-2 font-mono text-[11px] font-normal text-muted-foreground">
-                    {schema}
-                  </span>
-                </h2>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
-                  <Input
-                    className="h-7 w-44 rounded-lg pl-8 text-xs"
-                    aria-label="Tabellen in der Übersicht suchen"
-                    placeholder="Tabelle suchen…"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-                </div>
-              </div>
-              {tables.isPending || (tables.isError && !queryErrorMessage(tables.error)) ? (
-                <div className="space-y-4 p-5">
-                  {[0, 1, 2, 3].map((item) => (
-                    <Skeleton key={item} className="h-7 w-full" />
-                  ))}
-                </div>
-              ) : tables.isError ? (
-                <div className="p-5">
-                  <p role="alert" className="text-xs leading-relaxed text-destructive">
-                    {queryErrorMessage(tables.error)}
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-3"
-                    onClick={() => void tables.refetch()}
-                  >
-                    Erneut versuchen
-                  </Button>
-                </div>
-              ) : filtered.length ? (
-                <DashboardTableList tables={filtered} hidden={matching.length - filtered.length} />
-              ) : (
-                <div className="p-8 text-center">
-                  <Table2 className="mx-auto mb-3 size-6 text-muted-foreground/50" />
-                  <p className="text-sm text-muted-foreground">
-                    {search
-                      ? "Keine passende Tabelle gefunden."
-                      : "Dieses Schema enthält noch keine Tabellen."}
-                  </p>
-                  {!search && (
-                    <Button variant="outline" size="sm" className="mt-4" asChild>
-                      <Link to="/create-table">
-                        <Plus className="size-3" />
-                        Tabelle erstellen
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              )}
-            </section>
-            <RecentQueries recent={recent} />
-          </div>
-          <aside className="space-y-6">
-            {showStorageOverview && (
-              <StorageOverview
-                overview={overview}
-                schema={schema}
-                connectionId={connection.id}
-                largestSchema={largestSchema}
-              />
-            )}
-            {!easyMode && (
-              <section className="rounded-2xl bg-primary/[0.055] p-5">
-                <Workflow className="mb-3 size-5 text-primary" />
-                <h2 className="text-sm font-semibold">Das große Ganze sehen</h2>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  Erkunde Tabellen und ihre Beziehungen im ER-Diagramm.
-                </p>
-                <Button variant="outline" size="sm" asChild className="mt-4 h-8 text-xs">
-                  <Link to="/er-diagram">
-                    Diagramm öffnen
-                    <ArrowRight className="size-3" />
-                  </Link>
-                </Button>
-              </section>
-            )}
-            <Link
-              to="/connections"
-              className="flex items-center justify-between rounded-xl border px-4 py-3 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-            >
-              Verbindungen verwalten
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </aside>
-        </div>
+          Verbindungen verwalten
+          <ArrowRight className="size-3.5" />
+        </Link>
       </motion.div>
     </main>
   );
