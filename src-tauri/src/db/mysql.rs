@@ -1653,6 +1653,71 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_explain_analyze_rolls_back_changes() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let mariadb = live_scalar(&adapter, "SELECT VERSION()")
+                .await
+                .contains("MariaDB");
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_explain_analyze, l8db_explain_other")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_analyze (id INT PRIMARY KEY, v INT) ENGINE=InnoDB")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_other (id INT PRIMARY KEY) ENGINE=InnoDB")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_analyze VALUES (1, 10), (2, 20)")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_other VALUES (1), (2)")
+                .await
+                .unwrap();
+            for sql in [
+                "UPDATE l8db_explain_analyze a JOIN l8db_explain_other o ON o.id = a.id SET a.v = a.v + 1",
+                "DELETE a FROM l8db_explain_analyze a JOIN l8db_explain_other o ON o.id = a.id",
+                "UPDATE l8db_explain_analyze SET v = 0",
+                "DELETE FROM l8db_explain_analyze",
+            ] {
+                let outcome = adapter.explain_query(sql, true).await;
+                assert!(mariadb || outcome.is_ok(), "{url}: {sql}: {outcome:?}");
+                assert_eq!(
+                    live_scalar(
+                        &adapter,
+                        "SELECT CONCAT(COUNT(*), '/', SUM(v)) FROM l8db_explain_analyze"
+                    )
+                    .await,
+                    "2/30",
+                    "{url}: {sql}"
+                );
+            }
+            if !mariadb {
+                let plan = adapter
+                    .explain_query("SELECT * FROM l8db_explain_analyze WHERE id = 1", true)
+                    .await
+                    .unwrap();
+                assert!(plan.is_string(), "{url}: {plan}");
+            }
+            assert_eq!(
+                live_scalar(&adapter, "SELECT @@autocommit").await,
+                "1",
+                "{url}"
+            );
+            adapter
+                .exec("DROP TABLE l8db_explain_analyze, l8db_explain_other")
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn live_explain_never_runs_trailing_statements() {
         for url in live_urls() {
             let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
