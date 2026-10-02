@@ -161,7 +161,9 @@ export function inlineBindValues(
   let out = "";
   let cursor = 0;
   for (const occurrence of scanBindParams(sql)) {
-    out += sql.slice(cursor, occurrence.start) + sqlLiteral(values[occurrence.name], kind);
+    out += sql.slice(cursor, occurrence.start);
+    const literal = sqlLiteral(values[occurrence.name], kind);
+    out += literal.startsWith("-") && out.endsWith("-") ? ` ${literal}` : literal;
     cursor = occurrence.end;
   }
   return out + sql.slice(cursor);

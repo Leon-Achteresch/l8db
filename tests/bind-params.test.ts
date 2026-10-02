@@ -154,10 +154,27 @@ describe("inlineBindValues", () => {
     });
     expect(sql).toBe("SELECT * FROM t WHERE a = 'O''Reilly' AND b = 42 AND c = NULL AND d = NULL");
   });
+
+  test("negative numbers after a minus never form a line comment", () => {
+    const sql = "SELECT * FROM acct WHERE balance > 100-:d AND tenant_id = 7";
+    for (const kind of ["mssql", "sqlite", "clickhouse", "duckdb", "mysql"] as const) {
+      for (const type of ["int", "numeric"] as const) {
+        const out = inlineBindValues(sql, { d: { type, value: "-5" } }, kind);
+        expect(out).toBe("SELECT * FROM acct WHERE balance > 100- -5 AND tenant_id = 7");
+        expect(out).not.toContain("--");
+      }
+    }
+    expect(inlineBindValues("SELECT 1 - :d", { d: { type: "int", value: "-5" } }, "sqlite")).toBe(
+      "SELECT 1 - -5",
+    );
+  });
 });
 
-
 test("Oracle bind queries use native parameters without PostgreSQL casts", () => {
-  const result = buildParameterizedQuery("SELECT * FROM T WHERE REF = :ref", { ref: { type: "int", value: "42" } }, "oracle");
+  const result = buildParameterizedQuery(
+    "SELECT * FROM T WHERE REF = :ref",
+    { ref: { type: "int", value: "42" } },
+    "oracle",
+  );
   expect(result).toEqual({ sql: "SELECT * FROM T WHERE REF = $1", values: ["42"] });
 });
