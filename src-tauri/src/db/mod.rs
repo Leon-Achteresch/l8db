@@ -1656,38 +1656,73 @@ fn render_create_table(
     )
 }
 
-fn schema_qualifier_boundary(sql: &str, idx: usize) -> bool {
-    !sql[..idx]
-        .chars()
-        .next_back()
-        .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '"' || c == '.' || c == '$')
+fn schema_qualifier_boundary(chars: &[char], idx: usize) -> bool {
+    !idx.checked_sub(1)
+        .and_then(|prev| chars.get(prev))
+        .is_some_and(|&c| c.is_alphanumeric() || c == '_' || c == '"' || c == '.' || c == '$')
+}
+
+fn chars_start_with(chars: &[char], idx: usize, pattern: &[char]) -> bool {
+    chars.get(idx..idx + pattern.len()) == Some(pattern)
+}
+
+fn skip_until(chars: &[char], start: usize, close: &[char]) -> usize {
+    let mut i = start;
+    while i < chars.len() {
+        if chars_start_with(chars, i, close) {
+            return i + close.len();
+        }
+        i += 1;
+    }
+    chars.len()
 }
 
 pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) -> String {
     if from_schema.is_empty() || from_schema == to_schema {
         return sql.to_string();
     }
-    let quoted_from = format!("\"{from_schema}\".");
-    let quoted_to = format!("\"{to_schema}\".");
-    let bare_from = format!("{from_schema}.");
-    let bare_to = format!("\"{to_schema}\".");
+    let chars: Vec<char> = sql.chars().collect();
+    let quoted_from: Vec<char> = format!("\"{from_schema}\".").chars().collect();
+    let bare_from: Vec<char> = format!("{from_schema}.").chars().collect();
+    let target = format!("\"{to_schema}\".");
+    let word_boundary = |i: usize| {
+        !i.checked_sub(1)
+            .and_then(|prev| chars.get(prev))
+            .is_some_and(|&c| c.is_alphanumeric() || c == '_' || c == '$')
+    };
     let mut out = String::with_capacity(sql.len());
-    let mut idx = 0usize;
-    while idx < sql.len() {
-        let rest = &sql[idx..];
-        if rest.starts_with(&quoted_from) {
-            out.push_str(&quoted_to);
-            idx += quoted_from.len();
+    let mut i = 0;
+    while i < chars.len() {
+        let ch = chars[i];
+        let next = chars.get(i + 1).copied();
+        let end = if ch == '-' && next == Some('-') {
+            skip_until(&chars, i, &['\n'])
+        } else if ch == '/' && next == Some('*') {
+            skip_until(&chars, i + 2, &['*', '/'])
+        } else if matches!(ch, 'q' | 'Q') && next == Some('\'') && word_boundary(i) {
+            skip_q_quoted(&chars, i)
+        } else if matches!(ch, 'e' | 'E') && next == Some('\'') && word_boundary(i) {
+            skip_quoted(&chars, i + 1, '\'', true)
+        } else if ch == '\'' {
+            skip_quoted(&chars, i, '\'', false)
+        } else if ch == '"'
+            && chars_start_with(&chars, i, &quoted_from)
+            && i.checked_sub(1).is_none_or(|prev| chars[prev] != '.')
+        {
+            out.push_str(&target);
+            i += quoted_from.len();
             continue;
-        }
-        if rest.starts_with(&bare_from) && schema_qualifier_boundary(sql, idx) {
-            out.push_str(&bare_to);
-            idx += bare_from.len();
+        } else if ch == '"' {
+            skip_quoted(&chars, i, '"', false)
+        } else if chars_start_with(&chars, i, &bare_from) && schema_qualifier_boundary(&chars, i) {
+            out.push_str(&target);
+            i += bare_from.len();
             continue;
-        }
-        let ch = rest.chars().next().unwrap_or('\0');
-        out.push(ch);
-        idx += ch.len_utf8();
+        } else {
+            i + 1
+        };
+        out.extend(&chars[i..end.max(i + 1).min(chars.len())]);
+        i = end.max(i + 1);
     }
     out
 }
@@ -2084,6 +2119,36 @@ mod tests {
         assert!(!out.contains("alt.kunde"));
         assert_eq!(super::requalify_schema(sql, "alt", "alt"), sql);
         assert_eq!(super::requalify_schema(sql, "", "neu"), sql);
+    }
+
+    #[test]
+    fn requalify_schema_keeps_literals_and_comments() {
+        let sql = "CREATE TABLE \"src\".t (id int DEFAULT nextval('src.seq'::regclass), n text DEFAULT E'it\\'s src.x', c text CHECK (c <> 'src.y''s'))";
+        let out = super::requalify_schema(sql, "src", "tgt");
+        assert_eq!(
+            out,
+            "CREATE TABLE \"tgt\".t (id int DEFAULT nextval('src.seq'::regclass), n text DEFAULT E'it\\'s src.x', c text CHECK (c <> 'src.y''s'))"
+        );
+        let view = "-- don't touch src.a\nSELECT 'src.b', q'[it's src.c]', \"src.d\" /* src.e ' */ FROM src.t JOIN \"src\".u ON TRUE";
+        assert_eq!(
+            super::requalify_schema(view, "src", "tgt"),
+            "-- don't touch src.a\nSELECT 'src.b', q'[it's src.c]', \"src.d\" /* src.e ' */ FROM \"tgt\".t JOIN \"tgt\".u ON TRUE"
+        );
+        let routine = "CREATE FUNCTION src.f() RETURNS int AS $$ SELECT count(*) FROM src.t WHERE n = 'src.z' $$ LANGUAGE sql";
+        assert_eq!(
+            super::requalify_schema(routine, "src", "tgt"),
+            "CREATE FUNCTION \"tgt\".f() RETURNS int AS $$ SELECT count(*) FROM \"tgt\".t WHERE n = 'src.z' $$ LANGUAGE sql"
+        );
+        let oracle =
+            "CREATE OR REPLACE VIEW \"HR\".\"V\" AS SELECT 'HR.X' AS l, Q'{HR.Y}' AS m FROM HR.EMP";
+        assert_eq!(
+            super::requalify_schema(oracle, "HR", "DEV"),
+            "CREATE OR REPLACE VIEW \"DEV\".\"V\" AS SELECT 'HR.X' AS l, Q'{HR.Y}' AS m FROM \"DEV\".EMP"
+        );
+        assert_eq!(
+            super::requalify_schema("ä src.t", "src", "tgt"),
+            "ä \"tgt\".t"
+        );
     }
 
     fn smoke_query(kind: super::DatabaseKind, tables: &[super::TableInfo]) -> String {
