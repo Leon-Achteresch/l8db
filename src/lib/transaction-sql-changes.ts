@@ -1,6 +1,7 @@
 import type { SavedConnection } from "@/lib/connections";
 import type { QueryResult } from "@/lib/db";
 import { executeInTransaction, listTableColumnsDetailed } from "@/lib/db";
+import { sqlTokens } from "@/lib/sql-safety";
 import { splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import type { TransactionChange } from "@/lib/transactions";
@@ -30,10 +31,25 @@ function statement(sql: string) {
   return sql.trim().replace(/;\s*$/, "").trim();
 }
 
+function withoutComments(sql: string, kind: SavedConnection["kind"]): string | null {
+  const comments: [number, number][] = [];
+  sqlTokens(sql, kind, comments);
+  let out = "";
+  let cursor = 0;
+  for (const [start, end] of comments) {
+    if (/^\/\*[!+]/.test(sql.slice(start, start + 3))) return null;
+    out += `${sql.slice(cursor, start)} `;
+    cursor = end;
+  }
+  return out + sql.slice(cursor);
+}
+
 function plan(sql: string, kind: SavedConnection["kind"]) {
   const split = splitSqlStatements(sql, kind);
   if (split.unterminated || split.statements.length !== 1) return null;
-  const clean = statement(split.statements[0].text);
+  const text = withoutComments(split.statements[0].text, kind);
+  if (text === null) return null;
+  const clean = statement(text);
   if (
     clean.length > 20_000 ||
     /\bON\s+(?:CONFLICT|DUPLICATE\s+KEY)\b/i.test(clean) ||

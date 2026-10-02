@@ -6,7 +6,7 @@ interface Token {
   start: number;
 }
 
-export function sqlTokens(sql: string, dialect?: string): Token[] {
+export function sqlTokens(sql: string, dialect?: string, comments?: [number, number][]): Token[] {
   const result: Token[] = [];
   let depth = 0;
   let i = 0;
@@ -16,6 +16,7 @@ export function sqlTokens(sql: string, dialect?: string): Token[] {
     if (sql.startsWith("--", i) || (dialect === "mysql" && c === "#")) {
       const end = sql.indexOf("\n", i);
       i = end < 0 ? sql.length : end + 1;
+      comments?.push([tokenStart, i]);
     } else if (sql.startsWith("/*", i)) {
       let nesting = 1;
       i += 2;
@@ -28,6 +29,7 @@ export function sqlTokens(sql: string, dialect?: string): Token[] {
           i += 2;
         } else i++;
       }
+      comments?.push([tokenStart, i]);
     } else if ((c === "q" || c === "Q") && sql[i + 1] === "'" && dialect === "oracle") {
       const opening = sql[i + 2];
       const closing =
