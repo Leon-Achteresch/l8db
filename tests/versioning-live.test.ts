@@ -128,8 +128,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
         await branches.waitFor({ state: "hidden" });
-        await page.emulateMedia({ reducedMotion: "reduce" });
-        await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
+        await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
         await page.locator("html.dark").waitFor();
         await page.setViewportSize({ width: 1000, height: 800 });
         await page.screenshot({ path: `/tmp/l8db-versioning-${engine}-compact.png` });
