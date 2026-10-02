@@ -28,6 +28,17 @@ export function nextVersion(current, latest, bump = "patch") {
   return parts.join(".");
 }
 
+export function semanticBump(messages, version) {
+  let bump = "patch";
+  for (const message of messages) {
+    const match = message.match(/^([a-z]+)(\([^)]*\))?(!)?:/);
+    if (match?.[3] || /^BREAKING[ -]CHANGE:/m.test(message))
+      return version.startsWith("0.") ? "minor" : "major";
+    if (match?.[1] === "feat") bump = "minor";
+  }
+  return bump;
+}
+
 export function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
 }

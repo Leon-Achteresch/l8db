@@ -14,7 +14,7 @@ Die vorherigen Commit-Zählerversionen werden automatisch übernommen: Aus Quell
 
 ## Release vorbereiten
 
-Standardmäßig schlägt ein neuer Main-Stand den nächsten Patch vor. Für Minor-, Major- oder eine explizite stabile Version **Prepare release PR** manuell auf `main` starten und `bump` beziehungsweise `version` setzen. Versionsnummern müssen alle veröffentlichten und reservierten Versionen übersteigen. Der Workflow erzeugt den prüfbaren PR; er merged ihn nicht selbst.
+Die Version folgt Semantic Versioning und wird aus den Conventional Commits seit dem letzten veröffentlichten Tag abgeleitet: `feat` erhöht Minor, alles andere Patch, `!` oder `BREAKING CHANGE:` erhöht Major (vor 1.0 Minor). Für eine abweichende oder explizite stabile Version **Prepare release PR** manuell auf `main` starten und `bump` beziehungsweise `version` setzen. Versionsnummern müssen alle veröffentlichten und reservierten Versionen übersteigen. Der Workflow erzeugt den prüfbaren PR; er merged ihn nicht selbst.
 
 Der Changelog wird vor dem Build erzeugt und unverändert mitgeliefert. Er berücksichtigt nur stabile, vom Quellcommit erreichbare App-Tags. Feature-Videos, fremde Branch-Tags und der bereits vorhandene Kandidatentag werden nicht als Versionsgrenzen verwendet. Keine manuelle Nachpflege nach der Veröffentlichung nötig.
 

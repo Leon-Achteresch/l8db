@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { releaseNotes } from "../.github/scripts/release.mjs";
 import { releaseState } from "../.github/scripts/release-plan.mjs";
-import { compareVersions, nextVersion } from "../.github/scripts/release-utils.mjs";
+import { compareVersions, nextVersion, semanticBump } from "../.github/scripts/release-utils.mjs";
 
 const sha = "a".repeat(40);
 const published = {
@@ -21,6 +21,14 @@ describe("release version planning and retries", () => {
     expect(nextVersion("0.8.0", "0.8.24", "major")).toBe("1.0.0");
     expect(compareVersions("0.8.100", "0.8.99")).toBe(1);
     expect(() => nextVersion("0.8.0-beta", "0.8.24")).toThrow();
+  });
+  test("derives the SemVer bump from conventional commits", () => {
+    expect(semanticBump(["fix: a", "chore: b", "docs: c"], "0.8.24")).toBe("patch");
+    expect(semanticBump(["fix: a", "feat(grid): b"], "0.8.24")).toBe("minor");
+    expect(semanticBump(["feat!: a"], "1.2.3")).toBe("major");
+    expect(semanticBump(["fix: a\n\nBREAKING CHANGE: removed x"], "1.2.3")).toBe("major");
+    expect(semanticBump(["refactor(db)!: a"], "0.8.24")).toBe("minor");
+    expect(semanticBump(["Merge branch 'x'", "feature without prefix"], "0.8.24")).toBe("patch");
   });
   test("skips builds and mutation for an already published source commit", () => {
     expect(releaseState("0.8.24", sha, [published], true).mode).toBe("complete");
