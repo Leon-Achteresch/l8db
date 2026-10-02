@@ -626,6 +626,24 @@ pub fn mssql_restore_sql(database: &str, path: &str, options: &BackupOptions) ->
     statements
 }
 
+fn mssql_restore_outcome(
+    database: &str,
+    restore: Result<(), String>,
+    reset: Option<Result<(), String>>,
+) -> Result<(), String> {
+    let Some(Err(reset)) = reset else {
+        return restore;
+    };
+    let warning = format!(
+        "Die Datenbank {database} bleibt im SINGLE_USER-Modus, weil der Wechsel zurück fehlgeschlagen ist: {reset}. Bitte manuell ausführen: ALTER DATABASE {} SET MULTI_USER",
+        mssql_ident(database)
+    );
+    match restore {
+        Ok(()) => Err(warning),
+        Err(error) => Err(format!("{error}\n{warning}")),
+    }
+}
+
 fn redact(line: &str, secrets: &[String]) -> String {
     secrets
         .iter()
@@ -1395,16 +1413,21 @@ pub async fn restore(
                     break;
                 }
             }
-            if options.close_connections {
-                let _ = adapter
-                    .execute_query(&format!(
-                        "IF DB_ID({}) IS NOT NULL ALTER DATABASE {} SET MULTI_USER",
-                        mssql_literal(&db),
-                        mssql_ident(&db)
-                    ))
-                    .await;
-            }
-            result?;
+            let reset = if options.close_connections {
+                Some(
+                    adapter
+                        .execute_query(&format!(
+                            "IF DB_ID({}) IS NOT NULL ALTER DATABASE {} SET MULTI_USER",
+                            mssql_literal(&db),
+                            mssql_ident(&db)
+                        ))
+                        .await
+                        .map(|_| ()),
+                )
+            } else {
+                None
+            };
+            mssql_restore_outcome(&db, result, reset)?;
             ("bak".to_string(), statements.join(";\n"), Vec::new())
         }
         _ => return Err(super::unsupported("Wiederherstellung")),
@@ -1709,6 +1732,29 @@ mod tests {
         assert_eq!(restore.len(), 2);
         assert!(restore[0].contains("SINGLE_USER WITH ROLLBACK IMMEDIATE"));
         assert!(restore[1].ends_with("WITH STATS = 10, REPLACE"));
+    }
+
+    #[test]
+    fn mssql_restore_reports_a_failed_multi_user_reset() {
+        assert!(mssql_restore_outcome("shop", Ok(()), None).is_ok());
+        assert!(mssql_restore_outcome("shop", Ok(()), Some(Ok(()))).is_ok());
+        let reset_failed =
+            mssql_restore_outcome("shop", Ok(()), Some(Err("lock timeout".into()))).unwrap_err();
+        assert!(reset_failed.contains("SINGLE_USER"));
+        assert!(reset_failed.contains("lock timeout"));
+        assert!(reset_failed.contains("ALTER DATABASE [shop] SET MULTI_USER"));
+        let both = mssql_restore_outcome(
+            "shop",
+            Err("restore failed".into()),
+            Some(Err("lock timeout".into())),
+        )
+        .unwrap_err();
+        assert!(both.contains("restore failed"));
+        assert!(both.contains("lock timeout"));
+        assert_eq!(
+            mssql_restore_outcome("shop", Err("restore failed".into()), Some(Ok(()))).unwrap_err(),
+            "restore failed"
+        );
     }
 
     #[test]
