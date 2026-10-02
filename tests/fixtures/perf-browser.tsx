@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -113,7 +114,11 @@ function App() {
 }
 
 const mountStart = performance.now();
-createRoot(document.getElementById("root") as HTMLElement).render(<App />);
+createRoot(document.getElementById("root") as HTMLElement).render(
+  <QueryClientProvider client={new QueryClient()}>
+    <App />
+  </QueryClientProvider>,
+);
 
 async function measure() {
   await new Promise<void>((resolve) => {
