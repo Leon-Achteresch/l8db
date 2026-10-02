@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use chrono::Timelike;
 use futures_util::FutureExt;
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, FromSql, Row};
 use tokio::net::TcpStream;
@@ -216,7 +217,22 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             chrono::NaiveDateTime::from_sql(data)
                 .ok()
                 .flatten()
-                .map(|d| serde_json::Value::String(d.to_string()))
+                .map(|d| {
+                    let digits = fraction_digits(data);
+                    let d = if matches!(data, ColumnData::DateTime(_)) {
+                        d.with_nanosecond(0).unwrap_or(d)
+                            + chrono::Duration::milliseconds(
+                                (d.nanosecond() as i64 + 500_000) / 1_000_000,
+                            )
+                    } else {
+                        d
+                    };
+                    serde_json::Value::String(format!(
+                        "{}{}",
+                        d.format("%Y-%m-%d %H:%M:%S"),
+                        fraction(d.nanosecond(), digits)
+                    ))
+                })
                 .unwrap_or(serde_json::Value::Null)
         }
         ColumnData::Date(_) => chrono::NaiveDate::from_sql(data)
@@ -227,14 +243,46 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
         ColumnData::Time(_) => chrono::NaiveTime::from_sql(data)
             .ok()
             .flatten()
-            .map(|d| serde_json::Value::String(d.to_string()))
+            .map(|d| {
+                serde_json::Value::String(format!(
+                    "{}{}",
+                    d.format("%H:%M:%S"),
+                    fraction(d.nanosecond(), fraction_digits(data))
+                ))
+            })
             .unwrap_or(serde_json::Value::Null),
         ColumnData::DateTimeOffset(_) => chrono::DateTime::<chrono::FixedOffset>::from_sql(data)
             .ok()
             .flatten()
-            .map(|d| serde_json::Value::String(d.to_rfc3339()))
+            .map(|d| {
+                serde_json::Value::String(format!(
+                    "{}{}{}",
+                    d.format("%Y-%m-%dT%H:%M:%S"),
+                    fraction(d.nanosecond(), fraction_digits(data)),
+                    d.format("%:z")
+                ))
+            })
             .unwrap_or(serde_json::Value::Null),
     }
+}
+
+fn fraction_digits(data: &ColumnData<'static>) -> u32 {
+    match data {
+        ColumnData::DateTime(_) => 3,
+        ColumnData::DateTime2(Some(v)) => v.time().scale() as u32,
+        ColumnData::Time(Some(v)) => v.scale() as u32,
+        ColumnData::DateTimeOffset(Some(v)) => v.datetime2().time().scale() as u32,
+        _ => 0,
+    }
+    .min(9)
+}
+
+fn fraction(nanos: u32, digits: u32) -> String {
+    if digits == 0 {
+        return String::new();
+    }
+    let value = (nanos % 1_000_000_000) / 10u32.pow(9 - digits);
+    format!(".{value:0width$}", width = digits as usize)
 }
 
 fn create_or_alter(definition: &str) -> String {
@@ -285,22 +333,127 @@ fn int(row: &Row, index: usize) -> i64 {
     }
 }
 
+fn code_words(sql: &str) -> Vec<String> {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut i = 0;
+    let flush = |word: &mut String, words: &mut Vec<String>| {
+        if !word.is_empty() {
+            words.push(std::mem::take(word).to_uppercase());
+        }
+    };
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if c == '-' && next == Some('-') {
+            flush(&mut word, &mut words);
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+        } else if c == '/' && next == Some('*') {
+            flush(&mut word, &mut words);
+            let mut depth = 0;
+            while i < chars.len() {
+                if chars[i] == '/' && chars.get(i + 1) == Some(&'*') {
+                    depth += 1;
+                    i += 2;
+                } else if chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
+                    depth -= 1;
+                    i += 2;
+                    if depth == 0 {
+                        break;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+        } else if matches!(c, '\'' | '"' | '[') {
+            let close = if c == '[' { ']' } else { c };
+            if c == '\'' && word.eq_ignore_ascii_case("N") {
+                word.clear();
+            }
+            flush(&mut word, &mut words);
+            words.push(String::new());
+            i += 1;
+            while i < chars.len() {
+                if chars[i] == close {
+                    if chars.get(i + 1) == Some(&close) {
+                        i += 2;
+                        continue;
+                    }
+                    break;
+                }
+                i += 1;
+            }
+            i += 1;
+        } else if c.is_alphanumeric() || matches!(c, '_' | '@' | '#' | '$') {
+            word.push(c);
+            i += 1;
+        } else {
+            flush(&mut word, &mut words);
+            i += 1;
+        }
+    }
+    flush(&mut word, &mut words);
+    words
+}
+
 fn is_result_statement(sql: &str) -> bool {
-    let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
-    sql.to_uppercase().contains(" OUTPUT ")
-        || matches!(
-            first.as_str(),
-            "SELECT"
-                | "WITH"
-                | "EXEC"
-                | "EXECUTE"
-                | "DECLARE"
-                | "SHOW"
-                | "DBCC"
-                | "SP_HELP"
-                | "PRINT"
-                | "SET"
-        )
+    let words = code_words(sql);
+    if words.iter().any(|w| w == "OUTPUT") {
+        return true;
+    }
+    let Some(first) = words.first() else {
+        return false;
+    };
+    if first.is_empty() {
+        return true;
+    }
+    !matches!(
+        first.as_str(),
+        "INSERT"
+            | "UPDATE"
+            | "DELETE"
+            | "MERGE"
+            | "TRUNCATE"
+            | "CREATE"
+            | "ALTER"
+            | "DROP"
+            | "GRANT"
+            | "REVOKE"
+            | "DENY"
+            | "USE"
+            | "BEGIN"
+            | "END"
+            | "IF"
+            | "WHILE"
+            | "BACKUP"
+            | "BULK"
+            | "KILL"
+            | "RAISERROR"
+            | "THROW"
+            | "CHECKPOINT"
+            | "RECONFIGURE"
+            | "OPEN"
+            | "CLOSE"
+            | "DEALLOCATE"
+            | "UPDATETEXT"
+            | "WRITETEXT"
+            | "ENABLE"
+            | "DISABLE"
+            | "ADD"
+            | "RETURN"
+            | "GOTO"
+            | "BREAK"
+            | "CONTINUE"
+            | "REVERT"
+            | "SHUTDOWN"
+            | "SETUSER"
+            | "COMMIT"
+            | "ROLLBACK"
+            | "SAVE"
+    )
 }
 
 #[cfg(windows)]
@@ -552,7 +705,7 @@ fn percent_decode(value: &str) -> String {
 }
 
 fn is_tx_control(sql: &str) -> bool {
-    let mut words = sql.split_whitespace().map(str::to_uppercase);
+    let mut words = code_words(sql).into_iter();
     let first = words.next().unwrap_or_default();
     matches!(first.as_str(), "COMMIT" | "ROLLBACK" | "SAVE")
         || (first == "BEGIN" && words.next().is_some_and(|w| w.starts_with("TRAN")))
@@ -751,11 +904,7 @@ fn may_change_session(sql: &str) -> bool {
 }
 
 fn starts_batch(sql: &str) -> bool {
-    let words: Vec<String> = sql
-        .split_whitespace()
-        .take(4)
-        .map(str::to_uppercase)
-        .collect();
+    let words: Vec<String> = code_words(sql).into_iter().take(4).collect();
     let object = match words.first().map(String::as_str) {
         Some("CREATE") if words.get(1).map(String::as_str) == Some("OR") => words.get(3),
         Some("CREATE") | Some("ALTER") => words.get(1),
@@ -2007,8 +2156,109 @@ mod tests {
             "INSERT INTO t OUTPUT INSERTED.* DEFAULT VALUES"
         ));
         assert!(is_tx_control("begin tran"));
+        assert!(is_tx_control("-- finish\nCOMMIT"));
+        assert!(starts_batch("/* v2 */ CREATE OR ALTER VIEW v AS SELECT 1"));
         assert!(is_tx_control("ROLLBACK"));
         assert!(!is_tx_control("BEGIN SELECT 1 END"));
+    }
+
+    #[test]
+    fn temporal_values_keep_the_column_precision() {
+        use tiberius::time::{Date, DateTime, DateTime2, DateTimeOffset, SmallDateTime, Time};
+        let text = |data: ColumnData<'static>| value_to_json(&data).as_str().unwrap().to_string();
+        let days_1900 = 45_290;
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(days_1900, 1)))),
+            "2024-01-01 00:00:00.003"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(days_1900, 2)))),
+            "2024-01-01 00:00:00.007"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(days_1900, 299)))),
+            "2024-01-01 00:00:00.997"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(
+                days_1900,
+                300 * 3600
+            )))),
+            "2024-01-01 01:00:00.000"
+        );
+        assert_eq!(
+            text(ColumnData::SmallDateTime(Some(SmallDateTime::new(
+                45_290, 61
+            )))),
+            "2024-01-01 01:01:00"
+        );
+        let date = Date::new(738_885);
+        assert_eq!(
+            text(ColumnData::DateTime2(Some(DateTime2::new(
+                date,
+                Time::new(1_234_567, 7)
+            )))),
+            "2024-01-01 00:00:00.1234567"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime2(Some(DateTime2::new(
+                date,
+                Time::new(5, 2)
+            )))),
+            "2024-01-01 00:00:00.05"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime2(Some(DateTime2::new(
+                date,
+                Time::new(7, 0)
+            )))),
+            "2024-01-01 00:00:07"
+        );
+        assert_eq!(
+            text(ColumnData::Time(Some(Time::new(36_000_000_001, 7)))),
+            "01:00:00.0000001"
+        );
+        assert_eq!(
+            text(ColumnData::DateTimeOffset(Some(DateTimeOffset::new(
+                DateTime2::new(date, Time::new(1_000, 4)),
+                120
+            )))),
+            "2024-01-01T02:00:00.1000+02:00"
+        );
+    }
+
+    #[test]
+    fn classifies_result_statements_behind_comments_and_procedure_calls() {
+        for sql in [
+            "-- top customers\nSELECT * FROM c",
+            "/* report */ SELECT 1",
+            "/* outer /* nested */ still comment */\nWITH x AS (SELECT 1 AS a) SELECT a FROM x",
+            "(SELECT 1) UNION ALL (SELECT 2)",
+            "sp_who2",
+            "dbo.usp_report 1, 'x'",
+            "[dbo].[usp_report]",
+            "UPDATE t SET a = 1\nOUTPUT inserted.*",
+            "DELETE FROM t\tOUTPUT deleted.id WHERE id = 1",
+            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action, deleted.*;",
+            "FETCH NEXT FROM c",
+            "RESTORE HEADERONLY FROM DISK = N'/tmp/x.bak'",
+        ] {
+            assert!(is_result_statement(sql), "{sql}");
+        }
+        for sql in [
+            "UPDATE t SET a = 1",
+            "-- bump\nUPDATE t SET note = N'OUTPUT x' WHERE id = 1",
+            "INSERT INTO t (note) VALUES ('a -- b /* c')",
+            "DELETE FROM [OUTPUT] WHERE id = 1",
+            "update t set [select] = 1",
+            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE;",
+            "TRUNCATE TABLE t",
+            "CREATE TABLE t (id int)",
+            "DROP TABLE t",
+            "IF 1 = 1 UPDATE t SET a = 1",
+        ] {
+            assert!(!is_result_statement(sql), "{sql}");
+        }
     }
 
     #[tokio::test]
@@ -2299,6 +2549,64 @@ mod tests {
     ) -> Result<QueryResult, String> {
         crate::db::execution::with_session(Some(session.to_string()), adapter.execute_query(sql))
             .await
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_temporal_keys_and_commented_queries_round_trip() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new(&url, Some("master"), pool, "temporal-keys".into()).unwrap();
+        adapter
+            .execute_query("IF OBJECT_ID('dbo.l8db_temporal_keys') IS NOT NULL DROP TABLE dbo.l8db_temporal_keys")
+            .await
+            .unwrap();
+        adapter
+            .execute_query("CREATE TABLE dbo.l8db_temporal_keys (dt datetime NOT NULL, d2 datetime2(3) NOT NULL, t time(2) NOT NULL, o datetimeoffset(4) NOT NULL, sd smalldatetime NOT NULL)")
+            .await
+            .unwrap();
+        adapter
+            .execute_query("INSERT INTO dbo.l8db_temporal_keys VALUES ('2024-01-01T10:00:00.003', '2024-01-01T10:00:00.123', '10:00:00.45', '2024-01-01T10:00:00.1000+02:00', '2024-01-01T10:01:00'), ('2024-01-01T10:00:00.007', '2024-01-01T10:00:00.997', '10:00:00.99', '2024-01-01T10:00:00.9990-05:30', '2024-01-01T10:02:00')")
+            .await
+            .unwrap();
+        let selected = adapter
+            .execute_query("-- keys\n/* all */ SELECT dt, d2, t, o, sd FROM dbo.l8db_temporal_keys ORDER BY dt")
+            .await
+            .unwrap();
+        assert_eq!(selected.rows.len(), 2);
+        assert_eq!(selected.rows[0]["dt"], "2024-01-01 10:00:00.003");
+        assert_eq!(selected.rows[1]["dt"], "2024-01-01 10:00:00.007");
+        assert_eq!(selected.rows[0]["t"], "10:00:00.45");
+        for row in &selected.rows {
+            let condition = ["dt", "d2", "t", "o", "sd"]
+                .iter()
+                .map(|c| format!("[{c}] = N'{}'", row[*c].as_str().unwrap()))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            let updated = adapter
+                .execute_query(&format!(
+                    "UPDATE dbo.l8db_temporal_keys SET sd = sd\nOUTPUT inserted.dt WHERE {condition}"
+                ))
+                .await
+                .unwrap();
+            assert_eq!(updated.rows.len(), 1, "{condition}");
+            let deleted = adapter
+                .execute_query(&format!(
+                    "DELETE FROM dbo.l8db_temporal_keys WHERE {condition}"
+                ))
+                .await
+                .unwrap();
+            assert_eq!(deleted.rows_affected, Some(1), "{condition}");
+        }
+        let procedure = adapter.execute_query("sp_helpdb 'master'").await.unwrap();
+        assert!(!procedure.rows.is_empty());
+        adapter
+            .execute_query("DROP TABLE dbo.l8db_temporal_keys")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
