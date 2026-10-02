@@ -6009,7 +6009,15 @@ mod tests {
             Some(sub_db),
             create_pool_state(),
         ) {
-            let _ = stale.drop_subscription(sub).await;
+            if stale.drop_subscription(sub).await.is_err() {
+                let _ = stale
+                    .execute_query(&format!("ALTER SUBSCRIPTION {sub} DISABLE"))
+                    .await;
+                let _ = stale
+                    .execute_query(&format!("ALTER SUBSCRIPTION {sub} SET (slot_name = NONE)"))
+                    .await;
+                let _ = stale.drop_subscription(sub).await;
+            }
         }
         let _ = adapter
             .execute_query(&format!(
@@ -6423,6 +6431,29 @@ mod tests {
         .await;
         lab_execute(&adapter, "DROP DATABASE IF EXISTS testsub").await;
         lab_execute(&adapter, "CREATE DATABASE testsub").await;
+        let (client, connection) = lab_connection_string()
+            .parse::<tokio_postgres::Config>()
+            .expect("lab url")
+            .connect(tokio_postgres::NoTls)
+            .await
+            .expect("publisher conn");
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        let row = client
+            .query_one(
+                "SELECT split_part(current_setting('unix_socket_directories'), ',', 1), current_setting('port'), current_database(), current_user::text",
+                &[],
+            )
+            .await
+            .expect("publisher settings");
+        let publisher = format!(
+            "host={} port={} dbname={} user={} password=testpw",
+            row.get::<_, String>(0),
+            row.get::<_, String>(1),
+            row.get::<_, String>(2),
+            row.get::<_, String>(3)
+        );
         let sub_adapter = PostgresAdapter::from_connection_string(
             &lab_connection_string(),
             Some("testsub"),
@@ -6437,7 +6468,7 @@ mod tests {
         sub_adapter
             .create_subscription(&CreateSubscriptionRequest {
                 name: "e2e_sub".to_string(),
-                connection_string: "host=l8db-pg port=5432 dbname=testdb user=postgres password=testpw".to_string(),
+                connection_string: publisher,
                 publications: vec!["e2e_pub2".to_string()],
                 slot_name: None,
                 enabled: false,
@@ -6478,12 +6509,9 @@ mod tests {
         assert!(sessions.iter().any(|s| s.is_self));
         assert!(adapter.cancel_session(-1).await.is_err());
         assert!(adapter.terminate_session(-1).await.is_err());
-        let (client, connection) = tokio_postgres::Config::new()
-            .host("127.0.0.1")
-            .port(5433)
-            .user("postgres")
-            .password("testpw")
-            .dbname("testdb")
+        let (client, connection) = lab_connection_string()
+            .parse::<tokio_postgres::Config>()
+            .expect("lab url")
             .connect(tokio_postgres::NoTls)
             .await
             .expect("spawn conn");
@@ -6508,12 +6536,9 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn terminate_idle_backend() {
-        let (client, connection) = tokio_postgres::Config::new()
-            .host("127.0.0.1")
-            .port(5433)
-            .user("postgres")
-            .password("testpw")
-            .dbname("testdb")
+        let (client, connection) = lab_connection_string()
+            .parse::<tokio_postgres::Config>()
+            .expect("lab url")
             .connect(tokio_postgres::NoTls)
             .await
             .expect("spawn conn");
