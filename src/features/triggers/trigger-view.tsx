@@ -13,6 +13,7 @@ import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { triggerStatus } from "./trigger-status";
 import { FeedbackPanel } from "./trigger-view/feedback-panel";
 import { replaceTrigger, triggerDropSql, triggerErrorPrefix } from "./trigger-view/replace-trigger";
 import { TriggerEditorPane } from "./trigger-view/trigger-editor-pane";
@@ -204,10 +205,10 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
               {trigger.orientation}
             </Badge>
             <Badge
-              variant={trigger.enabled === "DISABLED" ? "destructive" : "secondary"}
+              variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "secondary"}
               className="shrink-0 text-[10px] px-1.5 py-0"
             >
-              {trigger.enabled}
+              {triggerStatus(trigger.enabled).label}
             </Badge>
           </div>
         </div>
