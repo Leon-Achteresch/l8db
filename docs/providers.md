@@ -237,6 +237,6 @@ DuckDB also opens CSV and Parquet files: a DuckDB connection whose path ends in 
 
 Generic `http(s)://` URLs remain ClickHouse unless the host matches a known Elastic, InfluxData or AWS OpenSearch domain. InfluxDB 1.x is not supported.
 
-Live checks (ignored): `L8DB_SMOKE_ELASTICSEARCH_URL`, `L8DB_E2E_OPENSEARCH_URL`, `L8DB_SMOKE_INFLUXDB_URL` (v2), `L8DB_E2E_INFLUXDB3_URL` and `L8DB_SMOKE_SQLITEHTTP_URL` drive `http_live_tests`; they expect the seeded indices `logs`/`big`, measurements `cpu`/`mem` and a writable libSQL server. D1 is covered by a mocked HTTP server in the unit tests.
+Live checks (ignored): `L8DB_SMOKE_ELASTICSEARCH_URL`, `L8DB_E2E_OPENSEARCH_URL`, `L8DB_SMOKE_INFLUXDB_URL` (v2), `L8DB_E2E_INFLUXDB3_URL` and `L8DB_SMOKE_SQLITEHTTP_URL` drive `http_live_tests`; they expect the seeded indices `logs`/`big`, measurements `cpu`/`mem` and a writable libSQL server. `bun run test:http-families` starts each server in Docker, seeds these fixtures and runs the checks one family at a time (`L8DB_HTTP_FAMILIES` selects a subset). D1 is covered by a mocked HTTP server in the unit tests.
 
 `smoke_adapters_from_env` is ignored by default and runs configured `L8DB_SMOKE_<KIND>_URL` providers. It is not the mandatory integration suite. The isolated PostgreSQL/SSH suite is described in [integration-tests.md](integration-tests.md).
