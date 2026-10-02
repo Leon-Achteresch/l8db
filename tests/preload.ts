@@ -1,3 +1,5 @@
+import childProcess from "node:child_process";
+
 if (typeof window === "undefined") {
   const storage = new Map<string, string>();
   const localStorage = {
@@ -8,3 +10,11 @@ if (typeof window === "undefined") {
   };
   Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage } });
 }
+
+const retainedChildProcesses: unknown[] = [];
+const spawnChildProcess = childProcess.spawn;
+childProcess.spawn = ((...args: Parameters<typeof spawnChildProcess>) => {
+  const child = spawnChildProcess(...args);
+  retainedChildProcesses.push(child, ...child.stdio);
+  return child;
+}) as typeof spawnChildProcess;
