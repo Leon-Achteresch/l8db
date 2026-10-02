@@ -4,6 +4,7 @@ import {
   identifierStyleForKind,
   qualifiedTarget,
   quoteIdentifier,
+  quoteSqlString,
   sqlLiteral,
   UnsupportedValueError,
 } from "@/lib/export";
@@ -67,13 +68,44 @@ function quoteText(text: string, kind: DatabaseKind | null | undefined): string 
   return `'${escaped}'`;
 }
 
+function hstoreText(value: Record<string, unknown>): string {
+  const quote = (text: string) => `"${text.replace(/[\\"]/g, "\\$&")}"`;
+  return Object.entries(value)
+    .map(
+      ([key, item]) =>
+        `${quote(key)}=>${item === null || item === undefined ? "NULL" : quote(typeof item === "string" ? item : JSON.stringify(item))}`,
+    )
+    .join(", ");
+}
+
+function postgresLiteral(
+  value: unknown,
+  column: string,
+  type: string,
+  rowType: string | null,
+): string {
+  const structured =
+    typeof value === "object" &&
+    value !== null &&
+    !(value instanceof Date) &&
+    !ArrayBuffer.isView(value) &&
+    !(value instanceof ArrayBuffer);
+  const name = type.trim();
+  if (!structured || !name || /^jsonb?$/i.test(name)) return sqlLiteral(value, column);
+  if (/(?:^|\.)"?hstore"?$/i.test(name) && !Array.isArray(value))
+    return quoteSqlString(hstoreText(value as Record<string, unknown>));
+  if (!rowType) return sqlLiteral(value, column);
+  return `(jsonb_populate_record(NULL::${rowType}, ${quoteSqlString(JSON.stringify({ [column]: value }))}::jsonb)).${quoteIdentifier(column, "double")}`;
+}
+
 export function dialectLiteral(
   value: unknown,
   column: string,
   kind: DatabaseKind | null | undefined,
   type = "",
+  rowType: string | null = null,
 ): string {
-  if (!kind || kind === "postgres") return sqlLiteral(value, column);
+  if (!kind || kind === "postgres") return postgresLiteral(value, column, type, rowType);
   if (value === null || value === undefined) return "NULL";
   if (/json/i.test(type)) return quoteText(JSON.stringify(value), kind);
   if (typeof value === "boolean") return value ? "1" : "0";
@@ -127,7 +159,7 @@ export function buildSyncScript(input: SyncScriptInput): SyncScriptResult {
   const target = qualifiedTarget(input.target.schema, input.target.table, style);
   const typeOf = (column: string) => input.columnTypes?.[column] ?? "";
   const literal = (value: unknown, column: string) =>
-    dialectLiteral(value, column, kind, typeOf(column));
+    dialectLiteral(value, column, kind, typeOf(column), target);
   const name = (column: string) => quoteIdentifier(column, style);
   const keyCondition = (row: Record<string, unknown>) =>
     input.keyColumns.map((column) => `${name(column)} = ${literal(row[column], column)}`);
