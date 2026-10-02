@@ -355,6 +355,17 @@ fn cell_i64(row: &Row, index: usize) -> i64 {
     cell(row, index).parse().unwrap_or(0)
 }
 
+fn session_pid(id: i64) -> i32 {
+    i32::try_from(id).unwrap_or(-1)
+}
+
+fn kill_statement(scope: &str, pid: i32) -> Result<String, String> {
+    if pid <= 0 {
+        return Err("Diese Sitzungs-ID kann nicht sicher übernommen werden. Bitte direkt mit KILL auf dem Server beenden.".into());
+    }
+    Ok(format!("KILL {scope} {pid}"))
+}
+
 impl MysqlAdapter {
     pub fn new(
         connection_string: &str,
@@ -1235,7 +1246,7 @@ impl DatabaseAdapter for MysqlAdapter {
             .map(|r| {
                 let pid = cell_i64(r, 0);
                 SessionInfo {
-                    pid: pid as i32,
+                    pid: session_pid(pid),
                     user: cell(r, 1),
                     database: cell(r, 2),
                     application: cell(r, 3),
@@ -1253,11 +1264,13 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
-        self.exec(&format!("KILL QUERY {pid}")).await.map(|_| true)
+        self.exec(&kill_statement("QUERY", pid)?)
+            .await
+            .map(|_| true)
     }
 
     async fn terminate_session(&self, pid: i32) -> Result<bool, String> {
-        self.exec(&format!("KILL CONNECTION {pid}"))
+        self.exec(&kill_statement("CONNECTION", pid)?)
             .await
             .map(|_| true)
     }
@@ -1329,6 +1342,21 @@ mod catalog;
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn session_ids_never_wrap_to_other_sessions() {
+        assert_eq!(session_pid(42), 42);
+        assert_eq!(session_pid(i32::MAX as i64), i32::MAX);
+        assert_eq!(session_pid(1 << 31), -1);
+        assert_eq!(session_pid((1 << 32) + 5), -1);
+        assert_eq!(kill_statement("QUERY", 42).unwrap(), "KILL QUERY 42");
+        assert_eq!(
+            kill_statement("CONNECTION", 7).unwrap(),
+            "KILL CONNECTION 7"
+        );
+        assert!(kill_statement("QUERY", -1).is_err());
+        assert!(kill_statement("CONNECTION", 0).is_err());
+    }
 
     #[tokio::test]
     #[ignore]
