@@ -1,5 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Check, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Check, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
@@ -136,13 +136,6 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
           </section>
         )}
         <HomeGrid connectionId={connection.id} editing={editing} />
-        <Link
-          to="/connections"
-          className="mt-6 flex items-center justify-between rounded-xl border px-4 py-3 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-        >
-          Verbindungen verwalten
-          <ArrowRight className="size-3.5" />
-        </Link>
       </motion.div>
     </main>
   );
