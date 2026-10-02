@@ -17,7 +17,7 @@ struct Target {
 fn targets(sqlite: &str) -> Vec<Target> {
     let mut targets = vec![Target {
         kind: DatabaseKind::Sqlite,
-        url: sqlite.to_string(),
+        url: format!("{sqlite}?mode=rwc"),
         schema: "main",
         ddl: "CREATE TABLE ie_items (id INTEGER PRIMARY KEY, name VARCHAR(50) NOT NULL, amount DECIMAL(10,2), flag BOOLEAN, created TIMESTAMP)",
     }];
