@@ -281,7 +281,33 @@ const IMPLICIT_COMMIT_WORDS: Record<string, Set<string>> = {
   cassandra: new Set(["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE"]),
 };
 
-function controlsTransaction(words: Token[], dialect: string, atomicBody: boolean): boolean {
+const ROUTINE_WORDS = new Set(["PROC", "PROCEDURE", "TRIGGER", "FUNCTION"]);
+const END_COMMITS = new Set(["postgres", "sqlite", "sqlite_http"]);
+
+function definesRoutine(words: Token[]): boolean {
+  const first = words[0]?.word;
+  if (first !== "CREATE" && first !== "ALTER") return false;
+  const object = first === "CREATE" && words[1]?.word === "OR" ? words[3] : words[1];
+  return object !== undefined && ROUTINE_WORDS.has(object.word);
+}
+
+function opensBody(words: Token[], dialect: string): boolean {
+  return words.some(
+    (token, index) =>
+      token.word === "BEGIN" &&
+      (words[index + 1]?.word === "ATOMIC" ||
+        (["sqlite", "sqlite_http"].includes(dialect) &&
+          words[0]?.word === "CREATE" &&
+          words.some((other) => other.word === "TRIGGER"))),
+  );
+}
+
+function controlsTransaction(
+  words: Token[],
+  dialect: string,
+  insideBody: boolean,
+  managed: boolean,
+): boolean {
   const first = words[0]?.word;
   const second = words[1]?.word;
   if (
@@ -289,10 +315,14 @@ function controlsTransaction(words: Token[], dialect: string, atomicBody: boolea
     (first === "START" && second === "TRANSACTION") ||
     (first === "PREPARE" && second === "TRANSACTION") ||
     (first === "BEGIN" && !["oracle", "mssql"].includes(dialect)) ||
-    (first === "END" && dialect === "postgres" && !atomicBody)
+    (first === "BEGIN" &&
+      dialect === "mssql" &&
+      ["TRAN", "TRANSACTION", "DISTRIBUTED"].includes(second)) ||
+    (first === "END" && END_COMMITS.has(dialect) && !insideBody)
   )
     return true;
-  if (dialect === "mssql")
+  if (!managed) return false;
+  if (dialect === "mssql" && !definesRoutine(words))
     return words.some(
       (token, index) =>
         ["COMMIT", "ROLLBACK"].includes(token.word) ||
@@ -319,13 +349,12 @@ function transactionIssue(
   managed: boolean,
 ): "control" | "implicit" | null {
   if (dialect === "redis" || dialect === "mongodb") return null;
-  let atomicBody = false;
+  let insideBody = false;
   for (const statement of splitSqlStatements(sql, dialect).statements) {
     const words = sqlTokens(statement.text, dialect);
-    if (controlsTransaction(words, dialect, atomicBody)) return "control";
-    atomicBody ||= words.some(
-      (token, index) => token.word === "BEGIN" && words[index + 1]?.word === "ATOMIC",
-    );
+    if (controlsTransaction(words, dialect, insideBody, managed)) return "control";
+    if (insideBody && words[0]?.word === "END") insideBody = false;
+    else insideBody ||= opensBody(words, dialect);
     if (managed && commitsImplicitly(words, dialect)) return "implicit";
   }
   return null;
