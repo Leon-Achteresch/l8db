@@ -1,5 +1,5 @@
 import type { SavedConnection } from "@/lib/connections";
-import { listTableColumnsDetailed } from "@/lib/db";
+import { listTableColumnsDetailed, listTables } from "@/lib/db";
 import { buildSnapshotTable, type SnapshotTable } from "@/lib/schema-snapshot";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -32,4 +32,25 @@ export async function collectTables(
     }
   }
   return collected;
+}
+
+export async function collectExistingTables(
+  connection: SavedConnection,
+  database: string | null,
+  schema: string,
+  tables: string[],
+): Promise<SnapshotTable[]> {
+  const existing = await listTables(
+    connection.kind,
+    effectiveConnectionString(connection),
+    database ?? undefined,
+    schema,
+  );
+  const names = new Set(existing.map((item) => item.name));
+  return collectTables(
+    connection,
+    database,
+    schema,
+    tables.filter((table) => names.has(table)),
+  );
 }
