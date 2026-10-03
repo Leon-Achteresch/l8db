@@ -3,14 +3,24 @@ import type { AgentCodeLanguage } from "./beui/agents/agent-code";
 import { CodeBlock } from "./beui/agents/code-block";
 import { StreamingResponse } from "./beui/agents/streaming-response";
 
-export function AiAnswer({ text, streaming }: { text: string; streaming: boolean }) {
+export function AiAnswer({
+  text,
+  streaming,
+  copyText = text,
+  actions = true,
+}: {
+  text: string;
+  streaming: boolean;
+  copyText?: string;
+  actions?: boolean;
+}) {
   const parts = text.split(/(```[^\n]*\n[\s\S]*?(?:```|$))/g);
   return (
     <StreamingResponse
       status={streaming ? "streaming" : "complete"}
-      copyText={text}
+      copyText={copyText}
       announce={false}
-      showActions={!streaming && Boolean(text)}
+      showActions={actions && !streaming && Boolean(text)}
       className="text-xs"
       contentClassName="text-xs leading-relaxed"
     >

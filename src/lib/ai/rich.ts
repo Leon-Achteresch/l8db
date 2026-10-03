@@ -1,6 +1,6 @@
 import type { AiEvent } from "@/lib/db/ai";
 
-export type AiRichBlock =
+export type AiRichBlock = (
   | { type: "tool"; id: string; name: string; status: string; output: string }
   | {
       type: "plan";
@@ -20,7 +20,8 @@ export type AiRichBlock =
       label: string;
       status: "generating" | "complete" | "error";
     }
-  | { type: "decision"; id: string; title: string; outcome: "allowed" | "denied" | "answered" };
+  | { type: "decision"; id: string; title: string; outcome: "allowed" | "denied" | "answered" }
+) & { at?: number };
 
 const text = (value: unknown, limit = 16000) =>
   typeof value === "string"
@@ -268,20 +269,26 @@ export function normalizeAiRich(event: AiEvent): AiRichBlock[] {
   }
   return blocks;
 }
-export function mergeAiRich(previous: AiRichBlock[] = [], next: AiRichBlock[]): AiRichBlock[] {
+export function mergeAiRich(
+  previous: AiRichBlock[] = [],
+  next: AiRichBlock[],
+  at?: number,
+): AiRichBlock[] {
   const merged = new Map(previous.map((block) => [block.id, block]));
   for (const block of next) {
     const old = merged.get(block.id);
+    const position = { at: old ? old.at : (block.at ?? at) };
     merged.set(
       block.id,
       block.type === "tool" && old?.type === "tool"
         ? {
             ...block,
+            ...position,
             name: block.name === "Tool" ? old.name : block.name,
             status: block.status || old.status,
             output: block.output || old.output,
           }
-        : block,
+        : { ...block, ...position },
     );
   }
   let imageBytes = 0;
@@ -297,6 +304,7 @@ export function sanitizeAiRich(value: unknown): AiRichBlock[] {
     const block = record(raw);
     const id = text(block.id, 200);
     if (!id) continue;
+    const start = blocks.length;
     if (block.type === "tool")
       blocks.push({
         type: "tool",
@@ -365,6 +373,26 @@ export function sanitizeAiRich(value: unknown): AiRichBlock[] {
         title: text(block.title, 300),
         outcome: block.outcome as "allowed" | "denied" | "answered",
       });
+    if (typeof block.at === "number" && Number.isInteger(block.at) && block.at >= 0)
+      for (const added of blocks.slice(start)) added.at = block.at;
   }
   return mergeAiRich([], blocks);
+}
+
+export function interleaveAiRich(text: string, blocks: AiRichBlock[] = []) {
+  const parts: { text: string; blocks: AiRichBlock[] }[] = [];
+  let cursor = 0;
+  const placed = blocks
+    .map((block) => ({
+      block,
+      at: block.type === "citation" ? text.length : Math.min(block.at ?? text.length, text.length),
+    }))
+    .sort((a, b) => a.at - b.at);
+  for (const { block, at } of placed) {
+    if (parts.length && at === cursor) parts[parts.length - 1].blocks.push(block);
+    else parts.push({ text: text.slice(cursor, at), blocks: [block] });
+    cursor = at;
+  }
+  parts.push({ text: text.slice(cursor), blocks: [] });
+  return parts;
 }

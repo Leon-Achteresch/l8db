@@ -1,4 +1,6 @@
 import { Sparkles } from "lucide-react";
+import { Fragment } from "react";
+import { interleaveAiRich } from "@/lib/ai/rich";
 import type { AiEvent, AiMessage } from "@/lib/db/ai";
 import { AiAnswer } from "./ai-answer";
 import { AiApproval } from "./ai-approval";
@@ -49,6 +51,7 @@ export function AiTranscript({
       )}
       {messages.map((message, index) => {
         const streaming = Boolean(runId) && index === messages.length - 1;
+        const parts = interleaveAiRich(message.text, message.rich);
         return (
           <Message
             key={message.id ?? `${message.role}-${index}`}
@@ -68,15 +71,28 @@ export function AiTranscript({
                 </MessageBubble>
               ) : (
                 <div className="space-y-3">
-                  {message.text ? (
-                    <AiAnswer text={message.text} streaming={streaming} />
-                  ) : streaming ? (
+                  {parts.map((part, partIndex) => {
+                    const lastPart = partIndex === parts.length - 1;
+                    return (
+                      <Fragment key={String(partIndex)}>
+                        {part.text.trim() ? (
+                          <AiAnswer
+                            text={part.text}
+                            streaming={streaming && lastPart}
+                            copyText={message.text}
+                            actions={lastPart}
+                          />
+                        ) : null}
+                        {part.blocks.length ? (
+                          <AiRichContent blocks={part.blocks} running={streaming} />
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                  {streaming && !parts[parts.length - 1].text.trim() ? (
                     <ThinkingShimmer className="text-xs">Denkt …</ThinkingShimmer>
-                  ) : (
+                  ) : !streaming && !message.text ? (
                     <p className="text-xs text-muted-foreground">Keine Textantwort.</p>
-                  )}
-                  {message.rich?.length ? (
-                    <AiRichContent blocks={message.rich} running={streaming} />
                   ) : null}
                 </div>
               )}

@@ -222,7 +222,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           if (blocks.length && liveSession.current) {
             const messages = [...liveSession.current.messages];
             const last = messages[messages.length - 1];
-            messages[messages.length - 1] = { ...last, rich: mergeAiRich(last.rich, blocks) };
+            messages[messages.length - 1] = {
+              ...last,
+              rich: mergeAiRich(last.rich, blocks, last.text.length),
+            };
             liveSession.current = { ...liveSession.current, messages };
             saveLive();
           }
@@ -278,19 +281,23 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               const last = messages[messages.length - 1];
               messages[messages.length - 1] = {
                 ...last,
-                rich: mergeAiRich(last.rich, [
-                  {
-                    type: "decision",
-                    id: String(event.data.id),
-                    title: String(approvalTitle ?? "Agent-Entscheidung"),
-                    outcome:
-                      typeof event.data.allowed === "boolean"
-                        ? event.data.allowed
-                          ? "allowed"
-                          : "denied"
-                        : "answered",
-                  },
-                ]),
+                rich: mergeAiRich(
+                  last.rich,
+                  [
+                    {
+                      type: "decision",
+                      id: String(event.data.id),
+                      title: String(approvalTitle ?? "Agent-Entscheidung"),
+                      outcome:
+                        typeof event.data.allowed === "boolean"
+                          ? event.data.allowed
+                            ? "allowed"
+                            : "denied"
+                          : "answered",
+                    },
+                  ],
+                  last.text.length,
+                ),
               };
               liveSession.current = { ...liveSession.current, messages };
               saveLive();

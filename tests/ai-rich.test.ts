@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { aiRaster, mergeAiRich, normalizeAiRich } from "../src/lib/ai/rich";
+import { aiRaster, interleaveAiRich, mergeAiRich, normalizeAiRich } from "../src/lib/ai/rich";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5XcAAAAASUVORK5CYII=";
@@ -123,4 +123,28 @@ test("rich history retains bounded output and sources without raw credentials", 
       })),
     ),
   ).toHaveLength(80);
+});
+
+test("tool blocks stay at the text position where they happened", () => {
+  const tool = (id: string) => ({
+    type: "tool" as const,
+    id,
+    name: id,
+    status: "running",
+    output: "",
+  });
+  let rich = mergeAiRich([], [tool("a")], 5);
+  rich = mergeAiRich(rich, [{ ...tool("a"), status: "success" }], 12);
+  rich = mergeAiRich(rich, [tool("b")], 5);
+  rich = mergeAiRich(rich, [{ type: "citation", id: "c", title: "Quelle" }], 0);
+  const parts = interleaveAiRich("Hallo\n\nWelt", rich);
+  expect(parts.map((part) => [part.text, part.blocks.map((block) => block.id)])).toEqual([
+    ["Hallo", ["a", "b"]],
+    ["\n\nWelt", ["c"]],
+    ["", []],
+  ]);
+  expect(interleaveAiRich("Alt", [tool("x")])).toEqual([
+    { text: "Alt", blocks: [tool("x")] },
+    { text: "", blocks: [] },
+  ]);
 });
