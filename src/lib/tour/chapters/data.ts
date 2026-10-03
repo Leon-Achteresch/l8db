@@ -116,7 +116,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "dashboard-actions",
         title: "Schnell loslegen",
-        body: "„SQL-Abfrage“ öffnet einen leeren Editor, in dem du Fragen an die Datenbank schreibst. „Aktualisieren“ lädt die Liste neu, wenn jemand anderes etwas geändert hat.",
+        body: "„SQL-Abfrage“ öffnet einen leeren Editor, in dem du Fragen an die Datenbank schreibst. „Aktualisieren“ lädt die Liste neu, wenn jemand anderes etwas geändert hat. Über „Anpassen“ stellst du dir die Startseite aus eigenen Widgets zusammen.",
         action: "Klicke auf „Weiter“.",
         target: "[data-tour='dashboard-actions']",
         skipIf: "no-connection",

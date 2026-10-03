@@ -89,14 +89,16 @@ export function WidgetCardInner({
   const legendRows = Math.ceil(legend.length / legendColumns);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-4 shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card p-4">
       <div className="mb-2 flex shrink-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             {!locked && (
               <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
             )}
-            <span className="truncate">{title}</span>
+            <span className="truncate font-medium text-foreground/80" title={title}>
+              {title}
+            </span>
           </div>
           {options.showValue && (
             <div className="mt-0.5 flex items-center gap-2">

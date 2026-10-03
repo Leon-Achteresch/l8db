@@ -54,6 +54,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
       oid
         ? compile(oid, "procedure", `${schema}.${name}`).then(() => undefined)
         : Promise.resolve(),
+    schema,
   );
 
   const [runOpen, setRunOpen] = useState(false);

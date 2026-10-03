@@ -254,7 +254,6 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.locator('[data-tour="connection-add"]').first().click({ timeout: 8000 });
       await page.locator('[data-tour="connection-editor"]').waitFor({ timeout: 8000 });
       await page.getByRole("button", { name: "postgres", exact: true }).first().click();
-      await page.getByRole("main").getByRole("button", { name: "Weiter", exact: true }).click();
       await page.getByLabel("Name", { exact: true }).fill("Tour Test");
       await page.getByLabel("Benutzer", { exact: true }).fill("demo");
       await page.getByLabel("Datenbank", { exact: true }).fill("demo");

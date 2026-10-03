@@ -125,7 +125,7 @@ pub async fn pg_run_query(
     if read_only {
         super::postgres::read_only_batch_guard(sql)?;
         client
-            .simple_query("BEGIN TRANSACTION READ ONLY")
+            .simple_query(super::postgres::READ_ONLY_BEGIN)
             .await
             .map_err(map_pg_err)?;
     }

@@ -7,6 +7,8 @@ const files = [
   "query-workspace",
   "qol",
   "compare",
+  "compare-three-way",
+  "compare-password",
   "data-compare",
   "split-transaction",
 ];

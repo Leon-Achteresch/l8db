@@ -217,6 +217,11 @@ export async function executeSchemaObjectCopy(
   });
 }
 
+export interface SchemaDataCopy {
+  rows: number;
+  unvalidated: string[];
+}
+
 export async function copySchemaTableData(
   kind: DatabaseKind,
   connectionString: string,
@@ -225,7 +230,7 @@ export async function copySchemaTableData(
   name: string,
   limit: number,
   database?: string,
-): Promise<number> {
+): Promise<SchemaDataCopy> {
   return invoke("copy_schema_table_data", {
     kind,
     connectionString,

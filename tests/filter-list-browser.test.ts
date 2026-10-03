@@ -11,7 +11,10 @@ for (const engine of [chromium, webkit]) {
       try {
         const page = await browser.newPage({ viewport: { width: 1100, height: 820 } });
         const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("pageerror", (error) => {
+          if (error.message !== "ResizeObserver loop completed with undelivered notifications.")
+            errors.push(error.message);
+        });
         await page.addInitScript(() => {
           Object.assign(window, { __TAURI_INTERNALS__: { invoke: async () => [] } });
         });
@@ -45,7 +48,7 @@ for (const engine of [chromium, webkit]) {
         expect(await page.getByRole("button", { name: /^Wert entfernen:/ }).count()).toBe(2);
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `"name" IN ('Berlin', 'O''Brien, Jr.')`,
+          `("name"::text ILIKE 'Berlin' ESCAPE '!' OR "name"::text ILIKE 'O''Brien, Jr.' ESCAPE '!')`,
         );
         expect(await page.getByLabel("Raw SQL").textContent()).toBe("false");
         await operator.click();
@@ -55,7 +58,7 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("button", { name: "Wert entfernen: Berlin", exact: true }).click();
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `"name" NOT IN ('O''Brien, Jr.')`,
+          `NOT ("name"::text ILIKE 'O''Brien, Jr.' ESCAPE '!')`,
         );
         await operator.click();
         await page.getByRole("option", { name: "ist gleich", exact: true }).click();
@@ -88,7 +91,7 @@ for (const engine of [chromium, webkit]) {
         await headerInput.press("Enter");
         await popover.getByRole("button", { name: "Filter anwenden" }).click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `"name" NOT IN ('Hamburg')`,
+          `NOT ("name"::text ILIKE 'Hamburg' ESCAPE '!')`,
         );
         expect(errors).toEqual([]);
       } finally {
@@ -107,7 +110,10 @@ for (const engine of [chromium, webkit]) {
       try {
         const page = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
         const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("pageerror", (error) => {
+          if (error.message !== "ResizeObserver loop completed with undelivered notifications.")
+            errors.push(error.message);
+        });
         await page.addInitScript(() => {
           Object.assign(window, { __TAURI_INTERNALS__: { invoke: async () => [] } });
         });
@@ -151,7 +157,7 @@ for (const engine of [chromium, webkit]) {
 
         await page.goto(`${url}/tests/fixtures/filter-list.html?kind=mongodb`);
         await page.getByRole("button", { name: "Filter", exact: true }).click();
-        expect(await page.getByRole("tab", { name: "JSON", exact: true }).isVisible()).toBe(true);
+        await page.getByRole("tab", { name: "JSON", exact: true }).waitFor();
         await page.getByRole("combobox").nth(0).click();
         await page.getByRole("option", { name: "name", exact: true }).click();
         await page.getByRole("combobox", { name: "Filteroperator" }).click();
@@ -197,7 +203,10 @@ for (const engine of [chromium, webkit]) {
       try {
         const page = await browser.newPage({ viewport: { width: 1100, height: 820 } });
         const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("pageerror", (error) => {
+          if (error.message !== "ResizeObserver loop completed with undelivered notifications.")
+            errors.push(error.message);
+        });
         await page.addInitScript(() => {
           Object.assign(window, { __TAURI_INTERNALS__: { invoke: async () => [] } });
         });

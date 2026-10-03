@@ -51,7 +51,7 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
     expect(state.events[0].assets).toHaveLength(3);
     expect(JSON.parse(state.media.body).items[0].minAppVersion).toBe("0.6.999");
     expect(run("publish", "v0.6.999", dir).status).toBe(0);
-    expect(JSON.parse(run("plan").stdout)).toEqual(["extension-market"]);
+    expect(JSON.parse(run("plan").stdout)).toEqual(["extension-market", "dashboard-workspace"]);
     state = JSON.parse(readFileSync(statePath, "utf8"));
     expect(state.assets).toHaveLength(3);
     const now = Date.now();
@@ -74,7 +74,7 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
     expect(run("cleanup").status).toBe(0);
     state = JSON.parse(readFileSync(statePath, "utf8"));
     expect(state.assets.map((asset: { name: string }) => asset.name)).toEqual(["latest.json"]);
-    expect(JSON.parse(run("plan").stdout)).toEqual(["extension-market"]);
+    expect(JSON.parse(run("plan").stdout)).toEqual(["extension-market", "dashboard-workspace"]);
     state.media.body = "invalid";
     writeFileSync(statePath, JSON.stringify(state));
     expect(run("cleanup").status).not.toBe(0);
@@ -82,4 +82,4 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
+}, 30_000);

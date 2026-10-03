@@ -11,7 +11,7 @@ bleiben aktiv. Einrichtung, Release-Gates und CSP-Ausnahmen stehen in
 ## Abhängigkeiten
 
 Bun ist die einzige Paketverwaltung. `bun.lock` enthält die geprüfte Auflösung;
-CI und Release verwenden Bun 1.3.10 und `--frozen-lockfile`. Die CI führt `bun audit`
+CI und Release verwenden Bun 1.3.10 und `--frozen-lockfile`. Produktions-Rust ist in `.github/actions/setup-rust/action.yml` auf 1.99.0 festgelegt; die Pipeline nutzt explizite Runner und Action-Commit-SHAs. Die CI führt `bun audit`
 aus. Das DOMPurify-Override aktualisiert insbesondere Monacos fest gepinnte alte
 Sanitizer-Version innerhalb derselben Major-Version. Der Produktions-Browsertest
 prüft den Editor nach diesem Update. Der nicht verwendete Monaco-Vite-Plugin und
@@ -46,9 +46,12 @@ vollständiger Sicherheitsnachweis.
 ## Grenzen der lokalen Verifikation
 
 Die automatisierten Browsertests prüfen den gebauten Client mit gemocktem Tauri-
-Transport sowie die echte Browser-Sandbox. Sie ersetzen keine nativen Windows-
-oder Linux-Tests, keine End-to-End-Prüfung jedes Datenbankadapters und keinen
-Installations-/Update-Test auf allen Betriebssystemen. Die ignorierten Lab-Tests
+Transport sowie die echte Browser-Sandbox. Der Release-Prozess ergänzt native
+Installations- und Upgrade-Smokes auf macOS, Windows und Linux sowie die
+kryptografische Prüfung sämtlicher Updater-Pakete. Die Smokes prüfen CLI,
+GUI-Start, Paketinhalt und Ersetzung der vorherigen Installation; sie ersetzen
+keine vollständige Bedienprüfung, keinen Durchlauf der Updater-Oberfläche und
+keine End-to-End-Prüfung jedes Datenbankadapters. Die ignorierten Lab-Tests
 benötigen die in `AGENTS.md` beschriebenen Datenbank- und SSH-Instanzen.
 
 ## Verifikation am 9. September 2026

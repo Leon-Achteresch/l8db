@@ -3,26 +3,25 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  type Edge,
   MiniMap,
-  Panel,
   ReactFlow,
-  useEdgesState,
-  useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildEdges, buildNodes } from "@/features/er-diagram/er-diagram-view/build-graph";
-import { NODE_WIDTH, REVEAL_BATCH } from "@/features/er-diagram/er-diagram-view/constants";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CLUSTER_DETAIL_ZOOM } from "@/features/er-diagram/er-diagram-view/constants";
+import { edgeTypes } from "@/features/er-diagram/er-diagram-view/edge-types";
+import { ErClusterPanel } from "@/features/er-diagram/er-diagram-view/er-cluster-panel";
 import { ErFullDetailContext } from "@/features/er-diagram/er-diagram-view/er-detail-context";
 import { ErFocusPanel } from "@/features/er-diagram/er-diagram-view/er-focus-panel";
-import { ErZoomWatcher } from "@/features/er-diagram/er-diagram-view/er-zoom-watcher";
+import { ErViewportWatcher } from "@/features/er-diagram/er-diagram-view/er-viewport-watcher";
 import { ExportButtons } from "@/features/er-diagram/er-diagram-view/export-buttons";
-import { computeElkLayout, estimateNodeHeight } from "@/features/er-diagram/er-diagram-view/layout";
 import { nodeTypes } from "@/features/er-diagram/er-diagram-view/node-types";
-import type { TableNodeType } from "@/features/er-diagram/er-diagram-view/types";
+import type { ErNodeType } from "@/features/er-diagram/er-diagram-view/types";
+import { useClusterGraph } from "@/features/er-diagram/er-diagram-view/use-cluster-graph";
 import { useActiveConnection } from "@/lib/connections";
-import { useActiveSchema } from "@/lib/db-selection";
+import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
   type ErFocusDepth,
   erTableKey,
@@ -34,9 +33,11 @@ import { useErSchemaQuery } from "@/lib/queries";
 
 export function ERDiagramInner() {
   const connection = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
   const activeSchema = useActiveSchema();
   const { data: fullSchema, isLoading, error } = useErSchemaQuery(activeSchema);
   const navigate = useNavigate();
+  const { fitView } = useReactFlow<ErNodeType>();
   const search = useSearch({ from: "/_app/_workspace/er-diagram", shouldThrow: false });
 
   const focus = useMemo(() => {
@@ -77,79 +78,30 @@ export function ERDiagramInner() {
     [fullSchema, focus],
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [layoutReady, setLayoutReady] = useState(false);
-  const layoutVersionRef = useRef(0);
   const [exporting, setExporting] = useState(false);
-  const [compact, setCompact] = useState(true);
-  const shownEdges = useMemo(
-    () =>
-      compact && !exporting
-        ? edges.map((edge) => ({ ...edge, label: undefined, animated: false }))
-        : edges,
-    [edges, compact, exporting],
-  );
-
-  const builtEdges = useMemo(() => {
-    if (!erSchema) return [];
-    return buildEdges(erSchema.foreign_keys);
-  }, [erSchema]);
+  const interacted = useRef(false);
+  const { nodes, edges, clusters, onNodesChange, onVisibilityChange, prepareExport } =
+    useClusterGraph(erSchema, exporting);
+  const showOverview = useCallback(() => {
+    void fitView({
+      nodes: clusters.map((cluster) => ({ id: cluster.id })),
+      padding: 0.2,
+      minZoom: 0.02,
+      maxZoom: CLUSTER_DETAIL_ZOOM - 0.05,
+      includeHiddenNodes: true,
+    });
+  }, [clusters, fitView]);
 
   useEffect(() => {
-    if (!erSchema || erSchema.tables.length === 0) {
-      setNodes([]);
-      setEdges([]);
-      setLayoutReady(false);
-      return;
-    }
-
-    const version = ++layoutVersionRef.current;
-
-    setLayoutReady(false);
-    const tables = erSchema.tables;
-    const foreignKeys = erSchema.foreign_keys;
-    const applyPositions = (positions: Map<string, { x: number; y: number }>) => {
-      if (layoutVersionRef.current !== version) return;
-      setNodes(
-        buildNodes(tables, foreignKeys, positions).map((node, index) => ({
-          ...node,
-          initialWidth: NODE_WIDTH,
-          initialHeight: estimateNodeHeight(tables[index]),
-          hidden: index >= REVEAL_BATCH,
-        })),
-      );
-      setEdges(builtEdges);
-      setLayoutReady(true);
-      let shown = REVEAL_BATCH;
-      const reveal = () => {
-        if (layoutVersionRef.current !== version || shown >= tables.length) return;
-        shown += REVEAL_BATCH;
-        const limit = shown;
-        setNodes((current) =>
-          current.map((node, index) =>
-            node.hidden && index < limit ? { ...node, hidden: false } : node,
-          ),
-        );
-        requestAnimationFrame(() => setTimeout(reveal));
-      };
-      requestAnimationFrame(() => setTimeout(reveal));
-    };
-    computeElkLayout(tables, foreignKeys).then(applyPositions, () => {
-      const columns = 4;
-      applyPositions(
-        new Map(
-          tables.map((table, index) => [
-            `${table.schema}.${table.name}`,
-            {
-              x: (index % columns) * (NODE_WIDTH + 60),
-              y: Math.floor(index / columns) * 420,
-            },
-          ]),
-        ),
-      );
+    interacted.current = false;
+    if (clusters.length === 0) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (!interacted.current) showOverview();
+      });
     });
-  }, [erSchema, builtEdges, setNodes, setEdges]);
+    return () => cancelAnimationFrame(frame);
+  }, [clusters, showOverview]);
 
   if (!connection) {
     return (
@@ -205,25 +157,104 @@ export function ERDiagramInner() {
   }
 
   return (
-    <main className="flex flex-1 flex-col h-full">
-      <div className="flex-1 w-full h-full">
+    <main
+      className="flex min-h-0 flex-1 flex-col h-full"
+      onPointerDownCapture={() => {
+        interacted.current = true;
+      }}
+      onWheelCapture={() => {
+        interacted.current = true;
+      }}
+      onKeyDownCapture={() => {
+        interacted.current = true;
+      }}
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-background px-3 py-2">
+        <ErClusterPanel
+          clusterCount={clusters.length}
+          tableCount={erSchema.tables.length}
+          foreignKeyCount={erSchema.foreign_keys.length}
+          onOverview={showOverview}
+        />
+        <ExportButtons
+          nodes={nodes}
+          exporting={exporting}
+          setExporting={setExporting}
+          prepareExport={prepareExport}
+        />
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="max-w-64 truncate rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:bg-accent"
+            >
+              {focus ? `${focus.table} · Tiefe ${focus.depth}` : "Fokus & Legende"}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-0">
+            <ErFocusPanel
+              tables={fullSchema.tables}
+              focusKey={focusKey}
+              depth={focus?.depth ?? 1}
+              onFocusChange={(key) => setFocus(key, focus?.depth ?? 1)}
+              onDepthChange={(depth) => setFocus(focusKey, depth)}
+              onClear={() => setFocus(null, 1)}
+            />
+            <div className="px-3 py-2 text-[10px] text-muted-foreground flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <KeyRound className="size-3 text-amber-500" /> Primary Key
+              </div>
+              <div className="flex items-center gap-1.5">
+                <KeyRound className="size-3 text-blue-500" /> Foreign Key
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-amber-500 font-bold">*</span> NOT NULL
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+      <div className="relative min-h-0 flex-1 w-full">
         <ErFullDetailContext value={exporting}>
-          <ReactFlow
+          <ReactFlow<ErNodeType>
             nodes={nodes}
-            edges={shownEdges}
+            edges={edges}
             onlyRenderVisibleElements={!exporting}
             onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.2, includeHiddenNodes: true }}
+            edgeTypes={edgeTypes}
             defaultViewport={{ x: 0, y: 0, zoom: 0.1 }}
-            minZoom={0.1}
+            minZoom={0.02}
             maxZoom={2}
+            panOnScroll
             proOptions={{ hideAttribution: true }}
-            key={layoutReady ? "ready" : "loading"}
+            nodesConnectable={false}
+            nodesDraggable={false}
+            multiSelectionKeyCode={null}
+            deleteKeyCode={null}
+            onNodeDoubleClick={(_, node) => {
+              if (node.type === "clusterNode")
+                void fitView({
+                  nodes: [{ id: node.id }],
+                  padding: 0.1,
+                  minZoom: CLUSTER_DETAIL_ZOOM + 0.05,
+                  maxZoom: 1,
+                  includeHiddenNodes: true,
+                });
+            }}
+            onNodeClick={(_, node) => {
+              if (node.type === "clusterNode" && !node.data.expanded)
+                void fitView({
+                  nodes: [{ id: node.id }],
+                  padding: 0.1,
+                  minZoom: CLUSTER_DETAIL_ZOOM + 0.05,
+                  maxZoom: 1,
+                  includeHiddenNodes: true,
+                });
+            }}
+            key={`${connection.id}:${activeDatabase}:${activeSchema}:${focusKey}:${focus?.depth}`}
           >
-            <ErZoomWatcher onChange={setCompact} />
+            <ErViewportWatcher onChange={onVisibilityChange} />
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             <Controls />
             <MiniMap
@@ -231,34 +262,6 @@ export function ERDiagramInner() {
               nodeColor="var(--color-card)"
               maskColor="rgba(0,0,0,0.1)"
             />
-            <Panel position="top-left" className="flex flex-col gap-1">
-              <div className="rounded-md bg-card border border-border px-3 py-2 text-xs text-muted-foreground shadow-sm">
-                <span className="font-medium text-foreground">{erSchema.tables.length}</span>{" "}
-                Tabellen,{" "}
-                <span className="font-medium text-foreground">{erSchema.foreign_keys.length}</span>{" "}
-                Foreign Keys
-              </div>
-              <ErFocusPanel
-                tables={fullSchema.tables}
-                focusKey={focusKey}
-                depth={focus?.depth ?? 1}
-                onFocusChange={(key) => setFocus(key, focus?.depth ?? 1)}
-                onDepthChange={(depth) => setFocus(focusKey, depth)}
-                onClear={() => setFocus(null, 1)}
-              />
-              <ExportButtons nodes={nodes} exporting={exporting} setExporting={setExporting} />
-              <div className="rounded-md bg-card border border-border px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm flex flex-col gap-0.5">
-                <div className="flex items-center gap-1.5">
-                  <KeyRound className="size-3 text-amber-500" /> Primary Key
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <KeyRound className="size-3 text-blue-500" /> Foreign Key
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-amber-500 font-bold">*</span> NOT NULL
-                </div>
-              </div>
-            </Panel>
           </ReactFlow>
         </ErFullDetailContext>
       </div>

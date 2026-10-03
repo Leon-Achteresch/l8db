@@ -41,6 +41,7 @@ struct ColumnDefinition {
     generation: Option<String>,
     check: Option<String>,
     mariadb: bool,
+    legacy_mysql: bool,
 }
 
 const MULTI_STATEMENT_EXPLAIN: &str =
@@ -73,6 +74,14 @@ fn unescape_info_expr(value: &str) -> String {
         }
     }
     out
+}
+
+fn is_legacy_mysql(version: &str) -> bool {
+    version
+        .split('.')
+        .next()
+        .and_then(|major| major.trim().parse::<u32>().ok())
+        .is_some_and(|major| major < 8)
 }
 
 fn type_base(data_type: &str) -> String {
@@ -109,7 +118,9 @@ fn existing_default_sql(def: &ColumnDefinition) -> Option<String> {
         value.trim().to_string()
     } else if has_flag(&def.extra, "DEFAULT_GENERATED") {
         format!("({})", unescape_info_expr(value))
-    } else if matches!(base.as_str(), "bit" | "binary" | "varbinary") {
+    } else if base == "bit"
+        || (!def.legacy_mysql && matches!(base.as_str(), "binary" | "varbinary"))
+    {
         value.to_string()
     } else {
         lit(value)
@@ -153,7 +164,7 @@ fn change_column_sql(
         }
     }
     if let Some(expr) = generation {
-        let expr = if current.mariadb {
+        let expr = if current.mariadb || current.legacy_mysql {
             expr.to_string()
         } else {
             unescape_info_expr(expr)
@@ -342,6 +353,17 @@ fn cell_opt(row: &Row, index: usize) -> Option<String> {
 
 fn cell_i64(row: &Row, index: usize) -> i64 {
     cell(row, index).parse().unwrap_or(0)
+}
+
+fn session_pid(id: i64) -> i32 {
+    i32::try_from(id).unwrap_or(-1)
+}
+
+fn kill_statement(scope: &str, pid: i32) -> Result<String, String> {
+    if pid <= 0 {
+        return Err("Diese Sitzungs-ID kann nicht sicher übernommen werden. Bitte direkt mit KILL auf dem Server beenden.".into());
+    }
+    Ok(format!("KILL {scope} {pid}"))
 }
 
 impl MysqlAdapter {
@@ -547,7 +569,9 @@ impl MysqlAdapter {
         let Some(row) = self.rows(&sql).await?.into_iter().next() else {
             return Ok(None);
         };
-        let mariadb = cell(&row, 8).to_ascii_lowercase().contains("mariadb");
+        let version = cell(&row, 8);
+        let mariadb = version.to_ascii_lowercase().contains("mariadb");
+        let legacy_mysql = !mariadb && is_legacy_mysql(&version);
         let check = if mariadb {
             self.rows(&format!(
                 "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema = {} AND table_name = {} AND level = 'Column' AND constraint_name = {}",
@@ -573,6 +597,7 @@ impl MysqlAdapter {
             generation: cell_opt(&row, 7),
             check,
             mariadb,
+            legacy_mysql,
         }))
     }
 
@@ -1221,7 +1246,7 @@ impl DatabaseAdapter for MysqlAdapter {
             .map(|r| {
                 let pid = cell_i64(r, 0);
                 SessionInfo {
-                    pid: pid as i32,
+                    pid: session_pid(pid),
                     user: cell(r, 1),
                     database: cell(r, 2),
                     application: cell(r, 3),
@@ -1239,11 +1264,13 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
-        self.exec(&format!("KILL QUERY {pid}")).await.map(|_| true)
+        self.exec(&kill_statement("QUERY", pid)?)
+            .await
+            .map(|_| true)
     }
 
     async fn terminate_session(&self, pid: i32) -> Result<bool, String> {
-        self.exec(&format!("KILL CONNECTION {pid}"))
+        self.exec(&kill_statement("CONNECTION", pid)?)
             .await
             .map(|_| true)
     }
@@ -1316,6 +1343,21 @@ mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
 
+    #[test]
+    fn session_ids_never_wrap_to_other_sessions() {
+        assert_eq!(session_pid(42), 42);
+        assert_eq!(session_pid(i32::MAX as i64), i32::MAX);
+        assert_eq!(session_pid(1 << 31), -1);
+        assert_eq!(session_pid((1 << 32) + 5), -1);
+        assert_eq!(kill_statement("QUERY", 42).unwrap(), "KILL QUERY 42");
+        assert_eq!(
+            kill_statement("CONNECTION", 7).unwrap(),
+            "KILL CONNECTION 7"
+        );
+        assert!(kill_statement("QUERY", -1).is_err());
+        assert!(kill_statement("CONNECTION", 0).is_err());
+    }
+
     #[tokio::test]
     #[ignore]
     async fn live_tls_modes_fallback_and_client_certificates() {
@@ -1334,8 +1376,12 @@ mod tests {
                     .is_some_and(|v| !v.is_empty()),
             )
         };
-        let plain = "mysql://root:testpw@127.0.0.1:53306/mysql";
-        assert_eq!(cipher(plain.into()).await, Ok(false));
+        let port =
+            |name: &str, default: &str| std::env::var(name).unwrap_or_else(|_| default.into());
+        let plain_port = port("L8DB_E2E_MYSQL_PLAIN_PORT", "53306");
+        let tls_port = port("L8DB_E2E_MYSQL_TLS_PORT", "53307");
+        let plain = format!("mysql://root:testpw@127.0.0.1:{plain_port}/mysql");
+        assert_eq!(cipher(plain.clone()).await, Ok(false));
         assert_eq!(
             cipher(format!("{plain}?serverTimezone=UTC&useUnicode=true")).await,
             Ok(false)
@@ -1344,8 +1390,8 @@ mod tests {
             .await
             .unwrap_err()
             .contains("kein TLS"));
-        let tls = "mysql://root:testpw@127.0.0.1:53307/mysql";
-        assert_eq!(cipher(tls.into()).await, Ok(true));
+        let tls = format!("mysql://root:testpw@127.0.0.1:{tls_port}/mysql");
+        assert_eq!(cipher(tls.clone()).await, Ok(true));
         assert_eq!(cipher(format!("{tls}?sslmode=require")).await, Ok(true));
         assert_eq!(cipher(format!("{tls}?sslmode=disable")).await, Ok(false));
         assert!(cipher(format!("{tls}?sslmode=verify-ca")).await.is_err());
@@ -1358,7 +1404,7 @@ mod tests {
         ))
         .await
         .is_err());
-        let cert = "mysql://certuser@127.0.0.1:53307/";
+        let cert = format!("mysql://certuser@127.0.0.1:{tls_port}/");
         assert!(cipher(format!("{cert}?sslmode=require")).await.is_err());
         assert_eq!(
             cipher(format!(
@@ -1382,6 +1428,7 @@ mod tests {
             generation: None,
             check: None,
             mariadb: false,
+            legacy_mysql: false,
         }
     }
 
@@ -1519,6 +1566,36 @@ mod tests {
     }
 
     #[test]
+    fn change_column_renders_mysql57_binary_defaults_and_plain_generation_expressions() {
+        let legacy = |data_type: &str, default: Option<&str>, extra: &str| ColumnDefinition {
+            legacy_mysql: true,
+            ..definition(data_type, default, extra)
+        };
+        let cases = [
+            ("varbinary(4)", Some("ab"), " DEFAULT 'ab'"),
+            ("binary(2)", Some("a'"), " DEFAULT 'a'''"),
+            ("varbinary(4)", Some("0x41"), " DEFAULT '0x41'"),
+            ("bit(3)", Some("b'101'"), " DEFAULT b'101'"),
+        ];
+        for (data_type, default, expected) in cases {
+            assert_eq!(
+                change(&legacy(data_type, default, ""), &rename("c", "c")),
+                format!("`c` `c` {data_type} NULL{expected}")
+            );
+        }
+        let mut generated = legacy("varchar(20)", None, "VIRTUAL GENERATED");
+        generated.generation = Some(r"concat(`base`,'x\'y\\n')".into());
+        assert_eq!(
+            change(&generated, &rename("g", "g")),
+            r"`g` `g` varchar(20) GENERATED ALWAYS AS (concat(`base`,'x\'y\\n')) VIRTUAL NULL"
+        );
+        assert!(is_legacy_mysql("5.7.44-log"));
+        assert!(!is_legacy_mysql("8.0.36"));
+        assert!(!is_legacy_mysql("8.4.11"));
+        assert!(!is_legacy_mysql(""));
+    }
+
+    #[test]
     fn change_column_keeps_mariadb_defaults_and_column_checks() {
         let maria = |data_type: &str, default: Option<&str>, extra: &str| ColumnDefinition {
             mariadb: true,
@@ -1576,6 +1653,71 @@ mod tests {
 
     async fn live_scalar(adapter: &MysqlAdapter, sql: &str) -> String {
         cell(&adapter.rows(sql).await.unwrap()[0], 0)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_explain_analyze_rolls_back_changes() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let mariadb = live_scalar(&adapter, "SELECT VERSION()")
+                .await
+                .contains("MariaDB");
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_explain_analyze, l8db_explain_other")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_analyze (id INT PRIMARY KEY, v INT) ENGINE=InnoDB")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_other (id INT PRIMARY KEY) ENGINE=InnoDB")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_analyze VALUES (1, 10), (2, 20)")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_other VALUES (1), (2)")
+                .await
+                .unwrap();
+            for sql in [
+                "UPDATE l8db_explain_analyze a JOIN l8db_explain_other o ON o.id = a.id SET a.v = a.v + 1",
+                "DELETE a FROM l8db_explain_analyze a JOIN l8db_explain_other o ON o.id = a.id",
+                "UPDATE l8db_explain_analyze SET v = 0",
+                "DELETE FROM l8db_explain_analyze",
+            ] {
+                let outcome = adapter.explain_query(sql, true).await;
+                assert!(mariadb || outcome.is_ok(), "{url}: {sql}: {outcome:?}");
+                assert_eq!(
+                    live_scalar(
+                        &adapter,
+                        "SELECT CONCAT(COUNT(*), '/', SUM(v)) FROM l8db_explain_analyze"
+                    )
+                    .await,
+                    "2/30",
+                    "{url}: {sql}"
+                );
+            }
+            if !mariadb {
+                let plan = adapter
+                    .explain_query("SELECT * FROM l8db_explain_analyze WHERE id = 1", true)
+                    .await
+                    .unwrap();
+                assert!(plan.is_string(), "{url}: {plan}");
+            }
+            assert_eq!(
+                live_scalar(&adapter, "SELECT @@autocommit").await,
+                "1",
+                "{url}"
+            );
+            adapter
+                .exec("DROP TABLE l8db_explain_analyze, l8db_explain_other")
+                .await
+                .unwrap();
+        }
     }
 
     #[tokio::test]
@@ -1710,6 +1852,74 @@ mod tests {
             );
             assert_eq!(before, after, "{url}");
             adapter.exec("DROP TABLE l8db_alter_keep").await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_keeps_binary_defaults_and_generated_literals() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_alter_bin")
+                .await
+                .unwrap();
+            adapter
+                .exec(
+                    r#"CREATE TABLE l8db_alter_bin (
+                     base VARCHAR(10),
+                     vb VARBINARY(4) DEFAULT 'ab',
+                     bn BINARY(2) DEFAULT 'a''',
+                     hx VARBINARY(4) DEFAULT '0x41',
+                     b BIT(3) DEFAULT b'101',
+                     g VARCHAR(20) GENERATED ALWAYS AS (concat(base, '\\n')) VIRTUAL,
+                     q VARCHAR(20) GENERATED ALWAYS AS (concat(base, 'x''y\\z')) VIRTUAL)"#,
+                )
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_alter_bin (base) VALUES ('a')")
+                .await
+                .unwrap();
+            let snapshot = || async {
+                (
+                    cell(
+                        &adapter
+                            .rows("SHOW CREATE TABLE l8db_alter_bin")
+                            .await
+                            .unwrap()[0],
+                        1,
+                    ),
+                    live_scalar(
+                        &adapter,
+                        "SELECT CONCAT(HEX(g), '/', HEX(q)) FROM l8db_alter_bin",
+                    )
+                    .await,
+                )
+            };
+            let before = snapshot().await;
+            for column in ["vb", "bn", "hx", "b", "g", "q"] {
+                for set_not_null in [None, Some(false)] {
+                    adapter
+                        .alter_column(
+                            &schema,
+                            "l8db_alter_bin",
+                            &AlterColumnRequest {
+                                old_name: column.into(),
+                                new_name: Some(column.into()),
+                                data_type: None,
+                                set_not_null,
+                                new_default: None,
+                                drop_default: false,
+                            },
+                        )
+                        .await
+                        .unwrap_or_else(|e| panic!("{url} {column}: {e}"));
+                }
+            }
+            assert_eq!(snapshot().await, before, "{url}");
+            adapter.exec("DROP TABLE l8db_alter_bin").await.unwrap();
         }
     }
 

@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { getNodesBounds, getViewportForBounds, useReactFlow } from "@xyflow/react";
+import { useReactFlow } from "@xyflow/react";
 import { toPng, toSvg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { FileCode, FileText, Image } from "lucide-react";
@@ -8,20 +8,23 @@ import { useCallback } from "react";
 import { EXPORT_PADDING, EXPORT_SCALE } from "@/features/er-diagram/er-diagram-view/constants";
 import {
   dataUrlToUint8Array,
+  getDiagramBounds,
   getFlowElement,
 } from "@/features/er-diagram/er-diagram-view/export-utils";
-import type { TableNodeType } from "@/features/er-diagram/er-diagram-view/types";
+import type { ErNodeType } from "@/features/er-diagram/er-diagram-view/types";
 
 export function ExportButtons({
   nodes,
   exporting,
   setExporting,
+  prepareExport,
 }: {
-  nodes: TableNodeType[];
+  nodes: ErNodeType[];
   exporting: boolean;
   setExporting: (exporting: boolean) => void;
+  prepareExport: () => Promise<void>;
 }) {
-  const { getNodes } = useReactFlow();
+  const { getNodes, getEdges, getNodesBounds } = useReactFlow<ErNodeType>();
 
   const doExport = useCallback(
     async (format: "png" | "svg" | "pdf") => {
@@ -29,14 +32,16 @@ export function ExportButtons({
       setExporting(true);
 
       try {
+        await prepareExport();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const currentNodes = getNodes();
         if (currentNodes.length === 0) return;
 
-        const bounds = getNodesBounds(currentNodes);
+        const bounds = getDiagramBounds(getNodesBounds(currentNodes), getEdges());
         const w = bounds.width + EXPORT_PADDING * 2;
         const h = bounds.height + EXPORT_PADDING * 2;
 
-        const viewport = getViewportForBounds(bounds, w, h, 0.1, 2, EXPORT_PADDING);
+        const viewport = { x: EXPORT_PADDING - bounds.x, y: EXPORT_PADDING - bounds.y, zoom: 1 };
 
         const el = await getFlowElement();
 
@@ -112,7 +117,7 @@ export function ExportButtons({
         setExporting(false);
       }
     },
-    [exporting, getNodes, setExporting],
+    [exporting, getNodes, getEdges, getNodesBounds, setExporting, prepareExport],
   );
 
   return (

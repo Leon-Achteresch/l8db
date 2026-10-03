@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ConnectionSelectLab } from "./connection-select-lab";
 import { FeatureVideoPreview } from "./feature-video-preview";
 import { FontLab } from "./font-lab";
+import { NewBadgeExitLab } from "./new-badge-exit-lab";
 import { ProviderPickerLab } from "./provider-picker-lab";
 import { SettingsDesignLab } from "./settings-design-lab";
 import { TabPreview } from "./tab-preview";
@@ -77,6 +78,9 @@ export function DevView() {
             </TabsTrigger>
             <TabsTrigger value="toast" className="flex-none px-4">
               Toast
+            </TabsTrigger>
+            <TabsTrigger value="new-badge" className="flex-none px-4">
+              NEW-Badge
             </TabsTrigger>
           </TabsList>
         </div>
@@ -186,6 +190,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="toast">
           <ToastDropLab />
+        </TabsContent>
+        <TabsContent value="new-badge">
+          <NewBadgeExitLab />
         </TabsContent>
       </Tabs>
     </main>

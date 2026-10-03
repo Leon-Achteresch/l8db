@@ -108,12 +108,16 @@ export async function runOperationalScenario(repo, kind) {
     name: `Customer ${index + 1}`,
     connectionId: connection.id,
     database: pg ? location : null,
-    schema: pg ? null : location,
+    schema: pg ? "public" : location,
     production: true,
     release: null,
     history: [],
   }));
-  await api.saveTargets(repo, { format: 1, projectId: project.id, targets }, null);
+  await api.saveTargets(
+    repo,
+    { format: 1, projectId: project.id, targets },
+    (await api.readTargets(repo, project.id)).text,
+  );
   for (const target of targets) {
     try {
       await deployment.baselineTarget(repo, project, target.id, connection, "v1");
@@ -194,7 +198,7 @@ export async function runOperationalScenario(repo, kind) {
     [connection, alias],
     "v2",
   );
-  const duplicateBlocked = duplicate[1].error?.includes("mehrfach") === true;
+  const duplicateBlocked = duplicate[1].error?.includes("dasselbe Schema") === true;
   await query(locations[2], `UPDATE ${table(locations[2])} SET amount = -1`);
   const fleetBlocked = await blocked(() =>
     fleet.deployFleet(repo, project, plans, [connection], "v2"),

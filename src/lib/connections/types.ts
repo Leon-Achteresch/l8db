@@ -111,8 +111,11 @@ export function visibleSchemas(
 ): string[] {
   const allowed = connection?.schemas;
   if (!allowed?.length) return schemas;
-  const set = new Set(allowed);
-  return schemas.filter((schema) => set.has(schema));
+  const exact = new Set(allowed.filter((entry) => schemas.includes(entry)));
+  const folded = new Set(
+    allowed.filter((entry) => !exact.has(entry)).map((entry) => entry.toLowerCase()),
+  );
+  return schemas.filter((schema) => exact.has(schema) || folded.has(schema.toLowerCase()));
 }
 
 export type ConnectionInput = Omit<SavedConnection, "id">;

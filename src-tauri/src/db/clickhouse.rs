@@ -16,7 +16,7 @@ pub struct ClickhouseAdapter {
 }
 
 pub fn quote(ident: &str) -> String {
-    format!("`{}`", ident.replace('`', "\\`"))
+    format!("`{}`", ident.replace('\\', "\\\\").replace('`', "\\`"))
 }
 
 fn lit(value: &str) -> String {
@@ -27,7 +27,6 @@ fn http() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
-            .timeout(super::execution::query_duration())
             .connect_timeout(super::execution::connection_duration())
             .build()
             .expect("HTTP-Client")
@@ -160,6 +159,7 @@ impl ClickhouseAdapter {
         timed(async {
             let response = http()
                 .post(&self.base)
+                .timeout(super::execution::query_duration())
                 .query(&[
                     ("database", self.database.as_str()),
                     ("default_format", "JSONCompact"),
@@ -770,5 +770,64 @@ mod tests {
         assert_eq!(b.base, "http://localhost:8123/");
         assert_eq!(b.user, "default");
         assert_eq!(b.database, "other");
+    }
+
+    #[test]
+    fn quote_escapes_backslashes_and_backticks() {
+        assert_eq!(quote("plain"), "`plain`");
+        assert_eq!(quote("a`b"), "`a\\`b`");
+        assert_eq!(quote("x\\"), "`x\\\\`");
+        assert_eq!(
+            quote("x\\`; DROP TABLE t; --"),
+            "`x\\\\\\`; DROP TABLE t; --`"
+        );
+        assert_eq!(
+            super::super::import::Dialect::Clickhouse.quote("x\\`y"),
+            quote("x\\`y")
+        );
+    }
+
+    async fn slow_server(delay: std::time::Duration) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = socket.read(&mut buf).await;
+                    tokio::time::sleep(delay).await;
+                    let _ = socket
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                        )
+                        .await;
+                });
+            }
+        });
+        format!("http://{addr}/")
+    }
+
+    async fn raw_with_timeout(url: &str, seconds: u64) -> Result<String, String> {
+        let adapter = ClickhouseAdapter::new(url, None).unwrap();
+        let options = super::super::execution::ExecutionOptions {
+            query_timeout: Some(seconds),
+            ..Default::default()
+        };
+        super::super::execution::run(Some(options), true, async {
+            adapter.raw("SELECT 1").await.map(|(body, _)| body)
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn http_timeout_follows_each_query_timeout() {
+        let slow = slow_server(std::time::Duration::from_secs(7)).await;
+        let started = std::time::Instant::now();
+        let short = raw_with_timeout(&slow, 5).await;
+        assert!(short.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_millis(6500));
+        let medium = slow_server(std::time::Duration::from_secs(6)).await;
+        assert_eq!(raw_with_timeout(&medium, 8).await.unwrap(), "ok");
     }
 }

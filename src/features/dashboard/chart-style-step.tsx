@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useId } from "react";
 import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,8 +11,6 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   CHARTS,
-  type ChartKind,
-  chartFits,
   type DatasetShape,
   PALETTE,
   type Widget,
@@ -20,7 +18,8 @@ import {
   widgetOptions,
 } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
-import { CHART_ICONS } from "./chart-palette";
+import { ChartKindPicker } from "./chart-kind-picker";
+import { ChartMetricPicker } from "./chart-metric-picker";
 
 const OPTION_TEXT: Partial<Record<keyof WidgetOptions, string>> = {
   showValue: "Große Zahl oben zeigen",
@@ -42,30 +41,24 @@ export function ChartStyleStep({
   shape: DatasetShape;
   onChange: (patch: Partial<Widget>) => void;
 }) {
+  const titleId = useId();
   const options = widgetOptions(widget);
   const setOption = <K extends keyof WidgetOptions>(key: K, value: WidgetOptions[K]) =>
     onChange({ options: { ...widget.options, [key]: value } });
-  const kinds = useMemo(() => {
-    const all = Object.keys(CHARTS) as ChartKind[];
-    return [...all].sort((a, b) => {
-      const pa = chartFits(a, shape) ? 1 : 0;
-      const pb = chartFits(b, shape) ? 1 : 0;
-      return pa - pb;
-    });
-  }, [shape]);
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-sm font-semibold">Wie soll dein Chart aussehen?</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Wähle eine Darstellung. Ausgegraute Typen passen nicht zu deinen Daten — der Grund steht
-          darunter.
+          Wähle nach dem, was du zeigen möchtest. Jede Vorschau hilft dir, die passende Darstellung
+          zu finden. Wenn Daten fehlen, siehst du direkt, was noch benötigt wird.
         </p>
       </div>
-      <label className="block max-w-md space-y-1.5 text-xs font-medium">
+      <label htmlFor={titleId} className="block max-w-md space-y-1.5 text-xs font-medium">
         <span>Titel deines Charts</span>
         <Input
+          id={titleId}
           aria-label="Chart-Titel"
           value={widget.title}
           onChange={(e) => onChange({ title: e.target.value })}
@@ -73,36 +66,12 @@ export function ChartStyleStep({
           className="h-9 text-sm"
         />
       </label>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {kinds.map((kind) => {
-          const Icon = CHART_ICONS[kind];
-          const problem = chartFits(kind, shape);
-          const active = kind === widget.chart;
-          return (
-            <button
-              key={kind}
-              type="button"
-              disabled={Boolean(problem) && !active}
-              aria-pressed={active}
-              onClick={() => onChange({ chart: kind })}
-              title={problem ?? CHARTS[kind].hint}
-              className={cn(
-                "flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                active ? "border-primary bg-primary/5" : "hover:border-primary/40 hover:bg-muted",
-                problem && !active && "opacity-45",
-              )}
-            >
-              <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span className="min-w-0">
-                <span className="block text-xs font-semibold">{CHARTS[kind].label}</span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
-                  {problem ?? CHARTS[kind].hint}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <ChartKindPicker
+        value={widget.chart}
+        shape={shape}
+        onChange={(chart) => onChange({ chart, options: { ...widget.options, metricKeys: null } })}
+      />
+      <ChartMetricPicker widget={widget} shape={shape} onChange={onChange} />
       <section className="space-y-3 rounded-xl border bg-card/60 p-4">
         <h3 className="text-xs font-semibold">Feinschliff</h3>
         <div className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
@@ -116,7 +85,7 @@ export function ChartStyleStep({
                     value={options.curve}
                     onValueChange={(v) => setOption("curve", v as WidgetOptions["curve"])}
                   >
-                    <SelectTrigger size="sm" className="h-7 w-28 text-xs">
+                    <SelectTrigger aria-label="Linienform" size="sm" className="h-7 w-28 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -134,7 +103,11 @@ export function ChartStyleStep({
                     value={options.sortBy}
                     onValueChange={(v) => setOption("sortBy", v as WidgetOptions["sortBy"])}
                   >
-                    <SelectTrigger size="sm" className="h-7 w-32 text-xs">
+                    <SelectTrigger
+                      aria-label="Sortierung im Chart"
+                      size="sm"
+                      className="h-7 w-32 text-xs"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

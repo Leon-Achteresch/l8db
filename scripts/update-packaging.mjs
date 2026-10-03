@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { artifactNames, publicAssetUrl } from "../.github/scripts/release-artifacts.mjs";
 
 const HELP = `update-packaging - patcht Version und sha256 in die Paketmanifeste unter packaging/
 
@@ -18,6 +19,9 @@ Optionen:
   --artifacts <ordner>    Ordner mit heruntergeladenen Artefakten; sha256 wird lokal berechnet
   --checksums <datei>     Datei mit "<sha256>  <dateiname>" Zeilen
   --version <x.y.z>       ueberschreibt die Version aus dem Release-Tag
+  --metadata <datei>      verifizierte release-metadata.json mit MSI ProductCode
+  --license-file <datei>  lokale LICENSE des Release-Tags
+  --root <ordner>         Repository-Verzeichnis
   --dry-run               zeigt nur, was sich aendern wuerde
   --help                  diese Hilfe
 
@@ -25,7 +29,7 @@ sha256-Quellen werden in dieser Reihenfolge benutzt:
   1. Feld "digest" des Assets im Release-JSON (Format "sha256:<hex>")
   2. --checksums
   3. --artifacts (lokal berechnet)
-Fehlt fuer ein Artefakt ein Hash, bleibt der bisherige Wert stehen und es gibt eine Warnung.
+Fehlende Artefakte, Hashes oder MSI-Metadaten brechen vor jeder Dateiaenderung ab.
 `;
 
 function parseArgs(argv) {
@@ -38,6 +42,9 @@ function parseArgs(argv) {
     else if (arg === "--artifacts") args.artifacts = argv[++i];
     else if (arg === "--checksums") args.checksums = argv[++i];
     else if (arg === "--version") args.version = argv[++i];
+    else if (arg === "--metadata") args.metadata = argv[++i];
+    else if (arg === "--license-file") args.licenseFile = argv[++i];
+    else if (arg === "--root") args.root = argv[++i];
     else throw new Error(`Unbekannte Option: ${arg}`);
   }
   return args;
@@ -78,8 +85,12 @@ function hashFile(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
-function resolveAsset(assets, pattern) {
-  return assets.find((asset) => pattern.test(asset.name));
+function resolveAsset(assets, name, version) {
+  const found = assets.filter((asset) => asset.name === name);
+  if (found.length !== 1) throw new Error(`Erwartet genau ein Artefakt: ${name}`);
+  if (found[0].url !== publicAssetUrl(version, name))
+    throw new Error(`Ungueltige Release-URL: ${name}`);
+  return found[0];
 }
 
 function resolveSha(asset, checksums, artifactsDir) {
@@ -94,31 +105,26 @@ function resolveSha(asset, checksums, artifactsDir) {
   return "";
 }
 
-async function resolveLicenseSha(version) {
+async function resolveLicenseSha(version, file) {
+  if (file) return hashFile(file);
   const url = `https://raw.githubusercontent.com/Leon-Achteresch/l8db/v${version}/LICENSE`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw new Error(`LICENSE konnte nicht geladen werden (${response.status}).`);
-  return createHash("sha256").update(Buffer.from(await response.arrayBuffer())).digest("hex");
-}
-
-const warnings = [];
-
-function warn(message) {
-  warnings.push(message);
+  return createHash("sha256")
+    .update(Buffer.from(await response.arrayBuffer()))
+    .digest("hex");
 }
 
 function patch(file, replacements) {
   if (!existsSync(file)) {
-    warn(`Datei fehlt, uebersprungen: ${file}`);
-    return null;
+    throw new Error(`Datei fehlt: ${file}`);
   }
   const before = readFileSync(file, "utf8");
   let after = before;
   for (const [pattern, value] of replacements) {
     if (value === null || value === undefined || value === "") continue;
     if (!pattern.test(after)) {
-      warn(`Kein Treffer fuer ${pattern} in ${file}`);
-      continue;
+      throw new Error(`Kein Treffer fuer ${pattern} in ${file}`);
     }
     after = after.replace(pattern, value);
   }
@@ -150,8 +156,7 @@ function report(result, dryRun) {
 }
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, "..");
-const packagingDir = path.join(repoRoot, "packaging");
+let repoRoot = path.resolve(scriptDir, "..");
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -159,37 +164,48 @@ async function main() {
     console.log(HELP);
     return;
   }
+  repoRoot = path.resolve(args.root ?? repoRoot);
+  const packagingDir = path.join(repoRoot, "packaging");
 
   const release = args.release ? loadRelease(args.release) : { tag: "", assets: [], published: "" };
   const version = args.version ?? release.tag.replace(/^v/, "");
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(`Ungueltige Version: ${version || "<leer>"}`);
   }
+  if (release.tag !== `v${version}`)
+    throw new Error("Version stimmt nicht mit dem Release-Tag ueberein.");
+  const metadata = JSON.parse(readFileSync(args.metadata, "utf8"));
+  if (
+    metadata.format !== 1 ||
+    metadata.version !== version ||
+    !/^\{[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\}$/.test(
+      metadata.productCode,
+    )
+  ) {
+    throw new Error("Verifizierte Release-Metadaten mit passendem MSI ProductCode fehlen.");
+  }
 
   const checksums = loadChecksums(args.checksums);
-  const dmg = resolveAsset(release.assets, /\.dmg$/i);
-  const msi = resolveAsset(release.assets, /\.msi$/i);
-  const deb = resolveAsset(release.assets, /\.deb$/i);
+  const names = artifactNames(version);
+  const dmg = resolveAsset(release.assets, names.dmg, version);
+  const msi = resolveAsset(release.assets, names.msi, version);
+  const deb = resolveAsset(release.assets, names.deb, version);
 
   const dmgSha = resolveSha(dmg, checksums, args.artifacts);
   const msiSha = resolveSha(msi, checksums, args.artifacts);
   const debSha = resolveSha(deb, checksums, args.artifacts);
-  let licenseSha = "";
-  try {
-    licenseSha = await resolveLicenseSha(version);
-  } catch (error) {
-    warn(error.message);
-  }
-
-  if (!dmg) warn("Kein .dmg im Release gefunden (Homebrew-Cask bleibt auf altem Stand).");
-  if (!msi) warn("Kein .msi im Release gefunden (winget bleibt auf altem Stand).");
-  if (!deb) warn("Kein .deb im Release gefunden (AUR und Flatpak bleiben auf altem Stand).");
+  const licenseSha = await resolveLicenseSha(version, args.licenseFile);
+  if (licenseSha !== metadata.licenseSha256)
+    throw new Error("LICENSE stimmt nicht mit dem verifizierten Release ueberein.");
   for (const [asset, sha, label] of [
     [dmg, dmgSha, "dmg"],
     [msi, msiSha, "msi"],
     [deb, debSha, "deb"],
   ]) {
-    if (asset && !sha) warn(`Kein sha256 fuer ${label} (${asset.name}) ermittelbar.`);
+    if (!/^[a-f0-9]{64}$/.test(sha) || /^0{64}$/.test(sha))
+      throw new Error(`Kein gueltiger sha256 fuer ${label} (${asset.name}).`);
+    if (sha !== metadata.artifacts?.[asset.name])
+      throw new Error(`Hash stimmt nicht mit dem verifizierten Release ueberein: ${asset.name}`);
   }
 
   const releaseDate = (release.published || "").slice(0, 10);
@@ -214,6 +230,7 @@ async function main() {
       [/^PackageVersion:.*$/m, `PackageVersion: ${version}`],
       [/^(\s*)InstallerUrl:.*$/m, `$1InstallerUrl: ${msiUrl}`],
       [/^(\s*)InstallerSha256:.*$/m, msiSha ? `$1InstallerSha256: ${msiSha}` : ""],
+      [/^(\s*)ProductCode:.*$/m, `$1ProductCode: '${metadata.productCode}'`],
       [/^ReleaseDate:.*$/m, releaseDate ? `ReleaseDate: ${releaseDate}` : ""],
     ]),
     patch(path.join(packagingDir, "winget", "LeonAchteresch.l8db.locale.en-US.yaml"), [
@@ -253,22 +270,18 @@ async function main() {
     if (report(result, args.dryRun)) changed += 1;
   }
 
-  for (const message of warnings) {
-    console.warn(`Warnung: ${message}`);
-  }
-
   console.log(
     args.dryRun
       ? `${changed} Datei(en) wuerden geaendert (dry-run, nichts geschrieben).`
       : `${changed} Datei(en) geaendert.`,
   );
   console.log(
-    "Danach pruefen: LICENSE-sha256 in PKGBUILD/.SRCINFO (updpkgsums), winget ProductCode, Flatpak-Luecken.",
+    "Versionen, Artefakt-Hashes, LICENSE und MSI ProductCode sind konsistent. Externe Paket-Repositories separat aktualisieren.",
   );
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(`Fehler: ${error.message}`);
   process.exit(1);

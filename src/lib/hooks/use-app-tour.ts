@@ -63,6 +63,14 @@ export function useAppTour() {
     if (!step) return;
     if (useTourStore.getState().waiting) {
       showSpotlight(step, true);
+      const { waitBaseline, clickDone } = useTourStore.getState();
+      if (
+        autoPilot &&
+        step.autoClick &&
+        step.wait &&
+        !isWaitMet(step.wait, waitBaseline, clickDone, window.location.pathname)
+      )
+        clickSelector(step.autoClick);
       return;
     }
     const token = ++generation.current;

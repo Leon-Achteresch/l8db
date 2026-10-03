@@ -53,6 +53,14 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --lib
 
 Live tests use dedicated PostgreSQL and Oracle test databases. Set `L8DB_DEBUG_PG_URL` and `L8DB_DEBUG_ORACLE_URL` outside source control. The Oracle tests expect a test account/schema named `L8DB_DEBUG` with CREATE PROCEDURE and the debug privileges above. PostgreSQL needs `pldbgapi`. The tests create objects named `l8db_debug_*`.
 
+`tests/lab/pg-extensions.Dockerfile` builds a PostgreSQL 18 image with pldebugger, PostGIS and pgvector for these tests and for `postgis_pgvector_values_reach_the_viewers` (`L8DB_E2E_POSTGIS_URL`):
+
+```sh
+docker build -t l8db-pg-ext -f tests/lab/pg-extensions.Dockerfile tests/lab
+docker run -d --name l8db-pg-ext -p 127.0.0.1:55498:5432 -e POSTGRES_PASSWORD=testpw l8db-pg-ext -c shared_preload_libraries=plugin_debugger
+docker exec l8db-pg-ext psql -U postgres -c 'CREATE EXTENSION pldbgapi'
+```
+
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml --lib db::debugger -- --include-ignored --test-threads=1
 ```

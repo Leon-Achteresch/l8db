@@ -355,6 +355,7 @@ async fn count(url: &str, kind: DatabaseKind, table: &str) -> i64 {
         .unwrap()
 }
 
+#[cfg(feature = "duckdb")]
 #[tokio::test]
 async fn sqlite_to_duckdb_transfers_structure_and_data() {
     let lab = Lab::new("duck");

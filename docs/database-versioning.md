@@ -110,6 +110,8 @@ Die Live-Tests verwenden echte Git-Repositories, PostgreSQL und Oracle. Eine exp
 
 Die Datei aus `L8DB_VERSIONING_LAB` ist eine nur für den aktuellen Benutzer lesbare JSON-Datei mit `root`, `repo`, `postgresUrl` und `oracleUrl`. Zugangsdaten gehören weder ins Repository noch in Testausgaben. PostgreSQL verwendet die isolierten Datenbanken `l8db_versioning_dev`, `l8db_versioning_a`, `l8db_versioning_b` und `l8db_versioning_edge`; Oracle verwendet `L8DB_VCS_DEV`, `L8DB_VCS_A` und `L8DB_VCS_B` mit Tablespace-Quota. Die Szenarien setzen ausschließlich diese Testobjekte zurück.
 
+`scripts/versioning-lab.sh` startet beide Labordatenbanken als Wegwerf-Container, legt die Oracle-Schemas `L8DB_DEV`, `L8DB_CUSTOMER_A` und `L8DB_CUSTOMER_B` mit Testpasswörtern an und schreibt die Labordatei; `scripts/versioning-lab.sh down` entfernt alles wieder. Läuft Vite nicht auf Port 1420, setzt `L8DB_VERSIONING_APP_URL` die Adresse der Oberfläche.
+
 Bei laufendem Vite auf Port 1420 und vorbereiteten Labordatenbanken:
 
 ```sh

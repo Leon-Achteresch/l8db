@@ -110,7 +110,10 @@ export function buildParameterizedQuery(
     const entry = values[ref.name];
     const type: BindParamType = entry?.type ?? "text";
     out += sql.slice(cursor, occurrence.start);
-    out += kind === "oracle" ? `$${position}` : `$${position}::${pgCastFor(type)}`;
+    out +=
+      kind === "oracle" || type === "text" || type === "null"
+        ? `$${position}`
+        : `$${position}::${pgCastFor(type)}`;
     cursor = occurrence.end;
   }
   out += sql.slice(cursor);

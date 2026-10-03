@@ -49,26 +49,35 @@ const args = process.argv.slice(2);
 const nextIndex = args.indexOf("--next");
 const next = nextIndex >= 0 ? args[nextIndex + 1] : "";
 const releaseBodyOnly = args.includes("--release-body");
+const option = (name) => {
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
+};
+const head = option("--head") ?? "HEAD";
+const previousTag = option("--previous");
 
-const tags = git("tag", "--list", "v*", "--sort=-v:refname")
+const tags = git("tag", "--merged", head, "--list", "v*", "--sort=-v:refname")
   .split("\n")
-  .filter(Boolean);
-const today = new Date().toISOString().slice(0, 10);
+  .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag) && tag !== `v${next}`);
+const today = option("--date") ?? new Date().toISOString().slice(0, 10);
 
 const sections = [];
-const headCommits = commitsIn(tags[0] ? `${tags[0]}..HEAD` : "HEAD");
+const previous = previousTag ?? tags[0];
+const headCommits = commitsIn(previous ? `${previous}..${head}` : head);
 if (next) sections.push(renderSection(`[${next}]`, today, headCommits));
 else if (headCommits.length) sections.push(renderSection("[Unreleased]", "", headCommits));
-
-tags.forEach((tag, index) => {
-  const previous = tags[index + 1];
-  const date = git("log", "-1", "--format=%cs", tag);
-  sections.push(renderSection(`[${tag.slice(1)}]`, date, commitsIn(previous ? `${previous}..${tag}` : tag)));
-});
 
 if (releaseBodyOnly) {
   process.stdout.write(sections[0] ?? "- Keine Änderungen.\n");
 } else {
+  tags.forEach((tag, index) => {
+    const previous = tags[index + 1];
+    const date = git("log", "-1", "--format=%cs", tag);
+    sections.push(
+      renderSection(`[${tag.slice(1)}]`, date, commitsIn(previous ? `${previous}..${tag}` : tag)),
+    );
+  });
+
   const header = [
     "# Changelog",
     "",

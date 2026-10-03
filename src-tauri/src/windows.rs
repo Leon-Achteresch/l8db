@@ -20,6 +20,7 @@ const QUICK_ACTIONS: [(&str, &str); 3] = [
 #[cfg(any(target_os = "macos", windows))]
 const RECENTS_TITLE: &str = "Verbindung öffnen";
 const CASCADE_OFFSET: f64 = 28.0;
+pub const MAIN_LABEL: &str = "main";
 
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
@@ -90,6 +91,34 @@ pub fn target_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>>
     focused_window(app)
         .or_else(|| app.get_webview_window("main"))
         .or_else(|| app.webview_windows().into_values().next())
+}
+
+fn recreate_main(main_exists: bool, open_windows: usize) -> bool {
+    !main_exists && open_windows > 0
+}
+
+pub fn main_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
+    let existing = app.get_webview_window(MAIN_LABEL);
+    if !recreate_main(existing.is_some(), app.webview_windows().len()) {
+        return existing;
+    }
+    let mut config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == MAIN_LABEL)
+        .or_else(|| app.config().app.windows.first())
+        .cloned()
+        .unwrap_or_default();
+    config.label = MAIN_LABEL.to_string();
+    match WebviewWindowBuilder::from_config(app, &config).and_then(|builder| builder.build()) {
+        Ok(window) => Some(window),
+        Err(error) => {
+            log::error!("main window failed: {error}");
+            None
+        }
+    }
 }
 
 pub fn open<R: Runtime>(app: &AppHandle<R>, connection: Option<&str>) -> tauri::Result<()> {
@@ -217,20 +246,34 @@ pub fn set_dock_recents(app: AppHandle, recents: Vec<DockEntry>) {
     let _ = (app, recents);
 }
 
-pub fn install_quick_menu() {
+pub fn request_quit<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let windows = app.webview_windows();
+    for window in windows.values() {
+        if let Err(error) = window.close() {
+            log::error!("closing {} for quit failed: {error}", window.label());
+        }
+    }
+    windows.is_empty()
+}
+
+pub fn install_quick_menu<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(target_os = "macos")]
     {
-        dock::install();
+        let app = app.clone();
+        dock::install(Box::new(move || request_quit(&app)));
         dock::rebuild(&[]);
     }
     #[cfg(windows)]
     jump_list::rebuild(&[]);
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
 }
 
 #[cfg(target_os = "macos")]
 mod dock {
     use std::cell::RefCell;
     use std::ffi::c_void;
+    use std::sync::OnceLock;
 
     use muda::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
     use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
@@ -240,6 +283,25 @@ mod dock {
 
     thread_local! {
         static MENU: RefCell<Option<Menu>> = const { RefCell::new(None) };
+    }
+
+    type QuitRequest = Box<dyn Fn() -> bool + Send + Sync>;
+
+    static QUIT: OnceLock<QuitRequest> = OnceLock::new();
+
+    const TERMINATE_CANCEL: usize = 0;
+    const TERMINATE_NOW: usize = 1;
+
+    extern "C-unwind" fn should_terminate(
+        _this: &AnyObject,
+        _cmd: Sel,
+        _sender: &AnyObject,
+    ) -> usize {
+        if QUIT.get().is_none_or(|request| request()) {
+            TERMINATE_NOW
+        } else {
+            TERMINATE_CANCEL
+        }
     }
 
     extern "C-unwind" fn dock_menu(
@@ -253,7 +315,8 @@ mod dock {
         })
     }
 
-    pub fn install() {
+    pub fn install(quit: QuitRequest) {
+        let _ = QUIT.set(quit);
         unsafe {
             let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
             let delegate: *mut AnyObject = msg_send![app, delegate];
@@ -266,6 +329,15 @@ mod dock {
                 dock_menu as extern "C-unwind" fn(&AnyObject, Sel, &AnyObject) -> *mut c_void,
             );
             objc2::ffi::class_addMethod(class, sel!(applicationDockMenu:), imp, c"@@:@".as_ptr());
+            let imp: Imp = std::mem::transmute(
+                should_terminate as extern "C-unwind" fn(&AnyObject, Sel, &AnyObject) -> usize,
+            );
+            objc2::ffi::class_addMethod(
+                class,
+                sel!(applicationShouldTerminate:),
+                imp,
+                c"Q@:@".as_ptr(),
+            );
             let _: () = msg_send![app, setDelegate: delegate];
         }
     }
@@ -400,6 +472,14 @@ mod jump_list {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_window_is_recreated_only_while_other_windows_are_open() {
+        assert!(recreate_main(false, 1));
+        assert!(recreate_main(false, 3));
+        assert!(!recreate_main(true, 2));
+        assert!(!recreate_main(false, 0));
+    }
 
     #[test]
     fn window_connections_track_other_windows() {

@@ -33,8 +33,8 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-const CENTER_FOLDED_CLIP = "inset(48% 48% 48% 48% round 30px)";
-const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round 30px)";
+const CENTER_FOLDED_CLIP = "inset(48% 48% 48% 48% round var(--radius-xl))";
+const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round var(--radius-xl))";
 
 // Complex clip-path strings can snap when a spring resolves its final distance.
 // Keep the radius constant so the whole duration reads as surface unfolding,
@@ -189,7 +189,7 @@ export function CenterMorphModalContent({
                       reduce ? { duration: 0.14, ease: EASE_OUT } : CENTER_UNFOLD_TRANSITION
                     }
                     className={cn(
-                      "pointer-events-auto relative w-full max-w-[26rem] origin-center overflow-hidden rounded-[30px] border border-border bg-background will-change-[clip-path]",
+                      "pointer-events-auto relative w-full max-w-[26rem] origin-center overflow-hidden rounded-xl border border-border bg-background will-change-[clip-path]",
                       className,
                     )}
                   >

@@ -55,7 +55,14 @@ pub struct Target {
 
 pub async fn committed(root: &Path) -> Result<Option<String>, String> {
     let current = super::read(&super::safe_file(root, PATH)?)?;
-    let files = super::git(root, &["ls-tree", "-r", "--name-only", "HEAD", "--", PATH]).await?;
+    let files = if super::git(root, &["rev-parse", "--verify", "--quiet", "HEAD"])
+        .await
+        .is_ok()
+    {
+        super::git(root, &["ls-tree", "-r", "--name-only", "HEAD", "--", PATH]).await?
+    } else {
+        String::new()
+    };
     let committed = if files.lines().any(|path| path == PATH) {
         Some(super::git(root, &["show", &format!("HEAD:{PATH}")]).await?)
     } else {

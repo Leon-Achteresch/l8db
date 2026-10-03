@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
+import manifest from "../extention/password-manager/l8db-extension.json";
 import config from "../src-tauri/tauri.conf.json";
 import { bundleFixture } from "./fixtures/browser-bundle";
 
@@ -8,7 +9,7 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
   "Passwortmanager lädt geteilte Zugänge und speichert Verbindungen im persönlichen Tresor",
   async () => {
     const archive = await readFile(
-      "extention/password-manager/l8db.password-manager-1.6.0.l8db-extension",
+      `extention/password-manager/${manifest.id}-${manifest.version}.l8db-extension`,
       "utf8",
     );
     const output = await bundleFixture("tests/fixtures/password-manager-browser.tsx");

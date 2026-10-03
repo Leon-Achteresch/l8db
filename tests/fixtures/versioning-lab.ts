@@ -1,6 +1,8 @@
 import type { Page } from "playwright";
 import { seedApp } from "./perf-app";
 
+export const versioningAppUrl = process.env.L8DB_VERSIONING_APP_URL ?? "http://localhost:1420";
+
 export async function installVersioningLab(page: Page, repo: string) {
   await seedApp(page, 0);
   await page.addInitScript(

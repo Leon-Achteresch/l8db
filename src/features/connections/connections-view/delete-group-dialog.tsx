@@ -12,7 +12,11 @@ import {
 import type { ServerGroup } from "@/lib/connection-groups";
 import { useConnectionsStore } from "@/lib/connections";
 import { useTableTabs } from "@/lib/table-tabs";
-import { getTransactionForConnection } from "@/lib/transactions";
+import {
+  connectionRemovalBlocker,
+  unsavedQueryTabCount,
+  unsavedQueryTabsNotice,
+} from "./connection-removal";
 
 export function DeleteServerGroupDialog({
   deleteGroup,
@@ -25,6 +29,11 @@ export function DeleteServerGroupDialog({
   editorId: string | null;
   setEditorId: (id: string | null) => void;
 }) {
+  const tabsNotice = unsavedQueryTabsNotice(
+    deleteGroup
+      ? unsavedQueryTabCount(deleteGroup.connections.map((connection) => connection.id))
+      : 0,
+  );
   return (
     <AlertDialog
       open={Boolean(deleteGroup)}
@@ -38,17 +47,18 @@ export function DeleteServerGroupDialog({
           <AlertDialogDescription>
             Alle {deleteGroup?.connections.length} Verbindungen auf „{deleteGroup?.label}“ und die
             gespeicherten Zugangsdaten werden aus l8db entfernt. Die Datenbank selbst bleibt
-            erhalten.
+            erhalten.{tabsNotice}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Abbrechen</AlertDialogCancel>
           <AlertDialogAction
-            onClick={() => {
+            onClick={async () => {
               if (!deleteGroup) return;
               const ids = deleteGroup.connections.map((connection) => connection.id);
-              if (ids.some((id) => getTransactionForConnection(id))) {
-                toast.error("Schließe zuerst die offenen Transaktionen ab.");
+              const blocker = await connectionRemovalBlocker(ids);
+              if (blocker) {
+                toast.error(blocker);
                 return;
               }
               for (const id of ids) {
