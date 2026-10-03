@@ -39,7 +39,14 @@ export function AiUsage({ data, profile, metadata, messages, prompt, onSettings 
           >
             <span className="flex items-center gap-1">
               <svg viewBox="0 0 16 16" className="size-3.5 -rotate-90" aria-hidden="true">
-                <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" className="stroke-muted" />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6"
+                  fill="none"
+                  strokeWidth="2.5"
+                  className="stroke-muted"
+                />
                 <circle
                   cx="8"
                   cy="8"
