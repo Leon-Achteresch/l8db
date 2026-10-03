@@ -3,7 +3,7 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
-## [0.9.0] - 2026-10-03
+## [0.9.1] - 2026-10-03
 
 ### Features
 - let NEW badges tumble away when they are marked as seen
