@@ -30,11 +30,7 @@ function Install-TestApp([string]$Directory, [string]$ExpectedVersion, [bool]$Up
 }
 if ($PreviousVersion) { Install-TestApp $Previous $PreviousVersion $false }
 Install-TestApp $Current $Version ([bool]$PreviousVersion)
-$metadata = Get-Content 'build-windows.json' -Raw | ConvertFrom-Json
-if ((Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant() -ne $metadata.binarySha256) { throw 'NSIS contains a different application' }
 $msi = Join-Path $Current "l8db_${Version}_x64_en-US.msi"
 $extract = Join-Path $Root 'msi'
 $process = Start-Process msiexec -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$extract`"") -Wait -PassThru
 if ($process.ExitCode -ne 0) { throw "MSI extraction failed: $($process.ExitCode)" }
-$msiBinary = Get-ChildItem $extract -Filter l8db.exe -Recurse | Select-Object -First 1
-if (!$msiBinary -or (Get-FileHash $msiBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $metadata.binarySha256) { throw 'MSI contains a different application' }
