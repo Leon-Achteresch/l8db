@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ChevronDownIcon, KeyRoundIcon, type LucideIcon, PuzzleIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ComponentType, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { readCommunityExtension } from "@/lib/db";
 import { SPRING_LAYOUT, SPRING_PANEL } from "@/lib/ease";
 import type { ExtensionDescriptor } from "@/lib/extensions/contracts";
 import { useExtensionHost } from "@/lib/extensions/react-context";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 import { ExtensionActionsMenu } from "./extension-actions-menu";
 import { ExtensionDetails } from "./extension-details";
@@ -46,6 +48,7 @@ export function CommunityExtensionCard({
   const [consent, setConsent] = useState(false);
   const [details, setDetails] = useState(false);
   const failed = extension.state === "failed";
+  const openbaoIsNew = useHasNewFeatures("settings.extensions.extensions.openbao");
 
   const activate = () => {
     if (manifest.permissions?.length) setConsent(true);
@@ -89,6 +92,7 @@ export function CommunityExtensionCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold">{manifest.name}</h3>
+            {id === PASSWORD_MANAGER_ID && !extension.enabled && openbaoIsNew && <NewBadge />}
             <Badge variant={failed ? "destructive" : extension.enabled ? "secondary" : "outline"}>
               {failed ? "Fehler" : extension.enabled ? "Aktiv" : "Inaktiv"}
             </Badge>

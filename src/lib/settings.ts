@@ -78,6 +78,7 @@ export interface SettingsState {
   productionAutoRollback: boolean;
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
+  hideOwnSchemaSelect: boolean;
   searchIncludeColumns: boolean;
   uiDensity: UiDensity;
   uiScale: number;
@@ -132,6 +133,7 @@ export interface SettingsState {
   setProductionAutoRollback: (v: boolean) => void;
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
+  setHideOwnSchemaSelect: (value: boolean) => void;
   setSearchIncludeColumns: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setUiScale: (v: number) => void;
@@ -212,6 +214,7 @@ const DEFAULT_SETTINGS = {
   productionAutoRollback: false,
   highlightNullValues: true,
   translateFilterOperators: true,
+  hideOwnSchemaSelect: true,
   searchIncludeColumns: true,
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
@@ -294,6 +297,7 @@ export const useSettingsStore = create<SettingsState>()(
       setProductionAutoRollback: (productionAutoRollback) => set({ productionAutoRollback }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
+      setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),

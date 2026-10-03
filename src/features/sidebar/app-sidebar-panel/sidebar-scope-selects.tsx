@@ -14,6 +14,7 @@ import {
 import { connectionUser } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
 import type { useActiveCapabilities } from "@/lib/db-selection";
+import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import type { SidebarScope } from "./use-sidebar-scope";
 
@@ -45,10 +46,14 @@ export function SidebarScopeSelects({
     siblings,
     activeUser,
   } = scope;
+  const hideOwnSchemaSelect = useSettingsStore((s) => s.hideOwnSchemaSelect);
+  const isOwnSchema =
+    !!activeUser && !!activeSchema && activeSchema.toLowerCase() === activeUser.toLowerCase();
   const showSchemaSwitcher =
-    activeConnection.showSingleSchemaSwitcher !== false ||
-    schemas?.length !== 1 ||
-    siblings.length > 0;
+    !(hideOwnSchemaSelect && isOwnSchema) &&
+    (activeConnection.showSingleSchemaSwitcher !== false ||
+      schemas?.length !== 1 ||
+      siblings.length > 0);
   return (
     <div className="grid min-w-0 gap-2" data-tour="sidebar-scope">
       {caps.databases && (

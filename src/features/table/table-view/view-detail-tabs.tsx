@@ -10,7 +10,7 @@ import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel, ViewDefinitionPanel } from "./lazy-panels";
 import { TableExportDialogs } from "./table-export-dialogs";
-import { TableExportMenu } from "./table-export-menu";
+import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
 import type { useTableViewModel } from "./use-table-view-model";
 
 type Props = Pick<
@@ -64,7 +64,7 @@ export function ViewDetailTabs({
     <Tabs
       value={viewTab}
       onValueChange={(v) => setDetailTab(v as TableDetailTab)}
-      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+      className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
     >
       <div
         className="flex shrink-0 items-center border-b bg-muted/30 px-3"
@@ -74,14 +74,16 @@ export function ViewDetailTabs({
         <div className="ml-auto flex items-center gap-1">
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
           {viewTab === "data" && data && (
-            <TableExportMenu
-              exporting={exporting}
-              showSql={true}
-              onCsv={() => setCsvExportOpen(true)}
-              onXlsx={() => setXlsxExportOpen(true)}
-              onFormat={setDataExportFormat}
-              onExport={handleExport}
-            />
+            <TableActionsMenu>
+              <TableExportMenu
+                exporting={exporting}
+                showSql={true}
+                onCsv={() => setCsvExportOpen(true)}
+                onXlsx={() => setXlsxExportOpen(true)}
+                onFormat={setDataExportFormat}
+                onExport={handleExport}
+              />
+            </TableActionsMenu>
           )}
         </div>
       </div>

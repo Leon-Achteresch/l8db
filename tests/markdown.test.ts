@@ -12,14 +12,19 @@ describe("parseMarkdown", () => {
       { t: "h", level: 3, children: [{ t: "text", v: "Features" }] },
       {
         t: "ul",
-        items: [[{ t: "text", v: "custom icons" }], [{ t: "text", v: "Speichern per Slide-Button" }]],
+        items: [
+          [{ t: "text", v: "custom icons" }],
+          [{ t: "text", v: "Speichern per Slide-Button" }],
+        ],
       },
     ]);
   });
 
   test("zieht die ersten Changelog-Punkte als Highlights", () => {
     expect(
-      extractHighlights("## Changelog\n- custom icons\n- Speichern per Slide-Button\n- dritter\n- vierter"),
+      extractHighlights(
+        "## Changelog\n- custom icons\n- Speichern per Slide-Button\n- dritter\n- vierter",
+      ),
     ).toEqual(["custom icons", "Speichern per Slide-Button", "dritter"]);
   });
 
@@ -29,5 +34,17 @@ describe("parseMarkdown", () => {
       { t: "link", href: "https://example.com", children: [{ t: "text", v: "0.1.0" }] },
       { t: "text", v: " und [Unreleased]" },
     ]);
+  });
+
+  test("preserves multiple-backtick code spans and escaped literal backticks", () => {
+    expect(parseInline("``a`|b`` and \\`literal and `integer`")).toEqual([
+      { t: "code", v: "a`|b" },
+      { t: "text", v: " and " },
+      { t: "text", v: "`" },
+      { t: "text", v: "literal and " },
+      { t: "code", v: "integer" },
+    ]);
+    expect(parseInline("`unfinished")).toEqual([{ t: "text", v: "`unfinished" }]);
+    expect(parseInline("``different` fences")).toEqual([{ t: "text", v: "``different` fences" }]);
   });
 });

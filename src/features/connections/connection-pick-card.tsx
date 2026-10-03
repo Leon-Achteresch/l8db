@@ -16,6 +16,7 @@ import {
 import { motion, useReducedMotion } from "motion/react";
 import type { ComponentProps, ReactNode } from "react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,13 +27,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { cn } from "@/lib/utils";
@@ -94,7 +89,7 @@ export function ConnectionPickCard({
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
               </button>
-              <DropdownMenu>
+              <IconMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
@@ -105,38 +100,37 @@ export function ConnectionPickCard({
                     <MoreHorizontal className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem onSelect={onOpen}>
-                    <Play className="size-3.5" />
-                    {active ? "Trennen" : "Verbinden"}
-                  </DropdownMenuItem>
+                <IconMenuContent>
+                  <IconMenuItem
+                    icon={<Play />}
+                    label={active ? "Trennen" : "Verbinden"}
+                    onSelect={onOpen}
+                  />
                   {onOpenWindow && <OpenInWindowMenuItem onSelect={onOpenWindow} />}
-                  <DropdownMenuItem onSelect={onEdit}>
-                    <Pencil className="size-3.5" />
-                    Bearbeiten
-                  </DropdownMenuItem>
+                  <IconMenuItem icon={<Pencil />} label="Bearbeiten" onSelect={onEdit} />
                   {onBackup && (
-                    <DropdownMenuItem onSelect={onBackup}>
-                      <Archive className="size-3.5" />
-                      Sichern & Wiederherstellen…
-                    </DropdownMenuItem>
+                    <IconMenuItem
+                      icon={<Archive />}
+                      label="Sichern & Wiederherstellen…"
+                      onSelect={onBackup}
+                    />
                   )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={onDuplicate}>
-                    <Copy className="size-3.5" />
-                    Duplizieren
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={onCreateSimilar}>
-                    <CopyPlus className="size-3.5" />
-                    Ähnliche erstellen
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-                    <Trash2 className="size-3.5" />
-                    Löschen
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <IconMenuSeparator />
+                  <IconMenuItem icon={<Copy />} label="Duplizieren" onSelect={onDuplicate} />
+                  <IconMenuItem
+                    icon={<CopyPlus />}
+                    label="Ähnliche erstellen"
+                    onSelect={onCreateSimilar}
+                  />
+                  <IconMenuSeparator />
+                  <IconMenuItem
+                    icon={<Trash2 />}
+                    label="Löschen"
+                    variant="destructive"
+                    onSelect={onDelete}
+                  />
+                </IconMenuContent>
+              </IconMenu>
             </div>
           }
           footer={

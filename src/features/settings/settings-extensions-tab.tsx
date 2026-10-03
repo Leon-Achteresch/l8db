@@ -12,6 +12,7 @@ export function SettingsExtensionsTab() {
       </div>
       <CommunityExtensionsSection />
       <ExtensionMarketSection />
+      <ExtensionMarketSection community />
     </div>
   );
 }

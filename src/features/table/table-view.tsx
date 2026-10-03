@@ -170,7 +170,7 @@ export function TableView(props: TableViewProps) {
     <Tabs
       value={tableTab}
       onValueChange={(v) => setDetailTab(v as TableDetailTab)}
-      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+      className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
     >
       <div
         className="flex shrink-0 items-center border-b bg-muted/30 px-3"

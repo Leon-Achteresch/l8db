@@ -4,6 +4,7 @@ import { ArrowUpRight, MoreHorizontal, Pencil, Play, Trash2 } from "lucide-react
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
   AlertDialog,
@@ -16,13 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast } from "@/lib/ssh";
 import { BAAS_PROVIDERS } from "./baas-providers";
@@ -98,7 +93,7 @@ export function BaasConnectionCard({
               </p>
             </div>
           </div>
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
@@ -109,24 +104,28 @@ export function BaasConnectionCard({
                 <MoreHorizontal className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={() => open()}>
-                <ArrowUpRight className="size-3.5" />
-                Projekt öffnen
-              </DropdownMenuItem>
+            <IconMenuContent>
+              <IconMenuItem
+                icon={<ArrowUpRight />}
+                label="Projekt öffnen"
+                onSelect={() => open()}
+              />
               {database && (
-                <DropdownMenuItem onSelect={() => onEditDatabase(database.id)}>
-                  <Pencil className="size-3.5" />
-                  Datenbankverbindung bearbeiten
-                </DropdownMenuItem>
+                <IconMenuItem
+                  icon={<Pencil />}
+                  label="Datenbankverbindung bearbeiten"
+                  onSelect={() => onEditDatabase(database.id)}
+                />
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => setConfirm(true)}>
-                <Trash2 className="size-3.5" />
-                Zugang entfernen
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <IconMenuSeparator />
+              <IconMenuItem
+                icon={<Trash2 />}
+                label="Zugang entfernen"
+                variant="destructive"
+                onSelect={() => setConfirm(true)}
+              />
+            </IconMenuContent>
+          </IconMenu>
         </div>
 
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 p-2.5 text-[11px]">

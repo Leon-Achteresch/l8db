@@ -115,7 +115,8 @@ test.skipIf(!process.env.L8DB_QOL_BROWSER)(
       ).toBe(0);
       await page.getByRole("button", { name: "Abbrechen", exact: true }).click();
       await page.goto(`http://localhost:${server.port}/tables/public/table_0000`);
-      await page.getByRole("button", { name: "Tabellenblock einfügen", exact: true }).click();
+      await page.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Tabellenblock einfügen", exact: true }).click();
       await page
         .getByRole("textbox", { name: "Tabellenblock", exact: true })
         .fill("id\tcol_1\n11\talpha\n12\tbeta");
@@ -138,7 +139,8 @@ test.skipIf(!process.env.L8DB_QOL_BROWSER)(
           ),
         ),
       ).toBe(false);
-      await page.getByRole("button", { name: "Export", exact: true }).click();
+      await page.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Export", exact: true }).click();
       await page.getByRole("menuitem", { name: "Als XLSX exportieren…", exact: true }).click();
       await page.getByText("Alle gefilterten Zeilen exportieren", { exact: true }).click();
       await page.getByRole("button", { name: "Exportieren", exact: true }).click();

@@ -1,16 +1,35 @@
-import { BookmarkIcon, HistoryIcon, MoreHorizontalIcon, TerminalIcon } from "lucide-react";
-import type { RefObject } from "react";
-
-import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  ArrowDownToLineIcon,
+  ArrowUpToLineIcon,
+  BookmarkCheckIcon,
+  BookmarkIcon,
+  BookmarkPlusIcon,
+  BookmarkXIcon,
+  BookOpenIcon,
+  EraserIcon,
+  FileCodeIcon,
+  FolderOpenIcon,
+  HistoryIcon,
+  LibraryIcon,
+  MoreHorizontalIcon,
+  SaveAllIcon,
+  SaveIcon,
+  TerminalIcon,
+  TextSearchIcon,
+  WandSparklesIcon,
+  WrenchIcon,
+} from "lucide-react";
+import type { RefObject } from "react";
+import {
+  IconMenu,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuSeparator,
+  IconMenuSubContent,
+  IconMenuSubTrigger,
+} from "@/components/icon-menu";
+import { Button } from "@/components/ui/button";
+import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 
 import { EDITOR_ACTIONS } from "./constants";
@@ -57,7 +76,7 @@ export function QueryToolsMenu({
   onClearEditor,
 }: QueryToolsMenuProps) {
   return (
-    <DropdownMenu modal={false}>
+    <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           size="icon-sm"
@@ -68,93 +87,130 @@ export function QueryToolsMenu({
           <MoreHorizontalIcon className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-64 whitespace-nowrap">
-        <DropdownMenuItem data-tour="query-history" onClick={onOpenHistory}>
-          <HistoryIcon className="size-3.5" />
-          Verlauf & Gespeichertes
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {shortcutLabel("query.history")}
-          </span>
-        </DropdownMenuItem>
+      <IconMenuContent>
+        <IconMenuItem
+          data-tour="query-history"
+          icon={<HistoryIcon />}
+          label="Verlauf & Gespeichertes"
+          shortcut={shortcutLabel("query.history")}
+          onSelect={onOpenHistory}
+        />
         {serverOutput && (
-          <DropdownMenuItem onClick={onOpenOutput} disabled={!connected}>
-            <TerminalIcon className="size-3.5" />
-            Server-Ausgabe öffnen
-          </DropdownMenuItem>
+          <IconMenuItem
+            icon={<TerminalIcon />}
+            label="Server-Ausgabe öffnen"
+            onSelect={onOpenOutput}
+            disabled={!connected}
+          />
         )}
+        <IconMenuSeparator />
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <BookmarkIcon className="size-3.5" />
-            Bibliothek
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={onOpenSave} disabled={!hasSql}>
-              Query speichern…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenSnippets}>Snippets verwalten…</DropdownMenuItem>
-          </DropdownMenuSubContent>
+          <IconMenuSubTrigger icon={<LibraryIcon />} label="Bibliothek" />
+          <IconMenuSubContent>
+            <IconMenuItem
+              icon={<BookmarkPlusIcon />}
+              label="Query speichern…"
+              onSelect={onOpenSave}
+              disabled={!hasSql}
+            />
+            <IconMenuItem
+              icon={<BookOpenIcon />}
+              label="Snippets verwalten…"
+              onSelect={onOpenSnippets}
+            />
+          </IconMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Editor-Werkzeuge</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={onOpenTabSearch}>
-              In Query-Tabs suchen
-              <span className="ml-auto text-[10px] text-muted-foreground">Mod+Shift+F</span>
-            </DropdownMenuItem>
+          <IconMenuSubTrigger icon={<WrenchIcon />} label="Editor-Werkzeuge" />
+          <IconMenuSubContent>
+            <IconMenuItem
+              icon={<TextSearchIcon />}
+              label="In Query-Tabs suchen"
+              shortcut="Mod+Shift+F"
+              onSelect={onOpenTabSearch}
+            />
             {isSql && (
-              <DropdownMenuItem onClick={() => editorApiRef.current?.format()} disabled={!hasSql}>
-                SQL formatieren
-                <span className="ml-auto text-[10px] text-muted-foreground">
-                  {shortcutLabel("query.format")}
-                </span>
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<WandSparklesIcon />}
+                label="SQL formatieren"
+                shortcut={shortcutLabel("query.format")}
+                onSelect={() => editorApiRef.current?.format()}
+                disabled={!hasSql}
+              />
             )}
-            {EDITOR_ACTIONS.map(([id, label]) => (
-              <DropdownMenuItem key={id} onClick={() => editorApiRef.current?.action(id)}>
-                {label}
-              </DropdownMenuItem>
+            {EDITOR_ACTIONS.map(([id, label, Icon]) => (
+              <IconMenuItem
+                key={id}
+                icon={<Icon />}
+                label={label}
+                onSelect={() => editorApiRef.current?.action(id)}
+              />
             ))}
-          </DropdownMenuSubContent>
+          </IconMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Lesezeichen</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={() => editorApiRef.current?.toggleBookmark()}>
-              {`Setzen/entfernen (${shortcutLabel("query.bookmark")})`}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => editorApiRef.current?.gotoBookmark("next")}
+          <IconMenuSubTrigger icon={<BookmarkIcon />} label="Lesezeichen" />
+          <IconMenuSubContent>
+            <IconMenuItem
+              icon={<BookmarkCheckIcon />}
+              label="Setzen/entfernen"
+              shortcut={shortcutLabel("query.bookmark")}
+              onSelect={() => editorApiRef.current?.toggleBookmark()}
+            />
+            <IconMenuItem
+              icon={<ArrowDownToLineIcon />}
+              label="Nächstes"
+              shortcut={shortcutLabel("query.nextBookmark")}
+              onSelect={() => editorApiRef.current?.gotoBookmark("next")}
               disabled={bookmarkCount === 0}
-            >
-              {`Nächstes (${shortcutLabel("query.nextBookmark")})`}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => editorApiRef.current?.gotoBookmark("previous")}
+            />
+            <IconMenuItem
+              icon={<ArrowUpToLineIcon />}
+              label="Vorheriges"
+              shortcut={shortcutLabel("query.prevBookmark")}
+              onSelect={() => editorApiRef.current?.gotoBookmark("previous")}
               disabled={bookmarkCount === 0}
-            >
-              {`Vorheriges (${shortcutLabel("query.prevBookmark")})`}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onClearBookmarks} disabled={bookmarkCount === 0}>
-              Alle entfernen
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
+            />
+            <IconMenuItem
+              icon={<BookmarkXIcon />}
+              label="Alle entfernen"
+              variant="destructive"
+              onSelect={onClearBookmarks}
+              disabled={bookmarkCount === 0}
+            />
+          </IconMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Datei</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={onFileOpen}>SQL-Datei öffnen…</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onFileSave(false)} disabled={!hasSql && !filePath}>
-              {filePath ? "Speichern" : "Speichern unter…"}
-            </DropdownMenuItem>
+          <IconMenuSubTrigger icon={<FileCodeIcon />} label="Datei" />
+          <IconMenuSubContent>
+            <IconMenuItem
+              icon={<FolderOpenIcon />}
+              label="SQL-Datei öffnen…"
+              onSelect={onFileOpen}
+            />
+            <IconMenuItem
+              icon={<SaveIcon />}
+              label={filePath ? "Speichern" : "Speichern unter…"}
+              onSelect={() => onFileSave(false)}
+              disabled={!hasSql && !filePath}
+            />
             {filePath && (
-              <DropdownMenuItem onClick={() => onFileSave(true)}>Speichern unter…</DropdownMenuItem>
+              <IconMenuItem
+                icon={<SaveAllIcon />}
+                label="Speichern unter…"
+                onSelect={() => onFileSave(true)}
+              />
             )}
-            <DropdownMenuItem onClick={onClearEditor} disabled={isRunning}>
-              Editor leeren
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
+            <IconMenuItem
+              icon={<EraserIcon />}
+              label="Editor leeren"
+              variant="destructive"
+              onSelect={onClearEditor}
+              disabled={isRunning}
+            />
+          </IconMenuSubContent>
         </DropdownMenuSub>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </IconMenuContent>
+    </IconMenu>
   );
 }

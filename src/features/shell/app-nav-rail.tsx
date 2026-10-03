@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Plug } from "lucide-react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { type AppSidebarNavItem, appSidebarData } from "@/features/sidebar/app-sidebar-data";
-import { useConnectionsStore } from "@/lib/connections";
+import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { isEasyModeRouteVisible } from "@/lib/easy-mode";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
@@ -20,8 +20,8 @@ export function AppNavRail() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const seenFeatures = useSeenNewFeatures();
-  const hasConnections = useConnectionsStore((state) => state.connections.length > 0);
-  const navItems = hasConnections
+  const activeConnection = useActiveConnection();
+  const navItems = activeConnection
     ? appSidebarData.navMain.filter(
         (item) =>
           isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),

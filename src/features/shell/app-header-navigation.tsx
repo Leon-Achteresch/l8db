@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Menu } from "lucide-react";
+import { ChevronRight, Menu, Plug } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -9,7 +9,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { type AppSidebarNavItem, appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { isEasyModeRouteVisible } from "@/lib/easy-mode";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
@@ -25,6 +26,8 @@ const COLLAPSIBLE_URLS = new Set([
   "/query-builder",
 ]);
 
+const connectItem: AppSidebarNavItem = { title: "Verbindungen", url: "/connections", icon: Plug };
+
 function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
 }
@@ -33,13 +36,18 @@ export function AppHeaderNavigation() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const seenFeatures = useSeenNewFeatures();
-  const navItems = appSidebarData.navMain.filter(
-    (item) =>
-      isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
-  );
+  const activeConnection = useActiveConnection();
+  const navItems = activeConnection
+    ? appSidebarData.navMain.filter(
+        (item) =>
+          isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
+      )
+    : [connectItem];
   const activeUrl = useRouterSelect(
     (state) =>
-      appSidebarData.navMain.find((item) => isNavActive(item.url, state.location.pathname))?.url,
+      [...appSidebarData.navMain, connectItem].find((item) =>
+        isNavActive(item.url, state.location.pathname),
+      )?.url,
   );
 
   const [expanded, setExpanded] = useState(false);
@@ -87,7 +95,9 @@ export function AppHeaderNavigation() {
       >
         l8db
       </Link>
-      <div className="hidden items-center gap-1 @min-[54rem]:flex">
+      <div
+        className={cn("items-center gap-1", activeConnection ? "hidden @min-[54rem]:flex" : "flex")}
+      >
         {primaryItems.map(renderItem)}
         <AnimatePresence initial={false}>
           {expanded && extraItems.length > 0 && (
@@ -123,7 +133,7 @@ export function AppHeaderNavigation() {
           </Tooltip>
         )}
       </div>
-      <div className="@min-[54rem]:hidden">
+      <div className={cn("@min-[54rem]:hidden", !activeConnection && "hidden")}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

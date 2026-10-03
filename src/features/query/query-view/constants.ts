@@ -1,3 +1,15 @@
+import {
+  CommandIcon,
+  FoldVerticalIcon,
+  HashIcon,
+  type LucideIcon,
+  MessageSquareCodeIcon,
+  ReplaceIcon,
+  SearchIcon,
+  SquareCodeIcon,
+  TextSelectIcon,
+  UnfoldVerticalIcon,
+} from "lucide-react";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import type { BookmarkSlots } from "@/lib/table-tabs";
 
@@ -11,14 +23,14 @@ export const SCRIPT_MODE_NOTE: Record<ScriptRunMode, string> = {
   autocommit: "Autocommit je Statement",
 };
 
-export const EDITOR_ACTIONS: string[][] = [
-  ["actions.find", "Suchen"],
-  ["editor.action.startFindReplaceAction", "Suchen und ersetzen"],
-  ["editor.action.quickCommand", "Editor-Befehlspalette"],
-  ["editor.action.gotoLine", "Gehe zu Zeile"],
-  ["editor.action.commentLine", "Zeilenkommentar umschalten"],
-  ["editor.action.blockComment", "Blockkommentar umschalten"],
-  ["editor.action.foldAll", "Alles einklappen"],
-  ["editor.action.unfoldAll", "Alles aufklappen"],
-  ["editor.action.selectHighlights", "Alle Vorkommen auswählen"],
+export const EDITOR_ACTIONS: [string, string, LucideIcon][] = [
+  ["actions.find", "Suchen", SearchIcon],
+  ["editor.action.startFindReplaceAction", "Suchen und ersetzen", ReplaceIcon],
+  ["editor.action.quickCommand", "Editor-Befehlspalette", CommandIcon],
+  ["editor.action.gotoLine", "Gehe zu Zeile", HashIcon],
+  ["editor.action.commentLine", "Zeilenkommentar umschalten", MessageSquareCodeIcon],
+  ["editor.action.blockComment", "Blockkommentar umschalten", SquareCodeIcon],
+  ["editor.action.foldAll", "Alles einklappen", FoldVerticalIcon],
+  ["editor.action.unfoldAll", "Alles aufklappen", UnfoldVerticalIcon],
+  ["editor.action.selectHighlights", "Alle Vorkommen auswählen", TextSelectIcon],
 ];

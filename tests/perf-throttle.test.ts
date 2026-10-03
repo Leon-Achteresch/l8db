@@ -216,6 +216,32 @@ test.skipIf(!ENABLED)(
   60000,
 );
 
+for (const view of ["/", "/tables/public/table_0000", "/query"]) {
+  test.skipIf(!ENABLED)(
+    `Sidebar ein- und ausklappen auf ${view}`,
+    async () => {
+      await navigate(view);
+      await page.waitForTimeout(2500);
+      await page.mouse.click(800, 12);
+      const sidebarHidden = () =>
+        page.evaluate(() => {
+          const link = document.querySelector('a[data-name="table_0000"]');
+          const box = link?.getBoundingClientRect();
+          return !box || box.right <= 0 || Boolean(link?.closest("[inert]"));
+        });
+      const toggle = async () => {
+        await page.keyboard.press("ControlOrMeta+b");
+        await page.waitForTimeout(700);
+      };
+      expectSmooth(`Sidebar zuklappen ${view}`, await sample(toggle));
+      expect(await sidebarHidden()).toBe(true);
+      expectSmooth(`Sidebar aufklappen ${view}`, await sample(toggle));
+      expect(await sidebarHidden()).toBe(false);
+    },
+    60000,
+  );
+}
+
 test.skipIf(!ENABLED)(
   "Erweiterte Suche blockiert den ersten Klick nicht",
   async () => {
@@ -536,10 +562,15 @@ test.skipIf(!ENABLED)(
     await page.waitForSelector('tbody tr[data-index="0"]');
     await page.waitForTimeout(700);
     const exportClick = await measureClick("Tabellen-Export", () =>
-      page.locator('[data-tour="table-toolbar"]').getByRole("button", { name: "Export" }).click(),
+      page
+        .locator('[data-tour="table-toolbar"]')
+        .getByRole("button", { name: "Weitere Aktionen" })
+        .click(),
     );
+    await page.getByRole("menuitem", { name: "Export" }).click();
     expect(exportClick).toBeLessThanOrEqual(Math.max(72, RATE * 18));
     await page.getByRole("menuitem", { name: "Als CSV exportieren…" }).waitFor();
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await page.getByRole("menuitem", { name: "Als CSV exportieren…" }).waitFor({ state: "hidden" });
   },

@@ -1,3 +1,4 @@
+mod ai;
 mod appwrite;
 mod baas_file;
 mod check_cli;
@@ -55,6 +56,12 @@ pub fn run() {
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
+    if let Some(index) = args.iter().position(|arg| arg == "--ai-mcp-relay") {
+        if let Some(path) = args.get(index + 1) {
+            ai::relay(path);
+        }
+        return;
+    }
     desktop::install_panic_hook();
     let initial_files = std::env::current_dir()
         .map(|cwd| file_open::actions_from_args(&args, &cwd))
@@ -101,6 +108,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                ai::close_window(window);
                 windows::forget(window);
             }
             #[cfg(target_os = "windows")]
@@ -111,10 +119,20 @@ pub fn run() {
         .manage(community_extensions::ExtensionStoreLock::default())
         .manage(file_open::PendingOpenFiles::new(initial_files))
         .manage(windows::WindowConnections::default())
+        .manage(std::sync::Arc::new(ai::AiState::default()))
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            ai::ai_environment,
+            ai::ai_status,
+            ai::ai_set_key,
+            ai::ai_models,
+            ai::ai_skills,
+            ai::ai_run,
+            ai::ai_cancel,
+            ai::ai_approve,
+            ai::ai_respond,
             desktop::set_crash_reporting,
             convex::convex_connect,
             convex::convex_profiles,

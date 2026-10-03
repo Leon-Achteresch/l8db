@@ -10,15 +10,10 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   type Groupable,
   type HostGroupRule,
@@ -122,24 +117,27 @@ export function ConnectionServerGroupSection({
               Schema = User
             </Button>
           )}
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-xs" aria-label={`${group.label} Aktionen`}>
                 <MoreHorizontal className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={() => toggleServerFavorite(group.key)}>
-                <Star
-                  className={
-                    favoriteServerKeys.includes(group.key)
-                      ? "size-3.5 fill-current text-amber-500"
-                      : "size-3.5"
-                  }
-                />
-                {favoriteServerKeys.includes(group.key) ? "Aus Favoriten" : "Als Favorit"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
+            <IconMenuContent>
+              <IconMenuItem
+                icon={
+                  <Star
+                    className={
+                      favoriteServerKeys.includes(group.key) ? "fill-current text-amber-500" : ""
+                    }
+                  />
+                }
+                label={favoriteServerKeys.includes(group.key) ? "Aus Favoriten" : "Als Favorit"}
+                onSelect={() => toggleServerFavorite(group.key)}
+              />
+              <IconMenuItem
+                icon={<Group />}
+                label={group.ruleId ? "Gruppierung bearbeiten" : "Ähnliche Hosts gruppieren"}
                 onSelect={() => {
                   const first = group.connections[0];
                   setRulesDialog({
@@ -149,32 +147,29 @@ export function ConnectionServerGroupSection({
                         : { name: "", pattern: suggestHostPattern(first) },
                   });
                 }}
-              >
-                <Group className="size-3.5" />
-                {group.ruleId ? "Gruppierung bearbeiten" : "Ähnliche Hosts gruppieren"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              />
+              <IconMenuSeparator />
+              <IconMenuItem
+                icon={<ArrowUp />}
+                label="Nach oben"
                 disabled={allGroups[0]?.key === group.key}
                 onSelect={() => moveServerGroup(group.key, -1)}
-              >
-                <ArrowUp className="size-3.5" />
-                Nach oben
-              </DropdownMenuItem>
-              <DropdownMenuItem
+              />
+              <IconMenuItem
+                icon={<ArrowDown />}
+                label="Nach unten"
                 disabled={allGroups.at(-1)?.key === group.key}
                 onSelect={() => moveServerGroup(group.key, 1)}
-              >
-                <ArrowDown className="size-3.5" />
-                Nach unten
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteGroup(group)}>
-                <Trash2 className="size-3.5" />
-                Alle löschen
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              />
+              <IconMenuSeparator />
+              <IconMenuItem
+                icon={<Trash2 />}
+                label="Alle löschen"
+                variant="destructive"
+                onSelect={() => setDeleteGroup(group)}
+              />
+            </IconMenuContent>
+          </IconMenu>
         </div>
       }
     >
