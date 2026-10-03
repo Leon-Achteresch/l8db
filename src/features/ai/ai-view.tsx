@@ -625,12 +625,51 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 }
               }}
               leadingAction={
-                runId && (
-                  <AgentProgress
-                    label={runStatus || "Arbeitet …"}
-                    className="min-w-0 gap-1 text-[10px] [&>span:first-child]:hidden [&>span:last-child]:hidden"
-                  />
-                )
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Skills und MCP-Server"
+                        className="size-8 shrink-0 rounded-full"
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      side="top"
+                      className="w-72 max-w-[calc(100vw-32px)] rounded-2xl p-0 shadow-lg"
+                      aria-label="Skills und MCP-Server"
+                    >
+                      <AiContext
+                        connections={connections}
+                        activeId={activeId}
+                        mentioned={mentioned}
+                        setMentioned={setMentioned}
+                        skills={skills}
+                        selectedSkills={selectedSkills}
+                        setSelectedSkills={setSelectedSkills}
+                        servers={state.servers}
+                        selectedServers={selectedServers}
+                        setSelectedServers={setSelectedServers}
+                        allowWrites={allowWrites}
+                        setAllowWrites={setAllowWrites}
+                        allowDdl={allowDdl}
+                        setAllowDdl={setAllowDdl}
+                        disabled={Boolean(runId)}
+                        part="tools"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {runId && (
+                    <AgentProgress
+                      label={runStatus || "Arbeitet …"}
+                      className="min-w-0 gap-1 text-[10px] [&>span:first-child]:hidden [&>span:last-child]:hidden"
+                    />
+                  )}
+                </>
               }
               trailingAction={
                 <>
@@ -674,7 +713,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                   className="w-72 max-w-[calc(100vw-32px)] rounded-2xl p-0 shadow-lg"
                   aria-label="AI-Kontext"
                 >
-                  {" "}
                   <AiContext
                     connections={connections}
                     activeId={activeId}
@@ -691,6 +729,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                     allowDdl={allowDdl}
                     setAllowDdl={setAllowDdl}
                     disabled={Boolean(runId)}
+                    part="connections"
                   />
                 </PopoverContent>
               </Popover>
