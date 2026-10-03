@@ -104,9 +104,7 @@ export function ChartBuilderPreview({
                 <span
                   className={cn(
                     "rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                    delta >= 0
-                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                      : "bg-rose-500/10 text-rose-700 dark:text-rose-400",
+                    delta >= 0 ? "bg-lime-300/70 text-lime-950" : "bg-rose-200/80 text-rose-950",
                   )}
                 >
                   <AnimatedNumber
