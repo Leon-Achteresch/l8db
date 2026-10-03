@@ -86,6 +86,7 @@ fn captured_run(allowed: bool) -> (Run, Arc<Mutex<Vec<Value>>>) {
     });
     (
         Run {
+            scope: Default::default(),
             id: "byok-e2e-run".into(),
             owner: "byok-e2e-window".into(),
             plan_only: false,

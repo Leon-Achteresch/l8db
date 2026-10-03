@@ -64,6 +64,7 @@ export function AppHeader() {
   const update = useVisibleUpdate();
   const hasNewSettingsFeatures = useHasNewFeatures("settings");
   const hasNewVersioningFeatures = useHasNewFeatures("versioning");
+  const hasNewAiFeatures = useHasNewFeatures("ai");
 
   useWindowTitle();
 
@@ -308,6 +309,9 @@ export function AppHeader() {
             }}
           >
             <Sparkles className="size-4" strokeWidth={1.75} />
+            {hasNewAiFeatures && !aiOpen && !aiPage ? (
+              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+            ) : null}
           </button>
         </Tooltip>
         {!easyMode && (

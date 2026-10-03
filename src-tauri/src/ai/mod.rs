@@ -4,7 +4,9 @@ mod byok;
 mod byok_e2e_tests;
 mod cli;
 mod context;
+mod files;
 mod integrations;
+pub mod knowledge;
 mod rpc;
 mod runtime;
 mod types;
@@ -100,8 +102,8 @@ pub async fn ai_status(profile: Profile) -> Result<ProviderStatus, String> {
         .is_some();
     if !is_cli(&profile.provider) {
         return Ok(ProviderStatus {
+            installed: !byok::local(&profile.provider) || byok::reachable(&profile).await,
             provider: profile.provider,
-            installed: true,
             version: None,
             key_stored,
         });
@@ -262,6 +264,7 @@ pub async fn ai_run(
         || request.connections.len() > 20
         || request.servers.len() > 20
         || request.skills.len() > 20
+        || request.attachments.len() > 10
     {
         return Err("Sitzungskontext ist zu groß. Neues Gespräch starten.".into());
     }
@@ -297,6 +300,10 @@ pub async fn ai_run(
         runs.insert(key, cancel);
     }
     let run = Arc::new(runtime::Run {
+        scope: runtime::RunScope {
+            connections: request.connections.clone(),
+            attachments: request.attachments.clone(),
+        },
         id: request.run_id.clone(),
         owner: window.label().into(),
         plan_only: context::is_plan(&request),

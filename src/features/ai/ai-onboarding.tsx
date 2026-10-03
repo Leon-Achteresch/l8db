@@ -5,6 +5,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  HardDrive,
   KeyRound,
   Loader2,
   MessageSquareText,
@@ -19,7 +20,8 @@ import { useId, useState } from "react";
 import { ThesvgIcon } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { aiReady } from "@/lib/ai/setup";
+import { safeEndpoint } from "@/lib/ai/context";
+import { aiCheck, aiReady } from "@/lib/ai/setup";
 import { AI_PROVIDERS, useAiStore } from "@/lib/ai/store";
 import { copyText } from "@/lib/clipboard";
 import { aiSetKey, aiStatus } from "@/lib/db/ai";
@@ -30,7 +32,16 @@ import { aiProviderSvg } from "./ai-provider-icons";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const STEPS = ["Zugang", "Anbieter", "Verbinden", "Fertig"];
-const DETAILS: Record<string, { text: string; install?: string; keyUrl?: string }> = {
+type Access = "cli" | "key" | "local";
+const ACCESS: Record<Access, string[]> = {
+  cli: ["codex", "claude", "gemini-cli", "opencode", "copilot"],
+  key: ["openai", "anthropic", "google"],
+  local: ["ollama", "lmstudio"],
+};
+const DETAILS: Record<
+  string,
+  { text: string; install?: string; keyUrl?: string; download?: string; model?: string }
+> = {
   codex: { text: "OpenAI Codex mit deinem ChatGPT-Abo", install: "@openai/codex" },
   claude: { text: "Claude Code mit deinem Claude-Abo", install: "@anthropic-ai/claude-code" },
   "gemini-cli": {
@@ -51,10 +62,19 @@ const DETAILS: Record<string, { text: string; install?: string; keyUrl?: string 
     text: "Gemini-Modelle über Google AI Studio",
     keyUrl: "https://aistudio.google.com/apikey",
   },
+  ollama: {
+    text: "Open-Source-Modelle wie Llama, Qwen oder Mistral, komplett offline",
+    download: "https://ollama.com/download",
+    model: "ollama pull qwen3",
+  },
+  lmstudio: {
+    text: "Lokale Modelle mit grafischer Oberfläche",
+    download: "https://lmstudio.ai",
+  },
 };
 const FEATURES = [
   { icon: MessageSquareText, text: "Fragen zu deinen Daten in natürlicher Sprache" },
-  { icon: Wand2, text: "SQL schreiben, erklären und optimieren" },
+  { icon: Wand2, text: "Antworten als Diagramm oder Tabelle" },
   { icon: ShieldCheck, text: "Schreibzugriffe nur mit deiner Freigabe" },
 ];
 const PANEL = {
@@ -95,7 +115,10 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
   const profiles = useAiStore((state) => state.profiles);
   const saveProfile = useAiStore((state) => state.saveProfile);
   const [[step, dir], setStep] = useState([0, 1]);
-  const [cli, setCli] = useState(true);
+  const [access, setAccess] = useState<Access>("cli");
+  const cli = access === "cli";
+  const local = access === "local";
+  const [checking, setChecking] = useState(false);
   const [providerId, setProviderId] = useState("");
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -111,25 +134,34 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
     setProblem("");
     setStep([next, next > step ? 1 : -1]);
   };
-  const verify = async () => {
+  const verify = async (skipCheck = false) => {
     if (!profile) return;
     setBusy(true);
     setProblem("");
     try {
-      if (!cli) await aiSetKey(profile.id, key.trim());
+      if (access === "key") await aiSetKey(profile.id, key.trim());
       const status = await aiStatus(profile);
-      if (aiReady(profile, status)) {
-        setKey("");
-        setVersion(status.version?.split("\n")[0] ?? "");
-        go(3);
-      } else
+      if (!aiReady(profile, status)) {
         setProblem(
           cli
             ? `${provider?.name} wurde nicht gefunden. Liegt die CLI nicht im PATH, trage unten den vollständigen Pfad ein.`
-            : "Der Schlüssel konnte nicht gespeichert werden.",
+            : local
+              ? `${provider?.name} ist unter ${profile.endpoint} nicht erreichbar. Läuft der Server?`
+              : "Der Schlüssel konnte nicht gespeichert werden.",
         );
+        return;
+      }
+      if (!skipCheck) {
+        setChecking(true);
+        const model = await aiCheck(profile).finally(() => setChecking(false));
+        setVersion(model ? `Antwort von ${model} erhalten.` : "Testantwort erhalten.");
+      } else setVersion(status.version?.split("\n")[0] ?? "");
+      setKey("");
+      go(3);
     } catch (error) {
-      setProblem(String(error));
+      setProblem(
+        `Der Test ist fehlgeschlagen: ${String(error).replace(/^Error: /, "")}${cli ? " Bist du in der CLI angemeldet?" : ""}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -184,19 +216,25 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
         </motion.ul>
         <motion.div variants={ITEM} className="space-y-2">
           <h3 className="text-xs font-medium">Wie möchtest du KI nutzen?</h3>
-          <div className="grid gap-2 @md:grid-cols-2">
+          <div className="grid gap-2 @md:grid-cols-3">
             {[
               {
-                value: true,
+                value: "cli" as const,
                 icon: TerminalSquare,
                 title: "Lokaler CLI-Agent",
                 text: "Nutzt dein bestehendes Abo, z. B. Claude Code oder Codex.",
               },
               {
-                value: false,
+                value: "key" as const,
                 icon: KeyRound,
                 title: "Eigener API-Schlüssel",
                 text: "Bring your own key für OpenAI, Anthropic oder Google.",
+              },
+              {
+                value: "local" as const,
+                icon: HardDrive,
+                title: "Lokales Modell",
+                text: "Ollama oder LM Studio. Keine Daten verlassen deinen Rechner.",
               },
             ].map((entry) => (
               <button
@@ -204,7 +242,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
                 type="button"
                 className={card(false)}
                 onClick={() => {
-                  setCli(entry.value);
+                  setAccess(entry.value);
                   setProviderId("");
                   go(1);
                 }}
@@ -229,11 +267,13 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
           <p className="text-xs text-muted-foreground">
             {cli
               ? "Welchen Agenten möchtest du verwenden? Du kannst später jederzeit wechseln."
-              : "Für welchen Anbieter hast du einen API-Schlüssel?"}
+              : local
+                ? "Welche lokale Software nutzt du?"
+                : "Für welchen Anbieter hast du einen API-Schlüssel?"}
           </p>
         </motion.div>
         <ul className="grid gap-2 @md:grid-cols-2">
-          {AI_PROVIDERS.filter((entry) => entry.cli === cli && DETAILS[entry.id]).map((entry) => (
+          {AI_PROVIDERS.filter((entry) => ACCESS[access].includes(entry.id)).map((entry) => (
             <motion.li key={entry.id} variants={ITEM}>
               <button
                 type="button"
@@ -308,6 +348,68 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
               </p>
             </motion.li>
           </ol>
+        ) : local && profile ? (
+          <ol className="space-y-3 text-xs">
+            <motion.li variants={ITEM} className="space-y-1">
+              <span className="font-medium">1. Installieren und starten</span>
+              <p className="text-muted-foreground">
+                Lade{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => void openUrl(details.download ?? "")}
+                >
+                  {provider?.name.replace(" · Lokal", "")}
+                </button>{" "}
+                herunter und starte es.
+                {providerId === "lmstudio" &&
+                  " Starte danach unter „Developer“ den lokalen Server."}
+              </p>
+            </motion.li>
+            <motion.li variants={ITEM} className="space-y-1.5">
+              <span className="font-medium">2. Modell laden</span>
+              {details.model ? (
+                <div className="flex items-center gap-2 rounded-xl border bg-muted/40 py-1.5 pr-1.5 pl-3 font-mono text-[11px]">
+                  <span className="text-muted-foreground select-none">$</span>
+                  <code className="min-w-0 flex-1 truncate">{details.model}</code>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label="Befehl kopieren"
+                    onClick={() => void copyText(details.model ?? "")}
+                  >
+                    <Copy className="size-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  Suche in LM Studio ein Modell, z. B. Qwen oder Llama, und lade es.
+                </p>
+              )}
+              <p className="text-muted-foreground">
+                Für gute Antworten mit Tabellen und Diagrammen eignen sich Modelle ab etwa 7
+                Milliarden Parametern mit Tool-Unterstützung.
+              </p>
+            </motion.li>
+            <motion.li variants={ITEM} className="space-y-1">
+              <label htmlFor={`${id}-endpoint`} className="font-medium">
+                3. Adresse prüfen
+              </label>
+              <Input
+                id={`${id}-endpoint`}
+                spellCheck={false}
+                className="font-mono"
+                defaultValue={profile.endpoint}
+                onBlur={(event) => {
+                  try {
+                    saveProfile({ ...profile, endpoint: safeEndpoint(event.target.value) });
+                  } catch (error) {
+                    setProblem(String(error));
+                  }
+                }}
+              />
+            </motion.li>
+          </ol>
         ) : (
           <motion.div variants={ITEM} className="space-y-2 text-xs">
             <label htmlFor={`${id}-key`} className="flex items-center justify-between gap-2">
@@ -355,6 +457,11 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
                 className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs"
               >
                 <p className="text-destructive">{problem}</p>
+                {!busy && problem.startsWith("Der Test") && (
+                  <Button size="xs" variant="ghost" onClick={() => void verify(true)}>
+                    Ohne Test fortfahren
+                  </Button>
+                )}
                 {cli && profile && (
                   <label htmlFor={`${id}-binary`} className="block space-y-1">
                     <span className="text-muted-foreground">CLI-Befehl oder Pfad</span>
@@ -372,11 +479,17 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
         <motion.div variants={ITEM}>
           <Button
             className="w-full"
-            disabled={busy || (!cli && !key.trim())}
+            disabled={busy || (access === "key" && !key.trim())}
             onClick={() => void verify()}
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {cli ? "Installation prüfen" : "Speichern und prüfen"}
+            {checking
+              ? "Teste die Verbindung …"
+              : access === "key"
+                ? "Speichern und testen"
+                : cli
+                  ? "Installation testen"
+                  : "Verbindung testen"}
           </Button>
         </motion.div>
       </>

@@ -1,4 +1,4 @@
-use super::types::Event;
+use super::types::{Attachment, ConnectionContext, Event};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -12,7 +12,14 @@ pub struct AiState {
     pub approvals: Mutex<HashMap<String, oneshot::Sender<Value>>>,
 }
 
+#[derive(Default)]
+pub struct RunScope {
+    pub connections: Vec<ConnectionContext>,
+    pub attachments: Vec<Attachment>,
+}
+
 pub struct Run {
+    pub scope: RunScope,
     pub id: String,
     pub owner: String,
     pub plan_only: bool,

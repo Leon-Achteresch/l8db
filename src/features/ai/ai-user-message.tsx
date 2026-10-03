@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { AiSession } from "@/lib/ai/store";
 import type { AiMessage } from "@/lib/db/ai";
 import { cn } from "@/lib/utils";
+import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiBranchSwitcher } from "./ai-branch-switcher";
 import { AiCopyAction } from "./ai-copy-action";
 import { AiMessageTime } from "./ai-message-time";
@@ -81,6 +82,11 @@ export function AiUserMessage({
       aria-label="Deine Nachricht"
       className="group/message flex flex-col items-end gap-1"
     >
+      {message.attachments?.length ? (
+        <div className="flex max-w-[80%] justify-end">
+          <AiAttachmentChips files={message.attachments} />
+        </div>
+      ) : null}
       <div className="relative max-w-[80%] rounded-2xl bg-muted p-3 text-sm leading-relaxed">
         <div
           className={cn(

@@ -1,6 +1,9 @@
 import {
+  BookOpen,
+  ChartColumn,
   Database,
   Eye,
+  FileUp,
   Search,
   ShieldCheck,
   ShieldX,
@@ -9,13 +12,32 @@ import {
   Wrench,
 } from "lucide-react";
 import { parseAiDiff } from "@/lib/ai/diff";
+import { parseAiTable } from "@/lib/ai/result";
 import type { AiRichBlock } from "@/lib/ai/rich";
+import { AiResultCard } from "./ai-result-card";
+import { AiToolDetail } from "./ai-tool-detail";
 import { AiWorkRow } from "./ai-work-row";
 import { FileDiff } from "./beui/agents/file-diff";
 import { ImageGeneration } from "./beui/agents/image-generation";
 import { TodoList } from "./beui/agents/todo-list";
 
+const TOOL_NAMES: Record<string, string> = {
+  query: "Datenabfrage",
+  visualize: "Diagramm",
+  search: "Schemasuche",
+  describe: "Tabellenansicht",
+  connections: "Verbindungsliste",
+  execute: "Datenänderung",
+  dashboard: "Dashboard",
+  benchmark: "Benchmark",
+  knowledge: "KI-Wissen",
+  import_file: "Dateiimport",
+};
+
 function toolIcon(name: string) {
+  if (name === "visualize") return ChartColumn;
+  if (name === "knowledge") return BookOpen;
+  if (name === "import_file") return FileUp;
   if (/search|find|grep/i.test(name)) return Search;
   if (/query|sql|execute|benchmark/i.test(name)) return Database;
   if (/list|describe|read|get|schema|show/i.test(name)) return Eye;
@@ -37,8 +59,11 @@ export function AiRichContent({
     <div className="space-y-1">
       {blocks.map((block) => {
         if (block.type === "tool") {
-          if (!showWork) return null;
           const status = block.status === "running" && !running ? "cancelled" : block.status;
+          if (block.name === "visualize" && status === "success" && parseAiTable(block.output))
+            return <AiResultCard key={block.id} block={block} />;
+          if (!showWork) return null;
+          const name = TOOL_NAMES[block.name] ?? block.name;
           return (
             <AiWorkRow
               key={block.id}
@@ -47,14 +72,20 @@ export function AiRichContent({
               failed={status === "error"}
               label={
                 status === "running"
-                  ? `Führt ${block.name} aus`
+                  ? `${name} läuft`
                   : status === "error"
-                    ? `${block.name} fehlgeschlagen`
+                    ? `${name} fehlgeschlagen`
                     : status === "cancelled"
-                      ? `${block.name} abgebrochen`
-                      : `${block.name} ausgeführt`
+                      ? `${name} abgebrochen`
+                      : `${name} ausgeführt`
               }
-              detail={block.output || undefined}
+              detail={
+                block.sql || parseAiTable(block.output) ? (
+                  <AiToolDetail block={block} />
+                ) : (
+                  block.output || undefined
+                )
+              }
             />
           );
         }

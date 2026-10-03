@@ -12,7 +12,9 @@ export type AiProvider =
   | "openai"
   | "anthropic"
   | "google"
-  | "compatible";
+  | "compatible"
+  | "ollama"
+  | "lmstudio";
 export interface AiPricing {
   model: string;
   inputUsd?: number | null;
@@ -42,6 +44,24 @@ export interface AiServer {
   args: string[];
   url: string;
 }
+export interface AiAttachment {
+  name: string;
+  path: string;
+  format: "csv" | "json" | "ndjson" | "xlsx" | "parquet";
+  delimiter: string;
+  quote: string;
+  hasHeader: boolean;
+  sheet: string | null;
+  columns: string[];
+  types: string[];
+  rows: (string | null)[][];
+  totalRows: number | null;
+}
+export interface AiKnowledge {
+  notes: string;
+  glossary: { term: string; meaning: string }[];
+  tables: Record<string, { description: string; columns: Record<string, string> }>;
+}
 export interface AiMessage {
   id?: string;
   parentId?: string | null;
@@ -53,6 +73,7 @@ export interface AiMessage {
   stopped?: boolean;
   createdAt?: number;
   durationMs?: number;
+  attachments?: AiAttachment[];
 }
 export interface AiConnection {
   id: string;
@@ -64,6 +85,7 @@ export interface AiConnection {
   readOnly: boolean;
   environment: string | null;
   maskRules: MaskRule[];
+  defaultSchema: string | null;
 }
 export interface AiRunRequest {
   runId: string;
@@ -77,6 +99,7 @@ export interface AiRunRequest {
   servers: AiServer[];
   allowWrites: boolean;
   allowDdl: boolean;
+  attachments: AiAttachment[];
 }
 export interface AiEvent {
   kind: string;
@@ -116,3 +139,7 @@ export const aiApprove = (runId: string, approvalId: string, allow: boolean) =>
   invoke<void>("ai_approve", { runId, approvalId, allow });
 export const aiRespond = (runId: string, approvalId: string, answer: unknown) =>
   invoke<void>("ai_respond", { runId, approvalId, answer });
+export const aiKnowledgeGet = (connectionId: string) =>
+  invoke<AiKnowledge>("ai_knowledge_get", { connectionId });
+export const aiKnowledgeSet = (connectionId: string, knowledge: AiKnowledge) =>
+  invoke<AiKnowledge>("ai_knowledge_set", { connectionId, knowledge });

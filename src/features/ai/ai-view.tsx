@@ -1,26 +1,39 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { CircleCheck, CircleHelp, CircleX, LoaderCircle } from "lucide";
 import {
   ChevronDown,
   Database,
   History,
   ListPlus,
   Maximize2,
+  Minus,
+  PanelRightOpen,
   Plus,
   Settings2,
   X,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
+import { setAiDropHandler } from "@/lib/ai/drop-target";
+import { AI_KNOWLEDGE_PROMPT } from "@/lib/ai/prompts";
+import { aiThreadMarkdown } from "@/lib/ai/result";
 import { mergeAiRich, normalizeAiRich } from "@/lib/ai/rich";
 import { useAiSetupNeeded } from "@/lib/ai/setup";
-import { AI_PROVIDERS, type AiSession, useAiStore } from "@/lib/ai/store";
+import { AI_PROVIDERS, type AiSession, aiSessionConnection, useAiStore } from "@/lib/ai/store";
 import { aiLatestLeaf, aiThread } from "@/lib/ai/thread";
 import { mergeAiUsage } from "@/lib/ai/usage";
 import { useConnectionsStore } from "@/lib/connections";
 import {
+  type AiAttachment,
   type AiEvent,
   type AiMessage,
   type AiModels,
@@ -34,14 +47,20 @@ import {
 } from "@/lib/db/ai";
 import { useDbSelectionStore } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { IMPORT_FILE_EXTENSIONS } from "@/lib/import-file";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { AiApproval } from "./ai-approval";
 import { AiApprovalPicker } from "./ai-approval-picker";
+import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
+import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
 import { AiOnboarding } from "./ai-onboarding";
+import { AiPlusActions } from "./ai-plus-actions";
 import { AiProviderPicker } from "./ai-provider-picker";
 import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiSettings } from "./ai-settings";
+import { AiSuggestions } from "./ai-suggestions";
 import { AiTranscript } from "./ai-transcript";
 import { AiUsage } from "./ai-usage";
 import { AISidebar } from "./beui/agents/ai-sidebar";
@@ -52,13 +71,17 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const navigate = useNavigate();
   const state = useAiStore();
   const profile = state.profiles.find((entry) => entry.id === state.profileId) ?? state.profiles[0];
-  const session = state.sessions.find((entry) => entry.id === state.sessionId && !entry.deleted);
   const connections = useConnectionsStore((value) => value.connections);
   const activeId = useConnectionsStore((value) => value.activeId);
+  const sessions = state.sessions.filter(
+    (entry) => !entry.deleted && aiSessionConnection(entry) === activeId,
+  );
+  const session = sessions.find((entry) => entry.id === state.sessionId);
   const [cwd, setCwd] = useState("");
   const [prompt, setPrompt] = useState("");
   const [panelView, setView] = useState<"chat" | "settings" | "history">("chat");
-  const view = fullPage && panelView === "history" ? "chat" : panelView;
+  const minimized = state.minimized && !fullPage;
+  const view = minimized || (fullPage && panelView === "history") ? "chat" : panelView;
   const [contextOpen, setContextOpen] = useState(false);
   const [models, setModels] = useState<AiModels>({ models: [] });
   const [status, setStatus] = useState<AiStatus | null>(null);
@@ -72,7 +95,13 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const [allowDdl, setAllowDdl] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<AiEvent[]>([]);
-  const [queue, setQueue] = useState<{ id: string; text: string }[]>([]);
+  const [queue, setQueue] = useState<{ id: string; text: string; attachments: AiAttachment[] }[]>(
+    [],
+  );
+  const [attachments, setAttachments] = useState<AiAttachment[]>([]);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const plusNew = useHasNewFeatures("ai.chat.plus");
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [usage, setUsage] = useState<Record<string, unknown>>({});
   const [runStatus, setRunStatus] = useState("");
@@ -100,12 +129,72 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const liveSession = useRef<AiSession | null>(null);
   const usageRef = useRef<Record<string, unknown>>({});
   const features = useNewFeatureVisibility<HTMLElement>("ai.chat");
+  const minimizeFeature = useNewFeatureVisibility<HTMLButtonElement>(
+    !fullPage && !minimized ? "ai.chat.minimize" : undefined,
+  );
   const historyFeature = useNewFeatureVisibility<HTMLDivElement>(
     fullPage || view === "history" ? "ai.history" : undefined,
   );
   const provider = AI_PROVIDERS.find((entry) => entry.id === profile.provider) ?? AI_PROVIDERS[0];
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
-  const [setupNeeded, setSetupNeeded] = useAiSetupNeeded(state.open || fullPage);
+  const [setupNeeded, setSetupNeeded, readyIds] = useAiSetupNeeded(state.open || fullPage);
+  const autoPick = useRef(true);
+  useEffect(() => {
+    if (!autoPick.current || !readyIds.length) return;
+    autoPick.current = false;
+    if (!readyIds.includes(profile.id) && !session && !run.current)
+      useAiStore.getState().selectProfile(readyIds[0]);
+  }, [readyIds, profile.id, session]);
+  const asideRef = useRef<HTMLElement | null>(null);
+  const featureRef = features.ref;
+  const setAside = useCallback(
+    (element: HTMLElement | null) => {
+      asideRef.current = element;
+      featureRef(element);
+    },
+    [featureRef],
+  );
+  const addFiles = useCallback(async (paths: string[]) => {
+    const results = await Promise.allSettled(paths.map((path) => aiAttachment(path)));
+    const added = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    for (const result of results)
+      if (result.status === "rejected") toast.error(`Datei nicht lesbar: ${String(result.reason)}`);
+    setAttachments((files) =>
+      [...files, ...added.filter((file) => !files.some((entry) => entry.path === file.path))].slice(
+        0,
+        10,
+      ),
+    );
+    input.current?.focus();
+  }, []);
+  const pickFiles = () =>
+    void openDialog({
+      multiple: true,
+      directory: false,
+      filters: [
+        {
+          name: "Daten (CSV, Excel, JSON, Parquet)",
+          extensions: Object.values(IMPORT_FILE_EXTENSIONS).flat(),
+        },
+      ],
+    }).then((picked) => {
+      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+      if (paths.length) void addFiles(paths);
+    });
+  const visible = (state.open || fullPage) && !minimized;
+  useEffect(() => {
+    if (!visible) return;
+    return setAiDropHandler((paths, x, y) => {
+      const rect = asideRef.current?.getBoundingClientRect();
+      if (!rect || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return false;
+      const files = paths.filter(aiAttachable);
+      if (!files.length) return false;
+      void addFiles(files);
+      return true;
+    });
+  }, [visible, addFiles]);
   useEffect(() => {
     void aiEnvironment()
       .then((environment) => setCwd(environment.cwd))
@@ -157,6 +246,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setUsage({});
     setAllowWrites(false);
     setAllowDdl(false);
+    setAttachments([]);
   };
   const resolve = (id: string) =>
     setApprovals((entries) => entries.filter((entry) => String(entry.data.id) !== id));
@@ -198,6 +288,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       cwd,
       messages: [],
       connectionIds: [],
+      connectionId: useConnectionsStore.getState().activeId,
       updatedAt: Date.now(),
     };
     const resume =
@@ -212,15 +303,23 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     afterTool.current = false;
     try {
       const current = useConnectionsStore.getState();
+      const selection = useDbSelectionStore.getState();
       const selected = aiConnections(
         current.connections,
         current.activeId,
         mentioned,
-        useDbSelectionStore.getState().databaseByConnection,
+        selection.databaseByConnection,
+        selection.schemaByConnection,
       );
+      const files = [
+        ...new Map(
+          turn.flatMap((message) => message.attachments ?? []).map((file) => [file.path, file]),
+        ).values(),
+      ].slice(-10);
       const next: AiSession = {
         ...base,
         cwd,
+        failed: undefined,
         usageRequestedModel: profile.model,
         connectionIds: selected.map((connection) => connection.id),
         messages: [...base.messages, ...(user ? [user] : []), assistant],
@@ -252,6 +351,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           ),
           allowWrites,
           allowDdl,
+          attachments: files,
         },
         (event) => {
           if (run.current !== id) return;
@@ -275,8 +375,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               ...last,
               reasoning: (last.reasoning ?? "") + String(event.data.delta ?? ""),
             }));
-          else if (event.kind === "tool") afterTool.current = true;
-          else if (event.kind === "approval" || event.kind === "input") {
+          else if (event.kind === "tool") {
+            afterTool.current = true;
+            if (event.data.name === "import_file" && event.data.status === "completed")
+              void queryClient.invalidateQueries({ queryKey: ["tables"] });
+          } else if (event.kind === "approval" || event.kind === "input") {
             approvalTitles.current.set(
               String(event.data.id),
               String(event.data.title ?? "Agent-Entscheidung"),
@@ -331,17 +434,20 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               saveLive();
             }
           } else if (event.kind === "status") setRunStatus(String(event.data.status ?? ""));
-          else if (event.kind === "error")
+          else if (event.kind === "error") {
+            if (liveSession.current) liveSession.current = { ...liveSession.current, failed: true };
             updateLast((last) => ({
               ...last,
               error: String(event.data.message ?? "Agent fehlgeschlagen."),
             }));
+          }
         },
       );
     } catch (error) {
-      if (liveSession.current?.leafId === assistantId)
+      if (liveSession.current?.leafId === assistantId) {
+        liveSession.current = { ...liveSession.current, failed: true };
         updateLast((last) => ({ ...last, error: String(error) }));
-      else setError(String(error));
+      } else setError(String(error));
     } finally {
       if (liveSession.current?.leafId === assistantId) {
         updateLast((last) => ({
@@ -359,11 +465,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       input.current?.focus();
     }
   };
-  const send = (text = prompt) => {
+  const send = (text = prompt, files = attachments) => {
     if (!text.trim()) return;
     if (run.current) {
-      setQueue((entries) => [...entries, { id: crypto.randomUUID(), text: text.trim() }]);
+      setQueue((entries) => [
+        ...entries,
+        { id: crypto.randomUUID(), text: text.trim(), attachments: files },
+      ]);
       setPrompt("");
+      setAttachments([]);
       return;
     }
     void runTurn(
@@ -374,14 +484,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         role: "user",
         text: text.trim(),
         createdAt: Date.now(),
+        ...(files.length ? { attachments: files } : {}),
       },
-      () => setPrompt(""),
+      () => {
+        setPrompt("");
+        setAttachments([]);
+      },
     );
   };
+  const ask = (text: string) => send(text, []);
   useEffect(() => {
     if (runId || !queue.length) return;
     setQueue(queue.slice(1));
-    send(queue[0].text);
+    send(queue[0].text, queue[0].attachments);
+  });
+  const pending = state.pendingPrompt;
+  useEffect(() => {
+    if (!pending || loading || runId || !(state.open || fullPage)) return;
+    useAiStore.setState({ pendingPrompt: "" });
+    setView("chat");
+    if (setupNeeded) setPrompt(pending);
+    else send(pending, []);
   });
   const edit = (message: AiMessage, text: string) => {
     const index = thread.indexOf(message);
@@ -392,6 +515,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       role: "user",
       text: text.trim(),
       createdAt: Date.now(),
+      ...(message.attachments ? { attachments: message.attachments } : {}),
     });
   };
   const retry = (message: AiMessage) => {
@@ -410,8 +534,21 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setApprovals([]);
     setQueue([]);
     setUsage({});
+    setAttachments([]);
     setView("chat");
     input.current?.focus();
+  };
+  const exportSession = (id: string) => {
+    const entry = state.sessions.find((item) => item.id === id);
+    if (!entry) return;
+    const name = entry.title.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "gespraech";
+    void save({ defaultPath: `${name}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] })
+      .then(async (path) => {
+        if (!path) return;
+        await writeTextFile(path, aiThreadMarkdown(entry.title, aiThread(entry)));
+        toast.success("Gespräch exportiert");
+      })
+      .catch((error) => toast.error(`Export fehlgeschlagen: ${String(error)}`));
   };
   const cancel = () => {
     if (!runId) return;
@@ -440,11 +577,26 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       <h2 className="mb-3 px-1 text-xs font-medium">Gespräche</h2>
       <AISidebar
         ariaLabel="Gesprächsverlauf"
-        items={state.sessions
-          .filter((entry) => !entry.deleted)
+        items={sessions
           .sort((a, b) => b.updatedAt - a.updatedAt)
           .map((entry) => ({ id: entry.id, label: entry.title, kind: "file" as const }))}
         activeId={state.sessionId}
+        renderIcon={(item) => {
+          const live = runId && liveSession.current?.id === item.id;
+          const failed = state.sessions.find((session) => session.id === item.id)?.failed;
+          const [icon, label, tone] = live
+            ? approvals.length
+              ? [CircleHelp, "Wartet auf Eingabe", "text-amber-500"]
+              : [LoaderCircle, "Arbeitet", "animate-spin text-primary"]
+            : failed
+              ? [CircleX, "Fehlgeschlagen", "text-destructive"]
+              : [CircleCheck, "Fertig", "text-emerald-500"];
+          return (
+            <span title={label} className="grid">
+              <MorphIcon icon={icon} className={`size-4 ${tone}`} />
+            </span>
+          );
+        }}
         onActiveChange={(id) => {
           if (runId) return;
           const entry = state.sessions.find((session) => session.id === id);
@@ -481,6 +633,16 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             </button>
             <button
               type="button"
+              className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
+              onClick={() => {
+                exportSession(item.id);
+                controls.close();
+              }}
+            >
+              Als Markdown exportieren
+            </button>
+            <button
+              type="button"
               disabled={Boolean(runId)}
               aria-label={`${item.label} löschen`}
               className="block min-h-8 w-full rounded-md px-2 text-left text-xs text-destructive hover:bg-muted"
@@ -505,7 +667,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         )}
         className="text-xs"
       />
-      {!state.sessions.some((entry) => !entry.deleted) && (
+      {!sessions.length && (
         <p className="px-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
       )}
     </>
@@ -538,35 +700,62 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const main = (
     <>
       {!fullPage && (
-        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
-          <span className="mr-auto text-sm font-medium">AI</span>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Im Arbeitsbereich öffnen"
-            onClick={() => void navigate({ to: "/ai" })}
-          >
-            <Maximize2 className="size-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant={view === "history" ? "secondary" : "ghost"}
-            aria-label="Gesprächsverlauf"
-            disabled={Boolean(runId)}
-            onClick={() => setView(view === "history" ? "chat" : "history")}
-          >
-            <History className="size-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Neues Gespräch"
-            disabled={Boolean(runId)}
-            onClick={newChat}
-          >
-            <Plus className="size-4" />
-          </Button>
-          {settingsButton}
+        <div
+          className={`shrink-0 items-center gap-1 border-b px-3 ${minimized ? "hidden h-11 pl-2 group-data-active/mini:flex" : "flex h-12"}`}
+        >
+          {minimized && (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Als Seitenleiste öffnen"
+              onClick={() => state.setMinimized(false)}
+            >
+              <PanelRightOpen className="size-4" />
+            </Button>
+          )}
+          <span className="mr-auto min-w-0 truncate text-sm font-medium">
+            {minimized ? (session?.title ?? "AI") : "AI"}
+          </span>
+          {!minimized && (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Im Arbeitsbereich öffnen"
+                onClick={() => void navigate({ to: "/ai" })}
+              >
+                <Maximize2 className="size-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant={view === "history" ? "secondary" : "ghost"}
+                aria-label="Gesprächsverlauf"
+                disabled={Boolean(runId)}
+                onClick={() => setView(view === "history" ? "chat" : "history")}
+              >
+                <History className="size-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Neues Gespräch"
+                disabled={Boolean(runId)}
+                onClick={newChat}
+              >
+                <Plus className="size-4" />
+              </Button>
+              {settingsButton}
+              <Button
+                ref={minimizeFeature.ref}
+                size="icon"
+                variant="ghost"
+                aria-label="Minimieren"
+                onClick={() => state.setMinimized(true)}
+              >
+                <Minus className="size-4" />
+              </Button>
+            </>
+          )}
           <Button
             size="icon"
             variant="ghost"
@@ -623,20 +812,29 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               </div>
             )}
           {thread.length > 0 && (
-            <AiTranscript
-              messages={thread}
-              session={session}
-              runId={runId}
-              runStatus={runStatus}
-              onEdit={edit}
-              onRetry={retry}
-              onBranch={switchBranch}
-            />
+            <div
+              className={
+                minimized
+                  ? "hidden h-[min(26rem,calc(85vh-18rem))] min-h-0 flex-col group-data-active/mini:flex"
+                  : "contents"
+              }
+            >
+              <AiTranscript
+                messages={thread}
+                session={session}
+                runId={runId}
+                runStatus={runStatus}
+                onEdit={edit}
+                onRetry={retry}
+                onBranch={switchBranch}
+                onAsk={ask}
+              />
+            </div>
           )}
           <div
-            className={`mx-auto w-full max-w-[46rem] shrink-0 px-3 pt-2 pb-3 ${thread.length ? "" : "my-auto"}`}
+            className={`mx-auto w-full max-w-[46rem] shrink-0 px-3 pt-2 pb-3 ${thread.length || minimized ? "" : "my-auto"}`}
           >
-            {!thread.length && (
+            {!thread.length && !minimized && (
               <h2 className="pb-6 text-center text-2xl font-normal tracking-tight">
                 {active ? `Was möchtest du über ${active.name} wissen?` : "Wie kann ich helfen?"}
               </h2>
@@ -676,6 +874,16 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                     <X className="size-2.5" />
                   </button>
                 ))}
+              </div>
+            )}
+            {attachments.length > 0 && (
+              <div className="mb-2">
+                <AiAttachmentChips
+                  files={attachments}
+                  onRemove={(path) =>
+                    setAttachments((files) => files.filter((file) => file.path !== path))
+                  }
+                />
               </div>
             )}
             {queue.length > 0 && (
@@ -718,6 +926,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             <PromptInput
               inputRef={input}
               aria-label="Nachricht an AI"
+              minRows={minimized ? 1 : undefined}
               placeholder={
                 runId && approvals.length
                   ? "Beantworte die Freigabe, um fortzufahren"
@@ -760,10 +969,13 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Skills und MCP-Server"
-                        className="size-8 shrink-0 rounded-full"
+                        aria-label="Anhänge, Wissen, Skills und MCP-Server"
+                        className="relative size-8 shrink-0 rounded-full"
                       >
                         <Plus className="size-4" />
+                        {plusNew && (
+                          <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+                        )}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent
@@ -772,6 +984,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                       className="w-72 max-w-[calc(100vw-32px)] rounded-2xl p-0 shadow-lg"
                       aria-label="Skills und MCP-Server"
                     >
+                      <AiPlusActions
+                        connectionName={active?.name}
+                        disabled={Boolean(runId)}
+                        onAttach={pickFiles}
+                        onKnowledge={() => setKnowledgeOpen(true)}
+                      />
                       <AiContext
                         connections={connections}
                         activeId={activeId}
@@ -811,9 +1029,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                   />
                 </>
               }
-              className={`rounded-xl bg-muted/15 shadow-xs ${runId && approvals.length ? "rounded-t-none" : ""}`}
+              className={`rounded-xl ${minimized ? "bg-background shadow-lg shadow-black/20 group-not-data-active/mini:flex group-not-data-active/mini:items-center group-not-data-active/mini:gap-1 group-not-data-active/mini:[&>div:last-child]:contents group-not-data-active/mini:[&>div:last-child>div:last-child]:order-2 group-not-data-active/mini:[&>textarea]:order-1 group-not-data-active/mini:[&>textarea]:min-w-0 group-not-data-active/mini:[&>textarea]:flex-1 group-not-data-active/mini:[&>textarea]:pt-0 group-not-data-active/mini:rounded-full group-not-data-active/mini:bg-background/80 group-not-data-active/mini:backdrop-blur-md group-not-data-active/mini:[&>div:last-child>div:last-child>*:not(:last-child)]:hidden group-data-active/mini:shadow-xs" : "bg-muted/15 shadow-xs"} ${runId && approvals.length ? "rounded-t-none" : ""}`}
             />
-            <div className="mt-1 flex items-center justify-between gap-2">
+            <div
+              className={`mt-1 items-center justify-between gap-2 ${minimized ? "hidden group-data-active/mini:flex" : "flex"}`}
+            >
               <Popover open={contextOpen} onOpenChange={setContextOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -872,6 +1092,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 onSettings={() => setView("settings")}
               />
             </div>
+            {!thread.length && !minimized && active && !runId && <AiSuggestions onAsk={ask} />}
           </div>
         </>
       )}
@@ -905,12 +1126,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     <ChatApp
       open={false}
       keyboardShortcut={false}
-      className="flex h-full min-h-0 flex-1 rounded-none border-0"
+      className="flex h-full min-h-0 flex-1 rounded-none border-0 group-not-data-active/mini:bg-transparent"
     >
       <aside
-        ref={features.ref}
+        ref={setAside}
         aria-label="AI-Arbeitsbereich"
-        className={`flex h-full min-h-0 w-full bg-background ${fullPage ? "flex-row" : "flex-col"}`}
+        className={`flex h-full min-h-0 w-full bg-background group-not-data-active/mini:bg-transparent ${fullPage ? "flex-row" : "flex-col"}`}
       >
         {fullPage && setupNeeded && view === "chat" ? (
           onboarding
@@ -940,6 +1161,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           main
         )}
       </aside>
+      {active && (
+        <AiKnowledgeDialog
+          connectionId={active.id}
+          connectionName={active.name}
+          open={knowledgeOpen}
+          onOpenChange={setKnowledgeOpen}
+          onGenerate={runId || setupNeeded ? undefined : () => ask(AI_KNOWLEDGE_PROMPT)}
+        />
+      )}
     </ChatApp>
   );
 }

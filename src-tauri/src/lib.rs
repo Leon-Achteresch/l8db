@@ -133,6 +133,8 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_approve,
             ai::ai_respond,
+            ai::knowledge::ai_knowledge_get,
+            ai::knowledge::ai_knowledge_set,
             desktop::set_crash_reporting,
             convex::convex_connect,
             convex::convex_profiles,

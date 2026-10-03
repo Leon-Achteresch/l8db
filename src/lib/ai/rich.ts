@@ -1,7 +1,16 @@
 import type { AiEvent } from "@/lib/db/ai";
 
 export type AiRichBlock = (
-  | { type: "tool"; id: string; name: string; status: string; output: string }
+  | {
+      type: "tool";
+      id: string;
+      name: string;
+      status: string;
+      output: string;
+      sql?: string;
+      title?: string;
+      chart?: { chart: string; x?: string; y?: string[] };
+    }
   | {
       type: "plan";
       id: string;
@@ -91,6 +100,30 @@ function safeOutput(value: unknown): string {
   };
   return Object.keys(obj).length ? JSON.stringify(scrub(obj), null, 2).slice(0, 16000) : "";
 }
+const CHART_KINDS = ["column", "bars", "line", "area", "donut", "kpi", "scatter", "table"];
+function toolDetails(value: unknown, name: string) {
+  const args = record(value);
+  const sql = text(args.sql, 8000).trim();
+  const title = text(args.title, 300).trim();
+  const kind = text(args.chart, 40);
+  const y = list(args.y)
+    .filter((entry): entry is string => typeof entry === "string")
+    .slice(0, 8)
+    .map((entry) => text(entry, 200));
+  return {
+    ...(sql ? { sql } : {}),
+    ...(title ? { title } : {}),
+    ...(name === "visualize" && CHART_KINDS.includes(kind)
+      ? {
+          chart: {
+            chart: kind,
+            ...(typeof args.x === "string" ? { x: text(args.x, 200) } : {}),
+            ...(y.length ? { y } : {}),
+          },
+        }
+      : {}),
+  };
+}
 export function aiRaster(value: unknown, mime = "image/png") {
   if (typeof value !== "string" || value.length > 2_000_000) return undefined;
   if (!/^image\/(png|jpeg|webp|gif)$/.test(mime)) return undefined;
@@ -175,6 +208,7 @@ export function normalizeAiRich(event: AiEvent): AiRichBlock[] {
         name: text(data.name, 300) || "Tool",
         status: data.status === undefined ? "" : status(data.status),
         output: safeOutput(data.result),
+        ...toolDetails(data.arguments, text(data.name, 300)),
       });
     for (const [index, raw] of list(result.changes).entries()) {
       const change = record(raw);
@@ -287,6 +321,9 @@ export function mergeAiRich(
             name: block.name === "Tool" ? old.name : block.name,
             status: block.status || old.status,
             output: block.output || old.output,
+            sql: block.sql ?? old.sql,
+            title: block.title ?? old.title,
+            chart: block.chart ?? old.chart,
           }
         : { ...block, ...position },
     );
@@ -314,6 +351,10 @@ export function sanitizeAiRich(value: unknown): AiRichBlock[] {
           ? String(block.status)
           : "cancelled",
         output: text(block.output),
+        ...toolDetails(
+          { sql: block.sql, title: block.title, ...record(block.chart) },
+          record(block.chart).chart ? "visualize" : "",
+        ),
       });
     if (block.type === "diff")
       blocks.push({

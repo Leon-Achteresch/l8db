@@ -7,7 +7,7 @@ import {
   modeOptions,
   safeEndpoint,
 } from "@/lib/ai/context";
-import { AI_PROVIDERS, mergeAiRecords, useAiStore } from "@/lib/ai/store";
+import { AI_PROVIDERS, aiSessionConnection, mergeAiRecords, useAiStore } from "@/lib/ai/store";
 import type { SavedConnection } from "@/lib/connections";
 
 const connection = (id: string, extra: Partial<SavedConnection> = {}): SavedConnection => ({
@@ -258,4 +258,20 @@ test("AI storage quota failures preserve saved history and recover after explici
     if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
     else Reflect.deleteProperty(globalThis, "localStorage");
   }
+});
+
+test("AI sessions belong to the connection they were started on", () => {
+  const base = {
+    id: "s",
+    title: "",
+    profileId: "codex",
+    nativeId: null,
+    cwd: "",
+    messages: [],
+    updatedAt: 0,
+  };
+  expect(aiSessionConnection({ ...base, connectionIds: ["a", "b"], connectionId: "b" })).toBe("b");
+  expect(aiSessionConnection({ ...base, connectionIds: ["a"], connectionId: null })).toBeNull();
+  expect(aiSessionConnection({ ...base, connectionIds: ["a", "b"] })).toBe("a");
+  expect(aiSessionConnection({ ...base, connectionIds: [] })).toBeNull();
 });
