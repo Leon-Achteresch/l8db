@@ -15,7 +15,7 @@
 
 pkgname=l8db-bin
 _pkgname=l8db
-pkgver=0.4.1
+pkgver=0.9.0
 pkgrel=1
 pkgdesc="Fast, native desktop client for PostgreSQL and other databases"
 arch=('x86_64')
@@ -32,8 +32,8 @@ options=('!strip' '!emptydirs' '!debug')
 source=("${pkgname}-${pkgver}.deb::${url}/releases/download/v${pkgver}/${_pkgname}_${pkgver}_amd64.deb"
         "LICENSE-${pkgver}::https://raw.githubusercontent.com/Leon-Achteresch/l8db/v${pkgver}/LICENSE")
 noextract=("${pkgname}-${pkgver}.deb")
-sha256sums=('7e70e63db54adb48d49de64b17e07961191e0254229913ab92d69b317dcbc570'
-            'fffdf02e9ebc177301978d6f2d1e38226c08d0c6d5afb6736ed544a77441e064')
+sha256sums=('10aca681d451a9fd04a55898dfff6f3b5cfb21c7ee9636f69ef74d9bd07889e3'
+            'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30')
 
 package() {
   bsdtar -O -xf "${srcdir}/${pkgname}-${pkgver}.deb" 'data.tar.*' | bsdtar -xf - -C "${pkgdir}"
