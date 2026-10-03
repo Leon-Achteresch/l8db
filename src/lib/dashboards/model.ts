@@ -86,14 +86,14 @@ export const PERIOD_LABEL: Record<Period, string> = {
 };
 
 export const PALETTE = [
-  "#4c7cf3",
-  "#2ea89a",
-  "#8a6fe0",
-  "#e0a03a",
-  "#d9668f",
-  "#5aa8d6",
-  "#7fae4a",
-  "#8a94a6",
+  "#a3e635",
+  "#3b82f6",
+  "#c084fc",
+  "#f472b6",
+  "#facc15",
+  "#2dd4bf",
+  "#fb923c",
+  "#94a3b8",
 ];
 
 export interface DatasetMetric {
