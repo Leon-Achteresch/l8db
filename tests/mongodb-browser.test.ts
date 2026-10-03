@@ -177,6 +177,8 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("button", { name: "Ausführen", exact: true }).click();
       await page.getByText("257 Zeilen", { exact: false }).first().waitFor();
       await page.getByText('{"value":0}', { exact: true }).first().waitFor();
+      await page.getByText('{"value":0}', { exact: true }).first().click();
+      await page.keyboard.press("ControlOrMeta+f");
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill('"value":250');
       await page.getByText('{"value":250}', { exact: true }).first().waitFor();
       expect(await page.getByText("[object Object]", { exact: true }).count()).toBe(0);
