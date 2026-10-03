@@ -1,9 +1,9 @@
 import { CircleCheck, ExternalLink } from "lucide-react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { ProviderLogo } from "@/components/provider-logo";
+import { InstallButton } from "@/features/drivers/install-button";
+import { InstallCommand } from "@/features/drivers/install-command";
 import { cn } from "@/lib/utils";
-import { InstallButton } from "./install-button";
-import { InstallCommand } from "./install-command";
 import type { DriverVariantProps } from "./types";
 
 export function DriverHealthVariant({ summaries, installing, onInstall }: DriverVariantProps) {

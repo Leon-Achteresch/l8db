@@ -1,9 +1,9 @@
 import { RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
+import { InstallButton } from "@/features/drivers/install-button";
+import { InstallCommand } from "@/features/drivers/install-command";
 import { cn } from "@/lib/utils";
-import { InstallButton } from "./install-button";
-import { InstallCommand } from "./install-command";
 import { type DriverVariantProps, distinctLogos, missingFirst } from "./types";
 
 const FILTERS = [

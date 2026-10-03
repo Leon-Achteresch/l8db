@@ -2,10 +2,10 @@ import { ExternalLink, RefreshCw, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
+import { InstallButton } from "@/features/drivers/install-button";
+import { InstallCommand } from "@/features/drivers/install-command";
 import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
-import { InstallButton } from "./install-button";
-import { InstallCommand } from "./install-command";
 import type { DriverVariantProps } from "./types";
 
 export function DriverMosaicVariant({
