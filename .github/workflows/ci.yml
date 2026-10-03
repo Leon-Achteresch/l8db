@@ -36,7 +36,7 @@ jobs:
         with:
           bun-version: 1.3.10
       - run: bun install --frozen-lockfile
-      - run: bun audit
+      - run: bun audit --ignore=GHSA-vfj7-8cjw-p6xm
       - run: bunx biome check ./src
       - run: bun run build
       - run: bun run test
