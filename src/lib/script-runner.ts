@@ -12,6 +12,7 @@ import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-tra
 import { supports } from "@/lib/providers";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
+import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/lib/session-views";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -120,27 +121,30 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       };
       try {
         const executionSql = applySelectRowLimit(
-          entry.sql,
+          expandSessionViews(entry.sql, sessionViewsFor(connection.id, database), connection.kind),
           connection.kind,
           request.selectRowLimit ?? 0,
         );
         const activeTxId = txId;
-        const tracked = activeTxId
-          ? await runManagedOperation(activeTxId, () =>
-              executeWithTransactionChanges(connection, database, activeTxId, entry.sql, () =>
-                executeInTransaction(activeTxId, executionSql, options),
-              ),
-            )
-          : {
-              result: await executeQuery(
-                connection.kind,
-                url,
-                executionSql,
-                database ?? undefined,
-                options,
-              ),
-              changes: [],
-            };
+        const sessionResult = await runSessionViewStatement(connection, database, entry.sql);
+        const tracked = sessionResult
+          ? { result: sessionResult, changes: [] }
+          : activeTxId
+            ? await runManagedOperation(activeTxId, () =>
+                executeWithTransactionChanges(connection, database, activeTxId, entry.sql, () =>
+                  executeInTransaction(activeTxId, executionSql, options),
+                ),
+              )
+            : {
+                result: await executeQuery(
+                  connection.kind,
+                  url,
+                  executionSql,
+                  database ?? undefined,
+                  options,
+                ),
+                changes: [],
+              };
         const { result } = tracked;
         entry.result = result;
         entry.status = "success";

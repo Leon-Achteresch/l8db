@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import type { ColumnInfo, DatabaseKind, TableInfo } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import { parsePlsqlMembers } from "@/lib/plsql";
+import type { SessionView } from "@/lib/session-views";
 import { splitSqlStatements, summarizeStatement } from "@/lib/sql-statements";
 
 interface QuerySchemaBrowserProps {
@@ -19,6 +20,8 @@ interface QuerySchemaBrowserProps {
   onInsert: (text: string) => void;
   onJump: (line: number, column: number) => void;
   onClose: () => void;
+  sessionViews?: SessionView[];
+  onRemoveSessionView?: (name: string) => void;
 }
 
 export function QuerySchemaBrowser({
@@ -32,6 +35,8 @@ export function QuerySchemaBrowser({
   onInsert,
   onJump,
   onClose,
+  sessionViews = [],
+  onRemoveSessionView,
 }: QuerySchemaBrowserProps) {
   const [tab, setTab] = useState<"schema" | "outline">("schema");
   const [search, setSearch] = useState("");
@@ -257,6 +262,38 @@ export function QuerySchemaBrowser({
                 Metadaten konnten nicht vollständig geladen werden. Erneut laden, um es noch einmal
                 zu versuchen.
               </p>
+            )}
+            {sessionViews.length > 0 && (
+              <section
+                aria-label="Sitzungs-Views"
+                className="mb-2 rounded-md border border-dashed p-1.5"
+              >
+                <p className="px-1 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Sitzungs-Views
+                </p>
+                {sessionViews.map((view) => (
+                  <div key={view.name} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-xs hover:bg-muted"
+                      title={view.sql}
+                      onClick={() => onInsert(view.name)}
+                    >
+                      {view.name}
+                    </button>
+                    {onRemoveSessionView && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Sitzungs-View ${view.name} entfernen`}
+                        onClick={() => onRemoveSessionView(view.name)}
+                      >
+                        <XIcon className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </section>
             )}
             {loading && !tables.length && (
               <p role="status" className="p-2 text-xs text-muted-foreground">
