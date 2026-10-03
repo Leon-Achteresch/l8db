@@ -2,6 +2,14 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "ai.workspace": "0.8.0",
+  "ai.chat": "0.8.0",
+  "ai.providers": "0.8.0",
+  "ai.context.connections": "0.8.0",
+  "ai.context.skills": "0.8.0",
+  "ai.context.mcp": "0.8.0",
+  "ai.history": "0.8.0",
+  "ai.usage": "0.8.0",
   "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",

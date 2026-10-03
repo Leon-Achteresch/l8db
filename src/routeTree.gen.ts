@@ -22,6 +22,7 @@ import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AppPlainRouteImport } from './routes/_app._plain'
 import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
+import { Route as AppAiRouteImport } from './routes/_app.ai'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
 import { Route as AppWorkspaceBackupRouteImport } from './routes/_app._workspace.backup'
@@ -117,6 +118,11 @@ const AppPlainRoute = AppPlainRouteImport.update({
 } as any)
 const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
   id: '/_workspace',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAiRoute = AppAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPlainAvailableExtensionsRoute =
@@ -317,6 +323,7 @@ export interface FileRoutesByFullPath {
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
+  '/ai': typeof AppAiRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
@@ -363,6 +370,7 @@ export interface FileRoutesByTo {
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
+  '/ai': typeof AppAiRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
@@ -411,6 +419,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/_app/_plain': typeof AppPlainRouteWithChildren
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
+  '/_app/ai': typeof AppAiRoute
   '/_app/_plain/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/_app/_workspace/backup': typeof AppWorkspaceBackupRoute
   '/_app/_workspace/compare': typeof AppWorkspaceCompareRoute
@@ -460,6 +469,7 @@ export interface FileRouteTypes {
     | '/mcp'
     | '/release-notes'
     | '/settings'
+    | '/ai'
     | '/available-extensions'
     | '/backup'
     | '/compare'
@@ -506,6 +516,7 @@ export interface FileRouteTypes {
     | '/mcp'
     | '/release-notes'
     | '/settings'
+    | '/ai'
     | '/available-extensions'
     | '/backup'
     | '/compare'
@@ -553,6 +564,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/_app/_plain'
     | '/_app/_workspace'
+    | '/_app/ai'
     | '/_app/_plain/available-extensions'
     | '/_app/_workspace/backup'
     | '/_app/_workspace/compare'
@@ -694,6 +706,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppWorkspaceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ai': {
+      id: '/_app/ai'
+      path: '/ai'
+      fullPath: '/ai'
+      preLoaderRoute: typeof AppAiRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/_plain/available-extensions': {
@@ -1040,11 +1059,13 @@ const AppWorkspaceRouteWithChildren = AppWorkspaceRoute._addFileChildren(
 interface AppRouteChildren {
   AppPlainRoute: typeof AppPlainRouteWithChildren
   AppWorkspaceRoute: typeof AppWorkspaceRouteWithChildren
+  AppAiRoute: typeof AppAiRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppPlainRoute: AppPlainRouteWithChildren,
   AppWorkspaceRoute: AppWorkspaceRouteWithChildren,
+  AppAiRoute: AppAiRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
