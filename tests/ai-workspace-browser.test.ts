@@ -179,7 +179,6 @@ test.skipIf(!enabled)(
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
       await panel.getByText("Local compatible response", { exact: true }).waitFor();
       expect(await panel.getByText("complete.", { exact: true }).count()).toBe(0);
-      await panel.getByRole("button", { name: "Gesprächsverlauf", exact: true }).click();
       expect(
         await panel.getByText("Inspect the selected databases", { exact: true }).isVisible(),
       ).toBe(true);
@@ -292,7 +291,6 @@ test.skipIf(!enabled)(
         localStorage.getItem("l8db.ai")?.includes('"outcome":"denied"'),
       );
       await page.reload();
-      await panel.getByRole("button", { name: "Gesprächsverlauf", exact: true }).click();
       await panel.getByRole("treeitem", { name: "empty-schema", exact: false }).click();
       await panel.getByAltText("Bild aus Agent-Ergebnis").waitFor();
       expect(await panel.getByText("SQL proposal", { exact: true }).isVisible()).toBe(true);
@@ -318,7 +316,6 @@ test.skipIf(!enabled)(
       await storageError.waitFor();
       expect(await page.evaluate(() => localStorage.getItem("l8db.ai"))).toBe(savedHistory);
       await panel.getByRole("button", { name: "Agent stoppen", exact: true }).click();
-      await panel.getByRole("button", { name: "Gesprächsverlauf", exact: true }).click();
       await page.evaluate(() => Object.assign(window, { aiStorageFull: false }));
       await panel.getByRole("button", { name: "Actions for quota-fixture", exact: true }).click();
       await page.getByRole("button", { name: "quota-fixture löschen", exact: true }).click();
