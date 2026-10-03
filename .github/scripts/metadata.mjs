@@ -41,7 +41,7 @@ const fileRules = [
   ],
   [
     "area:releases",
-    /^(packaging\/|\.github\/(RELEASING\.md$|workflows\/release\.yml$|scripts\/(compute-release-version|set-version|verify-release|generate-changelog)\.)|src\/(features\/updates\/|lib\/(auto-updater|updater)\.))/,
+    /^(packaging\/|\.github\/(RELEASING\.md$|workflows\/release\.yml$|scripts\/(release[^/]*|set-version|verify-release|generate-changelog)\.)|src\/(features\/updates\/|lib\/(auto-updater|updater)\.))/,
   ],
   [
     "area:ui",

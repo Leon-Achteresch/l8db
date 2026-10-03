@@ -25,7 +25,7 @@
     "format": "biome format --write ./src",
     "check": "biome check ./src",
     "test": "bun test tests",
-    "test:release": "bun test tests/release-artifacts.test.ts tests/release-integrity.test.ts tests/release-plan.test.ts tests/release-plan-git.test.ts tests/release-signing.test.ts tests/release-workflows.test.ts tests/packaging-update.test.ts tests/changelog.test.ts tests/version.test.ts",
+    "test:release": "bun test tests/release-artifacts.test.ts tests/release-integrity.test.ts tests/release-plan.test.ts tests/release-signing.test.ts tests/release-workflows.test.ts tests/packaging-update.test.ts tests/changelog.test.ts tests/version.test.ts",
     "test:browser": "bun scripts/test-browser.ts",
     "test:integration": "bash scripts/test-postgres-ssh.sh",
     "pr:report": "bun scripts/pr-report.ts",
