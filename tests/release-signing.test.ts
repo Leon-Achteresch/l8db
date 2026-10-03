@@ -34,23 +34,4 @@ describe("production release credentials", () => {
     });
     expect(result.exitCode).toBe(0);
   });
-  test("release PR credentials are required only for preparing a PR", () => {
-    const preparation = Bun.YAML.parse(
-      readFileSync(".github/workflows/release-prepare.yml", "utf8"),
-    );
-    const step = preparation.jobs.prepare.steps.find(
-      (entry: { name?: string }) => entry.name === "Check release PR credentials",
-    );
-    expect(step.if).toBe("steps.plan.outputs.changed == 'true'");
-    expect(
-      Bun.spawnSync(["bash", "-e", "-c", step.run], {
-        env: { PATH: process.env.PATH, RELEASE_PR_TOKEN: "" },
-      }).exitCode,
-    ).not.toBe(0);
-    expect(
-      Bun.spawnSync(["bash", "-e", "-c", step.run], {
-        env: { PATH: process.env.PATH, RELEASE_PR_TOKEN: "test-release-token" },
-      }).exitCode,
-    ).toBe(0);
-  });
 });

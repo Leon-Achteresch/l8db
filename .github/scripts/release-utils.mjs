@@ -29,12 +29,13 @@ export function nextVersion(current, latest, bump = "patch") {
 }
 
 export function semanticBump(messages, version) {
-  let bump = "patch";
+  let bump = null;
   for (const message of messages) {
     const match = message.match(/^([a-z]+)(\([^)]*\))?(!)?:/);
     if (match?.[3] || /^BREAKING[ -]CHANGE:/m.test(message))
       return version.startsWith("0.") ? "minor" : "major";
     if (match?.[1] === "feat") bump = "minor";
+    else if (!bump && ["fix", "perf"].includes(match?.[1])) bump = "patch";
   }
   return bump;
 }

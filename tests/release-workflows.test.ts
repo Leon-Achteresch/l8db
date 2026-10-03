@@ -15,6 +15,10 @@ test("compilation runs alongside CI while signing and publication require all ga
   expect(release.jobs.finalize.needs).toEqual(
     expect.arrayContaining(["checks", "build", "package"]),
   );
+  for (const job of ["build", "draft", "package", "finalize"]) {
+    expect(release.jobs[job].env.RELEASE_VERSION).toContain("needs.prepare.outputs.version");
+    expect(JSON.stringify(release.jobs[job].steps)).toContain("set-version.mjs");
+  }
   expect(release.permissions.contents).toBe("read");
   expect(release.jobs.finalize.permissions.contents).toBe("write");
 });
@@ -35,13 +39,7 @@ test("production matrices use explicit runners and immutable action references",
       expect(target.target).not.toBe("");
     }
   }
-  for (const file of [
-    "release.yml",
-    "release-prepare.yml",
-    "release-followup.yml",
-    "ci.yml",
-    "feature-videos.yml",
-  ]) {
+  for (const file of ["release.yml", "release-followup.yml", "ci.yml", "feature-videos.yml"]) {
     const workflow = readFileSync(`.github/workflows/${file}`, "utf8");
     for (const match of workflow.matchAll(/uses:\s*[^\s]+@([^\s]+)/g))
       expect(match[1]).toMatch(/^[a-f0-9]{40}$/);

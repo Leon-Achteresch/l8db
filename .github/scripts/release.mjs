@@ -22,7 +22,7 @@ export function releaseNotes(version, changelog) {
     "m",
   );
   const match = heading.exec(changelog);
-  assert(match, `Missing checked-in release notes for ${version}`);
+  assert(match, `Missing release notes for ${version}`);
   return changelog
     .slice(match.index)
     .split(/\n(?=## )/, 1)[0]
@@ -48,6 +48,10 @@ function draft() {
   const version = currentVersion();
   const sha = git("rev-parse", "HEAD");
   let release = releases().find((item) => item.tag_name === `v${version}`);
+  if (release?.draft && release.target_commitish !== sha) {
+    gh("release", "delete", `v${version}`, "--repo", REPOSITORY, "--yes");
+    release = undefined;
+  }
   if (!release) {
     const file = join(process.env.RUNNER_TEMP, "release-notes.md");
     writeFileSync(file, releaseNotes(version, readFileSync("CHANGELOG.md", "utf8")));
@@ -170,12 +174,8 @@ function followup() {
   let tag = process.env.RELEASE_TAG || "";
   if (!tag && process.env.RELEASE_SHA) {
     assert(/^[a-f0-9]{40}$/.test(process.env.RELEASE_SHA), "Invalid follow-up source SHA");
-    const version = JSON.parse(git("show", `${process.env.RELEASE_SHA}:package.json`)).version;
     const release = releases().find(
-      (item) =>
-        item.tag_name === `v${version}` &&
-        !item.draft &&
-        item.target_commitish === process.env.RELEASE_SHA,
+      (item) => !item.draft && item.target_commitish === process.env.RELEASE_SHA,
     );
     tag = release?.tag_name ?? "";
   }

@@ -37,10 +37,9 @@ Keep checks fast: run only what the change can break, once at the end, not after
 
 ## Git & Releases
 
-- Daily work goes to `development` (features: `merge --no-ff`). Never open a PR from `development` to `main`.
-- Releases use the `release` skill (`.claude/skills/release/SKILL.md`): `/release` cuts `release/vX.Y.Z` from `development` and opens the PR to `main`, `/release fix` commits review fixes on the release branch and merges them back into `development`, `/release finish` back-merges `main` into `development`, deletes the branch and handles the `automation/release` version PR. `development` stays open for the next release the whole time.
-- Release PRs are merged with a merge commit, never squashed.
-- Versions follow SemVer from Conventional Commits since the last tag (`feat` → minor, otherwise patch, `!`/`BREAKING CHANGE:` → major, minor before 1.0); see `.github/RELEASING.md`. Commit messages must therefore use Conventional Commit prefixes.
+- Daily work goes to `development` (features: `merge --no-ff`).
+- Releases follow semantic-release: every push to `main` publishes automatically. `/release` (`.claude/skills/release/SKILL.md`) opens or updates the PR `development` → `main`; it is merged with a merge commit, never squashed. No release branches, no version PR, no back-merge.
+- Versions come from Conventional Commits since the last tag (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE:` → major, minor before 1.0; anything else alone releases nothing). The version in `package.json`/Cargo/`tauri.conf.json` and `CHANGELOG.md` are set only inside the release runners and are not maintained in the repo; see `.github/RELEASING.md`. Commit messages must use Conventional Commit prefixes.
 
 ## Toolchain
 
