@@ -71,12 +71,14 @@ export const NEW_FEATURES = {
   "baas.convex.environment": "0.7.0",
   "baas.file-preview": "0.7.0",
   "settings.data.transfer": "0.7.0",
+  "settings.general.hide-own-schema": "0.8.0",
   "query.transaction.changes": "0.7.0",
   "compare.scroll-sync": "0.7.0",
   "split.pane-tables": "0.8.0",
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",
   "settings.extensions.extensions.openbao": "0.8.0",
+  "settings.extensions.community-market": "0.8.0",
 } as const;
 
 export type NewFeatureId = keyof typeof NEW_FEATURES;

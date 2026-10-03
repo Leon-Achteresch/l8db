@@ -1,7 +1,9 @@
+import { Check, PenLine } from "lucide-react";
 import { useState } from "react";
 import { bypassAiPermissions, modeOptions } from "@/lib/ai/context";
-import { AI_PROVIDERS, useAiStore } from "@/lib/ai/store";
+import { useAiStore } from "@/lib/ai/store";
 import type { AiModels, AiProfile } from "@/lib/db/ai";
+import { cn } from "@/lib/utils";
 
 interface Props {
   profile: AiProfile;
@@ -13,20 +15,6 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
   const customModel =
     custom || Boolean(profile.model && !models.models.some((model) => model.id === profile.model));
   const saveProfile = useAiStore((state) => state.saveProfile);
-  const rawEfforts = models.models.find((model) => model.id === profile.model)?.efforts ?? [];
-  const efforts = rawEfforts.flatMap((value) => {
-    if (typeof value === "string") return [value];
-    if (
-      value &&
-      typeof value === "object" &&
-      "reasoningEffort" in value &&
-      typeof value.reasoningEffort === "string"
-    )
-      return [value.reasoningEffort];
-    return [];
-  });
-  if (!AI_PROVIDERS.find((entry) => entry.id === profile.provider)?.cli && !efforts.length)
-    efforts.push("low", "medium", "high");
   const modes = modeOptions(models.modes);
   const options = (models.configOptions ?? []).filter((option): option is Record<string, unknown> =>
     Boolean(
@@ -49,31 +37,52 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
     });
   };
   const selectClass =
-    "h-9 w-full min-w-0 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "h-8 w-full min-w-0 rounded-lg border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
   return (
-    <div className="space-y-3">
-      <select
+    <div className="space-y-2">
+      <div
+        role="radiogroup"
         aria-label="Modell auswählen"
-        disabled={disabled}
-        className={selectClass}
-        value={customModel ? "__custom__" : profile.model}
-        onChange={(event) => {
-          if (event.target.value === "__custom__") {
-            setCustom(true);
-            return;
-          }
-          setCustom(false);
-          saveProfile({ ...profile, model: event.target.value, effort: "" });
-        }}
+        className="-mx-1 max-h-56 space-y-0.5 overflow-y-auto"
       >
-        <option value="">Standardmodell</option>
-        {models.models.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.name}
-          </option>
-        ))}
-        <option value="__custom__">Eigene Modell-ID …</option>
-      </select>
+        {[{ id: "", name: "Standardmodell" }, ...models.models].map((model) => {
+          const checked = !customModel && profile.model === model.id;
+          return (
+            <button
+              key={model.id}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              disabled={disabled}
+              onClick={() => {
+                setCustom(false);
+                saveProfile({ ...profile, model: model.id, effort: "" });
+              }}
+              className={cn(
+                "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted",
+                checked && "bg-muted font-medium",
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate">{model.name}</span>
+              {checked && <Check className="size-3.5 shrink-0" />}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={customModel}
+          disabled={disabled}
+          onClick={() => setCustom(true)}
+          className={cn(
+            "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:bg-muted",
+            customModel && "bg-muted text-foreground",
+          )}
+        >
+          <PenLine className="size-3.5 shrink-0" />
+          <span className="flex-1">Eigene Modell-ID …</span>
+        </button>
+      </div>
       {(!models.models.length || customModel) && (
         <input
           aria-label="Modell-ID"
@@ -84,27 +93,11 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
           onChange={(event) => saveProfile({ ...profile, model: event.target.value })}
         />
       )}
-      {(efforts.length > 0 || modes.length > 0 || options.length > 0) && (
+      {(modes.length > 0 || options.length > 0) && (
         <details className="space-y-3 text-xs">
           <summary className="min-h-7 cursor-pointer py-1 text-muted-foreground">
             Weitere Modelloptionen
           </summary>
-          {efforts.length > 0 && (
-            <select
-              aria-label="Reasoning auswählen"
-              className={selectClass}
-              disabled={disabled}
-              value={profile.effort}
-              onChange={(event) => saveProfile({ ...profile, effort: event.target.value })}
-            >
-              <option value="">Reasoning: Automatisch</option>
-              {efforts.map((effort) => (
-                <option key={effort} value={effort}>
-                  {effort}
-                </option>
-              ))}
-            </select>
-          )}
           {modes.length > 0 && (
             <select
               aria-label="Agent-Modus auswählen"

@@ -1,15 +1,11 @@
 import { BookmarkIcon, ChartColumnIcon, CopyIcon, EllipsisIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { makeChartFile } from "@/lib/chart-file";
 import { useDashboardWorkspaceStore } from "@/lib/dashboard-workspace";
@@ -24,6 +20,7 @@ import {
   type Widget,
   widgetOptions,
 } from "@/lib/dashboards";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { ChartBuilderPreview } from "./chart-builder-preview";
 import { ChartDataStep } from "./chart-data-step";
 import { retainChartMetricSelection } from "./chart-metric-selection";
@@ -87,6 +84,8 @@ export function ChartDialog({
 }) {
   const [state, setState] = useState<ChartDraft | null>(draft);
   const [tab, setTab] = useState("data");
+  const builderIsNew = useHasNewFeatures("dashboard.visual-builder");
+  const galleryIsNew = useHasNewFeatures("dashboard.chart-gallery");
   useEffect(() => {
     if (open) {
       setState(draft ? structuredClone(draft) : null);
@@ -148,8 +147,14 @@ export function ChartDialog({
           <div className="min-h-0 min-w-0 p-5 md:overflow-y-auto">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="mb-5 w-full">
-                <TabsTrigger value="data">Daten gestalten</TabsTrigger>
-                <TabsTrigger value="style">Darstellung</TabsTrigger>
+                <TabsTrigger value="data">
+                  Daten gestalten
+                  {builderIsNew && <NewBadge />}
+                </TabsTrigger>
+                <TabsTrigger value="style">
+                  Darstellung
+                  {galleryIsNew && <NewBadge />}
+                </TabsTrigger>
                 <TabsTrigger value="source">Quelle & SQL</TabsTrigger>
               </TabsList>
               <TabsContent value="data">
@@ -186,52 +191,52 @@ export function ChartDialog({
           />
         </div>
         <div className="flex items-center gap-2 border-t px-6 py-3">
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Weitere Aktionen">
                 <EllipsisIcon />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-52">
-              <DropdownMenuItem
+            <IconMenuContent align="start" side="top">
+              <IconMenuItem
+                icon={<BookmarkIcon />}
+                label="In Sammlung speichern"
                 disabled={!canFinish}
-                onClick={() => {
+                onSelect={() => {
                   useDashboardWorkspaceStore
                     .getState()
                     .saveChart(makeChartFile(widget, finished.dataset, widget.title || title));
                   toast.success("Chart in deiner Sammlung gespeichert");
                 }}
-              >
-                <BookmarkIcon className="size-3.5" /> In Sammlung speichern
-              </DropdownMenuItem>
+              />
               {onDuplicate && (
-                <DropdownMenuItem
-                  onClick={() => {
+                <IconMenuItem
+                  icon={<CopyIcon />}
+                  label="Duplizieren"
+                  onSelect={() => {
                     onDuplicate();
                     close();
                   }}
-                >
-                  <CopyIcon className="size-3.5" /> Duplizieren
-                </DropdownMenuItem>
+                />
               )}
               {onDelete && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
+                  <IconMenuSeparator />
+                  <IconMenuItem
+                    icon={<Trash2Icon />}
+                    label="Löschen"
                     variant="destructive"
-                    onClick={() => {
+                    onSelect={() => {
                       if (window.confirm("Diesen Chart wirklich löschen?")) {
                         onDelete();
                         close();
                       }
                     }}
-                  >
-                    <Trash2Icon className="size-3.5" /> Löschen
-                  </DropdownMenuItem>
+                  />
                 </>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </IconMenuContent>
+          </IconMenu>
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={close}>
               Abbrechen

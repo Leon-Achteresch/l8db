@@ -23,9 +23,7 @@ export function AiUsage({ data, profile, metadata, messages, prompt, onSettings 
       minimumFractionDigits: 2,
       maximumFractionDigits: 5,
     }).format(value);
-  const percent = usage.contextLimit
-    ? Math.min(100, (usage.context / usage.contextLimit) * 100)
-    : null;
+  const percent = Math.min(100, (usage.context / usage.contextLimit) * 100);
   return (
     <section
       ref={feature.ref}
@@ -39,9 +37,29 @@ export function AiUsage({ data, profile, metadata, messages, prompt, onSettings 
             aria-label="Nutzungsdetails anzeigen"
             className="flex min-h-7 items-center gap-2 rounded-md px-1.5 tabular-nums hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span>
-              Kontext {usage.contextEstimated ? "≈" : ""}
-              {percent !== null ? `${Math.round(percent)}%` : count(usage.context)}
+            <span className="flex items-center gap-1">
+              <svg viewBox="0 0 16 16" className="size-3.5 -rotate-90" aria-hidden="true">
+                <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" className="stroke-muted" />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6"
+                  fill="none"
+                  strokeWidth="2.5"
+                  pathLength="100"
+                  strokeDasharray={`${percent} 100`}
+                  strokeLinecap={percent > 0 ? "round" : "butt"}
+                  className={
+                    percent >= 90
+                      ? "stroke-destructive"
+                      : percent >= 70
+                        ? "stroke-amber-500"
+                        : "stroke-foreground/70"
+                  }
+                />
+              </svg>
+              {usage.contextEstimated ? "≈" : ""}
+              {Math.round(percent)}%
             </span>
             <span className="text-border">·</span>
             <span>
@@ -67,7 +85,7 @@ export function AiUsage({ data, profile, metadata, messages, prompt, onSettings 
             <span className="text-right">
               {usage.contextEstimated ? "≈ " : ""}
               {count(usage.context)}
-              {usage.contextLimit ? ` / ${count(usage.contextLimit)}` : " · Limit unbekannt"}
+              {` / ${count(usage.contextLimit)}`}
             </span>
             <span className="text-muted-foreground">Eingabe / Ausgabe</span>
             <span className="text-right">

@@ -1,11 +1,13 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { ExtensionDescriptor, Json } from "@/lib/extensions/contracts";
 import { useExtensionHost } from "@/lib/extensions/react-context";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { BitwardenLoginForm } from "./bitwarden-login-form";
 import { KeeperLoginForm } from "./keeper-login-form";
 import { OnePasswordLoginForm } from "./one-password-login-form";
@@ -27,6 +29,7 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
   const id = extension.archive.manifest.id;
   const provider = vaultProvider(extension.configuration["vault.provider"]);
   const [choosing, setChoosing] = useState(!provider);
+  const openbaoIsNew = useHasNewFeatures("settings.extensions.extensions.openbao");
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +112,7 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
             step > 1 && (
               <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => setChoosing(true)}>
                 Ändern
+                {openbaoIsNew && <NewBadge />}
               </Button>
             )
           }

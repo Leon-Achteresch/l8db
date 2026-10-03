@@ -33,6 +33,15 @@ export function TableFilterImportMenu({
     () => transferableFilters(views, connectionId, table),
     [views, connectionId, table],
   );
+  const isImported = (view: (typeof candidates)[number]["view"]) =>
+    (views[tableKey] ?? []).some(
+      (saved) =>
+        saved.name === view.name &&
+        saved.filter === view.filter &&
+        (saved.filterRaw ?? false) === (view.filterRaw ?? false),
+    );
+
+  if (candidates.every(({ view }) => isImported(view))) return null;
 
   return (
     <Popover>
@@ -60,19 +69,9 @@ export function TableFilterImportMenu({
           </PopoverDescription>
         </PopoverHeader>
         <div className="max-h-72 space-y-1 overflow-y-auto">
-          {candidates.length === 0 && (
-            <p className="py-2 text-sm text-muted-foreground">
-              Keine gespeicherten Filter für diesen Tabellennamen in anderen Connections vorhanden.
-            </p>
-          )}
           {candidates.map(({ key, sourceConnectionId, database, schema, view }) => {
             const source = connections.find((connection) => connection.id === sourceConnectionId);
-            const imported = (views[tableKey] ?? []).some(
-              (saved) =>
-                saved.name === view.name &&
-                saved.filter === view.filter &&
-                (saved.filterRaw ?? false) === (view.filterRaw ?? false),
-            );
+            const imported = isImported(view);
             return (
               <button
                 type="button"

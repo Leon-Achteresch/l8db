@@ -1,4 +1,3 @@
-import { useDebouncedCallback } from "@tanstack/react-pacer";
 import { type RefObject, useEffect, useRef } from "react";
 import { animatePageWave } from "../page-wave";
 
@@ -8,13 +7,7 @@ export function usePageFlip(
   hasNextPage: boolean,
   onPageChange: ((page: number) => void) | undefined,
 ) {
-  const armedRef = useRef(false);
-  const armPageFlip = useDebouncedCallback(
-    () => {
-      armedRef.current = true;
-    },
-    { wait: 400 },
-  );
+  const lastWheelRef = useRef(0);
 
   const waveRefs = { down: useRef<SVGSVGElement>(null), up: useRef<SVGSVGElement>(null) };
   const prevPageRef = useRef(page);
@@ -30,23 +23,17 @@ export function usePageFlip(
     const element = scrollRef.current;
     if (!element || !onPageChange) return;
     const handleWheel = (event: WheelEvent) => {
+      const newGesture = event.timeStamp - lastWheelRef.current > 300;
+      lastWheelRef.current = event.timeStamp;
+      if (!newGesture || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       const atTop = element.scrollTop <= 0;
       const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
       const down = event.deltaY > 0;
-      if (!((down && atBottom) || (!down && atTop))) {
-        armedRef.current = false;
-        return;
-      }
-      if (!armedRef.current) {
-        armPageFlip();
-        return;
-      }
-      armedRef.current = false;
-      if (down && hasNextPage) onPageChange(page + 1);
-      else if (!down && page > 0) onPageChange(page - 1);
+      if (down && atBottom && hasNextPage) onPageChange(page + 1);
+      else if (!down && atTop && page > 0) onPageChange(page - 1);
     };
     element.addEventListener("wheel", handleWheel, { passive: true });
     return () => element.removeEventListener("wheel", handleWheel);
-  }, [onPageChange, page, hasNextPage, armPageFlip]);
+  }, [onPageChange, page, hasNextPage]);
   return waveRefs;
 }

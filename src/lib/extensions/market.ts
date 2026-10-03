@@ -4,6 +4,10 @@ import type { ExtensionArchive } from "./contracts";
 
 export const OFFICIAL_MARKET_URL =
   "https://raw.githubusercontent.com/Leon-Achteresch/l8db-extension-market/main/catalog.json";
+export const COMMUNITY_MARKET_URL =
+  "https://raw.githubusercontent.com/Leon-Achteresch/l8db-community-extensions/catalog/catalog.json";
+export const COMMUNITY_MARKET_REPOSITORY =
+  "https://github.com/Leon-Achteresch/l8db-community-extensions";
 
 const MAX_CATALOG_BYTES = 256 * 1024;
 const MAX_PACKAGE_BYTES = 8 * 1024 * 1024;
@@ -110,7 +114,15 @@ export async function loadMarketCatalog(
     signal: AbortSignal.timeout(10000),
   });
   const bytes = await readLimited(response, MAX_CATALOG_BYTES);
-  return validateMarketCatalog(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+  const catalog = validateMarketCatalog(
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+  );
+  if (
+    catalogUrl === COMMUNITY_MARKET_URL &&
+    catalog.extensions.some((entry) => entry.publisher === "l8db")
+  )
+    throw new Error("Community-Katalog enthält reservierten Herausgeber „l8db“.");
+  return catalog;
 }
 
 export async function downloadMarketExtension(
@@ -126,7 +138,7 @@ export async function downloadMarketExtension(
       catalog.pathname.slice(0, catalog.pathname.lastIndexOf("/") + 1),
     )
   )
-    throw new Error("Paketadresse liegt außerhalb des offiziellen Repositories.");
+    throw new Error("Paketadresse liegt außerhalb des Katalog-Repositories.");
   const response = await fetcher(packageUrl, {
     cache: "no-store",
     redirect: "error",

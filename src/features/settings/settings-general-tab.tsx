@@ -20,6 +20,8 @@ export function SettingsGeneralTab() {
     setOnboardingDone,
     translateFilterOperators,
     setTranslateFilterOperators,
+    hideOwnSchemaSelect,
+    setHideOwnSchemaSelect,
   } = useSettingsStore();
 
   const handleReset = () => {
@@ -69,6 +71,18 @@ export function SettingsGeneralTab() {
             checked={translateFilterOperators}
             onCheckedChange={setTranslateFilterOperators}
             aria-label="Filteroperatoren übersetzen"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Eigenes Schema ohne Auswahl"
+          description="Blendet die Schema-Auswahl in der Seitenleiste aus, wenn das aktive Schema dem Benutzernamen der Verbindung entspricht."
+          featureId="settings.general.hide-own-schema"
+        >
+          <Switch
+            checked={hideOwnSchemaSelect}
+            onCheckedChange={setHideOwnSchemaSelect}
+            aria-label="Eigenes Schema ohne Auswahl"
           />
         </SettingsRow>
 

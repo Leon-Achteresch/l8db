@@ -215,7 +215,7 @@ test("Google thinking contributes to output tokens and cached prompt is discount
   expect(result.cost).toBeCloseTo(0.0001375, 10);
 });
 
-test("unknown tariffs and limits stay unknown and model changes do not reuse custom tariffs", () => {
+test("unknown tariffs stay unknown, unknown limits fall back to 265k, and model changes do not reuse custom tariffs", () => {
   const selected = profile("compatible", {
     model: "changed",
     pricing: { model: "old", inputUsd: 1, outputUsd: 2, contextWindow: 10000 },
@@ -223,7 +223,7 @@ test("unknown tariffs and limits stay unknown and model changes do not reuse cus
   const data = mergeAiUsage({}, { usage: { inputTokens: 12, outputTokens: 8 } });
   expect(summarizeAiUsage(data, selected, {}, [])).toMatchObject({
     cost: null,
-    contextLimit: null,
+    contextLimit: 265_000,
   });
 });
 
@@ -237,7 +237,7 @@ test("missing native usage has a visible text estimate rather than invented prov
     reported: false,
     contextEstimated: true,
     costReported: false,
-    contextLimit: null,
+    contextLimit: 265_000,
   });
   expect(result.cost).toBeCloseTo(0.000006, 10);
 });
