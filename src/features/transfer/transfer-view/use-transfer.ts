@@ -1,6 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import {
   cancelExecution,
@@ -94,6 +93,8 @@ export function useTransfer() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<TransferProgress["progress"] | null>(null);
   const [outcome, setOutcome] = useState<TransferOutcome | null>(null);
+  const [cinema, setCinema] = useState(false);
+  const [startedAt, setStartedAt] = useState(0);
   const jobIdRef = useRef<string | null>(null);
   const planRunRef = useRef(0);
   const configRef = useRef({ source, target, pairs: [] as TransferSchemaPair[], foldNames });
@@ -178,6 +179,8 @@ export function useTransfer() {
     setOutcome(null);
     setError(null);
     setProgress(null);
+    setStartedAt(Date.now());
+    setCinema(true);
     const jobId = crypto.randomUUID();
     jobIdRef.current = jobId;
     try {
@@ -193,12 +196,10 @@ export function useTransfer() {
         { jobId },
       );
       setOutcome(result);
-      if (result.committed) {
-        setPlan(null);
-        toast.success(`${result.rows} Zeilen in ${result.tables.length} Tabellen übertragen.`);
-      } else toast.error(result.error ?? "Transfer fehlgeschlagen.");
+      if (result.committed) setPlan(null);
     } catch (cause) {
       setError(errorText(cause));
+      setCinema(false);
     } finally {
       jobIdRef.current = null;
       setRunning(false);
@@ -250,6 +251,9 @@ export function useTransfer() {
     running,
     progress,
     outcome,
+    cinema,
+    closeCinema: () => setCinema(false),
+    startedAt,
     start,
     cancel,
   };
