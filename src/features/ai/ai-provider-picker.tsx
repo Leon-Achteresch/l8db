@@ -27,7 +27,7 @@ interface Props {
 }
 export function AiProviderPicker({ profile, models, disabled, loading, onSelect }: Props) {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"provider" | "model">("provider");
+  const [step, setStep] = useState<"provider" | "model">("model");
   const profiles = useAiStore((state) => state.profiles);
   const provider = AI_PROVIDERS.find((entry) => entry.id === profile.provider);
   const model = models.models.find((entry) => entry.id === profile.model)?.name ?? profile.model;
@@ -36,7 +36,7 @@ export function AiProviderPicker({ profile, models, disabled, loading, onSelect 
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) setStep("provider");
+        if (next) setStep("model");
       }}
     >
       <PopoverTrigger asChild>
