@@ -1,4 +1,3 @@
-import { ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { type AiUsageData, summarizeAiUsage } from "@/lib/ai/usage";
 import type { AiMessage, AiProfile } from "@/lib/db/ai";
@@ -24,57 +23,47 @@ export function AiUsage({ data, profile, metadata, messages, prompt, onSettings 
       maximumFractionDigits: 5,
     }).format(value);
   const percent = Math.min(100, (usage.context / usage.contextLimit) * 100);
+  if (percent < 1 && !usage.total) return null;
   return (
     <section
       ref={feature.ref}
       aria-label="Kontext, Tokens und Kosten"
-      className="mt-1 flex justify-end text-[10px] text-muted-foreground"
+      className="flex shrink-0 text-[11px] text-muted-foreground"
     >
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
             aria-label="Nutzungsdetails anzeigen"
-            className="flex min-h-7 items-center gap-2 rounded-md px-1.5 tabular-nums hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={
+              usage.cost === null
+                ? "Kontext · Kosten unbekannt"
+                : `Kontext · ${usage.costReported ? "" : "≈ "}${price(usage.cost)}`
+            }
+            className="flex min-h-7 items-center gap-1 rounded-md px-1.5 tabular-nums hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="flex items-center gap-1">
-              <svg viewBox="0 0 16 16" className="size-3.5 -rotate-90" aria-hidden="true">
-                <circle
-                  cx="8"
-                  cy="8"
-                  r="6"
-                  fill="none"
-                  strokeWidth="2.5"
-                  className="stroke-muted"
-                />
-                <circle
-                  cx="8"
-                  cy="8"
-                  r="6"
-                  fill="none"
-                  strokeWidth="2.5"
-                  pathLength="100"
-                  strokeDasharray={`${percent} 100`}
-                  strokeLinecap={percent > 0 ? "round" : "butt"}
-                  className={
-                    percent >= 90
-                      ? "stroke-destructive"
-                      : percent >= 70
-                        ? "stroke-amber-500"
-                        : "stroke-foreground/70"
-                  }
-                />
-              </svg>
-              {usage.contextEstimated ? "≈" : ""}
-              {Math.round(percent)}%
-            </span>
-            <span className="text-border">·</span>
-            <span>
-              {usage.cost === null
-                ? "Kosten —"
-                : `${usage.costReported ? "" : "≈ "}${price(usage.cost)}`}
-            </span>
-            <ChevronDown className="size-2.5" />
+            <svg viewBox="0 0 16 16" className="size-3.5 -rotate-90" aria-hidden="true">
+              <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" className="stroke-muted" />
+              <circle
+                cx="8"
+                cy="8"
+                r="6"
+                fill="none"
+                strokeWidth="2.5"
+                pathLength="100"
+                strokeDasharray={`${percent} 100`}
+                strokeLinecap={percent > 0 ? "round" : "butt"}
+                className={
+                  percent >= 90
+                    ? "stroke-destructive"
+                    : percent >= 70
+                      ? "stroke-amber-500"
+                      : "stroke-foreground/70"
+                }
+              />
+            </svg>
+            {usage.contextEstimated ? "≈" : ""}
+            {Math.round(percent)}%
           </button>
         </PopoverTrigger>
         <PopoverContent

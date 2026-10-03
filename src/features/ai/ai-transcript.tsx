@@ -40,8 +40,8 @@ export function AiTranscript({
         onFollowChange={setFollowing}
         viewportRef={viewport}
         className="h-full"
-        viewportClassName="px-3 py-4 sm:px-5"
-        contentClassName="mx-auto w-full max-w-[46rem] space-y-4"
+        viewportClassName="px-4 pt-5 pb-6 sm:px-6"
+        contentClassName="mx-auto w-full max-w-[44rem] space-y-3 [&>[data-from=user]:not(:first-child)]:mt-7 [&>[data-from=user]:not(:first-child)]:border-t [&>[data-from=user]:not(:first-child)]:pt-6"
       >
         {messages.map((message, index) =>
           message.role === "user" ? (
@@ -74,7 +74,7 @@ export function AiTranscript({
           onClick={() =>
             viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" })
           }
-          className="absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1 rounded-full border bg-background/80 px-2.5 text-xs text-muted-foreground shadow-sm outline-none backdrop-blur-md transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1 rounded-full border bg-background px-2.5 text-xs text-muted-foreground shadow-[0_4px_12px_-4px_oklch(0_0_0/18%)] outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronDown className="size-3.5" />
           Zum Ende

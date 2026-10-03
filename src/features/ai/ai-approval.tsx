@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
 import { type AiEvent, aiApprove, aiRespond } from "@/lib/db/ai";
@@ -195,7 +196,10 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       )}
       {!questionInput && Object.keys(details).some((key) => key !== "requestedSchema") && (
         <details className="px-3 text-xs text-muted-foreground">
-          <summary className="min-h-8 cursor-pointer py-1.5">Vollständige Aktionsdetails</summary>
+          <summary className="group/details flex min-h-8 cursor-pointer list-none items-center gap-1 py-1.5 [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="size-3 transition-transform group-open/details:rotate-90" />
+            Vollständige Aktionsdetails
+          </summary>
           <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/20 p-3 text-[11px]">
             {JSON.stringify(details, null, 2)}
           </pre>

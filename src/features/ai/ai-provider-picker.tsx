@@ -45,9 +45,9 @@ export function AiProviderPicker({ profile, models, disabled, loading, onSelect 
           aria-label="Anbieter und Modell auswählen"
           title={`${provider?.name ?? ""}${model ? ` · ${model}` : ""}`}
           disabled={disabled}
-          className="flex h-8 min-w-0 max-w-40 items-center gap-1.5 rounded-full border border-border/70 bg-background pr-2 pl-1 text-xs shadow-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted"
+          className="flex h-8 min-w-0 max-w-44 items-center gap-1.5 rounded-lg pr-1.5 pl-1 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted"
         >
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-muted">
+          <span className="grid size-6 shrink-0 place-items-center rounded-md border bg-background">
             {loading ? (
               <Loader2 className="size-3 animate-spin" />
             ) : (

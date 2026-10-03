@@ -1,3 +1,4 @@
+import type { AiRichBlock } from "@/lib/ai/rich";
 import type { ChartKind } from "@/lib/dashboards";
 import type { AiMessage } from "@/lib/db/ai";
 import { type ResultChartConfig, sanitizeConfig, suggestChart } from "@/lib/result-chart";
@@ -49,6 +50,32 @@ export function aiChartConfig(spec: AiChartSpec, table: AiTable): ResultChartCon
       sort: chart === "line" || chart === "area" ? "x_asc" : suggested.sort,
     },
     table.columns,
+  );
+}
+
+export function aiRowsLabel(footer: string): string {
+  const shown = Number(/^(\d+) rows/.exec(footer)?.[1] ?? Number.NaN);
+  if (Number.isNaN(shown)) return footer;
+  const parts = [`${shown.toLocaleString("de-DE")} ${shown === 1 ? "Zeile" : "Zeilen"}`];
+  const more = /(\d+) more not shown/.exec(footer)?.[1];
+  if (more) parts.push(`${Number(more).toLocaleString("de-DE")} weitere nicht angezeigt`);
+  else if (footer.includes("capped by server")) parts.push("vom Server begrenzt");
+  const redacted = /(\d+) cells redacted/.exec(footer)?.[1];
+  if (redacted) parts.push(`${Number(redacted).toLocaleString("de-DE")} Werte maskiert`);
+  return parts.join(" · ");
+}
+
+export type AiFigureBlock = Extract<AiRichBlock, { type: "tool" }>;
+
+export function aiFigures(messages: AiMessage[]): AiFigureBlock[] {
+  return messages.flatMap((message) =>
+    (message.rich ?? []).filter(
+      (block): block is AiFigureBlock =>
+        block.type === "tool" &&
+        block.name === "visualize" &&
+        block.status === "success" &&
+        Boolean(parseAiTable(block.output)),
+    ),
   );
 }
 

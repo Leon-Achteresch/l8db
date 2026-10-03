@@ -2,6 +2,7 @@ import { type Ref, useMemo } from "react";
 import { CHART_RENDERERS, headlineFor, LegendCards, legendFor } from "@/features/dashboard/charts";
 import { type ChartKind, chartFits, colorSeries, DEFAULT_OPTIONS } from "@/lib/dashboards";
 import type { ResultChartData } from "@/lib/result-chart";
+import { cn } from "@/lib/utils";
 
 const OPTIONS = { ...DEFAULT_OPTIONS, showDelta: false, showPeriod: false };
 const HEADLINE: ChartKind[] = ["kpi", "gauge", "score"];
@@ -10,10 +11,14 @@ export function ResultChartCanvas({
   chart,
   data,
   ref,
+  legend: showLegend = true,
+  className,
 }: {
   chart: ChartKind;
   data: ResultChartData;
   ref?: Ref<HTMLDivElement>;
+  legend?: boolean;
+  className?: string;
 }) {
   const colored = useMemo(() => colorSeries(chart, data.shape, data.rows), [chart, data]);
   const problem = chartFits(chart, colored.shape);
@@ -35,7 +40,7 @@ export function ResultChartCanvas({
       </div>
     );
   return (
-    <div ref={ref} className="flex h-full min-h-0 flex-col gap-3 bg-card p-4">
+    <div ref={ref} className={cn("flex h-full min-h-0 flex-col gap-3 bg-card p-4", className)}>
       {HEADLINE.includes(chart) && (
         <div className="shrink-0 text-3xl font-semibold tracking-tight tabular-nums">
           {headlineFor(chart, colored.rows, colored.shape)}
@@ -44,7 +49,7 @@ export function ResultChartCanvas({
       <div className="min-h-0 flex-1 overflow-hidden">
         <Renderer rows={colored.rows} shape={colored.shape} options={OPTIONS} />
       </div>
-      {legend.length > 0 && legend.length <= 24 && (
+      {showLegend && legend.length > 0 && legend.length <= 24 && (
         <div className="max-h-28 shrink-0 overflow-auto">
           <LegendCards items={legend} columns={4} />
         </div>

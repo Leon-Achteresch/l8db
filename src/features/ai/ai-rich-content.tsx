@@ -56,7 +56,7 @@ export function AiRichContent({
   showWork?: boolean;
 }) {
   return (
-    <div className="space-y-1">
+    <div>
       {blocks.map((block) => {
         if (block.type === "tool") {
           const status = block.status === "running" && !running ? "cancelled" : block.status;
@@ -94,13 +94,23 @@ export function AiRichContent({
             <AiWorkRow
               key={block.id}
               icon={block.outcome === "denied" ? ShieldX : ShieldCheck}
-              label={`${block.title} · ${
-                block.outcome === "allowed"
-                  ? "Einmal erlaubt"
-                  : block.outcome === "denied"
-                    ? "Abgelehnt"
-                    : "Beantwortet"
-              }`}
+              tone={block.outcome === "denied" ? "denied" : "allowed"}
+              label={block.title}
+              badge={
+                <span
+                  className={
+                    block.outcome === "denied"
+                      ? "shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive"
+                      : "shrink-0 rounded-md bg-amber-500/12 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                  }
+                >
+                  {block.outcome === "allowed"
+                    ? "Einmal erlaubt"
+                    : block.outcome === "denied"
+                      ? "Abgelehnt"
+                      : "Beantwortet"}
+                </span>
+              }
             />
           ) : null;
         if (block.type === "plan")
