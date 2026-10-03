@@ -33,9 +33,9 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
 const NOSQL_KINDS: &[DatabaseKind] =
     &[DatabaseKind::Mongodb, DatabaseKind::Redis, DatabaseKind::S3];
 
-pub(super) struct Server {
-    pub(super) pool: PoolState,
-    pub(super) columns: HashMap<String, (Instant, Vec<ColumnInfo>)>,
+pub(crate) struct Server {
+    pub(crate) pool: PoolState,
+    pub(crate) columns: HashMap<String, (Instant, Vec<ColumnInfo>)>,
 }
 
 pub fn serve() {
@@ -169,9 +169,12 @@ impl Server {
     }
 
     pub(super) async fn call(&mut self, params: &Value) -> Value {
+        self.call_with_config(params, &config::load()).await
+    }
+
+    pub(crate) async fn call_with_config(&mut self, params: &Value, config: &McpConfig) -> Value {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        let config = config::load();
         if !config.enabled {
             return tool_text(
                 "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.".into(),
@@ -180,11 +183,11 @@ impl Server {
         }
         let started = Instant::now();
         let outcome = match name {
-            "connections" => Ok(list_connections(&config)),
-            "dashboard" => self.dashboard(&config, &args).await,
+            "connections" => Ok(list_connections(config)),
+            "dashboard" => self.dashboard(config, &args).await,
             "search" | "describe" | "query" | "execute" | "benchmark" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
-                match find_connection(&config, target)
+                match find_connection(config, target)
                     .and_then(|connection| with_database(connection, &args))
                 {
                     Err(e) => Err(e),
@@ -192,16 +195,16 @@ impl Server {
                         let connection = &connection;
                         let result = match name {
                             "search" => {
-                                self.search(&config, connection, arg_str(&args, "term"))
+                                self.search(config, connection, arg_str(&args, "term"))
                                     .await
                             }
                             "describe" => {
-                                self.describe(&config, connection, arg_str(&args, "table"))
+                                self.describe(config, connection, arg_str(&args, "table"))
                                     .await
                             }
-                            "query" => self.query(&config, connection, &args).await,
-                            "benchmark" => self.benchmark(&config, connection, &args).await,
-                            _ => self.execute(&config, connection, &args).await,
+                            "query" => self.query(config, connection, &args).await,
+                            "benchmark" => self.benchmark(config, connection, &args).await,
+                            _ => self.execute(config, connection, &args).await,
                         };
                         if matches!(name, "query" | "execute" | "benchmark") {
                             let statement = match arg_str(&args, "sql") {
