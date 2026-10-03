@@ -24,6 +24,7 @@ export const NEW_FEATURES = {
   "versioning.seeds": "0.8.0",
   "versioning.tab-view": "0.8.0",
   "table.pagination.keyboard": "0.7.0",
+  "table.filter.rules": "0.10.0",
   "query.select-row-limit": "0.7.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",

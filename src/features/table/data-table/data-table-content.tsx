@@ -259,6 +259,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                     virtualRows={virtualRows}
                     visibleColumns={visibleColumns}
                     columnNames={columnNames}
+                    stateKey={props.stateKey}
                     emptyMessage={emptyMessage}
                     onSaveRow={onSaveRow}
                     canEditCell={canEditCell}
