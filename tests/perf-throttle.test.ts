@@ -660,6 +660,9 @@ test.skipIf(!ENABLED)(
       .getByRole("button", { name: /Ausführen/ })
       .first()
       .click();
+    await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+f");
     const search = page.getByRole("textbox", { name: "Ergebnisse durchsuchen" });
     await search.waitFor();
     await page.waitForTimeout(1000);
@@ -672,7 +675,8 @@ test.skipIf(!ENABLED)(
     await search.fill("");
     await page.waitForTimeout(300);
     const jsonFrames = await sample(async () => {
-      await page.getByRole("button", { name: "JSON", exact: true }).click();
+      await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
+      await page.getByRole("menuitemradio", { name: "JSON", exact: true }).click();
       await page.waitForTimeout(900);
     });
     report("Breite SQL-Ergebnisse JSON", jsonFrames);
