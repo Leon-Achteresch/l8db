@@ -18,15 +18,20 @@ import type { SavedConnection } from "@/lib/connections/types";
 import { executeQuery } from "@/lib/db";
 import { errorMessageOf } from "@/lib/error-details";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
+import { useCapabilities } from "@/lib/providers";
 import { isConnectionQuery } from "@/lib/query-client";
+import {
+  createSessionView,
+  expandSessionViews,
+  sessionViewsFor,
+  temporaryViewMode,
+} from "@/lib/session-views";
 import { effectiveConnectionString } from "@/lib/ssh/connection-string";
 
 export function isViewableSelect(sql: string): boolean {
   const trimmed = sql.trim().replace(/;\s*$/, "");
   return /^(select|with)\b/i.test(trimmed) && !trimmed.includes(";");
 }
-
-export const TEMP_VIEW_KINDS: ReadonlySet<SavedConnection["kind"]> = new Set(["sqlite", "duckdb"]);
 
 export function createViewSql(
   name: string,
@@ -57,11 +62,13 @@ export function CreateViewDialog({
   database: string | null;
 }) {
   const queryClient = useQueryClient();
+  const persistentAllowed = useCapabilities(connection.kind).views;
+  const tempMode = temporaryViewMode(connection.kind);
   const [name, setName] = useState("");
-  const [temporary, setTemporary] = useState(false);
-  const temporaryAllowed = TEMP_VIEW_KINDS.has(connection.kind);
+  const [temporaryChoice, setTemporaryChoice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const temporary = tempMode !== null && (temporaryChoice || !persistentAllowed);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -69,18 +76,26 @@ export function CreateViewDialog({
     setBusy(true);
     setError(null);
     try {
-      await executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        createViewSql(name, sql, connection.kind, temporaryAllowed && temporary),
-        database ?? undefined,
-      );
-      await queryClient.invalidateQueries({
-        predicate: (query) => isConnectionQuery(query.queryKey, connection.id),
-      });
-      toast.success(
-        `${temporaryAllowed && temporary ? "Temporäre View" : "View"} ${name.trim()} erstellt`,
-      );
+      if (temporary && tempMode === "emulated") {
+        await createSessionView(connection, database, name, sql);
+        toast.success(`Sitzungs-View ${name.trim()} angelegt`);
+      } else {
+        const expanded = expandSessionViews(
+          sql,
+          sessionViewsFor(connection.id, database),
+          connection.kind,
+        );
+        await executeQuery(
+          connection.kind,
+          effectiveConnectionString(connection),
+          createViewSql(name, expanded, connection.kind, temporary),
+          database ?? undefined,
+        );
+        await queryClient.invalidateQueries({
+          predicate: (query) => isConnectionQuery(query.queryKey, connection.id),
+        });
+        toast.success(`${temporary ? "Temporäre View" : "View"} ${name.trim()} erstellt`);
+      }
       setName("");
       onOpenChange(false);
     } catch (e) {
@@ -97,7 +112,9 @@ export function CreateViewDialog({
           <DialogHeader>
             <DialogTitle>View aus Abfrage erstellen</DialogTitle>
             <DialogDescription>
-              Die aktuelle Abfrage wird als View in der Datenbank gespeichert.
+              {persistentAllowed
+                ? "Die aktuelle Abfrage wird als View in der Datenbank gespeichert."
+                : "Die aktuelle Abfrage wird als Sitzungs-View nur in l8db gespeichert."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
@@ -106,19 +123,25 @@ export function CreateViewDialog({
               id="create-view-name"
               autoFocus
               value={name}
-              placeholder="schema.view_name"
+              placeholder={temporary ? "view_name" : "schema.view_name"}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
-          {temporaryAllowed && (
-            <div className="flex items-center gap-2">
+          {tempMode !== null && persistentAllowed && (
+            <div className="flex items-start gap-2">
               <Checkbox
                 id="create-view-temporary"
-                checked={temporary}
-                onCheckedChange={(v) => setTemporary(Boolean(v))}
+                className="mt-0.5"
+                checked={temporaryChoice}
+                onCheckedChange={(v) => setTemporaryChoice(Boolean(v))}
               />
-              <Label htmlFor="create-view-temporary" className="text-xs font-normal">
-                Temporär, nur für diese Sitzung (verschwindet beim Trennen der Verbindung)
+              <Label htmlFor="create-view-temporary" className="text-xs font-normal leading-snug">
+                Temporär, nur für diese Sitzung
+                <span className="block text-muted-foreground">
+                  {tempMode === "native"
+                    ? "Wird als TEMP VIEW auf der Verbindung angelegt und verschwindet beim Trennen."
+                    : "Wird nicht in der Datenbank angelegt. l8db setzt die Abfrage beim Ausführen als CTE ein; die View verschwindet beim Trennen der Verbindung."}
+                </span>
               </Label>
             </div>
           )}

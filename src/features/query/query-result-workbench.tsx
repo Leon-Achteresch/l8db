@@ -25,6 +25,7 @@ import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
 import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
+import { temporaryViewMode } from "@/lib/session-views";
 import { cn } from "@/lib/utils";
 import { QueryCellInspector } from "./query-cell-inspector";
 import { useMaskedQueryResult } from "./query-result-masking";
@@ -60,7 +61,7 @@ export function QueryResultWorkbench({
   const viewConnection = useConnectionsStore((s) =>
     s.connections.find((c) => c.id === chart?.connectionId),
   );
-  const viewsSupported = useCapabilities(kind).views;
+  const viewsSupported = useCapabilities(kind).views || temporaryViewMode(kind) !== null;
   const canCreateView =
     viewsSupported &&
     Boolean(chart?.sqlCapable && viewConnection && !viewConnection.readOnly) &&
