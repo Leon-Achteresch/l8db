@@ -116,21 +116,25 @@ export function QueryResultWorkbench({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5">
-        <ResultTitle />
-        <span
-          role="status"
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
-            isLoading
-              ? "border-primary/30 bg-primary/10 text-primary"
-              : error
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-          )}
-        >
-          <span className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")} />
-          {isLoading ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
-        </span>
+        <div className="inline-flex items-center gap-2 rounded-xl border px-2 py-0.5">
+          <ResultTitle />
+          <span
+            role="status"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+              isLoading
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : error
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+            )}
+          >
+            <span
+              className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")}
+            />
+            {isLoading ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
+          </span>
+        </div>
         {statusText && (
           <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
             {statusText}
