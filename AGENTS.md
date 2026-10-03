@@ -21,6 +21,20 @@ Biome is configured; run `bun run check` for frontend lint and formatting checks
 Production configuration checks: `bun run production:check`. CSP browser tests: build first, then run `L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts` (use `webkit` instead of `1` for WebKit).
 Use Bun 1.3.10 and commit `bun.lock`; do not add an npm lockfile.
 
+## Checks for coding agents
+
+Keep checks fast: run only what the change can break, once at the end, not after every edit.
+
+| Changed | Run |
+|---|---|
+| Docs, copy, CSS/Tailwind only | nothing |
+| `src/**/*.ts(x)` | `npx tsc -p tsconfig.app.json --noEmit`, `bunx biome check <changed files>`, and only the tests that cover the change (`grep -l <module> tests/*.test.ts`) |
+| `src-tauri/**/*.rs` | `cargo check`, plus `cargo test <module>` if logic changed |
+
+- Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, browser/perf/integration/E2E tests, `production:check`, `tauri build`.
+- Do not re-run a check that already passed, and do not wait for CI.
+- If a check fails for reasons unrelated to your change, report it instead of fixing it.
+
 ## Git & Releases
 
 - Daily work goes to `development` (features: `merge --no-ff`). Never open a PR from `development` to `main`.
