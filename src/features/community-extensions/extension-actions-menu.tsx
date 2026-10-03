@@ -1,5 +1,6 @@
 import { EllipsisIcon, PowerOffIcon, RefreshCwIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { useState } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,17 +12,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ExtensionDescriptor } from "@/lib/extensions/contracts";
-
-const item = "rounded-lg whitespace-nowrap first:rounded-lg last:rounded-lg";
 
 export function ExtensionActionsMenu({
   extension,
@@ -40,7 +32,7 @@ export function ExtensionActionsMenu({
   const [confirm, setConfirm] = useState(false);
   return (
     <>
-      <DropdownMenu>
+      <IconMenu>
         <DropdownMenuTrigger asChild>
           <Button
             size="icon-sm"
@@ -50,37 +42,27 @@ export function ExtensionActionsMenu({
             <EllipsisIcon />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-auto min-w-56">
-          <DropdownMenuLabel className="truncate">
-            {manifest.name} · v{manifest.version}
-          </DropdownMenuLabel>
+        <IconMenuContent>
           {extension.enabled && (
-            <DropdownMenuItem className={item} onSelect={onDisable}>
-              <PowerOffIcon />
-              Deaktivieren
-            </DropdownMenuItem>
+            <IconMenuItem icon={<PowerOffIcon />} label="Deaktivieren" onSelect={onDisable} />
           )}
-          <DropdownMenuItem className={item} onSelect={onReload}>
-            <RefreshCwIcon />
-            Neu laden
-          </DropdownMenuItem>
+          <IconMenuItem icon={<RefreshCwIcon />} label="Neu laden" onSelect={onReload} />
           {!extension.developmentPath && (
-            <DropdownMenuItem className={item} onSelect={onUpdate}>
-              <UploadIcon />
-              Aus Datei aktualisieren …
-            </DropdownMenuItem>
+            <IconMenuItem
+              icon={<UploadIcon />}
+              label="Aus Datei aktualisieren …"
+              onSelect={onUpdate}
+            />
           )}
-          <DropdownMenuSeparator className="my-1" />
-          <DropdownMenuItem
-            className={item}
+          <IconMenuSeparator />
+          <IconMenuItem
+            icon={<Trash2Icon />}
+            label="Deinstallieren …"
             variant="destructive"
             onSelect={() => setConfirm(true)}
-          >
-            <Trash2Icon />
-            Deinstallieren …
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          />
+        </IconMenuContent>
+      </IconMenu>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -1,4 +1,3 @@
-import { ClipboardPasteIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CsvMappingTable } from "@/features/import/csv-mapping-table";
 import { CsvPreviewTable } from "@/features/import/csv-preview-table";
 import type { SavedConnection } from "@/lib/connections";
@@ -31,15 +29,18 @@ export function PasteRowsDialog({
   database,
   schema,
   table,
+  open,
+  onOpenChange: setOpen,
   onComplete,
 }: {
   connection: SavedConnection;
   database: string | null;
   schema: string;
   table: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onComplete: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [header, setHeader] = useState(true);
   const [targets, setTargets] = useState<ImportTargetColumn[]>([]);
@@ -103,20 +104,6 @@ export function PasteRowsDialog({
   };
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label="Tabellenblock einfügen"
-            onClick={() => setOpen(true)}
-          >
-            <ClipboardPasteIcon className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Tabellenblock einfügen</TooltipContent>
-      </Tooltip>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>

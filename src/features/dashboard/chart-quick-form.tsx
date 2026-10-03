@@ -1,5 +1,6 @@
 import { Table2Icon } from "lucide-react";
 import { useId } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -9,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type Dataset, type DatasetShape, emptySimple, type Widget } from "@/lib/dashboards";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { ChartVisualBuilder } from "./chart-visual-builder";
 
@@ -27,6 +29,7 @@ export function ChartQuickForm({
   onWidget: (patch: Partial<Widget>) => void;
 }) {
   const titleId = useId();
+  const builderIsNew = useHasNewFeatures("dashboard.visual-builder");
   const simple = dataset.simple;
   const tables = useTablesQuery();
   const views = useViewsQuery();
@@ -85,7 +88,10 @@ export function ChartQuickForm({
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-xl bg-muted/35 p-6">
           <Table2Icon className="size-6 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Starte mit deiner Datenquelle</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            Starte mit deiner Datenquelle
+            {builderIsNew && <NewBadge />}
+          </h2>
           <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
             Wähle eine Tabelle oder View. Danach kannst du ihre Felder zu Kennzahlen, Kategorien und
             Filtern zusammensetzen.

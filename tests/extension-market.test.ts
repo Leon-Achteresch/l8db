@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import type { ExtensionArchive } from "../src/lib/extensions/contracts";
 import { ExtensionManager } from "../src/lib/extensions/manager";
 import {
+  COMMUNITY_MARKET_URL,
   downloadMarketExtension,
   loadMarketCatalog,
   validateMarketCatalog,
@@ -121,6 +122,17 @@ describe("offizieller Extension-Markt", () => {
     expect(stored.get("l8db.jev")?.grants).toEqual(["network", "filesystem:extension-storage"]);
     await manager.uninstallExtension("l8db.jev");
     expect(stored.size).toBe(0);
+  });
+
+  test("Community-Katalog darf den Herausgeber l8db nicht verwenden", async () => {
+    const item = entry("package");
+    const fetcher: typeof fetch = async () =>
+      new Response(JSON.stringify({ schemaVersion: 1, extensions: [item] }));
+    await expect(loadMarketCatalog(fetcher, COMMUNITY_MARKET_URL)).rejects.toThrow("l8db");
+    const community = { ...item, id: "acme.jev", publisher: "acme" };
+    const allowed: typeof fetch = async () =>
+      new Response(JSON.stringify({ schemaVersion: 1, extensions: [community] }));
+    expect((await loadMarketCatalog(allowed, COMMUNITY_MARKET_URL)).extensions).toHaveLength(1);
   });
 
   test("weist manipulierte und nicht passende Pakete zurück", async () => {

@@ -5,8 +5,10 @@ import {
   LayoutDashboardIcon,
   PlusIcon,
 } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { CHARTS, type ChartKind } from "@/lib/dashboards";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { ChartKindPreview } from "./chart-kind-preview";
 
 const EXAMPLES: { kind: ChartKind; question: string; description: string }[] = [
@@ -36,6 +38,7 @@ export function DashboardWelcome({
   onCreate: () => void;
   onOpen: () => void;
 }) {
+  const hasNew = useHasNewFeatures("dashboard");
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-muted/15">
       <header className="flex items-center justify-between gap-3 border-b bg-background px-6 py-4 text-xs text-muted-foreground">
@@ -61,6 +64,7 @@ export function DashboardWelcome({
           <div className="mt-6 flex flex-wrap gap-2">
             <Button onClick={onCreate}>
               <PlusIcon /> Dashboard erstellen
+              {hasNew && <NewBadge />}
             </Button>
             <Button variant="ghost" onClick={onOpen}>
               <FolderOpenIcon /> Aus Datei öffnen

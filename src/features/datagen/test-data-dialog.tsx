@@ -1,5 +1,3 @@
-import { SparklesIcon } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,7 +19,6 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SavedConnection } from "@/lib/connections";
 import type { DatagenLocale } from "@/lib/db";
 import { useCapabilities } from "@/lib/providers";
@@ -36,6 +33,8 @@ interface Props {
   schema: string;
   table: string;
   readOnly: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onComplete: () => void;
 }
 
@@ -50,29 +49,16 @@ export function TestDataDialog({
   schema,
   table,
   readOnly,
+  open,
+  onOpenChange: setOpen,
   onComplete,
 }: Props) {
-  const [open, setOpen] = useState(false);
   const state = useTestData({ open, connection, database, schema, table, onComplete });
   const transactional = useCapabilities(connection.kind).transactions;
   const blocked = readOnly || state.running || state.loading || state.issues.length > 0;
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="size-7"
-            aria-label="Testdaten generieren"
-            onClick={() => setOpen(true)}
-          >
-            <SparklesIcon className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Testdaten / Maskierte Kopie</TooltipContent>
-      </Tooltip>
       <Dialog open={open} onOpenChange={(next) => !state.running && setOpen(next)}>
         <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-4xl">
           <DialogHeader>

@@ -220,7 +220,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "table-toolbar",
         title: "Spalten, Export und mehr",
-        body: "Hier oben wechselst du zwischen den Daten und dem Aufbau der Tabelle („Spalten“). Über „Export“ speicherst du die Daten als Datei (CSV für Excel oder JSON).",
+        body: "Hier oben wechselst du zwischen den Daten und dem Aufbau der Tabelle („Spalten“). Über „⋯“ → „Export“ speicherst du die Daten als Datei (CSV für Excel oder JSON).",
         action: "Klicke auf „Weiter“.",
         tableRoute: true,
         target: "[data-tour='table-toolbar']",
@@ -230,7 +230,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "table-add",
         title: "Neue Zeile hinzufügen",
-        body: "„Neue Zeile“ öffnet ein Formular. Fülle die Felder aus und speichere — schon ist der Eintrag in der Datenbank.",
+        body: "Im Menü „⋯“ öffnet „Neue Zeile“ ein Formular. Fülle die Felder aus und speichere — schon ist der Eintrag in der Datenbank.",
         action: "Klicke auf „Weiter“.",
         tableRoute: true,
         target: "[data-tour='table-add']",

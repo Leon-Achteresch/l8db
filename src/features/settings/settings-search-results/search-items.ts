@@ -36,6 +36,14 @@ export const SEARCH_ITEMS: SearchItem[] = [
     ],
   },
   {
+    id: "hide-own-schema",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Eigenes Schema ohne Auswahl",
+    description: "Schema-Auswahl ausblenden, wenn das Schema dem Benutzernamen entspricht.",
+    keywords: ["schema", "benutzer", "user", "auswahl", "sidebar", "oracle"],
+  },
+  {
     id: "table-tabs",
     tabId: "general",
     tabLabel: "Allgemein",

@@ -3,22 +3,24 @@ import {
   ArrowUpDownIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  DiffIcon,
   EllipsisIcon,
   GitCompareIcon,
+  InfoIcon,
   LoaderIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  IconMenu,
+  IconMenuCheckboxItem,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuSeparator,
+} from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
@@ -219,7 +221,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
         </Button>
         <div className="ml-auto flex items-center gap-1">
           {props.workspaceActions}
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
@@ -230,29 +232,29 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                 <EllipsisIcon className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuCheckboxItem
+            <IconMenuContent>
+              <IconMenuCheckboxItem
+                icon={<DiffIcon />}
+                label="Nur Unterschiede"
                 checked={onlyDifferences}
                 onCheckedChange={setOnlyDifferences}
-              >
-                Nur Unterschiede
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuItem
+              />
+              <IconMenuItem
+                icon={<RefreshCwIcon />}
+                label="Neu laden"
                 onSelect={() => {
                   props.onReload();
                   setReloadToken((token) => token + 1);
                 }}
-              >
-                <RefreshCwIcon className="size-3.5" />
-                Neu laden
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <p className="px-2 py-2 text-xs leading-relaxed text-muted-foreground">
-                Änderungen aus Quelle oder Ziel in den mittleren Entwurf übernehmen. Den Entwurf
-                anschließend für jede Seite getrennt prüfen und speichern.
-              </p>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              />
+              <IconMenuSeparator />
+              <IconMenuItem
+                icon={<InfoIcon />}
+                label="Änderungen aus Quelle oder Ziel in den mittleren Entwurf übernehmen. Den Entwurf anschließend für jede Seite getrennt prüfen und speichern."
+                onSelect={(event) => event.preventDefault()}
+              />
+            </IconMenuContent>
+          </IconMenu>
         </div>
         <CompareSetupModal
           {...props}

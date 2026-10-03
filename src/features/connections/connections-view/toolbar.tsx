@@ -1,12 +1,8 @@
 import { Download, FolderTree, MoreHorizontal, Plus, Search, Star, Upload } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { HostGroupRule } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
@@ -69,27 +65,22 @@ export function ConnectionsToolbar({
         Neue Verbindung
       </Button>
       {connections.length > 0 && (
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="icon-sm" aria-label="Weitere Aktionen">
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onSelect={() => setImportOpen(true)}>
-              <Upload className="size-3.5" />
-              Import
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setExportOpen(true)}>
-              <Download className="size-3.5" />
-              Export
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setRulesDialog({ draft: null })}>
-              <FolderTree className="size-3.5" />
-              Gruppen-Regeln
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <IconMenuContent>
+            <IconMenuItem icon={<Upload />} label="Import" onSelect={() => setImportOpen(true)} />
+            <IconMenuItem icon={<Download />} label="Export" onSelect={() => setExportOpen(true)} />
+            <IconMenuItem
+              icon={<FolderTree />}
+              label="Gruppen-Regeln"
+              onSelect={() => setRulesDialog({ draft: null })}
+            />
+          </IconMenuContent>
+        </IconMenu>
       )}
     </>
   );

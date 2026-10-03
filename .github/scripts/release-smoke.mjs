@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -125,8 +126,17 @@ async function start(binary, expectedVersion) {
   }
 }
 
+const BUNDLE_TYPE = Buffer.from("__TAURI_BUNDLE_TYPE_VAR_");
+
 function binaryHash(file) {
-  return createHash("sha256").update(readFileSync(file)).digest("hex");
+  const bytes = readFileSync(file);
+  for (
+    let index = bytes.indexOf(BUNDLE_TYPE);
+    index >= 0;
+    index = bytes.indexOf(BUNDLE_TYPE, index + 1)
+  )
+    bytes.write("UNK", index + BUNDLE_TYPE.length, "latin1");
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 if (platform === "macos") {
@@ -231,6 +241,21 @@ if (platform === "macos") {
       ...(previousTag ? ["-Previous", previous, "-PreviousVersion", previousTag.slice(1)] : []),
     ],
     { stdio: "inherit", env: environment },
+  );
+  const compiled = JSON.parse(readFileSync("build-windows.json", "utf8")).binarySha256;
+  assert.equal(
+    binaryHash(join(root, "installed", "l8db.exe")),
+    compiled,
+    "NSIS contains a different application",
+  );
+  const msi = readdirSync(join(root, "msi"), { recursive: true }).find((file) =>
+    String(file).endsWith("l8db.exe"),
+  );
+  assert(msi, "MSI does not contain l8db.exe");
+  assert.equal(
+    binaryHash(join(root, "msi", String(msi))),
+    compiled,
+    "MSI contains a different application",
   );
 }
 assert(

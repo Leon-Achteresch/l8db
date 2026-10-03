@@ -1,0 +1,1580 @@
+[
+  {
+    "name": "message-bubble",
+    "url": "https://beui.dev/r/message-bubble.json",
+    "files": [
+      "components/agents/message-bubble.tsx",
+      "components/agents/message-context.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/message-bubble.tsx",
+        "local": [
+          "agents/message-bubble.tsx",
+          "agents/message-bubble-parts/message-bubble-collapsible.tsx",
+          "agents/message-bubble-parts/message-bubble-content.tsx",
+          "agents/message-bubble-parts/message-bubble-group.tsx",
+          "agents/message-bubble-parts/message-bubble.tsx",
+          "agents/message-bubble-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-context.tsx",
+        "local": ["agents/message-context.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "message",
+    "url": "https://beui.dev/r/message.json",
+    "files": [
+      "components/agents/message.tsx",
+      "components/agents/message-bubble.tsx",
+      "components/agents/message-context.tsx",
+      "components/agents/message-scroller.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "components/motion/preview-rail.tsx",
+      "lib/hooks/use-dismiss.ts",
+      "lib/hooks/use-hover-gesture.ts",
+      "lib/hooks/use-tap-gesture.ts",
+      "lib/touch.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/message.tsx",
+        "local": [
+          "agents/message.tsx",
+          "agents/message-parts/message-avatar.tsx",
+          "agents/message-parts/message-content.tsx",
+          "agents/message-parts/message-footer.tsx",
+          "agents/message-parts/message-group.tsx",
+          "agents/message-parts/message-header.tsx",
+          "agents/message-parts/message-marker.tsx",
+          "agents/message-parts/message-typing.tsx",
+          "agents/message-parts/message.tsx",
+          "agents/message-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-bubble.tsx",
+        "local": [
+          "agents/message-bubble.tsx",
+          "agents/message-bubble-parts/message-bubble-collapsible.tsx",
+          "agents/message-bubble-parts/message-bubble-content.tsx",
+          "agents/message-bubble-parts/message-bubble-group.tsx",
+          "agents/message-bubble-parts/message-bubble.tsx",
+          "agents/message-bubble-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-context.tsx",
+        "local": ["agents/message-context.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-scroller.tsx",
+        "local": ["agents/message-scroller.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/preview-rail.tsx",
+        "local": [
+          "motion/preview-rail.tsx",
+          "motion/preview-rail-parts/default-preview.tsx",
+          "motion/preview-rail-parts/preview-rail.tsx",
+          "motion/preview-rail-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-dismiss.ts",
+        "local": ["lib/hooks/use-dismiss.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-gesture.ts",
+        "local": ["lib/hooks/use-hover-gesture.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-tap-gesture.ts",
+        "local": ["lib/hooks/use-tap-gesture.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/touch.ts",
+        "local": ["lib/touch.ts"],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "message-scroller",
+    "url": "https://beui.dev/r/message-scroller.json",
+    "files": [
+      "components/agents/message-scroller.tsx",
+      "components/motion/preview-rail.tsx",
+      "lib/utils.ts",
+      "lib/ease.ts",
+      "lib/hooks/use-dismiss.ts",
+      "lib/hooks/use-hover-gesture.ts",
+      "lib/hooks/use-tap-gesture.ts",
+      "lib/touch.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/message-scroller.tsx",
+        "local": ["agents/message-scroller.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/preview-rail.tsx",
+        "local": [
+          "motion/preview-rail.tsx",
+          "motion/preview-rail-parts/default-preview.tsx",
+          "motion/preview-rail-parts/preview-rail.tsx",
+          "motion/preview-rail-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-dismiss.ts",
+        "local": ["lib/hooks/use-dismiss.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-gesture.ts",
+        "local": ["lib/hooks/use-hover-gesture.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-tap-gesture.ts",
+        "local": ["lib/hooks/use-tap-gesture.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/touch.ts",
+        "local": ["lib/touch.ts"],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "prompt-input",
+    "url": "https://beui.dev/r/prompt-input.json",
+    "files": [
+      "components/agents/prompt-input.tsx",
+      "components/motion/button/index.tsx",
+      "components/motion/popover-morph.tsx",
+      "components/motion/select.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "components/motion/button/base.tsx",
+      "components/motion/button/magnetic.tsx",
+      "components/motion/button/metallic.tsx",
+      "components/motion/button/stateful.tsx",
+      "components/motion/popover-position.ts",
+      "lib/hooks/use-hover-capable.ts",
+      "components/motion/magnetic.tsx"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/prompt-input.tsx",
+        "local": ["agents/prompt-input.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/index.tsx",
+        "local": ["motion/button/index.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/popover-morph.tsx",
+        "local": [
+          "motion/popover-morph.tsx",
+          "motion/popover-morph-parts/morph-popover-content.tsx",
+          "motion/popover-morph-parts/morph-popover-surface.tsx",
+          "motion/popover-morph-parts/morph-popover-trigger.tsx",
+          "motion/popover-morph-parts/morph-popover.tsx",
+          "motion/popover-morph-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/select.tsx",
+        "local": [
+          "motion/select.tsx",
+          "motion/select-parts/select-content.tsx",
+          "motion/select-parts/select-item.tsx",
+          "motion/select-parts/select-trigger.tsx",
+          "motion/select-parts/select-value.tsx",
+          "motion/select-parts/select.tsx",
+          "motion/select-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/button/base.tsx",
+        "local": ["motion/button/base.tsx", "motion/button/button-link.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/magnetic.tsx",
+        "local": ["motion/button/magnetic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/metallic.tsx",
+        "local": ["motion/button/metallic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/stateful.tsx",
+        "local": [
+          "motion/button/stateful.tsx",
+          "motion/button/stateful-parts/icon-slot.tsx",
+          "motion/button/stateful-parts/shared.tsx",
+          "motion/button/stateful-parts/stateful-button.tsx",
+          "motion/button/stateful-parts/text-slot.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/popover-position.ts",
+        "local": ["motion/popover-position.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-capable.ts",
+        "local": ["lib/hooks/use-hover-capable.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/magnetic.tsx",
+        "local": ["motion/magnetic.tsx"],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "todo-list",
+    "url": "https://beui.dev/r/todo-list.json",
+    "files": [
+      "components/agents/todo-list.tsx",
+      "components/agents/agent-disclosure.tsx",
+      "components/motion/action-swap-roll.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "components/motion/action-swap.tsx"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/todo-list.tsx",
+        "local": [
+          "agents/todo-list.tsx",
+          "agents/todo-list-parts/shared.ts",
+          "agents/todo-list-parts/todo-header-icon.tsx",
+          "agents/todo-list-parts/todo-list.tsx",
+          "agents/todo-list-parts/todo-status-icon.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/action-swap-roll.tsx",
+        "local": [
+          "motion/action-swap-roll.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-button.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-icon.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-text.tsx",
+          "motion/action-swap-roll-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/action-swap.tsx",
+        "local": [
+          "motion/action-swap.tsx",
+          "motion/action-swap-parts/action-swap-button.tsx",
+          "motion/action-swap-parts/action-swap-icon.tsx",
+          "motion/action-swap-parts/action-swap-text.tsx",
+          "motion/action-swap-parts/shared.ts"
+        ],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "code-block",
+    "url": "https://beui.dev/r/code-block.json",
+    "files": [
+      "components/agents/code-block.tsx",
+      "components/agents/agent-code.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/code-block.tsx",
+        "local": ["agents/code-block.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-code.tsx",
+        "local": [
+          "agents/agent-code.tsx",
+          "agents/agent-code-parts/agent-code-line.tsx",
+          "agents/agent-code-parts/agent-code.tsx",
+          "agents/agent-code-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "approval-card",
+    "url": "https://beui.dev/r/approval-card.json",
+    "files": [
+      "components/agents/approval-card/index.tsx",
+      "components/agents/approval-card/types.ts",
+      "components/agents/agent-disclosure.tsx",
+      "components/motion/action-swap-roll.tsx",
+      "components/motion/button/index.tsx",
+      "components/motion/checkbox.tsx",
+      "components/motion/input.tsx",
+      "components/motion/radio.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "components/motion/action-swap.tsx",
+      "components/motion/button/base.tsx",
+      "components/motion/button/magnetic.tsx",
+      "components/motion/button/metallic.tsx",
+      "components/motion/button/stateful.tsx",
+      "lib/hooks/use-hover-capable.ts",
+      "components/motion/magnetic.tsx"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/approval-card/index.tsx",
+        "local": [
+          "agents/approval-card/index.tsx",
+          "agents/approval-card/index-parts/approval-card.tsx",
+          "agents/approval-card/index-parts/progress-dots.tsx",
+          "agents/approval-card/index-parts/question-options.tsx",
+          "agents/approval-card/index-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/approval-card/types.ts",
+        "local": ["agents/approval-card/types.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/action-swap-roll.tsx",
+        "local": [
+          "motion/action-swap-roll.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-button.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-icon.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-text.tsx",
+          "motion/action-swap-roll-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/index.tsx",
+        "local": ["motion/button/index.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/checkbox.tsx",
+        "local": ["motion/checkbox.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/input.tsx",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/radio.tsx",
+        "local": [
+          "motion/radio.tsx",
+          "motion/radio-parts/radio-group-item.tsx",
+          "motion/radio-parts/radio-group.tsx",
+          "motion/radio-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/action-swap.tsx",
+        "local": [
+          "motion/action-swap.tsx",
+          "motion/action-swap-parts/action-swap-button.tsx",
+          "motion/action-swap-parts/action-swap-icon.tsx",
+          "motion/action-swap-parts/action-swap-text.tsx",
+          "motion/action-swap-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/base.tsx",
+        "local": ["motion/button/base.tsx", "motion/button/button-link.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/magnetic.tsx",
+        "local": ["motion/button/magnetic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/metallic.tsx",
+        "local": ["motion/button/metallic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/stateful.tsx",
+        "local": [
+          "motion/button/stateful.tsx",
+          "motion/button/stateful-parts/icon-slot.tsx",
+          "motion/button/stateful-parts/shared.tsx",
+          "motion/button/stateful-parts/stateful-button.tsx",
+          "motion/button/stateful-parts/text-slot.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-capable.ts",
+        "local": ["lib/hooks/use-hover-capable.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/magnetic.tsx",
+        "local": ["motion/magnetic.tsx"],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "file-diff",
+    "url": "https://beui.dev/r/file-diff.json",
+    "files": [
+      "components/agents/file-diff.tsx",
+      "components/agents/agent-code.tsx",
+      "components/agents/agent-disclosure.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/file-diff.tsx",
+        "local": [
+          "agents/file-diff.tsx",
+          "agents/file-diff-parts/change-count.tsx",
+          "agents/file-diff-parts/file-diff.tsx",
+          "agents/file-diff-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-code.tsx",
+        "local": [
+          "agents/agent-code.tsx",
+          "agents/agent-code-parts/agent-code-line.tsx",
+          "agents/agent-code-parts/agent-code.tsx",
+          "agents/agent-code-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "tool-result",
+    "url": "https://beui.dev/r/tool-result.json",
+    "files": [
+      "components/agents/tool-result.tsx",
+      "components/agents/agent-code.tsx",
+      "components/agents/agent-disclosure.tsx",
+      "components/motion/action-swap-roll.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "components/motion/action-swap.tsx"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/tool-result.tsx",
+        "local": [
+          "agents/tool-result.tsx",
+          "agents/tool-result-parts/kind-icon.tsx",
+          "agents/tool-result-parts/shared.ts",
+          "agents/tool-result-parts/status-icon.tsx",
+          "agents/tool-result-parts/tool-result-action.tsx",
+          "agents/tool-result-parts/tool-result-output.tsx",
+          "agents/tool-result-parts/tool-result.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-code.tsx",
+        "local": [
+          "agents/agent-code.tsx",
+          "agents/agent-code-parts/agent-code-line.tsx",
+          "agents/agent-code-parts/agent-code.tsx",
+          "agents/agent-code-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/action-swap-roll.tsx",
+        "local": [
+          "motion/action-swap-roll.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-button.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-icon.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-text.tsx",
+          "motion/action-swap-roll-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/action-swap.tsx",
+        "local": [
+          "motion/action-swap.tsx",
+          "motion/action-swap-parts/action-swap-button.tsx",
+          "motion/action-swap-parts/action-swap-icon.tsx",
+          "motion/action-swap-parts/action-swap-text.tsx",
+          "motion/action-swap-parts/shared.ts"
+        ],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "streaming-response",
+    "url": "https://beui.dev/r/streaming-response.json",
+    "files": [
+      "components/agents/streaming-response.tsx",
+      "components/agents/agent-disclosure.tsx",
+      "components/agents/citations.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "lib/hooks/use-favicon.ts",
+      "lib/favicon.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/streaming-response.tsx",
+        "local": [
+          "agents/streaming-response.tsx",
+          "agents/streaming-response-parts/response-action.tsx",
+          "agents/streaming-response-parts/shared.ts",
+          "agents/streaming-response-parts/streaming-response.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/citations.tsx",
+        "local": [
+          "agents/citations.tsx",
+          "agents/citations-parts/citation-favicon.tsx",
+          "agents/citations-parts/citation-list.tsx",
+          "agents/citations-parts/citation-row.tsx",
+          "agents/citations-parts/citation-stack.tsx",
+          "agents/citations-parts/citation.tsx",
+          "agents/citations-parts/citations.tsx",
+          "agents/citations-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "lib/hooks/use-favicon.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "lib/favicon.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "image-generation",
+    "url": "https://beui.dev/r/image-generation.json",
+    "files": [
+      "components/agents/image-generation.tsx",
+      "lib/ease.ts",
+      "lib/hooks/use-hover-capable.ts",
+      "lib/utils.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/image-generation.tsx",
+        "local": [
+          "agents/image-generation.tsx",
+          "agents/image-generation-parts/dither-field.tsx",
+          "agents/image-generation-parts/dither-mark.tsx",
+          "agents/image-generation-parts/image-generation.tsx",
+          "agents/image-generation-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-capable.ts",
+        "local": ["lib/hooks/use-hover-capable.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "tool-approval",
+    "url": "https://beui.dev/r/tool-approval.json",
+    "files": [
+      "components/agents/tool-approval.tsx",
+      "components/agents/agent-code.tsx",
+      "components/agents/agent-disclosure.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/tool-approval.tsx",
+        "local": [
+          "agents/tool-approval.tsx",
+          "agents/tool-approval-parts/shared.ts",
+          "agents/tool-approval-parts/tool-approval-code.tsx",
+          "agents/tool-approval-parts/tool-approval.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-code.tsx",
+        "local": [
+          "agents/agent-code.tsx",
+          "agents/agent-code-parts/agent-code-line.tsx",
+          "agents/agent-code-parts/agent-code.tsx",
+          "agents/agent-code-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "citations",
+    "url": "https://beui.dev/r/citations.json",
+    "files": [
+      "components/agents/citations.tsx",
+      "components/agents/agent-disclosure.tsx",
+      "lib/ease.ts",
+      "lib/hooks/use-favicon.ts",
+      "lib/utils.ts",
+      "lib/favicon.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/citations.tsx",
+        "local": [
+          "agents/citations.tsx",
+          "agents/citations-parts/citation-favicon.tsx",
+          "agents/citations-parts/citation-list.tsx",
+          "agents/citations-parts/citation-row.tsx",
+          "agents/citations-parts/citation-stack.tsx",
+          "agents/citations-parts/citation.tsx",
+          "agents/citations-parts/citations.tsx",
+          "agents/citations-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-favicon.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "lib/favicon.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "agent-activity",
+    "url": "https://beui.dev/r/agent-activity.json",
+    "files": [
+      "components/agents/agent-activity/index.tsx",
+      "components/agents/agent-activity/activity-row.tsx",
+      "components/agents/agent-activity/types.ts",
+      "components/agents/agent-disclosure.tsx",
+      "components/agents/loading-states/thinking-shimmer.tsx",
+      "lib/ease.ts",
+      "lib/utils.ts",
+      "components/motion/text-shimmer.tsx",
+      "lib/text-shimmer.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/agent-activity/index.tsx",
+        "local": ["agents/agent-activity/index.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-activity/activity-row.tsx",
+        "local": [
+          "agents/agent-activity/activity-row.tsx",
+          "agents/agent-activity/activity-row-parts/action-icon.tsx",
+          "agents/agent-activity/activity-row-parts/activity-row.tsx",
+          "agents/agent-activity/activity-row-parts/search-result-row.tsx",
+          "agents/agent-activity/activity-row-parts/search-row.tsx",
+          "agents/agent-activity/activity-row-parts/shared.ts",
+          "agents/agent-activity/activity-row-parts/step-row.tsx",
+          "agents/agent-activity/activity-row-parts/text-row.tsx",
+          "agents/agent-activity/activity-row-parts/tool-row.tsx",
+          "agents/agent-activity/activity-row-parts/trace-icon.tsx",
+          "agents/agent-activity/activity-row-parts/trace-row.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-activity/types.ts",
+        "local": ["agents/agent-activity/types.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/loading-states/thinking-shimmer.tsx",
+        "local": ["agents/loading-states/thinking-shimmer.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/text-shimmer.tsx",
+        "local": ["motion/text-shimmer.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/text-shimmer.ts",
+        "local": ["lib/text-shimmer.ts"],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "ai-sidebar",
+    "url": "https://beui.dev/r/ai-sidebar.json",
+    "files": [
+      "components/agents/ai-sidebar.tsx",
+      "components/motion/popover-morph.tsx",
+      "lib/ease.ts",
+      "lib/hooks/use-touch-capable.ts",
+      "lib/utils.ts",
+      "components/motion/popover-position.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/ai-sidebar.tsx",
+        "local": [
+          "agents/ai-sidebar.tsx",
+          "agents/ai-sidebar-parts/ai-sidebar.tsx",
+          "agents/ai-sidebar-parts/marquee-label.tsx",
+          "agents/ai-sidebar-parts/resource-menu-action.tsx",
+          "agents/ai-sidebar-parts/resource-row.tsx",
+          "agents/ai-sidebar-parts/shared.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/popover-morph.tsx",
+        "local": [
+          "motion/popover-morph.tsx",
+          "motion/popover-morph-parts/morph-popover-content.tsx",
+          "motion/popover-morph-parts/morph-popover-surface.tsx",
+          "motion/popover-morph-parts/morph-popover-trigger.tsx",
+          "motion/popover-morph-parts/morph-popover.tsx",
+          "motion/popover-morph-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-touch-capable.ts",
+        "local": ["lib/hooks/use-touch-capable.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/popover-position.ts",
+        "local": ["motion/popover-position.ts"],
+        "omitted": false
+      }
+    ]
+  },
+  {
+    "name": "chat-app",
+    "url": "https://beui.dev/r/chat-app.json",
+    "files": [
+      "components/agents/chat-app.tsx",
+      "components/agents/agent-activity/index.tsx",
+      "components/agents/ai-sidebar.tsx",
+      "components/agents/approval-card/index.tsx",
+      "components/agents/code-block.tsx",
+      "components/agents/file-diff.tsx",
+      "components/agents/image-generation.tsx",
+      "components/agents/loading-states/thinking-shimmer.tsx",
+      "components/agents/message.tsx",
+      "components/agents/message-bubble.tsx",
+      "components/agents/message-scroller.tsx",
+      "components/agents/prompt-input.tsx",
+      "components/agents/streaming-response.tsx",
+      "components/agents/todo-list.tsx",
+      "components/agents/tool-approval.tsx",
+      "components/agents/tool-result.tsx",
+      "components/motion/animated-sidebar.tsx",
+      "lib/utils.ts",
+      "components/agents/agent-activity/activity-row.tsx",
+      "components/agents/agent-activity/types.ts",
+      "components/agents/agent-disclosure.tsx",
+      "lib/ease.ts",
+      "components/motion/popover-morph.tsx",
+      "lib/hooks/use-touch-capable.ts",
+      "components/agents/approval-card/types.ts",
+      "components/motion/action-swap-roll.tsx",
+      "components/motion/button/index.tsx",
+      "components/motion/checkbox.tsx",
+      "components/motion/input.tsx",
+      "components/motion/radio.tsx",
+      "components/agents/agent-code.tsx",
+      "lib/hooks/use-hover-capable.ts",
+      "components/motion/text-shimmer.tsx",
+      "components/agents/message-context.tsx",
+      "components/motion/preview-rail.tsx",
+      "components/motion/select.tsx",
+      "components/agents/citations.tsx",
+      "components/motion/shared-layout-bg.tsx",
+      "components/motion/popover-position.ts",
+      "components/motion/action-swap.tsx",
+      "components/motion/button/base.tsx",
+      "components/motion/button/magnetic.tsx",
+      "components/motion/button/metallic.tsx",
+      "components/motion/button/stateful.tsx",
+      "lib/text-shimmer.ts",
+      "lib/hooks/use-dismiss.ts",
+      "lib/hooks/use-hover-gesture.ts",
+      "lib/hooks/use-tap-gesture.ts",
+      "lib/hooks/use-favicon.ts",
+      "components/motion/magnetic.tsx",
+      "lib/touch.ts",
+      "lib/favicon.ts"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/chat-app.tsx",
+        "local": [
+          "agents/chat-app.tsx",
+          "agents/chat-app-parts/chat-app.tsx",
+          "agents/chat-app-parts/shared.ts",
+          "agents/chat-app-parts/shell-fit.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-activity/index.tsx",
+        "local": ["agents/agent-activity/index.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/ai-sidebar.tsx",
+        "local": [
+          "agents/ai-sidebar.tsx",
+          "agents/ai-sidebar-parts/ai-sidebar.tsx",
+          "agents/ai-sidebar-parts/marquee-label.tsx",
+          "agents/ai-sidebar-parts/resource-menu-action.tsx",
+          "agents/ai-sidebar-parts/resource-row.tsx",
+          "agents/ai-sidebar-parts/shared.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/approval-card/index.tsx",
+        "local": [
+          "agents/approval-card/index.tsx",
+          "agents/approval-card/index-parts/approval-card.tsx",
+          "agents/approval-card/index-parts/progress-dots.tsx",
+          "agents/approval-card/index-parts/question-options.tsx",
+          "agents/approval-card/index-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/code-block.tsx",
+        "local": ["agents/code-block.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/file-diff.tsx",
+        "local": [
+          "agents/file-diff.tsx",
+          "agents/file-diff-parts/change-count.tsx",
+          "agents/file-diff-parts/file-diff.tsx",
+          "agents/file-diff-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/image-generation.tsx",
+        "local": [
+          "agents/image-generation.tsx",
+          "agents/image-generation-parts/dither-field.tsx",
+          "agents/image-generation-parts/dither-mark.tsx",
+          "agents/image-generation-parts/image-generation.tsx",
+          "agents/image-generation-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/loading-states/thinking-shimmer.tsx",
+        "local": ["agents/loading-states/thinking-shimmer.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message.tsx",
+        "local": [
+          "agents/message.tsx",
+          "agents/message-parts/message-avatar.tsx",
+          "agents/message-parts/message-content.tsx",
+          "agents/message-parts/message-footer.tsx",
+          "agents/message-parts/message-group.tsx",
+          "agents/message-parts/message-header.tsx",
+          "agents/message-parts/message-marker.tsx",
+          "agents/message-parts/message-typing.tsx",
+          "agents/message-parts/message.tsx",
+          "agents/message-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-bubble.tsx",
+        "local": [
+          "agents/message-bubble.tsx",
+          "agents/message-bubble-parts/message-bubble-collapsible.tsx",
+          "agents/message-bubble-parts/message-bubble-content.tsx",
+          "agents/message-bubble-parts/message-bubble-group.tsx",
+          "agents/message-bubble-parts/message-bubble.tsx",
+          "agents/message-bubble-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-scroller.tsx",
+        "local": ["agents/message-scroller.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/prompt-input.tsx",
+        "local": ["agents/prompt-input.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/streaming-response.tsx",
+        "local": [
+          "agents/streaming-response.tsx",
+          "agents/streaming-response-parts/response-action.tsx",
+          "agents/streaming-response-parts/shared.ts",
+          "agents/streaming-response-parts/streaming-response.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/todo-list.tsx",
+        "local": [
+          "agents/todo-list.tsx",
+          "agents/todo-list-parts/shared.ts",
+          "agents/todo-list-parts/todo-header-icon.tsx",
+          "agents/todo-list-parts/todo-list.tsx",
+          "agents/todo-list-parts/todo-status-icon.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/tool-approval.tsx",
+        "local": [
+          "agents/tool-approval.tsx",
+          "agents/tool-approval-parts/shared.ts",
+          "agents/tool-approval-parts/tool-approval-code.tsx",
+          "agents/tool-approval-parts/tool-approval.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/tool-result.tsx",
+        "local": [
+          "agents/tool-result.tsx",
+          "agents/tool-result-parts/kind-icon.tsx",
+          "agents/tool-result-parts/shared.ts",
+          "agents/tool-result-parts/status-icon.tsx",
+          "agents/tool-result-parts/tool-result-action.tsx",
+          "agents/tool-result-parts/tool-result-output.tsx",
+          "agents/tool-result-parts/tool-result.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/animated-sidebar.tsx",
+        "local": [
+          "motion/animated-sidebar.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-close.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-content.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-footer.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-group-content.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-group-label.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-group.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-header.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-inset.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-menu-button.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-menu-item.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-menu-sub-button.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-menu-sub-item.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-menu-sub.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-menu.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-provider.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-rail.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar-trigger.tsx",
+          "motion/animated-sidebar-parts/animated-sidebar.tsx",
+          "motion/animated-sidebar-parts/mobile-sidebar.tsx",
+          "motion/animated-sidebar-parts/shared.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/agents/agent-activity/activity-row.tsx",
+        "local": [
+          "agents/agent-activity/activity-row.tsx",
+          "agents/agent-activity/activity-row-parts/action-icon.tsx",
+          "agents/agent-activity/activity-row-parts/activity-row.tsx",
+          "agents/agent-activity/activity-row-parts/search-result-row.tsx",
+          "agents/agent-activity/activity-row-parts/search-row.tsx",
+          "agents/agent-activity/activity-row-parts/shared.ts",
+          "agents/agent-activity/activity-row-parts/step-row.tsx",
+          "agents/agent-activity/activity-row-parts/text-row.tsx",
+          "agents/agent-activity/activity-row-parts/tool-row.tsx",
+          "agents/agent-activity/activity-row-parts/trace-icon.tsx",
+          "agents/agent-activity/activity-row-parts/trace-row.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-activity/types.ts",
+        "local": ["agents/agent-activity/types.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-disclosure.tsx",
+        "local": ["agents/agent-disclosure.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/popover-morph.tsx",
+        "local": [
+          "motion/popover-morph.tsx",
+          "motion/popover-morph-parts/morph-popover-content.tsx",
+          "motion/popover-morph-parts/morph-popover-surface.tsx",
+          "motion/popover-morph-parts/morph-popover-trigger.tsx",
+          "motion/popover-morph-parts/morph-popover.tsx",
+          "motion/popover-morph-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-touch-capable.ts",
+        "local": ["lib/hooks/use-touch-capable.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/approval-card/types.ts",
+        "local": ["agents/approval-card/types.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/action-swap-roll.tsx",
+        "local": [
+          "motion/action-swap-roll.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-button.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-icon.tsx",
+          "motion/action-swap-roll-parts/action-swap-roll-text.tsx",
+          "motion/action-swap-roll-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/index.tsx",
+        "local": ["motion/button/index.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/checkbox.tsx",
+        "local": ["motion/checkbox.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/input.tsx",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/radio.tsx",
+        "local": [
+          "motion/radio.tsx",
+          "motion/radio-parts/radio-group-item.tsx",
+          "motion/radio-parts/radio-group.tsx",
+          "motion/radio-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/agent-code.tsx",
+        "local": [
+          "agents/agent-code.tsx",
+          "agents/agent-code-parts/agent-code-line.tsx",
+          "agents/agent-code-parts/agent-code.tsx",
+          "agents/agent-code-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-capable.ts",
+        "local": ["lib/hooks/use-hover-capable.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/text-shimmer.tsx",
+        "local": ["motion/text-shimmer.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/message-context.tsx",
+        "local": ["agents/message-context.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/preview-rail.tsx",
+        "local": [
+          "motion/preview-rail.tsx",
+          "motion/preview-rail-parts/default-preview.tsx",
+          "motion/preview-rail-parts/preview-rail.tsx",
+          "motion/preview-rail-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/select.tsx",
+        "local": [
+          "motion/select.tsx",
+          "motion/select-parts/select-content.tsx",
+          "motion/select-parts/select-item.tsx",
+          "motion/select-parts/select-trigger.tsx",
+          "motion/select-parts/select-value.tsx",
+          "motion/select-parts/select.tsx",
+          "motion/select-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/citations.tsx",
+        "local": [
+          "agents/citations.tsx",
+          "agents/citations-parts/citation-favicon.tsx",
+          "agents/citations-parts/citation-list.tsx",
+          "agents/citations-parts/citation-row.tsx",
+          "agents/citations-parts/citation-stack.tsx",
+          "agents/citations-parts/citation.tsx",
+          "agents/citations-parts/citations.tsx",
+          "agents/citations-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/shared-layout-bg.tsx",
+        "local": ["motion/shared-layout-bg.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/popover-position.ts",
+        "local": ["motion/popover-position.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/action-swap.tsx",
+        "local": [
+          "motion/action-swap.tsx",
+          "motion/action-swap-parts/action-swap-button.tsx",
+          "motion/action-swap-parts/action-swap-icon.tsx",
+          "motion/action-swap-parts/action-swap-text.tsx",
+          "motion/action-swap-parts/shared.ts"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/base.tsx",
+        "local": ["motion/button/base.tsx", "motion/button/button-link.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/magnetic.tsx",
+        "local": ["motion/button/magnetic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/metallic.tsx",
+        "local": ["motion/button/metallic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/button/stateful.tsx",
+        "local": [
+          "motion/button/stateful.tsx",
+          "motion/button/stateful-parts/icon-slot.tsx",
+          "motion/button/stateful-parts/shared.tsx",
+          "motion/button/stateful-parts/stateful-button.tsx",
+          "motion/button/stateful-parts/text-slot.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/text-shimmer.ts",
+        "local": ["lib/text-shimmer.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-dismiss.ts",
+        "local": ["lib/hooks/use-dismiss.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-hover-gesture.ts",
+        "local": ["lib/hooks/use-hover-gesture.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-tap-gesture.ts",
+        "local": ["lib/hooks/use-tap-gesture.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/hooks/use-favicon.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "components/motion/magnetic.tsx",
+        "local": ["motion/magnetic.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/touch.ts",
+        "local": ["lib/touch.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/favicon.ts",
+        "local": [],
+        "omitted": true
+      }
+    ]
+  },
+  {
+    "name": "loading-states",
+    "files": [
+      "components/agents/loading-states/index.ts",
+      "components/agents/loading-states/thinking-shimmer.tsx",
+      "components/agents/loading-states/agent-progress.tsx",
+      "components/agents/loading-states/reasoning-text.tsx",
+      "components/motion/text-shimmer.tsx",
+      "lib/utils.ts",
+      "lib/ease.ts",
+      "components/motion/loader.tsx",
+      "components/motion/text-scramble.tsx",
+      "lib/text-shimmer.ts"
+    ],
+    "urls": [
+      "https://beui.dev/r/reasoning-text.json",
+      "https://beui.dev/r/thinking-shimmer.json",
+      "https://beui.dev/r/agent-progress.json"
+    ],
+    "mapping": [
+      {
+        "upstream": "components/agents/loading-states/index.ts",
+        "local": ["agents/loading-states/index.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/loading-states/thinking-shimmer.tsx",
+        "local": ["agents/loading-states/thinking-shimmer.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/loading-states/agent-progress.tsx",
+        "local": ["agents/loading-states/agent-progress.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/agents/loading-states/reasoning-text.tsx",
+        "local": [
+          "agents/loading-states/reasoning-text.tsx",
+          "agents/loading-states/reasoning-text-parts/cascade-phrase.tsx",
+          "agents/loading-states/reasoning-text-parts/reasoning-text.tsx",
+          "agents/loading-states/reasoning-text-parts/scramble-phrase.tsx",
+          "agents/loading-states/reasoning-text-parts/shared.ts",
+          "agents/loading-states/reasoning-text-parts/swap-phrase.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/text-shimmer.tsx",
+        "local": ["motion/text-shimmer.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/utils.ts",
+        "local": [],
+        "omitted": true
+      },
+      {
+        "upstream": "lib/ease.ts",
+        "local": ["lib/ease.ts"],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/loader.tsx",
+        "local": [
+          "motion/loader.tsx",
+          "motion/loader-parts/ascii.tsx",
+          "motion/loader-parts/bars.tsx",
+          "motion/loader-parts/comet.tsx",
+          "motion/loader-parts/dither.tsx",
+          "motion/loader-parts/dot-matrix.tsx",
+          "motion/loader-parts/dots.tsx",
+          "motion/loader-parts/helix.tsx",
+          "motion/loader-parts/loader.tsx",
+          "motion/loader-parts/metaballs.tsx",
+          "motion/loader-parts/morph.tsx",
+          "motion/loader-parts/newton.tsx",
+          "motion/loader-parts/percent.tsx",
+          "motion/loader-parts/scramble.tsx",
+          "motion/loader-parts/shared.ts",
+          "motion/loader-parts/spinner.tsx"
+        ],
+        "omitted": false
+      },
+      {
+        "upstream": "components/motion/text-scramble.tsx",
+        "local": ["motion/text-scramble.tsx"],
+        "omitted": false
+      },
+      {
+        "upstream": "lib/text-shimmer.ts",
+        "local": ["lib/text-shimmer.ts"],
+        "omitted": false
+      }
+    ]
+  }
+]
