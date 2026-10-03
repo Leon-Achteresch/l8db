@@ -138,6 +138,13 @@ export function verifyExecutable(bytes, target) {
       Array.from({ length: count }, (_, index) => bytes.readUInt32BE(8 + index * 20)),
     );
     assert(cpus.has(0x01000007) && cpus.has(0x0100000c), "Wrong macOS architectures");
+  } else if (target === "darwin-arm64" || target === "darwin-x86_64") {
+    assert(bytes.length >= 32 && bytes.readUInt32LE(0) === 0xfeedfacf, "Invalid macOS executable");
+    assert.equal(
+      bytes.readUInt32LE(4),
+      target === "darwin-arm64" ? 0x0100000c : 0x01000007,
+      "Wrong macOS architecture",
+    );
   } else if (target === "windows-x86_64") {
     assert(
       bytes.length >= 64 && bytes.subarray(0, 2).toString() === "MZ",
