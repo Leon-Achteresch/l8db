@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
-import { aiConnections, mergeAiModels, modeOptions, safeEndpoint } from "@/lib/ai/context";
+import {
+  aiConnections,
+  bypassAiPermissions,
+  mergeAiModels,
+  modeOptions,
+  safeEndpoint,
+} from "@/lib/ai/context";
 import { AI_PROVIDERS, mergeAiRecords, useAiStore } from "@/lib/ai/store";
 import type { SavedConnection } from "@/lib/connections";
 
@@ -87,6 +93,23 @@ test("AI session stores contain safe context IDs rather than connection URLs", (
 });
 
 test("native modes accept strings and advertised objects without fabricating modes", () => {
+  expect(modeOptions(["auto", "AUTO", "plan"])).toEqual([{ id: "plan", name: "plan" }]);
+  expect(modeOptions(["never", "none", "ask"], "approval-policy")).toEqual([
+    { id: "ask", name: "ask" },
+  ]);
+  expect(modeOptions(["none", "ask"], "reasoning")).toHaveLength(2);
+  for (const id of ["model", "reasoning", "thinking_mode", "model_mode", "reasoning_mode"])
+    expect(bypassAiPermissions("auto", id)).toBe(false);
+  for (const id of ["mode", "session_mode", "agent_mode", "tool_permissions", "approval-policy"])
+    expect(bypassAiPermissions("auto", id)).toBe(true);
+  expect(modeOptions(["auto", "high"], "reasoning")).toHaveLength(2);
+  for (const value of [true, "true", "on", "enabled"])
+    expect(bypassAiPermissions(value, "allow_all")).toBe(true);
+  expect(bypassAiPermissions(true, "bypass_permissions")).toBe(true);
+  expect(bypassAiPermissions(false, "allow_all")).toBe(false);
+  expect(bypassAiPermissions("disabled", "bypass_permissions")).toBe(false);
+  expect(bypassAiPermissions("never", "tool_approval_policy")).toBe(true);
+  expect(bypassAiPermissions("never", "unrelated")).toBe(false);
   expect(modeOptions(["plan", { id: "code", name: "Build" }, null, {}])).toEqual([
     { id: "plan", name: "plan" },
     { id: "code", name: "Build" },

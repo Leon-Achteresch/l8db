@@ -1,8 +1,8 @@
 # KI-Arbeitsbereich
 
-Status: Feature-Branch in Bearbeitung, noch keine Release-Freigabe.
+Status: Für `development` implementiert und mit Regressionstests geprüft. Noch keine Veröffentlichung.
 
-Der Arbeitsbereich liegt in `/Users/leon/l8db-ai` auf `feature/ai-workspace`, ausgehend von `41b05088`. Die Release-Arbeitskopie und ihre uncommitteten Änderungen bleiben unabhängig.
+Der separate Arbeitsbereich liegt in `/Users/leon/l8db-ai` auf `feature/ai-workspace`, ausgehend von `41b05088`. Vor dem abschließenden Merge wurde der aktuelle `development`-Stand im Feature-Worktree integriert und geprüft. Die Haupt-Arbeitskopie wurde während der Umsetzung erhalten.
 
 ## Verhalten
 
@@ -25,6 +25,10 @@ Akzeptanz umfasst Provider-Protokolle einschließlich Fehlern und Abbruch, Konte
 Fünf unabhängige E2E-Prüfer haben echte native CLI-, App- und HTTP-Abläufe untersucht. Codex, Claude Code, OpenCode und GitHub Copilot bestanden jeweils zwei Turns mit SQLite-Abfragen und erneut aufgelöstem Verbindungskontext. Die native App-Prüfung las zusätzlich zwei ausdrücklich ausgewählte Datenbanken und wechselte eine laufende Sitzung zwischen Panel und vollständiger Seite. Gemini CLI initialisierte ACP, konnte ohne vorhandene Anmeldung aber keine echte Modellsitzung starten. BYOK wurde mit einem tatsächlichen lokalen HTTP/SSE-Provider und SQLite einschließlich erlaubter und abgelehnter Schreibzugriffe geprüft; kostenpflichtige externe API-Konten wurden nicht live geprüft.
 
 Die BeUI-Regressionsprüfung läuft unter der Produktions-CSP in Chromium und WebKit und umfasst native Auswahlfragen, freie Antworten und Schemafelder, Tool-Freigaben, Abbruch, SQL-Code, Pläne, Diffs, Bilddaten, Herkunft, Verlauf nach Reload sowie Resize und Portalwechsel. Unbekannte Quellen und ungültige oder übergroße Bilddaten werden nicht als ausführbare Inhalte behandelt.
+
+Die abschließenden Checks bestanden mit 1.944 Frontend-Tests, 546 Rust-Tests und je drei Produktions-Browserprüfungen in Chromium und WebKit. Build, Produktionskonfiguration, Frontend-Lint, Rust-Formatierung und Clippy einschließlich Test-Targets wurden geprüft. Umgebungsabhängige Tests bleiben separat: 206 Frontend-Tests und 138 Rust-Tests waren ohne aktiviertes Lab beziehungsweise Live-Provider übersprungen. Tabellenantworten rendern mit Spaltenüberschriften und horizontalem Scrollen; escaped Pipes, unvollständige Backticks und Code-Spans mit mehreren Backticks sind durch Parser- und Browserregressionen abgedeckt.
+
+Die Abschlussprüfung nach Integration von `development` bestätigte die echten Zwei-Turn-Abläufe von Codex, Claude Code und GitHub Copilot erneut. OpenCode initialisierte ACP und die Sitzung erfolgreich, sein voreingestelltes Modell `opencode/big-pickle` scheiterte jedoch mit einem Provider-API-Fehler. Eine separate Anfrage ohne MCP und ohne Tools reproduzierte denselben Fehler. Der zuvor erfolgreiche OpenCode-Ablauf ersetzt diese aktuelle Einschränkung nicht.
 
 ## Referenzen
 
@@ -67,6 +71,8 @@ Die Gruppe Agent Loading States wird über die drei offiziellen Registry-Einträ
 CLI-Sicherheitsmodi gelten pro Anfrage. Codex startet und setzt Sitzungen mit Read-only-Sandbox und konservativen Freigaben fort; der Plan-Modus erlaubt keine Sandbox- oder Berechtigungserweiterung. Claude verwendet explizit den normalen Freigabemodus beziehungsweise Plan. ACP repariert übernommene Umgehungsmodi nur mit vom CLI angebotenen sicheren Optionen und bricht sonst vor dem Prompt ab. Native Konfigurationsdateien und Anmeldungen werden dabei nicht geändert. Plan sperrt Datenbank- und Dashboard-Änderungen serverseitig; gewöhnliche Dashboard-Änderungen benötigen eine eigene Freigabe. Ein freigegebenes lokales Dashboard kann Abfragen einer Read-only-Datenbank darstellen, ohne deren Schreibschutz zu ändern.
 
 Die Live-Prüfung erfolgte auf macOS. Unix beendet beim Abbruch die gesamte CLI-Prozessgruppe. Unter Windows wird derzeit der direkte CLI-Prozess beendet; der Abbruch sämtlicher möglicher Kindprozesse ist noch nicht live verifiziert.
+
+Im Plan-Modus lehnt ACP native Änderungen und unbekannte Tool-Berechtigungen vor einer Freigabe ab. Zusätzliche externe MCP-Aufrufe sind in diesem Modus gesperrt, weil ihre Nebenwirkungen nicht unabhängig überprüft werden können. Im normalen Modus bleiben sie mit einer Freigabe pro Aufruf verfügbar.
 
 ## Kontext, Tokens und Kosten
 

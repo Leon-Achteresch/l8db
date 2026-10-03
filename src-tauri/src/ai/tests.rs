@@ -84,6 +84,26 @@ fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
     )
 }
 
+async fn read_fixture_request(socket: &mut tokio::net::TcpStream) {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+    let mut reader = BufReader::new(socket);
+    let mut length = 0;
+    loop {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).await.unwrap() > 0);
+        if line == "\r\n" {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                length = value.trim().parse::<usize>().unwrap();
+            }
+        }
+    }
+    assert!(length <= 65_536);
+    reader.read_exact(&mut vec![0; length]).await.unwrap();
+}
+
 #[test]
 fn scope_is_private_and_only_exposes_active_and_mentions() {
     let mut config = McpConfig::default();
@@ -161,6 +181,29 @@ fn scope_intersects_all_connection_policies() {
         .connections
         .iter()
         .all(|connection| connection.read_only));
+}
+
+#[test]
+fn mongodb_browser_filters_do_not_restrict_private_mcp_scope() {
+    let mut request = request();
+    request.connections[0].kind = DatabaseKind::Mongodb;
+    request.connections[0].schemas = vec!["inventory".into()];
+    request.connections[0].database = Some("inventory".into());
+    let mut existing = policy("active");
+    existing.kind = DatabaseKind::Mongodb;
+    existing.schemas = vec!["shop".into()];
+    existing.read_only = true;
+    let scoped = context::scoped_config(
+        &request,
+        McpConfig {
+            connections: vec![existing],
+            ..McpConfig::default()
+        },
+    )
+    .unwrap();
+    assert!(scoped.connections[0].schemas.is_empty());
+    assert_eq!(scoped.connections[0].database.as_deref(), Some("inventory"));
+    assert!(scoped.connections[0].read_only);
 }
 
 #[test]
@@ -698,6 +741,13 @@ async fn external_stdio_mcp_initializes_and_requires_every_call_approval() {
         .await
         .unwrap();
     assert_eq!(external.tools[0]["name"], "ext_0_fixture_echo");
+    let (mut plan, plan_events) = run(Some(true));
+    plan.plan_only = true;
+    let result = external
+        .call("ext_0_fixture_echo", json!({"value":"plan"}), &plan)
+        .await;
+    assert_eq!(result["isError"], true);
+    assert!(plan_events.lock().unwrap().is_empty());
     let result = external
         .call("ext_0_fixture_echo", json!({"value":"fixture"}), &denied)
         .await;
@@ -736,13 +786,12 @@ async fn external_stdio_mcp_initializes_and_requires_every_call_approval() {
 #[tokio::test]
 async fn local_http_sse_stream_handles_transport_fragmentation() {
     use futures_util::StreamExt;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let fixture = tokio::spawn(async move {
         let (mut socket, _) = listener.accept().await.unwrap();
-        let mut request = vec![0; 4096];
-        socket.read(&mut request).await.unwrap();
+        read_fixture_request(&mut socket).await;
         socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n").await.unwrap();
         let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Grüße\"}}]}\n\ndata: [DONE]\n\n"
             .as_bytes();
@@ -838,13 +887,12 @@ fn incomplete_provider_streams_do_not_count_as_completed_turns() {
 
 #[tokio::test]
 async fn abrupt_http_eof_never_executes_a_partially_streamed_tool() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let fixture = tokio::spawn(async move {
         let (mut socket, _) = listener.accept().await.unwrap();
-        let mut bytes = vec![0; 65_536];
-        socket.read(&mut bytes).await.unwrap();
+        read_fixture_request(&mut socket).await;
         let body = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"fixture-call\",\"function\":{\"name\":\"execute\",\"arguments\":\"{}\"}}]}}]}\n\n";
         socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).as_bytes()).await.unwrap();
     });

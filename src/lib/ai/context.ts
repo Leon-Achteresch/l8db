@@ -30,18 +30,30 @@ export function aiConnections(
     };
   });
 }
-export function bypassAiPermissions(value: string): boolean {
-  const mode = (value.toLowerCase().split(/[/#]/).pop() ?? "").replace(/[-_\s]/g, "");
-  return [
-    "bypasspermissions",
-    "yolo",
-    "dangerfullaccess",
-    "autopilot",
-    "autoapprove",
-    "allowall",
-  ].includes(mode);
+export function bypassAiPermissions(value: unknown, configId = "mode"): boolean {
+  const text = typeof value === "string" ? value.toLowerCase() : "";
+  const mode = (text.split(/[/#]/).pop() ?? "").replace(/[-_ ]/g, "");
+  const id = configId.toLowerCase().replace(/[-_]/g, "");
+  const permissionRole =
+    id.includes("permission") ||
+    id.includes("approval") ||
+    (id.includes("mode") && !["model", "reasoning", "thinking"].some((role) => id.includes(role)));
+  return (
+    ((id.includes("allowall") || id.includes("bypass")) &&
+      (value === true || ["true", "on", "enabled"].includes(text))) ||
+    [
+      "bypasspermissions",
+      "yolo",
+      "dangerfullaccess",
+      "autopilot",
+      "autoapprove",
+      "allowall",
+    ].includes(mode) ||
+    (mode === "auto" && permissionRole) ||
+    (id.includes("approval") && ["never", "none"].includes(mode))
+  );
 }
-export function modeOptions(values: unknown): { id: string; name: string }[] {
+export function modeOptions(values: unknown, configId = "mode"): { id: string; name: string }[] {
   const source =
     values && typeof values === "object" && "availableModes" in values
       ? values.availableModes
@@ -59,7 +71,7 @@ export function modeOptions(values: unknown): { id: string; name: string }[] {
         ];
       return [];
     })
-    .filter((mode) => !bypassAiPermissions(mode.id));
+    .filter((mode) => !bypassAiPermissions(mode.id, configId));
 }
 export function mergeAiModels(
   previous: import("@/lib/db/ai").AiModels,

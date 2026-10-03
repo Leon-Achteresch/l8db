@@ -29,9 +29,15 @@ fn bypass_permissions(id: &str, value: &Value) -> bool {
             "autopilot",
             "autoapprove",
             "allowall",
-            "auto",
         ]
         .contains(&normalized.as_str())
+        || (normalized == "auto"
+            && (id.contains("permission")
+                || id.contains("approval")
+                || (id.contains("mode")
+                    && !["model", "reasoning", "thinking"]
+                        .iter()
+                        .any(|role| id.contains(role)))))
         || (id.contains("approval") && ["never", "none"].contains(&normalized.as_str()))
 }
 
@@ -45,6 +51,32 @@ fn codex_approval(profile: &Profile) -> Value {
 
 fn plan_mode(mode: &str) -> bool {
     mode.rsplit(['#', '/']).next() == Some("plan")
+}
+
+fn acp_plan_read(tool: &Value) -> bool {
+    match tool["kind"].as_str() {
+        Some("read" | "search") => return true,
+        Some("other") | None => {}
+        Some(_) => return false,
+    }
+    let reads = ["connections", "search", "describe", "query"];
+    let input = &tool["rawInput"];
+    if input["serverName"] == "l8db_ai"
+        && input["toolName"]
+            .as_str()
+            .is_some_and(|name| reads.contains(&name))
+    {
+        return true;
+    }
+    tool["title"].as_str().is_some_and(|title| {
+        ["l8db_ai-", "l8db_ai_", "mcp__l8db_ai__"]
+            .iter()
+            .any(|prefix| {
+                title
+                    .strip_prefix(prefix)
+                    .is_some_and(|name| reads.contains(&name))
+            })
+    })
 }
 
 fn inherited_permission_changes(session: &Value, requested: &str) -> Result<Vec<Value>, String> {
@@ -61,12 +93,17 @@ fn inherited_permission_changes(session: &Value, requested: &str) -> Result<Vec<
     ];
     for option in session["configOptions"].as_array().into_iter().flatten() {
         let id = option["id"].as_str().unwrap_or("");
-        if !bypass_permissions(id, &option["currentValue"]) {
+        let permission_id = if option["category"] == "mode" {
+            "mode"
+        } else {
+            id
+        };
+        if !bypass_permissions(permission_id, &option["currentValue"]) {
             continue;
         }
         let safe = if option["category"] == "mode" || id == "mode" {
             changed_mode = true;
-            safe_modes.iter().copied().filter(|mode| !mode.is_empty() && !bypass_permissions(id, &json!(mode)))
+            safe_modes.iter().copied().filter(|mode| !mode.is_empty() && !bypass_permissions(permission_id, &json!(mode)))
                 .map(|mode| json!(mode)).find(|value| option_contains(&option["options"], value))
         } else {
             [json!(false), json!("false"), json!("off"), json!("disabled"), json!("untrusted"), json!("on-request")]
@@ -364,9 +401,10 @@ async fn native_event(rpc: &Rpc, event: &Value, run: &Run) -> Result<(), String>
     if event.get("id").is_some() && !method.is_empty() {
         let result = match method {
             "session/request_permission" => {
-                let allowed = run
-                    .approve("CLI-Tool freigeben", params["toolCall"].clone())
-                    .await?;
+                let allowed = (!run.plan_only || acp_plan_read(&params["toolCall"]))
+                    && run
+                        .approve("CLI-Tool freigeben", params["toolCall"].clone())
+                        .await?;
                 let option = params["options"]
                     .as_array()
                     .into_iter()
@@ -737,7 +775,12 @@ async fn acp(
         if !option_contains(&option["options"], value) {
             return Err("CLI-Konfigurationswert ist nicht verfügbar".into());
         }
-        if bypass_permissions(config_id, value) {
+        let permission_id = if option["category"] == "mode" {
+            "mode"
+        } else {
+            config_id
+        };
+        if bypass_permissions(permission_id, value) {
             return Err("Berechtigungsumgehung wird im KI-Arbeitsbereich nicht unterstützt".into());
         }
         native_request(

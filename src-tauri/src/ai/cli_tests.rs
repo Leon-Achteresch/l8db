@@ -403,6 +403,99 @@ fn permission_bypass_modes_are_rejected_including_native_uri_values() {
 }
 
 #[test]
+fn automatic_model_and_reasoning_options_preserve_permission_boundaries() {
+    for id in [
+        "mode",
+        "agent_mode",
+        "sessionMode",
+        "approval_policy",
+        "permissionMode",
+    ] {
+        assert!(bypass_permissions(id, &json!("auto")));
+    }
+    for id in ["model", "reasoning", "thinking_mode", "reasoningMode"] {
+        assert!(!bypass_permissions(id, &json!("auto")));
+    }
+    assert!(inherited_permission_changes(&json!({"configOptions":[{"id":"reasoning","currentValue":"auto","options":[{"value":"auto"}]}]}), "").unwrap().is_empty());
+    assert!(inherited_permission_changes(&json!({"configOptions":[{"id":"model","currentValue":"auto","options":[{"value":"auto"}]}]}), "").unwrap().is_empty());
+    assert_eq!(inherited_permission_changes(&json!({"configOptions":[{"id":"custom_agent","category":"mode","currentValue":"auto","options":[{"value":"auto"},{"value":"plan"}]}]}), "").unwrap(), vec![json!({"method":"session/set_config_option","params":{"configId":"custom_agent","value":"plan"}})]);
+}
+
+#[test]
+fn acp_plan_permissions_require_safe_read_kind_or_private_read_provenance() {
+    for kind in ["read", "search"] {
+        assert!(acp_plan_read(&json!({"kind": kind})));
+    }
+    assert!(acp_plan_read(
+        &json!({"kind":"other","title":"l8db_ai-query"})
+    ));
+    assert!(acp_plan_read(
+        &json!({"rawInput":{"serverName":"l8db_ai","toolName":"describe"}})
+    ));
+    for kind in ["edit", "delete", "execute", "unknown"] {
+        assert!(!acp_plan_read(
+            &json!({"kind":kind,"title":"l8db_ai-query"})
+        ));
+    }
+    assert!(!acp_plan_read(
+        &json!({"kind":"other","title":"l8db_ai-execute"})
+    ));
+    assert!(!acp_plan_read(
+        &json!({"kind":"other","title":"external-l8db_ai-query"})
+    ));
+    assert!(!acp_plan_read(
+        &json!({"rawInput":{"serverName":"external","toolName":"query"}})
+    ));
+    assert!(!acp_plan_read(&json!({})));
+}
+
+#[tokio::test]
+async fn acp_plan_rejects_modifying_and_unknown_permissions_before_asking() {
+    let mut command = tokio::process::Command::new("python3");
+    command.args(["-u", "-c", r#"import sys,json
+request=json.loads(sys.stdin.readline())
+for kind in ['edit','delete','execute','unknown','other']:
+ print(json.dumps({'jsonrpc':'2.0','id':kind,'method':'session/request_permission','params':{'toolCall':{'toolCallId':kind,'kind':kind,'title':'Change data'},'options':[{'optionId':'allow','kind':'allow_once'},{'optionId':'reject','kind':'reject_once'}]}}),flush=True)
+ response=json.loads(sys.stdin.readline())
+ assert response['result']['outcome']=={'outcome':'selected','optionId':'reject'}
+print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'rejected':5}}),flush=True)
+sys.stdin.readline()
+"#]);
+    let mut rpc = Rpc::spawn(&mut command).unwrap();
+    let events = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captured = events.clone();
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(body) = body {
+            captured
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str(&body).unwrap());
+        }
+        Ok(())
+    });
+    let run = Run {
+        id: "plan-fixture".into(),
+        owner: "fixture-window".into(),
+        plan_only: true,
+        state: Arc::new(super::super::runtime::AiState::default()),
+        channel,
+    };
+    let response = tokio::time::timeout(
+        Duration::from_secs(5),
+        native_request(&mut rpc, "fixture/run", json!({}), &run, false),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(response["rejected"], 5);
+    assert!(events
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|event| event["kind"] != "approval"));
+}
+
+#[test]
 fn inherited_acp_bypass_uses_only_advertised_safe_options() {
     let session = json!({"modes": {"currentModeId": "autopilot", "availableModes": [{"id": "autopilot"}, {"id": "interactive"}]}, "configOptions": [{"id": "allow_all_tools", "currentValue": true, "options": [{"value": true}, {"value": false}]}, {"id": "mode", "category": "mode", "currentValue": "bypassPermissions", "options": [{"group": "modes", "options": [{"value": "plan"}]}]}]});
     let changes = inherited_permission_changes(&session, "").unwrap();

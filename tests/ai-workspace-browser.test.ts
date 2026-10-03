@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import manifest from "../package.json";
+import { featureStorageKey, NEW_FEATURES } from "../src/lib/new-features";
 import config from "../src-tauri/tauri.conf.json";
 import { seedAiWorkspace } from "./fixtures/ai-workspace";
 
@@ -73,7 +75,14 @@ test.skipIf(!enabled)(
       await panel.getByRole("option", { name: "@Analytics", exact: true }).click();
       await panel.getByRole("button", { name: "Kontext", exact: true }).click();
       expect(await page.getByLabel("@Analytics", { exact: true }).isChecked()).toBe(true);
+      const skillsSeenKey = featureStorageKey("ai.context.skills");
+      const skillsAreNew = manifest.version === NEW_FEATURES["ai.context.skills"];
+      if (skillsAreNew)
+        expect(await page.evaluate((key) => localStorage.getItem(key), skillsSeenKey)).toBeNull();
       await page.getByLabel("SQL review", { exact: true }).check();
+      if (skillsAreNew)
+        await page.waitForFunction((key) => localStorage.getItem(key) === "1", skillsSeenKey);
+      expect(await page.getByLabel("SQL review", { exact: true }).isChecked()).toBe(true);
       await page.keyboard.press("Escape");
       await panel.getByLabel("Nachricht an AI").fill("Inspect the selected databases");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
@@ -222,10 +231,46 @@ test.skipIf(!enabled)(
       await approval.getByText("Write fixture row", { exact: true }).waitFor();
       await panel.getByAltText("Bild aus Agent-Ergebnis").waitFor();
       expect(await panel.getByText("SQL proposal", { exact: true }).isVisible()).toBe(true);
+      const answerTable = panel.getByRole("table");
+      expect(
+        await answerTable.getByRole("columnheader", { name: "Column", exact: true }).isVisible(),
+      ).toBe(true);
+      expect(await answerTable.getByRole("cell", { name: "id", exact: true }).isVisible()).toBe(
+        true,
+      );
+      expect(
+        await answerTable.getByRole("cell", { name: "name|alias", exact: true }).isVisible(),
+      ).toBe(true);
+      expect(
+        await answerTable
+          .getByRole("cell", { name: "text | value", exact: true })
+          .locator("code")
+          .count(),
+      ).toBe(1);
+      expect(
+        await answerTable
+          .getByRole("cell", { name: "a`|b", exact: true })
+          .locator("code")
+          .textContent(),
+      ).toBe("a`|b");
+      expect(
+        await answerTable.getByRole("cell", { name: "`unfinished", exact: true }).isVisible(),
+      ).toBe(true);
+      expect(
+        await answerTable.getByRole("cell", { name: "retained", exact: true }).isVisible(),
+      ).toBe(true);
+      expect(await answerTable.getByRole("row").count()).toBe(5);
+      expect(await answerTable.textContent()).not.toContain("---");
       expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
       await panel.getByText("Tool verwendet", { exact: false }).last().click();
       expect(await panel.getByText("execute_query", { exact: true }).count()).toBeGreaterThan(0);
+      const toolResultLabel = await panel
+        .getByRole("button")
+        .filter({ hasText: "execute_query" })
+        .last()
+        .innerText();
+      expect(toolResultLabel.match(/execute_query/g)).toHaveLength(1);
       await approval.getByRole("button", { name: "Ablehnen", exact: true }).click();
       await approval.getByLabel("Describe schema focus", { exact: true }).fill("Keep read only");
       await approval.getByRole("button", { name: "Antwort senden", exact: true }).click();

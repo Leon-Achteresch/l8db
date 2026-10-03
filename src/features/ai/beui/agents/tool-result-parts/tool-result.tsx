@@ -114,9 +114,11 @@ export function ToolResult({
               <ActionSwapRollText value={metaKey}>{meta}</ActionSwapRollText>
             </span>
           ) : null}
-          <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/55">
-            <ActionSwapRollText value={toolKey}>{tool}</ActionSwapRollText>
-          </span>
+          {tool != null && tool !== title && (
+            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/55">
+              <ActionSwapRollText value={toolKey}>{tool}</ActionSwapRollText>
+            </span>
+          )}
         </span>
         <span
           className={cn(

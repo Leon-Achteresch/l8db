@@ -104,7 +104,10 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
           if (last === "rich-fixture") {
             events.onmessage({
               kind: "text",
-              data: { delta: "SQL proposal\n```sql\nSELECT id FROM public.users;\n```" },
+              data: {
+                delta:
+                  "SQL proposal\n```sql\nSELECT id FROM public.users;\n```\n\n| Column | Type |\n| --- | --- |\n| **id** | `integer` |\n| name\\|alias | `text | value` |\n| literal | ``a`|b`` |\n| \\`unfinished | retained |",
+              },
             });
             events.onmessage({
               kind: "metadata",
