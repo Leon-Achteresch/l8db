@@ -671,7 +671,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 <PopoverContent
                   align="start"
                   side="top"
-                  className="w-80 max-w-[calc(100vw-32px)] rounded-xl p-0"
+                  className="w-72 max-w-[calc(100vw-32px)] rounded-2xl p-0 shadow-lg"
                   aria-label="AI-Kontext"
                 >
                   {" "}
