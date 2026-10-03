@@ -86,6 +86,8 @@ export function findHotkeyConflict(
 export function validateHotkeyInput(value: string): { valid: boolean; errors: string[] } {
   const trimmed = value.trim();
   if (!trimmed) return { valid: false, errors: ["Leerer Hotkey"] };
+  if (trimmed.split("+").some((part) => !part.trim()))
+    return { valid: false, errors: ["Unvollständiger Hotkey"] };
   const result = validateHotkey(trimmed as Hotkey);
   return { valid: result.valid, errors: result.errors };
 }
