@@ -168,7 +168,7 @@
   --chart-3: oklch(0.55 0.08 calc(var(--db-hue) - 30));
   --chart-4: oklch(0.78 0.06 var(--db-hue));
   --chart-5: oklch(0.4 0.06 var(--db-hue));
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   --sidebar: oklch(0.965 0.004 var(--db-hue));
   --sidebar-foreground: oklch(0.22 0.012 var(--db-hue));
   --sidebar-primary: oklch(0.48 var(--db-chroma) var(--db-hue));
