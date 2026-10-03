@@ -15,5 +15,6 @@ describe("create view from result", () => {
     );
     expect(createViewSql("v", "SELECT 1", "mysql")).toBe("CREATE VIEW `v` AS SELECT 1");
     expect(createViewSql("[dbo].v", "SELECT 1", "mssql")).toBe("CREATE VIEW [dbo].[v] AS SELECT 1");
+    expect(createViewSql("v", "SELECT 1", "sqlite", true)).toBe('CREATE TEMP VIEW "v" AS SELECT 1');
   });
 });
