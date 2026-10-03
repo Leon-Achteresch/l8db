@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { ResultTitle } from "@/features/query/query-view/result-title";
 import { copyText } from "@/lib/clipboard";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
@@ -115,7 +116,7 @@ export function QueryResultWorkbench({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5">
-        <span className="font-medium text-xs">Ergebnisse</span>
+        <ResultTitle />
         <span
           role="status"
           className={cn(
