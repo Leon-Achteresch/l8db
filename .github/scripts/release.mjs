@@ -49,27 +49,28 @@ function draft() {
   const sha = git("rev-parse", "HEAD");
   let release = releases().find((item) => item.tag_name === `v${version}`);
   if (release?.draft && release.target_commitish !== sha) {
-    gh("release", "delete", `v${version}`, "--repo", REPOSITORY, "--yes");
+    gh("api", "-X", "DELETE", `repos/${REPOSITORY}/releases/${release.id}`);
     release = undefined;
   }
   if (!release) {
     const file = join(process.env.RUNNER_TEMP, "release-notes.md");
     writeFileSync(file, releaseNotes(version, readFileSync("CHANGELOG.md", "utf8")));
-    gh(
-      "release",
-      "create",
-      `v${version}`,
-      "--repo",
-      REPOSITORY,
-      "--target",
-      sha,
-      "--title",
-      `l8db v${version}`,
-      "--notes-file",
-      file,
-      "--draft",
+    release = JSON.parse(
+      gh(
+        "api",
+        `repos/${REPOSITORY}/releases`,
+        "-f",
+        `tag_name=v${version}`,
+        "-f",
+        `target_commitish=${sha}`,
+        "-f",
+        `name=l8db v${version}`,
+        "-F",
+        `body=@${file}`,
+        "-F",
+        "draft=true",
+      ),
     );
-    release = releases().find((item) => item.tag_name === `v${version}`);
   }
   assert(release, "Draft release was not created");
   assertDraft(release, version, sha);
