@@ -48,3 +48,11 @@ describe("parseMarkdown", () => {
     expect(parseInline("``different` fences")).toEqual([{ t: "text", v: "``different` fences" }]);
   });
 });
+
+test("parses ordered lists and blockquotes instead of merging them into paragraphs", () => {
+  expect(parseMarkdown("Intro\n1. eins\n2. zwei\n\n> Hinweis\n> weiter")).toEqual([
+    { t: "p", children: [{ t: "text", v: "Intro" }] },
+    { t: "ol", start: 1, items: [[{ t: "text", v: "eins" }], [{ t: "text", v: "zwei" }]] },
+    { t: "quote", children: [{ t: "text", v: "Hinweis weiter" }] },
+  ]);
+});

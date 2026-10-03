@@ -1,123 +1,102 @@
-import { Sparkles } from "lucide-react";
-import { Fragment } from "react";
-import { interleaveAiRich } from "@/lib/ai/rich";
+import { ArrowDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { AiSession } from "@/lib/ai/store";
 import type { AiEvent, AiMessage } from "@/lib/db/ai";
-import { AiAnswer } from "./ai-answer";
 import { AiApproval } from "./ai-approval";
-import { AiRichContent } from "./ai-rich-content";
-import { ThinkingShimmer } from "./beui/agents/loading-states";
-import { Message, MessageContent, MessageHeader } from "./beui/agents/message";
-import { MessageBubble, MessageBubbleContent } from "./beui/agents/message-bubble";
+import { AiAssistantMessage } from "./ai-assistant-message";
+import { AiUserMessage } from "./ai-user-message";
 import { MessageScroller } from "./beui/agents/message-scroller";
 
 interface Props {
   messages: AiMessage[];
-  reasoning: string;
-  events: AiEvent[];
+  session?: AiSession;
   approvals: AiEvent[];
   fullPage?: boolean;
   runId: string | null;
+  runStatus: string;
   onResolved: (id: string) => void;
   onError: (message: string) => void;
+  onEdit: (message: AiMessage, text: string) => void;
+  onRetry: (message: AiMessage) => void;
+  onBranch: (id: string | undefined) => void;
 }
 export function AiTranscript({
   messages,
-  reasoning,
+  session,
   approvals,
   fullPage,
   runId,
+  runStatus,
   onResolved,
   onError,
+  onEdit,
+  onRetry,
+  onBranch,
 }: Props) {
+  const viewport = useRef<HTMLElement>(null);
+  const [following, setFollowing] = useState(true);
+  useEffect(() => {
+    if (runId) viewport.current?.scrollTo({ top: viewport.current.scrollHeight });
+  }, [runId]);
   return (
-    <MessageScroller
-      label="Gespräch mit AI"
-      busy={Boolean(runId)}
-      smooth={false}
-      className="min-h-0 flex-1"
-      viewportClassName="px-5 py-6"
-      contentClassName={`space-y-5 ${fullPage ? "mx-auto max-w-3xl" : ""}`}
-    >
-      {messages.length === 0 && (
-        <div className="flex min-h-48 flex-col items-center justify-center px-3 text-center">
-          <div className="mb-4 flex size-10 items-center justify-center rounded-2xl border bg-muted/30">
-            <Sparkles className="size-5 text-muted-foreground" />
-          </div>
-          <h2 className="text-sm font-medium">Deine Daten. Ein Gespräch.</h2>
-          <p className="mt-2 max-w-64 text-xs leading-relaxed text-muted-foreground">
-            Stelle eine Frage zu deiner Datenbank.
-          </p>
-        </div>
+    <div className="relative min-h-0 flex-1">
+      <MessageScroller
+        label="Gespräch mit AI"
+        busy={Boolean(runId)}
+        smooth={false}
+        onFollowChange={setFollowing}
+        viewportRef={viewport}
+        className="h-full"
+        viewportClassName="px-5 py-6"
+        contentClassName={`space-y-4 ${fullPage ? "mx-auto max-w-3xl" : ""}`}
+      >
+        {messages.map((message, index) =>
+          message.role === "user" ? (
+            <AiUserMessage
+              key={message.id ?? index}
+              message={message}
+              session={session}
+              disabled={Boolean(runId)}
+              onEdit={onEdit}
+              onBranch={onBranch}
+            />
+          ) : (
+            <AiAssistantMessage
+              key={message.id ?? index}
+              message={message}
+              session={session}
+              streaming={Boolean(runId) && index === messages.length - 1}
+              last={index === messages.length - 1}
+              status={runStatus}
+              disabled={Boolean(runId)}
+              onRetry={onRetry}
+              onBranch={onBranch}
+            />
+          ),
+        )}
+        {runId &&
+          approvals.map((event) => (
+            <AiApproval
+              key={String(event.data.id)}
+              event={event}
+              runId={runId}
+              onResolved={onResolved}
+              onError={onError}
+            />
+          ))}
+      </MessageScroller>
+      {!following && (
+        <button
+          type="button"
+          aria-label="Zum Ende springen"
+          onClick={() =>
+            viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" })
+          }
+          className="absolute bottom-3 left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border bg-background text-muted-foreground shadow-md outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ArrowDown className="size-4" />
+        </button>
       )}
-      {messages.map((message, index) => {
-        const streaming = Boolean(runId) && index === messages.length - 1;
-        const parts = interleaveAiRich(message.text, message.rich);
-        return (
-          <Message
-            key={message.id ?? `${message.role}-${index}`}
-            from={message.role}
-            animateIn={false}
-            className="text-xs"
-          >
-            <MessageContent className="min-w-0 flex-1">
-              <MessageHeader className="mb-1 text-[10px] font-medium text-muted-foreground">
-                {message.role === "user" ? "Du" : "Agent"}
-              </MessageHeader>
-              {message.role === "user" ? (
-                <MessageBubble variant="soft" animateIn={false} className="ml-6 text-xs">
-                  <MessageBubbleContent className="whitespace-pre-wrap break-words text-xs leading-relaxed">
-                    {message.text}
-                  </MessageBubbleContent>
-                </MessageBubble>
-              ) : (
-                <div className="space-y-3">
-                  {parts.map((part, partIndex) => {
-                    const lastPart = partIndex === parts.length - 1;
-                    return (
-                      <Fragment key={String(partIndex)}>
-                        {part.text.trim() ? (
-                          <AiAnswer
-                            text={part.text}
-                            streaming={streaming && lastPart}
-                            copyText={message.text}
-                            actions={lastPart}
-                          />
-                        ) : null}
-                        {part.blocks.length ? (
-                          <AiRichContent blocks={part.blocks} running={streaming} />
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
-                  {streaming && !parts[parts.length - 1].text.trim() ? (
-                    <ThinkingShimmer className="text-xs">Denkt …</ThinkingShimmer>
-                  ) : !streaming && !message.text ? (
-                    <p className="text-xs text-muted-foreground">Keine Textantwort.</p>
-                  ) : null}
-                </div>
-              )}
-            </MessageContent>
-          </Message>
-        );
-      })}
-      {reasoning && (
-        <details className="rounded-lg bg-muted/20 px-3 py-1.5 text-xs">
-          <summary className="min-h-7 cursor-pointer py-1 text-muted-foreground">
-            Überlegungen
-          </summary>
-          <p className="mt-2 whitespace-pre-wrap leading-relaxed">{reasoning}</p>
-        </details>
-      )}
-      {runId &&
-        approvals.map((event) => (
-          <AiApproval
-            key={String(event.data.id)}
-            event={event}
-            runId={runId}
-            onResolved={onResolved}
-            onError={onError}
-          />
-        ))}
-    </MessageScroller>
+    </div>
   );
 }
