@@ -7,10 +7,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
 import { mergeAiRich, normalizeAiRich } from "@/lib/ai/rich";
 import { AI_PROVIDERS, type AiSession, useAiStore } from "@/lib/ai/store";
+import { aiLatestLeaf, aiThread } from "@/lib/ai/thread";
 import { mergeAiUsage } from "@/lib/ai/usage";
 import { useConnectionsStore } from "@/lib/connections";
 import {
   type AiEvent,
+  type AiMessage,
   type AiModels,
   type AiStatus,
   aiCancel,
@@ -28,11 +30,11 @@ import { AiContext } from "./ai-context";
 import { AiProviderPicker } from "./ai-provider-picker";
 import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiSettings } from "./ai-settings";
+import { AiStarters } from "./ai-starters";
 import { AiTranscript } from "./ai-transcript";
 import { AiUsage } from "./ai-usage";
 import { AISidebar } from "./beui/agents/ai-sidebar";
 import { ChatApp } from "./beui/agents/chat-app";
-import { AgentProgress } from "./beui/agents/loading-states";
 import { PromptInput } from "./beui/agents/prompt-input";
 
 export function AiView({ fullPage = false }: { fullPage?: boolean }) {
@@ -58,8 +60,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const [allowWrites, setAllowWrites] = useState(false);
   const [allowDdl, setAllowDdl] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
-  const [reasoning, setReasoning] = useState("");
-  const [events, setEvents] = useState<AiEvent[]>([]);
   const [approvals, setApprovals] = useState<AiEvent[]>([]);
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [usage, setUsage] = useState<Record<string, unknown>>({});
@@ -83,6 +83,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const run = useRef<string | null>(null);
   const afterTool = useRef(false);
+  const stopping = useRef(false);
   const approvalTitles = useRef(new Map<string, string>());
   const liveSession = useRef<AiSession | null>(null);
   const usageRef = useRef<Record<string, unknown>>({});
@@ -139,8 +140,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setSelectedSkills([]);
     setSelectedServers([]);
     setMentioned([]);
-    setReasoning("");
-    setEvents([]);
     setApprovals([]);
     setUsage({});
     setAllowWrites(false);
@@ -157,9 +156,46 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       useAiStore.getState().saveSession(liveSession.current);
     }
   };
-  const send = async (text = prompt) => {
-    if (!text.trim() || run.current) return;
+  const thread = aiThread(session);
+  const updateLast = (change: (message: AiMessage) => AiMessage) => {
+    if (!liveSession.current) return;
+    const messages = [...liveSession.current.messages];
+    messages[messages.length - 1] = change(messages[messages.length - 1]);
+    liveSession.current = { ...liveSession.current, messages };
+    saveLive();
+  };
+  const runTurn = async (history: AiMessage[], user?: AiMessage, onStart?: () => void) => {
+    const turn = user ? [...history, user] : history;
+    if (!turn.length || run.current) return;
     setError("");
+    const id = crypto.randomUUID();
+    const assistantId = crypto.randomUUID();
+    const assistant: AiMessage = {
+      id: assistantId,
+      parentId: turn[turn.length - 1].id ?? null,
+      role: "assistant",
+      text: "",
+    };
+    const base = session ?? {
+      id: crypto.randomUUID(),
+      title: turn[0].text.slice(0, 70),
+      profileId: profile.id,
+      nativeId: null,
+      cwd,
+      messages: [],
+      connectionIds: [],
+      updatedAt: Date.now(),
+    };
+    const resume =
+      user &&
+      base.nativeId &&
+      (base.nativeLeafId ?? base.messages[base.messages.length - 1]?.id) === history.at(-1)?.id
+        ? base.nativeId
+        : null;
+    let synced = Boolean(resume);
+    run.current = id;
+    stopping.current = false;
+    afterTool.current = false;
     try {
       const current = useConnectionsStore.getState();
       const selected = aiConnections(
@@ -168,37 +204,20 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         mentioned,
         useDbSelectionStore.getState().databaseByConnection,
       );
-      const id = crypto.randomUUID();
       const next: AiSession = {
-        ...(session ?? {
-          id: crypto.randomUUID(),
-          title: text.trim().slice(0, 70),
-          profileId: profile.id,
-          nativeId: null,
-          cwd,
-          messages: [],
-          connectionIds: [],
-          updatedAt: Date.now(),
-        }),
+        ...base,
         cwd,
         usageRequestedModel: profile.model,
         connectionIds: selected.map((connection) => connection.id),
-        messages: [
-          ...(session?.messages ?? []),
-          { id: crypto.randomUUID(), role: "user", text: text.trim() },
-          { id: crypto.randomUUID(), role: "assistant", text: "" },
-        ],
+        messages: [...base.messages, ...(user ? [user] : []), assistant],
+        leafId: assistant.id,
         updatedAt: Date.now(),
       };
       liveSession.current = next;
       state.saveSession(next);
       state.selectSession(next.id);
-      run.current = id;
-      afterTool.current = false;
+      onStart?.();
       setRunId(id);
-      setPrompt("");
-      setReasoning("");
-      setEvents([]);
       setApprovals([]);
       setUsage({});
       usageRef.current = {};
@@ -209,8 +228,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           runId: id,
           profile,
           cwd,
-          sessionId: next.nativeId,
-          messages: next.messages.slice(0, -1).map(({ role, text }) => ({ role, text })),
+          sessionId: resume,
+          messages: turn.map(({ role, text }) => ({ role, text })),
           connections: selected,
           activeId: current.activeId,
           skills: selectedSkills.filter((path) => skills.some((skill) => skill.path === path)),
@@ -223,53 +242,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         (event) => {
           if (run.current !== id) return;
           const blocks = normalizeAiRich(event);
-          if (blocks.length && liveSession.current) {
-            const messages = [...liveSession.current.messages];
-            const last = messages[messages.length - 1];
-            messages[messages.length - 1] = {
+          if (blocks.length)
+            updateLast((last) => ({
               ...last,
               rich: mergeAiRich(last.rich, blocks, last.text.length),
-            };
-            liveSession.current = { ...liveSession.current, messages };
-            saveLive();
-          }
-          if (event.kind === "text" && liveSession.current) {
-            const messages = [...liveSession.current.messages];
-            const last = messages[messages.length - 1];
-            messages[messages.length - 1] = {
+            }));
+          if (event.kind === "text") {
+            updateLast((last) => ({
               ...last,
               text:
                 last.text +
                 (afterTool.current && last.text && !last.text.endsWith("\n") ? "\n\n" : "") +
                 String(event.data.delta ?? ""),
-            };
+            }));
             afterTool.current = false;
-            liveSession.current = { ...liveSession.current, messages };
-            saveLive();
           } else if (event.kind === "reasoning")
-            setReasoning((value) => value + String(event.data.delta ?? ""));
-          else if (event.kind === "tool") {
-            afterTool.current = true;
-            setEvents((entries) => {
-              const index = entries.findIndex(
-                (entry) => event.data.id && entry.data.id === event.data.id,
-              );
-              if (index < 0) return [...entries, event];
-              return entries.map((entry, i) =>
-                i === index
-                  ? {
-                      ...event,
-                      data: {
-                        ...entry.data,
-                        ...Object.fromEntries(
-                          Object.entries(event.data).filter(([, value]) => value != null),
-                        ),
-                      },
-                    }
-                  : entry,
-              );
-            });
-          } else if (event.kind === "approval" || event.kind === "input") {
+            updateLast((last) => ({
+              ...last,
+              reasoning: (last.reasoning ?? "") + String(event.data.delta ?? ""),
+            }));
+          else if (event.kind === "tool") afterTool.current = true;
+          else if (event.kind === "approval" || event.kind === "input") {
             approvalTitles.current.set(
               String(event.data.id),
               String(event.data.title ?? "Agent-Entscheidung"),
@@ -280,34 +273,29 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             ]);
           } else if (event.kind === "approvalResolved") {
             const approvalTitle = approvalTitles.current.get(String(event.data.id));
-            if (liveSession.current) {
-              const messages = [...liveSession.current.messages];
-              const last = messages[messages.length - 1];
-              messages[messages.length - 1] = {
-                ...last,
-                rich: mergeAiRich(
-                  last.rich,
-                  [
-                    {
-                      type: "decision",
-                      id: String(event.data.id),
-                      title: String(approvalTitle ?? "Agent-Entscheidung"),
-                      outcome:
-                        typeof event.data.allowed === "boolean"
-                          ? event.data.allowed
-                            ? "allowed"
-                            : "denied"
-                          : "answered",
-                    },
-                  ],
-                  last.text.length,
-                ),
-              };
-              liveSession.current = { ...liveSession.current, messages };
-              saveLive();
-            }
+            updateLast((last) => ({
+              ...last,
+              rich: mergeAiRich(
+                last.rich,
+                [
+                  {
+                    type: "decision",
+                    id: String(event.data.id),
+                    title: String(approvalTitle ?? "Agent-Entscheidung"),
+                    outcome:
+                      typeof event.data.allowed === "boolean"
+                        ? event.data.allowed
+                          ? "allowed"
+                          : "denied"
+                        : "answered",
+                  },
+                ],
+                last.text.length,
+              ),
+            }));
             resolve(String(event.data.id));
           } else if (event.kind === "session" && liveSession.current) {
+            synced = true;
             liveSession.current = {
               ...liveSession.current,
               nativeId: String(event.data.sessionId),
@@ -330,13 +318,22 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             }
           } else if (event.kind === "status") setRunStatus(String(event.data.status ?? ""));
           else if (event.kind === "error")
-            setError(String(event.data.message ?? "Agent fehlgeschlagen."));
+            updateLast((last) => ({
+              ...last,
+              error: String(event.data.message ?? "Agent fehlgeschlagen."),
+            }));
         },
       );
     } catch (error) {
-      setError(String(error));
+      if (liveSession.current?.leafId === assistantId)
+        updateLast((last) => ({ ...last, error: String(error) }));
+      else setError(String(error));
     } finally {
-      saveLive();
+      if (liveSession.current?.leafId === assistantId) {
+        if (stopping.current) updateLast((last) => ({ ...last, stopped: true }));
+        if (synced) liveSession.current = { ...liveSession.current, nativeLeafId: assistantId };
+        saveLive();
+      }
       run.current = null;
       setRunId(null);
       setApprovals([]);
@@ -344,20 +341,51 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       input.current?.focus();
     }
   };
+  const send = (text = prompt) => {
+    if (!text.trim() || run.current) return;
+    void runTurn(
+      thread,
+      {
+        id: crypto.randomUUID(),
+        parentId: thread.at(-1)?.id ?? null,
+        role: "user",
+        text: text.trim(),
+      },
+      () => setPrompt(""),
+    );
+  };
+  const edit = (message: AiMessage, text: string) => {
+    const index = thread.indexOf(message);
+    if (index < 0 || !text.trim()) return;
+    void runTurn(thread.slice(0, index), {
+      id: crypto.randomUUID(),
+      parentId: thread[index - 1]?.id ?? null,
+      role: "user",
+      text: text.trim(),
+    });
+  };
+  const retry = (message: AiMessage) => {
+    const index = thread.indexOf(message);
+    if (index > 0) void runTurn(thread.slice(0, index));
+  };
+  const switchBranch = (id: string | undefined) => {
+    if (!session || run.current) return;
+    state.saveSession({ ...session, leafId: aiLatestLeaf(session, id), updatedAt: Date.now() });
+  };
   const newChat = () => {
     state.selectSession(null);
     setAllowWrites(false);
     setAllowDdl(false);
     setMentioned([]);
-    setReasoning("");
-    setEvents([]);
     setApprovals([]);
     setUsage({});
     setView("chat");
     input.current?.focus();
   };
   const cancel = () => {
-    if (runId) void aiCancel(runId).catch((error) => setError(String(error)));
+    if (!runId) return;
+    stopping.current = true;
+    void aiCancel(runId).catch((error) => setError(String(error)));
   };
   const active = connections.find((entry) => entry.id === activeId);
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
@@ -547,17 +575,29 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 </Button>
               </div>
             )}
-          <AiTranscript
-            fullPage={fullPage}
-            messages={session?.messages ?? []}
-            reasoning={reasoning}
-            events={events}
-            approvals={approvals}
-            runId={runId}
-            onResolved={resolve}
-            onError={setError}
-          />
-          <div className={`shrink-0 px-3 pt-2 pb-3 ${fullPage ? "mx-auto w-full max-w-3xl" : ""}`}>
+          {thread.length > 0 && (
+            <AiTranscript
+              fullPage={fullPage}
+              messages={thread}
+              session={session}
+              approvals={approvals}
+              runId={runId}
+              runStatus={runStatus}
+              onResolved={resolve}
+              onError={setError}
+              onEdit={edit}
+              onRetry={retry}
+              onBranch={switchBranch}
+            />
+          )}
+          <div
+            className={`shrink-0 px-3 pt-2 pb-3 ${fullPage ? "mx-auto w-full max-w-3xl" : ""} ${thread.length ? "" : "my-auto"}`}
+          >
+            {!thread.length && (
+              <h2 className="mb-5 text-center text-xl font-medium tracking-tight">
+                {active ? `Was möchtest du über ${active.name} wissen?` : "Wie kann ich helfen?"}
+              </h2>
+            )}
             {suggestions.length > 0 && (
               <div
                 role="listbox"
@@ -663,12 +703,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                       />
                     </PopoverContent>
                   </Popover>
-                  {runId && (
-                    <AgentProgress
-                      label={runStatus || "Arbeitet …"}
-                      className="min-w-0 gap-1 text-[10px] [&>span:first-child]:hidden [&>span:last-child]:hidden"
-                    />
-                  )}
                 </>
               }
               trailingAction={
@@ -744,11 +778,19 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                     ? profile.model
                     : (session?.usageRequestedModel ?? profile.model),
                 }}
-                messages={session?.messages ?? []}
+                messages={thread}
                 prompt={prompt}
                 onSettings={() => setView("settings")}
               />
             </div>
+            {!thread.length && (
+              <AiStarters
+                onPick={(text) => {
+                  setPrompt(text);
+                  input.current?.focus();
+                }}
+              />
+            )}
           </div>
         </>
       )}

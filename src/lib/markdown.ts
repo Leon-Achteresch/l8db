@@ -9,6 +9,8 @@ export type MdBlock =
   | { t: "h"; level: 1 | 2 | 3 | 4; children: MdInline[] }
   | { t: "p"; children: MdInline[] }
   | { t: "ul"; items: MdInline[][] }
+  | { t: "ol"; start: number; items: MdInline[][] }
+  | { t: "quote"; children: MdInline[] }
   | { t: "hr" }
   | { t: "pre"; v: string };
 
@@ -95,6 +97,25 @@ export function parseMarkdown(source: string): MdBlock[] {
       blocks.push({ t: "ul", items });
       continue;
     }
+    const ordered = line.match(/^\s*(\d+)[.)]\s+/);
+    if (ordered) {
+      const items: MdInline[][] = [];
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+        items.push(parseInline(lines[i].replace(/^\s*\d+[.)]\s+/, "")));
+        i += 1;
+      }
+      blocks.push({ t: "ol", start: Number(ordered[1]), items });
+      continue;
+    }
+    if (/^\s*>/.test(line)) {
+      const quote: string[] = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) {
+        quote.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
+      blocks.push({ t: "quote", children: parseInline(quote.join(" ")) });
+      continue;
+    }
     const para: string[] = [line];
     i += 1;
     while (
@@ -102,7 +123,8 @@ export function parseMarkdown(source: string): MdBlock[] {
       lines[i].trim() !== "" &&
       !lines[i].startsWith("#") &&
       !lines[i].startsWith("```") &&
-      !/^\s*[-*]\s+/.test(lines[i]) &&
+      !/^\s*([-*]|\d+[.)])\s+/.test(lines[i]) &&
+      !/^\s*>/.test(lines[i]) &&
       !/^---+$/.test(lines[i].trim())
     ) {
       para.push(lines[i]);
