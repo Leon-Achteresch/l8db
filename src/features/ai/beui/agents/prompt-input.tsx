@@ -1,5 +1,5 @@
 "use client";
-import { ArrowUp, Plus, Square } from "lucide-react";
+import { ArrowUp, ListPlus, Plus, Square } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type FormEvent,
@@ -52,6 +52,7 @@ export interface PromptInputProps
   onAction?: (action: string) => void;
   onSubmit?: (value: string, model?: string) => void | Promise<void>;
   loading?: boolean;
+  queueable?: boolean;
   onStop?: () => void;
   minRows?: number;
   maxRows?: number;
@@ -71,6 +72,7 @@ export function PromptInput({
   onAction,
   onSubmit,
   loading = false,
+  queueable = false,
   onStop,
   minRows = 2,
   maxRows = 8,
@@ -93,7 +95,8 @@ export function PromptInput({
   const currentValue = value ?? internalValue;
   const currentModelValue = model ?? internalModel;
   const currentModel = models.find((option) => option.value === currentModelValue);
-  const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading;
+  const stop = loading && !(queueable && currentValue.trim());
+  const canSubmit = Boolean(currentValue.trim()) && !disabled && (!loading || queueable);
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
     const measurement = measurementRef.current;
@@ -127,7 +130,7 @@ export function PromptInput({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
-    if (!prompt || disabled || loading) return;
+    if (!prompt || disabled || (loading && !queueable)) return;
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");
     textareaRef.current?.focus({ preventScroll: true });
@@ -281,24 +284,31 @@ export function PromptInput({
         <div className="ml-auto flex min-w-0 shrink items-center gap-1">
           {trailingAction}
           <Button
-            type={loading ? "button" : "submit"}
+            type={stop ? "button" : "submit"}
             size="icon"
-            disabled={loading ? !onStop : !canSubmit}
-            aria-label={loading ? "Agent stoppen" : "Nachricht senden"}
-            onClick={loading ? onStop : undefined}
-            className="size-8 shrink-0 rounded-full"
+            disabled={stop ? !onStop : !canSubmit}
+            aria-label={
+              stop ? "Agent stoppen" : loading ? "Nachricht einreihen" : "Nachricht senden"
+            }
+            onClick={stop ? onStop : undefined}
+            className={cn(
+              "size-8 shrink-0 rounded-full",
+              stop && "bg-destructive/90 text-white hover:bg-destructive",
+            )}
           >
             <AnimatePresence initial={false} mode="popLayout">
               <motion.span
-                key={loading ? "stop" : "send"}
+                key={stop ? "stop" : loading ? "queue" : "send"}
                 initial={reduce ? { opacity: 1 } : { opacity: 0, y: 3, scale: 0.8 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.8 }}
                 transition={reduce ? { duration: 0 } : SPRING_SWAP}
                 className="grid place-items-center"
               >
-                {loading ? (
+                {stop ? (
                   <Square className="size-3 fill-current" />
+                ) : loading ? (
+                  <ListPlus className="size-4" />
                 ) : (
                   <ArrowUp className="size-4" />
                 )}

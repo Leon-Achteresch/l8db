@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { AiSession } from "@/lib/ai/store";
 import type { AiMessage } from "@/lib/db/ai";
+import { cn } from "@/lib/utils";
 import { AiBranchSwitcher } from "./ai-branch-switcher";
 import { AiCopyAction } from "./ai-copy-action";
+import { AiMessageTime } from "./ai-message-time";
 import { ResponseAction } from "./beui/agents/streaming-response";
 
 export function AiUserMessage({
@@ -21,6 +23,7 @@ export function AiUserMessage({
   onBranch: (id: string | undefined) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const editing = draft !== null;
   useEffect(() => {
@@ -36,7 +39,7 @@ export function AiUserMessage({
   if (draft !== null)
     return (
       <form
-        className="ml-auto w-full max-w-[85%] rounded-2xl border bg-background p-2 focus-within:border-foreground/25"
+        className="ml-auto w-full max-w-[80%] rounded-2xl border bg-background p-2 focus-within:border-foreground/25"
         onSubmit={(event) => {
           event.preventDefault();
           save();
@@ -70,24 +73,44 @@ export function AiUserMessage({
         </div>
       </form>
     );
+  const long = message.text.length > 600 || message.text.split("\n").length > 8;
   return (
     <article
       data-slot="message"
       data-from="user"
       aria-label="Deine Nachricht"
-      className="group/message flex flex-col items-end"
+      className="group/message flex flex-col items-end gap-1"
     >
-      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-3.5 py-2 text-sm leading-6">
-        {message.text}
+      <div className="relative max-w-[80%] rounded-2xl bg-muted p-3 text-sm leading-relaxed">
+        <div
+          className={cn(
+            "whitespace-pre-wrap break-words",
+            long &&
+              !expanded &&
+              "max-h-44 overflow-hidden [mask-image:linear-gradient(to_bottom,black_calc(100%-1.75rem),transparent)]",
+          )}
+        >
+          {message.text}
+        </div>
+        {long && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="-mb-1 mt-1 h-6 px-2 text-xs text-muted-foreground"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "Weniger anzeigen" : "Ganze Nachricht anzeigen"}
+          </Button>
+        )}
       </div>
-      <div className="mt-0.5 -mr-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/message:opacity-100">
+      <div className="-mr-1.5 flex max-w-[80%] items-center justify-end gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
+        <AiMessageTime at={message.createdAt} />
         <AiBranchSwitcher
           session={session}
           id={message.id}
           disabled={disabled}
           onBranch={onBranch}
         />
-        <AiCopyAction text={message.text} label="Nachricht kopieren" />
         <ResponseAction
           label="Nachricht bearbeiten"
           disabled={disabled}
@@ -95,6 +118,7 @@ export function AiUserMessage({
         >
           <Pencil className="size-3.5" />
         </ResponseAction>
+        <AiCopyAction text={message.text} label="Nachricht kopieren" />
       </div>
     </article>
   );

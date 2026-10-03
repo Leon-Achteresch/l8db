@@ -1,8 +1,7 @@
-import { ArrowDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AiSession } from "@/lib/ai/store";
-import type { AiEvent, AiMessage } from "@/lib/db/ai";
-import { AiApproval } from "./ai-approval";
+import type { AiMessage } from "@/lib/db/ai";
 import { AiAssistantMessage } from "./ai-assistant-message";
 import { AiUserMessage } from "./ai-user-message";
 import { MessageScroller } from "./beui/agents/message-scroller";
@@ -10,12 +9,8 @@ import { MessageScroller } from "./beui/agents/message-scroller";
 interface Props {
   messages: AiMessage[];
   session?: AiSession;
-  approvals: AiEvent[];
-  fullPage?: boolean;
   runId: string | null;
   runStatus: string;
-  onResolved: (id: string) => void;
-  onError: (message: string) => void;
   onEdit: (message: AiMessage, text: string) => void;
   onRetry: (message: AiMessage) => void;
   onBranch: (id: string | undefined) => void;
@@ -23,12 +18,8 @@ interface Props {
 export function AiTranscript({
   messages,
   session,
-  approvals,
-  fullPage,
   runId,
   runStatus,
-  onResolved,
-  onError,
   onEdit,
   onRetry,
   onBranch,
@@ -47,8 +38,8 @@ export function AiTranscript({
         onFollowChange={setFollowing}
         viewportRef={viewport}
         className="h-full"
-        viewportClassName="px-5 py-6"
-        contentClassName={`space-y-4 ${fullPage ? "mx-auto max-w-3xl" : ""}`}
+        viewportClassName="px-3 py-4 sm:px-5"
+        contentClassName="mx-auto w-full max-w-[46rem] space-y-4"
       >
         {messages.map((message, index) =>
           message.role === "user" ? (
@@ -66,7 +57,6 @@ export function AiTranscript({
               message={message}
               session={session}
               streaming={Boolean(runId) && index === messages.length - 1}
-              last={index === messages.length - 1}
               status={runStatus}
               disabled={Boolean(runId)}
               onRetry={onRetry}
@@ -74,27 +64,17 @@ export function AiTranscript({
             />
           ),
         )}
-        {runId &&
-          approvals.map((event) => (
-            <AiApproval
-              key={String(event.data.id)}
-              event={event}
-              runId={runId}
-              onResolved={onResolved}
-              onError={onError}
-            />
-          ))}
       </MessageScroller>
       {!following && (
         <button
           type="button"
-          aria-label="Zum Ende springen"
           onClick={() =>
             viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" })
           }
-          className="absolute bottom-3 left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border bg-background text-muted-foreground shadow-md outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1 rounded-full border bg-background/80 px-2.5 text-xs text-muted-foreground shadow-sm outline-none backdrop-blur-md transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ArrowDown className="size-4" />
+          <ChevronDown className="size-3.5" />
+          Zum Ende
         </button>
       )}
     </div>

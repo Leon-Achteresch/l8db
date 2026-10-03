@@ -51,6 +51,8 @@ export interface AiMessage {
   reasoning?: string;
   error?: string;
   stopped?: boolean;
+  createdAt?: number;
+  durationMs?: number;
 }
 export interface AiConnection {
   id: string;
