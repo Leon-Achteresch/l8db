@@ -21,6 +21,8 @@ export interface AiSession {
   nativeId: string | null;
   cwd: string;
   messages: AiMessage[];
+  leafId?: string;
+  nativeLeafId?: string;
   connectionIds: string[];
   updatedAt: number;
   deleted?: boolean;
@@ -77,12 +79,18 @@ export function mergeAiRecords<T extends { id: string; updatedAt: number }>(
 function sanitizeSession(session: AiSession): AiSession {
   return {
     ...session,
-    messages: session.messages.map(({ id, role, text, rich }) => ({
-      id,
-      role,
-      text,
-      ...(rich ? { rich: sanitizeAiRich(rich) } : {}),
-    })),
+    messages: session.messages.map(
+      ({ id, parentId, role, text, rich, reasoning, error, stopped }, index) => ({
+        id: id ?? `m${index}`,
+        ...(parentId !== undefined ? { parentId } : {}),
+        role,
+        text,
+        ...(rich ? { rich: sanitizeAiRich(rich) } : {}),
+        ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
+        ...(typeof error === "string" && error ? { error } : {}),
+        ...(stopped ? { stopped: true } : {}),
+      }),
+    ),
   };
 }
 function readData(value: string | null): AiData {

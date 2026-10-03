@@ -82,9 +82,12 @@ export function AiRichContent({ blocks, running }: { blocks: AiRichBlock[]; runn
         return null;
       })}
       {tools.length > 0 && (
-        <details className="rounded-lg bg-muted/20 px-3 py-1.5 text-xs">
-          <summary className="min-h-7 cursor-pointer py-1 text-muted-foreground">
+        <details className="group/tools text-xs">
+          <summary className="inline-flex min-h-7 cursor-pointer list-none items-center gap-1 rounded-md text-muted-foreground hover:text-foreground">
             {tools.length} {tools.length === 1 ? "Tool verwendet" : "Tools verwendet"}
+            <span aria-hidden="true" className="transition-transform group-open/tools:rotate-90">
+              ›
+            </span>
           </summary>
           <div className="mt-2 space-y-2">
             <AgentActivity
