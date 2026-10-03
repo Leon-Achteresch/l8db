@@ -465,14 +465,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   );
   const main = (
     <>
-      <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
-        <span className="mr-auto text-sm font-medium">
-          {fullPage ? "AI-Arbeitsbereich" : "AI"}
-          {fullPage && status?.version && (
-            <span className="ml-2 text-xs font-normal text-muted-foreground">{status.version}</span>
-          )}
-        </span>
-        {!fullPage && (
+      {!fullPage && (
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
+          <span className="mr-auto text-sm font-medium">AI</span>
           <Button
             size="icon"
             variant="ghost"
@@ -481,8 +476,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           >
             <Maximize2 className="size-4" />
           </Button>
-        )}
-        {!fullPage && (
           <Button
             size="icon"
             variant={view === "history" ? "secondary" : "ghost"}
@@ -492,34 +485,29 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           >
             <History className="size-4" />
           </Button>
-        )}
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Neues Gespräch"
-          disabled={Boolean(runId)}
-          onClick={newChat}
-        >
-          <Plus className="size-4" />
-        </Button>
-        {!fullPage && settingsButton}
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="AI schließen"
-          onClick={() => {
-            if (fullPage) {
-              state.setOpen(false);
-              void navigate({ to: "/" });
-            } else {
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Neues Gespräch"
+            disabled={Boolean(runId)}
+            onClick={newChat}
+          >
+            <Plus className="size-4" />
+          </Button>
+          {settingsButton}
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="AI schließen"
+            onClick={() => {
               state.setOpen(false);
               document.getElementById("ai-workspace-trigger")?.focus();
-            }
-          }}
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
+            }}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      )}
       {view === "settings" ? (
         <div className="min-h-0 flex-1 overflow-auto">
           <AiSettings
@@ -766,7 +754,19 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         {fullPage ? (
           <>
             <div className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
-              <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
+              <div className="shrink-0 p-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full justify-start"
+                  disabled={Boolean(runId)}
+                  onClick={newChat}
+                >
+                  <Plus className="size-4" />
+                  Neues Gespräch
+                </Button>
+              </div>
+              <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto px-3 pb-3">
                 {historyList}
               </div>
               <div className="shrink-0 border-t p-2">{settingsButton}</div>
