@@ -122,11 +122,11 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
             </select>
           )}
           {options.map((option) => {
+            const id = String(option.id);
             const choices = choiceOptions(option.options).filter(
-              (choice) => !bypassAiPermissions(choice.id),
+              (choice) => !bypassAiPermissions(choice.id, option.category === "mode" ? "mode" : id),
             );
             if (!choices.length) return null;
-            const id = String(option.id);
             return (
               <label key={id} className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <span>{String(option.name ?? id)}</span>

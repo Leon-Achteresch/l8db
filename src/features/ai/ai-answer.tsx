@@ -1,4 +1,4 @@
-import { Markdown } from "@/components/markdown";
+import { AiMarkdown } from "./ai-markdown";
 import type { AgentCodeLanguage } from "./beui/agents/agent-code";
 import { CodeBlock } from "./beui/agents/code-block";
 import { StreamingResponse } from "./beui/agents/streaming-response";
@@ -16,9 +16,7 @@ export function AiAnswer({ text, streaming }: { text: string; streaming: boolean
     >
       {parts.map((part, index) => {
         if (!part.startsWith("```"))
-          return part ? (
-            <Markdown key={String(index)} source={part} className="text-xs text-foreground" />
-          ) : null;
+          return part ? <AiMarkdown key={String(index)} source={part} /> : null;
         const newline = part.indexOf("\n");
         const language = part.slice(3, newline).trim();
         const code = part.slice(newline + 1).replace(/```$/, "");

@@ -27,15 +27,19 @@ pub fn scoped_config(request: &RunRequest, mut config: McpConfig) -> Result<McpC
             .connections
             .iter()
             .find(|entry| entry.id == selected.id);
-        let mut schemas = selected.schemas.clone();
+        let mut schemas = match selected.kind {
+            crate::db::DatabaseKind::Mongodb => Vec::new(),
+            _ => selected.schemas.clone(),
+        };
         if let Some(policy) = policy {
-            if !policy.schemas.is_empty() {
+            let allowed = policy.allowed_schemas();
+            if !allowed.is_empty() {
                 schemas = if schemas.is_empty() {
-                    policy.schemas.clone()
+                    allowed.to_vec()
                 } else {
                     schemas
                         .into_iter()
-                        .filter(|schema| policy.schemas.contains(schema))
+                        .filter(|schema| allowed.contains(schema))
                         .collect()
                 };
                 if schemas.is_empty() {

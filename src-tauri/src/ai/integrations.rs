@@ -282,6 +282,9 @@ impl External {
         let Some((index, original)) = self.routes.get(name).cloned() else {
             return json!({"content": [{"type": "text", "text": "Unbekanntes externes Tool"}], "isError": true});
         };
+        if run.plan_only {
+            return json!({"content": [{"type": "text", "text": "Externe Tool-Aufrufe sind im Plan-Modus gesperrt, weil ihre Nebenwirkungen nicht überprüft werden können."}], "isError": true});
+        }
         if !run
             .approve(&format!("Externes Tool: {original}"), args.clone())
             .await
