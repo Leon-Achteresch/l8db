@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { TransferCinema } from "./cinema/transfer-cinema";
 import { TransferEndpoint } from "./transfer-endpoint";
 import { TransferPlanDetails } from "./transfer-plan";
 import { TransferRunStatus } from "./transfer-run-status";
@@ -24,6 +25,20 @@ export function TransferView() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-auto p-4 md:p-6">
+      <TransferCinema
+        open={transfer.cinema}
+        source={transfer.sourceConnection}
+        target={transfer.targetConnection}
+        sourceDatabase={transfer.source.database}
+        targetDatabase={transfer.target.database}
+        plan={plan}
+        progress={transfer.progress}
+        outcome={transfer.outcome}
+        running={transfer.running}
+        startedAt={transfer.startedAt}
+        onCancel={transfer.cancel}
+        onClose={transfer.closeCinema}
+      />
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <div className="flex flex-col gap-1">
           <h1 className="text-lg font-semibold tracking-tight">Transfer</h1>
