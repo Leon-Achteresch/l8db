@@ -1,5 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import {
+  Bot,
+  GitBranchIcon,
+  GitPullRequestIcon,
+  PlugZap,
+  RefreshCw,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -11,6 +19,7 @@ import { ProxyUserSwitch } from "@/features/shell/proxy-user-switch";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { TemporaryConnectionBadge } from "@/features/shell/temporary-connection-badge";
 import { WindowControls } from "@/features/shell/window-controls";
+import { useAiStore } from "@/lib/ai/store";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
@@ -36,6 +45,9 @@ function headerSection(pathname: string) {
 
 export function AppHeader() {
   const navigate = useNavigate();
+  const aiPage = useRouterSelect((state) => state.location.pathname === "/ai");
+  const aiOpen = useAiStore((state) => state.open);
+  const setAiOpen = useAiStore((state) => state.setOpen);
   const headerRef = useRef<HTMLElement>(null);
   const leadingRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLElement>(null);
@@ -280,6 +292,27 @@ export function AppHeader() {
           </Link>
         </Tooltip>
 
+        <Tooltip content="AI-Arbeitsbereich" side="bottom">
+          <button
+            id="ai-workspace-trigger"
+            type="button"
+            aria-label="AI-Arbeitsbereich"
+            aria-expanded={aiOpen || aiPage}
+            aria-controls="ai-workspace"
+            className={cn(
+              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              (aiOpen || aiPage) && "bg-primary/12 text-foreground",
+            )}
+            onClick={() => {
+              if (aiPage) {
+                setAiOpen(true);
+                void navigate({ to: "/" });
+              } else setAiOpen(!aiOpen);
+            }}
+          >
+            <Sparkles className="size-4" strokeWidth={2} />
+          </button>
+        </Tooltip>
         {!easyMode && (
           <Tooltip content="MCP" side="bottom">
             <Link
