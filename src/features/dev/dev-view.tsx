@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
 import { ConnectionSelectLab } from "./connection-select-lab";
+import { DriverOverviewLab } from "./driver-overview-lab";
 import { FeatureVideoPreview } from "./feature-video-preview";
 import { FontLab } from "./font-lab";
 import { NewBadgeExitLab } from "./new-badge-exit-lab";
@@ -72,6 +73,9 @@ export function DevView() {
             </TabsTrigger>
             <TabsTrigger value="provider-picker" className="flex-none px-4">
               Datenbank-Auswahl
+            </TabsTrigger>
+            <TabsTrigger value="drivers" className="flex-none px-4">
+              Treiber
             </TabsTrigger>
             <TabsTrigger value="settings-design" className="flex-none px-4">
               Einstellungen
@@ -184,6 +188,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="provider-picker">
           <ProviderPickerLab />
+        </TabsContent>
+        <TabsContent value="drivers">
+          <DriverOverviewLab />
         </TabsContent>
         <TabsContent value="settings-design">
           <SettingsDesignLab />
