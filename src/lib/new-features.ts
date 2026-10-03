@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEW_FEATURES = {
   "ai.workspace": "0.8.0",
   "ai.chat": "0.8.0",
+  "ai.chat.approval": "0.8.0",
   "ai.providers": "0.8.0",
   "ai.context.connections": "0.8.0",
   "ai.context.skills": "0.8.0",

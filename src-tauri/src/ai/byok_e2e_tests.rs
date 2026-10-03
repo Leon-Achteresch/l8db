@@ -89,6 +89,7 @@ fn captured_run(allowed: bool) -> (Run, Arc<Mutex<Vec<Value>>>) {
             id: "byok-e2e-run".into(),
             owner: "byok-e2e-window".into(),
             plan_only: false,
+            approval: String::new(),
             state,
             channel,
         },

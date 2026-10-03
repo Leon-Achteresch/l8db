@@ -30,6 +30,7 @@ export interface AiProfile {
   model: string;
   effort: string;
   mode: string;
+  approval?: string;
   config?: Record<string, unknown>;
   pricing?: AiPricing;
 }

@@ -21,6 +21,7 @@ import {
 } from "@/lib/db/ai";
 import { useDbSelectionStore } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
 import { AiProviderPicker } from "./ai-provider-picker";
@@ -453,7 +454,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               setView("chat");
             }}
           />
-          {fullPage && <span className="text-xs text-muted-foreground">{status?.version}</span>}
+          <div className="flex items-center gap-2">
+            <AiApprovalPicker profile={profile} disabled={Boolean(runId)} />
+            {fullPage && <span className="text-xs text-muted-foreground">{status?.version}</span>}
+          </div>
         </div>
         {fullPage && (
           <nav aria-label="AI-Bereiche" className="flex gap-1 border-b px-3 pb-2">
