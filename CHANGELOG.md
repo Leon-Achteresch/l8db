@@ -3,6 +3,125 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.9.0] - 2026-10-03
+
+### Features
+- let NEW badges tumble away when they are marked as seen
+- show only a connect entry in the nav rail when no connections exist
+- customizable widget board for the connected start page
+- mark badges seen on click or after two seconds of accumulated view time
+- count active tasks of other windows as update blockers
+- rounded-xl ueberall
+- add comprehensive dashboard tour and app clip
+- cluster and lazily render connected schema sections
+- modernize workspace and add visual chart builder
+
+### Fixes
+- expose all MongoDB databases regardless of connection browser schema filters
+- show cell text in full when it fits without the ellipsis
+- register Monaco CodeLens before the JSON mode loads its contributions
+- open the chart editor after loading a saved chart
+- launch with the call script as typed even before rerender
+- treat a repository without commits as having no committed team configuration
+- only preselect a relation that matches the SQL so picking it reloads the detail query
+- list the main schema, which DuckDB marks as internal
+- let autopilot click the target when enabled while a step is waiting
+- break statements at the query deadline so a timed-out query no longer blocks the shared connection
+- route macOS quit through the window close guards so unsaved work is not lost
+- pass OUT arguments in procedure calls as NULL on Postgres and as variables on Oracle
+- offer full XLSX export only on PostgreSQL where a table snapshot exists
+- keep pasted text unchanged in single-value filter fields
+- quote empty strings and NULL-text lookalikes in CSV so imports keep them apart from NULL
+- keep duplicate bound columns, read matview columns from the catalog, report precise column types, escape subscription conninfo and randomize export shuffles
+- keep trigger and routine bodies intact and honour SQL Server GO and MySQL DELIMITER
+- show only direct Postgres grants in the privilege grid so revoking always takes effect
+- sync the notebook draft across windows without replacing another window's unsaved draft
+- use TOP for SQL Server and FETCH FIRST without AS table aliases for Oracle
+- apply result masks to JSON view, search, copy, chart and JSON export
+- open dashboards on the database they were created for
+- keep SQLite rebuild backups when a later table rebuild runs after a rollback
+- ask before running expert SQL from MCP dashboard files that is not read-only
+- keep string literals and comments intact when requalifying schema names
+- report a failed MULTI_USER reset after SQL Server restores
+- return rows for commented queries and bare procedure calls and render temporal values at column precision
+- match binary primary keys as binary literals when editing or deleting rows
+- reject process env vars that inject code or change binary resolution
+- close redaction bypasses and enforce schema checks on database switches and writes
+- let Postgres infer the type of text and NULL parameters instead of forcing ::text
+- reopen the main window to process files when only secondary windows are open
+- surface the real connect error instead of a bb8 pool timeout
+- reject simple filters that hide SQL behind dialect-specific quoting or # comments
+- replace existing MySQL routines and ClickHouse functions on save, check MySQL routines and keep their grants
+- rebase the definition draft on the reloaded source and target
+- write Postgres arrays, composites and hstore values as typed literals in sync scripts
+- offer sequence editing only on Postgres and validate numeric values
+- offer only sequence privileges on sequences so ALL can be checked
+- keep role expiry visible, reset connection limits and never clear an unchanged expiry
+- open sync scripts for targets without a database name and report copy failures
+- refuse to kill sessions whose id does not fit the session pid instead of wrapping
+- show disabled SQL Server, Oracle, MySQL and SQLite triggers as disabled
+- keep string literals intact when ignoring whitespace or case
+- keep rendered SQL Server and SQLite sync scripts from applying after a failure
+- classify hidden writes, bind typed query params and re-ask consent for widened capabilities
+- escape backslashes in quoted identifiers and apply the query timeout per request
+- report tables dropped since a schema snapshot as removed tables
+- redact bearer tokens and quoted secrets in error reports
+- keep key-value passwords, import S3, protect shared tunnels and unsaved tabs
+- match production and read-only guards on all connections that share a target
+- omit AS before table aliases in Oracle simple-mode SQL
+- only drop the DEFINER on restore when the server denies it and tell the user
+- report foreign keys left NOT VALID and keep virtual generated columns
+- keep MySQL 5.7 binary defaults quoted and generated column expressions unescaped on CHANGE COLUMN
+- keep typed XML schema collections, SPARSE and dynamic data masking on ALTER COLUMN
+- run autocommit script statements in one dedicated session so SET options and temp tables survive between statements
+- copy tables schema-qualified with deferred foreign keys, keep literals intact, insert into identity and generated columns and pin read-only transactions
+- return only the first result set from PostgreSQL batches in transaction mode
+- pin host keys on reconnect, stop retrying after rejected logins and report tunnel failures to the user
+- keep host-rule production classification when imports or vault sync carry a lower environment
+- check MySQL trigger definitions on a scratch table before dropping the original and restore without a foreign DEFINER
+- check SQLite foreign keys per table when an unrelated foreign key mismatch breaks the global check
+- keep inlined negative numbers after a minus from forming a line comment
+- treat semicolon-separated T-SQL routine bodies as one batch until GO
+- only delete keychain query tokens once the in-memory URL is authoritative
+- merge cross-window dashboard changes and stop echoing adopted state back
+- ignore SQL comments when planning tracked UPDATE and INSERT changes
+- allow COMMIT in T-SQL routine bodies and autocommit Oracle blocks and treat SQLite END as transaction control
+- keep the connection collation for MySQL backslashes in inlined literals
+- keep idle tunnels alive with keepalives and reconnect the SSH chain when a session drops
+- shuffle masked columns in page exports and write real masked values to Parquet
+- run EXPLAIN as a single prepared statement and keep column attributes on CHANGE COLUMN
+- allow sandbox bootstrap under production CSP
+- stop reading query cursors after the result row cap
+- keep nested JSON and array values with unsafe numbers as exact raw text
+- keep column type and collation on ALTER COLUMN and drop pooled clients after session-changing SQL
+- save view definitions that are shown as full CREATE VIEW statements on SQLite, DuckDB and SQL Server
+- keep the first result set, block transaction-ending batches in read-only mode and copy full table DDL
+- keep the original trigger when saving an edited definition fails
+- disable SQLite foreign keys around table rebuilds so drops no longer cascade into child tables
+- keep empty strings when an inline cell edit is left unchanged
+- quote FK preview and navigation filters per dialect
+- keep secret URL query parameters in the keychain instead of localStorage
+- pin grid row edits to one partition via ctid and tableoid
+- clear the target inside the import transaction and page by a unique key
+- quote inlined bind values and INSERT exports per dialect
+- keep dashboards, drafts, presets and settings in sync across windows
+- treat EXPLAIN ANALYZE of DML as a write and reject transaction control in managed transactions
+- keep snapshot row caps and RETURNING outside trailing SQL comments
+- keep environment, read-only flag and masking rules in exports and vault sync
+- hold back relaunch while transactions, tasks or unsaved files are open
+- never import consent, update or production-safety settings
+
+### Performance
+- keep virtualizer measurements cached in the query history panel
+
+### Änderungen
+- drop manage connections link from start page
+- drop the header theme toggle in favour of the appearance setting
+
+### Weitere Änderungen
+- Dismiss toasts on click and shorten display duration
+- Polish toast prominence and speed up drop animation
+
 ## [0.8.24] - 2026-10-01
 
 ### Features
@@ -819,306 +938,5 @@ Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 - Feat: sidebar animation
 - Fix Windows Fenster-Buttons: fehlende Tauri-Permissions und Klicks durch Drag-Region.
 - Type(scope): Beschreibung
-- ---
-- init
-
-## [0.3.53] - 2026-09-09
-
-### Fixes
-- kein Render-Loop mehr beim schnellen Scrollen
-
-## [0.3.49] - 2026-09-09
-
-### Features
-- responsive row height scaling and view toggle cleanup
-- Dashboards aus Datei laden und mit Datei synchron halten
-- fokussierte Zelle mit einem Klick bearbeiten
-
-### Fixes
-- Monaco-Tooltips blockieren keine Klicks mehr
-
-## [0.3.42] - 2026-09-09
-
-### Features
-- open workspace tools like compare and ER diagram as tabs
-- add SidebarWindow virtualisation and related refinements
-
-### Fixes
-- keine Transaktion für View-DDL und implizit committende Dialekte
-
-### Performance
-- 60 FPS in Übersicht, Dashboard und Tabellenansicht sichern
-
-### Änderungen
-- remove unused scroll-idle import
-- throttle update checks with focus and visibility-driven re-checks
-
-## [0.3.32] - 2026-09-09
-
-### Features
-- integrate chart palette and dashboard canvas components
-- regex object search with persisted search history
-- implement connection authentication guard and error handling
-- introduce sidebar search input and connection switcher
-- enhance connection management and UI components
-- add dashboard route and sidebar integration
-- integrate SwitchButton for column visibility toggling
-- add auto-sizing feature for table columns
-- enhance error handling in query result components
-
-### Fixes
-- resolve frontend formatting checks
-
-### Änderungen
-- update props to use HTMLMotionProps for better type safety
-- remove TableColumnHighlight component and update related references
-
-## [0.3.17] - 2026-09-08
-
-### Features
-- enhance MongoDB error handling in connectionError function
-- implement automated changelog generation and PR creation
-- add bug report dialog and integrate diagnostic information collection
-- Import von Toad for Oracle Verbindungsexporten (XML)
-- implement connection window opening and enhance read-only mode handling
-- Passwort-Abfrage beim Verbinden ohne hinterlegtes Passwort mit optionalem Speichern
-- TNS-Modus im Verbindungseditor mit Alias-Auswahl aus tnsnames.ora
-- STRG+Klick auf Tabellen in PL/SQL-Selects öffnet Ergebnis-Tab, Parameter-Dialog für alle Datenbanken
-- View-Definition als vollständiges CREATE OR REPLACE FORCE VIEW mit Spaltenliste und BEQUEATH
-- vollständige CREATE-Skripte für Trigger, Typen und Routinen in allen Adaptern
-- gemeinsame Diff-Minimap und Plus/Minus-Zähler im Header
-- JSON-Abfragen, Collection-Verwaltung und Browser-Tests
-- make column search optional in sidebar and advanced search
-- red dot indicators, periodic checks and skip-version
-- open view definition as full DDL in query editor
-
-### Fixes
-- satisfy Biome checks
-- Views und Materialized Views im SQL-Linter als bekannte Tabellen behandeln
-- App-Icon im Apple-Squircle-Raster statt rundem Logo
-- Verbindungs-Toast immer schließen und Aktivierung mit Timeout absichern
-- Funktions-/Prozedur-/Package-Quelltext als CREATE OR REPLACE mit Schema liefern
-- compile simple filters per SQL dialect instead of Postgres-only ILIKE
-- derive header type badge from column metadata instead of first row value
-- offer filter/sort reset and retry in table load error state
-- add spacing between diagnose rows
-- anchor Monaco hover tooltips to the editor container
-
-### Änderungen
-- streamline authentication error handling
-
-### Weitere Änderungen
-- Fix Oracle bulk host editing
-
-## [0.2.30] - 2026-09-08
-
-### Features
-- add search filter to function and package lists
-- add bug report button that opens a prefilled mail
-
-### Fixes
-- prevent horizontal overflow in hotkey lists
-- stop re-revealing member line on every keystroke while editing
-- name new query tabs per connection instead of globally
-- render Monaco overflow widgets outside transformed ancestors
-- guard setLayout until both panels are registered after editor focus toggle
-- smooth horizontal scrolling in wide tables
-
-## [0.2.19] - 2026-09-08
-
-### Features
-- introduce @tanstack/react-hotkeys and overhaul query workspace
-- rotes X in Sidebar, Compile-pro-Gruppe und Outputs-Page
-- Extension API v1.1 mit Abfragen, Netzwerk, Prozessen, Ansichten, Panels und Dialogen
-- Mitgliederliste pro Package resizebar merken
-- Spec/Body als Tabs mit Mitglieder-Outline statt Accordion
-- Auswahl ausführen und Editieren klar von Speichern trennen
-- customize table detail tabs
-- show connection status indicators
-- compact playful table tabs with overflow menu
-- add table detail tab visibility controls and refine tab bar
-- one-click select the schema matching the db user in schema picker
-- context menu with duplicate and create-similar on connection cards
-- add content search to table search modal and refactor detail tabs
-- group connections by server and add template support
-- Vergleich von der aktiven Verbindung im Modal einrichten
-- Changelog und Release-Notes automatisch aus Git-Tags erzeugen
-- sichtbare Schemas pro Verbindung scannen und filtern
-
-### Fixes
-- satisfy frontend Biome checks
-- Bedienpanel klickbar und Popover im App-Theme
-- widen connection picker layout
-- reorder NOT NULL constraint after DEFAULT in column definition SQL
-- Kommentare, Semikolons und PL/SQL-Terminator vor Ausführung korrekt behandeln
-- ausgeblendetes aktives Schema auf sichtbares Schema zurücksetzen
-
-### Performance
-- Oracle-Verbindungspools, lazy Sidebar-Metadaten und Instant-Client-Suche
-
-### Änderungen
-- replace native select with radix select in auto-refresh
-
-### Weitere Änderungen
-- fix window dragging in app header
-- Improve table footer alignment
-- Persist workspace tabs per connection
-- Feat: sidebar animation
-
-## [0.1.161] - 2026-09-07
-
-### Features
-- datenbewahrendes In-Place-Update für Community Extensions
-
-### Fixes
-- Import-Sortierung nach Biome-Vorgabe korrigieren
-
-### Performance
-- accelerate grids, startup, SQL editing and PostgreSQL results
-- Virtualisierung, Layout-Animationen und Polling entschärft, MSSQL/ODBC-Pooling, Performance-Tests
-
-### Weitere Änderungen
-- Fix Windows Fenster-Buttons: fehlende Tauri-Permissions und Klicks durch Drag-Region.
-
-## [0.1.154] - 2026-09-07
-
-### Features
-- Splitansicht bis 2x2 mit Drag & Drop wiederherstellen, Verbindungs-Badges entfernen
-- native Windows-Titelleiste durch eigene Fenster-Controls ersetzen
-- Migrationsskript aus Schema-Snapshot-Vergleich erzeugen
-- add Oracle key-value parsing, auto-updater, and connection test timeout
-- XLSX-Export ohne Zusatzabhängigkeit (eigener ZIP/OOXML-Writer)
-- 13 neue L8DB-PLAN-Tickets (063–075) hinzufügen
-- Objekte vergleichen und in anderes Schema kopieren (inkl. Datentransfer)
-- Objekte umbenennen, ändern, löschen mit DDL-Vorschau und Audit-Tab
-- Performance-Test aus dem Query-Arbeitsplatz, gemeinsamer Läufer und Report
-- add object administration, schema object copy, and table performance testing
-- add database monitor page
-- Used-By-Analyse, Synonyme browsen, Scheduler-Jobs (inkl. Server-Output-Backend aus 069)
-- Server-Ausgabe (NOTICE/DBMS_OUTPUT) im Query-Arbeitsplatz anzeigen
-- Regex-Suche mit Helper und Live-Trefferzählung
-- Prozeduren als Objektfamilie, Kompilieren per Kontextmenü, Debugger-Einstieg (inkl. Bind-Parameter-Backend aus 060)
-- PostgreSQL-Abfragen mit Bind-Parametern ausführen
-- Zeile duplizieren im Edit-State mit änderbarem Primärschlüssel
-- Benannte Arbeitsplatzstände und fokussiertes ER-Diagramm
-- Tabellendaten per Primärschlüssel vergleichen und Sync-Skript erzeugen
-- Ausführungspläne speichern, offline öffnen und vergleichen
-- Vollständiger Tabellenexport, Exportvorlagen und Spaltenmaskierung
-- Query-Bibliothek importieren/exportieren und lokales Diagnosepaket
-- Grafischer SELECT-Builder mit Fremdschlüssel-Join
-- Objektdefinitionen vergleichen und Tabellenmetadaten-Snapshots
-- Tab-übergreifende Suche, Editor-Lesezeichen, Skriptausführung mit Einzelergebnissen
-- Durchsuchbare Tastenkürzelhilfe und Fenstertitel mit Verbindungskontext
-- DDL-Vorschau vor CREATE TABLE und Tabellenspalten als Vorlage
-- INSERT-SQL-Export und CSV-Export mit Optionen und Vorschau
-- SQL-Formatierung nach Provider-Dialekt mit Einrückungs- und Keyword-Optionen
-- Globale Objektsuche, Spaltensuche, Quelltextsuche, Objektfavoriten
-- Zellwert-Popup-Editor, FK-Wertauswahl, Auto-Refresh
-- SQL-Snippets verwalten und mit Platzhaltern einfügen
-- CSV-Importvorschau, Spaltenmapping und atomarer Import
-- Layoutprofile, Zellbereiche als TSV kopieren, Kennzahlen für Auswahl
-- Abfrageergebnisse lokal sortieren und filtern
-- redesign settings page with modular sidebar tabs, live preview and search
-- PostgreSQL-Verbindungen im Lesemodus öffnen
-- Grid-Textsuche, Spalten fixieren, Spaltennamen kopieren
-- Markiertes SQL und Statement unter dem Cursor ausführen
-- Kapitel-Tour mit Spotlight, Warte-Schritten und Autopilot
-- Update als freies Popup statt Modal anzeigen
-- Profile exportieren/importieren, Favoriten, Verbindungsfarbe
-- Blockierende Sitzungen, Filter und Gruppierung
-- SQL-Dateien öffnen, speichern und externe Änderungen erkennen
-- Oracle-Netzwerkreichweite prüfen, ezconnect-Parsing und Connection-Switch-Zustand mit zustand
-
-### Fixes
-- use tauri-action v0 for updater inputs parity with l8git
-- Typdeklaration für basic-languages/sql
-- Tastatur in Eingabefeldern nicht abfangen, Pulse bei reduced-motion aus
-
-### Performance
-- Route-Code-Splitting aktivieren und React-Plugin auf oxc (v6) heben
-
-### Weitere Änderungen
-- Type(scope): Beschreibung
-
-## [0.1.99] - 2026-09-06
-
-### Features
-- About-Seite implementieren und Tabellenheader refaktorisieren
-- custom icons for connections, databases and schemas
-- Speichern per Slide-Button im Footer, Testen daneben
-- Full-DB-Client, Extensions und 0.1.0 Production-Release (#1)
-- automatic push-triggered releases with packaging channels
-- Datenbank-Erweiterungen, Extensions-UI, Import-View und Biome-Setup
-- enhance TableColumnsList with search and filter functionality
-- add columns tab to ViewEditorView for enhanced table management
-- add TableColumnsList component and integrate into TableView
-- add SidebarRoleList component to enhance sidebar functionality
-- add sequences management features and enhance routing
-- add DataTypeCombobox for improved data type selection in AlterTableView
-- implement alter table functionality with new routes and UI components
-- enhance sidebar functionality with table management actions
-- add NewRowDialog component for row insertion in table view
-- implement row management features in the data table
-- enhance SQL formatting capabilities in the editor
-- refactor views and enhance routing structure
-- add new views for About, Connections, ER Diagram, Extensions, Functions, Home, and Query Management
-- refactor table triggers management and enhance sidebar functionality
-- enhance application with new routes, components, and dependencies
-- add user role management and routing
-- enhance SQL validation and execution in Function and Extension pages
-- add support for functions and extensions in sidebar and routing
-- enhance transaction management and UI synchronization
-- implement transaction management and UI integration
-- enhance DataTable with resizing and layout improvements
-- enhance table tab management with entity type support
-- enhance DataTable and QueryEditorPane with pagination and layout improvements
-- refactor sidebar panel for improved resizing and layout
-- enhance sidebar and SQL editor functionality
-- implement view management and definition display
-- enhance query routing and tab management
-- add query editor and result table components
-- enhance DataTable with popover filtering functionality
-- implement table views functionality with filtering and saving options
-- add settings page and integrate into routing and header
-- add AGENTS.md documentation and implement row update functionality
-- App-Header mit Suche und Layout über der Sidebar
-- enhance DataTable and TablePage with improved data handling and UI elements
-- implement data table and SQL editor components for enhanced data management
-- add SQL editor component and integrate into TableFilterPanel
-- add table filter panel and enhance database selection
-- enhance ConnectionsPage with improved UI and connection string masking
-- enhance routing and introduce table tab management
-- integrate table management and enhance sidebar functionality
-- implement sidebar resizing functionality and state management
-- implement connections management and enhance sidebar functionality
-- implement AppSidebarIconRail component for improved sidebar navigation
-- add logo and improve code consistency in AppSidebar and AppLayout
-- add new UI components and update dependencies
-- Add new components and update dependencies for improved UI
-
-### Fixes
-- downgrade react-table to v8, fix remaining biome errors
-- Filter-Popover im Table-Header bleibt nach Rechtsklick offen
-- remove stray repro route from release
-- resolve biome errors, es2022 lib and per-connection split persistence
-- update SQL query to cast data_type to text for better compatibility
-- streamline TableFilterPanel component and improve condition handling
-- adjust padding in AppSidebarPanel header for improved layout
-- integrate TooltipProvider in SidebarProvider for improved tooltip handling
-
-### Änderungen
-- clean up AppHeader component structure
-- clean up DataTable component by removing debug logging and unused functions
-- enhance SqlEditor and Calendar components with type annotations and code consistency
-- update sidebar and enhance TableFilterPanel with animations
-- simplify TableTabs and enhance data fetching logic
-- improve layout and responsiveness of TableFilterPanel and TablePage
-- simplify layout structure in AppLayout and TablePage
-- streamline AppSidebar components and enhance navigation
-- simplify AppSidebar and enhance navigation with React Router
-- clean up HomePage component and update AppLayout imports
-- restructure layout components and update TypeScript configuration
-
-### Weitere Änderungen
 - ---
 - init
