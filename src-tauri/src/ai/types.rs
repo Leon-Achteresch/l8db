@@ -19,6 +19,8 @@ pub struct Profile {
     #[serde(default)]
     pub mode: String,
     #[serde(default)]
+    pub approval: String,
+    #[serde(default)]
     pub config: std::collections::HashMap<String, Value>,
     #[serde(default)]
     pub pricing: Option<Pricing>,

@@ -77,6 +77,7 @@ fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
             id: "fixture-run".into(),
             owner: "fixture-window".into(),
             plan_only: false,
+            approval: String::new(),
             state,
             channel,
         },

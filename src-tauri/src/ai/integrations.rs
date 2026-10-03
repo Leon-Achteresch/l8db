@@ -286,7 +286,7 @@ impl External {
             return json!({"content": [{"type": "text", "text": "Externe Tool-Aufrufe sind im Plan-Modus gesperrt, weil ihre Nebenwirkungen nicht überprüft werden können."}], "isError": true});
         }
         if !run
-            .approve(&format!("Externes Tool: {original}"), args.clone())
+            .approve_tool(true, &format!("Externes Tool: {original}"), args.clone())
             .await
             .unwrap_or(false)
         {

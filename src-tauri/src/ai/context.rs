@@ -142,7 +142,7 @@ pub async fn call(
             return json!({"content": [{"type": "text", "text": "Dashboard-Änderungen sind im Plan-Modus gesperrt."}], "isError": true});
         }
         if !run
-            .approve("Dashboard ändern", args.clone())
+            .approve_tool(true, "Dashboard ändern", args.clone())
             .await
             .unwrap_or(false)
         {
