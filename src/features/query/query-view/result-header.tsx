@@ -16,29 +16,27 @@ interface ResultHeaderProps {
 export function ResultHeader({ isRunning, error, result, statusText, actions }: ResultHeaderProps) {
   return (
     <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
-      <div className="inline-flex items-center gap-2 rounded-xl border px-2 py-0.5">
-        <ResultTitle />
-        <span
-          role="status"
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
-            isRunning
-              ? "border-primary/30 bg-primary/10 text-primary"
-              : error
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-border bg-background/60 text-muted-foreground",
-          )}
-        >
-          <span className={cn("size-1.5 rounded-full bg-current", isRunning && "animate-pulse")} />
-          {isRunning
-            ? "Wird ausgeführt"
+      <ResultTitle />
+      <span
+        role="status"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+          isRunning
+            ? "border-primary/30 bg-primary/10 text-primary"
             : error
-              ? "Fehlgeschlagen"
-              : result
-                ? "Abgeschlossen"
-                : "Bereit"}
-        </span>
-      </div>
+              ? "border-destructive/30 bg-destructive/10 text-destructive"
+              : "border-border bg-background/60 text-muted-foreground",
+        )}
+      >
+        <span className={cn("size-1.5 rounded-full bg-current", isRunning && "animate-pulse")} />
+        {isRunning
+          ? "Wird ausgeführt"
+          : error
+            ? "Fehlgeschlagen"
+            : result
+              ? "Abgeschlossen"
+              : "Bereit"}
+      </span>
       {statusText && (
         <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
           {statusText}
