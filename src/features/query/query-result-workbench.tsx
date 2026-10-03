@@ -16,11 +16,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { CreateViewDialog, isViewableSelect } from "@/features/query/create-view-dialog";
 import { ResultTitle } from "@/features/query/query-view/result-title";
 import { copyText } from "@/lib/clipboard";
+import { useConnectionsStore } from "@/lib/connections/store";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
+import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { cn } from "@/lib/utils";
 import { QueryCellInspector } from "./query-cell-inspector";
@@ -53,6 +56,15 @@ export function QueryResultWorkbench({
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [cell, setCell] = useState<{ column: string; value: unknown; row: number } | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const viewConnection = useConnectionsStore((s) =>
+    s.connections.find((c) => c.id === chart?.connectionId),
+  );
+  const viewsSupported = useCapabilities(kind).views;
+  const canCreateView =
+    viewsSupported &&
+    Boolean(chart?.sqlCapable && viewConnection && !viewConnection.readOnly) &&
+    isViewableSelect(chart?.sql ?? "");
   const jsonScrollRef = useRef<HTMLPreElement>(null);
   const [lastResult, setLastResult] = useState(result);
   if (lastResult !== result) {
@@ -209,8 +221,25 @@ export function QueryResultWorkbench({
                   ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {canCreateView && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setViewDialogOpen(true)}>
+                    Als View speichern…
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+          {chart && viewConnection && (
+            <CreateViewDialog
+              open={viewDialogOpen}
+              onOpenChange={setViewDialogOpen}
+              sql={chart.sql}
+              connection={viewConnection}
+              database={chart.database}
+            />
+          )}
           {actions}
         </div>
       </div>
