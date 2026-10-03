@@ -13,12 +13,14 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
+import { NewBadge } from "@/components/new-badge";
 import {
   buildHotkeyItems,
   buildNotebookItems,
   buildObjectItems,
 } from "@/features/shell/app-header-search/command-items";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
+import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
@@ -28,6 +30,7 @@ import {
   useHotkeysStore,
   useResolvedHotkey,
 } from "@/lib/hotkeys";
+import { markNewFeatureSeen, useHasNewFeatures } from "@/lib/new-features";
 import { useNotebookStore } from "@/lib/notebook/store";
 import { supports } from "@/lib/providers";
 import { useAllSchemaObjectsQuery } from "@/lib/queries";
@@ -144,6 +147,23 @@ export function AppHeaderSearch() {
       },
     }));
   }, [extensionHost, extensionVersion]);
+
+  const askNew = useHasNewFeatures("ai.ask");
+  const askAiItem = useCallback(
+    (query: string): CommandItem => ({
+      id: "ai:ask",
+      label: `KI fragen: „${query}“`,
+      group: "KI",
+      icon: Sparkles,
+      badge: askNew ? <NewBadge /> : undefined,
+      onSelect: () => {
+        markNewFeatureSeen("ai.ask");
+        setOpen(false);
+        useAiStore.getState().ask(query);
+      },
+    }),
+    [askNew],
+  );
 
   const items = useMemo<CommandItem[]>(() => {
     if (!open) return NO_ITEMS;
@@ -294,6 +314,7 @@ export function AppHeaderSearch() {
         placeholder="Objekte und Verbindungen…"
         emptyMessage="Keine Treffer"
         maxVisible={MAX_VISIBLE_RESULTS}
+        queryItem={askAiItem}
       />
       {objectSearchMounted.current && (
         <Suspense fallback={null}>

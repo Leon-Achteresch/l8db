@@ -28,6 +28,7 @@ export function CommandPalette({
   open: controlledOpen,
   onOpenChange,
   maxVisible,
+  queryItem,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const controlled = controlledOpen !== undefined;
@@ -82,7 +83,11 @@ export function CommandPalette({
     };
   }, [open]);
 
-  const { query: rankedQuery, list: filtered } = useRankedCommands(items, query, maxVisible);
+  const { query: rankedQuery, list: ranked } = useRankedCommands(items, query, maxVisible);
+  const filtered = useMemo(
+    () => (queryItem && rankedQuery.trim() ? [...ranked, queryItem(rankedQuery.trim())] : ranked),
+    [queryItem, rankedQuery, ranked],
+  );
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.

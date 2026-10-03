@@ -1,6 +1,7 @@
 import { Brain, CircleAlert, RotateCcw } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { stripAiFollowups } from "@/lib/ai/result";
 import { interleaveAiRich } from "@/lib/ai/rich";
 import type { AiSession } from "@/lib/ai/store";
 import type { AiMessage } from "@/lib/db/ai";
@@ -22,6 +23,7 @@ export function AiAssistantMessage({
   disabled,
   onRetry,
   onBranch,
+  onFollowup,
 }: {
   message: AiMessage;
   session?: AiSession;
@@ -30,6 +32,7 @@ export function AiAssistantMessage({
   disabled: boolean;
   onRetry: (message: AiMessage) => void;
   onBranch: (id: string | undefined) => void;
+  onFollowup?: (question: string) => void;
 }) {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const [open, setOpen] = useState(false);
@@ -75,7 +78,11 @@ export function AiAssistantMessage({
       {parts.map((part, index) => (
         <Fragment key={String(index)}>
           {part.text.trim() ? (
-            <AiAnswer text={part.text} streaming={streaming && index === parts.length - 1} />
+            <AiAnswer
+              text={part.text}
+              streaming={streaming && index === parts.length - 1}
+              onFollowup={streaming ? undefined : onFollowup}
+            />
           ) : null}
           {part.blocks.length ? (
             <AiRichContent blocks={part.blocks} running={streaming} showWork={showWork} />
@@ -112,7 +119,9 @@ export function AiAssistantMessage({
       )}
       {!streaming && (
         <div className="-ml-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
-          {message.text && <AiCopyAction text={message.text} label="Antwort kopieren" />}
+          {message.text && (
+            <AiCopyAction text={stripAiFollowups(message.text)} label="Antwort kopieren" />
+          )}
           <ResponseAction
             label="Antwort neu generieren"
             disabled={disabled}

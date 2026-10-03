@@ -14,6 +14,7 @@ interface Props {
   onEdit: (message: AiMessage, text: string) => void;
   onRetry: (message: AiMessage) => void;
   onBranch: (id: string | undefined) => void;
+  onAsk: (question: string) => void;
 }
 export function AiTranscript({
   messages,
@@ -23,6 +24,7 @@ export function AiTranscript({
   onEdit,
   onRetry,
   onBranch,
+  onAsk,
 }: Props) {
   const viewport = useRef<HTMLElement>(null);
   const [following, setFollowing] = useState(true);
@@ -61,6 +63,7 @@ export function AiTranscript({
               disabled={Boolean(runId)}
               onRetry={onRetry}
               onBranch={onBranch}
+              onFollowup={!runId && index === messages.length - 1 ? onAsk : undefined}
             />
           ),
         )}

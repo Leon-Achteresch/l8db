@@ -52,6 +52,31 @@ pub struct ConnectionContext {
     pub environment: Option<String>,
     #[serde(default)]
     pub mask_rules: Vec<crate::mcp::config::RedactRule>,
+    #[serde(default)]
+    pub default_schema: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    pub name: String,
+    pub path: String,
+    pub format: crate::db::import_source::ImportFormat,
+    #[serde(default)]
+    pub delimiter: String,
+    #[serde(default)]
+    pub quote: String,
+    #[serde(default)]
+    pub has_header: bool,
+    #[serde(default)]
+    pub sheet: Option<String>,
+    pub columns: Vec<String>,
+    #[serde(default)]
+    pub types: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<Vec<Option<String>>>,
+    #[serde(default)]
+    pub total_rows: Option<u64>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -92,6 +117,8 @@ pub struct RunRequest {
     pub allow_writes: bool,
     #[serde(default)]
     pub allow_ddl: bool,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
 }
 
 #[derive(Clone, Serialize)]

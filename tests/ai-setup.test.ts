@@ -30,3 +30,10 @@ test("AI onboarding counts an installed CLI, a stored key or a compatible endpoi
   expect(aiReady(profile("compatible"), status(true, false))).toBe(false);
   expect(aiReady(profile("codex"), null)).toBe(false);
 });
+
+test("local model providers count as set up only while their server answers", () => {
+  expect(aiReady(profile("ollama", "http://localhost:11434/v1"), status(true, false))).toBe(true);
+  expect(aiReady(profile("lmstudio", "http://localhost:1234/v1"), status(false, false))).toBe(
+    false,
+  );
+});

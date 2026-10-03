@@ -13,7 +13,13 @@ export const AI_PROVIDERS: { id: AiProvider; name: string; binary: string; cli: 
   { id: "anthropic", name: "Anthropic · API", binary: "", cli: false },
   { id: "google", name: "Google · API", binary: "", cli: false },
   { id: "compatible", name: "OpenAI-compatible · API", binary: "", cli: false },
+  { id: "ollama", name: "Ollama · Lokal", binary: "", cli: false },
+  { id: "lmstudio", name: "LM Studio · Lokal", binary: "", cli: false },
 ];
+export const AI_LOCAL_ENDPOINTS: Partial<Record<AiProvider, string>> = {
+  ollama: "http://localhost:11434/v1",
+  lmstudio: "http://localhost:1234/v1",
+};
 export interface AiSession {
   id: string;
   title: string;
@@ -24,11 +30,18 @@ export interface AiSession {
   leafId?: string;
   nativeLeafId?: string;
   connectionIds: string[];
+  connectionId?: string | null;
   updatedAt: number;
   deleted?: boolean;
+  failed?: boolean;
   usage?: Record<string, unknown>;
   usageModel?: string;
   usageRequestedModel?: string;
+}
+export function aiSessionConnection(session: AiSession): string | null {
+  return session.connectionId !== undefined
+    ? session.connectionId
+    : (session.connectionIds[0] ?? null);
 }
 export interface StoredProfile extends AiProfile {
   updatedAt: number;
@@ -50,6 +63,10 @@ interface AiState extends AiData {
   profileId: string;
   sessionId: string | null;
   setOpen: (open: boolean) => void;
+  minimized: boolean;
+  setMinimized: (minimized: boolean) => void;
+  pendingPrompt: string;
+  ask: (prompt: string) => void;
   selectProfile: (id: string) => void;
   selectSession: (id: string | null) => void;
   saveProfile: (profile: AiProfile) => void;
@@ -58,6 +75,15 @@ interface AiState extends AiData {
 }
 const KEY = "l8db.ai";
 const WIDTH_KEY = "l8db.ai.panel-width";
+const PROFILE_KEY = "l8db.ai.profile";
+function readProfile(): string {
+  try {
+    const value = localStorage.getItem(PROFILE_KEY);
+    return value && AI_PROVIDERS.some((provider) => provider.id === value) ? value : "codex";
+  } catch {
+    return "codex";
+  }
+}
 function readWidth(): number {
   try {
     const value = Number(localStorage.getItem(WIDTH_KEY));
@@ -81,7 +107,19 @@ function sanitizeSession(session: AiSession): AiSession {
     ...session,
     messages: session.messages.map(
       (
-        { id, parentId, role, text, rich, reasoning, error, stopped, createdAt, durationMs },
+        {
+          id,
+          parentId,
+          role,
+          text,
+          rich,
+          reasoning,
+          error,
+          stopped,
+          createdAt,
+          durationMs,
+          attachments,
+        },
         index,
       ) => ({
         id: id ?? `m${index}`,
@@ -94,6 +132,9 @@ function sanitizeSession(session: AiSession): AiSession {
         ...(stopped ? { stopped: true } : {}),
         ...(typeof createdAt === "number" ? { createdAt } : {}),
         ...(typeof durationMs === "number" ? { durationMs } : {}),
+        ...(Array.isArray(attachments) && attachments.length
+          ? { attachments: attachments.slice(0, 10) }
+          : {}),
       }),
     ),
   };
@@ -124,7 +165,7 @@ const defaults: StoredProfile[] = AI_PROVIDERS.map((provider) => ({
   provider: provider.id,
   binary: provider.binary,
   home: "",
-  endpoint: "",
+  endpoint: AI_LOCAL_ENDPOINTS[provider.id] ?? "",
   model: "",
   effort: "",
   mode: "",
@@ -146,10 +187,21 @@ export const useAiStore = create<AiState>((set) => ({
       return;
     }
   },
-  profileId: "codex",
+  profileId: readProfile(),
   sessionId: null,
-  setOpen: (open) => set({ open }),
-  selectProfile: (profileId) => set({ profileId, sessionId: null }),
+  setOpen: (open) => set({ open, minimized: false }),
+  minimized: false,
+  setMinimized: (minimized) => set({ minimized }),
+  pendingPrompt: "",
+  ask: (pendingPrompt) => set({ pendingPrompt, open: true, minimized: false }),
+  selectProfile: (profileId) => {
+    set({ profileId, sessionId: null });
+    try {
+      localStorage.setItem(PROFILE_KEY, profileId);
+    } catch {
+      return;
+    }
+  },
   selectSession: (sessionId) => set({ sessionId }),
   saveProfile: (profile) =>
     set((state) => ({

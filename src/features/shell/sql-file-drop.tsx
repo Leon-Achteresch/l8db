@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 import { toast } from "sonner";
-
+import { takeAiDrop } from "@/lib/ai/drop-target";
 import { isMainWindow } from "@/lib/connections";
 import { OPEN_FILES_EVENT, resolveOpenFiles, takePendingOpenFiles } from "@/lib/db";
 import { type OpenFileTarget, runOpenFileActions } from "@/lib/file-open";
@@ -74,6 +74,7 @@ export function SqlFileDrop() {
       void getCurrentWindow()
         .onDragDropEvent((event) => {
           if (event.payload.type !== "drop") return;
+          if (takeAiDrop(event.payload.paths, event.payload.position)) return;
           if (takeBucketDrop(event.payload.paths)) return;
           void resolveOpenFiles(event.payload.paths)
             .then(runOpenFileActions)

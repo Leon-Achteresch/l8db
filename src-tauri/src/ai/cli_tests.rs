@@ -40,6 +40,7 @@ async fn session_load_drains_large_replay_without_emitting_duplicate_history() {
         Ok(())
     });
     let run = Run {
+        scope: Default::default(),
         id: "fixture".into(),
         owner: "fixture-window".into(),
         state: Arc::new(super::super::runtime::AiState::default()),
@@ -129,6 +130,7 @@ async fn native_cli_reads_scoped_sqlite() {
             Ok(())
         });
         let run = Arc::new(Run {
+            scope: Default::default(),
             id: "native-fixture".into(),
             owner: "native-window".into(),
             state,
@@ -310,6 +312,7 @@ for line in sys.stdin:
             Ok(())
         });
         let run = Arc::new(Run {
+            scope: Default::default(),
             id: "fixture".into(),
             owner: "fixture-window".into(),
             state: Arc::new(AiState::default()),
@@ -477,6 +480,7 @@ sys.stdin.readline()
         Ok(())
     });
     let run = Run {
+        scope: Default::default(),
         id: "plan-fixture".into(),
         owner: "fixture-window".into(),
         plan_only: true,
@@ -543,6 +547,7 @@ fn copilot_session_mcp_config_uses_native_local_schema_without_permission_bypass
 #[test]
 fn approval_mode_skips_only_selected_tool_prompts() {
     let run = |approval: &str, plan_only: bool| Run {
+        scope: Default::default(),
         id: "fixture".into(),
         owner: "fixture-window".into(),
         state: Arc::new(super::super::runtime::AiState::default()),
