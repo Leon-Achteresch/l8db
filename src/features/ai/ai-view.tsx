@@ -43,7 +43,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const activeId = useConnectionsStore((value) => value.activeId);
   const [cwd, setCwd] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [view, setView] = useState<"chat" | "settings" | "history" | "context">("chat");
+  const [view, setView] = useState<"chat" | "settings" | "history">("chat");
   const [contextOpen, setContextOpen] = useState(false);
   const [models, setModels] = useState<AiModels>({ models: [] });
   const [status, setStatus] = useState<AiStatus | null>(null);
@@ -86,7 +86,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const usageRef = useRef<Record<string, unknown>>({});
   const features = useNewFeatureVisibility<HTMLElement>("ai.chat");
   const historyFeature = useNewFeatureVisibility<HTMLDivElement>(
-    view === "history" ? "ai.history" : undefined,
+    fullPage || view === "history" ? "ai.history" : undefined,
   );
   const provider = AI_PROVIDERS.find((entry) => entry.id === profile.provider) ?? AI_PROVIDERS[0];
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
@@ -374,36 +374,114 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setPrompt(`${prompt.slice(0, prompt.length - mentionMatch[1].length - 1)}@${connection.name} `);
     input.current?.focus();
   };
-  return (
-    <ChatApp
-      open={false}
-      keyboardShortcut={false}
-      className="flex h-full min-h-0 flex-1 rounded-none border-0"
-    >
-      <aside
-        ref={features.ref}
-        aria-label="AI-Arbeitsbereich"
-        className="flex h-full min-h-0 w-full flex-col bg-background"
-      >
-        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
-          <span className="mr-auto text-sm font-medium">
-            {fullPage ? "AI-Arbeitsbereich" : "AI"}
-            {fullPage && status?.version && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {status.version}
-              </span>
-            )}
-          </span>
-          {!fullPage && (
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Im Arbeitsbereich öffnen"
-              onClick={() => void navigate({ to: "/ai" })}
+  const historyList = (
+    <>
+      <h2 className="mb-3 px-1 text-xs font-medium">Gespräche</h2>
+      <AISidebar
+        ariaLabel="Gesprächsverlauf"
+        items={state.sessions
+          .filter((entry) => !entry.deleted)
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .map((entry) => ({ id: entry.id, label: entry.title, kind: "file" as const }))}
+        activeId={state.sessionId}
+        onActiveChange={(id) => {
+          if (runId) return;
+          const entry = state.sessions.find((session) => session.id === id);
+          if (!entry) return;
+          resetContext();
+          if (entry.profileId !== profile.id) state.selectProfile(entry.profileId);
+          state.selectSession(entry.id);
+          setCwd(entry.cwd);
+          setMentioned(
+            entry.connectionIds.filter(
+              (id) => id !== activeId && connections.some((connection) => connection.id === id),
+            ),
+          );
+          setView("chat");
+        }}
+        onRename={(item, title) => {
+          const entry = state.sessions.find((session) => session.id === item.id);
+          if (entry && !runId && title.trim())
+            state.saveSession({
+              ...entry,
+              title: title.trim().slice(0, 70),
+              updatedAt: Date.now(),
+            });
+        }}
+        renderMenu={(item, controls) => (
+          <div className="space-y-1">
+            <button
+              type="button"
+              disabled={Boolean(runId)}
+              className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
+              onClick={controls.rename}
             >
-              <Maximize2 className="size-4" />
-            </Button>
+              Umbenennen
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(runId)}
+              aria-label={`${item.label} löschen`}
+              className="block min-h-8 w-full rounded-md px-2 text-left text-xs text-destructive hover:bg-muted"
+              onClick={() => {
+                const entry = state.sessions.find((session) => session.id === item.id);
+                if (entry)
+                  state.saveSession({
+                    ...entry,
+                    deleted: true,
+                    messages: [],
+                    usage: undefined,
+                    usageModel: undefined,
+                    usageRequestedModel: undefined,
+                    updatedAt: Date.now(),
+                  });
+                controls.close();
+              }}
+            >
+              Löschen
+            </button>
+          </div>
+        )}
+        className="text-xs"
+      />
+      {!state.sessions.some((entry) => !entry.deleted) && (
+        <p className="px-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
+      )}
+    </>
+  );
+  const settingsButton = (
+    <Button
+      size={fullPage ? "sm" : "icon"}
+      variant={view === "settings" ? "secondary" : "ghost"}
+      aria-label="AI-Einstellungen"
+      className={fullPage ? "w-full justify-start" : undefined}
+      disabled={Boolean(runId)}
+      onClick={() => setView(view === "settings" ? "chat" : "settings")}
+    >
+      <Settings2 className="size-4" />
+      {fullPage && "Einstellungen"}
+    </Button>
+  );
+  const main = (
+    <>
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
+        <span className="mr-auto text-sm font-medium">
+          {fullPage ? "AI-Arbeitsbereich" : "AI"}
+          {fullPage && status?.version && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">{status.version}</span>
           )}
+        </span>
+        {!fullPage && (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Im Arbeitsbereich öffnen"
+            onClick={() => void navigate({ to: "/ai" })}
+          >
+            <Maximize2 className="size-4" />
+          </Button>
+        )}
+        {!fullPage && (
           <Button
             size="icon"
             variant={view === "history" ? "secondary" : "ghost"}
@@ -413,64 +491,36 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           >
             <History className="size-4" />
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Neues Gespräch"
-            disabled={Boolean(runId)}
-            onClick={newChat}
-          >
-            <Plus className="size-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant={view === "settings" ? "secondary" : "ghost"}
-            aria-label="AI-Einstellungen"
-            disabled={Boolean(runId)}
-            onClick={() => setView(view === "settings" ? "chat" : "settings")}
-          >
-            <Settings2 className="size-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="AI schließen"
-            onClick={() => {
-              if (fullPage) {
-                state.setOpen(false);
-                void navigate({ to: "/" });
-              } else {
-                state.setOpen(false);
-                document.getElementById("ai-workspace-trigger")?.focus();
-              }
-            }}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-        {fullPage && (
-          <nav aria-label="AI-Bereiche" className="flex gap-1 border-b px-3 pb-2">
-            {(
-              [
-                { id: "chat", label: "Gespräch" },
-                { id: "history", label: "Verlauf" },
-                { id: "context", label: "Kontext" },
-                { id: "settings", label: "Einstellungen" },
-              ] as const
-            ).map((tab) => (
-              <Button
-                key={tab.id}
-                size="sm"
-                variant={view === tab.id ? "secondary" : "ghost"}
-                disabled={Boolean(runId) && tab.id !== "chat"}
-                onClick={() => setView(tab.id)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </nav>
         )}
-        {view === "settings" ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Neues Gespräch"
+          disabled={Boolean(runId)}
+          onClick={newChat}
+        >
+          <Plus className="size-4" />
+        </Button>
+        {!fullPage && settingsButton}
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="AI schließen"
+          onClick={() => {
+            if (fullPage) {
+              state.setOpen(false);
+              void navigate({ to: "/" });
+            } else {
+              state.setOpen(false);
+              document.getElementById("ai-workspace-trigger")?.focus();
+            }
+          }}
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+      {view === "settings" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
           <AiSettings
             key={profile.id}
             profile={profile}
@@ -479,279 +529,183 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             refresh={refresh}
             onError={setError}
           />
-        ) : view === "context" ? (
-          <div className="mx-auto min-h-0 w-full max-w-3xl overflow-auto p-5">
-            {" "}
-            <AiContext
-              connections={connections}
-              activeId={activeId}
-              mentioned={mentioned}
-              setMentioned={setMentioned}
-              skills={skills}
-              selectedSkills={selectedSkills}
-              setSelectedSkills={setSelectedSkills}
-              servers={state.servers}
-              selectedServers={selectedServers}
-              setSelectedServers={setSelectedServers}
-              allowWrites={allowWrites}
-              setAllowWrites={setAllowWrites}
-              allowDdl={allowDdl}
-              setAllowDdl={setAllowDdl}
-              disabled={Boolean(runId)}
-            />
+          <div className="px-4 pb-4">
             <AiCapabilities metadata={metadata} />
           </div>
-        ) : view === "history" ? (
-          <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
-            <h2 className="mb-3 px-1 text-xs font-medium">Gespräche</h2>
-            <AISidebar
-              ariaLabel="Gesprächsverlauf"
-              items={state.sessions
-                .filter((entry) => !entry.deleted)
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .map((entry) => ({ id: entry.id, label: entry.title, kind: "file" as const }))}
-              activeId={state.sessionId}
-              onActiveChange={(id) => {
-                if (runId) return;
-                const entry = state.sessions.find((session) => session.id === id);
-                if (!entry) return;
-                resetContext();
-                if (entry.profileId !== profile.id) state.selectProfile(entry.profileId);
-                state.selectSession(entry.id);
-                setCwd(entry.cwd);
-                setMentioned(
-                  entry.connectionIds.filter(
-                    (id) =>
-                      id !== activeId && connections.some((connection) => connection.id === id),
-                  ),
-                );
-                setView("chat");
-              }}
-              onRename={(item, title) => {
-                const entry = state.sessions.find((session) => session.id === item.id);
-                if (entry && !runId && title.trim())
-                  state.saveSession({
-                    ...entry,
-                    title: title.trim().slice(0, 70),
-                    updatedAt: Date.now(),
-                  });
-              }}
-              renderMenu={(item, controls) => (
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    disabled={Boolean(runId)}
-                    className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
-                    onClick={controls.rename}
-                  >
-                    Umbenennen
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(runId)}
-                    aria-label={`${item.label} löschen`}
-                    className="block min-h-8 w-full rounded-md px-2 text-left text-xs text-destructive hover:bg-muted"
-                    onClick={() => {
-                      const entry = state.sessions.find((session) => session.id === item.id);
-                      if (entry)
-                        state.saveSession({
-                          ...entry,
-                          deleted: true,
-                          messages: [],
-                          usage: undefined,
-                          usageModel: undefined,
-                          usageRequestedModel: undefined,
-                          updatedAt: Date.now(),
-                        });
-                      controls.close();
-                    }}
-                  >
-                    Löschen
-                  </button>
-                </div>
-              )}
-              className="text-xs"
-            />
-            {!state.sessions.some((entry) => !entry.deleted) && (
-              <p className="px-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
-            )}
-          </div>
-        ) : (
-          <>
-            {status &&
-              (provider.cli
-                ? !status.installed
-                : profile.provider !== "compatible" && !status.keyStored) && (
-                <div className="mx-4 mt-3 rounded-lg border bg-muted/30 p-3 text-xs">
-                  <p>
-                    {provider.cli
-                      ? `${provider.name} ist nicht eingerichtet.`
-                      : "API-Schlüssel fehlt."}
-                  </p>
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setView("settings")}
-                  >
-                    Einstellungen öffnen
-                  </Button>
-                </div>
-              )}
-            <AiTranscript
-              fullPage={fullPage}
-              messages={session?.messages ?? []}
-              reasoning={reasoning}
-              events={events}
-              approvals={approvals}
-              runId={runId}
-              onResolved={resolve}
-              onError={setError}
-            />
-            <div
-              className={`shrink-0 px-3 pt-2 pb-3 ${fullPage ? "mx-auto w-full max-w-3xl" : ""}`}
-            >
-              {suggestions.length > 0 && (
-                <div
-                  role="listbox"
-                  aria-label="Verbindung erwähnen"
-                  className="mb-2 max-h-36 overflow-auto rounded-lg border p-1"
+        </div>
+      ) : view === "history" ? (
+        <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
+          {historyList}
+        </div>
+      ) : (
+        <>
+          {status &&
+            (provider.cli
+              ? !status.installed
+              : profile.provider !== "compatible" && !status.keyStored) && (
+              <div className="mx-4 mt-3 rounded-lg border bg-muted/30 p-3 text-xs">
+                <p>
+                  {provider.cli
+                    ? `${provider.name} ist nicht eingerichtet.`
+                    : "API-Schlüssel fehlt."}
+                </p>
+                <Button
+                  className="mt-2"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setView("settings")}
                 >
-                  {suggestions.map((connection) => (
-                    <button
-                      key={connection.id}
-                      type="button"
-                      role="option"
-                      aria-selected={false}
-                      className="block w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => selectMention(connection.id)}
-                    >
-                      @{connection.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {mentioned.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1">
-                  {mentioned.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      disabled={Boolean(runId)}
-                      aria-label={`Verbindung ${connections.find((connection) => connection.id === id)?.name ?? id} aus Kontext entfernen`}
-                      className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                      onClick={() => setMentioned((ids) => ids.filter((entry) => entry !== id))}
-                    >
-                      @{connections.find((connection) => connection.id === id)?.name ?? "Entfernt"}
-                      <X className="size-2.5" />
-                    </button>
-                  ))}
-                </div>
-              )}
-              <PromptInput
-                inputRef={input}
-                aria-label="Nachricht an AI"
-                placeholder="Frage zu deinen Daten …"
-                value={prompt}
-                onValueChange={setPrompt}
-                loading={Boolean(runId)}
-                onStop={cancel}
-                disabled={
-                  loading ||
-                  Boolean(
-                    status &&
-                      (provider.cli
-                        ? !status.installed
-                        : profile.provider !== "compatible" && !status.keyStored),
-                  )
+                  Einstellungen öffnen
+                </Button>
+              </div>
+            )}
+          <AiTranscript
+            fullPage={fullPage}
+            messages={session?.messages ?? []}
+            reasoning={reasoning}
+            events={events}
+            approvals={approvals}
+            runId={runId}
+            onResolved={resolve}
+            onError={setError}
+          />
+          <div className={`shrink-0 px-3 pt-2 pb-3 ${fullPage ? "mx-auto w-full max-w-3xl" : ""}`}>
+            {suggestions.length > 0 && (
+              <div
+                role="listbox"
+                aria-label="Verbindung erwähnen"
+                className="mb-2 max-h-36 overflow-auto rounded-lg border p-1"
+              >
+                {suggestions.map((connection) => (
+                  <button
+                    key={connection.id}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    className="block w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => selectMention(connection.id)}
+                  >
+                    @{connection.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {mentioned.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1">
+                {mentioned.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={Boolean(runId)}
+                    aria-label={`Verbindung ${connections.find((connection) => connection.id === id)?.name ?? id} aus Kontext entfernen`}
+                    className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                    onClick={() => setMentioned((ids) => ids.filter((entry) => entry !== id))}
+                  >
+                    @{connections.find((connection) => connection.id === id)?.name ?? "Entfernt"}
+                    <X className="size-2.5" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <PromptInput
+              inputRef={input}
+              aria-label="Nachricht an AI"
+              placeholder="Frage zu deinen Daten …"
+              value={prompt}
+              onValueChange={setPrompt}
+              loading={Boolean(runId)}
+              onStop={cancel}
+              disabled={
+                loading ||
+                Boolean(
+                  status &&
+                    (provider.cli
+                      ? !status.installed
+                      : profile.provider !== "compatible" && !status.keyStored),
+                )
+              }
+              onSubmit={(text) => send(text)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing &&
+                  suggestions.length
+                ) {
+                  event.preventDefault();
+                  selectMention(suggestions[0].id);
                 }
-                onSubmit={(text) => send(text)}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    !event.shiftKey &&
-                    !event.nativeEvent.isComposing &&
-                    suggestions.length
-                  ) {
-                    event.preventDefault();
-                    selectMention(suggestions[0].id);
-                  }
-                }}
-                leadingAction={
-                  <>
-                    <Popover open={contextOpen} onOpenChange={setContextOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label="Kontext"
-                          className="h-8 min-w-0 shrink gap-1.5 rounded-full px-2 text-[11px]"
-                        >
-                          <Database className="size-3 shrink-0" />
-                          <span className="truncate">
-                            {active ? active.name : "Kontext"}
-                            {mentioned.length ? ` +${mentioned.length}` : ""}
-                          </span>
-                          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="start"
-                        side="top"
-                        className="w-80 max-w-[calc(100vw-32px)] rounded-xl p-0"
-                        aria-label="AI-Kontext"
-                      >
-                        {" "}
-                        <AiContext
-                          connections={connections}
-                          activeId={activeId}
-                          mentioned={mentioned}
-                          setMentioned={setMentioned}
-                          skills={skills}
-                          selectedSkills={selectedSkills}
-                          setSelectedSkills={setSelectedSkills}
-                          servers={state.servers}
-                          selectedServers={selectedServers}
-                          setSelectedServers={setSelectedServers}
-                          allowWrites={allowWrites}
-                          setAllowWrites={setAllowWrites}
-                          allowDdl={allowDdl}
-                          setAllowDdl={setAllowDdl}
-                          disabled={Boolean(runId)}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {runId && (
-                      <AgentProgress
-                        label={runStatus || "Arbeitet …"}
-                        className="min-w-0 gap-1 text-[10px] [&>span:first-child]:hidden [&>span:last-child]:hidden"
-                      />
-                    )}
-                  </>
-                }
-                trailingAction={
-                  <>
-                    <AiApprovalPicker profile={profile} disabled={Boolean(runId)} />
-                    <AiReasoningPicker
-                      profile={profile}
-                      models={models}
-                      disabled={Boolean(runId)}
-                    />
-                    <AiProviderPicker
-                      profile={profile}
-                      models={models}
-                      disabled={Boolean(runId)}
-                      loading={loading}
-                      onSelect={(id) => {
-                        resetContext();
-                        state.selectProfile(id);
-                        setView("chat");
-                      }}
-                    />
-                  </>
-                }
-                className="rounded-xl bg-muted/15 shadow-xs"
-              />
+              }}
+              leadingAction={
+                runId && (
+                  <AgentProgress
+                    label={runStatus || "Arbeitet …"}
+                    className="min-w-0 gap-1 text-[10px] [&>span:first-child]:hidden [&>span:last-child]:hidden"
+                  />
+                )
+              }
+              trailingAction={
+                <>
+                  <AiApprovalPicker profile={profile} disabled={Boolean(runId)} />
+                  <AiReasoningPicker profile={profile} models={models} disabled={Boolean(runId)} />
+                  <AiProviderPicker
+                    profile={profile}
+                    models={models}
+                    disabled={Boolean(runId)}
+                    loading={loading}
+                    onSelect={(id) => {
+                      resetContext();
+                      state.selectProfile(id);
+                      setView("chat");
+                    }}
+                  />
+                </>
+              }
+              className="rounded-xl bg-muted/15 shadow-xs"
+            />
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <Popover open={contextOpen} onOpenChange={setContextOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Kontext"
+                    className="h-6 min-w-0 shrink gap-1.5 rounded-full px-2 text-[11px] text-muted-foreground"
+                  >
+                    <Database className="size-3 shrink-0" />
+                    <span className="truncate">
+                      {active ? active.name : "Kontext"}
+                      {mentioned.length ? ` +${mentioned.length}` : ""}
+                    </span>
+                    <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  side="top"
+                  className="w-80 max-w-[calc(100vw-32px)] rounded-xl p-0"
+                  aria-label="AI-Kontext"
+                >
+                  {" "}
+                  <AiContext
+                    connections={connections}
+                    activeId={activeId}
+                    mentioned={mentioned}
+                    setMentioned={setMentioned}
+                    skills={skills}
+                    selectedSkills={selectedSkills}
+                    setSelectedSkills={setSelectedSkills}
+                    servers={state.servers}
+                    selectedServers={selectedServers}
+                    setSelectedServers={setSelectedServers}
+                    allowWrites={allowWrites}
+                    setAllowWrites={setAllowWrites}
+                    allowDdl={allowDdl}
+                    setAllowDdl={setAllowDdl}
+                    disabled={Boolean(runId)}
+                  />
+                </PopoverContent>
+              </Popover>
               <AiUsage
                 data={runId ? usage : (session?.usage ?? usage)}
                 profile={
@@ -768,31 +722,58 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 onSettings={() => setView("settings")}
               />
             </div>
-          </>
-        )}
-        {state.persistenceError && (
-          <p
-            role="alert"
-            className="shrink-0 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive"
-          >
-            {state.persistenceError}
-          </p>
-        )}
-        {error && (
-          <div
-            role="alert"
-            className="flex shrink-0 items-start gap-2 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive"
-          >
-            <p className="max-h-28 flex-1 overflow-auto whitespace-pre-wrap break-words">{error}</p>
-            <button
-              type="button"
-              aria-label="Fehler schließen"
-              className="rounded p-0.5 focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => setError("")}
-            >
-              <X className="size-3" />
-            </button>
           </div>
+        </>
+      )}
+      {state.persistenceError && (
+        <p
+          role="alert"
+          className="shrink-0 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive"
+        >
+          {state.persistenceError}
+        </p>
+      )}
+      {error && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-start gap-2 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive"
+        >
+          <p className="max-h-28 flex-1 overflow-auto whitespace-pre-wrap break-words">{error}</p>
+          <button
+            type="button"
+            aria-label="Fehler schließen"
+            className="rounded p-0.5 focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setError("")}
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+  return (
+    <ChatApp
+      open={false}
+      keyboardShortcut={false}
+      className="flex h-full min-h-0 flex-1 rounded-none border-0"
+    >
+      <aside
+        ref={features.ref}
+        aria-label="AI-Arbeitsbereich"
+        className={`flex h-full min-h-0 w-full bg-background ${fullPage ? "flex-row" : "flex-col"}`}
+      >
+        {fullPage ? (
+          <>
+            <div className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
+              <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
+                {historyList}
+              </div>
+              <div className="shrink-0 border-t p-2">{settingsButton}</div>
+            </div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">{main}</div>
+          </>
+        ) : (
+          main
         )}
       </aside>
     </ChatApp>
