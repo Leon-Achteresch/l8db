@@ -1,8 +1,8 @@
 {
   "format": 1,
-  "version": "0.9.0",
-  "sourceSha": "02b0adcae8379873329ebaa38d046d859ff5eefa",
+  "version": "0.9.1",
+  "sourceSha": "0c12337fc0ec72b1e356313351799bddce9ab63d",
   "previousTag": "v0.8.24",
   "date": "2026-10-03",
-  "changelogSha256": "6a71a48c89bfa8ecdc97288ecc28a80b1c169535528bc2fd98a89653ba8e1688"
+  "changelogSha256": "5f26d5fb48e6be4c189cb67af5f31acb75ae51bbd2e5ffc2a5ddc24e53d6a3d1"
 }
