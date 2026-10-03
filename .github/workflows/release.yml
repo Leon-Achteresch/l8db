@@ -7,6 +7,11 @@ on:
       - packaging/**
       - packaging/README.md
   workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Compile again instead of reusing snapshots of an unpublished run
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,10 +25,14 @@ jobs:
     if: github.repository == 'Leon-Achteresch/l8db' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       mode: ${{ steps.state.outputs.mode }}
       version: ${{ steps.state.outputs.version }}
       previous_tag: ${{ steps.state.outputs.previous_tag }}
+      reuse_run_id: ${{ steps.state.outputs.reuse_run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -35,6 +44,7 @@ jobs:
         id: state
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_REBUILD: ${{ inputs.rebuild }}
         run: node .github/scripts/release-plan.mjs
       - name: Prüfe Release-Secrets
         if: steps.state.outputs.mode == 'publish'
@@ -63,17 +73,22 @@ jobs:
 
   build:
     needs: prepare
-    if: needs.prepare.outputs.mode == 'publish'
+    if: needs.prepare.outputs.mode == 'publish' && needs.prepare.outputs.reuse_run_id == ''
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos
+          - platform: macos-arm64
             runner: macos-15
-            target: universal-apple-darwin
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-            binary: src-tauri/target/universal-apple-darwin/release/l8db
+            target: aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
+            binary: src-tauri/target/aarch64-apple-darwin/release/l8db
+          - platform: macos-x64
+            runner: macos-15
+            target: x86_64-apple-darwin
+            rust_targets: x86_64-apple-darwin
+            binary: src-tauri/target/x86_64-apple-darwin/release/l8db
           - platform: linux
             runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -128,6 +143,7 @@ jobs:
 
   draft:
     needs: [prepare, checks, build]
+    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -150,9 +166,11 @@ jobs:
 
   package:
     needs: [prepare, draft, build, checks]
+    if: ${{ !cancelled() && needs.draft.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
     timeout-minutes: 45
     permissions:
       contents: write
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -205,12 +223,31 @@ jobs:
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: compiled-${{ matrix.platform }}
+          pattern: compiled-${{ matrix.platform }}*
+          path: compiled
+          run-id: ${{ needs.prepare.outputs.reuse_run_id || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Restore and verify compiled snapshot
         shell: bash
         run: |
-          tar -xzf build.tar
-          node .github/scripts/build-snapshot.mjs verify
+          set -euo pipefail
+          shopt -s nullglob
+          for archive in compiled/build.tar compiled/*/build.tar; do
+            tar -xzf "$archive"
+          done
+          if [ "$RELEASE_PLATFORM" = macos ]; then
+            for arch in arm64:aarch64 x64:x86_64; do
+              RELEASE_PLATFORM="macos-${arch%%:*}" RELEASE_BINARY="src-tauri/target/${arch#*:}-apple-darwin/release/l8db" \
+                node .github/scripts/build-snapshot.mjs verify
+            done
+            mkdir -p "$(dirname "$RELEASE_BINARY")"
+            lipo -create -output "$RELEASE_BINARY" \
+              src-tauri/target/aarch64-apple-darwin/release/l8db \
+              src-tauri/target/x86_64-apple-darwin/release/l8db
+            node .github/scripts/build-snapshot.mjs record
+          else
+            node .github/scripts/build-snapshot.mjs verify
+          fi
       - name: Importiere Apple Developer ID
         if: runner.os == 'macOS'
         env:
@@ -288,6 +325,7 @@ jobs:
 
   finalize:
     needs: [prepare, checks, build, package]
+    if: ${{ !cancelled() && needs.package.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
