@@ -33,14 +33,14 @@ export function AppLayout() {
       <PanelErrorBoundary
         label="Die Seitenleiste"
         source="sidebar"
-        className="w-(--sidebar-width) shrink-0 border-r"
+        className="w-(--sidebar-width) shrink-0"
       >
         <AppSidebar />
       </PanelErrorBoundary>
       <SidebarInset
         className={cn(
           "overflow-hidden rounded-tl-xl border-t border-l shadow-lg shadow-black/10 dark:shadow-black/40",
-          aiSplit && "!rounded-none !border-0 !shadow-none",
+          aiSplit && "!rounded-xl !border !shadow-none",
         )}
       >
         <div className="flex min-h-0 flex-1 overflow-hidden">
