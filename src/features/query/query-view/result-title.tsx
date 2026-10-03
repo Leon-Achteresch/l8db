@@ -12,7 +12,7 @@ export function ResultTitle() {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <span className="font-medium text-xs">Ergebnisse</span>
+        <span className="-mx-1.5 rounded-xl px-1.5 font-medium text-xs">Ergebnisse</span>
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuRadioGroup
