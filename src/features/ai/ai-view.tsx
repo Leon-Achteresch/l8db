@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
 import { mergeAiRich, normalizeAiRich } from "@/lib/ai/rich";
+import { useAiSetupNeeded } from "@/lib/ai/setup";
 import { AI_PROVIDERS, type AiSession, useAiStore } from "@/lib/ai/store";
 import { aiLatestLeaf, aiThread } from "@/lib/ai/thread";
 import { mergeAiUsage } from "@/lib/ai/usage";
@@ -27,6 +28,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
+import { AiOnboarding } from "./ai-onboarding";
 import { AiProviderPicker } from "./ai-provider-picker";
 import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiSettings } from "./ai-settings";
@@ -93,6 +95,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   );
   const provider = AI_PROVIDERS.find((entry) => entry.id === profile.provider) ?? AI_PROVIDERS[0];
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const [setupNeeded, setSetupNeeded] = useAiSetupNeeded(state.open || fullPage);
   useEffect(() => {
     void aiEnvironment()
       .then((environment) => setCwd(environment.cwd))
@@ -479,6 +482,20 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       )}
     </>
   );
+  const onboarding = (
+    <AiOnboarding
+      onDone={(id) => {
+        resetContext();
+        state.selectProfile(id);
+        setSetupNeeded(false);
+        refresh();
+      }}
+      onSettings={() => {
+        setSetupNeeded(false);
+        setView("settings");
+      }}
+    />
+  );
   const settingsButton = (
     <IconButton
       size="icon"
@@ -553,6 +570,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
           {historyList}
         </div>
+      ) : setupNeeded ? (
+        onboarding
       ) : (
         <>
           {status &&
@@ -831,7 +850,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         aria-label="AI-Arbeitsbereich"
         className={`flex h-full min-h-0 w-full bg-background ${fullPage ? "flex-row" : "flex-col"}`}
       >
-        {fullPage ? (
+        {fullPage && setupNeeded && view === "chat" ? (
+          onboarding
+        ) : fullPage ? (
           <>
             <div className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
               <div className="flex shrink-0 items-center gap-1 p-2">
