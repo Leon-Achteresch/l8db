@@ -12,4 +12,6 @@ Für eine neue Einstellung:
 
 Andere Ansichten können `useNewFeatureVisibility<HTMLElement>(featureId)` am tatsächlichen Bedienelement verwenden. Der Hook liefert `ref` und `isNew`; `NewBadge` rendert das Badge. Für übergeordnete Navigation dient `useHasNewFeatures(scope)` oder `hasNewFeatures(scope, useSeenNewFeatures())`, wenn mehrere Einträge in einer Liste dargestellt werden. Nur das tatsächliche Feature erhält den Sichtkontakt Hook.
 
+Liegt das Feature hinter weiteren Schritten (Dialog, Tab, Bearbeitungsmodus, eingeklappter Abschnitt, nicht installierte Erweiterung), braucht jeder dieser Schritte einen Wegweiser mit `useHasNewFeatures(scope)` und `NewBadge`. Sonst zeigt die Navigation einen Punkt, die Seite aber kein Badge, und der Punkt verschwindet nie. Beispiele: Dashboard „Bearbeiten“ → „Chart erstellen“ → Tab „Daten gestalten“, Passwortmanager „Ändern“.
+
 Der Status liegt pro Funktion und Einführungsversion in `localStorage`. Er bleibt nach einem Neustart erhalten und wird über das `storage` Ereignis zwischen offenen Fenstern synchronisiert. Bei einem erneuten Launch derselben Funktion unter einer anderen Version wird ihre Version in der Registrierung geändert, wodurch das Badge einmal neu erscheint.
