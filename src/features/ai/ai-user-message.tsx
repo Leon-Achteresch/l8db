@@ -40,7 +40,7 @@ export function AiUserMessage({
   if (draft !== null)
     return (
       <form
-        className="ml-auto w-full max-w-[80%] rounded-2xl border bg-background p-2 focus-within:border-foreground/25"
+        className="w-full rounded-xl border bg-background p-2 focus-within:border-foreground/25"
         onSubmit={(event) => {
           event.preventDefault();
           save();
@@ -80,17 +80,13 @@ export function AiUserMessage({
       data-slot="message"
       data-from="user"
       aria-label="Deine Nachricht"
-      className="group/message flex flex-col items-end gap-1"
+      className="group/message relative flex flex-col items-start gap-1.5"
     >
-      {message.attachments?.length ? (
-        <div className="flex max-w-[80%] justify-end">
-          <AiAttachmentChips files={message.attachments} />
-        </div>
-      ) : null}
-      <div className="relative max-w-[80%] rounded-2xl bg-muted p-3 text-sm leading-relaxed">
+      {message.attachments?.length ? <AiAttachmentChips files={message.attachments} /> : null}
+      <div className="relative w-full">
         <div
           className={cn(
-            "whitespace-pre-wrap break-words",
+            "whitespace-pre-wrap break-words text-[15px] font-medium leading-snug tracking-[-0.005em] text-foreground",
             long &&
               !expanded &&
               "max-h-44 overflow-hidden [mask-image:linear-gradient(to_bottom,black_calc(100%-1.75rem),transparent)]",
@@ -102,21 +98,14 @@ export function AiUserMessage({
           <Button
             size="sm"
             variant="ghost"
-            className="-mb-1 mt-1 h-6 px-2 text-xs text-muted-foreground"
+            className="-ml-2 mt-1 h-6 px-2 text-xs text-muted-foreground"
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? "Weniger anzeigen" : "Ganze Nachricht anzeigen"}
           </Button>
         )}
       </div>
-      <div className="-mr-1.5 flex max-w-[80%] items-center justify-end gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
-        <AiMessageTime at={message.createdAt} />
-        <AiBranchSwitcher
-          session={session}
-          id={message.id}
-          disabled={disabled}
-          onBranch={onBranch}
-        />
+      <div className="absolute top-0 right-0 z-10 flex items-center gap-0.5 rounded-lg bg-background/95 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
         <ResponseAction
           label="Nachricht bearbeiten"
           disabled={disabled}
@@ -125,6 +114,13 @@ export function AiUserMessage({
           <Pencil className="size-3.5" />
         </ResponseAction>
         <AiCopyAction text={message.text} label="Nachricht kopieren" />
+        <AiBranchSwitcher
+          session={session}
+          id={message.id}
+          disabled={disabled}
+          onBranch={onBranch}
+        />
+        <AiMessageTime at={message.createdAt} />
       </div>
     </article>
   );

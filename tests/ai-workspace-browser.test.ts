@@ -105,7 +105,8 @@ test.skipIf(!enabled)(
       ]);
       expect(first.skills).toEqual(["/tmp/ai-fixture/.agents/skills/sql/SKILL.md"]);
       expect(first).toMatchObject({ allowWrites: false, allowDdl: false });
-      await panel.getByRole("button", { name: "Im Arbeitsbereich öffnen", exact: true }).click();
+      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Im Arbeitsbereich öffnen" }).click();
       await page.waitForURL("**/ai");
       await page
         .getByRole("separator", { name: "AI-Panelbreite anpassen" })
@@ -160,7 +161,8 @@ test.skipIf(!enabled)(
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
+      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
       await panel
         .getByLabel("API-Schlüssel", { exact: true })
         .fill("fixture-api-key-never-persist");
@@ -175,9 +177,10 @@ test.skipIf(!enabled)(
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI-compatible · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
+      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
       await panel.getByLabel("API-Endpoint", { exact: true }).fill("http://localhost:11434/v1");
-      await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
+      await panel.getByRole("button", { name: "Zurück zum Gespräch", exact: true }).click();
       await panel.getByLabel("Nachricht an AI").fill("Test local model without API key");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
       await panel.getByText("Local compatible response", { exact: true }).waitFor();

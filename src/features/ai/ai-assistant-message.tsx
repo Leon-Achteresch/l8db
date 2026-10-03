@@ -55,14 +55,19 @@ export function AiAssistantMessage({
       data-from="assistant"
       aria-label="Antwort"
       aria-busy={streaming}
-      className="group/message min-w-0 space-y-2 px-1 py-0.5"
+      className="group/message relative min-w-0 space-y-1.5 pl-6"
     >
+      <span
+        aria-hidden="true"
+        className="absolute top-3 bottom-4 left-[7px] w-px bg-gradient-to-b from-border via-border to-transparent"
+      />
       {(streaming || message.stopped || (hasWork && message.durationMs !== undefined)) && (
         <AiTurnHeader
           streaming={streaming}
           startedAt={message.createdAt}
           durationMs={message.durationMs}
           stopped={message.stopped}
+          steps={work?.length ?? 0}
           open={open}
           onToggle={easyMode && hasWork ? () => setOpen(!open) : undefined}
         />
@@ -95,7 +100,7 @@ export function AiAssistantMessage({
       {message.error && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-1.5 text-xs"
+          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs"
         >
           <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
           <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground/80">
@@ -118,7 +123,7 @@ export function AiAssistantMessage({
         <p className="text-sm text-muted-foreground">(Keine Antwort)</p>
       )}
       {!streaming && (
-        <div className="-ml-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
+        <div className="-ml-1.5 flex items-center gap-0.5 pt-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
           {message.text && (
             <AiCopyAction text={stripAiFollowups(message.text)} label="Antwort kopieren" />
           )}

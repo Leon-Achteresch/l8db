@@ -1,6 +1,5 @@
 import { Plug, Sparkles } from "lucide-react";
 import { ProviderLogo } from "@/components/provider-logo";
-import { Switch } from "@/components/ui/switch";
 import type { StoredServer } from "@/lib/ai/store";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
@@ -19,10 +18,6 @@ interface Props {
   servers: StoredServer[];
   selectedServers: string[];
   setSelectedServers: (ids: string[]) => void;
-  allowWrites: boolean;
-  setAllowWrites: (allow: boolean) => void;
-  allowDdl: boolean;
-  setAllowDdl: (allow: boolean) => void;
   disabled: boolean;
   part: "connections" | "tools";
 }
@@ -42,10 +37,6 @@ export function AiContext({
   servers,
   selectedServers,
   setSelectedServers,
-  allowWrites,
-  setAllowWrites,
-  allowDdl,
-  setAllowDdl,
   disabled,
   part,
 }: Props) {
@@ -114,39 +105,6 @@ export function AiContext({
         />
       ))}
       {!visibleServers.length && <p className={empty}>Server unter Einstellungen hinzufügen.</p>}
-      <p className={cn(heading, "mt-1 border-t pt-2.5")}>Berechtigungen</p>
-      <label
-        htmlFor="ai-allow-writes"
-        className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-xs hover:bg-muted"
-      >
-        Datenänderungen erlauben
-        <Switch
-          id="ai-allow-writes"
-          size="sm"
-          disabled={disabled}
-          checked={allowWrites}
-          onCheckedChange={(checked) => {
-            setAllowWrites(checked);
-            if (!checked) setAllowDdl(false);
-          }}
-        />
-      </label>
-      <label
-        htmlFor="ai-allow-ddl"
-        className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-xs hover:bg-muted"
-      >
-        Schemaänderungen erlauben
-        <Switch
-          id="ai-allow-ddl"
-          size="sm"
-          disabled={disabled || !allowWrites}
-          checked={allowDdl}
-          onCheckedChange={setAllowDdl}
-        />
-      </label>
-      <p className="px-2 pt-1 pb-1 text-[10px] text-muted-foreground">
-        Verbindungsschutz, Produktionssperren und Maskierung gelten weiterhin.
-      </p>
     </div>
   );
 }

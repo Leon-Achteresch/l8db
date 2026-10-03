@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { parseAiTable } from "@/lib/ai/result";
+import { aiRowsLabel, parseAiTable } from "@/lib/ai/result";
 import type { AiRichBlock } from "@/lib/ai/rich";
 import { AiResultActions } from "./ai-result-actions";
 import { AiResultTable } from "./ai-result-table";
@@ -25,7 +25,9 @@ export function AiToolDetail({ block }: { block: ToolBlock }) {
       {table ? (
         <div className="overflow-hidden rounded-md border">
           <AiResultTable table={table} />
-          <p className="border-t px-2.5 py-1 text-[11px] text-muted-foreground">{table.footer}</p>
+          <p className="border-t px-2.5 py-1 text-[11px] text-muted-foreground">
+            {aiRowsLabel(table.footer)}
+          </p>
         </div>
       ) : (
         block.output && (

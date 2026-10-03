@@ -20,8 +20,8 @@ export function AiAnswer({
       status={streaming ? "streaming" : "complete"}
       announce={false}
       showActions={false}
-      className="text-sm"
-      contentClassName="text-sm leading-relaxed"
+      className="text-[14px]"
+      contentClassName="text-[14px] leading-[1.65] text-foreground/90 [&_strong]:font-semibold [&_strong]:text-foreground"
     >
       {parts.map((part, index) => {
         if (!part.startsWith("```"))
