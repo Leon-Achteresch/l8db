@@ -131,12 +131,7 @@ export function useDataTableColumns({
                   </span>
                 </button>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
-                  <div
-                    className={cn(
-                      "flex items-center gap-1 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap",
-                      typeInfo.colorClass,
-                    )}
-                  >
+                  <div className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground/80 select-none">
                     {renderTypeIcon(typeInfo.iconName, "size-2.5")}
                     <span>{typeInfo.label}</span>
                   </div>

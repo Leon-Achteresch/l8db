@@ -224,7 +224,7 @@ const DEFAULT_SETTINGS = {
   navInHeader: false,
   dynamicIsland: true,
   fitColumnsToHeader: true,
-  monochromeCells: false,
+  monochromeCells: true,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -317,7 +317,7 @@ export const useSettingsStore = create<SettingsState>()(
           navInHeader: false,
           dynamicIsland: true,
           fitColumnsToHeader: true,
-          monochromeCells: false,
+          monochromeCells: true,
         }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -352,7 +352,7 @@ export const useSettingsStore = create<SettingsState>()(
           navInHeader: saved?.navInHeader === true,
           dynamicIsland: saved?.dynamicIsland !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
-          monochromeCells: saved?.monochromeCells === true,
+          monochromeCells: saved?.monochromeCells !== false,
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
         };
       },

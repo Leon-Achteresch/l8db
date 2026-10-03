@@ -9,7 +9,7 @@ export function IslandElapsed({ since }: { since: number }) {
   }, []);
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   return (
-    <span aria-hidden className="shrink-0 font-mono text-[11px] text-white/70 tabular-nums">
+    <span aria-hidden className="shrink-0 font-mono text-[11px] text-current/70 tabular-nums">
       <NumberFlowGroup>
         <NumberFlow value={Math.floor(seconds / 60)} />:
         <NumberFlow value={seconds % 60} format={{ minimumIntegerDigits: 2 }} />

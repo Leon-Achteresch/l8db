@@ -155,7 +155,7 @@ export function SettingsAppearance() {
             !navInHeader &&
             dynamicIsland &&
             fitColumnsToHeader &&
-            !monochromeCells
+            monochromeCells
           }
           onClick={resetAppearance}
         >
