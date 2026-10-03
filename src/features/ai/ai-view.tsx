@@ -43,7 +43,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const activeId = useConnectionsStore((value) => value.activeId);
   const [cwd, setCwd] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [view, setView] = useState<"chat" | "settings" | "history">("chat");
+  const [panelView, setView] = useState<"chat" | "settings" | "history">("chat");
+  const view = fullPage && panelView === "history" ? "chat" : panelView;
   const [contextOpen, setContextOpen] = useState(false);
   const [models, setModels] = useState<AiModels>({ models: [] });
   const [status, setStatus] = useState<AiStatus | null>(null);
