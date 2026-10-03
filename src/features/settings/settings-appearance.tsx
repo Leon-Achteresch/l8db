@@ -3,6 +3,7 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { islandName, previewIsland } from "@/lib/dynamic-island";
 import { UI_SCALE_MAX, UI_SCALE_MIN, UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 
 export function SettingsAppearance() {
@@ -11,10 +12,12 @@ export function SettingsAppearance() {
     uiDensity,
     sidebarExtraCompact,
     navInHeader,
+    dynamicIsland,
     fitColumnsToHeader,
     monochromeCells,
     setSidebarExtraCompact,
     setNavInHeader,
+    setDynamicIsland,
     setFitColumnsToHeader,
     setMonochromeCells,
     setUiScale,
@@ -98,6 +101,27 @@ export function SettingsAppearance() {
         />
       </SettingsRow>
       <SettingsRow
+        title="Dynamic Island"
+        description="Die Suche im Header zeigt Ladezustände, Update-Installationen, Begrüßungen und kleine Überraschungen. Ein Klick öffnet weiterhin die Suche."
+        featureId="settings.general.dynamic-island"
+      >
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!dynamicIsland}
+            onClick={() => void islandName().then(previewIsland)}
+          >
+            Vorschau
+          </Button>
+          <Switch
+            aria-label="Dynamic Island"
+            checked={dynamicIsland}
+            onCheckedChange={setDynamicIsland}
+          />
+        </div>
+      </SettingsRow>
+      <SettingsRow
         title="An Spaltentitel anpassen"
         description="Tabellenspalten automatisch so breit darstellen, dass der Spaltentitel vollständig sichtbar ist."
       >
@@ -129,8 +153,9 @@ export function SettingsAppearance() {
             uiDensity === "normal" &&
             !sidebarExtraCompact &&
             !navInHeader &&
+            dynamicIsland &&
             fitColumnsToHeader &&
-            !monochromeCells
+            monochromeCells
           }
           onClick={resetAppearance}
         >

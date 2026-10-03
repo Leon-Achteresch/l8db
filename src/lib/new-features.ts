@@ -73,6 +73,7 @@ export const NEW_FEATURES = {
   "baas.file-preview": "0.7.0",
   "settings.data.transfer": "0.7.0",
   "settings.general.hide-own-schema": "0.8.0",
+  "settings.general.dynamic-island": "0.10.0",
   "query.transaction.changes": "0.7.0",
   "compare.scroll-sync": "0.7.0",
   "split.pane-tables": "0.8.0",

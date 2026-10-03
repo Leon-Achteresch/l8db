@@ -112,11 +112,7 @@ export function StorageOverview({
                         className="flex h-full w-full flex-col justify-center rounded-lg p-1 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
                       >
                         <span className="mb-1.5 flex w-full items-center justify-between text-xs">
-                          <span
-                            className={
-                              schema === entry.schema ? "font-mono text-primary" : "font-mono"
-                            }
-                          >
+                          <span className={schema === entry.schema ? "text-primary" : undefined}>
                             {entry.schema}
                           </span>
                           <span className="text-[10px] text-muted-foreground">

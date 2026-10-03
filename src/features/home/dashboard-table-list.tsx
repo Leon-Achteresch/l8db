@@ -51,8 +51,8 @@ export function DashboardTableList({ tables, hidden }: DashboardTableListProps) 
                   }
                   className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/60"
                 >
-                  <Table2 className="size-4 text-primary/80" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{table.name}</span>
+                  <Table2 className="size-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm">{table.name}</span>
                   <span className="text-[10px] text-muted-foreground">{table.schema}</span>
                   <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
                 </Link>
