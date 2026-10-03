@@ -3774,6 +3774,7 @@ dependencies = [
  "futures-util",
  "hmac 0.13.0",
  "keyring",
+ "libc",
  "log",
  "md-5",
  "mime_guess",

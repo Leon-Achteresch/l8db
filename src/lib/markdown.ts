@@ -17,19 +17,29 @@ export function safeHref(href: string): string | null {
   return /^(https?:|mailto:|#)/i.test(trimmed) ? trimmed : null;
 }
 
-const INLINE_RE = /(\*\*[^*]+?\*\*|\*[^*]+?\*|`[^`]+?`|\[[^\]]+?\]\([^)]+?\))/g;
+const INLINE_RE =
+  /\\[\\`*[\]]|\*\*[^*]+?\*\*|\*[^*]+?\*|(?<!`)(?<fence>`+)(?!`)[\s\S]+?(?<!`)\k<fence>(?!`)|\[[^\]]+?\]\([^)]+?\)/g;
 
 export function parseInline(source: string): MdInline[] {
-  const parts = source.split(INLINE_RE).filter((part) => part.length > 0);
+  const parts: string[] = [];
+  let end = 0;
+  for (const match of source.matchAll(INLINE_RE)) {
+    if (match.index > end) parts.push(source.slice(end, match.index));
+    parts.push(match[0]);
+    end = match.index + match[0].length;
+  }
+  if (end < source.length) parts.push(source.slice(end));
   return parts.map((part): MdInline => {
+    if (/^\\[\\`*[\]]$/.test(part)) return { t: "text", v: part.slice(1) };
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return { t: "strong", children: parseInline(part.slice(2, -2)) };
     }
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return { t: "em", children: parseInline(part.slice(1, -1)) };
     }
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
-      return { t: "code", v: part.slice(1, -1) };
+    const code = part.match(/^(`+)([\s\S]+?)\1$/);
+    if (code) {
+      return { t: "code", v: code[2] };
     }
     const link = part.match(/^\[([^\]]+)]\(([^)]+)\)$/);
     if (link) {

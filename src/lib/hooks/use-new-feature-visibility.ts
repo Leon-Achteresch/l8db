@@ -26,7 +26,7 @@ export function useNewFeatureVisibility<T extends HTMLElement>(featureId?: NewFe
     const element = ref.current;
     if (!featureId || !isNew || !element) return;
 
-    const onUse = () => markNewFeatureSeen(featureId);
+    const onUse = () => setTimeout(() => markNewFeatureSeen(featureId), 0);
     element.addEventListener("click", onUse);
 
     let stopDwell: (() => void) | undefined;

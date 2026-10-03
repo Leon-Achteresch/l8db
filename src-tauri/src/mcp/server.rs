@@ -33,9 +33,9 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
 const NOSQL_KINDS: &[DatabaseKind] =
     &[DatabaseKind::Mongodb, DatabaseKind::Redis, DatabaseKind::S3];
 
-pub(super) struct Server {
-    pub(super) pool: PoolState,
-    pub(super) columns: HashMap<String, (Instant, Vec<ColumnInfo>)>,
+pub(crate) struct Server {
+    pub(crate) pool: PoolState,
+    pub(crate) columns: HashMap<String, (Instant, Vec<ColumnInfo>)>,
 }
 
 pub fn serve() {
@@ -169,9 +169,12 @@ impl Server {
     }
 
     pub(super) async fn call(&mut self, params: &Value) -> Value {
+        self.call_with_config(params, &config::load()).await
+    }
+
+    pub(crate) async fn call_with_config(&mut self, params: &Value, config: &McpConfig) -> Value {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        let config = config::load();
         if !config.enabled {
             return tool_text(
                 "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.".into(),
@@ -180,11 +183,11 @@ impl Server {
         }
         let started = Instant::now();
         let outcome = match name {
-            "connections" => Ok(list_connections(&config)),
-            "dashboard" => self.dashboard(&config, &args).await,
+            "connections" => Ok(list_connections(config)),
+            "dashboard" => self.dashboard(config, &args).await,
             "search" | "describe" | "query" | "execute" | "benchmark" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
-                match find_connection(&config, target)
+                match find_connection(config, target)
                     .and_then(|connection| with_database(connection, &args))
                 {
                     Err(e) => Err(e),
@@ -192,16 +195,16 @@ impl Server {
                         let connection = &connection;
                         let result = match name {
                             "search" => {
-                                self.search(&config, connection, arg_str(&args, "term"))
+                                self.search(config, connection, arg_str(&args, "term"))
                                     .await
                             }
                             "describe" => {
-                                self.describe(&config, connection, arg_str(&args, "table"))
+                                self.describe(config, connection, arg_str(&args, "table"))
                                     .await
                             }
-                            "query" => self.query(&config, connection, &args).await,
-                            "benchmark" => self.benchmark(&config, connection, &args).await,
-                            _ => self.execute(&config, connection, &args).await,
+                            "query" => self.query(config, connection, &args).await,
+                            "benchmark" => self.benchmark(config, connection, &args).await,
+                            _ => self.execute(config, connection, &args).await,
                         };
                         if matches!(name, "query" | "execute" | "benchmark") {
                             let statement = match arg_str(&args, "sql") {
@@ -612,6 +615,10 @@ fn database_allowed(connection: &McpConnection, database: &str) -> bool {
         DatabaseKind::Mysql | DatabaseKind::Clickhouse
     );
     (schema_is_database && schemas.iter().any(|s| s.eq_ignore_ascii_case(database)))
+        || connection
+            .database
+            .as_deref()
+            .is_some_and(|selected| selected.eq_ignore_ascii_case(database))
         || configured_database(&connection.connection_string)
             .is_some_and(|configured| configured.eq_ignore_ascii_case(database))
 }
@@ -874,6 +881,22 @@ mod tests {
         sqlite.kind = DatabaseKind::Sqlite;
         sqlite.connection_string = "sqlite:/tmp/x.db".into();
         assert_eq!(with_password(&sqlite, Some("x")), "sqlite:/tmp/x.db");
+    }
+
+    #[test]
+    fn private_selected_database_is_allowed_without_changing_public_config_scope() {
+        let mut selected = connection(true);
+        selected.schemas = vec!["public".into()];
+        selected.database = Some("analytics".into());
+        assert!(with_database(&selected, &json!({"database": "Analytics"})).is_ok());
+        assert!(with_database(&selected, &json!({"database": "unselected"})).is_err());
+        let mut stored = serde_json::to_value(&selected).unwrap();
+        assert!(stored.get("database").is_none());
+        stored["database"] = json!("analytics");
+        let public: McpConnection = serde_json::from_value(stored).unwrap();
+        assert!(public.database.is_none());
+        assert!(with_database(&public, &json!({"database": "analytics"})).is_err());
+        assert!(with_database(&public, &json!({"database": "app"})).is_ok());
     }
 
     #[test]
