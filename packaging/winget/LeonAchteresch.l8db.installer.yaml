@@ -16,7 +16,7 @@
 #   wingetcreate update LeonAchteresch.l8db --version 0.1.0 --urls <installer-url>
 
 PackageIdentifier: LeonAchteresch.l8db
-PackageVersion: 0.4.1
+PackageVersion: 0.9.0
 InstallerLocale: en-US
 MinimumOSVersion: 10.0.17763.0
 InstallerType: wix
@@ -26,11 +26,11 @@ InstallModes:
   - silent
   - silentWithProgress
 UpgradeBehavior: install
-ReleaseDate: 2026-09-09
+ReleaseDate: 2026-10-03
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/Leon-Achteresch/l8db/releases/download/v0.4.1/l8db_0.4.1_x64_en-US.msi
-    InstallerSha256: 12fd1ce7377fa7b1a7ede191ab7f3def8ca7d71878314ba6d16bd5b2d8822dde
-    ProductCode: '{995CD394-8102-4AAC-B3F9-821CEE96B707}'
+    InstallerUrl: https://github.com/Leon-Achteresch/l8db/releases/download/v0.9.0/l8db_0.9.0_x64_en-US.msi
+    InstallerSha256: 8603c9ceb27c421e5cc85b4a687c0bf63011fbf297b8af75709c0f85155a3609
+    ProductCode: '{B777CA4F-D775-4245-BEB8-6606AE58FA22}'
 ManifestType: installer
 ManifestVersion: 1.6.0
