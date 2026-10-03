@@ -84,6 +84,7 @@ export interface SettingsState {
   uiScale: number;
   sidebarExtraCompact: boolean;
   navInHeader: boolean;
+  dynamicIsland: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   connectionTimeout: number;
@@ -140,6 +141,7 @@ export interface SettingsState {
   resetAppearance: () => void;
   setSidebarExtraCompact: (value: boolean) => void;
   setNavInHeader: (value: boolean) => void;
+  setDynamicIsland: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setConnectionTimeout: (v: number) => void;
@@ -220,6 +222,7 @@ const DEFAULT_SETTINGS = {
   uiScale: 100,
   sidebarExtraCompact: false,
   navInHeader: false,
+  dynamicIsland: true,
   fitColumnsToHeader: true,
   monochromeCells: false,
   connectionTimeout: 15,
@@ -303,6 +306,7 @@ export const useSettingsStore = create<SettingsState>()(
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
       setNavInHeader: (navInHeader) => set({ navInHeader }),
+      setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       resetAppearance: () =>
@@ -311,6 +315,7 @@ export const useSettingsStore = create<SettingsState>()(
           uiDensity: "normal",
           sidebarExtraCompact: false,
           navInHeader: false,
+          dynamicIsland: true,
           fitColumnsToHeader: true,
           monochromeCells: false,
         }),
@@ -345,6 +350,7 @@ export const useSettingsStore = create<SettingsState>()(
           uiDensity: normalizeUiDensity(saved?.uiDensity),
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,
           navInHeader: saved?.navInHeader === true,
+          dynamicIsland: saved?.dynamicIsland !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells === true,
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",

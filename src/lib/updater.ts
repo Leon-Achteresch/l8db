@@ -11,12 +11,23 @@ export type UpdatePromptState = {
 
 let pendingUpdate: Update | null = null;
 let promptOpen = false;
+let installPercent: number | null = null;
 let snapshot: UpdatePromptState = { update: null, open: false };
 const listeners = new Set<() => void>();
 
 function emit(): void {
   snapshot = { update: pendingUpdate, open: promptOpen };
   for (const listener of listeners) listener();
+}
+
+function setInstallPercent(percent: number | null): void {
+  if (installPercent === percent) return;
+  installPercent = percent;
+  for (const listener of listeners) listener();
+}
+
+export function getInstallPercent(): number | null {
+  return installPercent;
 }
 
 export function getPendingUpdate(): Update | null {
@@ -78,21 +89,30 @@ export async function installUpdateAndRelaunch(
 ): Promise<boolean> {
   let downloaded = 0;
   let total = 0;
-  await update.download((event) => {
-    if (event.event === "Started") {
-      total = event.data.contentLength ?? 0;
-      downloaded = 0;
-    } else if (event.event === "Progress") {
-      downloaded += event.data.chunkLength;
-    }
-    if (total > 0) onProgress?.(Math.min(100, Math.round((downloaded / total) * 100)));
-  });
-  if (canRelaunch && !(await canRelaunch())) return false;
-  flushPendingState();
-  await update.install();
-  setPendingUpdate(null);
-  await relaunch();
-  return true;
+  setInstallPercent(0);
+  try {
+    await update.download((event) => {
+      if (event.event === "Started") {
+        total = event.data.contentLength ?? 0;
+        downloaded = 0;
+      } else if (event.event === "Progress") {
+        downloaded += event.data.chunkLength;
+      }
+      if (total <= 0) return;
+      const percent = Math.min(100, Math.round((downloaded / total) * 100));
+      setInstallPercent(percent);
+      onProgress?.(percent);
+    });
+    if (canRelaunch && !(await canRelaunch())) return false;
+    setInstallPercent(100);
+    flushPendingState();
+    await update.install();
+    setPendingUpdate(null);
+    await relaunch();
+    return true;
+  } finally {
+    setInstallPercent(null);
+  }
 }
 
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;

@@ -134,13 +134,13 @@ export async function activateConnectionWithToast(
     if (useConnectionsStore.getState().activeId === id) await activateConnection(null);
     return false;
   }
-  const pending = id
-    ? toast.loading(`Verbinde mit „${label}“…`)
-    : toast.loading("Trenne Verbindung…");
+  const pending = useSettingsStore.getState().dynamicIsland
+    ? null
+    : toast.loading(id ? `Verbinde mit „${label}“…` : "Trenne Verbindung…");
   try {
     let outcome = await activateConnection(id, sshPassword);
     while (id && !outcome.ok && isAuthFailure(outcome.error)) {
-      toast.dismiss(pending);
+      if (pending !== null) toast.dismiss(pending);
       if (
         !(await ensurePassword(
           id,
@@ -164,7 +164,7 @@ export async function activateConnectionWithToast(
     toast.error(String(error));
     return false;
   } finally {
-    toast.dismiss(pending);
+    if (pending !== null) toast.dismiss(pending);
   }
 }
 

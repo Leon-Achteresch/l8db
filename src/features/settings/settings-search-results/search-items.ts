@@ -112,6 +112,23 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["navigation", "header", "leiste", "rail", "bereiche", "layout"],
   },
   {
+    id: "dynamic-island",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Dynamic Island",
+    description: "Ladezustände, Updates und Begrüßungen in der Suche im Header anzeigen.",
+    keywords: [
+      "dynamic island",
+      "insel",
+      "suche",
+      "header",
+      "begrüßung",
+      "laden",
+      "update",
+      "animation",
+    ],
+  },
+  {
     id: "density",
     tabId: "general",
     tabLabel: "Allgemein",
