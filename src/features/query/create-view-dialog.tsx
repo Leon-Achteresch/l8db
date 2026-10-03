@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -25,14 +26,21 @@ export function isViewableSelect(sql: string): boolean {
   return /^(select|with)\b/i.test(trimmed) && !trimmed.includes(";");
 }
 
-export function createViewSql(name: string, sql: string, kind: SavedConnection["kind"]): string {
+export const TEMP_VIEW_KINDS: ReadonlySet<SavedConnection["kind"]> = new Set(["sqlite", "duckdb"]);
+
+export function createViewSql(
+  name: string,
+  sql: string,
+  kind: SavedConnection["kind"],
+  temporary = false,
+): string {
   const style = identifierStyleForKind(kind);
   const target = name
     .trim()
     .split(".")
     .map((part) => (/^["`[]/.test(part) ? part : quoteIdentifier(part, style)))
     .join(".");
-  return `CREATE VIEW ${target} AS ${sql.trim().replace(/;\s*$/, "")}`;
+  return `CREATE ${temporary ? "TEMP " : ""}VIEW ${target} AS ${sql.trim().replace(/;\s*$/, "")}`;
 }
 
 export function CreateViewDialog({
@@ -50,6 +58,8 @@ export function CreateViewDialog({
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
+  const [temporary, setTemporary] = useState(false);
+  const temporaryAllowed = TEMP_VIEW_KINDS.has(connection.kind);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,13 +72,15 @@ export function CreateViewDialog({
       await executeQuery(
         connection.kind,
         effectiveConnectionString(connection),
-        createViewSql(name, sql, connection.kind),
+        createViewSql(name, sql, connection.kind, temporaryAllowed && temporary),
         database ?? undefined,
       );
       await queryClient.invalidateQueries({
         predicate: (query) => isConnectionQuery(query.queryKey, connection.id),
       });
-      toast.success(`View ${name.trim()} erstellt`);
+      toast.success(
+        `${temporaryAllowed && temporary ? "Temporäre View" : "View"} ${name.trim()} erstellt`,
+      );
       setName("");
       onOpenChange(false);
     } catch (e) {
@@ -98,6 +110,18 @@ export function CreateViewDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </div>
+          {temporaryAllowed && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="create-view-temporary"
+                checked={temporary}
+                onCheckedChange={(v) => setTemporary(Boolean(v))}
+              />
+              <Label htmlFor="create-view-temporary" className="text-xs font-normal">
+                Temporär, nur für diese Sitzung (verschwindet beim Trennen der Verbindung)
+              </Label>
+            </div>
+          )}
           {error ? <p className="text-xs break-words text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
