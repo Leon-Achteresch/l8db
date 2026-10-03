@@ -45,6 +45,7 @@ async fn session_load_drains_large_replay_without_emitting_duplicate_history() {
         state: Arc::new(super::super::runtime::AiState::default()),
         channel,
         plan_only: false,
+        approval: String::new(),
     };
     let response = tokio::time::timeout(
         Duration::from_secs(5),
@@ -133,6 +134,7 @@ async fn native_cli_reads_scoped_sqlite() {
             state,
             channel,
             plan_only: super::super::context::is_plan(&request),
+            approval: String::new(),
         });
         for turn in 0..2 {
             let expected = if turn == 0 {
@@ -313,6 +315,7 @@ for line in sys.stdin:
             state: Arc::new(AiState::default()),
             channel,
             plan_only: super::super::context::is_plan(&request),
+            approval: String::new(),
         });
         let server = Arc::new(tokio::sync::Mutex::new(Server {
             pool: crate::db::pool::PoolState::default(),
@@ -477,6 +480,7 @@ sys.stdin.readline()
         id: "plan-fixture".into(),
         owner: "fixture-window".into(),
         plan_only: true,
+        approval: String::new(),
         state: Arc::new(super::super::runtime::AiState::default()),
         channel,
     };
@@ -534,4 +538,24 @@ fn copilot_session_mcp_config_uses_native_local_schema_without_permission_bypass
     assert_eq!(config["mcpServers"]["l8db_ai"]["tools"], json!(["*"]));
     assert_eq!(config["mcpServers"]["l8db_ai"]["env"], json!({}));
     assert!(!config.to_string().contains("allow-all"));
+}
+
+#[test]
+fn approval_mode_skips_only_selected_tool_prompts() {
+    let run = |approval: &str, plan_only: bool| Run {
+        id: "fixture".into(),
+        owner: "fixture-window".into(),
+        state: Arc::new(super::super::runtime::AiState::default()),
+        channel: Channel::new(|_| Ok(())),
+        plan_only,
+        approval: approval.into(),
+    };
+    assert!(!run("", false).auto(true));
+    assert!(run("mcp", false).auto(true));
+    assert!(!run("mcp", false).auto(false));
+    assert!(run("all", false).auto(false));
+    assert!(!run("all", true).auto(true));
+    assert!(acp_mcp(&json!({"title": "mcp__l8db_ai__query"})));
+    assert!(acp_mcp(&json!({"rawInput": {"serverName": "github"}})));
+    assert!(!acp_mcp(&json!({"title": "Bash", "kind": "execute"})));
 }

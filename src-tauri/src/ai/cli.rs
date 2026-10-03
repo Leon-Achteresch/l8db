@@ -79,6 +79,15 @@ fn acp_plan_read(tool: &Value) -> bool {
     })
 }
 
+fn acp_mcp(tool: &Value) -> bool {
+    tool["rawInput"]["serverName"].is_string()
+        || tool["title"].as_str().is_some_and(|title| {
+            ["mcp__", "l8db_ai"]
+                .iter()
+                .any(|prefix| title.starts_with(prefix))
+        })
+}
+
 fn inherited_permission_changes(session: &Value, requested: &str) -> Result<Vec<Value>, String> {
     let mut changes = Vec::new();
     let mut changed_mode = false;
@@ -403,7 +412,11 @@ async fn native_event(rpc: &Rpc, event: &Value, run: &Run) -> Result<(), String>
             "session/request_permission" => {
                 let allowed = (!run.plan_only || acp_plan_read(&params["toolCall"]))
                     && run
-                        .approve("CLI-Tool freigeben", params["toolCall"].clone())
+                        .approve_tool(
+                            acp_mcp(&params["toolCall"]),
+                            "CLI-Tool freigeben",
+                            params["toolCall"].clone(),
+                        )
                         .await?;
                 let option = params["options"]
                     .as_array()
@@ -415,19 +428,23 @@ async fn native_event(rpc: &Rpc, event: &Value, run: &Run) -> Result<(), String>
                 option.map(|option| json!({"outcome": {"outcome": "selected", "optionId": option["optionId"]}})).unwrap_or(json!({"outcome": {"outcome": "cancelled"}}))
             }
             "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" => {
-                let allowed =
-                    !run.plan_only && run.approve("CLI-Aktion freigeben", params.clone()).await?;
+                let allowed = !run.plan_only
+                    && run
+                        .approve_tool(false, "CLI-Aktion freigeben", params.clone())
+                        .await?;
                 json!({"decision": if allowed { "accept" } else { "decline" }})
             }
             "execCommandApproval" | "applyPatchApproval" => {
-                let allowed =
-                    !run.plan_only && run.approve("CLI-Aktion freigeben", params.clone()).await?;
+                let allowed = !run.plan_only
+                    && run
+                        .approve_tool(false, "CLI-Aktion freigeben", params.clone())
+                        .await?;
                 json!({"decision": if allowed { "approved" } else { "abort" }})
             }
             "item/permissions/requestApproval" => {
                 let allowed = !run.plan_only
                     && run
-                        .approve("CLI-Berechtigung freigeben", params.clone())
+                        .approve_tool(false, "CLI-Berechtigung freigeben", params.clone())
                         .await?;
                 json!({"permissions": if allowed { params["permissions"].clone() } else { json!({}) }, "scope": "turn"})
             }
@@ -438,6 +455,11 @@ async fn native_event(rpc: &Rpc, event: &Value, run: &Run) -> Result<(), String>
                 } else {
                     json!({"answers": {}})
                 }
+            }
+            "mcpServer/elicitation/request"
+                if params["_meta"]["codex_approval_kind"] == "mcp_tool_call" && run.auto(true) =>
+            {
+                json!({"action": "accept", "content": {}})
             }
             "mcpServer/elicitation/request" => {
                 let answer = run.input("MCP-Rückfrage", params.clone()).await?;
@@ -892,7 +914,7 @@ async fn claude(
                             rpc.send(json!({"type":"control_response","response":{"subtype":"success","request_id":event["request_id"],"response":{"behavior":"deny","message":"Im Planmodus sind Änderungen und Shell-Ausführung gesperrt"}}})).await?;
                             continue;
                         }
-                        let allowed = run.approve(&format!("Claude-Tool: {}", request["tool_name"].as_str().unwrap_or("Tool")), request["input"].clone()).await?;
+                        let allowed = run.approve_tool(request["tool_name"].as_str().is_some_and(|name| name.starts_with("mcp__")), &format!("Claude-Tool: {}", request["tool_name"].as_str().unwrap_or("Tool")), request["input"].clone()).await?;
                         if allowed { json!({"behavior": "allow", "updatedInput": request["input"]}) } else { json!({"behavior": "deny", "message": "Benutzer hat die Aktion abgelehnt"}) }
                     }
                     _ => json!({"behavior": "deny", "message": "Client capability unavailable"})

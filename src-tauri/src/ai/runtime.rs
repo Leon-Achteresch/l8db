@@ -16,6 +16,7 @@ pub struct Run {
     pub id: String,
     pub owner: String,
     pub plan_only: bool,
+    pub approval: String,
     pub state: Arc<AiState>,
     pub channel: Channel<Event>,
 }
@@ -54,6 +55,22 @@ impl Run {
             .await?
             .as_bool()
             .unwrap_or(false))
+    }
+
+    pub fn auto(&self, mcp: bool) -> bool {
+        !self.plan_only && (self.approval == "all" || mcp && self.approval == "mcp")
+    }
+
+    pub async fn approve_tool(
+        &self,
+        mcp: bool,
+        title: &str,
+        details: Value,
+    ) -> Result<bool, String> {
+        if self.auto(mcp) {
+            return Ok(true);
+        }
+        self.approve(title, details).await
     }
 
     pub async fn input(&self, title: &str, details: Value) -> Result<Value, String> {
