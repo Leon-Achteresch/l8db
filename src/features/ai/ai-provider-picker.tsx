@@ -118,6 +118,7 @@ export function AiProviderPicker({ profile, models, disabled, loading, onSelect 
           <div className="space-y-2">
             <button
               type="button"
+              aria-label={`Anbieter wechseln: ${provider?.name ?? ""}`}
               onClick={() => setStep("provider")}
               className="flex h-8 w-full items-center gap-2 rounded-lg px-1 text-left text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
             >
