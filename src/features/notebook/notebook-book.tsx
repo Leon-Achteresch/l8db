@@ -67,7 +67,7 @@ export function NotebookBook({
       }}
     >
       <div className="nb-cover relative flex min-h-0 w-full max-w-[1400px] flex-1 rounded-lg p-2.5 pr-5">
-        <div className="relative flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 min-w-0 flex-1">
           {page(leftIndex, "left")}
           <div className="w-px shrink-0 bg-black/20" />
           {page(rightIndex, "right")}
