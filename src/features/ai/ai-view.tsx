@@ -25,6 +25,7 @@ import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
 import { AiProviderPicker } from "./ai-provider-picker";
+import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiSettings } from "./ai-settings";
 import { AiTranscript } from "./ai-transcript";
 import { AiUsage } from "./ai-usage";
@@ -387,6 +388,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
           <span className="mr-auto text-sm font-medium">
             {fullPage ? "AI-Arbeitsbereich" : "AI"}
+            {fullPage && status?.version && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {status.version}
+              </span>
+            )}
           </span>
           {!fullPage && (
             <Button
@@ -441,23 +447,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           >
             <X className="size-4" />
           </Button>
-        </div>
-        <div className="flex items-center justify-between gap-2 px-3 py-1.5">
-          <AiProviderPicker
-            profile={profile}
-            models={models}
-            disabled={Boolean(runId)}
-            loading={loading}
-            onSelect={(id) => {
-              resetContext();
-              state.selectProfile(id);
-              setView("chat");
-            }}
-          />
-          <div className="flex items-center gap-2">
-            <AiApprovalPicker profile={profile} disabled={Boolean(runId)} />
-            {fullPage && <span className="text-xs text-muted-foreground">{status?.version}</span>}
-          </div>
         </div>
         {fullPage && (
           <nav aria-label="AI-Bereiche" className="flex gap-1 border-b px-3 pb-2">
@@ -696,7 +685,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                           variant="ghost"
                           size="sm"
                           aria-label="Kontext"
-                          className="h-8 min-w-0 max-w-[65%] gap-1.5 rounded-md px-2 text-[11px]"
+                          className="h-8 min-w-0 shrink gap-1.5 rounded-full px-2 text-[11px]"
                         >
                           <Database className="size-3 shrink-0" />
                           <span className="truncate">
@@ -738,6 +727,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                         className="min-w-0 gap-1 text-[10px] [&>span:first-child]:hidden [&>span:last-child]:hidden"
                       />
                     )}
+                  </>
+                }
+                trailingAction={
+                  <>
+                    <AiApprovalPicker profile={profile} disabled={Boolean(runId)} />
+                    <AiReasoningPicker
+                      profile={profile}
+                      models={models}
+                      disabled={Boolean(runId)}
+                    />
+                    <AiProviderPicker
+                      profile={profile}
+                      models={models}
+                      disabled={Boolean(runId)}
+                      loading={loading}
+                      onSelect={(id) => {
+                        resetContext();
+                        state.selectProfile(id);
+                        setView("chat");
+                      }}
+                    />
                   </>
                 }
                 className="rounded-xl bg-muted/15 shadow-xs"

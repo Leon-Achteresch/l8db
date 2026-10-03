@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import {
   createFeatureDwell,
   markNewFeatureSeen,
@@ -19,52 +19,53 @@ function isInView(entry: IntersectionObserverEntry | undefined): boolean {
 }
 
 export function useNewFeatureVisibility<T extends HTMLElement>(featureId?: NewFeatureId) {
-  const ref = useRef<T>(null);
   const isNew = useHasNewFeatures(featureId);
 
-  useEffect(() => {
-    const element = ref.current;
-    if (!featureId || !isNew || !element) return;
+  const ref = useCallback(
+    (element: T | null) => {
+      if (!featureId || !isNew || !element) return;
 
-    const onUse = () => setTimeout(() => markNewFeatureSeen(featureId), 0);
-    element.addEventListener("click", onUse);
+      const onUse = () => setTimeout(() => markNewFeatureSeen(featureId), 0);
+      element.addEventListener("click", onUse);
 
-    let stopDwell: (() => void) | undefined;
-    const pause = () => {
-      stopDwell?.();
-      stopDwell = undefined;
-    };
+      let stopDwell: (() => void) | undefined;
+      const pause = () => {
+        stopDwell?.();
+        stopDwell = undefined;
+      };
 
-    const observer =
-      typeof IntersectionObserver === "undefined"
-        ? undefined
-        : new IntersectionObserver(
-            (entries) => {
-              if (!isInView(entries.at(-1))) pause();
-              else stopDwell ??= startDwell(featureId);
-            },
-            { threshold: [0, 0.5] },
-          );
+      const observer =
+        typeof IntersectionObserver === "undefined"
+          ? undefined
+          : new IntersectionObserver(
+              (entries) => {
+                if (!isInView(entries.at(-1))) pause();
+                else stopDwell ??= startDwell(featureId);
+              },
+              { threshold: [0, 0.5] },
+            );
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        pause();
-        return;
-      }
-      observer?.unobserve(element);
+      const onVisibilityChange = () => {
+        if (document.visibilityState !== "visible") {
+          pause();
+          return;
+        }
+        observer?.unobserve(element);
+        observer?.observe(element);
+      };
+
       observer?.observe(element);
-    };
+      document.addEventListener("visibilitychange", onVisibilityChange);
 
-    observer?.observe(element);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      pause();
-      observer?.disconnect();
-      element.removeEventListener("click", onUse);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [featureId, isNew]);
+      return () => {
+        pause();
+        observer?.disconnect();
+        element.removeEventListener("click", onUse);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      };
+    },
+    [featureId, isNew],
+  );
 
   return { ref, isNew };
 }

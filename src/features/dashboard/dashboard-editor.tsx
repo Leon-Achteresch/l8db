@@ -10,20 +10,24 @@ import {
   PlusIcon,
   RefreshCwIcon,
   TimerIcon,
+  TimerOffIcon,
 } from "lucide-react";
 import { lazy, Suspense, startTransition, useCallback, useEffect, useState } from "react";
 import { useStore } from "zustand";
+import {
+  IconMenu,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuRadioItem,
+  IconMenuSeparator,
+  IconMenuSubContent,
+  IconMenuSubTrigger,
+} from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -49,11 +53,18 @@ import {
   useDashboardsStore,
 } from "@/lib/dashboards";
 import { useDbSelectionStore } from "@/lib/db-selection";
+import { useHasNewFeatures } from "@/lib/new-features";
 import type { ChartDraft } from "./chart-dialog";
 import { ChartLibraryDrawer } from "./chart-library-drawer";
 import { DashboardCanvas } from "./dashboard-canvas";
 import { useDashboardFileReload } from "./dashboard-editor/use-dashboard-file-reload";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
+
+const REFRESH_OPTIONS = [
+  ["30", "30s", "Alle 30 s"],
+  ["60", "1m", "Jede Minute"],
+  ["300", "5m", "Alle 5 Minuten"],
+] as const;
 
 const ChartDialog = lazy(() =>
   import("./chart-dialog").then((module) => ({ default: module.ChartDialog })),
@@ -73,6 +84,7 @@ export function DashboardEditor({
   const store = useDashboardsStore();
   const connection = useActiveConnection();
   const queryClient = useQueryClient();
+  const hasNew = useHasNewFeatures("dashboard");
   const [drawer, setDrawer] = useState<"dashboards" | "charts" | null>(null);
   const [draft, setDraft] = useState<ChartDraft | null>(null);
   const [draftIsNew, setDraftIsNew] = useState(false);
@@ -286,6 +298,7 @@ export function DashboardEditor({
             {editing && (
               <Button size="sm" onClick={startNewChart}>
                 <PlusIcon /> Chart erstellen
+                {hasNew && <NewBadge />}
               </Button>
             )}
             <Button
@@ -296,47 +309,58 @@ export function DashboardEditor({
             >
               {editing ? <CheckIcon /> : <PencilIcon />}
               {editing ? "Fertig" : "Bearbeiten"}
+              {!editing && hasNew && <NewBadge />}
             </Button>
-            <DropdownMenu>
+            <IconMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" aria-label="Weitere Dashboard-Aktionen">
                   <EllipsisIcon />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
-                <DropdownMenuItem
-                  onClick={() => {
+              <IconMenuContent>
+                <IconMenuItem
+                  icon={<RefreshCwIcon />}
+                  label="Jetzt neu laden"
+                  onSelect={() => {
                     void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
                     void reloadFile(false);
                   }}
-                >
-                  <RefreshCwIcon className="size-3.5" /> Jetzt neu laden
-                </DropdownMenuItem>
+                />
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <TimerIcon className="size-3.5" /> Automatisch neu laden
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
+                  <IconMenuSubTrigger icon={<TimerIcon />} label="Automatisch neu laden" />
+                  <IconMenuSubContent>
                     <DropdownMenuRadioGroup
+                      className="flex gap-0.5"
                       value={String(dashboard.refreshSec)}
                       onValueChange={(v) => update({ refreshSec: Number(v) })}
                     >
-                      <DropdownMenuRadioItem value="0">Aus</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="30">Alle 30 s</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="60">Jede Minute</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="300">Alle 5 Minuten</DropdownMenuRadioItem>
+                      <IconMenuRadioItem value="0" icon={<TimerOffIcon />} label="Aus" />
+                      {REFRESH_OPTIONS.map(([value, short, label]) => (
+                        <IconMenuRadioItem
+                          key={value}
+                          value={value}
+                          label={label}
+                          icon={
+                            <span className="text-[10px] font-semibold tabular-nums">{short}</span>
+                          }
+                        />
+                      ))}
                     </DropdownMenuRadioGroup>
-                  </DropdownMenuSubContent>
+                  </IconMenuSubContent>
                 </DropdownMenuSub>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setDrawer("dashboards")}>
-                  <FolderOpenIcon className="size-3.5" /> Dashboards verwalten
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setDrawer("charts")}>
-                  <LibraryIcon className="size-3.5" /> Gespeicherte Charts
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <IconMenuSeparator />
+                <IconMenuItem
+                  icon={<FolderOpenIcon />}
+                  label="Dashboards verwalten"
+                  onSelect={() => setDrawer("dashboards")}
+                />
+                <IconMenuItem
+                  icon={<LibraryIcon />}
+                  label="Gespeicherte Charts"
+                  onSelect={() => setDrawer("charts")}
+                />
+              </IconMenuContent>
+            </IconMenu>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground">

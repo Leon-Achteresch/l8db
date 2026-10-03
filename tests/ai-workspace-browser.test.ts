@@ -40,7 +40,7 @@ test.skipIf(!enabled)(
       const panel = page.getByRole("complementary", { name: "AI-Arbeitsbereich", exact: true });
       await page.waitForFunction(() => document.fonts.status === "loaded");
       await page.screenshot({ path: resolve(tmpdir(), "l8db-ai-panel-redesign.png") });
-      expect(await panel.getByLabel("AI-Anbieter auswählen", { exact: true }).count()).toBe(0);
+      expect(await page.getByLabel("AI-Anbieter auswählen", { exact: true }).count()).toBe(0);
       expect(await panel.getByText("Native Fähigkeiten & Konfiguration").count()).toBe(0);
       const resize = page.getByRole("separator", { name: "AI-Panelbreite anpassen" });
       await resize.focus();
@@ -61,16 +61,16 @@ test.skipIf(!enabled)(
       expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
 
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
-      await page.getByLabel("AI-Anbieter auswählen", { exact: true }).selectOption("gemini-cli");
-      await page.getByLabel("Modell auswählen", { exact: true }).selectOption("__custom__");
+      await page.getByRole("radio", { name: "Gemini CLI", exact: true }).click();
+      await page.getByRole("radio", { name: "Eigene Modell-ID …", exact: true }).click();
       await page.getByLabel("Modell-ID", { exact: true }).fill("private-model");
       expect(await page.getByLabel("Modell-ID", { exact: true }).inputValue()).toBe(
         "private-model",
       );
-      await page.getByLabel("Modell auswählen", { exact: true }).selectOption("fixture-model");
-      await page.getByText("Weitere Modelloptionen", { exact: true }).click();
-      await page.getByLabel("Reasoning auswählen").selectOption("high");
+      await page.getByRole("radio", { name: "Fixture model", exact: true }).click();
       await page.keyboard.press("Escape");
+      await panel.getByRole("button", { name: "Reasoning auswählen" }).click();
+      await page.getByRole("menuitemradio", { name: "high" }).click();
       await panel.getByLabel("Nachricht an AI").fill("@Anal");
       await panel.getByRole("option", { name: "@Analytics", exact: true }).click();
       await panel.getByRole("button", { name: "Kontext", exact: true }).click();
@@ -156,7 +156,7 @@ test.skipIf(!enabled)(
           1,
       );
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
-      await page.getByLabel("AI-Anbieter auswählen", { exact: true }).selectOption("openai");
+      await page.getByRole("radio", { name: "OpenAI · API", exact: true }).click();
       await page.keyboard.press("Escape");
       await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
       await panel
@@ -170,7 +170,7 @@ test.skipIf(!enabled)(
         "fixture-api-key-never-persist",
       );
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
-      await page.getByLabel("AI-Anbieter auswählen", { exact: true }).selectOption("compatible");
+      await page.getByRole("radio", { name: "OpenAI-compatible · API", exact: true }).click();
       await page.keyboard.press("Escape");
       await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
       await panel.getByLabel("API-Endpoint", { exact: true }).fill("http://localhost:11434/v1");

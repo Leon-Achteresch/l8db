@@ -56,6 +56,7 @@ export interface PromptInputProps
   minRows?: number;
   maxRows?: number;
   leadingAction?: ReactNode;
+  trailingAction?: ReactNode;
   className?: string;
 }
 export function PromptInput({
@@ -74,6 +75,7 @@ export function PromptInput({
   minRows = 2,
   maxRows = 8,
   leadingAction,
+  trailingAction,
   className,
   disabled,
   placeholder = "Ask the agent to do something…",
@@ -276,31 +278,34 @@ export function PromptInput({
           </Select>
         ) : null}
 
-        <Button
-          type={loading ? "button" : "submit"}
-          size="icon"
-          disabled={loading ? !onStop : !canSubmit}
-          aria-label={loading ? "Agent stoppen" : "Nachricht senden"}
-          onClick={loading ? onStop : undefined}
-          className="ml-auto size-8 rounded-full"
-        >
-          <AnimatePresence initial={false} mode="popLayout">
-            <motion.span
-              key={loading ? "stop" : "send"}
-              initial={reduce ? { opacity: 1 } : { opacity: 0, y: 3, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.8 }}
-              transition={reduce ? { duration: 0 } : SPRING_SWAP}
-              className="grid place-items-center"
-            >
-              {loading ? (
-                <Square className="size-3 fill-current" />
-              ) : (
-                <ArrowUp className="size-4" />
-              )}
-            </motion.span>
-          </AnimatePresence>
-        </Button>
+        <div className="ml-auto flex min-w-0 shrink items-center gap-1">
+          {trailingAction}
+          <Button
+            type={loading ? "button" : "submit"}
+            size="icon"
+            disabled={loading ? !onStop : !canSubmit}
+            aria-label={loading ? "Agent stoppen" : "Nachricht senden"}
+            onClick={loading ? onStop : undefined}
+            className="size-8 shrink-0 rounded-full"
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={loading ? "stop" : "send"}
+                initial={reduce ? { opacity: 1 } : { opacity: 0, y: 3, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.8 }}
+                transition={reduce ? { duration: 0 } : SPRING_SWAP}
+                className="grid place-items-center"
+              >
+                {loading ? (
+                  <Square className="size-3 fill-current" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </Button>
+        </div>
       </div>
     </form>
   );

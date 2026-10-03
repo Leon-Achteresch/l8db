@@ -1,5 +1,7 @@
 import { ArrowRightIcon, LibraryIcon, MousePointer2Icon, PlusIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { ChartKindPreview } from "./chart-kind-preview";
 
 export function DashboardEmptyCanvas({
@@ -9,6 +11,7 @@ export function DashboardEmptyCanvas({
   onAdd?: () => void;
   onOpenCharts?: () => void;
 }) {
+  const hasNew = useHasNewFeatures("dashboard");
   return (
     <section className="mx-auto flex w-full max-w-3xl flex-col items-center px-5 py-14 text-center sm:py-20">
       <div
@@ -39,6 +42,7 @@ export function DashboardEmptyCanvas({
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button onClick={onAdd}>
             <PlusIcon /> Ersten Chart erstellen
+            {hasNew && <NewBadge />}
           </Button>
           {onOpenCharts && (
             <Button variant="outline" onClick={onOpenCharts}>

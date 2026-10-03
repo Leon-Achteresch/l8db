@@ -71,7 +71,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
           resizeConfig={{ enabled: !dashboard.locked, handles: ["se"] }}
           onDragStop={applyLayout}
           onResizeStop={applyLayout}
-          className="min-h-[60vh] [&_.react-grid-item]:will-change-transform [&_.react-grid-item]:[contain:layout_paint]"
+          className="min-h-[60vh] [&_.react-grid-item]:will-change-transform [&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
         >
           {widgets.map((w) => (
             <div key={w.id} className="[&_.react-resizable-handle]:z-10">

@@ -22,7 +22,7 @@ interface Rates {
 }
 export interface AiUsageSummary extends Counts {
   context: number;
-  contextLimit: number | null;
+  contextLimit: number;
   contextEstimated: boolean;
   scope: string;
   cost: number | null;
@@ -362,7 +362,7 @@ export function summarizeAiUsage(
     output: sum.reported ? sum.output : estimatedOutput,
     total: sum.reported ? sum.total : textTokens,
     context,
-    contextLimit: limit && limit > 0 ? limit : null,
+    contextLimit: limit && limit > 0 ? limit : 265_000,
     contextEstimated: number(native.used) === null && (!contextMeasured || !latest?.reported),
     scope: token.total ? "CLI-Sitzung" : "Anfrage",
     cost,

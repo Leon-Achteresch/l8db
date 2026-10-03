@@ -811,3 +811,92 @@ tr[data-context-menu-target] > td {
   background: #eab30826;
   border-left: 2px solid #eab308;
 }
+
+[data-radix-popper-content-wrapper]:has(> [data-icon-menu]) {
+  filter: drop-shadow(0 8px 16px rgb(0 0 0 / 0.14)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.08));
+}
+
+[data-icon-menu] {
+  --icon-menu-x: max(0px, calc(100% - var(--radix-dropdown-menu-trigger-width, 2rem)));
+  --icon-menu-y: max(0px, calc(100% - var(--radix-dropdown-menu-trigger-height, 2rem)));
+  --icon-menu-t: 0px;
+  --icon-menu-r: 0px;
+  --icon-menu-b: var(--icon-menu-y);
+  --icon-menu-l: 0px;
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}
+
+[data-icon-menu][data-side="top"] {
+  --icon-menu-t: var(--icon-menu-y);
+  --icon-menu-b: 0px;
+}
+
+[data-icon-menu]:is([data-side="top"], [data-side="bottom"])[data-align="start"],
+[data-icon-menu][data-side="right"] {
+  --icon-menu-r: var(--icon-menu-x);
+}
+
+[data-icon-menu]:is([data-side="top"], [data-side="bottom"])[data-align="end"],
+[data-icon-menu][data-side="left"] {
+  --icon-menu-l: var(--icon-menu-x);
+}
+
+[data-icon-menu]:is([data-side="top"], [data-side="bottom"])[data-align="center"] {
+  --icon-menu-r: calc(var(--icon-menu-x) / 2);
+  --icon-menu-l: calc(var(--icon-menu-x) / 2);
+}
+
+[data-icon-menu][data-state="open"] {
+  animation: icon-menu-morph 340ms var(--ease-smooth-out) both;
+}
+
+[data-icon-menu][data-state="closed"] {
+  animation: icon-menu-morph 180ms cubic-bezier(0.4, 0, 1, 1) reverse both;
+}
+
+[data-icon-menu][data-state="open"] > [role^="menuitem"] {
+  animation: icon-menu-item 340ms var(--ease-smooth-out) both;
+}
+
+@keyframes icon-menu-morph {
+  from {
+    clip-path: inset(
+      var(--icon-menu-t) var(--icon-menu-r) var(--icon-menu-b) var(--icon-menu-l) round 10px
+    );
+    opacity: 0;
+    scale: 0.94;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 12px);
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes icon-menu-item {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    scale: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-icon-menu][data-state="open"],
+  [data-icon-menu][data-state="open"] > [role^="menuitem"] {
+    animation: icon-menu-fade 120ms ease-out both;
+  }
+
+  [data-icon-menu][data-state="closed"] {
+    animation: icon-menu-fade 100ms ease-in reverse both;
+  }
+}
+
+@keyframes icon-menu-fade {
+  from {
+    opacity: 0;
+  }
+}

@@ -1,5 +1,5 @@
 import { isReadOnlyConnection, type SavedConnection } from "@/lib/connections";
-import type { AiConnection } from "@/lib/db/ai";
+import type { AiConnection, AiModels, AiProfile } from "@/lib/db/ai";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { connectionEnvironment, isProductionLocked } from "@/lib/environments";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -114,4 +114,20 @@ export function safeEndpoint(value: string): string {
   )
     throw new Error("Endpoint ohne Zugangsdaten oder URL-Parameter angeben.");
   return url.toString();
+}
+
+export function modelEfforts(profile: AiProfile, models: AiModels, cli: boolean): string[] {
+  const raw = models.models.find((model) => model.id === profile.model)?.efforts ?? [];
+  const efforts = raw.flatMap((value) => {
+    if (typeof value === "string") return [value];
+    if (
+      value &&
+      typeof value === "object" &&
+      "reasoningEffort" in value &&
+      typeof value.reasoningEffort === "string"
+    )
+      return [value.reasoningEffort];
+    return [];
+  });
+  return !cli && !efforts.length ? ["low", "medium", "high"] : efforts;
 }

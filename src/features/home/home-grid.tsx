@@ -79,7 +79,7 @@ export function HomeGrid({ connectionId, editing }: { connectionId: string; edit
           resizeConfig={{ enabled: editing && !stacked, handles: ["se"] }}
           onDragStop={applyLayout}
           onResizeStop={applyLayout}
-          className="[&_.react-grid-item]:[contain:layout_paint]"
+          className="[&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
         >
           {ordered.map((widget) => (
             <div

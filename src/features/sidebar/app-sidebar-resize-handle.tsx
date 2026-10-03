@@ -1,4 +1,3 @@
-import type { MotionValue } from "motion/react";
 import {
   clampSidebarWidth,
   SIDEBAR_PANEL_MAX_WIDTH,
@@ -6,7 +5,7 @@ import {
   useSidebarPanel,
 } from "@/lib/sidebar-panel";
 
-export function AppSidebarResizeHandle({ liveWidth }: { liveWidth: MotionValue<number> }) {
+export function AppSidebarResizeHandle() {
   const panelWidth = useSidebarPanel((state) => state.width);
   const setWidth = useSidebarPanel((state) => state.setWidth);
   const setIsResizing = useSidebarPanel((state) => state.setIsResizing);
@@ -21,7 +20,6 @@ export function AppSidebarResizeHandle({ liveWidth }: { liveWidth: MotionValue<n
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       nextWidth = clampSidebarWidth(startWidth + (moveEvent.clientX - startX));
-      liveWidth.set(nextWidth);
       wrapper?.style.setProperty("--sidebar-width", `${nextWidth}px`);
     };
 
