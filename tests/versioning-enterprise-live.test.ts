@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { chromium } from "playwright";
-import { installVersioningLab } from "./fixtures/versioning-lab";
+import { installVersioningLab, versioningAppUrl } from "./fixtures/versioning-lab";
 
 const enabled = process.env.L8DB_VERSIONING_LAB;
 for (const kind of ["postgres", "oracle"] as const) {
@@ -20,7 +20,7 @@ for (const kind of ["postgres", "oracle"] as const) {
       try {
         const page = await browser.newPage();
         await installVersioningLab(page, repo);
-        await page.goto("http://localhost:1420/versioning");
+        await page.goto(`${versioningAppUrl}/versioning`);
         await page.evaluate(
           async ({ repo, kind }) => {
             const { runOperationalScenario } = await import(

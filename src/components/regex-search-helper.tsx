@@ -43,7 +43,7 @@ export function RegexSearchHelper({
         aria-pressed={enabled}
         onClick={() => onEnabledChange(!enabled)}
         className={cn(
-          "inline-flex size-6 shrink-0 items-center justify-center rounded cursor-pointer hover:bg-accent",
+          "inline-flex size-6 shrink-0 items-center justify-center rounded-xl cursor-pointer hover:bg-accent",
           enabled && "bg-primary/15 text-primary",
         )}
       >
@@ -55,7 +55,7 @@ export function RegexSearchHelper({
             type="button"
             title="Regex-Hilfe und Musterbibliothek"
             disabled={!enabled}
-            className="inline-flex h-6 shrink-0 items-center justify-center rounded px-1.5 font-mono text-[11px] cursor-pointer hover:bg-accent disabled:opacity-30 disabled:pointer-events-none"
+            className="inline-flex h-6 shrink-0 items-center justify-center rounded-xl px-1.5 font-mono text-[11px] cursor-pointer hover:bg-accent disabled:opacity-30 disabled:pointer-events-none"
           >
             .*
           </button>
@@ -79,11 +79,11 @@ export function RegexSearchHelper({
                   <button
                     type="button"
                     onClick={() => onInsert(template.pattern)}
-                    className="flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left hover:bg-accent cursor-pointer"
+                    className="flex w-full flex-col items-start gap-0.5 rounded-xl px-2 py-1.5 text-left hover:bg-accent cursor-pointer"
                   >
                     <span className="flex w-full items-center gap-2">
                       <span className="text-xs font-medium">{template.label}</span>
-                      <code className="ml-auto truncate rounded bg-muted px-1 font-mono text-[11px]">
+                      <code className="ml-auto truncate rounded-xl bg-muted px-1 font-mono text-[11px]">
                         {template.pattern}
                       </code>
                     </span>

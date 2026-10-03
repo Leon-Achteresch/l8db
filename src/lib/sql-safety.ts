@@ -6,7 +6,7 @@ interface Token {
   start: number;
 }
 
-export function sqlTokens(sql: string, dialect?: string): Token[] {
+export function sqlTokens(sql: string, dialect?: string, comments?: [number, number][]): Token[] {
   const result: Token[] = [];
   let depth = 0;
   let i = 0;
@@ -16,6 +16,7 @@ export function sqlTokens(sql: string, dialect?: string): Token[] {
     if (sql.startsWith("--", i) || (dialect === "mysql" && c === "#")) {
       const end = sql.indexOf("\n", i);
       i = end < 0 ? sql.length : end + 1;
+      comments?.push([tokenStart, i]);
     } else if (sql.startsWith("/*", i)) {
       let nesting = 1;
       i += 2;
@@ -28,6 +29,7 @@ export function sqlTokens(sql: string, dialect?: string): Token[] {
           i += 2;
         } else i++;
       }
+      comments?.push([tokenStart, i]);
     } else if ((c === "q" || c === "Q") && sql[i + 1] === "'" && dialect === "oracle") {
       const opening = sql[i + 2];
       const closing =
@@ -187,6 +189,8 @@ export function writesData(sql: string, dialect?: string): boolean {
       .map((line) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? "")
       .some((word) => word && !REDIS_READ.has(word));
   return splitSqlStatements(text, dialect).statements.some((statement) => {
+    const explained = explainedStatement(statement.text, dialect);
+    if (explained !== null) return !explained || writesData(explained, dialect);
     const words = sqlTokens(statement.text, dialect);
     const first = words[0]?.word;
     if (!first) return false;
@@ -196,23 +200,170 @@ export function writesData(sql: string, dialect?: string): boolean {
   });
 }
 
-export function scriptPolicyIssue(sql: string, dialect: string, managed: boolean): string | null {
-  for (const statement of splitSqlStatements(sql, dialect).statements) {
-    const words = sqlTokens(statement.text, dialect);
-    const first = words[0]?.word;
-    if (
-      ["COMMIT", "ROLLBACK", "ABORT"].includes(first) ||
-      (first === "START" && words[1]?.word === "TRANSACTION") ||
-      (first === "BEGIN" && dialect !== "oracle") ||
-      (first === "END" && dialect === "postgres")
-    )
-      return "Transaktionsbefehle im Skript bitte entfernen und die Transaktionswahl des Dialogs verwenden.";
-    if (
-      managed &&
-      ["mysql", "oracle", "clickhouse", "cassandra"].includes(dialect) &&
-      ["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE"].includes(first)
-    )
-      return "Dieses Skript enthält DDL mit implizitem Commit. Bitte vorhandene Transaktionen abschließen und Autocommit wählen.";
+const EXPLAINABLE_WORDS = new Set([
+  "SELECT",
+  "WITH",
+  "INSERT",
+  "UPDATE",
+  "DELETE",
+  "MERGE",
+  "REPLACE",
+  "CREATE",
+  "TABLE",
+  "VALUES",
+  "EXECUTE",
+  "DECLARE",
+  "CALL",
+]);
+
+function explainedStatement(text: string, dialect?: string): string | null {
+  const words = sqlTokens(text, dialect);
+  if (words[0]?.word !== "EXPLAIN") return null;
+  const index = words.findIndex(
+    (token, position) => position > 0 && token.depth === 0 && EXPLAINABLE_WORDS.has(token.word),
+  );
+  const options = words.slice(1, index < 0 ? undefined : index);
+  if (!options.some((token) => token.word === "ANALYZE" || token.word === "ANALYSE")) return null;
+  return index < 0 ? "" : text.slice(words[index].start);
+}
+
+export function analyzedSql(sql: string, dialect?: string): string {
+  if (dialect === "redis" || dialect === "mongodb") return sql;
+  const { statements } = splitSqlStatements(sql, dialect);
+  if (!statements.some((statement) => explainedStatement(statement.text, dialect))) return sql;
+  return statements
+    .map((statement) => explainedStatement(statement.text, dialect) || statement.text)
+    .map((text) => text.trim().replace(/;\s*$/, ""))
+    .join(";\n");
+}
+
+const TRANSACTION_CONTROL_MESSAGE =
+  "Transaktionsbefehle im Skript bitte entfernen und die Transaktionswahl des Dialogs verwenden.";
+const IMPLICIT_COMMIT_MESSAGE =
+  "Dieses Skript enthält DDL mit implizitem Commit. Bitte vorhandene Transaktionen abschließen und Autocommit wählen.";
+const QUERY_TRANSACTION_CONTROL_MESSAGE =
+  "Transaktionsbefehle bitte nicht im Editor ausführen, solange Transaktionen verwaltet werden. Commit und Rollback über das Transaktionspanel auslösen.";
+const QUERY_IMPLICIT_COMMIT_MESSAGE =
+  "Diese Anweisung löst einen impliziten Commit aus und kann nicht in einer verwalteten Transaktion laufen. Offene Transaktion über das Transaktionspanel abschließen oder DDL getrennt ausführen.";
+
+const IMPLICIT_COMMIT_WORDS: Record<string, Set<string>> = {
+  mysql: new Set([
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "TRUNCATE",
+    "GRANT",
+    "REVOKE",
+    "RENAME",
+    "LOCK",
+    "UNLOCK",
+    "ANALYZE",
+    "OPTIMIZE",
+    "REPAIR",
+    "FLUSH",
+    "INSTALL",
+    "UNINSTALL",
+  ]),
+  oracle: new Set([
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "TRUNCATE",
+    "GRANT",
+    "REVOKE",
+    "RENAME",
+    "COMMENT",
+    "ANALYZE",
+    "AUDIT",
+    "NOAUDIT",
+    "PURGE",
+    "FLASHBACK",
+  ]),
+  clickhouse: new Set(["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE"]),
+  cassandra: new Set(["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE"]),
+};
+
+const ROUTINE_WORDS = new Set(["PROC", "PROCEDURE", "TRIGGER", "FUNCTION"]);
+const GO_LINE = /^[ \t]*GO(?:[ \t]+\d+)?[ \t]*$/im;
+const END_COMMITS = new Set(["postgres", "sqlite", "sqlite_http"]);
+
+function definesRoutine(words: Token[]): boolean {
+  const first = words[0]?.word;
+  if (first !== "CREATE" && first !== "ALTER") return false;
+  const object = first === "CREATE" && words[1]?.word === "OR" ? words[3] : words[1];
+  return object !== undefined && ROUTINE_WORDS.has(object.word);
+}
+
+function controlsTransaction(words: Token[], dialect: string, managed: boolean): boolean {
+  const first = words[0]?.word;
+  const second = words[1]?.word;
+  if (
+    ["COMMIT", "ROLLBACK", "ABORT"].includes(first) ||
+    (first === "START" && second === "TRANSACTION") ||
+    (first === "PREPARE" && second === "TRANSACTION") ||
+    (first === "BEGIN" && !["oracle", "mssql"].includes(dialect)) ||
+    (first === "BEGIN" &&
+      dialect === "mssql" &&
+      ["TRAN", "TRANSACTION", "DISTRIBUTED"].includes(second)) ||
+    (first === "END" && END_COMMITS.has(dialect))
+  )
+    return true;
+  if (!managed) return false;
+  if (dialect === "mssql")
+    return words.some(
+      (token, index) =>
+        ["COMMIT", "ROLLBACK"].includes(token.word) ||
+        (token.word === "BEGIN" &&
+          ["TRAN", "TRANSACTION", "DISTRIBUTED"].includes(words[index + 1]?.word)),
+    );
+  if (dialect === "oracle" && ["BEGIN", "DECLARE"].includes(first))
+    return words.some((token) => ["COMMIT", "ROLLBACK"].includes(token.word));
+  return false;
+}
+
+function commitsImplicitly(words: Token[], dialect: string): boolean {
+  const first = words[0]?.word;
+  if (dialect === "mysql") {
+    if (["CREATE", "DROP"].includes(first) && words[1]?.word === "TEMPORARY") return false;
+    if (first === "SET" && words.some((token) => token.word === "AUTOCOMMIT")) return true;
   }
+  return IMPLICIT_COMMIT_WORDS[dialect]?.has(first) ?? false;
+}
+
+function transactionIssue(
+  sql: string,
+  dialect: string,
+  managed: boolean,
+): "control" | "implicit" | null {
+  if (dialect === "redis" || dialect === "mongodb") return null;
+  for (const statement of splitSqlStatements(sql, dialect).statements) {
+    if (dialect === "mssql") {
+      let routine = false;
+      for (const [index, batch] of statement.text.split(GO_LINE).entries()) {
+        if (index > 0) routine = false;
+        const words = sqlTokens(batch, dialect);
+        routine ||= definesRoutine(words);
+        if (!routine && controlsTransaction(words, dialect, managed)) return "control";
+      }
+      continue;
+    }
+    const words = sqlTokens(statement.text, dialect);
+    if (controlsTransaction(words, dialect, managed)) return "control";
+    if (managed && commitsImplicitly(words, dialect)) return "implicit";
+  }
+  return null;
+}
+
+export function scriptPolicyIssue(sql: string, dialect: string, managed: boolean): string | null {
+  const issue = transactionIssue(sql, dialect, managed);
+  if (issue === "control") return TRANSACTION_CONTROL_MESSAGE;
+  if (issue === "implicit") return IMPLICIT_COMMIT_MESSAGE;
+  return null;
+}
+
+export function managedQueryIssue(sql: string, dialect: string): string | null {
+  const issue = transactionIssue(sql, dialect, true);
+  if (issue === "control") return QUERY_TRANSACTION_CONTROL_MESSAGE;
+  if (issue === "implicit") return QUERY_IMPLICIT_COMMIT_MESSAGE;
   return null;
 }

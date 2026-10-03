@@ -106,87 +106,117 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       });
       await page.goto(`${process.env.L8DB_DASH_URL ?? "http://localhost:1420"}/dashboard`);
       await page.getByRole("button", { name: "Dashboard erstellen", exact: true }).click();
-      const navigation = page.getByRole("navigation", { name: "Arbeitsbereiche" });
-      expect(await navigation.getByRole("button").count()).toBe(2);
-      await page.getByRole("button", { name: "Ersten Chart hinzufügen", exact: true }).click();
-      await page.getByLabel("Datenquelle", { exact: true }).click();
+      await page.getByRole("button", { name: "Ersten Chart erstellen", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Dein neuer Chart" });
+      await dialog.getByLabel("Datenquelle", { exact: true }).click();
       await page.getByRole("option", { name: /monthly_sales/ }).click();
-      const field = (name: string) => page.locator(`[data-worksheet-field="${name}"]`);
-      const shelf = (name: string) => page.locator(`[data-field-shelf^="${name}"]`);
-      await field("revenue").dragTo(shelf("Zeilen"));
-      await field("month").dragTo(shelf("Spalten"));
-      await page.getByLabel("Chart-Titel", { exact: true }).fill("Umsatz pro Monat");
-      await field("country").dragTo(shelf("Farbe"));
-      await page.locator(".chart-surface").first().waitFor();
+      const field = (name: string) =>
+        dialog
+          .getByRole("complementary", { name: "Verfügbare Datenfelder" })
+          .getByRole("button", { name: new RegExp(`^${name} `) });
+      const zone = (name: string) => dialog.getByRole("region", { name, exact: true });
+      const drop = async (name: string, target: string) => {
+        await zone(target).scrollIntoViewIfNeeded();
+        await field(name).dragTo(zone(target));
+      };
+      await drop("revenue", "Kennzahlen");
+      await drop("month", "Aufteilung");
+      await dialog.getByLabel("Chart-Titel", { exact: true }).fill("Umsatz pro Monat");
+      await drop("country", "Zweite Aufteilung");
+      await dialog.locator(".chart-surface").first().waitFor();
       await page.screenshot({ path: "/tmp/l8db-tableau-fields.png" });
-      await field("country").dragTo(shelf("Filter"));
-      const filterEditor = page.getByRole("region", { name: "Filter für country" });
+      await drop("country", "Filter");
+      const filterEditor = dialog.getByRole("region", { name: "Filter für country" });
       await filterEditor.getByRole("checkbox", { name: "DE", exact: true }).check();
       await filterEditor.getByRole("button", { name: "Filter anwenden" }).click();
-      expect(await shelf("Filter").innerText()).toContain("DE");
-      await page.getByLabel("Änderung rückgängig machen", { exact: true }).click();
-      expect(await shelf("Filter").innerText()).not.toContain("DE");
-      await page.getByLabel("Änderung wiederholen", { exact: true }).click();
-      await field("revenue").dragTo(shelf("Filter"));
-      await page.getByLabel("Filter von", { exact: true }).fill("100");
-      await page.getByLabel("Filter bis", { exact: true }).fill("1000");
-      await page.getByRole("button", { name: "Filter anwenden" }).click();
-      await page.getByRole("button", { name: "Summe · revenue einstellen", exact: true }).click();
-      await page.getByLabel("Berechnung revenue", { exact: true }).click();
+      expect(await zone("Filter").innerText()).toContain("DE");
+      await drop("revenue", "Filter");
+      await dialog.getByLabel("Filter von", { exact: true }).fill("100");
+      await dialog.getByLabel("Filter bis", { exact: true }).fill("1000");
+      await dialog.getByRole("button", { name: "Filter anwenden" }).click();
+      expect(await zone("Filter").innerText()).toContain("1000");
+      await zone("Kennzahlen").getByLabel("Berechnung", { exact: true }).click();
       await page.getByRole("option", { name: "Durchschnitt", exact: true }).click();
-      await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: "Achsen tauschen", exact: true }).click();
-      expect(await shelf("Spalten").innerText()).toContain("Durchschnitt");
-      expect(await shelf("Zeilen").innerText()).toContain("month");
-      await page.getByRole("button", { name: "Duplizieren", exact: true }).click();
-      await page.getByRole("button", { name: /^revenue .*entfernen$/ }).click();
+      await dialog.getByRole("tab", { name: "Darstellung", exact: true }).click();
+      await dialog.getByRole("button", { name: /^Säulen/ }).click();
+      await dialog.getByRole("switch", { name: "Werte direkt am Chart zeigen" }).check();
+      await dialog.getByRole("button", { name: "Zum Dashboard hinzufügen", exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
+      expect(await page.locator(".react-grid-item").count()).toBe(1);
+
+      const editChart = async (index: number) => {
+        await page.getByRole("button", { name: "Chart bearbeiten" }).nth(index).click();
+        const editor = page.getByRole("dialog", { name: "Chart bearbeiten" });
+        await editor.waitFor();
+        return editor;
+      };
+      let editor = await editChart(0);
+      await editor.getByRole("button", { name: "Weitere Aktionen" }).click();
+      await page.getByRole("menuitem", { name: "Duplizieren" }).click();
+      await editor.waitFor({ state: "hidden" });
+      await page.locator(".react-grid-item").nth(1).waitFor();
+      editor = await editChart(1);
+      await editor.getByRole("button", { name: "Filter für revenue entfernen" }).first().click();
+      await editor.getByRole("button", { name: "Speichern", exact: true }).click();
+      await editor.waitFor({ state: "hidden" });
       await page.waitForTimeout(400);
-      const stored = await page.evaluate(
-        () => JSON.parse(localStorage.getItem("l8db-dashboards")!).state.dashboards[0],
-      );
-      const original = stored.datasets.find(
-        (d: { id: string }) => d.id === stored.widgets[0].datasetId,
-      );
-      const copied = stored.datasets.find(
-        (d: { id: string }) => d.id === stored.widgets[1].datasetId,
-      );
+      const dashboardState = () =>
+        page.evaluate(
+          () => JSON.parse(localStorage.getItem("l8db-dashboards")!).state.dashboards[0],
+        );
+      const datasetsOf = (board: {
+        widgets: { datasetId: string }[];
+        datasets: { id: string; simple: { filters: unknown[]; metrics: { agg: string }[] } }[];
+      }) => board.widgets.map((widget) => board.datasets.find((d) => d.id === widget.datasetId)!);
+      let stored = await dashboardState();
+      let [original, copied] = datasetsOf(stored);
       expect(original.simple.filters.length).toBe(3);
       expect(copied.simple.filters.length).toBe(1);
       expect(original.simple.metrics[0].agg).toBe("avg");
-      expect(stored.widgets[0].options.horizontal).toBe(true);
+      expect(stored.widgets[0].chart).toBe("column");
+      expect(stored.widgets[0].options.labels).toBe(true);
       expect(stored.widgets[0].datasetId).not.toBe(stored.widgets[1].datasetId);
-      await page.getByRole("button", { name: "Zum Dashboard →", exact: true }).click();
-      expect(await page.locator(".react-grid-item").count()).toBe(2);
+      await page.getByRole("button", { name: /^Rückgängig/ }).click();
+      await page.waitForTimeout(400);
+      [, copied] = datasetsOf(await dashboardState());
+      expect(copied.simple.filters.length).toBe(3);
+      await page.getByRole("button", { name: /^Wiederholen/ }).click();
+      await page.waitForTimeout(400);
+      [, copied] = datasetsOf(await dashboardState());
+      expect(copied.simple.filters.length).toBe(1);
+
       await page.getByLabel("Zur Ansicht wechseln", { exact: true }).click();
-      expect(await page.getByLabel("Widget-Einstellungen").count()).toBe(0);
+      expect(await page.getByRole("button", { name: "Chart bearbeiten" }).count()).toBe(0);
       expect(await page.locator(".widget-drag-handle").count()).toBe(0);
       await page.screenshot({ path: "/tmp/l8db-tableau-dashboard.png" });
-      await navigation.getByRole("button", { name: /^Charts/ }).click();
-      await page.getByRole("button", { name: "Chart hinzufügen", exact: true }).click();
-      await field("revenue").click();
-      await page.getByRole("button", { name: "Zum Chart hinzufügen", exact: true }).click();
-      await field("month").dblclick();
-      expect(await shelf("Spalten").innerText()).toContain("month");
-      expect(await shelf("Zeilen").innerText()).toContain("Summe");
-      await page.getByLabel("Änderung rückgängig machen", { exact: true }).hover();
-      await page.getByRole("tooltip", { name: "Änderung rückgängig machen" }).waitFor();
+      await page.getByLabel("Dashboard bearbeiten", { exact: true }).click();
+
+      editor = await editChart(0);
+      await editor.getByRole("button", { name: "Weitere Aktionen" }).click();
+      await page.getByRole("menuitem", { name: "In Sammlung speichern" }).click();
+      await editor.getByRole("button", { name: "Abbrechen", exact: true }).click();
+      await editor.waitFor({ state: "hidden" });
+
       await page.getByRole("button", { name: "Gespeicherte Charts", exact: true }).click();
       const chartsDrawer = page.getByRole("dialog", { name: "Gespeicherte Charts", exact: true });
-      await chartsDrawer.getByRole("button", { name: "Chart speichern", exact: true }).click();
       const rightResize = page.getByRole("separator", { name: "Breite von Gespeicherte Charts" });
       await rightResize.focus();
       await page.keyboard.press("ArrowLeft");
       expect(await rightResize.getAttribute("aria-valuenow")).toBe("420");
       await chartsDrawer.getByRole("button", { name: "Ins Dashboard laden", exact: true }).click();
+      editor = page.getByRole("dialog", { name: "Chart bearbeiten" });
+      await editor.getByRole("button", { name: "Abbrechen", exact: true }).click();
+      await editor.waitFor({ state: "hidden" });
       await page.waitForTimeout(400);
-      const savedState = await page.evaluate(
-        () => JSON.parse(localStorage.getItem("l8db-dashboards")!).state.dashboards[0],
-      );
-      expect(savedState.widgets.length).toBe(4);
-      expect(new Set(savedState.widgets.map((w: { datasetId: string }) => w.datasetId)).size).toBe(
-        4,
-      );
-      await page.getByRole("button", { name: "Dashboards", exact: true }).click();
+      stored = await dashboardState();
+      expect(stored.widgets.length).toBe(3);
+      expect(new Set(stored.widgets.map((w: { datasetId: string }) => w.datasetId)).size).toBe(3);
+
+      const openDashboards = async () => {
+        await page.getByRole("button", { name: "Weitere Dashboard-Aktionen" }).click();
+        await page.getByRole("menuitem", { name: "Dashboards verwalten" }).click();
+      };
+      await openDashboards();
       const leftResize = page.getByRole("separator", {
         name: "Breite von Dashboards",
         exact: true,
@@ -202,7 +232,7 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       await page.getByRole("button", { name: "Dashboards schließen" }).click();
       await page.waitForTimeout(400);
       await page.reload();
-      await page.getByRole("button", { name: "Dashboards", exact: true }).click();
+      await openDashboards();
       expect(await leftResize.getAttribute("aria-valuenow")).toBe("480");
       await page.getByRole("button", { name: "Dashboards schließen" }).click();
       await page.getByRole("button", { name: "Gespeicherte Charts", exact: true }).click();
@@ -218,7 +248,7 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
       await page.getByRole("button", { name: "Gespeicherte Charts", exact: true }).click();
-      await chartsDrawer.getByRole("button", { name: "Als Datei speichern", exact: true }).click();
+      await chartsDrawer.getByRole("button", { name: "Datei speichern", exact: true }).click();
       await page.waitForFunction(() =>
         localStorage.getItem("test.lastFile")?.endsWith(".chart.json"),
       );
@@ -230,7 +260,10 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       expect(chartFile.connectionId).toBeUndefined();
       await chartsDrawer.getByRole("button", { name: "Aus Datei laden", exact: true }).click();
       await chartsDrawer.waitFor({ state: "hidden" });
-      await page.getByRole("button", { name: "Dashboards", exact: true }).click();
+      editor = page.getByRole("dialog", { name: "Chart bearbeiten" });
+      await editor.getByRole("button", { name: "Abbrechen", exact: true }).click();
+      await editor.waitFor({ state: "hidden" });
+      await openDashboards();
       const dashboardDrawer = page.getByRole("dialog", { name: "Dashboards", exact: true });
       await dashboardDrawer
         .getByRole("button", { name: "Dashboard speichern", exact: true })
@@ -243,12 +276,12 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       const dashboardFile = await page.evaluate(() =>
         JSON.parse(localStorage.getItem(`test.file.${localStorage.getItem("test.lastFile")}`)!),
       );
-      expect(dashboardFile.widgets.length).toBe(5);
+      expect(dashboardFile.widgets.length).toBe(4);
       expect(dashboardFile.connectionId).toBeUndefined();
       await dashboardDrawer.getByRole("button", { name: "Aus Datei laden", exact: true }).click();
       await dashboardDrawer.waitFor({ state: "hidden" });
       await page.locator(".react-grid-item").first().waitFor();
-      expect(await page.locator(".react-grid-item").count()).toBe(5);
+      expect(await page.locator(".react-grid-item").count()).toBe(4);
       expect(errors).toEqual([]);
     } finally {
       await page.screenshot({ path: "/tmp/l8db-tableau-last.png" });

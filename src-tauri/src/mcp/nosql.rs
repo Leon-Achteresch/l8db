@@ -156,6 +156,7 @@ pub fn mongo_check(
     redactor: &Redactor,
     index: &SchemaIndex,
 ) -> Result<(), String> {
+    redactor.check_valid()?;
     let (name, target) = command.iter().next().ok_or("Leerer Befehl")?;
     let allowed = if write {
         MONGO_READ.contains(&name.as_str())
@@ -308,6 +309,21 @@ mod tests {
             },
         ];
         SchemaIndex::new(&columns, redactor, schemas)
+    }
+
+    #[test]
+    fn mongo_rejects_invalid_column_patterns() {
+        let redactor = Redactor::new(&McpConfig::default().redaction, &["*email*".into()]);
+        let index = index(&redactor, &[]);
+        let err = mongo_check(
+            &mongo_command("db.users.find({})").unwrap(),
+            false,
+            false,
+            &redactor,
+            &index,
+        )
+        .unwrap_err();
+        assert!(err.contains("*email*"), "{err}");
     }
 
     #[test]

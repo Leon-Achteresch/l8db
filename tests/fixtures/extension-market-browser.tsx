@@ -20,6 +20,7 @@ import { SandboxRuntime } from "../../src/lib/extensions/sandbox-runtime";
 const installed = new Map<string, InstalledExtension>();
 const secrets = new Map<string, string>();
 const requests: { url: string; body: string }[] = [];
+const results: unknown[] = [];
 
 const storage: ExtensionStorage = {
   list: async () => [...installed.values()],
@@ -67,7 +68,10 @@ const core: CoreServices = {
       status: 200,
       headers: {},
       body: JSON.stringify({
-        answers: { bottleneck: { type: "choice", choice: "scan", confidence: 0.82 } },
+        answers: {
+          bottleneck: { type: "choice", choice: "scan", confidence: 0.82 },
+          verdict: { type: "choice", choice: "improvable", confidence: 0.7 },
+        },
       }),
     };
   },
@@ -94,7 +98,7 @@ const plan: ExplainNode = {
   "Actual Rows": 5000,
 };
 
-Object.assign(window, { marketState: { installed, secrets, requests, manager } });
+Object.assign(window, { marketState: { installed, secrets, requests, results, manager } });
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <ExtensionHostContext.Provider value={manager}>
@@ -106,6 +110,9 @@ createRoot(document.getElementById("root") as HTMLElement).render(
       sql="SELECT secret FROM customers"
       connectionName="secret_db"
       databaseKind="postgres"
+      onExtensionResult={(result) => {
+        results.push(result);
+      }}
       onClose={() => undefined}
     />
     <ExtensionPrompts />

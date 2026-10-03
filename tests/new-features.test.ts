@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createNewFeatureStore, featureStorageKey, hasNewFeatures } from "../src/lib/new-features";
+import {
+  createFeatureDwell,
+  createNewFeatureStore,
+  featureStorageKey,
+  hasNewFeatures,
+} from "../src/lib/new-features";
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -52,5 +57,20 @@ describe("new feature discovery", () => {
     current.refresh();
     expect(current.getSnapshot().has("settings.data.transfer")).toBe(true);
     expect(createNewFeatureStore(storage, "0.7.1").getSnapshot().size).toBe(0);
+  });
+
+  test("view time accumulates across interrupted sightings", async () => {
+    const done: string[] = [];
+    const startDwell = createFeatureDwell(60, (id) => done.push(id));
+
+    const stop = startDwell("settings.data.transfer");
+    await Bun.sleep(40);
+    stop();
+    await Bun.sleep(40);
+    expect(done).toEqual([]);
+
+    startDwell("settings.data.transfer");
+    await Bun.sleep(40);
+    expect(done).toEqual(["settings.data.transfer"]);
   });
 });

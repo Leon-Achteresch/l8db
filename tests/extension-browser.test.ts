@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { chromium, webkit } from "playwright";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { chromium, webkit } from "playwright";
 import config from "../src-tauri/tauri.conf.json";
 
 test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
@@ -16,6 +15,9 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
         {
           name: "raw-worker",
           setup(build) {
+            build.onResolve({ filter: /^@\// }, (args) => ({
+              path: Bun.resolveSync(`./src/${args.path.slice(2)}`, process.cwd()),
+            }));
             build.onResolve({ filter: /\.js\?raw$/ }, (args) => ({
               path: resolve(args.resolveDir, args.path),
               namespace: "raw-worker",
@@ -30,10 +32,8 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
     });
     if (!bundle.success) throw new Error(bundle.logs.map(String).join("\n"));
     const source = await bundle.outputs[0].text();
-    const frame = await readFile(resolve("src/lib/extensions/sandbox-frame.js"), "utf8");
-    const frameHash = createHash("sha256").update(frame).digest("base64");
     const csp = Object.entries(config.app.security.csp)
-      .map(([key, value]) => `${key} ${value}${key === "script-src" ? ` 'sha256-${frameHash}'` : ""}`)
+      .map(([key, value]) => `${key} ${value}`)
       .join("; ");
     const server = Bun.serve({
       port: 0,
@@ -68,7 +68,21 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
       expect(result.vault).toEqual({
         stored: ["s3cret"],
         withoutWrite: 0,
-        loaded: [{ id: "c-1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod", password: "s3cret", profile: { id: "c-1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod" } }],
+        loaded: [
+          {
+            id: "c-1",
+            name: "Prod",
+            kind: "postgres",
+            connectionString: "postgres://app@db/prod",
+            password: "s3cret",
+            profile: {
+              id: "c-1",
+              name: "Prod",
+              kind: "postgres",
+              connectionString: "postgres://app@db/prod",
+            },
+          },
+        ],
       });
       expect(result.command).toBe(true);
       expect(result.eventSeen).toBe(true);

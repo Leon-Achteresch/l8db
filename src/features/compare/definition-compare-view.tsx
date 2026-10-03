@@ -59,6 +59,7 @@ type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definition
   sourceBase: string | null;
   onDraftChange: (value: string, sourceBaseline: string, targetBaseline: string) => void;
   onApplied: (side: "left" | "right") => void;
+  onReload: () => void;
   onDiscard: () => void;
   onlyDifferences: boolean;
   onOnlyDifferencesChange: (value: boolean) => void;
@@ -236,7 +237,12 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               >
                 Nur Unterschiede
               </DropdownMenuCheckboxItem>
-              <DropdownMenuItem onSelect={() => setReloadToken((token) => token + 1)}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  props.onReload();
+                  setReloadToken((token) => token + 1);
+                }}
+              >
                 <RefreshCwIcon className="size-3.5" />
                 Neu laden
               </DropdownMenuItem>

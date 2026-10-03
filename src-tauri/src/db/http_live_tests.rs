@@ -321,4 +321,5 @@ async fn libsql_live() {
         .unwrap_err();
     assert!(error.contains("no such table"), "{error}");
     db.drop_table("main", "l8db_people").await.unwrap();
+    eprintln!("L8DB_SMOKE_SQLITEHTTP_URL: ok");
 }

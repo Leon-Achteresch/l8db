@@ -43,5 +43,5 @@ export function prepareCellSql(
   const missing = refs.find((ref) => !values[ref.name]);
   if (missing) throw new Error(`Variable „${missing.label}“ ist nicht definiert.`);
   if (options.bindParams) return { sql, bound: buildParameterizedQuery(sql, values, options.kind) };
-  return { sql: inlineBindValues(sql, values) };
+  return { sql: inlineBindValues(sql, values, options.kind) };
 }

@@ -15,7 +15,10 @@ for (const kind of ["postgres", "oracle"] as const) {
         const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
         page.setDefaultTimeout(15000);
         const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("pageerror", (error) => {
+          if (error.message !== "ResizeObserver loop completed with undelivered notifications.")
+            errors.push(error.message);
+        });
         const calls: { sql: string; params: (string | null)[] }[] = [];
         const schema = kind === "oracle" ? "L8DB_MD_LAB" : "public";
         try {

@@ -23,7 +23,11 @@ export function DashboardTableList({ tables, hidden }: DashboardTableListProps) 
   });
 
   return (
-    <div ref={scrollerRef} data-slot="dashboard-table-list" className="max-h-80 overflow-auto">
+    <div
+      ref={scrollerRef}
+      data-slot="dashboard-table-list"
+      className="min-h-0 flex-1 overflow-auto"
+    >
       <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => {
           const table = tables[item.index];

@@ -109,7 +109,7 @@ export function mergeMcpConnections(
       name: connection.name,
       kind: connection.kind,
       connectionString: scrubUrlPassword(connection.connectionString),
-      schemas: connection.schemas ?? [],
+      schemas: connection.kind === "mongodb" ? [] : (connection.schemas ?? []),
       ssh: usesTunnel(connection),
       exposed: previous?.exposed ?? false,
       readOnly: previous?.readOnly ?? true,

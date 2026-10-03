@@ -104,14 +104,43 @@ const settingRanges: Record<string, [number, number]> = {
   editorLineHeight: [0.5, 5],
   editorMinimapScale: [1, 3],
 };
+const protectedSettings = new Set([
+  "crashReports",
+  "usageMetrics",
+  "autoUpdateCheck",
+  "autoUpdateInstall",
+  "skippedUpdateVersion",
+  "sshTrustNewHosts",
+  "sslDefaultMode",
+  "confirmDestructiveQueries",
+  "productionReadOnly",
+  "productionConfirmCommit",
+  "productionAutoRollback",
+  "transactionsEnabled",
+]);
 const settingKeys = Object.keys(useSettingsStore.getState()).filter(
   (key) =>
+    !protectedSettings.has(key) &&
     !key.startsWith("set") &&
     !key.startsWith("reset") &&
     typeof useSettingsStore.getState()[
       key as keyof ReturnType<typeof useSettingsStore.getState>
     ] !== "function",
 );
+
+function withoutProtectedSettings(value: unknown): unknown {
+  if (!record(() => true)(value)) return value;
+  const settings = (value as Record<string, unknown>).settings;
+  if (!record(() => true)(settings)) return value;
+  return {
+    ...(value as Record<string, unknown>),
+    settings: Object.fromEntries(
+      Object.entries(settings as Record<string, unknown>).filter(
+        ([key]) => !protectedSettings.has(key),
+      ),
+    ),
+  };
+}
 
 export function exportPortableWorkspace(): PortableWorkspace {
   const state = useSettingsStore.getState() as unknown as Record<string, unknown>;
@@ -132,11 +161,13 @@ export function exportPortableWorkspace(): PortableWorkspace {
 export function parsePortableWorkspace(source: string): PortableWorkspace {
   if (new TextEncoder().encode(source).length > 5 * 1024 * 1024)
     throw new Error("Arbeitsumgebung ist größer als 5 MiB.");
-  const value: unknown = JSON.parse(source, (key, entry) => {
-    if (["__proto__", "constructor", "prototype"].includes(key))
-      throw new Error("Ungültiger Schlüssel in der Arbeitsumgebung.");
-    return entry;
-  });
+  const value = withoutProtectedSettings(
+    JSON.parse(source, (key, entry) => {
+      if (["__proto__", "constructor", "prototype"].includes(key))
+        throw new Error("Ungültiger Schlüssel in der Arbeitsumgebung.");
+      return entry;
+    }),
+  );
   const current = useSettingsStore.getState() as unknown as Record<string, unknown>;
   const settings: Check = (candidate) =>
     record(() => true)(candidate) &&

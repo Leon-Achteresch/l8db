@@ -87,7 +87,7 @@ export function NotificationStack({
     return (
       <div
         className={cn(
-          "flex w-full max-w-[22rem] items-center justify-center gap-2 rounded-3xl bg-muted/70 px-5 py-8 text-sm font-medium text-muted-foreground",
+          "flex w-full max-w-[22rem] items-center justify-center gap-2 rounded-xl bg-muted/70 px-5 py-8 text-sm font-medium text-muted-foreground",
           className,
         )}
       >
@@ -170,7 +170,7 @@ export function NotificationStack({
       onKeyDown={handleKeyDown}
       onClick={handleClick}
       className={cn(
-        "relative z-10 block w-full max-w-[22rem] cursor-pointer rounded-3xl text-left text-foreground outline-none",
+        "relative z-10 block w-full max-w-[22rem] cursor-pointer rounded-xl text-left text-foreground outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
       )}
@@ -178,9 +178,7 @@ export function NotificationStack({
       {/* This invisible first card gives the button its compact intrinsic footprint. */}
       <span aria-hidden="true" className="invisible block p-3">
         <span className="block">
-          <span
-            className={cn("block rounded-2xl border border-transparent px-4", classNames?.card)}
-          >
+          <span className={cn("block rounded-xl border border-transparent px-4", classNames?.card)}>
             <NotificationCardContent item={primaryItem} classNames={classNames} />
           </span>
         </span>
@@ -193,7 +191,7 @@ export function NotificationStack({
           layout
           initial={false}
           transition={backgroundTransition}
-          className="absolute inset-0 rounded-3xl bg-muted"
+          className="absolute inset-0 rounded-xl bg-muted"
         />
         <span className={cn("relative z-10 grid gap-1", !isExpanded && "pb-2", classNames?.stack)}>
           {visibleItems.map((item, index) => {
@@ -212,7 +210,7 @@ export function NotificationStack({
                 }}
                 transition={cardTransition}
                 className={cn(
-                  "block rounded-2xl border border-border/60 bg-background px-4",
+                  "block rounded-xl border border-border/60 bg-background px-4",
                   classNames?.card,
                 )}
                 style={{

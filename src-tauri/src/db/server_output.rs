@@ -1,9 +1,8 @@
-use futures_util::TryStreamExt;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
-use tokio_postgres::{AsyncMessage, Client, Config, SimpleQueryMessage};
+use tokio_postgres::{AsyncMessage, Client, Config};
 
 use super::connection::tls_connector;
 use super::{map_pg_err, QueryResult};
@@ -123,55 +122,14 @@ pub async fn pg_run_query(
     sql: &str,
     read_only: bool,
 ) -> Result<QueryResult, String> {
-    let start = std::time::Instant::now();
     if read_only {
+        super::postgres::read_only_batch_guard(sql)?;
         client
-            .simple_query("BEGIN TRANSACTION READ ONLY")
+            .simple_query(super::postgres::READ_ONLY_BEGIN)
             .await
             .map_err(map_pg_err)?;
     }
-    let outcome = async {
-        let messages = client.simple_query_raw(sql).await.map_err(map_pg_err)?;
-        futures_util::pin_mut!(messages);
-
-        let mut columns: Vec<String> = Vec::new();
-        let mut rows: Vec<serde_json::Value> = Vec::new();
-        let mut rows_affected: Option<u64> = None;
-
-        while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
-            match msg {
-                SimpleQueryMessage::Row(row) => {
-                    if columns.is_empty() {
-                        columns = super::unique_column_names(
-                            row.columns().iter().map(|c| c.name().to_string()).collect(),
-                        );
-                    }
-                    let mut obj = serde_json::Map::new();
-                    for (i, col) in columns.iter().enumerate() {
-                        let val = row
-                            .get(i)
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .unwrap_or(serde_json::Value::Null);
-                        obj.insert(col.clone(), val);
-                    }
-                    rows.push(serde_json::Value::Object(obj));
-                }
-                SimpleQueryMessage::CommandComplete(count) => {
-                    rows_affected = Some(count);
-                }
-                _ => {}
-            }
-        }
-
-        Ok(QueryResult {
-            columns,
-            rows,
-            rows_affected,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
-        })
-    }
-    .await;
+    let outcome = super::postgres::run_simple_query(client, sql).await;
     if read_only {
         let _ = client.simple_query("ROLLBACK").await;
     }

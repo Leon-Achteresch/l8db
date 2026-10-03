@@ -50,5 +50,5 @@ It prints the JSON report on stdout. The report covers each statement's runs, er
 ## Tests
 
 - Unit tests: `bun test tests/perf-test.test.ts tests/perf-load.test.ts tests/workload.test.ts` and `cargo test --lib mcp::benchmark` (includes SQLite end-to-end cases).
-- Live database check: `L8DB_WORKLOAD_LIVE=1 bun test tests/workload-live.test.ts` builds the SQL in TypeScript, runs it through the real adapters via the ignored Rust test `live_plan`, and asserts statistics, timed runs and replay. `L8DB_WORKLOAD_LIVE_KINDS` selects families, and `L8DB_LIVE_<NAME>_URL` overrides each lab URL.
+- Live database check: `L8DB_WORKLOAD_LIVE=1 bun test tests/workload-live.test.ts` builds the SQL in TypeScript, runs it through the real adapters via the ignored Rust test `live_plan`, and asserts statistics, timed runs and replay. `L8DB_WORKLOAD_LIVE_KINDS` selects families, and `L8DB_LIVE_<NAME>_URL` overrides each lab URL. `bun run test:workload-live` starts the lab containers in batches (light families together, then Oracle, Cassandra and SQL Server each alone so SQL Server keeps its plan cache) and removes them afterwards; `L8DB_WORKLOAD_BATCHES` selects batches.
 - Binary check: after `cargo build`, `L8DB_BENCHMARK_E2E=1 bun test tests/benchmark-cli-e2e.test.ts` exercises `--mcp` and `--benchmark` on the debug binary.

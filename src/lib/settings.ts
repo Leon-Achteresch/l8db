@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type SqlKeywordCase = "upper" | "lower" | "preserve";
 export type UiDensity = "compact" | "normal" | "spacious";
@@ -348,3 +349,5 @@ export const useSettingsStore = create<SettingsState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.settings", () => void useSettingsStore.persist.rehydrate());

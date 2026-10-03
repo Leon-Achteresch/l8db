@@ -3,6 +3,7 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  collectExistingTables,
   collectTables,
   errorMessage,
   JSON_FILTERS,
@@ -126,7 +127,7 @@ export function useSchemaSnapshot() {
     setBusy(true);
     try {
       const snapshot = parseSnapshot(await readTextFile(path));
-      const collected = await collectTables(
+      const collected = await collectExistingTables(
         connection,
         database,
         snapshot.scope.schema,

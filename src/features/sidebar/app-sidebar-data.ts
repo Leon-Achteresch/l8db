@@ -26,7 +26,7 @@ export type AppSidebarNavItem = {
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, featureScope: "dashboard" },
     { title: "Übersicht", url: "/", icon: Home, available: (caps) => caps.overview },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
     {
@@ -52,6 +52,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       title: "ER-Diagramm",
       url: "/er-diagram",
       icon: Network,
+      featureScope: "er-diagram",
       available: (caps) => caps.foreign_keys,
     },
     { title: "Vergleich", url: "/compare", icon: GitCompare, featureScope: "compare" },

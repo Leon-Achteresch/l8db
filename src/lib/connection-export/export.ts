@@ -9,21 +9,42 @@ import {
   SECRET_PARAM,
 } from "./types";
 
-function stripSecretParams(query: string): string {
-  const kept = query
+function isSecretParam(pair: string): boolean {
+  const key = pair.split("=")[0] ?? "";
+  let decoded = key;
+  try {
+    decoded = decodeURIComponent(key);
+  } catch {
+    decoded = key;
+  }
+  return SECRET_PARAM.test(decoded);
+}
+
+export function splitSecretParams(value: string): { value: string; secrets: string | null } {
+  if (!value.includes("://")) return { value, secrets: null };
+  const hashIndex = value.indexOf("#");
+  const beforeHash = hashIndex < 0 ? value : value.slice(0, hashIndex);
+  const hash = hashIndex < 0 ? "" : value.slice(hashIndex);
+  const queryIndex = beforeHash.indexOf("?");
+  if (queryIndex < 0) return { value, secrets: null };
+  const pairs = beforeHash
+    .slice(queryIndex + 1)
     .split("&")
-    .filter((pair) => pair.length > 0)
-    .filter((pair) => {
-      const key = pair.split("=")[0] ?? "";
-      let decoded = key;
-      try {
-        decoded = decodeURIComponent(key);
-      } catch {
-        decoded = key;
-      }
-      return !SECRET_PARAM.test(decoded);
-    });
-  return kept.join("&");
+    .filter((pair) => pair.length > 0);
+  const secrets = pairs.filter(isSecretParam);
+  if (secrets.length === 0) return { value, secrets: null };
+  const kept = pairs.filter((pair) => !isSecretParam(pair)).join("&");
+  const base = beforeHash.slice(0, queryIndex);
+  return { value: kept ? `${base}?${kept}${hash}` : base + hash, secrets: secrets.join("&") };
+}
+
+export function withSecretParams(value: string, secrets: string | null): string {
+  if (!secrets || !value.includes("://") || splitSecretParams(value).secrets !== null) return value;
+  const hashIndex = value.indexOf("#");
+  const beforeHash = hashIndex < 0 ? value : value.slice(0, hashIndex);
+  const hash = hashIndex < 0 ? "" : value.slice(hashIndex);
+  const separator = !beforeHash.includes("?") ? "?" : beforeHash.endsWith("?") ? "" : "&";
+  return `${beforeHash}${separator}${secrets}${hash}`;
 }
 
 export function stripConnectionSecrets(value: string): string {
@@ -43,7 +64,11 @@ export function stripConnectionSecrets(value: string): string {
   const queryIndex = beforeHash.indexOf("?");
   if (queryIndex < 0) return beforeHash + hash;
   const base = beforeHash.slice(0, queryIndex);
-  const query = stripSecretParams(beforeHash.slice(queryIndex + 1));
+  const query = beforeHash
+    .slice(queryIndex + 1)
+    .split("&")
+    .filter((pair) => pair.length > 0 && !isSecretParam(pair))
+    .join("&");
   return query ? `${base}?${query}${hash}` : base + hash;
 }
 
@@ -97,6 +122,14 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
     color: connection.color ?? null,
     schemas: connection.schemas?.length ? [...connection.schemas] : null,
     showSingleSchemaSwitcher: connection.showSingleSchemaSwitcher ?? true,
+    environment: connection.environment ?? null,
+    readOnly: Boolean(connection.readOnly),
+    maskRules: (connection.maskRules ?? []).map((rule) => ({
+      name: rule.name,
+      pattern: rule.pattern,
+      enabled: rule.enabled,
+      mask: rule.mask ?? null,
+    })),
   };
 }
 

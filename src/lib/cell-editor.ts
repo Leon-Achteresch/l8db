@@ -72,12 +72,58 @@ export function validateCellDraft(draft: CellDraft, kind: CellEditorKind): CellD
   }
 }
 
-export function formatJsonDraft(text: string): string | null {
+const JSON_WHITESPACE = new Set([" ", "\t", "\n", "\r"]);
+
+function reformatJson(text: string, indent: number): string | null {
   try {
-    return JSON.stringify(JSON.parse(text), null, 2);
+    JSON.parse(text);
   } catch {
     return null;
   }
+  let out = "";
+  let depth = 0;
+  let index = 0;
+  const newline = () => (indent ? `\n${" ".repeat(indent * depth)}` : "");
+  while (index < text.length) {
+    const char = text[index];
+    if (char === '"') {
+      let end = index + 1;
+      while (text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+      out += text.slice(index, end + 1);
+      index = end + 1;
+    } else if (JSON_WHITESPACE.has(char)) {
+      index++;
+    } else if (char === "{" || char === "[") {
+      let next = index + 1;
+      while (JSON_WHITESPACE.has(text[next])) next++;
+      if (text[next] === "}" || text[next] === "]") {
+        out += char + text[next];
+        index = next + 1;
+      } else {
+        depth++;
+        out += char + newline();
+        index++;
+      }
+    } else if (char === "}" || char === "]") {
+      depth--;
+      out += newline() + char;
+      index++;
+    } else if (char === ",") {
+      out += `,${newline()}`;
+      index++;
+    } else if (char === ":") {
+      out += indent ? ": " : ":";
+      index++;
+    } else {
+      out += char;
+      index++;
+    }
+  }
+  return out;
+}
+
+export function formatJsonDraft(text: string): string | null {
+  return reformatJson(text, 2);
 }
 
 export function cellDraftToUpdate(draft: CellDraft): string | null {
@@ -88,11 +134,7 @@ export function cellDraftToUpdate(draft: CellDraft): string | null {
 function canonical(text: string | null, kind: CellEditorKind): string | null {
   if (text === null) return null;
   if (kind !== "json") return text;
-  try {
-    return JSON.stringify(JSON.parse(text));
-  } catch {
-    return text;
-  }
+  return reformatJson(text, 0) ?? text;
 }
 
 export function isCellDraftDirty(

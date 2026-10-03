@@ -12,7 +12,7 @@ import {
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { useSchemasQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { errorMessage, MAX_DATA_ROWS } from "./constants";
+import { dataCopyMessage, errorMessage, MAX_DATA_ROWS } from "./constants";
 
 export function useSchemaCopy(connection: SavedConnection | null) {
   const database = useActiveDatabase();
@@ -150,7 +150,7 @@ export function useSchemaCopy(connection: SavedConnection | null) {
         messages.push(`${name}: Struktur erstellt`);
         if (objectType === "table" && transferData) {
           try {
-            const rows = await copySchemaTableData(
+            const copied = await copySchemaTableData(
               connection.kind,
               url,
               sourceSchema,
@@ -159,7 +159,7 @@ export function useSchemaCopy(connection: SavedConnection | null) {
               limit,
               database ?? undefined,
             );
-            messages.push(`${name}: ${rows} Zeilen übernommen`);
+            messages.push(dataCopyMessage(name, copied));
           } catch (error) {
             failedData.push(name);
             messages.push(`${name}: Datentransfer abgebrochen — ${errorMessage(error)}`);
@@ -188,7 +188,7 @@ export function useSchemaCopy(connection: SavedConnection | null) {
     const stillFailed: string[] = [];
     for (const name of dataRetry) {
       try {
-        const rows = await copySchemaTableData(
+        const copied = await copySchemaTableData(
           connection.kind,
           url,
           sourceSchema,
@@ -197,7 +197,7 @@ export function useSchemaCopy(connection: SavedConnection | null) {
           limit,
           database ?? undefined,
         );
-        messages.push(`${name}: ${rows} Zeilen übernommen`);
+        messages.push(dataCopyMessage(name, copied));
       } catch (error) {
         stillFailed.push(name);
         messages.push(`${name}: Datentransfer abgebrochen — ${errorMessage(error)}`);

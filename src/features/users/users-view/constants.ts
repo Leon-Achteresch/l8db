@@ -10,6 +10,8 @@ export const TABLE_PRIVS = [
   "TRIGGER",
 ] as const;
 
+export const SEQUENCE_PRIVS = ["SELECT", "UPDATE"] as const;
+
 export const TABLE_PRIV_SHORT: Record<string, string> = {
   SELECT: "SEL",
   INSERT: "INS",

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/Leon-Achteresch/l8db/tree/main/docs
+    about: Read the documentation for database providers, connections, and other features.

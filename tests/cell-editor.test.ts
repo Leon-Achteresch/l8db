@@ -70,6 +70,24 @@ describe("formatJsonDraft", () => {
     expect(formatJsonDraft('{"a":1}')).toBe('{\n  "a": 1\n}');
     expect(formatJsonDraft("{")).toBeNull();
   });
+
+  test("behält große Zahlen und Dezimalstellen exakt", () => {
+    expect(formatJsonDraft('{"n": 9007199254740993, "a": [1, -12345678901234567890.5]}')).toBe(
+      '{\n  "n": 9007199254740993,\n  "a": [\n    1,\n    -12345678901234567890.5\n  ]\n}',
+    );
+    expect(formatJsonDraft('{"s": "a, b: {c}", "e": {}, "l": [ ]}')).toBe(
+      '{\n  "s": "a, b: {c}",\n  "e": {},\n  "l": []\n}',
+    );
+    expect(formatJsonDraft('"x\\"y"')).toBe('"x\\"y"');
+  });
+});
+
+describe("toCellDraft", () => {
+  test("rundet rohen JSON-Text mit großen Zahlen nicht", () => {
+    expect(toCellDraft('{"n": 9007199254740993}', "json").text).toBe(
+      '{\n  "n": 9007199254740993\n}',
+    );
+  });
 });
 
 describe("cellDraftToUpdate", () => {
@@ -95,6 +113,16 @@ describe("isCellDraftDirty", () => {
       false,
     );
     expect(isCellDraftDirty({ a: 1 }, { text: '{"a": 2}', isNull: false }, "json")).toBe(true);
+  });
+
+  test("erkennt Änderungen an Ziffern jenseits der JavaScript-Genauigkeit", () => {
+    const original = '{"n": 9007199254740993}';
+    expect(
+      isCellDraftDirty(original, { text: '{\n  "n": 9007199254740993\n}', isNull: false }, "json"),
+    ).toBe(false);
+    expect(
+      isCellDraftDirty(original, { text: '{"n": 9007199254740992}', isNull: false }, "json"),
+    ).toBe(true);
   });
 });
 

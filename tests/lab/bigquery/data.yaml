@@ -1,0 +1,23 @@
+projects:
+  - id: test
+    datasets:
+      - id: dataset1
+        tables:
+          - id: table_a
+            columns:
+              - name: id
+                type: INTEGER
+              - name: name
+                type: STRING
+              - name: created
+                type: TIMESTAMP
+            data:
+              - id: 1
+                name: alice
+                created: "2024-01-01T10:00:00Z"
+              - id: 2
+                name: bob
+                created: "2024-02-01T10:00:00Z"
+              - id: 3
+                name: carla
+                created: "2024-03-01T10:00:00Z"

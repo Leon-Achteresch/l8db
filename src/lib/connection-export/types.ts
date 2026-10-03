@@ -1,35 +1,52 @@
-import type { ConnectionTag, NetworkProxy, SshAuth, SshJumpHost } from "@/lib/connections";
+import type {
+  ConnectionEnvironment,
+  ConnectionTag,
+  NetworkProxy,
+  SshAuth,
+  SshJumpHost,
+} from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
+import type { MaskRule } from "@/lib/masking";
 
 export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
 
 export const CONNECTION_EXPORT_VERSION = 1;
 
-export const KINDS: DatabaseKind[] = [
-  "postgres",
-  "mysql",
-  "sqlite",
-  "mssql",
-  "clickhouse",
-  "mongodb",
-  "redis",
-  "oracle",
-  "cassandra",
-  "duckdb",
-  "odbc",
-  "elasticsearch",
-  "influxdb",
-  "sqlite_http",
-  "dynamodb",
-  "athena",
-  "bigquery",
-  "snowflake",
-];
+const KIND_SET: Record<DatabaseKind, true> = {
+  postgres: true,
+  mysql: true,
+  sqlite: true,
+  mssql: true,
+  clickhouse: true,
+  mongodb: true,
+  redis: true,
+  oracle: true,
+  cassandra: true,
+  duckdb: true,
+  odbc: true,
+  elasticsearch: true,
+  influxdb: true,
+  sqlite_http: true,
+  dynamodb: true,
+  athena: true,
+  bigquery: true,
+  snowflake: true,
+  s3: true,
+};
+
+export const KINDS = Object.keys(KIND_SET) as DatabaseKind[];
 
 export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];
 
+export const ENVIRONMENTS: ConnectionEnvironment[] = [
+  "development",
+  "test",
+  "staging",
+  "production",
+];
+
 export const SECRET_PARAM =
-  /^(password|passwd|pwd|pass|token|secret|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
+  /^(password|passwd|pwd|pass|token|secret|api[_-]?key|api[_-]?token|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
 
 export interface ExportedSsh {
   host: string;
@@ -56,6 +73,9 @@ export interface ExportedConnection {
   color: string | null;
   schemas: string[] | null;
   showSingleSchemaSwitcher: boolean;
+  environment?: ConnectionEnvironment | null;
+  readOnly?: boolean;
+  maskRules?: MaskRule[];
 }
 
 export interface ConnectionExportFile {

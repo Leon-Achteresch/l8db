@@ -1,0 +1,72 @@
+name: Prepare release PR
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - packaging/**
+  workflow_dispatch:
+    inputs:
+      bump:
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      version:
+        description: Optional explicit stable version
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-pr-main
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'Leon-Achteresch/l8db' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - name: Prepare checked-in version and release notes
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BUMP: ${{ inputs.bump || 'auto' }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node .github/scripts/release-plan.mjs prepare
+      - name: Check release PR credentials
+        if: steps.plan.outputs.changed == 'true'
+        env:
+          RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PR_TOKEN" ]; then
+            echo '::error::RELEASE_PR_TOKEN fehlt. Einrichtung siehe .github/RELEASING.md.'
+            exit 1
+          fi
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        if: steps.plan.outputs.changed == 'true'
+        with:
+          token: ${{ secrets.RELEASE_PR_TOKEN }}
+          base: main
+          branch: automation/release
+          add-paths: |
+            package.json
+            src-tauri/Cargo.toml
+            src-tauri/Cargo.lock
+            src-tauri/tauri.conf.json
+            CHANGELOG.md
+            .github/release-plan.json
+          commit-message: 'chore(release): prepare v${{ steps.plan.outputs.version }}'
+          title: 'Release v${{ steps.plan.outputs.version }}'
+          body: |
+            Legt Version und Release-Notes vor dem Build im Repository fest.
+            Der Merge startet die geprüfte, signierte Veröffentlichung dieses Quellstands.
+            Die regulären Pflichtchecks und Reviews für main bleiben aktiv.

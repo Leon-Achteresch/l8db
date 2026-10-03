@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import {
+  platformArtifacts,
+  publicAssetUrl,
+  requiredArtifacts,
+} from "../.github/scripts/release-artifacts.mjs";
 import { normalizeManifest, verifyRelease } from "../.github/scripts/verify-release.mjs";
 
 function release() {
-  const files = {
-    "darwin-aarch64": "l8db.app.tar.gz",
-    "darwin-x86_64": "l8db.app.tar.gz",
-    "linux-x86_64": "l8db.AppImage",
-    "windows-x86_64": "l8db-setup.exe",
-  };
+  const files = platformArtifacts("0.3.0");
   return {
     manifest: {
       version: "0.3.0",
@@ -15,16 +15,13 @@ function release() {
         Object.entries(files).map(([platform, name]) => [
           platform,
           {
-            url: `https://github.com/Leon-Achteresch/l8db/releases/download/v0.3.0/${name}`,
+            url: publicAssetUrl("0.3.0", name),
             signature: "signed",
           },
         ]),
       ),
     },
-    assets: [
-      "latest.json",
-      ...new Set(Object.values(files).flatMap((name) => [name, `${name}.sig`])),
-    ].map((name) => ({ name })),
+    assets: ["latest.json", ...requiredArtifacts("0.3.0")].map((name) => ({ name, size: 100 })),
   };
 }
 
@@ -40,7 +37,7 @@ describe("release publication gate", () => {
   });
   test("rejects missing installers and detached signatures", () => {
     const { manifest, assets } = release();
-    for (const name of ["l8db.AppImage", "l8db.AppImage.sig"]) {
+    for (const name of ["l8db_0.3.0_amd64.AppImage", "l8db_0.3.0_amd64.AppImage.sig"]) {
       expect(() =>
         verifyRelease(
           manifest,
@@ -72,7 +69,34 @@ describe("release publication gate", () => {
     normalizeManifest(manifest, withIds, "0.3.0");
     expect(() => verifyRelease(manifest, withIds, "0.3.0")).not.toThrow();
     expect(manifest.platforms["windows-x86_64"].url).toBe(
-      "https://github.com/Leon-Achteresch/l8db/releases/download/v0.3.0/l8db-setup.exe",
+      "https://github.com/Leon-Achteresch/l8db/releases/download/v0.3.0/l8db_0.3.0_x64-setup.exe",
     );
+  });
+  test("rejects empty assets, duplicate names and cross-platform installers", () => {
+    const { manifest, assets } = release();
+    expect(() =>
+      verifyRelease(
+        manifest,
+        assets.map((asset) => ({ ...asset, size: 0 })),
+        "0.3.0",
+      ),
+    ).toThrow("Empty release asset");
+    expect(() => verifyRelease(manifest, [...assets, assets[0]], "0.3.0")).toThrow(
+      "Duplicate release asset",
+    );
+    manifest.platforms["darwin-aarch64"].url = manifest.platforms["windows-x86_64"].url;
+    expect(() => verifyRelease(manifest, assets, "0.3.0")).toThrow("architecture");
+  });
+  test("requires direct-download packages as well as updater packages", () => {
+    const { manifest, assets } = release();
+    for (const extension of [".dmg", ".msi", ".deb", ".rpm"]) {
+      expect(() =>
+        verifyRelease(
+          manifest,
+          assets.filter((asset) => !asset.name.endsWith(extension)),
+          "0.3.0",
+        ),
+      ).toThrow("Missing release artifact");
+    }
   });
 });

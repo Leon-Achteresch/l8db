@@ -51,7 +51,9 @@ const TYPE_HEADS = new Set([
 ]);
 
 const NUMERIC_TYPES =
-  /^(smallint|integer|int|int2|int4|int8|bigint|numeric|decimal|real|double|float|float4|float8|serial|money)/i;
+  /^(smallint|integer|int|int2|int4|int8|bigint|numeric|decimal|real|double|float|float4|float8|serial|money|number|binary_float|binary_double)/i;
+
+const ORACLE_SIZED_TYPES = /^(varchar2|nvarchar2|varchar|char|nchar|raw)$/i;
 
 export function splitTopLevel(input: string): string[] {
   const parts: string[] = [];
@@ -124,15 +126,27 @@ export function buildProcedureCall(
   params: ProcedureParam[],
   values: Record<string, string>,
 ): string {
-  const args = params
-    .filter((param) => param.mode !== "OUT")
-    .map((param, index) => {
-      const key = param.name || `p${index + 1}`;
-      return formatParamValue(param.type, values[key] ?? "");
-    });
+  const declarations: string[] = [];
+  let inputIndex = 0;
+  const args = params.map((param, index) => {
+    let value: string | null = null;
+    if (param.mode !== "OUT") {
+      inputIndex += 1;
+      value = formatParamValue(param.type, values[param.name || `p${inputIndex}`] ?? "");
+    }
+    if (dialect !== "oracle" || param.mode === "IN" || param.mode === "VARIADIC")
+      return value ?? "NULL";
+    const variable = `v${index + 1}`;
+    const type = ORACLE_SIZED_TYPES.test(param.type.trim())
+      ? `${param.type.trim()}(32767)`
+      : param.type.trim();
+    declarations.push(`${variable} ${type}${value === null ? "" : ` := ${value}`};`);
+    return variable;
+  });
   const target = `"${schema.replace(/"/g, '""')}"."${name.replace(/"/g, '""')}"`;
   if (dialect === "oracle") {
-    return `BEGIN ${target}(${args.join(", ")}); END;`;
+    const declare = declarations.length ? `DECLARE ${declarations.join(" ")} ` : "";
+    return `${declare}BEGIN ${target}(${args.join(", ")}); END;`;
   }
   return `CALL ${target}(${args.join(", ")})`;
 }

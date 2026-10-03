@@ -3,6 +3,8 @@ import { chromium } from "playwright";
 import { installDebuggerMock } from "./fixtures/debugger";
 import { seedApp } from "./fixtures/perf-app";
 
+const baseUrl = process.env.L8DB_DEBUG_BROWSER_URL ?? "http://localhost:1420";
+
 test.skipIf(!process.env.L8DB_DEBUG_BROWSER)(
   "debugger launches, steps, filters variables and stops through the routine UI",
   async () => {
@@ -13,7 +15,7 @@ test.skipIf(!process.env.L8DB_DEBUG_BROWSER)(
       page.on("pageerror", (e) => errors.push(e.message));
       await seedApp(page, 1);
       await page.addInitScript(installDebuggerMock);
-      await page.goto("http://localhost:1420/functions/public/debug_sample?oid=%2210000%22");
+      await page.goto(`${baseUrl}/functions/public/debug_sample?oid=%2210000%22`);
       await page.getByRole("button", { name: "Debuggen", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await dialog.locator(".monaco-editor .view-lines").click();
@@ -63,7 +65,7 @@ test.skipIf(!process.env.L8DB_DEBUG_BROWSER)(
       const page = await browser.newPage();
       await seedApp(page, 1);
       await page.addInitScript(installDebuggerMock);
-      await page.goto("http://localhost:1420/functions/public/debug_sample?oid=%2210000%22");
+      await page.goto(`${baseUrl}/functions/public/debug_sample?oid=%2210000%22`);
       await page.evaluate(() => {
         Object.assign(window, { debugAvailable: false });
       });

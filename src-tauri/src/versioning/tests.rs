@@ -208,6 +208,19 @@ fn team_configuration_rejects_secrets_and_local_profile_fields() {
 }
 
 #[tokio::test]
+async fn team_configuration_is_absent_in_a_repository_without_commits() {
+    let root = temp();
+    git(&root, &["init", "-q"]).await.unwrap();
+    assert_eq!(team::committed(&root).await.unwrap(), None);
+    fs::create_dir_all(root.join("database")).unwrap();
+    fs::write(root.join(team::PATH), team_fixture().to_string()).unwrap();
+    assert!(team::committed(&root)
+        .await
+        .unwrap_err()
+        .contains("offene Git"));
+}
+
+#[tokio::test]
 async fn team_configuration_is_cloneable_and_runtime_updates_leave_git_clean() {
     let root = temp();
     handle(request(&root, "init")).await.unwrap();

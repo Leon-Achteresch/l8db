@@ -7,7 +7,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { useTourStore } from "@/lib/tour/store";
 
 export function FeatureVideoHost() {
-  const { items } = useFeatureVideos();
+  const { items, version } = useFeatureVideos();
   const { activeId, manual, sessionUsed, history, open, close } = useFeatureVideoStore();
   const enabled = useSettingsStore((s) => s.autoFeatureVideos);
   const onboardingDone = useSettingsStore((s) => s.onboardingDone);
@@ -79,8 +79,8 @@ export function FeatureVideoHost() {
   const index = items.findIndex((item) => item.id === activeId);
   const item = items[index];
   useEffect(() => {
-    if (activeId && !item) close();
-  }, [activeId, item, close]);
+    if (activeId && !item && version !== null) close();
+  }, [activeId, item, version, close]);
   if (!item) return null;
   return (
     <FeatureVideoCard

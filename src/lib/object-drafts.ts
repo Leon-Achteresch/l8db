@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface ObjectDraft {
   key: string;
@@ -40,3 +41,5 @@ export const useObjectDrafts = create<DraftsState>()(
     { name: "l8db.object-drafts", partialize: (state) => ({ drafts: state.drafts }) },
   ),
 );
+
+syncAcrossWindows("l8db.object-drafts", () => void useObjectDrafts.persist.rehydrate());

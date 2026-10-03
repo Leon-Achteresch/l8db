@@ -1,6 +1,7 @@
 import type { SavedConnection } from "@/lib/connections";
 import type { QueryResult } from "@/lib/db";
 import { executeInTransaction, listTableColumnsDetailed } from "@/lib/db";
+import { sqlTokens } from "@/lib/sql-safety";
 import { splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import type { TransactionChange } from "@/lib/transactions";
@@ -30,10 +31,25 @@ function statement(sql: string) {
   return sql.trim().replace(/;\s*$/, "").trim();
 }
 
+function withoutComments(sql: string, kind: SavedConnection["kind"]): string | null {
+  const comments: [number, number][] = [];
+  sqlTokens(sql, kind, comments);
+  let out = "";
+  let cursor = 0;
+  for (const [start, end] of comments) {
+    if (/^\/\*[!+]/.test(sql.slice(start, start + 3))) return null;
+    out += `${sql.slice(cursor, start)} `;
+    cursor = end;
+  }
+  return out + sql.slice(cursor);
+}
+
 function plan(sql: string, kind: SavedConnection["kind"]) {
   const split = splitSqlStatements(sql, kind);
   if (split.unterminated || split.statements.length !== 1) return null;
-  const clean = statement(sql);
+  const text = withoutComments(split.statements[0].text, kind);
+  if (text === null) return null;
+  const clean = statement(text);
   if (
     clean.length > 20_000 ||
     /\bON\s+(?:CONFLICT|DUPLICATE\s+KEY)\b/i.test(clean) ||
@@ -121,11 +137,11 @@ function snapshotQuery(
   }
   if (kind === "oracle") {
     if (lock) {
-      return `SELECT * FROM ${target} WHERE ${where ? `(${where}) AND ` : ""}ROWNUM <= ${limit} FOR UPDATE`;
+      return `SELECT * FROM ${target} WHERE ${where ? `(${where}\n) AND ` : ""}ROWNUM <= ${limit} FOR UPDATE`;
     }
-    return `SELECT * FROM ${target}${where ? ` WHERE ${where}` : ""} FETCH FIRST ${limit} ROWS ONLY`;
+    return `SELECT * FROM ${target}${where ? ` WHERE ${where}\n` : ""} FETCH FIRST ${limit} ROWS ONLY`;
   }
-  return `SELECT * FROM ${target}${where ? ` WHERE ${where}` : ""} LIMIT ${limit}${lock && kind === "mysql" ? " FOR UPDATE" : ""}`;
+  return `SELECT * FROM ${target}${where ? ` WHERE ${where}\n` : ""} LIMIT ${limit}${lock && kind === "mysql" ? " FOR UPDATE" : ""}`;
 }
 
 function insertedRows(
@@ -455,7 +471,7 @@ export async function executeWithTransactionChanges(
     let keys: string[] = [];
     if (parsed.type === "update") {
       const selected = await internal(
-        `SELECT * FROM ${parsed.target}${parsed.where ? ` WHERE ${parsed.where}` : ""} LIMIT 101 FOR UPDATE`,
+        `SELECT * FROM ${parsed.target}${parsed.where ? ` WHERE ${parsed.where}\n` : ""} LIMIT 101 FOR UPDATE`,
       );
       before = selected.rows;
       if (before.length > 100) {
@@ -474,7 +490,7 @@ export async function executeWithTransactionChanges(
         }
       }
     }
-    const result = await internal(`${parsed.clean} RETURNING *`);
+    const result = await internal(`${parsed.clean}\nRETURNING *`);
     applied = true;
     await internal(`RELEASE SAVEPOINT ${savepoint}`);
     let changes: Change[] = [];

@@ -3,16 +3,19 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     target-branch: development
+    labels: [dependencies, github_actions, "area:ci"]
     schedule:
       interval: weekly
   - package-ecosystem: bun
     directory: /
     target-branch: development
+    labels: [dependencies, javascript, "area:frontend"]
     schedule:
       interval: weekly
   - package-ecosystem: cargo
     directory: /src-tauri
     target-branch: development
+    labels: [dependencies, rust, "area:backend"]
     schedule:
       interval: weekly
     ignore:

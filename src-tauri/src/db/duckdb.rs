@@ -316,7 +316,7 @@ impl DatabaseAdapter for DuckdbAdapter {
     async fn list_schemas(&self) -> Result<Vec<String>, String> {
         Ok(self
             .rows(
-                "SELECT schema_name FROM duckdb_schemas() WHERE NOT internal ORDER BY schema_name"
+                "SELECT schema_name FROM duckdb_schemas() WHERE NOT internal OR (schema_name = 'main' AND database_name = current_database()) ORDER BY schema_name"
                     .to_string(),
             )
             .await?
@@ -536,10 +536,10 @@ impl DatabaseAdapter for DuckdbAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         let ddl = format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
+            "CREATE OR REPLACE VIEW {}.{} {}",
             quote(schema),
             quote(view),
-            body
+            super::view_ddl::view_ddl_rest(body)
         );
         self.run(move |c| {
             c.execute_batch("BEGIN").map_err(map_err)?;
@@ -772,7 +772,7 @@ impl DatabaseAdapter for DuckdbAdapter {
                 .map(|m| m.len() as i64)
                 .unwrap_or(0)
         };
-        let rows = self.rows("SELECT s.schema_name, COUNT(t.table_name) FROM duckdb_schemas() s LEFT JOIN duckdb_tables() t ON t.schema_name = s.schema_name AND NOT t.internal WHERE NOT s.internal GROUP BY s.schema_name ORDER BY s.schema_name".to_string()).await?;
+        let rows = self.rows("SELECT s.schema_name, COUNT(t.table_name) FROM duckdb_schemas() s LEFT JOIN duckdb_tables() t ON t.schema_name = s.schema_name AND NOT t.internal WHERE NOT s.internal OR (s.schema_name = 'main' AND s.database_name = current_database()) GROUP BY s.schema_name ORDER BY s.schema_name".to_string()).await?;
         Ok(DatabaseOverview {
             database: self.path.clone(),
             size_bytes,
@@ -794,6 +794,30 @@ mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn main_schema_is_listed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("schemas.duckdb");
+        let adapter = DuckdbAdapter::new(
+            &format!("duckdb:{}?mode=rwc", path.display()),
+            create_pool_state(),
+            "schemas".into(),
+        )
+        .unwrap();
+        adapter
+            .exec("CREATE TABLE items (id INTEGER); CREATE SCHEMA extra".into())
+            .await
+            .unwrap();
+        assert_eq!(adapter.list_schemas().await.unwrap(), ["extra", "main"]);
+        let overview = adapter.get_database_overview().await.unwrap();
+        let counts: Vec<_> = overview
+            .schemas
+            .iter()
+            .map(|s| (s.schema.as_str(), s.table_count))
+            .collect();
+        assert_eq!(counts, [("extra", 0), ("main", 1)]);
+    }
 
     #[tokio::test]
     async fn foreign_keys_and_constraint_columns_are_listed() {

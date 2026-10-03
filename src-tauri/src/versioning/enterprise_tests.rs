@@ -88,6 +88,12 @@ async fn enterprise_controls_and_executor_locks() {
             project_id: "enterprise-edge".into(),
             read_only: false,
         };
+        if kind == DatabaseKind::Postgres {
+            let _ = db::create_adapter_from_string(kind, raw, None, pool.clone())
+                .unwrap()
+                .execute_query("CREATE DATABASE l8db_versioning_edge")
+                .await;
+        }
         let adapter = connection.adapter(pool.clone()).unwrap();
         if kind == DatabaseKind::Postgres {
             adapter

@@ -112,7 +112,7 @@ export function SlideActionButton({
     <div
       ref={trackRef}
       className={cn(
-        "relative flex h-16 w-72 items-center overflow-hidden rounded-2xl bg-primary/10 p-1",
+        "relative flex h-16 w-72 items-center overflow-hidden rounded-xl bg-primary/10 p-1",
         "ring-1 ring-primary/10",
         TOUCH_GESTURE_CONTENT_CLASS,
         className,

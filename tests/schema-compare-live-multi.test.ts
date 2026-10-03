@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -628,11 +628,13 @@ let fileCounter = 0;
 
 function sqliteFile(): SavedConnection {
   fileCounter += 1;
+  const path = join(SQLITE_DIR, `f${fileCounter}.db`);
+  writeFileSync(path, "");
   return {
     ...LITE_A,
     id: `sc-lite-${fileCounter}`,
     name: `SQLite ${fileCounter}`,
-    connectionString: join(SQLITE_DIR, `f${fileCounter}.db`),
+    connectionString: path,
   };
 }
 

@@ -6,12 +6,14 @@ import {
   type SshJumpHost,
 } from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
+import { MASK_MODES, type MaskRule } from "@/lib/masking";
 import { isToadExport, parseToadExport } from "@/lib/toad-import";
 import { stripConnectionSecrets } from "./export";
 import { toCandidate } from "./resolve";
 import {
   CONNECTION_EXPORT_FORMAT,
   CONNECTION_EXPORT_VERSION,
+  ENVIRONMENTS,
   type ExportedConnection,
   type ExportedSsh,
   KINDS,
@@ -110,6 +112,36 @@ function parseProxy(value: unknown): NetworkProxy | null | string {
   };
 }
 
+function parseMaskRules(value: unknown[]): MaskRule[] {
+  return value
+    .filter(isRecord)
+    .filter(
+      (rule) =>
+        typeof rule.name === "string" &&
+        typeof rule.pattern === "string" &&
+        rule.pattern.trim().length > 0,
+    )
+    .map((rule) => ({
+      name: String(rule.name),
+      pattern: String(rule.pattern),
+      enabled: rule.enabled !== false,
+      mask: MASK_MODES.find((mode) => mode.value === rule.mask)?.value ?? null,
+    }));
+}
+
+function parseSafety(value: Record<string, unknown>): Partial<ExportedConnection> {
+  return {
+    ...(Object.hasOwn(value, "environment")
+      ? {
+          environment:
+            ENVIRONMENTS.find((environment) => environment === value.environment) ?? null,
+        }
+      : {}),
+    ...(typeof value.readOnly === "boolean" ? { readOnly: value.readOnly } : {}),
+    ...(Array.isArray(value.maskRules) ? { maskRules: parseMaskRules(value.maskRules) } : {}),
+  };
+}
+
 function parseProfile(value: unknown): ExportedConnection | string {
   if (!isRecord(value)) return "Eintrag ist kein Objekt.";
   const name = typeof value.name === "string" ? value.name.trim() : "";
@@ -152,6 +184,7 @@ function parseProfile(value: unknown): ExportedConnection | string {
       ? value.schemas.filter((entry): entry is string => typeof entry === "string" && entry !== "")
       : null,
     showSingleSchemaSwitcher: value.showSingleSchemaSwitcher !== false,
+    ...parseSafety(value),
   };
 }
 

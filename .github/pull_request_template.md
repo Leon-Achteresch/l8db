@@ -1,14 +1,18 @@
 ## What
 
-<!-- What does this change? One or two sentences. -->
+Describe the problem and the resulting behavior in one or two sentences.
+
+Use a Conventional Commit title, such as `fix(query): preserve editor selection` or
+`feat(storage): add bucket search`. Labels are derived from the title and changed files.
+See [the automation rules](.github/METADATA.md).
 
 ## Why
 
-<!-- Which problem does it solve? Link the issue if there is one: Closes #123 -->
+Explain why this change is needed. Link a related issue with `Closes #123` when appropriate.
 
 ## How tested
 
-<!-- What did you actually run or click? -->
+Describe the checks you ran and any manual verification. Check only the items you completed.
 
 - [ ] `bunx biome check ./src`
 - [ ] `bun run build`
@@ -20,4 +24,9 @@
 
 - [ ] Commit subjects follow Conventional Commits (`feat:`, `fix:`, `docs:`, …) — the release changelog is generated from them
 - [ ] Docs in `docs/` updated if behaviour changed
-- [ ] `CHANGELOG.md` `[Unreleased]` section updated if user-facing changes ship
+- [ ] New user-facing features registered in `src/lib/new-features.ts` and connected to their UI
+- [ ] Breaking changes and migration steps described, if applicable
+
+## Screenshots
+
+Include before/after screenshots or a recording for UI changes, if applicable.

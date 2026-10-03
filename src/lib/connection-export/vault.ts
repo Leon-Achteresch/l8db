@@ -1,9 +1,10 @@
+import type { HostGroupRule } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
 import { extractUrlPassword, injectUrlPassword, scrubUrlPassword } from "@/lib/secrets";
 import type { Json, VaultConnection } from "../../../packages/extension-api/src";
 import { toExportedConnection } from "./export";
 import { parseConnectionImport } from "./parse";
-import { resolveImport } from "./resolve";
+import { keepRuleProduction, resolveImport } from "./resolve";
 import { CONNECTION_EXPORT_FORMAT, CONNECTION_EXPORT_VERSION } from "./types";
 
 export function toVaultConnection(
@@ -31,14 +32,30 @@ export interface VaultMerge {
   passwords: Map<string, string>;
 }
 
+function strongerProtection(local: SavedConnection, remote: SavedConnection) {
+  const rules = [...(local.maskRules ?? [])];
+  for (const rule of remote.maskRules ?? []) {
+    if (!rules.some((entry) => entry.pattern === rule.pattern)) rules.push(rule);
+  }
+  return {
+    environment:
+      local.environment === "production"
+        ? local.environment
+        : (remote.environment ?? local.environment ?? null),
+    readOnly: Boolean(local.readOnly || remote.readOnly),
+    maskRules: rules,
+  };
+}
+
 function withSecret(item: VaultConnection): string {
-  if (!item.connectionString.includes("://") || !item.password) return item.connectionString;
+  if (!item.password) return item.connectionString;
   return injectUrlPassword(item.connectionString, item.password);
 }
 
 export function mergeVaultConnections(
   items: VaultConnection[],
   existing: SavedConnection[],
+  rules?: HostGroupRule[],
 ): VaultMerge {
   const result: VaultMerge = { added: [], updated: [], skipped: [], passwords: new Map() };
   const valid = items.filter((item) => {
@@ -70,12 +87,21 @@ export function mergeVaultConnections(
       [{ ...candidate, duplicateOf: null }],
       new Set([candidate.index]),
       "skip",
+      rules,
     );
     const connectionString = withSecret(item);
     const target = candidate.duplicateOf;
-    const next: SavedConnection = target
-      ? { ...target, ...resolved, id: target.id, connectionString, vault: true }
+    const merged: SavedConnection = target
+      ? {
+          ...target,
+          ...resolved,
+          ...strongerProtection(target, resolved),
+          id: target.id,
+          connectionString,
+          vault: true,
+        }
       : { ...resolved, connectionString, vault: true };
+    const next = keepRuleProduction(merged, rules);
     if (target) result.updated.push(next);
     else result.added.push(next);
     if (item.password) result.passwords.set(next.id, item.password);

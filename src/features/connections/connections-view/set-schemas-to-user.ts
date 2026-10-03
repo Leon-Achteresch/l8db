@@ -1,12 +1,19 @@
 import { toast } from "sonner";
 import { connectionUser, type ServerGroup } from "@/lib/connection-groups";
-import { useConnectionsStore } from "@/lib/connections";
+import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+
+export function schemaForUser(connection: Pick<SavedConnection, "connectionString" | "kind">) {
+  const user = connectionUser(connection);
+  if (connection.kind !== "oracle") return user;
+  const quoted = /^"(.+)"$/.exec(user);
+  return quoted ? quoted[1] : user.toUpperCase();
+}
 
 export function setSchemasToUser(group: ServerGroup) {
   const ids = new Set(group.connections.map((connection) => connection.id));
   const users = new Map(
     group.connections
-      .map((connection) => [connection.id, connectionUser(connection)] as const)
+      .map((connection) => [connection.id, schemaForUser(connection)] as const)
       .filter((entry) => entry[1]),
   );
   if (users.size === 0) {

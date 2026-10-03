@@ -1,4 +1,6 @@
+import type { HostGroupRule } from "@/lib/connection-groups";
 import { createConnectionId, type SavedConnection, type SshConnection } from "@/lib/connections";
+import { connectionEnvironment } from "@/lib/environments";
 import { type DuplicateStrategy, findDuplicate, type ImportCandidate } from "./parse";
 import type { ExportedConnection } from "./types";
 
@@ -42,27 +44,48 @@ function toSavedConnection(profile: ExportedConnection): SavedConnection {
     color: profile.color,
     schemas: profile.schemas?.length ? profile.schemas : null,
     showSingleSchemaSwitcher: profile.showSingleSchemaSwitcher,
+    ...(profile.environment !== undefined ? { environment: profile.environment } : {}),
+    ...(profile.readOnly !== undefined ? { readOnly: profile.readOnly } : {}),
+    ...(profile.maskRules ? { maskRules: profile.maskRules.map((rule) => ({ ...rule })) } : {}),
   };
+}
+
+export function keepRuleProduction(
+  connection: SavedConnection,
+  rules?: HostGroupRule[],
+): SavedConnection {
+  if (!connection.environment || connection.environment === "production") return connection;
+  if (connectionEnvironment({ ...connection, environment: null }, rules) !== "production")
+    return connection;
+  const next = { ...connection };
+  delete next.environment;
+  return next;
 }
 
 export function resolveImport(
   candidates: ImportCandidate[],
   selected: Set<number>,
   strategy: DuplicateStrategy,
+  rules?: HostGroupRule[],
 ): SavedConnection[] {
   const result: SavedConnection[] = [];
   for (const candidate of candidates) {
     if (!candidate.profile || candidate.error || !selected.has(candidate.index)) continue;
     if (candidate.duplicateOf) {
       if (strategy === "skip") continue;
-      result.push({
-        ...toSavedConnection(candidate.profile),
-        id: createConnectionId(),
-        name: `${candidate.profile.name} (Kopie)`,
-      });
+      result.push(
+        keepRuleProduction(
+          {
+            ...toSavedConnection(candidate.profile),
+            id: createConnectionId(),
+            name: `${candidate.profile.name} (Kopie)`,
+          },
+          rules,
+        ),
+      );
       continue;
     }
-    result.push(toSavedConnection(candidate.profile));
+    result.push(keepRuleProduction(toSavedConnection(candidate.profile), rules));
   }
   return result;
 }

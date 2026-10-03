@@ -40,12 +40,17 @@ export function matchingHostRule(
   connection: Pick<SavedConnection, "connectionString" | "kind">,
   rules: HostGroupRule[],
 ): HostGroupRule | undefined {
-  const values = [
-    serverLabel(connection),
-    connectionSummary(connection.connectionString, connection.kind).host,
-  ];
+  const host = connectionSummary(connection.connectionString, connection.kind).host;
+  const label = serverLabel(connection);
   return rules.find((rule) =>
-    hostPatternRegexes(rule.pattern).some((regex) => values.some((value) => regex.test(value))),
+    rule.pattern
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .some((part) => {
+        const [regex] = hostPatternRegexes(part);
+        return regex.test(host) || (/[:/]/.test(part) && regex.test(label));
+      }),
   );
 }
 

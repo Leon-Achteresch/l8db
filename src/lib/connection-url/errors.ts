@@ -1,5 +1,5 @@
 const AUTH_ERROR_PATTERN =
-  /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005|Oracle-Passwort fehlt/i;
+  /password authentication|28P01|Access denied for user '[^']*'@'[^']*'(?!\s*to database)|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005|Oracle-Passwort fehlt/i;
 
 const INTERRUPTED_QUERY_PATTERN =
   /Query-Timeout|SQLSTATE (57014|55P03)|abgebrochen|Abbruch|canceling statement|lock timeout|Lock wait timeout|ORA-01013/i;

@@ -1,13 +1,14 @@
 import type { Edge } from "@xyflow/react";
 import type { TableNodeType } from "@/features/er-diagram/er-diagram-view/types";
 import type { ERTable, ForeignKeyInfo } from "@/lib/db";
+import { erForeignKeyKey } from "@/lib/er-clusters";
 
 export function buildEdges(foreignKeys: ForeignKeyInfo[]): Edge[] {
   const edgeGroups = new Map<string, ForeignKeyInfo[]>();
   for (const fk of foreignKeys) {
-    const group = fk.constraint_name;
+    const group = erForeignKeyKey(fk);
     if (!edgeGroups.has(group)) edgeGroups.set(group, []);
-    edgeGroups.get(group)!.push(fk);
+    edgeGroups.get(group)?.push(fk);
   }
 
   const edges: Edge[] = [];

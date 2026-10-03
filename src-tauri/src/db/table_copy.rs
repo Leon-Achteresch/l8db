@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::import::{self, BatchWriter, Dialect};
 use super::pool::PoolState;
 use super::provider::DatabaseKind;
-use super::{DatabaseAdapter, DetailedColumnInfo};
+use super::{ConstraintInfo, DatabaseAdapter, DetailedColumnInfo, TxSession};
 
 pub const COPY_BATCH_ROWS: i64 = 1000;
 
@@ -463,11 +463,38 @@ pub(super) async fn primary_key(
         .collect()
 }
 
+pub fn copy_order(
+    primary_key: &[String],
+    columns: &[DetailedColumnInfo],
+    constraints: &[ConstraintInfo],
+) -> (Option<String>, bool) {
+    if let [key] = primary_key {
+        return (Some(key.clone()), true);
+    }
+    let unique = constraints
+        .iter()
+        .find_map(|constraint| match constraint.columns.as_slice() {
+            [key]
+                if constraint.constraint_type == "UNIQUE"
+                    && columns
+                        .iter()
+                        .any(|column| &column.name == key && !column.is_nullable) =>
+            {
+                Some(key.clone())
+            }
+            _ => None,
+        });
+    match unique {
+        Some(key) => (Some(key), true),
+        None => (primary_key.first().cloned(), false),
+    }
+}
+
 struct Planned {
     statements: Vec<String>,
     indexes: Vec<String>,
     warnings: Vec<String>,
-    primary_key: Vec<String>,
+    order_by: Option<String>,
 }
 
 async fn plan_ddl(
@@ -484,6 +511,17 @@ async fn plan_ddl(
     )
     .await;
     let mut warnings = Vec::new();
+    let constraints = source
+        .list_constraints(&request.source.schema, &request.source.table)
+        .await
+        .unwrap_or_default();
+    let (order_by, total_order) = copy_order(&primary_key, columns, &constraints);
+    if !total_order {
+        warnings.push(
+            "Quelltabelle hat keinen einspaltigen eindeutigen Schlüssel: Die seitenweise Kopie kann Zeilen auslassen oder doppelt übertragen. Zeilenzahl und Inhalt nach der Kopie prüfen."
+                .into(),
+        );
+    }
     let indexes_source = if request.include_indexes {
         match source
             .list_indexes(&request.source.schema, &request.source.table)
@@ -555,7 +593,7 @@ async fn plan_ddl(
         statements,
         indexes,
         warnings,
-        primary_key,
+        order_by,
     })
 }
 
@@ -629,7 +667,7 @@ pub async fn copy_table(
         target_adapter.as_ref(),
         target,
         &columns,
-        &planned.primary_key,
+        planned.order_by.as_deref(),
         kind,
         connection_string,
         database,
@@ -665,6 +703,23 @@ pub async fn copy_table(
     Ok(outcome)
 }
 
+async fn clear_target(
+    target: Dialect,
+    adapter: &dyn DatabaseAdapter,
+    session: &mut dyn TxSession,
+    schema: &str,
+    table: &str,
+) -> Result<(), String> {
+    let delete = format!("DELETE FROM {}", target.target(schema, table));
+    if target.transactional() {
+        return session.execute(&delete).await.map(|_| ());
+    }
+    if let Err(error) = adapter.truncate_table(schema, table).await {
+        adapter.execute_query(&delete).await.map_err(|_| error)?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn copy_rows(
     request: &TableCopyRequest,
@@ -672,7 +727,7 @@ async fn copy_rows(
     target_adapter: &dyn DatabaseAdapter,
     target: Dialect,
     columns: &[DetailedColumnInfo],
-    primary_key: &[String],
+    order_by: Option<&str>,
     kind: DatabaseKind,
     connection_string: &str,
     database: Option<&str>,
@@ -715,23 +770,22 @@ async fn copy_rows(
         None,
     )
     .await?;
+    let mut session = import::open_session(kind, connection_string, database, pool).await?;
     if request.mode == CopyMode::Truncate {
-        if let Err(error) = target_adapter
-            .truncate_table(&request.target_schema, &request.target_table)
-            .await
+        if let Err(error) = clear_target(
+            target,
+            target_adapter,
+            session.as_mut(),
+            &request.target_schema,
+            &request.target_table,
+        )
+        .await
         {
-            target_adapter
-                .execute_query(&format!(
-                    "DELETE FROM {}",
-                    target.target(&request.target_schema, &request.target_table)
-                ))
-                .await
-                .map_err(|_| error)?;
+            let _ = session.rollback().await;
+            return Err(error);
         }
     }
-    let session = import::open_session(kind, connection_string, database, pool).await?;
     let mut writer = BatchWriter::new(plan, session);
-    let order_by = primary_key.first().map(String::as_str);
     let mut offset = 0i64;
     loop {
         if super::execution::cancellation_token().is_cancelled() {
@@ -901,5 +955,149 @@ mod tests {
             "CREATE INDEX \"APP\".\"T_IX1\" ON \"APP\".\"T\" (\"A\")"
         );
         assert_eq!(index_name(Dialect::Oracle, &"x".repeat(40), 2).len(), 30);
+    }
+
+    #[test]
+    fn copy_pages_follow_a_total_order_when_one_exists() {
+        let unique = |columns: &[&str]| ConstraintInfo {
+            name: "u".into(),
+            constraint_type: "UNIQUE".into(),
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+            definition: String::new(),
+        };
+        let mut code = column("code", "varchar(20)", Some(20), false);
+        code.is_nullable = false;
+        let columns = vec![
+            column("tenant_id", "integer", None, true),
+            column("id", "integer", None, true),
+            code,
+            column("email", "text", None, false),
+        ];
+        let composite = ["tenant_id".to_string(), "id".to_string()];
+        assert_eq!(
+            copy_order(&["id".into()], &columns, &[]),
+            (Some("id".into()), true)
+        );
+        assert_eq!(
+            copy_order(
+                &composite,
+                &columns,
+                &[unique(&["email"]), unique(&["code"])]
+            ),
+            (Some("code".into()), true)
+        );
+        assert_eq!(
+            copy_order(&composite, &columns, &[unique(&["email"])]),
+            (Some("tenant_id".into()), false)
+        );
+        assert_eq!(
+            copy_order(&[], &columns, &[unique(&["tenant_id", "code"])]),
+            (None, false)
+        );
+        assert_eq!(
+            copy_order(&[], &columns, &[unique(&["code"])]),
+            (Some("code".into()), true)
+        );
+    }
+
+    async fn failed_truncate_copy_keeps_target_rows(kind: DatabaseKind, url: &str, schema: &str) {
+        let pool = super::super::pool::create_pool_state();
+        let adapter = super::super::create_adapter_from_string(kind, url, None, pool.clone())
+            .expect("adapter");
+        for statement in [
+            "DROP TABLE IF EXISTS l8db_copy_src",
+            "DROP TABLE IF EXISTS l8db_copy_dst",
+            "CREATE TABLE l8db_copy_src (id INT PRIMARY KEY, v INT)",
+            "CREATE TABLE l8db_copy_dst (id INT PRIMARY KEY, v INT NOT NULL)",
+            "INSERT INTO l8db_copy_src (id, v) VALUES (1, 1), (2, NULL)",
+            "INSERT INTO l8db_copy_dst (id, v) VALUES (10, 10), (11, 11)",
+        ] {
+            adapter.execute_query(statement).await.expect(statement);
+        }
+        let request = TableCopyRequest {
+            source: CopySource {
+                kind,
+                connection_string: url.into(),
+                database: None,
+                schema: schema.into(),
+                table: "l8db_copy_src".into(),
+            },
+            target_schema: schema.into(),
+            target_table: "l8db_copy_dst".into(),
+            mode: CopyMode::Truncate,
+            include_primary_key: true,
+            include_indexes: false,
+            dry_run: false,
+        };
+        let outcome = copy_table(kind, url, None, pool.clone(), &request)
+            .await
+            .expect("copy outcome");
+        let remaining = adapter
+            .count_rows(schema, "l8db_copy_dst", None, false)
+            .await
+            .expect("count");
+        adapter
+            .execute_query("UPDATE l8db_copy_src SET v = 2 WHERE id = 2")
+            .await
+            .expect("update");
+        let replaced = copy_table(kind, url, None, pool.clone(), &request)
+            .await
+            .expect("second copy outcome");
+        let replaced_ids = adapter
+            .count_rows(schema, "l8db_copy_dst", Some("id IN (1, 2)"), false)
+            .await
+            .expect("count replaced");
+        let replaced_total = adapter
+            .count_rows(schema, "l8db_copy_dst", None, false)
+            .await
+            .expect("count total");
+        for statement in [
+            "DROP TABLE IF EXISTS l8db_copy_src",
+            "DROP TABLE IF EXISTS l8db_copy_dst",
+        ] {
+            let _ = adapter.execute_query(statement).await;
+        }
+        assert!(outcome.error.is_some(), "{kind:?}: copy must fail");
+        assert_eq!(outcome.rows, 0);
+        assert_eq!(remaining, 2, "{kind:?}: target rows must survive");
+        assert_eq!(replaced.error, None, "{kind:?}");
+        assert_eq!(replaced.rows, 2);
+        assert_eq!((replaced_ids, replaced_total), (2, 2), "{kind:?}");
+    }
+
+    #[tokio::test]
+    async fn sqlite_failed_truncate_copy_keeps_target_rows() {
+        let path = std::env::temp_dir().join(format!(
+            "l8db-table-copy-truncate-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        failed_truncate_copy_keeps_target_rows(DatabaseKind::Sqlite, &url, "main").await;
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn server_failed_truncate_copy_keeps_target_rows() {
+        for (kind, var, schema) in [
+            (DatabaseKind::Postgres, "L8DB_SMOKE_POSTGRES_URL", "public"),
+            (DatabaseKind::Mysql, "L8DB_SMOKE_MYSQL_URL", ""),
+            (DatabaseKind::Mssql, "L8DB_SMOKE_MSSQL_URL", "dbo"),
+        ] {
+            let Ok(url) = std::env::var(var) else {
+                continue;
+            };
+            let schema = if schema.is_empty() {
+                url.rsplit('/')
+                    .next()
+                    .and_then(|tail| tail.split('?').next())
+                    .unwrap_or_default()
+                    .to_string()
+            } else {
+                schema.to_string()
+            };
+            failed_truncate_copy_keeps_target_rows(kind, &url, &schema).await;
+        }
     }
 }

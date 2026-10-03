@@ -39,9 +39,9 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
     close();
   };
   const to =
-    item.actionId === "settings"
-      ? "/settings"
-      : item.actionId === "extensions"
+    item.actionTarget === "dashboard"
+      ? "/dashboard"
+      : item.actionId === "settings" || item.actionId === "extensions"
         ? "/settings"
         : "/compare";
 
@@ -243,7 +243,7 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
               <Link
                 to={failed ? "/release-notes" : to}
                 search={
-                  failed
+                  failed || item.actionTarget === "dashboard"
                     ? {}
                     : item.actionId === "extensions"
                       ? { tab: "extensions" }

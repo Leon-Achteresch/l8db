@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::panic::AssertUnwindSafe;
@@ -5,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use chrono::Timelike;
 use futures_util::FutureExt;
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, FromSql, Row};
 use tokio::net::TcpStream;
@@ -21,9 +23,12 @@ use super::{
 
 type MsClient = Client<Compat<TcpStream>>;
 type IdleClients = Mutex<Vec<(MsClient, Instant)>>;
+type SessionClients = Mutex<HashMap<String, (MsClient, Instant)>>;
 
 const IDLE_MAX: usize = 8;
 const IDLE_TTL: Duration = Duration::from_secs(300);
+const SESSION_TTL: Duration = Duration::from_secs(60);
+const SESSION_MAX: usize = 8;
 
 pub struct MssqlAdapter {
     config: Config,
@@ -212,7 +217,22 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             chrono::NaiveDateTime::from_sql(data)
                 .ok()
                 .flatten()
-                .map(|d| serde_json::Value::String(d.to_string()))
+                .map(|d| {
+                    let digits = fraction_digits(data);
+                    let d = if matches!(data, ColumnData::DateTime(_)) {
+                        d.with_nanosecond(0).unwrap_or(d)
+                            + chrono::Duration::milliseconds(
+                                (d.nanosecond() as i64 + 500_000) / 1_000_000,
+                            )
+                    } else {
+                        d
+                    };
+                    serde_json::Value::String(format!(
+                        "{}{}",
+                        d.format("%Y-%m-%d %H:%M:%S"),
+                        fraction(d.nanosecond(), digits)
+                    ))
+                })
                 .unwrap_or(serde_json::Value::Null)
         }
         ColumnData::Date(_) => chrono::NaiveDate::from_sql(data)
@@ -223,14 +243,46 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
         ColumnData::Time(_) => chrono::NaiveTime::from_sql(data)
             .ok()
             .flatten()
-            .map(|d| serde_json::Value::String(d.to_string()))
+            .map(|d| {
+                serde_json::Value::String(format!(
+                    "{}{}",
+                    d.format("%H:%M:%S"),
+                    fraction(d.nanosecond(), fraction_digits(data))
+                ))
+            })
             .unwrap_or(serde_json::Value::Null),
         ColumnData::DateTimeOffset(_) => chrono::DateTime::<chrono::FixedOffset>::from_sql(data)
             .ok()
             .flatten()
-            .map(|d| serde_json::Value::String(d.to_rfc3339()))
+            .map(|d| {
+                serde_json::Value::String(format!(
+                    "{}{}{}",
+                    d.format("%Y-%m-%dT%H:%M:%S"),
+                    fraction(d.nanosecond(), fraction_digits(data)),
+                    d.format("%:z")
+                ))
+            })
             .unwrap_or(serde_json::Value::Null),
     }
+}
+
+fn fraction_digits(data: &ColumnData<'static>) -> u32 {
+    match data {
+        ColumnData::DateTime(_) => 3,
+        ColumnData::DateTime2(Some(v)) => v.time().scale() as u32,
+        ColumnData::Time(Some(v)) => v.scale() as u32,
+        ColumnData::DateTimeOffset(Some(v)) => v.datetime2().time().scale() as u32,
+        _ => 0,
+    }
+    .min(9)
+}
+
+fn fraction(nanos: u32, digits: u32) -> String {
+    if digits == 0 {
+        return String::new();
+    }
+    let value = (nanos % 1_000_000_000) / 10u32.pow(9 - digits);
+    format!(".{value:0width$}", width = digits as usize)
 }
 
 fn create_or_alter(definition: &str) -> String {
@@ -281,22 +333,127 @@ fn int(row: &Row, index: usize) -> i64 {
     }
 }
 
+fn code_words(sql: &str) -> Vec<String> {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut i = 0;
+    let flush = |word: &mut String, words: &mut Vec<String>| {
+        if !word.is_empty() {
+            words.push(std::mem::take(word).to_uppercase());
+        }
+    };
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if c == '-' && next == Some('-') {
+            flush(&mut word, &mut words);
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+        } else if c == '/' && next == Some('*') {
+            flush(&mut word, &mut words);
+            let mut depth = 0;
+            while i < chars.len() {
+                if chars[i] == '/' && chars.get(i + 1) == Some(&'*') {
+                    depth += 1;
+                    i += 2;
+                } else if chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
+                    depth -= 1;
+                    i += 2;
+                    if depth == 0 {
+                        break;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+        } else if matches!(c, '\'' | '"' | '[') {
+            let close = if c == '[' { ']' } else { c };
+            if c == '\'' && word.eq_ignore_ascii_case("N") {
+                word.clear();
+            }
+            flush(&mut word, &mut words);
+            words.push(String::new());
+            i += 1;
+            while i < chars.len() {
+                if chars[i] == close {
+                    if chars.get(i + 1) == Some(&close) {
+                        i += 2;
+                        continue;
+                    }
+                    break;
+                }
+                i += 1;
+            }
+            i += 1;
+        } else if c.is_alphanumeric() || matches!(c, '_' | '@' | '#' | '$') {
+            word.push(c);
+            i += 1;
+        } else {
+            flush(&mut word, &mut words);
+            i += 1;
+        }
+    }
+    flush(&mut word, &mut words);
+    words
+}
+
 fn is_result_statement(sql: &str) -> bool {
-    let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
-    sql.to_uppercase().contains(" OUTPUT ")
-        || matches!(
-            first.as_str(),
-            "SELECT"
-                | "WITH"
-                | "EXEC"
-                | "EXECUTE"
-                | "DECLARE"
-                | "SHOW"
-                | "DBCC"
-                | "SP_HELP"
-                | "PRINT"
-                | "SET"
-        )
+    let words = code_words(sql);
+    if words.iter().any(|w| w == "OUTPUT") {
+        return true;
+    }
+    let Some(first) = words.first() else {
+        return false;
+    };
+    if first.is_empty() {
+        return true;
+    }
+    !matches!(
+        first.as_str(),
+        "INSERT"
+            | "UPDATE"
+            | "DELETE"
+            | "MERGE"
+            | "TRUNCATE"
+            | "CREATE"
+            | "ALTER"
+            | "DROP"
+            | "GRANT"
+            | "REVOKE"
+            | "DENY"
+            | "USE"
+            | "BEGIN"
+            | "END"
+            | "IF"
+            | "WHILE"
+            | "BACKUP"
+            | "BULK"
+            | "KILL"
+            | "RAISERROR"
+            | "THROW"
+            | "CHECKPOINT"
+            | "RECONFIGURE"
+            | "OPEN"
+            | "CLOSE"
+            | "DEALLOCATE"
+            | "UPDATETEXT"
+            | "WRITETEXT"
+            | "ENABLE"
+            | "DISABLE"
+            | "ADD"
+            | "RETURN"
+            | "GOTO"
+            | "BREAK"
+            | "CONTINUE"
+            | "REVERT"
+            | "SHUTDOWN"
+            | "SETUSER"
+            | "COMMIT"
+            | "ROLLBACK"
+            | "SAVE"
+    )
 }
 
 #[cfg(windows)]
@@ -435,6 +592,35 @@ impl MssqlAdapter {
         })
     }
 
+    async fn sessions(&self) -> Result<Arc<SessionClients>, String> {
+        self.pool_state
+            .shared(&format!("{}#script-sessions", self.key), || async {
+                Ok::<SessionClients, String>(Mutex::new(HashMap::new()))
+            })
+            .await
+    }
+
+    async fn execute_in_session(&self, session: &str, sql: &str) -> Result<QueryResult, String> {
+        let sessions = self.sessions().await?;
+        let parked = {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            map.retain(|_, (_, since)| since.elapsed() < SESSION_TTL);
+            map.remove(session).map(|(client, _)| client)
+        };
+        let mut client = match parked {
+            Some(client) => client,
+            None => self.dedicated().await?,
+        };
+        let result = run_query(&mut client, sql).await;
+        if result.is_ok() || run_query(&mut client, "SELECT 1").await.is_ok() {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if map.len() < SESSION_MAX || map.contains_key(session) {
+                map.insert(session.to_string(), (client, Instant::now()));
+            }
+        }
+        result
+    }
+
     async fn dedicated(&self) -> Result<MsClient, String> {
         self.connect()
             .await?
@@ -519,18 +705,206 @@ fn percent_decode(value: &str) -> String {
 }
 
 fn is_tx_control(sql: &str) -> bool {
-    let mut words = sql.split_whitespace().map(str::to_uppercase);
+    let mut words = code_words(sql).into_iter();
     let first = words.next().unwrap_or_default();
     matches!(first.as_str(), "COMMIT" | "ROLLBACK" | "SAVE")
         || (first == "BEGIN" && words.next().is_some_and(|w| w.starts_with("TRAN")))
 }
 
+fn type_sql(type_name: &str, max_length: i64, precision: i64, scale: i64) -> String {
+    let size = |n: i64| {
+        if max_length == -1 {
+            "MAX".to_string()
+        } else {
+            n.to_string()
+        }
+    };
+    match type_name {
+        "varchar" | "char" | "varbinary" | "binary" => {
+            format!("{type_name}({})", size(max_length))
+        }
+        "nvarchar" | "nchar" => format!("{type_name}({})", size(max_length / 2)),
+        "decimal" | "numeric" => format!("{type_name}({precision}, {scale})"),
+        "datetime2" | "time" | "datetimeoffset" => format!("{type_name}({scale})"),
+        _ => type_name.to_string(),
+    }
+}
+
+fn alter_column_type(requested: Option<&str>, current: &str, collation: Option<&str>) -> String {
+    let requested = requested.map(str::trim).filter(|t| !t.is_empty());
+    let data_type = requested.unwrap_or(current);
+    let keeps_collation = match requested {
+        None => true,
+        Some(t) => {
+            let lower = t.to_lowercase();
+            let base: String = lower
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            matches!(
+                base.as_str(),
+                "char" | "varchar" | "nchar" | "nvarchar" | "text" | "ntext"
+            ) && !lower.split_whitespace().any(|w| w == "collate")
+        }
+    };
+    match collation {
+        Some(collation) if keeps_collation => format!("{data_type} COLLATE {collation}"),
+        _ => data_type.to_string(),
+    }
+}
+
+#[derive(PartialEq)]
+enum SqlToken {
+    Word(String),
+    Quoted(String),
+    Literal,
+    Punct(char),
+}
+
+fn sql_tokens(sql: &str) -> Vec<SqlToken> {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut tokens = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if c.is_whitespace() {
+            i += 1;
+        } else if c == '-' && next == Some('-') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+        } else if c == '/' && next == Some('*') {
+            let mut depth = 0;
+            while i < chars.len() {
+                if chars[i] == '/' && chars.get(i + 1) == Some(&'*') {
+                    depth += 1;
+                    i += 2;
+                } else if chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
+                    depth -= 1;
+                    i += 2;
+                    if depth == 0 {
+                        break;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+        } else if c == '\'' || c == '[' || c == '"' {
+            let close = if c == '[' { ']' } else { c };
+            let mut content = String::new();
+            i += 1;
+            while i < chars.len() {
+                if chars[i] == close {
+                    if chars.get(i + 1) == Some(&close) {
+                        content.push(close);
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                content.push(chars[i]);
+                i += 1;
+            }
+            tokens.push(if c == '\'' {
+                SqlToken::Literal
+            } else {
+                SqlToken::Quoted(content)
+            });
+        } else if c.is_alphanumeric() || matches!(c, '_' | '@' | '#' | '$') {
+            let start = i;
+            while i < chars.len()
+                && (chars[i].is_alphanumeric() || matches!(chars[i], '_' | '@' | '#' | '$'))
+            {
+                i += 1;
+            }
+            let word: String = chars[start..i].iter().collect();
+            if word.eq_ignore_ascii_case("N") && chars.get(i) == Some(&'\'') {
+                continue;
+            }
+            tokens.push(SqlToken::Word(word.to_uppercase()));
+        } else {
+            tokens.push(SqlToken::Punct(c));
+            i += 1;
+        }
+    }
+    tokens
+}
+
+fn may_change_session(sql: &str) -> bool {
+    let tokens = sql_tokens(sql);
+    let word = |i: usize| match tokens.get(i) {
+        Some(SqlToken::Word(w)) => Some(w.as_str()),
+        _ => None,
+    };
+    let first = tokens
+        .iter()
+        .position(|t| *t != SqlToken::Punct(';'))
+        .map(|i| &tokens[i]);
+    let starts_statement = match first {
+        None | Some(SqlToken::Punct('(')) => true,
+        Some(SqlToken::Word(w)) => matches!(
+            w.as_str(),
+            "SELECT"
+                | "WITH"
+                | "INSERT"
+                | "UPDATE"
+                | "DELETE"
+                | "MERGE"
+                | "CREATE"
+                | "ALTER"
+                | "DROP"
+                | "TRUNCATE"
+                | "DECLARE"
+                | "SET"
+                | "PRINT"
+                | "IF"
+                | "WHILE"
+                | "GRANT"
+                | "REVOKE"
+                | "DENY"
+                | "WAITFOR"
+                | "KILL"
+                | "RAISERROR"
+                | "THROW"
+                | "CHECKPOINT"
+                | "BACKUP"
+                | "RESTORE"
+                | "BULK"
+                | "ENABLE"
+                | "DISABLE"
+        ),
+        _ => false,
+    };
+    if !starts_statement {
+        return true;
+    }
+    tokens.iter().enumerate().any(|(i, token)| match token {
+        SqlToken::Quoted(name) => name.starts_with('#'),
+        SqlToken::Word(w) if w.starts_with('#') => true,
+        SqlToken::Word(w) => match w.as_str() {
+            "USE" | "REVERT" | "SETUSER" | "EXEC" | "EXECUTE" | "BEGIN" | "COMMIT" | "ROLLBACK"
+            | "SAVE" | "OPEN" | "DBCC" | "CURSOR" => true,
+            "SET" => {
+                let assigns = matches!(
+                    tokens.get(i + 2),
+                    Some(SqlToken::Punct(
+                        '=' | '.' | '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^'
+                    ))
+                );
+                let variable = word(i + 1).is_some_and(|w| w.starts_with('@'));
+                let referential = matches!(word(i + 1), Some("NULL" | "DEFAULT"));
+                !(assigns || variable || referential)
+            }
+            _ => false,
+        },
+        _ => false,
+    })
+}
+
 fn starts_batch(sql: &str) -> bool {
-    let words: Vec<String> = sql
-        .split_whitespace()
-        .take(4)
-        .map(str::to_uppercase)
-        .collect();
+    let words: Vec<String> = code_words(sql).into_iter().take(4).collect();
     let object = match words.first().map(String::as_str) {
         Some("CREATE") if words.get(1).map(String::as_str) == Some("OR") => words.get(3),
         Some("CREATE") | Some("ALTER") => words.get(1),
@@ -805,9 +1179,12 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(session) = super::execution::session_id() {
+            return self.execute_in_session(&session, sql).await;
+        }
         let mut client = self.connect().await?;
         let result = run_query(&mut client, sql).await;
-        if result.is_err() || is_tx_control(sql) {
+        if result.is_err() || may_change_session(sql) {
             client.discard();
         }
         result
@@ -866,26 +1243,7 @@ impl DatabaseAdapter for MssqlAdapter {
                     let persisted = if int(r, 11) == 1 { " PERSISTED" } else { "" };
                     return format!("{name} AS {expr}{persisted}");
                 }
-                let data_type = text(r, 1);
-                let length = int(r, 2);
-                let size = |n: i64| {
-                    if length == -1 {
-                        "MAX".to_string()
-                    } else {
-                        n.to_string()
-                    }
-                };
-                let data_type = match data_type.as_str() {
-                    "varchar" | "char" | "varbinary" | "binary" => {
-                        format!("{data_type}({})", size(length))
-                    }
-                    "nvarchar" | "nchar" => format!("{data_type}({})", size(length / 2)),
-                    "decimal" | "numeric" => format!("{data_type}({}, {})", int(r, 3), int(r, 4)),
-                    "datetime2" | "time" | "datetimeoffset" => {
-                        format!("{data_type}({})", int(r, 4))
-                    }
-                    _ => data_type,
-                };
+                let data_type = type_sql(&text(r, 1), int(r, 2), int(r, 3), int(r, 4));
                 let mut def = format!("{name} {data_type}");
                 if int(r, 6) == 1 {
                     def.push_str(&format!(" IDENTITY({}, {})", text(r, 7), text(r, 8)));
@@ -947,9 +1305,9 @@ impl DatabaseAdapter for MssqlAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         let ddl = format!(
-            "CREATE OR ALTER VIEW {} AS {}",
+            "CREATE OR ALTER VIEW {} {}",
             Self::object(schema, view),
-            body
+            super::view_ddl::view_ddl_rest(body)
         );
         let mut client = self.dedicated().await?;
         timed(async {
@@ -1074,26 +1432,77 @@ impl DatabaseAdapter for MssqlAdapter {
         table: &str,
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
+        let object = Self::object(schema, table);
         let current = self
-            .list_table_columns_detailed(schema, table)
+            .rows(&format!(
+                "SELECT TYPE_NAME(c.user_type_id), c.max_length, c.precision, c.scale, c.collation_name, c.is_nullable, t.is_user_defined, SCHEMA_NAME(t.schema_id), \
+                 c.is_xml_document, SCHEMA_NAME(x.schema_id), x.name, c.is_sparse, c.is_masked, mc.masking_function \
+                 FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id \
+                 LEFT JOIN sys.xml_schema_collections x ON x.xml_collection_id = c.xml_collection_id AND c.xml_collection_id <> 0 \
+                 LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id \
+                 WHERE c.object_id = OBJECT_ID({}) AND c.name = {}",
+                lit(&object),
+                lit(&changes.old_name)
+            ))
             .await?
             .into_iter()
-            .find(|c| c.name == changes.old_name)
+            .next()
             .ok_or_else(|| format!("Unbekannte Spalte: {}", changes.old_name))?;
-        let object = Self::object(schema, table);
         if changes.data_type.is_some() || changes.set_not_null.is_some() {
-            let data_type = changes
-                .data_type
-                .as_deref()
-                .filter(|t| !t.is_empty())
-                .unwrap_or(&current.data_type);
-            let nullable = !changes.set_not_null.unwrap_or(!current.is_nullable);
-            self.exec(&format!(
-                "ALTER TABLE {object} ALTER COLUMN {} {} {}",
-                quote(&changes.old_name),
-                data_type,
+            let user_defined = int(&current, 6) == 1;
+            let xml_schema = text_opt(&current, 10).map(|name| {
+                let facet = if int(&current, 8) == 1 {
+                    "DOCUMENT"
+                } else {
+                    "CONTENT"
+                };
+                format!(
+                    "xml({facet} {}.{})",
+                    quote(&text(&current, 9)),
+                    quote(&name)
+                )
+            });
+            let current_type = if let Some(xml) = xml_schema {
+                xml
+            } else if user_defined {
+                format!(
+                    "{}.{}",
+                    quote(&text(&current, 7)),
+                    quote(&text(&current, 0))
+                )
+            } else {
+                type_sql(
+                    &text(&current, 0),
+                    int(&current, 1),
+                    int(&current, 2),
+                    int(&current, 3),
+                )
+            };
+            let collation = text_opt(&current, 4).filter(|_| !user_defined);
+            let data_type = alter_column_type(
+                changes.data_type.as_deref(),
+                &current_type,
+                collation.as_deref(),
+            );
+            let nullable = !changes.set_not_null.unwrap_or(int(&current, 5) != 1);
+            let sparse = if int(&current, 11) == 1 {
+                " SPARSE"
+            } else {
+                ""
+            };
+            let column = quote(&changes.old_name);
+            let alter = format!(
+                "ALTER TABLE {object} ALTER COLUMN {column} {data_type}{sparse} {}",
                 if nullable { "NULL" } else { "NOT NULL" }
-            ))
+            );
+            let mask = text_opt(&current, 13).filter(|_| int(&current, 12) == 1);
+            self.exec(&match mask {
+                Some(function) => format!(
+                    "SET XACT_ABORT ON; BEGIN TRANSACTION; {alter}; ALTER TABLE {object} ALTER COLUMN {column} ADD MASKED WITH (FUNCTION = {}); COMMIT TRANSACTION",
+                    lit(&function)
+                ),
+                None => alter,
+            })
             .await?;
         }
         if changes.drop_default || changes.new_default.is_some() {
@@ -1553,6 +1962,137 @@ mod tests {
             .expect("cleanup");
     }
 
+    #[test]
+    fn column_types_keep_length_precision_and_scale() {
+        assert_eq!(type_sql("decimal", 9, 10, 2), "decimal(10, 2)");
+        assert_eq!(type_sql("numeric", 17, 38, 0), "numeric(38, 0)");
+        assert_eq!(type_sql("nvarchar", 200, 0, 0), "nvarchar(100)");
+        assert_eq!(type_sql("nvarchar", -1, 0, 0), "nvarchar(MAX)");
+        assert_eq!(type_sql("nchar", 10, 0, 0), "nchar(5)");
+        assert_eq!(type_sql("varchar", -1, 0, 0), "varchar(MAX)");
+        assert_eq!(type_sql("char", 5, 0, 0), "char(5)");
+        assert_eq!(type_sql("varbinary", 16, 0, 0), "varbinary(16)");
+        assert_eq!(type_sql("binary", 8, 0, 0), "binary(8)");
+        assert_eq!(type_sql("datetime2", 7, 23, 3), "datetime2(3)");
+        assert_eq!(type_sql("time", 3, 8, 0), "time(0)");
+        assert_eq!(type_sql("datetimeoffset", 10, 34, 7), "datetimeoffset(7)");
+        assert_eq!(type_sql("int", 4, 10, 0), "int");
+        assert_eq!(type_sql("float", 8, 53, 0), "float");
+        assert_eq!(type_sql("sysname", 256, 0, 0), "sysname");
+    }
+
+    #[test]
+    fn altered_columns_keep_their_collation() {
+        let ci = Some("Latin1_General_CS_AS");
+        assert_eq!(
+            alter_column_type(None, "nvarchar(100)", ci),
+            "nvarchar(100) COLLATE Latin1_General_CS_AS"
+        );
+        assert_eq!(
+            alter_column_type(None, "decimal(10, 2)", None),
+            "decimal(10, 2)"
+        );
+        assert_eq!(alter_column_type(Some("  "), "int", None), "int");
+        assert_eq!(
+            alter_column_type(Some("nvarchar(200)"), "nvarchar(100)", ci),
+            "nvarchar(200) COLLATE Latin1_General_CS_AS"
+        );
+        assert_eq!(
+            alter_column_type(Some("VARCHAR (MAX)"), "nvarchar(100)", ci),
+            "VARCHAR (MAX) COLLATE Latin1_General_CS_AS"
+        );
+        assert_eq!(
+            alter_column_type(Some("ntext"), "nvarchar(100)", ci),
+            "ntext COLLATE Latin1_General_CS_AS"
+        );
+        assert_eq!(
+            alter_column_type(
+                Some("nvarchar(50) collate Latin1_General_BIN2"),
+                "nvarchar(100)",
+                ci
+            ),
+            "nvarchar(50) collate Latin1_General_BIN2"
+        );
+        assert_eq!(alter_column_type(Some("int"), "nvarchar(100)", ci), "int");
+        assert_eq!(
+            alter_column_type(Some("varbinary(10)"), "varchar(10)", ci),
+            "varbinary(10)"
+        );
+        assert_eq!(
+            alter_column_type(Some("nvarchar(10)"), "int", None),
+            "nvarchar(10)"
+        );
+    }
+
+    #[test]
+    fn session_changing_sql_is_detected() {
+        for sql in [
+            "USE master",
+            "SELECT 1; USE master",
+            "select 1\nuse [master]",
+            "SET IMPLICIT_TRANSACTIONS ON",
+            "SET ROWCOUNT 10",
+            "set rowcount @n",
+            "SET NOCOUNT ON",
+            "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+            "SET ANSI_NULLS, QUOTED_IDENTIFIER OFF",
+            "SET IDENTITY_INSERT dbo.t ON",
+            "SET CONTEXT_INFO 0x01",
+            "SELECT 1 /* x */ ; SET LANGUAGE German",
+            "REVERT",
+            "SELECT 1; REVERT",
+            "EXECUTE AS USER = 'x'",
+            "EXEC sp_set_session_context 'k', 'v'",
+            "exec('use master')",
+            "sp_setapprole 'role', 'pw'",
+            "dbo.do_things",
+            "[dbo].[do_things] 1",
+            "BEGIN TRANSACTION",
+            "DECLARE @x int; BEGIN TRAN",
+            "INSERT INTO t VALUES (1); COMMIT",
+            "SELECT 1 INTO #tmp",
+            "SELECT 1 INTO [#tmp]",
+            "CREATE TABLE ##global (id int)",
+            "DECLARE c CURSOR GLOBAL FOR SELECT 1",
+            "OPEN SYMMETRIC KEY k DECRYPTION BY PASSWORD = 'x'",
+            "DBCC TRACEON (3604)",
+            "SETUSER 'bob'",
+            "SAVE TRANSACTION sp1",
+            "ROLLBACK",
+            "SELECT 1; SET XACT_ABORT ON",
+        ] {
+            assert!(may_change_session(sql), "{sql}");
+        }
+        for sql in [
+            "",
+            "SELECT * FROM [dbo].[t] WHERE [use] = 'USE master; SET ROWCOUNT 1'",
+            "SELECT '#not_temp', N'EXEC x' AS [exec] -- USE master",
+            "SELECT 1 /* SET ROWCOUNT 1 /* nested */ REVERT */",
+            "SELECT \"set\", [begin] FROM t",
+            "WITH x AS (SELECT 1 AS a) SELECT a FROM x",
+            "UPDATE t SET v = v + 1",
+            "UPDATE t SET [v] = 1, w = 2 WHERE id = 1",
+            "UPDATE t SET t.v = 1",
+            "UPDATE t SET v += 1",
+            "UPDATE t SET doc.WRITE(N'x', 0, 1)",
+            "UPDATE t SET @x = v = v + 1",
+            "DECLARE @x int; SET @x = 1; SELECT @x",
+            "INSERT INTO dbo.t (a) VALUES ('BEGIN TRAN')",
+            "DELETE FROM t WHERE id = 1",
+            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET v = s.v;",
+            "CREATE TABLE t (id int, p int REFERENCES p(id) ON DELETE SET NULL ON UPDATE SET DEFAULT)",
+            "SELECT TOP 10 * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY",
+            "; SELECT 1",
+            "(SELECT 1) UNION (SELECT 2)",
+            "DROP TABLE dbo.t",
+            "ALTER TABLE dbo.t ADD c int",
+            "TRUNCATE TABLE dbo.t",
+            "SELECT * FROM OPENJSON(@j)",
+        ] {
+            assert!(!may_change_session(sql), "{sql}");
+        }
+    }
+
     #[tokio::test]
     async fn driver_panics_become_errors() {
         let result: Result<(), String> = guarded(async { panic!("not yet implemented") }).await;
@@ -1616,8 +2156,109 @@ mod tests {
             "INSERT INTO t OUTPUT INSERTED.* DEFAULT VALUES"
         ));
         assert!(is_tx_control("begin tran"));
+        assert!(is_tx_control("-- finish\nCOMMIT"));
+        assert!(starts_batch("/* v2 */ CREATE OR ALTER VIEW v AS SELECT 1"));
         assert!(is_tx_control("ROLLBACK"));
         assert!(!is_tx_control("BEGIN SELECT 1 END"));
+    }
+
+    #[test]
+    fn temporal_values_keep_the_column_precision() {
+        use tiberius::time::{Date, DateTime, DateTime2, DateTimeOffset, SmallDateTime, Time};
+        let text = |data: ColumnData<'static>| value_to_json(&data).as_str().unwrap().to_string();
+        let days_1900 = 45_290;
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(days_1900, 1)))),
+            "2024-01-01 00:00:00.003"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(days_1900, 2)))),
+            "2024-01-01 00:00:00.007"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(days_1900, 299)))),
+            "2024-01-01 00:00:00.997"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime(Some(DateTime::new(
+                days_1900,
+                300 * 3600
+            )))),
+            "2024-01-01 01:00:00.000"
+        );
+        assert_eq!(
+            text(ColumnData::SmallDateTime(Some(SmallDateTime::new(
+                45_290, 61
+            )))),
+            "2024-01-01 01:01:00"
+        );
+        let date = Date::new(738_885);
+        assert_eq!(
+            text(ColumnData::DateTime2(Some(DateTime2::new(
+                date,
+                Time::new(1_234_567, 7)
+            )))),
+            "2024-01-01 00:00:00.1234567"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime2(Some(DateTime2::new(
+                date,
+                Time::new(5, 2)
+            )))),
+            "2024-01-01 00:00:00.05"
+        );
+        assert_eq!(
+            text(ColumnData::DateTime2(Some(DateTime2::new(
+                date,
+                Time::new(7, 0)
+            )))),
+            "2024-01-01 00:00:07"
+        );
+        assert_eq!(
+            text(ColumnData::Time(Some(Time::new(36_000_000_001, 7)))),
+            "01:00:00.0000001"
+        );
+        assert_eq!(
+            text(ColumnData::DateTimeOffset(Some(DateTimeOffset::new(
+                DateTime2::new(date, Time::new(1_000, 4)),
+                120
+            )))),
+            "2024-01-01T02:00:00.1000+02:00"
+        );
+    }
+
+    #[test]
+    fn classifies_result_statements_behind_comments_and_procedure_calls() {
+        for sql in [
+            "-- top customers\nSELECT * FROM c",
+            "/* report */ SELECT 1",
+            "/* outer /* nested */ still comment */\nWITH x AS (SELECT 1 AS a) SELECT a FROM x",
+            "(SELECT 1) UNION ALL (SELECT 2)",
+            "sp_who2",
+            "dbo.usp_report 1, 'x'",
+            "[dbo].[usp_report]",
+            "UPDATE t SET a = 1\nOUTPUT inserted.*",
+            "DELETE FROM t\tOUTPUT deleted.id WHERE id = 1",
+            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action, deleted.*;",
+            "FETCH NEXT FROM c",
+            "RESTORE HEADERONLY FROM DISK = N'/tmp/x.bak'",
+        ] {
+            assert!(is_result_statement(sql), "{sql}");
+        }
+        for sql in [
+            "UPDATE t SET a = 1",
+            "-- bump\nUPDATE t SET note = N'OUTPUT x' WHERE id = 1",
+            "INSERT INTO t (note) VALUES ('a -- b /* c')",
+            "DELETE FROM [OUTPUT] WHERE id = 1",
+            "update t set [select] = 1",
+            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE;",
+            "TRUNCATE TABLE t",
+            "CREATE TABLE t (id int)",
+            "DROP TABLE t",
+            "IF 1 = 1 UPDATE t SET a = 1",
+        ] {
+            assert!(!is_result_statement(sql), "{sql}");
+        }
     }
 
     #[tokio::test]
@@ -1709,6 +2350,17 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(who.rows[0]["who"], "l8db_px_viewer");
+        proxied
+            .execute_query("SELECT 1 AS x; REVERT")
+            .await
+            .unwrap();
+        assert_eq!(
+            proxied
+                .count_rows("dbo", "probe", None, false)
+                .await
+                .unwrap(),
+            1
+        );
         assert!(proxied
             .execute_query("INSERT INTO dbo.probe VALUES ('l8db_px_viewer', 4)")
             .await
@@ -1727,5 +2379,357 @@ mod tests {
             .execute_query("ALTER DATABASE l8db_px SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE l8db_px; DROP LOGIN l8db_px_viewer")
             .await
             .expect("cleanup");
+    }
+
+    fn live_url() -> Option<String> {
+        std::env::var("L8DB_SMOKE_MSSQL_URL").ok()
+    }
+
+    async fn column_types(adapter: &MssqlAdapter, table: &str) -> Vec<(String, String, String)> {
+        adapter
+            .rows(&format!(
+                "SELECT c.name, TYPE_NAME(c.user_type_id) + '/' + CAST(c.max_length AS varchar(10)) + '/' + CAST(c.precision AS varchar(10)) + '/' + CAST(c.scale AS varchar(10)) + '/' + CAST(c.is_nullable AS varchar(1)), ISNULL(c.collation_name, '') FROM sys.columns c WHERE c.object_id = OBJECT_ID({}) ORDER BY c.column_id",
+                lit(table)
+            ))
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| (text(r, 0), text(r, 1), text(r, 2)))
+            .collect()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_keeps_xml_schema_sparse_and_mask() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new(&url, Some("master"), pool, "alter-attrs".into()).unwrap();
+        for sql in [
+            "IF OBJECT_ID('dbo.l8db_alter_attrs') IS NOT NULL DROP TABLE dbo.l8db_alter_attrs",
+            "IF EXISTS (SELECT 1 FROM sys.xml_schema_collections WHERE name = 'l8db_rpx') DROP XML SCHEMA COLLECTION dbo.l8db_rpx",
+            "CREATE XML SCHEMA COLLECTION dbo.l8db_rpx AS N'<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"a\" type=\"xs:int\"/></xs:schema>'",
+            "CREATE TABLE dbo.l8db_alter_attrs (x xml(CONTENT dbo.l8db_rpx) NULL, xd xml(DOCUMENT dbo.l8db_rpx) NULL, sp int SPARSE NULL, m varchar(20) MASKED WITH (FUNCTION = 'partial(1, \"xx\", 0)') NULL)",
+        ] {
+            adapter.rows(sql).await.expect(sql);
+        }
+        let state = || async {
+            adapter
+                .rows("SELECT c.name, CAST(c.xml_collection_id AS int), CAST(c.is_xml_document AS int), CAST(c.is_sparse AS int), CAST(c.is_masked AS int), ISNULL(mc.masking_function, '') FROM sys.columns c LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id WHERE c.object_id = OBJECT_ID('dbo.l8db_alter_attrs') ORDER BY c.column_id")
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| format!("{}/{}/{}/{}/{}/{}", text(r, 0), int(r, 1) != 0, int(r, 2), int(r, 3), int(r, 4), text(r, 5)))
+                .collect::<Vec<_>>()
+        };
+        let before = state().await;
+        for name in ["x", "xd", "sp", "m"] {
+            adapter
+                .alter_column(
+                    "dbo",
+                    "l8db_alter_attrs",
+                    &AlterColumnRequest {
+                        old_name: name.into(),
+                        new_name: None,
+                        data_type: None,
+                        set_not_null: Some(false),
+                        new_default: None,
+                        drop_default: false,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+        assert_eq!(state().await, before);
+        adapter
+            .alter_column(
+                "dbo",
+                "l8db_alter_attrs",
+                &AlterColumnRequest {
+                    old_name: "m".into(),
+                    new_name: None,
+                    data_type: Some("varchar(40)".into()),
+                    set_not_null: None,
+                    new_default: None,
+                    drop_default: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(state().await, before);
+        adapter
+            .rows("DROP TABLE dbo.l8db_alter_attrs; DROP XML SCHEMA COLLECTION dbo.l8db_rpx")
+            .await
+            .expect("cleanup");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_nullability_keeps_type_and_collation() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new(&url, Some("master"), pool, "alter-keep".into()).unwrap();
+        for sql in [
+            "IF OBJECT_ID('dbo.l8db_alter_keep') IS NOT NULL DROP TABLE dbo.l8db_alter_keep",
+            "IF TYPE_ID('dbo.l8db_phone') IS NOT NULL DROP TYPE dbo.l8db_phone",
+            "CREATE TYPE dbo.l8db_phone FROM varchar(20) NULL",
+            "CREATE TABLE dbo.l8db_alter_keep (amount decimal(10,2) NULL, label nvarchar(100) COLLATE Latin1_General_CS_AS NULL, body varchar(max) NULL, stamp datetime2(3) NULL, raw varbinary(16) NULL, code char(5) COLLATE Latin1_General_BIN2 NULL, phone dbo.l8db_phone NULL, owner sysname NULL, ratio float NULL, at time(0) NULL)",
+            "INSERT INTO dbo.l8db_alter_keep VALUES (12345.67, N'Hallo Welt', REPLICATE(CAST('x' AS varchar(max)), 9000), '2024-01-02 03:04:05.678', 0x0102, 'ab', '0301 1234', N'sa', 1.5, '10:11:12')",
+        ] {
+            adapter.rows(sql).await.expect(sql);
+        }
+        let before = column_types(&adapter, "dbo.l8db_alter_keep").await;
+        for (name, _, _) in &before {
+            adapter
+                .alter_column(
+                    "dbo",
+                    "l8db_alter_keep",
+                    &AlterColumnRequest {
+                        old_name: name.clone(),
+                        new_name: None,
+                        data_type: None,
+                        set_not_null: Some(true),
+                        new_default: None,
+                        drop_default: false,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+        let after = column_types(&adapter, "dbo.l8db_alter_keep").await;
+        let expected: Vec<_> = before
+            .iter()
+            .map(|(n, t, c)| (n.clone(), format!("{}0", &t[..t.len() - 1]), c.clone()))
+            .collect();
+        assert_eq!(after, expected);
+        adapter
+            .alter_column(
+                "dbo",
+                "l8db_alter_keep",
+                &AlterColumnRequest {
+                    old_name: "label".into(),
+                    new_name: None,
+                    data_type: Some("nvarchar(200)".into()),
+                    set_not_null: None,
+                    new_default: None,
+                    drop_default: false,
+                },
+            )
+            .await
+            .unwrap();
+        let widened = column_types(&adapter, "dbo.l8db_alter_keep").await;
+        assert_eq!(
+            widened[1],
+            (
+                "label".to_string(),
+                "nvarchar/400/0/0/0".to_string(),
+                "Latin1_General_CS_AS".to_string()
+            )
+        );
+        let row = adapter
+            .execute_query("SELECT CAST(amount AS varchar(20)) AS amount, label, LEN(body) AS body FROM dbo.l8db_alter_keep")
+            .await
+            .unwrap();
+        assert_eq!(row.rows[0]["amount"], "12345.67");
+        assert_eq!(row.rows[0]["label"], "Hallo Welt");
+        assert_eq!(row.rows[0]["body"], 9000);
+        adapter
+            .rows("DROP TABLE dbo.l8db_alter_keep; DROP TYPE dbo.l8db_phone")
+            .await
+            .expect("cleanup");
+    }
+
+    async fn in_script(
+        adapter: &MssqlAdapter,
+        session: &str,
+        sql: &str,
+    ) -> Result<QueryResult, String> {
+        crate::db::execution::with_session(Some(session.to_string()), adapter.execute_query(sql))
+            .await
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_temporal_keys_and_commented_queries_round_trip() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new(&url, Some("master"), pool, "temporal-keys".into()).unwrap();
+        adapter
+            .execute_query("IF OBJECT_ID('dbo.l8db_temporal_keys') IS NOT NULL DROP TABLE dbo.l8db_temporal_keys")
+            .await
+            .unwrap();
+        adapter
+            .execute_query("CREATE TABLE dbo.l8db_temporal_keys (dt datetime NOT NULL, d2 datetime2(3) NOT NULL, t time(2) NOT NULL, o datetimeoffset(4) NOT NULL, sd smalldatetime NOT NULL)")
+            .await
+            .unwrap();
+        adapter
+            .execute_query("INSERT INTO dbo.l8db_temporal_keys VALUES ('2024-01-01T10:00:00.003', '2024-01-01T10:00:00.123', '10:00:00.45', '2024-01-01T10:00:00.1000+02:00', '2024-01-01T10:01:00'), ('2024-01-01T10:00:00.007', '2024-01-01T10:00:00.997', '10:00:00.99', '2024-01-01T10:00:00.9990-05:30', '2024-01-01T10:02:00')")
+            .await
+            .unwrap();
+        let selected = adapter
+            .execute_query("-- keys\n/* all */ SELECT dt, d2, t, o, sd FROM dbo.l8db_temporal_keys ORDER BY dt")
+            .await
+            .unwrap();
+        assert_eq!(selected.rows.len(), 2);
+        assert_eq!(selected.rows[0]["dt"], "2024-01-01 10:00:00.003");
+        assert_eq!(selected.rows[1]["dt"], "2024-01-01 10:00:00.007");
+        assert_eq!(selected.rows[0]["t"], "10:00:00.45");
+        for row in &selected.rows {
+            let condition = ["dt", "d2", "t", "o", "sd"]
+                .iter()
+                .map(|c| format!("[{c}] = N'{}'", row[*c].as_str().unwrap()))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            let updated = adapter
+                .execute_query(&format!(
+                    "UPDATE dbo.l8db_temporal_keys SET sd = sd\nOUTPUT inserted.dt WHERE {condition}"
+                ))
+                .await
+                .unwrap();
+            assert_eq!(updated.rows.len(), 1, "{condition}");
+            let deleted = adapter
+                .execute_query(&format!(
+                    "DELETE FROM dbo.l8db_temporal_keys WHERE {condition}"
+                ))
+                .await
+                .unwrap();
+            assert_eq!(deleted.rows_affected, Some(1), "{condition}");
+        }
+        let procedure = adapter.execute_query("sp_helpdb 'master'").await.unwrap();
+        assert!(!procedure.rows.is_empty());
+        adapter
+            .execute_query("DROP TABLE dbo.l8db_temporal_keys")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_script_sessions_keep_state_between_statements() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new(&url, Some("master"), pool, "script-session".into()).unwrap();
+        adapter
+            .execute_query("IF OBJECT_ID('dbo.l8db_rp') IS NOT NULL DROP TABLE dbo.l8db_rp; CREATE TABLE dbo.l8db_rp (id int IDENTITY PRIMARY KEY, d date)")
+            .await
+            .unwrap();
+        for sql in [
+            "SET IDENTITY_INSERT dbo.l8db_rp ON",
+            "INSERT INTO dbo.l8db_rp (id, d) VALUES (100, '2024-01-01')",
+            "SET IDENTITY_INSERT dbo.l8db_rp OFF",
+            "SELECT 1 AS x INTO #t",
+            "SELECT * FROM #t",
+            "SET DATEFORMAT dmy",
+            "INSERT INTO dbo.l8db_rp (d) VALUES ('01/02/2024')",
+        ] {
+            in_script(&adapter, "script-a", sql).await.expect(sql);
+        }
+        assert!(in_script(
+            &adapter,
+            "script-a",
+            "INSERT INTO dbo.l8db_rp (d) VALUES ('31/31/2024')"
+        )
+        .await
+        .is_err());
+        in_script(&adapter, "script-a", "SELECT * FROM #t")
+            .await
+            .expect("session survives a failed statement");
+        let stored = adapter
+            .execute_query("SELECT CONVERT(varchar(10), d, 23) AS d FROM dbo.l8db_rp ORDER BY id")
+            .await
+            .unwrap();
+        assert_eq!(stored.rows[0]["d"], "2024-01-01");
+        assert_eq!(stored.rows[1]["d"], "2024-02-01");
+        assert!(in_script(&adapter, "script-b", "SELECT * FROM #t")
+            .await
+            .is_err());
+        let probe = adapter
+            .execute_query(
+                "SELECT CASE WHEN OBJECT_ID('tempdb..#t') IS NULL THEN 0 ELSE 1 END AS tmp",
+            )
+            .await
+            .unwrap();
+        assert_eq!(probe.rows[0]["tmp"], 0);
+        adapter
+            .execute_query("DROP TABLE dbo.l8db_rp")
+            .await
+            .expect("cleanup");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_pooled_clients_do_not_leak_session_state() {
+        let Some(url) = live_url() else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let server =
+            MssqlAdapter::new(&url, Some("master"), pool.clone(), "leak-master".into()).unwrap();
+        server
+            .execute_query("IF DB_ID('l8db_leak') IS NULL CREATE DATABASE l8db_leak")
+            .await
+            .unwrap();
+        let adapter = MssqlAdapter::new(&url, Some("l8db_leak"), pool, "leak".into()).unwrap();
+        let probe = "SELECT DB_NAME() AS db, @@OPTIONS & 2 AS implicit, @@TRANCOUNT AS tc, CASE WHEN OBJECT_ID('tempdb..#leak') IS NULL THEN 0 ELSE 1 END AS tmp, @@LOCK_TIMEOUT AS lt";
+        let state = || async {
+            let row = adapter.execute_query(probe).await.unwrap().rows[0].clone();
+            let rows = adapter
+                .execute_query("SELECT TOP 3 name FROM sys.all_objects")
+                .await
+                .unwrap()
+                .rows
+                .len();
+            (row, rows)
+        };
+        let baseline = state().await;
+        assert_eq!(baseline.0["db"], "l8db_leak");
+        assert_eq!(baseline.1, 3);
+        for sql in [
+            "SELECT 1 AS x; USE master",
+            "SET IMPLICIT_TRANSACTIONS ON",
+            "SET ROWCOUNT 1",
+            "SELECT 1 AS x INTO #leak",
+            "SET LOCK_TIMEOUT 5",
+            "DECLARE @x int; BEGIN TRANSACTION",
+        ] {
+            adapter.execute_query(sql).await.expect(sql);
+            assert_eq!(state().await, baseline, "{sql}");
+        }
+        adapter
+            .execute_query("CREATE TABLE dbo.counter (v int); INSERT INTO dbo.counter VALUES (1)")
+            .await
+            .unwrap();
+        let spid = || async {
+            adapter
+                .execute_query("SELECT @@SPID AS spid")
+                .await
+                .unwrap()
+                .rows[0]["spid"]
+                .clone()
+        };
+        let first = spid().await;
+        adapter
+            .execute_query("UPDATE dbo.counter SET v = v + 1")
+            .await
+            .unwrap();
+        assert_eq!(spid().await, first);
+        drop(adapter);
+        server
+            .execute_query("ALTER DATABASE l8db_leak SET SINGLE_USER WITH ROLLBACK IMMEDIATE")
+            .await
+            .unwrap();
+        server
+            .execute_query("DROP DATABASE l8db_leak")
+            .await
+            .unwrap();
     }
 }
