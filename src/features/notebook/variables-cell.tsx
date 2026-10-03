@@ -28,7 +28,7 @@ export function VariablesCell({
         Textbaustein <code>{"${name}"}</code>.
       </p>
       {variables.map((variable, index) => (
-        <div key={index} className="flex items-center gap-2">
+        <div key={index} className="flex flex-wrap items-center gap-2">
           <Input
             aria-label="Variablenname"
             placeholder="name"
@@ -54,7 +54,7 @@ export function VariablesCell({
           <Input
             aria-label="Wert"
             placeholder="Wert"
-            className="h-7 flex-1 text-xs"
+            className="h-7 min-w-32 flex-1 text-xs"
             disabled={variable.type === "null"}
             value={variable.value}
             onChange={(event) => patch(index, { value: event.target.value })}
