@@ -265,7 +265,7 @@ test.skipIf(!enabled)(
       expect(await answerTable.textContent()).not.toContain("---");
       expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
-      await panel.getByText("Tool verwendet", { exact: false }).last().click();
+      expect(await panel.getByText("Tool verwendet", { exact: false }).count()).toBe(0);
       expect(await panel.getByText("execute_query", { exact: true }).count()).toBeGreaterThan(0);
       const toolResultLabel = await panel
         .getByRole("button")
