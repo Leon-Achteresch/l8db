@@ -565,9 +565,10 @@ impl DatabaseAdapter for SqliteAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         let ddl = format!(
-            "DROP VIEW IF EXISTS {s}.{v}; CREATE VIEW {s}.{v} AS {body}",
+            "DROP VIEW IF EXISTS {s}.{v}; CREATE VIEW {s}.{v} {rest}",
             s = quote(schema),
-            v = quote(view)
+            v = quote(view),
+            rest = super::view_ddl::view_ddl_rest(body)
         );
         self.run(move |c| {
             c.execute_batch("BEGIN").map_err(map_err)?;

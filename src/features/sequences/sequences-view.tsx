@@ -9,6 +9,7 @@ import { useActiveConnection } from "@/lib/connections";
 import type { SequenceInfo } from "@/lib/db";
 import { useSequencesQuery } from "@/lib/queries";
 import { EditSequenceDialog } from "./sequences-view/edit-sequence-dialog";
+import { canEditSequences } from "./sequences-view/sequence-changes";
 
 export function SequencesView() {
   const connection = useActiveConnection();
@@ -17,6 +18,7 @@ export function SequencesView() {
   const [search, setSearch] = useState("");
   const [editingSequence, setEditingSequence] = useState<SequenceInfo | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const editable = canEditSequences(connection?.kind);
   const q = search.trim().toLowerCase();
   const filtered = (sequences ?? []).filter(
     (s) => !q || s.name.toLowerCase().includes(q) || s.schema.toLowerCase().includes(q),
@@ -166,14 +168,16 @@ export function SequencesView() {
                           {seq.last_value ?? <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="px-4 py-2 text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => setEditingSequence(seq)}
-                          >
-                            <PencilIcon className="size-3.5" />
-                          </Button>
+                          {editable && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => setEditingSequence(seq)}
+                            >
+                              <PencilIcon className="size-3.5" />
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -186,7 +190,7 @@ export function SequencesView() {
         </div>
       )}
 
-      {editingSequence && (
+      {editable && editingSequence && (
         <EditSequenceDialog
           sequence={editingSequence}
           open={editingSequence !== null}

@@ -2,6 +2,7 @@ import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/con
 import { listSshTunnels } from "@/lib/db";
 import { useSettingsStore } from "@/lib/settings";
 import { loadNetworkSecrets, openNetworkTunnel } from "./network";
+import { watchTunnelFailures } from "./tunnel-failures";
 
 export interface TunnelOutcome {
   ok: boolean;
@@ -13,6 +14,7 @@ export async function ensureSshTunnel(
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
   if (!usesTunnel(connection)) return { ok: true };
+  watchTunnelFailures();
   if (connection.tunnelPort) {
     try {
       const tunnels = await listSshTunnels();

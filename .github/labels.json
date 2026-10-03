@@ -1,0 +1,182 @@
+[
+  {
+    "name": "bug",
+    "color": "d73a4a",
+    "description": "Something is not working"
+  },
+  {
+    "name": "enhancement",
+    "color": "a2eeef",
+    "description": "New feature or improvement"
+  },
+  {
+    "name": "documentation",
+    "color": "0075ca",
+    "description": "Documentation changes"
+  },
+  {
+    "name": "dependencies",
+    "color": "0366d6",
+    "description": "Dependency updates"
+  },
+  {
+    "name": "github_actions",
+    "color": "000000",
+    "description": "GitHub Actions changes"
+  },
+  {
+    "name": "rust",
+    "color": "000000",
+    "description": "Rust changes"
+  },
+  {
+    "name": "javascript",
+    "color": "168700",
+    "description": "JavaScript or TypeScript changes"
+  },
+  {
+    "name": "performance",
+    "color": "f9d0c4",
+    "description": "Performance improvements"
+  },
+  {
+    "name": "refactor",
+    "color": "c5def5",
+    "description": "Code restructuring"
+  },
+  {
+    "name": "testing",
+    "color": "bfd4f2",
+    "description": "Test changes"
+  },
+  {
+    "name": "maintenance",
+    "color": "ededed",
+    "description": "Build, CI, tooling, or maintenance changes"
+  },
+  {
+    "name": "breaking-change",
+    "color": "b60205",
+    "description": "Breaking change declared in the title"
+  },
+  {
+    "name": "area:frontend",
+    "color": "1d76db",
+    "description": "React frontend"
+  },
+  {
+    "name": "area:backend",
+    "color": "1d76db",
+    "description": "Rust backend"
+  },
+  {
+    "name": "area:tables",
+    "color": "1d76db",
+    "description": "Table browser and filters"
+  },
+  {
+    "name": "area:query",
+    "color": "1d76db",
+    "description": "Query editor, query builder, execution plans, and notebooks"
+  },
+  {
+    "name": "area:connections",
+    "color": "1d76db",
+    "description": "Connections, SSH, and secrets"
+  },
+  {
+    "name": "area:providers",
+    "color": "1d76db",
+    "description": "Database providers and drivers"
+  },
+  {
+    "name": "area:storage",
+    "color": "1d76db",
+    "description": "Object storage"
+  },
+  {
+    "name": "area:extensions",
+    "color": "1d76db",
+    "description": "Extensions and extension SDK"
+  },
+  {
+    "name": "area:releases",
+    "color": "1d76db",
+    "description": "Updater, packaging, and releases"
+  },
+  {
+    "name": "area:ui",
+    "color": "1d76db",
+    "description": "Shared UI, app shell, and settings"
+  },
+  {
+    "name": "area:docs",
+    "color": "1d76db",
+    "description": "Documentation"
+  },
+  {
+    "name": "area:ci",
+    "color": "1d76db",
+    "description": "GitHub automation and tooling"
+  },
+  {
+    "name": "area:tests",
+    "color": "1d76db",
+    "description": "Regression tests"
+  },
+  {
+    "name": "os:macos",
+    "color": "5319e7",
+    "description": "Reported on macos"
+  },
+  {
+    "name": "os:windows",
+    "color": "5319e7",
+    "description": "Reported on windows"
+  },
+  {
+    "name": "os:linux",
+    "color": "5319e7",
+    "description": "Reported on linux"
+  },
+  {
+    "name": "size:XS",
+    "color": "3cbf00",
+    "description": "Fewer than 10 changed lines, excluding lockfiles and generated routes"
+  },
+  {
+    "name": "size:S",
+    "color": "5d9801",
+    "description": "10\u201399 changed lines, excluding lockfiles and generated routes"
+  },
+  {
+    "name": "size:M",
+    "color": "fbca04",
+    "description": "100\u2013499 changed lines, excluding lockfiles and generated routes"
+  },
+  {
+    "name": "size:L",
+    "color": "f9a602",
+    "description": "500\u2013999 changed lines, excluding lockfiles and generated routes"
+  },
+  {
+    "name": "size:XL",
+    "color": "d93f0b",
+    "description": "At least 1,000 changed lines, excluding lockfiles and generated routes"
+  },
+  {
+    "name": "status:needs-triage",
+    "color": "fbca04",
+    "description": "New or reopened issue awaiting maintainer triage"
+  },
+  {
+    "name": "status:draft",
+    "color": "ededed",
+    "description": "Draft pull request"
+  },
+  {
+    "name": "status:ready-for-review",
+    "color": "0e8a16",
+    "description": "Open non-draft pull request"
+  }
+]

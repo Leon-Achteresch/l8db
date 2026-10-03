@@ -113,6 +113,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       const options = {
         confirmed: true,
         track: false,
+        session: jobId,
         onJob: (id: string) => {
           currentJob = id;
         },

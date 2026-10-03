@@ -1,4 +1,5 @@
 import type { DatabaseKind } from "@/lib/db";
+import { quoteSqlString } from "@/lib/export";
 import { detectBindParams, scanBindParams } from "./scan";
 import type { BindParamRef, BindParamType, BindParamValue, ParameterizedQuery } from "./types";
 
@@ -109,7 +110,10 @@ export function buildParameterizedQuery(
     const entry = values[ref.name];
     const type: BindParamType = entry?.type ?? "text";
     out += sql.slice(cursor, occurrence.start);
-    out += kind === "oracle" ? `$${position}` : `$${position}::${pgCastFor(type)}`;
+    out +=
+      kind === "oracle" || type === "text" || type === "null"
+        ? `$${position}`
+        : `$${position}::${pgCastFor(type)}`;
     cursor = occurrence.end;
   }
   out += sql.slice(cursor);
@@ -123,22 +127,46 @@ export function buildParameterizedQuery(
   };
 }
 
-function sqlLiteral(entry: BindParamValue | undefined): string {
+const PLAIN_TIMESTAMP_KINDS: (DatabaseKind | undefined)[] = [
+  "mssql",
+  "sqlite",
+  "sqlite_http",
+  "cassandra",
+  "odbc",
+  "elasticsearch",
+  "dynamodb",
+];
+
+function sqlLiteral(entry: BindParamValue | undefined, kind?: DatabaseKind): string {
   const value = entry ? normalizeBindValue(entry) : null;
   if (value === null) return "NULL";
-  if (entry?.type === "int" || entry?.type === "numeric" || entry?.type === "bool") return value;
-  if (entry?.type === "timestamp") return `TIMESTAMP '${value.replace(/'/g, "''")}'`;
-  return `'${value.replace(/'/g, "''")}'`;
+  if (entry?.type === "int" && INT_PATTERN.test(value)) return value;
+  if (entry?.type === "numeric" && NUMERIC_PATTERN.test(value)) return value;
+  if (entry?.type === "bool" && (value === "true" || value === "false")) {
+    if (kind === "mssql") return value === "true" ? "1" : "0";
+    return value;
+  }
+  const literal = quoteSqlString(value, kind);
+  if (
+    entry?.type === "timestamp" &&
+    !PLAIN_TIMESTAMP_KINDS.includes(kind) &&
+    literal.startsWith("'")
+  )
+    return `TIMESTAMP ${literal}`;
+  return literal;
 }
 
 export function inlineBindValues(
   sql: string,
   values: Record<string, BindParamValue | undefined>,
+  kind?: DatabaseKind,
 ): string {
   let out = "";
   let cursor = 0;
   for (const occurrence of scanBindParams(sql)) {
-    out += sql.slice(cursor, occurrence.start) + sqlLiteral(values[occurrence.name]);
+    out += sql.slice(cursor, occurrence.start);
+    const literal = sqlLiteral(values[occurrence.name], kind);
+    out += literal.startsWith("-") && out.endsWith("-") ? ` ${literal}` : literal;
     cursor = occurrence.end;
   }
   return out + sql.slice(cursor);

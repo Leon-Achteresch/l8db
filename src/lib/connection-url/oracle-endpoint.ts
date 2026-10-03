@@ -1,3 +1,4 @@
+import type { SavedConnection } from "@/lib/connections";
 import { type OracleEndpoint, parseOracleKeyValue } from "./oracle-key-value";
 import { parseConnectionUrl } from "./parse";
 
@@ -131,6 +132,27 @@ function parseOracleHostInput(host: string): OracleHostInput {
 
 export function normalizeOracleHost(host: string): string {
   return parseOracleHostInput(host).hostname;
+}
+
+export function updateOracleConnectionTarget<
+  T extends Pick<SavedConnection, "connectionString" | "ssh">,
+>(connection: T, host: string, serviceName: string): T {
+  const { hostname, port } = parseOracleHostInput(host);
+  return {
+    ...connection,
+    connectionString: updateOracleConnectionEndpoint(
+      connection.connectionString,
+      host,
+      serviceName,
+    ),
+    ssh: connection.ssh
+      ? {
+          ...connection.ssh,
+          remoteHost: hostname.replace(/^\[|\]$/g, ""),
+          ...(port ? { remotePort: Number(port) } : {}),
+        }
+      : connection.ssh,
+  };
 }
 
 export function updateOracleConnectionEndpoint(

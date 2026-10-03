@@ -258,6 +258,7 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
         .await
         .map_err(|e| e.to_string())?;
     let mut size = 0usize;
+    let mut origin = "http://localhost:1420".to_string();
     loop {
         let mut line = String::new();
         reader
@@ -269,6 +270,15 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
         }
         if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
             size = value.trim().parse().map_err(|_| "Invalid length")?;
+        }
+        if line.to_ascii_lowercase().starts_with("origin:") {
+            let value = line[7..].trim();
+            if ["http://localhost:", "http://127.0.0.1:"]
+                .iter()
+                .any(|prefix| value.starts_with(prefix))
+            {
+                origin = value.to_string();
+            }
         }
         if size > 20 * 1024 * 1024 {
             return Err("Request too large".into());
@@ -294,7 +304,7 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
         }
     };
     let body = value.to_string();
-    let response=format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: http://localhost:1420\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body);
+    let response=format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: {origin}\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nVary: Origin\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body);
     socket
         .write_all(response.as_bytes())
         .await

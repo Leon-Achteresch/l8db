@@ -27,7 +27,10 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
     });
     const page = await browser.newPage({ viewport: { width: 1200, height: 850 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (error.message !== "ResizeObserver loop completed with undelivered notifications.")
+        errors.push(error.message);
+    });
     await page.addInitScript(
       ({ database, provider }) => {
         localStorage.setItem(
@@ -61,7 +64,12 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
             version: 0,
           }),
         );
-        const host = window as unknown as { __TAURI_INTERNALS__: unknown; redisCalls: unknown[] };
+        const host = window as unknown as {
+          __TAURI_INTERNALS__: unknown;
+          __TAURI_EVENT_PLUGIN_INTERNALS__: unknown;
+          redisCalls: unknown[];
+        };
+        host.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
         host.redisCalls = [];
         host.__TAURI_INTERNALS__ = {
           transformCallback: () => 1,
@@ -97,7 +105,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.getByRole("button", { name: "Filter", exact: true }).click();
       const pattern = page.getByRole("textbox", { name: "Redis-Key-Pattern", exact: true });
       await pattern.fill("demo:hash");
-      await page.getByRole("button", { name: "Filter anwenden", exact: true }).click();
+      await pattern.press("Enter");
       await page.getByText("1–1 von 1", { exact: true }).waitFor();
       await page.screenshot({ path: "/tmp/l8db-redis-filter.png" });
       await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
@@ -271,7 +279,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
         .click();
       await page.getByText("Keine Daten.", { exact: false }).first().waitFor();
       await page.goto("http://localhost:1420/connections");
-      await page.getByRole("button", { name: "Neu", exact: true }).click();
+      await page.getByRole("button", { name: "Neue Verbindung", exact: true }).click();
       await page.getByRole("button", { name: "Ich habe schon einen Connection-String" }).click();
       await page.getByLabel("Name", { exact: true }).fill("Redis Connection Test");
       await page.locator("#connection-url").fill(`${provider}://127.0.0.1:6381/0`);

@@ -405,6 +405,8 @@ test.skipIf(!ENABLED)(
   async () => {
     await navigate("/dashboard");
     await page.waitForSelector(".react-grid-item", { timeout: 30000 });
+    const edit = page.getByRole("button", { name: "Dashboard bearbeiten", exact: true });
+    if (await edit.count()) await edit.click();
     await page.waitForTimeout(300);
     await page.evaluate(() => {
       const clicks: number[] = [];
@@ -415,8 +417,8 @@ test.skipIf(!ENABLED)(
         }
       }).observe({ type: "event", durationThreshold: 16 });
     });
-    await page.getByRole("button", { name: "Chart", exact: true }).first().click();
-    await page.getByRole("dialog", { name: "Neuer Chart" }).waitFor();
+    await page.getByRole("button", { name: "Chart erstellen", exact: true }).click();
+    await page.getByRole("dialog", { name: "Dein neuer Chart" }).waitFor();
     await page.waitForTimeout(100);
     const durations = await page.evaluate(
       () => (window as unknown as { __chartClickDurations: number[] }).__chartClickDurations,

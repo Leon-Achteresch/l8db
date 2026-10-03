@@ -106,13 +106,17 @@ pub fn actions_from_args(args: &[String], cwd: &Path) -> Vec<OpenFileAction> {
 }
 
 pub fn enqueue<R: Runtime>(app: &AppHandle<R>, actions: Vec<OpenFileAction>) {
-    if !actions.is_empty() {
+    let queued = !actions.is_empty();
+    if queued {
         if let Ok(mut pending) = app.state::<PendingOpenFiles>().0.lock() {
             pending.extend(actions);
         }
-        let _ = app.emit_to("main", OPEN_FILES_EVENT, ());
     }
-    if let Some(window) = app.get_webview_window("main") {
+    let window = crate::windows::main_window(app);
+    if queued {
+        let _ = app.emit_to(crate::windows::MAIN_LABEL, OPEN_FILES_EVENT, ());
+    }
+    if let Some(window) = window {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();

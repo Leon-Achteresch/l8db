@@ -9,7 +9,7 @@ import { executeQuery, executeQueryWithParams, isReadOnlyActive } from "@/lib/db
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { gridCellText } from "@/lib/grid-search";
 import { loadSecret, rememberSecret } from "@/lib/secrets";
-import { effectiveConnectionString } from "@/lib/ssh";
+import { effectiveConnectionString, readOnlyConnectionString } from "@/lib/ssh";
 import { version } from "../../../package.json";
 import type {
   CoreServices,
@@ -26,6 +26,7 @@ import type {
 import { ExtensionError } from "./contracts";
 import { ExtensionManager } from "./manager";
 import { useExtensionPrompts } from "./prompts";
+import { bindQueryParams } from "./query-params";
 import { SandboxRuntime } from "./sandbox-runtime";
 import { TauriExtensionStorage } from "./tauri-storage";
 
@@ -82,7 +83,11 @@ export function createExtensionHost() {
       if (!connection) throw new ExtensionError("DatabaseUnavailableError", "No active connection");
       if (request.write && isReadOnlyActive())
         throw new ExtensionError("PermissionDeniedError", "Read-only connection");
-      const connectionString = effectiveConnectionString(connection);
+      const effective = effectiveConnectionString(connection);
+      const connectionString =
+        !request.write && connection.kind === "postgres"
+          ? readOnlyConnectionString(effective)
+          : effective;
       const databaseName =
         useDbSelectionStore.getState().databaseByConnection[connection.id] ?? undefined;
       try {
@@ -93,7 +98,7 @@ export function createExtensionHost() {
                 connection.kind,
                 connectionString,
                 request.sql,
-                request.params.map((p) => (typeof p === "string" ? p : null)),
+                bindQueryParams(request.params, connection.kind),
                 databaseName,
               );
         return {

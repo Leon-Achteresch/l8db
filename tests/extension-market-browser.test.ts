@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import config from "../src-tauri/tauri.conf.json";
 import { bundleFixture } from "./fixtures/browser-bundle";
@@ -25,10 +24,8 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
       ],
     });
     const output = await bundleFixture("tests/fixtures/extension-market-browser.tsx");
-    const frame = await readFile(resolve("src/lib/extensions/sandbox-frame.js"), "utf8");
-    const hash = createHash("sha256").update(frame).digest("base64");
     const csp = Object.entries(config.app.security.csp)
-      .map(([key, value]) => `${key} ${value}${key === "script-src" ? ` 'sha256-${hash}'` : ""}`)
+      .map(([key, value]) => `${key} ${value}`)
       .join("; ");
     const server = Bun.serve({
       port: 0,
@@ -76,20 +73,30 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
       await page.getByRole("dialog").getByRole("button", { name: "Übernehmen" }).click();
       await page.getByRole("dialog").getByText("sequential_scan").waitFor();
       await page.getByRole("dialog").getByRole("button", { name: "An TypeSafe senden" }).click();
-      await page.getByRole("dialog").getByText("Breiter Tabellenscan").waitFor();
+      await page.waitForFunction(
+        () =>
+          (window as unknown as { marketState: { results: unknown[] } }).marketState.results
+            .length === 1,
+      );
       const state = await page.evaluate(() => {
         const market = (
           window as unknown as {
             marketState: {
               installed: Map<string, unknown>;
               requests: { body: string }[];
+              results: { message: string }[];
             };
           }
         ).marketState;
-        return { installedCount: market.installed.size, requests: market.requests };
+        return {
+          installedCount: market.installed.size,
+          requests: market.requests,
+          results: market.results,
+        };
       });
       expect(state.installedCount).toBe(1);
       expect(state.requests).toHaveLength(1);
+      expect(state.results[0].message).toContain("Breiter Tabellenscan");
       expect(state.requests[0].body).not.toContain("secret_customers");
       expect(state.requests[0].body).not.toContain("private@example.com");
       expect(errors).toEqual([]);

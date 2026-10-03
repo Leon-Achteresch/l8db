@@ -22,6 +22,21 @@ fn map_err(e: mongodb::error::Error) -> String {
     format!("MongoDB: {e}")
 }
 
+async fn collect_capped<T, E>(
+    stream: impl futures_util::Stream<Item = Result<T, E>>,
+    cap: usize,
+) -> Result<(Vec<T>, bool), E> {
+    let mut stream = std::pin::pin!(stream);
+    let mut items = Vec::new();
+    while let Some(item) = stream.try_next().await? {
+        if items.len() == cap {
+            return Ok((items, true));
+        }
+        items.push(item);
+    }
+    Ok((items, false))
+}
+
 fn to_json(bson: Bson) -> serde_json::Value {
     match bson {
         Bson::Int64(value)
@@ -385,16 +400,20 @@ impl DatabaseAdapter for MongoAdapter {
                 "find" | "aggregate" | "listCollections" | "listIndexes"
             )
         });
+        let mut truncated = false;
         let (result, batch) = if cursor_command {
-            let items = timed(async {
+            let (items, capped) = timed(async {
                 let cursor = client
                     .database(&db)
                     .run_cursor_command(command)
                     .await
                     .map_err(map_err)?;
-                cursor.try_collect::<Vec<Document>>().await.map_err(map_err)
+                collect_capped(cursor, super::commands::MAX_RESULT_ROWS)
+                    .await
+                    .map_err(map_err)
             })
             .await?;
+            truncated = capped;
             (
                 Document::new(),
                 Some(items.into_iter().map(Bson::Document).collect::<Vec<_>>()),
@@ -455,7 +474,7 @@ impl DatabaseAdapter for MongoAdapter {
             rows,
             rows_affected: affected,
             execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
+            truncated,
         })
     }
 
@@ -792,6 +811,42 @@ async fn write_documents(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cursor_results_stop_after_the_row_cap() {
+        use futures_util::StreamExt;
+        let pulled = std::sync::atomic::AtomicUsize::new(0);
+        let stream = futures_util::stream::iter(0..1_000_000usize).map(|value| {
+            pulled.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok::<_, String>(value)
+        });
+        let (items, truncated) = collect_capped(stream, 1000).await.unwrap();
+        assert!(truncated);
+        assert_eq!(items.len(), 1000);
+        assert_eq!(items.last(), Some(&999));
+        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 1001);
+
+        let (items, truncated) = collect_capped(
+            futures_util::stream::iter((0..1000).map(Ok::<_, String>)),
+            1000,
+        )
+        .await
+        .unwrap();
+        assert!(!truncated);
+        assert_eq!(items.len(), 1000);
+
+        let (items, truncated) = collect_capped(
+            futures_util::stream::iter((0..3).map(Ok::<_, String>)),
+            1000,
+        )
+        .await
+        .unwrap();
+        assert!(!truncated);
+        assert_eq!(items, vec![0, 1, 2]);
+
+        let failing = futures_util::stream::iter(vec![Ok(1), Err("boom".to_string())]);
+        assert_eq!(collect_capped(failing, 1000).await, Err("boom".to_string()));
+    }
 
     #[test]
     fn import_values_are_typed() {

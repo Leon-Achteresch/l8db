@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { DataCompareSideSelection } from "@/features/compare/data-compare-side-picker";
 import type { CompareSideSelection } from "@/lib/compare-types";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface AnalysisWorkspace {
   id: string;
@@ -25,3 +26,5 @@ export function saveAnalysisWorkspace(value: Omit<AnalysisWorkspace, "id">) {
     ].slice(0, 100),
   }));
 }
+
+syncAcrossWindows("l8db.analysis-workspaces", () => void useAnalysisWorkspaces.persist.rehydrate());

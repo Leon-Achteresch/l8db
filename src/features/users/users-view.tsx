@@ -27,13 +27,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { alterRoleOptions, roleEditState } from "@/features/users/users-view/alter-role-options";
 import { CreateRoleDialog } from "@/features/users/users-view/create-role-dialog";
 import { RoleDetailView } from "@/features/users/users-view/role-detail-view";
 import { RoleEditForm } from "@/features/users/users-view/role-edit-form";
 import { toggleMembershipState } from "@/features/users/users-view/toggle-membership";
 import type { EditFormState } from "@/features/users/users-view/types";
 import { useActiveConnection } from "@/lib/connections";
-import { type AlterRoleOptions, alterRole, dropRole } from "@/lib/db";
+import { alterRole, dropRole } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -65,20 +66,7 @@ export function UsersView({ name }: { name: string }) {
   const handleEdit = useCallback(() => {
     if (!role) return;
     setEditing(true);
-    setEditState({
-      superuser: role.superuser,
-      can_login: role.can_login,
-      create_db: role.create_db,
-      create_role: role.create_role,
-      replication: role.replication,
-      bypass_rls: role.bypass_rls,
-      conn_limit: role.conn_limit === -1 ? "" : String(role.conn_limit),
-      valid_until: role.valid_until ?? "",
-      password: "",
-      grant_roles: [],
-      revoke_roles: [],
-      current_member_of: [...role.member_of],
-    });
+    setEditState(roleEditState(role));
   }, [role]);
 
   const handleCancel = useCallback(() => {
@@ -90,21 +78,7 @@ export function UsersView({ name }: { name: string }) {
     if (!connection || !role || !editState) return;
     setSaving(true);
     try {
-      const options: AlterRoleOptions = {
-        name: role.name,
-        superuser: editState.superuser !== role.superuser ? editState.superuser : undefined,
-        can_login: editState.can_login !== role.can_login ? editState.can_login : undefined,
-        create_db: editState.create_db !== role.create_db ? editState.create_db : undefined,
-        create_role: editState.create_role !== role.create_role ? editState.create_role : undefined,
-        replication: editState.replication !== role.replication ? editState.replication : undefined,
-        bypass_rls: editState.bypass_rls !== role.bypass_rls ? editState.bypass_rls : undefined,
-        conn_limit: editState.conn_limit !== "" ? Number(editState.conn_limit) : undefined,
-        password: editState.password || undefined,
-        valid_until: editState.valid_until || undefined,
-        clear_valid_until: role.valid_until !== null && editState.valid_until === "",
-        grant_roles: editState.grant_roles,
-        revoke_roles: editState.revoke_roles,
-      };
+      const options = alterRoleOptions(role, editState);
       await alterRole(
         connection.kind,
         effectiveConnectionString(connection),

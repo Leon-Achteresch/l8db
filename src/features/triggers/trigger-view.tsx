@@ -7,13 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { executeQuery, validateSql } from "@/lib/db";
+import { validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { triggerStatus } from "./trigger-status";
 import { FeedbackPanel } from "./trigger-view/feedback-panel";
+import { replaceTrigger, triggerDropSql, triggerErrorPrefix } from "./trigger-view/replace-trigger";
 import { TriggerEditorPane } from "./trigger-view/trigger-editor-pane";
 
 type ValidationState =
@@ -75,19 +77,10 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
     setExecution({ status: "idle" });
   }, []);
 
-  const buildDropSql = useCallback(() => {
-    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    switch (connection?.kind) {
-      case "postgres":
-        return `DROP TRIGGER IF EXISTS ${q(triggerName)} ON ${q(schema)}.${q(table)};\n`;
-      case "sqlite":
-        return `DROP TRIGGER IF EXISTS ${q(schema)}.${q(triggerName)};\n`;
-      case "mysql":
-        return `DROP TRIGGER IF EXISTS \`${schema.replace(/`/g, "``")}\`.\`${triggerName.replace(/`/g, "``")}\`;\n`;
-      default:
-        return "";
-    }
-  }, [connection?.kind, schema, table, triggerName]);
+  const buildDropSql = useCallback(
+    () => triggerDropSql(connection?.kind, schema, table, triggerName),
+    [connection?.kind, schema, table, triggerName],
+  );
 
   const handleCompile = useCallback(async () => {
     if (!connection) return;
@@ -111,21 +104,33 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
     if (!connection) return;
     setExecution({ status: "loading" });
     try {
-      const sql = `${buildDropSql()}${currentValue}`;
-      const result = await executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        sql,
-        database ?? undefined,
-      );
-      setExecution({ status: "success", time: result.execution_time_ms });
+      const time = await replaceTrigger({
+        kind: connection.kind,
+        connectionString: effectiveConnectionString(connection),
+        database: database ?? undefined,
+        schema,
+        table,
+        trigger: triggerName,
+        original: trigger?.definition ?? "",
+        definition: currentValue,
+      });
+      setExecution({ status: "success", time });
       setValidation({ status: "idle" });
       setDraft(null);
       await queryClient.invalidateQueries({ queryKey: ["triggers"] });
     } catch (e) {
       setExecution({ status: "error", message: String(e) });
     }
-  }, [connection, database, currentValue, buildDropSql, queryClient]);
+  }, [
+    connection,
+    database,
+    schema,
+    table,
+    triggerName,
+    trigger?.definition,
+    currentValue,
+    queryClient,
+  ]);
 
   if (!connection) {
     return (
@@ -200,10 +205,10 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
               {trigger.orientation}
             </Badge>
             <Badge
-              variant={trigger.enabled === "DISABLED" ? "destructive" : "secondary"}
+              variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "secondary"}
               className="shrink-0 text-[10px] px-1.5 py-0"
             >
-              {trigger.enabled}
+              {triggerStatus(trigger.enabled).label}
             </Badge>
           </div>
         </div>
@@ -253,7 +258,11 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
         value={currentValue}
         onChange={handleChange}
         error={feedbackState.status === "error" ? feedbackState.message : null}
-        errorPrefix={buildDropSql()}
+        errorPrefix={
+          feedbackState === execution
+            ? triggerErrorPrefix(connection.kind, buildDropSql())
+            : buildDropSql()
+        }
       />
 
       {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (

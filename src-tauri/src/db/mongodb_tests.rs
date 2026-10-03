@@ -419,3 +419,73 @@ async fn mongodb_docker_integration() {
         create_adapter_from_string(DatabaseKind::Mongodb, wrong_uri.as_str(), None, pool).unwrap();
     assert!(wrong.test_connection().await.is_err());
 }
+
+#[tokio::test]
+#[ignore = "requires L8DB_E2E_MONGODB_URL pointing to the isolated Docker lab"]
+async fn mongodb_cursor_queries_stop_at_the_row_cap() {
+    let uri = std::env::var("L8DB_E2E_MONGODB_URL").expect("L8DB_E2E_MONGODB_URL required");
+    let db = format!(
+        "l8db_cap_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let adapter =
+        create_adapter_from_string(DatabaseKind::Mongodb, &uri, Some(&db), create_pool_state())
+            .unwrap();
+    let total = 5000;
+    let seed = serde_json::json!({"insert": "events", "documents": (0..total).map(|n| serde_json::json!({"_id": n, "n": n, "pad": "x".repeat(200)})).collect::<Vec<_>>()});
+    assert_eq!(
+        adapter
+            .execute_query(&seed.to_string())
+            .await
+            .unwrap()
+            .rows_affected,
+        Some(total)
+    );
+    let cap = crate::db::commands::MAX_RESULT_ROWS;
+    for query in [
+        r#"{"find":"events","sort":{"n":1}}"#.to_string(),
+        r#"db.events.find({}).sort({"n": 1})"#.to_string(),
+        r#"{"aggregate":"events","pipeline":[{"$sort":{"n":1}}],"cursor":{"batchSize":50}}"#
+            .to_string(),
+    ] {
+        let result = adapter.execute_query(&query).await.unwrap();
+        assert_eq!(result.rows.len(), cap, "{query}");
+        assert!(result.truncated, "{query}");
+        assert_eq!(result.rows[0]["n"], 0, "{query}");
+        assert_eq!(result.rows[cap - 1]["n"], cap as i64 - 1, "{query}");
+    }
+    let exact = adapter
+        .execute_query(&format!(r#"{{"find":"events","limit":{cap}}}"#))
+        .await
+        .unwrap();
+    assert_eq!(exact.rows.len(), cap);
+    assert!(!exact.truncated);
+    let small = adapter
+        .execute_query(r#"{"find":"events","filter":{"n":{"$lt":3}}}"#)
+        .await
+        .unwrap();
+    assert_eq!(small.rows.len(), 3);
+    assert!(!small.truncated);
+    let mut open = i64::MAX;
+    for _ in 0..50 {
+        let status = adapter
+            .execute_query(r#"{"serverStatus":1}"#)
+            .await
+            .unwrap();
+        open = status.rows[0]["metrics"]["cursor"]["open"]["total"]
+            .as_i64()
+            .unwrap_or(i64::MAX);
+        if open == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(open, 0);
+    adapter
+        .execute_query(r#"{"dropDatabase":1}"#)
+        .await
+        .unwrap();
+}

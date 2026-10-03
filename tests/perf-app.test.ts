@@ -140,7 +140,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       const dom = await app.page.evaluate(() => ({
         sidebarItems: document.querySelectorAll("[data-slot=sidebar-menu-item]").length,
-        overviewRows: document.querySelector(".max-h-80.overflow-auto")?.childElementCount ?? -1,
+        overviewRows:
+          document.querySelector('[data-slot="dashboard-table-list"] > div')?.childElementCount ??
+          -1,
         nodes: document.querySelectorAll("*").length,
       }));
       console.log(
@@ -162,7 +164,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(sidebarScroll.p95).toBeLessThan(MAX_P95_MS);
 
       const overviewScroll = await measure("overview-scroll", app.page, async () => {
-        await app.page.locator(".max-h-80.overflow-auto").first().hover();
+        await app.page.locator('[data-slot="dashboard-table-list"]').first().hover();
         for (let step = 0; step < 40; step++) {
           await app.page.mouse.wheel(0, step % 10 < 5 ? 200 : -200);
           await app.page.waitForTimeout(16);
@@ -256,10 +258,11 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
             .some((entry) => entry.name.includes("editor.api")),
         ),
       ).toBe(false);
-      await app.page.getByRole("button", { name: "Chart", exact: true }).first().click();
-      await app.page.getByRole("dialog", { name: "Neuer Chart" }).waitFor();
+      const edit = app.page.getByRole("button", { name: "Dashboard bearbeiten", exact: true });
+      if (await edit.count()) await edit.click();
+      await app.page.getByRole("button", { name: "Chart erstellen", exact: true }).click();
+      await app.page.getByRole("dialog", { name: "Dein neuer Chart" }).waitFor();
       expect(await app.page.locator(".monaco-editor").count()).toBe(0);
-      await app.page.getByRole("button", { name: "Erweitert" }).click();
       await app.page.getByRole("tab", { name: "Quelle & SQL" }).click();
       await app.page.getByRole("button", { name: "Ich möchte selbst SQL schreiben" }).click();
       await app.page.locator('.monaco-editor[role="code"]').waitFor();

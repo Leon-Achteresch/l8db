@@ -15,7 +15,7 @@ Status of the 1.0 audit (October 2026). Internationalisation is out of scope by 
 - SQLite/DuckDB no longer create empty files for mistyped paths (`?mode=rwc` opts in).
 - TLS: libpq semantics, CA files and client certificates for PostgreSQL, MySQL/MariaDB and SQL Server, see [ssh-network.md](ssh-network.md#tls).
 
-Verified against real servers: PostgreSQL 18 (TLS modes, client certificates, exact numerics), MariaDB 10.11 (TLS, X.509 login, plaintext fallback), Cassandra 5 (TLS modes, paging, counts), azure-sql-edge (unreadable types). SQL Server TLS success paths could not be verified on azure-sql-edge (its TLS handshake fails with native-tls); `live_tls_modes` in `mssql.rs` runs against a real SQL Server via `L8DB_E2E_MSSQL_TLS_URL`.
+Verified against real servers: PostgreSQL 18 (TLS modes, client certificates, exact numerics), MariaDB 10.11 (TLS, X.509 login, plaintext fallback), Cassandra 5 (TLS modes, paging, counts), azure-sql-edge (unreadable types). SQL Server TLS success paths could not be verified on azure-sql-edge (its TLS handshake fails with native-tls); `live_tls_modes` in `mssql.rs` runs against a real SQL Server via `L8DB_E2E_MSSQL_TLS_URL`. `scripts/tls-lab.sh` creates the CA, certificates and the PostgreSQL, MariaDB and Cassandra containers and runs the three TLS tests; ports come from `L8DB_E2E_PG_TLS_PORT`, `L8DB_E2E_MYSQL_PLAIN_PORT`, `L8DB_E2E_MYSQL_TLS_PORT` and `L8DB_E2E_CASSANDRA_TLS_PORT`.
 
 ## Outstanding
 

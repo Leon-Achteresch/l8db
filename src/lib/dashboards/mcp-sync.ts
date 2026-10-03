@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { confirmExpertSql } from "@/lib/dashboard-file";
 import type { Dashboard } from "./model";
 import { useDashboardsStore, withoutDashboardHistory } from "./store";
 
@@ -8,6 +9,7 @@ export interface McpDashboardFile extends Content {
   id: string;
   connectionId: string;
   stamp: string;
+  trusted?: boolean;
 }
 
 const WRITE_DELAY_MS = 400;
@@ -15,6 +17,28 @@ const POLL_MS = 2000;
 const synced = new Map<string, string>();
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
 const dropping = new Set<string>();
+const declined = new Map<string, string>();
+
+function expertSql(datasets: Dashboard["datasets"]): string {
+  return JSON.stringify(
+    datasets
+      .filter((d) => d.mode === "expert" && d.sql?.trim())
+      .map((d) => d.sql.trim())
+      .sort(),
+  );
+}
+
+function approved(file: McpDashboardFile, current: Dashboard | undefined): boolean {
+  if (file.trusted === true) return true;
+  if (current && expertSql(current.datasets) === expertSql(file.datasets)) return true;
+  if (declined.get(file.id) === file.stamp) return false;
+  if (confirmExpertSql({ ...file, locked: true })) {
+    declined.delete(file.id);
+    return true;
+  }
+  declined.set(file.id, file.stamp);
+  return false;
+}
 
 function content(dashboard: Content): string {
   return JSON.stringify([
@@ -34,6 +58,7 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       continue;
     }
     if (pending.has(file.id)) continue;
+    if (!approved(file, current)) continue;
     const next = {
       name: file.name,
       datasets: file.datasets,

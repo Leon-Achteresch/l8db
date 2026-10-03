@@ -1,10 +1,13 @@
-import type { ForeignKeyInfo } from "@/lib/db";
+import type { DatabaseKind, ForeignKeyInfo } from "@/lib/db";
+import { quoteIdent, quoteLiteral, quoteString } from "@/lib/sql-filter";
 
-export function formatFkFilter(column: string, value: unknown): string {
+export function formatFkFilter(column: string, value: unknown, kind: DatabaseKind): string {
   if (value === null || value === undefined) return "";
-  const escaped = String(value).replace(/'/g, "''");
-  if (typeof value === "number") return `"${column}" = ${value}`;
-  return `"${column}" = '${escaped}'`;
+  const target = quoteIdent(column, kind);
+  if (typeof value === "number" || typeof value === "bigint") return `${target} = ${value}`;
+  if (typeof value === "boolean") return `${target} = ${quoteLiteral(String(value), kind)}`;
+  const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return `${target} = ${quoteString(text, kind)}`;
 }
 
 export type FkLink = {

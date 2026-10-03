@@ -45,6 +45,11 @@ export const ATTRIBUTE_LABELS: Record<string, string> = {
 const SETTING_CONTEXT = /\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)$/i;
 const TOKEN =
   /--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|[nN]?[qQ]'(?:\[[\s\S]*?\]|\{[\s\S]*?\}|\([\s\S]*?\)|<[\s\S]*?>|(\S)[\s\S]*?\1)'|[eE]'(?:[^'\\]|\\.|'')*'|'(?:[^']|'')*'/g;
+const CANONICAL_TOKEN: Partial<Record<DatabaseKind, RegExp>> = {
+  mysql:
+    /--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|`(?:[^`]|``)*`|"(?:[^"\\]|\\[\s\S]|"")*"|'(?:[^'\\]|\\[\s\S]|'')*'/g,
+  mssql: /--[^\n]*|\/\*[\s\S]*?\*\/|\[(?:[^\]]|\]\])*\]|"(?:[^"]|"")*"|[nN]?'(?:[^']|'')*'/g,
+};
 const SQL_TEXT =
   /\b(?:select|from|join|into|update|delete|insert|table|view|truncate|call|execute|alter|drop|create|merge|references)\b/i;
 
@@ -126,16 +131,33 @@ export function canonical(
   kind: DatabaseKind,
   options: SchemaCompareOptions,
 ): string {
-  let out = requalify(text, schema, "§", kind)
+  const out = requalify(text, schema, "§", kind)
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
     .trim()
     .replace(/[;\s/]+$/, "");
-  if (options.ignoreWhitespace) out = out.replace(/\s+/g, " ");
-  if (options.ignoreCase) out = out.toLowerCase();
-  return out;
+  if (!options.ignoreWhitespace && !options.ignoreCase) return out;
+  const normalize = (code: string, identifier = false) => {
+    let value = code;
+    if (options.ignoreWhitespace && !identifier) value = value.replace(/\s+/g, " ");
+    if (options.ignoreCase) value = value.toLowerCase();
+    return value;
+  };
+  let result = "";
+  let code = 0;
+  for (const match of out.matchAll(CANONICAL_TOKEN[kind] ?? TOKEN)) {
+    const token = match[0];
+    const start = match.index ?? 0;
+    result += normalize(out.slice(code, start));
+    if (/^(?:--|\/\*|#)/.test(token)) result += normalize(token);
+    else if (/^[`["]/.test(token) && !(kind === "mysql" && token.startsWith('"')))
+      result += normalize(token, true);
+    else result += token;
+    code = start + token.length;
+  }
+  return result + normalize(out.slice(code));
 }
 
 function comparableAttributes(object: CatalogObject, context: CompareContext) {

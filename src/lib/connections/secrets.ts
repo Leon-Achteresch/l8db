@@ -1,7 +1,8 @@
+import { splitSecretParams, withSecretParams } from "@/lib/connection-export/export";
 import { sslModeFromUrl } from "@/lib/connection-url";
 import { capabilitiesFor } from "@/lib/providers";
 import { extractUrlPassword, injectUrlPassword, loadSecret, storeSecret } from "@/lib/secrets";
-import { useConnectionsStore } from "./store";
+import { loadQuerySecret, markQuerySecretResolved, useConnectionsStore } from "./store";
 import type { SavedConnection } from "./types";
 
 let secretsInitialized = false;
@@ -12,12 +13,18 @@ export async function initConnectionSecrets(): Promise<void> {
   const { connections } = useConnectionsStore.getState();
   if (connections.length === 0) return;
   let changed = false;
+  let plaintextParams = false;
   const next = await Promise.all(
     connections.map((connection) =>
       (async () => {
+        const inlineParams = splitSecretParams(connection.connectionString).secrets;
+        if (inlineParams) plaintextParams = true;
+        const params = inlineParams ? null : await loadQuerySecret(connection);
+        if (params) changed = true;
         const withDefaults: SavedConnection = {
           ssh: null,
           ...connection,
+          connectionString: withSecretParams(connection.connectionString, params),
           sslMode: connection.sslMode ?? sslModeFromUrl(connection.connectionString),
         };
         if (withDefaults.sslMode !== connection.sslMode || withDefaults.ssh !== connection.ssh) {
@@ -76,6 +83,11 @@ export async function initConnectionSecrets(): Promise<void> {
       return hasUpdates ? { connections } : state;
     });
   }
+  const restored = new Map(next.map((connection) => [connection.id, connection.connectionString]));
+  for (const connection of useConnectionsStore.getState().connections)
+    if (restored.get(connection.id) === connection.connectionString)
+      markQuerySecretResolved(connection);
+  if (plaintextParams) useConnectionsStore.setState({});
 }
 
 export function isReadOnlyConnection(

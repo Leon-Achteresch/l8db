@@ -85,7 +85,7 @@ test("UPDATE shows old and new values from the same affected row", async () => {
     async () => result(),
   );
   expect(calls.find((sql) => sql.startsWith("SELECT"))).toContain(
-    "WHERE id = 1 LIMIT 101 FOR UPDATE",
+    "WHERE id = 1\n LIMIT 101 FOR UPDATE",
   );
   expect(tracked.changes).toEqual([
     {

@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { TABLE_PRIVS } from "@/features/users/users-view/constants";
 import { PrivCheckbox } from "@/features/users/users-view/priv-checkbox";
-import { privKey } from "@/features/users/users-view/priv-key";
+import { allPrivsGranted, applicablePrivs, privKey } from "@/features/users/users-view/priv-key";
 import type { PrivilegeChange, TablePrivileges } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,8 @@ export function TablePrivRow({
   pendingChanges: Set<string>;
   onToggle: (change: PrivilegeChange) => void;
 }) {
-  const allGranted = TABLE_PRIVS.every((p) => privKey(tp, p));
+  const allGranted = allPrivsGranted(tp);
+  const applicable = applicablePrivs(tp.object_type);
 
   const handleToggleAll = () => {
     onToggle({
@@ -46,6 +47,12 @@ export function TablePrivRow({
         </Badge>
       </td>
       {TABLE_PRIVS.map((priv) => {
+        if (!applicable.includes(priv))
+          return (
+            <td key={priv} className="px-1 py-1 text-center text-xs text-muted-foreground">
+              –
+            </td>
+          );
         const hasPriv = privKey(tp, priv);
         const changeKey = `${tp.object_type}:${tp.schema}:${tp.table}:${priv}`;
         const isPending = pendingChanges.has(changeKey);

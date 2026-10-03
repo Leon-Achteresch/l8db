@@ -45,8 +45,13 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
             version: 0,
           }),
         );
-        const host = window as unknown as { __TAURI_INTERNALS__: unknown; mongoCalls: unknown[] };
+        const host = window as unknown as {
+          __TAURI_INTERNALS__: unknown;
+          __TAURI_EVENT_PLUGIN_INTERNALS__: unknown;
+          mongoCalls: unknown[];
+        };
         host.mongoCalls = [];
+        host.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
         host.__TAURI_INTERNALS__ = {
           transformCallback: () => 1,
           unregisterCallback: () => {},
@@ -88,7 +93,13 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
         expect(await trigger.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
       }
       await page.evaluate(async () => {
-        const { useProvidersStore } = await import("/src/lib/providers.ts");
+        const providersUrl =
+          performance
+            .getEntriesByType("resource")
+            .map((entry) => entry.name)
+            .find((name) => new URL(name).pathname === "/src/lib/providers.ts") ??
+          "/src/lib/providers.ts";
+        const { useProvidersStore } = await import(providersUrl);
         useProvidersStore.setState((state) => ({
           providers: state.providers.map((provider) =>
             provider.kind === "mongodb"
@@ -116,7 +127,13 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       }
       await page.screenshot({ path: "/tmp/l8db-scope-two-fields.png" });
       await page.evaluate(async () => {
-        const { loadProviders } = await import("/src/lib/providers.ts");
+        const providersUrl =
+          performance
+            .getEntriesByType("resource")
+            .map((entry) => entry.name)
+            .find((name) => new URL(name).pathname === "/src/lib/providers.ts") ??
+          "/src/lib/providers.ts";
+        const { loadProviders } = await import(providersUrl);
         await loadProviders();
       });
       await page.getByText("items", { exact: true }).first().click();
@@ -138,6 +155,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("tab", { name: "Daten", exact: true }).click();
 
       await page.getByRole("button", { name: "Filter", exact: true }).click();
+      await page.getByRole("tab", { name: "JSON", exact: true }).click();
       await page.getByRole("textbox", { name: "MongoDB-Filter" }).fill('{"n":{"$gte":250}}');
       await page.getByRole("button", { name: "Filter anwenden", exact: true }).click();
       await page.getByText("250", { exact: true }).first().waitFor();

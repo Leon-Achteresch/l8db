@@ -30,6 +30,7 @@ import { useActiveMasks } from "@/lib/masking-display";
 import { cancelTask } from "@/lib/tasks";
 import { DEFAULT_SHEET_NAME, xlsxInputError } from "@/lib/xlsx";
 import { runXlsxExport } from "@/lib/xlsx-export-runner";
+import { xlsxFullExportSupported } from "./xlsx-full-export";
 
 type XlsxExportDialogProps = {
   open: boolean;
@@ -62,6 +63,7 @@ export function XlsxExportDialog({
   const [busy, setBusy] = useState(false);
 
   const { active: ruleMasks } = useActiveMasks(columns);
+  const fullSupported = Boolean(fullExport) && xlsxFullExportSupported(connection?.kind);
 
   useEffect(() => {
     if (!open) return;
@@ -133,7 +135,7 @@ export function XlsxExportDialog({
         path: filePath,
         input: { columns: exportColumns, rows, options: { sheetName, header, nullText } },
         masks,
-        source: fullMode ? fullExport : undefined,
+        source: fullMode && fullSupported ? fullExport : undefined,
         connection,
         database,
         onJob: setJobId,
@@ -157,7 +159,7 @@ export function XlsxExportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {fullExport && (
+        {fullSupported && (
           <div className="space-y-2 text-xs">
             <label className="flex items-center gap-2">
               <Switch checked={fullMode} onCheckedChange={setFullMode} disabled={busy} />

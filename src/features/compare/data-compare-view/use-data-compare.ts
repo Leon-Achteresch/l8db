@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { DataCompareSideSelection } from "@/features/compare/data-compare-side-picker";
-import { errorMessage } from "@/features/compare/data-compare-view/lib";
+import { errorMessage, selectScriptTarget } from "@/features/compare/data-compare-view/lib";
 import { loadSide } from "@/features/compare/data-compare-view/load-side";
 import type { CategoryFilter, CompareState } from "@/features/compare/data-compare-view/types";
 import { copyText } from "@/lib/clipboard";
@@ -15,7 +15,6 @@ import {
   type SyncDirection,
 } from "@/lib/data-compare";
 import { cancelExecution, compareTableDataRemote } from "@/lib/db";
-import { useDbSelectionStore } from "@/lib/db-selection";
 import { capabilitiesFor } from "@/lib/providers";
 import { activateConnection, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -203,20 +202,27 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
 
   const copyScript = async () => {
     if (!script?.sql) return;
-    await copyText(script.sql);
-    toast.success("Skript kopiert");
+    try {
+      await copyText(script.sql);
+      toast.success("Skript kopiert");
+    } catch (copyError) {
+      toast.error(`Skript konnte nicht kopiert werden: ${errorMessage(copyError)}`);
+    }
   };
 
   const openScript = async () => {
     if (!script?.sql || !state) return;
     const target = direction === "left_to_right" ? state.right : state.left;
-    if (!target.connectionId || !target.database) return;
+    if (!target.connectionId) {
+      toast.error("Für das Skript ist keine Zielverbindung gewählt.");
+      return;
+    }
     const outcome = await activateConnection(target.connectionId);
     if (!outcome.ok) {
       toast.error(outcome.error ?? "Zielverbindung konnte nicht aktiviert werden.");
       return;
     }
-    useDbSelectionStore.getState().setDatabase(target.connectionId, target.database);
+    selectScriptTarget(target);
     const id = openQueryTabWithSql(script.sql, "Datenabgleich", false);
     await navigate({ to: "/query/$id", params: { id } });
     toast.success("Skript in neuem Query-Tab geöffnet (nicht ausgeführt)");

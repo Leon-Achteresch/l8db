@@ -4,141 +4,194 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - CHANGELOG.md
+      - packaging/**
+      - packaging/README.md
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 jobs:
-  checks:
-    uses: ./.github/workflows/ci.yml
-    permissions:
-      contents: read
-
   prepare:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    if: github.repository == 'Leon-Achteresch/l8db' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      changelog: ${{ steps.changelog.outputs.changelog }}
+      mode: ${{ steps.state.outputs.mode }}
+      version: ${{ steps.state.outputs.version }}
+      previous_tag: ${{ steps.state.outputs.previous_tag }}
     steps:
-      - name: Prüfe Release-Secrets
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - name: Determine release state
+        id: state
         env:
-          RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-plan.mjs status
+      - name: Prüfe Release-Secrets
+        if: steps.state.outputs.mode == 'publish'
+        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        shell: bash
         run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "::error::Repository-Secret TAURI_SIGNING_PRIVATE_KEY fehlt. Auto-Updates benötigen signierte Artefakte."
-            exit 1
-          fi
-          if [ -z "$RELEASE_PR_TOKEN" ]; then
-            echo "::error::Repository-Secret RELEASE_PR_TOKEN fehlt. Einrichtung siehe .github/RELEASING.md."
-            exit 1
-          fi
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD; do
+          set -euo pipefail
+          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD; do
             if [ -z "${!name}" ]; then
-              echo "::error::Repository-Secret ${name} fehlt. macOS-Releases müssen signiert und notarisiert sein."
+              echo "::error::Repository-Secret ${name} fehlt. Einrichtung siehe .github/RELEASING.md."
               exit 1
             fi
           done
 
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.mode == 'publish'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-
-      - name: Berechne Release-Version
-        id: version
-        shell: bash
-        run: |
-          version="$(node .github/scripts/compute-release-version.mjs)"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
-      - name: Erzeuge Release-Notes
-        id: changelog
-        shell: bash
-        run: |
-          body="$(node .github/scripts/generate-changelog.mjs --next "${{ steps.version.outputs.version }}" --release-body)"
-          {
-            echo "changelog<<EOF"
-            echo "$body"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-  publish:
-    needs: [prepare, checks]
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.mode == 'publish'
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: --target universal-apple-darwin -- --locked
-          - platform: ubuntu-22.04
-            args: -- --locked
-          - platform: windows-latest
-            args: -- --locked
-
-    runs-on: ${{ matrix.platform }}
+          - platform: macos
+            runner: macos-15
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            binary: src-tauri/target/universal-apple-darwin/release/l8db
+          - platform: linux
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rust_targets: x86_64-unknown-linux-gnu
+            binary: src-tauri/target/x86_64-unknown-linux-gnu/release/l8db
+          - platform: windows
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
+            binary: src-tauri/target/x86_64-pc-windows-msvc/release/l8db.exe
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+      RELEASE_BINARY: ${{ matrix.binary }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-
-      - name: Setze Release-Version
-        run: node .github/scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
-
-      - name: Erzeuge CHANGELOG.md für die App
-        run: node .github/scripts/generate-changelog.mjs --next "${{ needs.prepare.outputs.version }}"
-
-      - name: Install Tauri system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+          node-version: 24.14.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/install-linux-dependencies
+      - uses: ./.github/actions/setup-rust
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+          cache: release
+          targets: ${{ matrix.rust_targets }}
+      - run: bun install --frozen-lockfile
+      - name: Compile without signing credentials
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: bun run tauri build --ci --no-bundle --target "$RELEASE_TARGET" -- --locked
+      - run: node .github/scripts/build-snapshot.mjs record
+      - name: Archive compiled snapshot
+        shell: bash
+        run: tar -czf build.tar "$RELEASE_BINARY" "build-$RELEASE_PLATFORM.json" dist public/third-party-licenses.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          workspaces: "src-tauri -> target"
+          name: compiled-${{ matrix.platform }}
+          path: build.tar
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+          if-no-files-found: error
 
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+  draft:
+    needs: [prepare, checks, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - run: node .github/scripts/release.mjs draft
+        env:
+          GH_TOKEN: ${{ github.token }}
 
+  package:
+    needs: [prepare, draft, build, checks]
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            runner: macos-15
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            binary: src-tauri/target/universal-apple-darwin/release/l8db
+            bundle: src-tauri/target/universal-apple-darwin/release/bundle
+          - platform: linux
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rust_targets: x86_64-unknown-linux-gnu
+            binary: src-tauri/target/x86_64-unknown-linux-gnu/release/l8db
+            bundle: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle
+          - platform: windows
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
+            binary: src-tauri/target/x86_64-pc-windows-msvc/release/l8db.exe
+            bundle: src-tauri/target/x86_64-pc-windows-msvc/release/bundle
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+      RELEASE_BINARY: ${{ matrix.binary }}
+      RELEASE_BUNDLE: ${{ matrix.bundle }}
+      PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.10
+      - uses: ./.github/actions/install-linux-dependencies
+        with:
+          smoke: 'true'
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache: packaging
+          targets: ${{ matrix.rust_targets }}
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: compiled-${{ matrix.platform }}
+      - name: Restore and verify compiled snapshot
+        shell: bash
+        run: |
+          tar -xzf build.tar
+          node .github/scripts/build-snapshot.mjs verify
       - name: Importiere Apple Developer ID
         if: runner.os == 'macOS'
         env:
@@ -160,33 +213,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" > /dev/null
           security list-keychains -d user -s "$keychain_path" "$HOME/Library/Keychains/login.keychain-db"
           security find-identity -v -p codesigning "$keychain_path" | grep -F 'Developer ID Application: LEON ACHTERESCH (R4LQCWA594)'
-
-      - name: Build und veroeffentliche Tauri App
-        uses: tauri-apps/tauri-action@v1
+      - name: Sign and bundle the compiled application
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TARGET: ${{ matrix.target }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_SIGNING_IDENTITY: "${{ runner.os == 'macOS' && 'Developer ID Application: LEON ACHTERESCH (R4LQCWA594)' || '' }}"
           APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && 'R4LQCWA594' || '' }}
-        with:
-          tauriScript: bun run tauri
-          tagName: v__VERSION__
-          releaseName: l8db v__VERSION__
-          releaseBody: ${{ needs.prepare.outputs.changelog }}
-          releaseDraft: true
-          prerelease: false
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          args: ${{ matrix.args }}
-
+          APPLE_TEAM_ID: "${{ runner.os == 'macOS' && 'R4LQCWA594' || '' }}"
+        run: bun run tauri bundle --ci --target "$RELEASE_TARGET"
       - name: Prüfe macOS-Signatur und Notarisierung
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          app_path="src-tauri/target/universal-apple-darwin/release/bundle/macos/l8db.app"
+          app_path="$RELEASE_BUNDLE/macos/l8db.app"
           codesign --verify --deep --strict --verbose=2 "$app_path"
           signature="$(codesign --display --verbose=4 "$app_path" 2>&1)"
           printf '%s\n' "$signature" | grep -F 'Authority=Developer ID Application: LEON ACHTERESCH (R4LQCWA594)'
@@ -195,7 +237,27 @@ jobs:
           codesign --display --entitlements - --xml "$app_path" | grep -F 'com.apple.security.cs.disable-library-validation'
           xcrun stapler validate "$app_path"
           spctl --assess --type execute --verbose=2 "$app_path"
-
+      - run: node .github/scripts/package-release.mjs
+      - name: Native installer and upgrade smoke
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a dbus-run-session node .github/scripts/release-smoke.mjs
+          else
+            node .github/scripts/release-smoke.mjs
+          fi
+      - name: Upload verified platform artifacts to draft
+        run: node .github/scripts/release.mjs upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: packaged-${{ matrix.platform }}-${{ github.run_attempt }}
+          path: release-assets/*.json
+          retention-days: 14
       - name: Entferne temporären Apple-Schlüsselbund
         if: always() && runner.os == 'macOS'
         run: |
@@ -206,60 +268,33 @@ jobs:
           rm -f "$RUNNER_TEMP/l8db-signing.p12"
 
   finalize:
-    needs: [prepare, publish]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Prüfe vollständige Update-Artefakte
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          gh release download "v${RELEASE_VERSION}" --pattern latest.json --dir "$RUNNER_TEMP/release"
-          gh release view "v${RELEASE_VERSION}" --json assets > "$RUNNER_TEMP/release/assets.json"
-          node .github/scripts/verify-release.mjs "$RUNNER_TEMP/release/latest.json" "$RUNNER_TEMP/release/assets.json" "$RELEASE_VERSION"
-          gh release upload "v${RELEASE_VERSION}" "$RUNNER_TEMP/release/latest.json" --clobber
-      - name: Veröffentliche vollständigen Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        run: gh release edit "v${RELEASE_VERSION}" --draft=false --latest
-
-  changelog:
-    needs: [prepare, finalize]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-
-      - name: Aktualisiere CHANGELOG.md
-        run: node .github/scripts/generate-changelog.mjs
-
-      - name: Erstelle oder aktualisiere Changelog-PR
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.RELEASE_PR_TOKEN }}
-          base: main
-          branch: automation/changelog
-          add-paths: CHANGELOG.md
-          commit-message: "docs(changelog): Release-Notes für v${{ needs.prepare.outputs.version }}"
-          title: "docs(changelog): Release-Notes für v${{ needs.prepare.outputs.version }}"
-          body: |
-            Aktualisiert CHANGELOG.md nach dem erfolgreichen Release v${{ needs.prepare.outputs.version }}.
-
-            Dieser PR wird bei weiteren Releases aktualisiert und durchläuft die regulären Reviews und Pflichtchecks für main.
-            Der Merge löst bei ausschließlichen Änderungen an CHANGELOG.md kein weiteres Release aus.
-
-  feature-videos:
-    needs: [prepare, finalize]
-    uses: ./.github/workflows/feature-videos.yml
-    with:
-      release_tag: v${{ needs.prepare.outputs.version }}
+    needs: [prepare, checks, build, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - name: Verify signatures, assemble updater manifest and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+        run: node .github/scripts/release.mjs publish
+
+  summary:
+    needs: [prepare, checks, build, package, finalize]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: node .github/scripts/release-summary.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}

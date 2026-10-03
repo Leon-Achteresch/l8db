@@ -808,8 +808,9 @@ mod tests {
     #[ignore]
     async fn live_tls_modes() {
         let dir = std::env::var("L8DB_E2E_PG_TLS_DIR").unwrap_or_else(|_| "/tmp/l8db-pgtls".into());
+        let port = std::env::var("L8DB_E2E_CASSANDRA_TLS_PORT").unwrap_or_else(|_| "9042".into());
         let connect = |host: &str, query: String| {
-            let url = format!("cassandra://{host}:9042?{query}");
+            let url = format!("cassandra://{host}:{port}?{query}");
             async move {
                 CassandraAdapter::new(&url, crate::db::pool::create_pool_state(), url.clone())?
                     .test_connection()

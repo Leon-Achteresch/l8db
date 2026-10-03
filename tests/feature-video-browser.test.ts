@@ -13,24 +13,25 @@ test.skipIf(!process.env.L8DB_FEATURE_VIDEO_BROWSER)(
     const artifacts = resolve("test-artifacts/feature-videos-browser");
     await mkdir(artifacts, { recursive: true });
     const clip = resolve(artifacts, "clip.webm");
-    execFileSync("ffmpeg", [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      "testsrc2=size=640x360:rate=24",
-      "-t",
-      "12",
-      "-an",
-      "-c:v",
-      "libvpx-vp9",
-      "-b:v",
-      "120k",
-      clip,
-    ]);
+    if (!process.env.L8DB_FEATURE_VIDEO_PREVIEW)
+      execFileSync("ffmpeg", [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=640x360:rate=24",
+        "-t",
+        "12",
+        "-an",
+        "-c:v",
+        "libvpx-vp9",
+        "-b:v",
+        "120k",
+        clip,
+      ]);
     const media = await readFile(process.env.L8DB_FEATURE_VIDEO_PREVIEW ?? clip);
     const now = Date.now();
     const item = {
@@ -206,6 +207,17 @@ test.skipIf(!process.env.L8DB_FEATURE_VIDEO_BROWSER)(
       expect(new URL(page.url()).searchParams.get("tab")).toBe("about");
       await page.getByRole("button", { name: "Allgemein Design & Oberfläche" }).click();
       await page.getByRole("heading", { name: "Allgemein", exact: true }).waitFor();
+      Object.assign(item, { actionTarget: "dashboard" });
+      await page.evaluate(() => localStorage.removeItem("l8db.feature-videos"));
+      await page.goto(`http://localhost:${server.port}/release-notes`);
+      await page.getByRole("button", { name: /12 Sekunden Mehr Ruhe/ }).click();
+      await card.waitFor({ state: "visible" });
+      expect(await card.getByRole("link", { name: "Feature öffnen" }).getAttribute("href")).toBe(
+        "/dashboard",
+      );
+      await card.getByRole("link", { name: "Feature öffnen" }).click();
+      await page.waitForURL("**/dashboard");
+      await card.waitFor({ state: "detached" });
       await page.route(FEED_URL, (route) => route.abort());
       await page.evaluate(() => localStorage.removeItem("l8db.feature-videos"));
       await page.goto(`http://localhost:${server.port}/release-notes`);

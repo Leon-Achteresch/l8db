@@ -24,7 +24,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
     try {
       const page = await browser.newPage();
       page.setDefaultTimeout(10000);
-      await seedApp(page, 2, { rows: 2, columns: 2 });
+      await seedApp(page, 2, { rows: 2, columns: 2 }, null, 0);
       await page.addInitScript(() => {
         const stored = JSON.parse(localStorage.getItem("l8db.connections") ?? "null");
         stored.state.connections.push({

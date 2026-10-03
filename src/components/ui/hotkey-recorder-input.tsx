@@ -38,7 +38,7 @@ export function HotkeyRecorderInput({
         onClick={() => recorder.cancelRecording()}
         aria-label="Aufnahme abbrechen"
         className={cn(
-          "inline-flex h-7 min-w-36 shrink-0 items-center justify-center gap-2 rounded-md border border-primary/50 bg-primary/10 px-2.5",
+          "inline-flex h-7 min-w-36 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-2.5",
           "text-xs font-medium text-foreground",
           "animate-pulse cursor-pointer",
         )}
@@ -58,7 +58,7 @@ export function HotkeyRecorderInput({
         aria-label={ariaLabel}
         title="Klicken und neue Tastenkombination drücken"
         className={cn(
-          "inline-flex h-7 min-w-36 cursor-pointer items-center justify-center rounded-md border border-border/70 bg-muted/40 px-2.5",
+          "inline-flex h-7 min-w-36 cursor-pointer items-center justify-center rounded-xl border border-border/70 bg-muted/40 px-2.5",
           "transition-colors hover:border-primary/40 hover:bg-card",
           "disabled:pointer-events-none disabled:opacity-50",
         )}
@@ -75,7 +75,7 @@ export function HotkeyRecorderInput({
           onClick={onClear}
           aria-label={`${ariaLabel} zurücksetzen`}
           title="Auf Standard zurücksetzen"
-          className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="inline-flex size-7 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <RotateCcwIcon className="size-3.5" />
         </button>

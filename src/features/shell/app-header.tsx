@@ -1,7 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { AppHeaderNavigation } from "@/features/shell/app-header-navigation";
@@ -258,13 +257,6 @@ export function AppHeader() {
         )}
 
         <div className="mx-0.5 h-5 w-px bg-border/60" aria-hidden />
-
-        <ThemeToggle
-          variant="circle-blur"
-          start="top-right"
-          className="size-7 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-          iconClassName="size-4"
-        />
 
         <Tooltip content="Treiber" side="bottom">
           <Link

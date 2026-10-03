@@ -130,6 +130,50 @@ pub(crate) fn scaled_text(unscaled: &str, scale: i32) -> String {
     format!("{sign}{whole}.{fraction}")
 }
 
+fn number_end(bytes: &[u8], index: usize) -> usize {
+    bytes[index..]
+        .iter()
+        .position(|b| !matches!(b, b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'))
+        .map_or(bytes.len(), |offset| index + offset)
+}
+
+fn has_unsafe_number(json: &str) -> bool {
+    let bytes = json.as_bytes();
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+        } else if byte == b'"' {
+            in_string = true;
+        } else if matches!(byte, b'-' | b'0'..=b'9') {
+            let end = number_end(bytes, index);
+            if !is_exact_in_js(&json[index..end]) {
+                return true;
+            }
+            index = end;
+            continue;
+        }
+        index += 1;
+    }
+    false
+}
+
+pub(crate) fn json_document(text: &str) -> Value {
+    if has_unsafe_number(text) {
+        return Value::String(text.to_string());
+    }
+    serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
+}
+
 pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
     let bytes = json.as_bytes();
     let mut out: Option<String> = None;
@@ -137,6 +181,7 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
     let mut in_string = false;
     let mut escaped = false;
     let mut copied = 0;
+    let mut container_start: Option<usize> = None;
     let mut index = 0;
     while index < bytes.len() {
         let byte = bytes[index];
@@ -153,16 +198,31 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
         }
         match byte {
             b'"' => in_string = true,
-            b'{' | b'[' => depth += 1,
-            b'}' | b']' => depth = depth.saturating_sub(1),
+            b'{' | b'[' => {
+                if depth == 1 {
+                    container_start = Some(index);
+                }
+                depth += 1;
+            }
+            b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 1 {
+                    if let Some(start) = container_start.take() {
+                        let raw = &json[start..=index];
+                        if has_unsafe_number(raw) {
+                            let buffer =
+                                out.get_or_insert_with(|| String::with_capacity(json.len() + 16));
+                            buffer.push_str(&json[copied..start]);
+                            buffer.push_str(&Value::String(raw.to_string()).to_string());
+                            copied = index + 1;
+                        }
+                    }
+                }
+            }
             b'-' | b'0'..=b'9' if depth == 1 => {
-                let end = bytes[index..]
-                    .iter()
-                    .position(|b| !matches!(b, b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'))
-                    .map_or(bytes.len(), |offset| index + offset);
+                let end = number_end(bytes, index);
                 let token = &json[index..end];
-                let has_exponent = token.contains(['e', 'E']);
-                if has_exponent || !is_exact_in_js(token) {
+                if !is_exact_in_js(token) {
                     let buffer = out.get_or_insert_with(|| String::with_capacity(json.len() + 16));
                     buffer.push_str(&json[copied..index]);
                     buffer.push('"');
@@ -281,10 +341,174 @@ mod tests {
         assert_eq!(value["s"], json!("9007199254740993"));
         assert_eq!(value["e"], json!("1e400"));
         assert_eq!(value["a"], json!([1, 2]));
-        assert!(value["doc"]["n"].is_number());
+        assert_eq!(value["doc"], json!(r#"{"n": 9007199254740993}"#));
         assert!(matches!(
             quote_unsafe_top_level_numbers(r#"{"a": 1, "b": "x\"9"}"#),
             Cow::Borrowed(_)
         ));
+    }
+
+    #[test]
+    fn keeps_nested_values_with_unsafe_numbers_as_raw_json_text() {
+        let row = r#"{"doc": {"n": 9007199254740993, "s": "a\"b"}, "arr": [1, -9007199254740993], "deep": [{"x": [0.1000000000000000055511151231257827]}], "exp": {"e": 1e400}, "safe": {"n": [1, 2.5, "9007199254740993"]}, "big": 18446744073709551616, "tail": 7}"#;
+        let value: Value = serde_json::from_str(&quote_unsafe_top_level_numbers(row)).unwrap();
+        assert_eq!(
+            value["doc"],
+            json!(r#"{"n": 9007199254740993, "s": "a\"b"}"#)
+        );
+        assert_eq!(value["arr"], json!("[1, -9007199254740993]"));
+        assert_eq!(
+            value["deep"],
+            json!(r#"[{"x": [0.1000000000000000055511151231257827]}]"#)
+        );
+        assert_eq!(value["exp"], json!(r#"{"e": 1e400}"#));
+        assert_eq!(value["safe"], json!({"n": [1, 2.5, "9007199254740993"]}));
+        assert_eq!(value["big"], json!("18446744073709551616"));
+        assert_eq!(value["tail"], json!(7));
+        assert!(matches!(
+            quote_unsafe_top_level_numbers(r#"{"a": {"b": [1, 2]}, "c": "[9007199254740993]"}"#),
+            Cow::Borrowed(_)
+        ));
+    }
+
+    #[test]
+    fn json_documents_with_unsafe_numbers_stay_text() {
+        assert_eq!(json_document(r#"{"a": [1, 2.5]}"#), json!({"a": [1, 2.5]}));
+        assert_eq!(json_document("42"), json!(42));
+        assert_eq!(json_document(r#""x""#), json!("x"));
+        for text in [
+            r#"{"a": 9007199254740993}"#,
+            "[1, [2, -9007199254740993]]",
+            "9007199254740993",
+            r#"{"d": 0.1000000000000000055511151231257827}"#,
+        ] {
+            assert_eq!(json_document(text), json!(text));
+        }
+        assert_eq!(json_document("not json"), json!("not json"));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn lab_nested_big_numbers_survive_grid_round_trip() {
+        use crate::db::{pool::create_pool_state, postgres::PostgresAdapter, DatabaseAdapter};
+        let url = std::env::var("L8DB_E2E_PG_URL")
+            .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".to_string());
+        let adapter =
+            PostgresAdapter::from_connection_string(&url, None, create_pool_state()).unwrap();
+        adapter
+            .execute_query("DROP TABLE IF EXISTS l8db_nested_exact; CREATE TABLE l8db_nested_exact (id int PRIMARY KEY, doc jsonb, raw json, ids bigint[], amounts numeric[], plain jsonb); INSERT INTO l8db_nested_exact VALUES (1, '{\"n\": 9007199254740993, \"d\": 0.1000000000000000055511151231257827, \"s\": \"it''s\"}', '{\"e\": 1e400}', '{9007199254740993,1}', '{12345678901234567890.123456789}', '{\"n\": [1, 2.5]}')")
+            .await
+            .unwrap();
+        let data = adapter
+            .fetch_rows(
+                "public",
+                "l8db_nested_exact",
+                None,
+                10,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let row = &data.rows[0];
+        let doc = row["doc"].as_str().expect("doc as raw text").to_string();
+        assert!(doc.contains("9007199254740993"), "{doc}");
+        assert!(
+            doc.contains("0.1000000000000000055511151231257827"),
+            "{doc}"
+        );
+        assert_eq!(
+            row["raw"],
+            json!(format!(r#"{{"e": 1{}}}"#, "0".repeat(400)))
+        );
+        assert_eq!(row["ids"], json!("[9007199254740993, 1]"));
+        assert_eq!(row["amounts"], json!("[12345678901234567890.123456789]"));
+        assert_eq!(row["plain"], json!({"n": [1, 2.5]}));
+        let browser: Value = serde_json::from_str(&serde_json::to_string(row).unwrap()).unwrap();
+        let edited = browser["doc"].as_str().unwrap().replace("it's", "edited");
+        adapter
+            .execute_query(&format!(
+                "UPDATE l8db_nested_exact SET doc = '{}' WHERE id = 1",
+                edited.replace('\'', "''")
+            ))
+            .await
+            .unwrap();
+        let check = adapter
+            .execute_query("SELECT doc->>'n' AS n, doc->>'d' AS d, doc->>'s' AS s FROM l8db_nested_exact WHERE id = 1")
+            .await
+            .unwrap();
+        assert_eq!(check.rows[0]["n"], json!("9007199254740993"));
+        assert_eq!(
+            check.rows[0]["d"],
+            json!("0.1000000000000000055511151231257827")
+        );
+        assert_eq!(check.rows[0]["s"], json!("edited"));
+        adapter
+            .execute_query("DROP TABLE l8db_nested_exact")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn lab_mysql_json_big_numbers_stay_exact() {
+        use crate::db::{
+            create_adapter_from_string, pool::create_pool_state, provider::DatabaseKind,
+        };
+        let url = std::env::var("L8DB_SMOKE_MYSQL_URL").expect("L8DB_SMOKE_MYSQL_URL required");
+        let adapter =
+            create_adapter_from_string(DatabaseKind::Mysql, &url, None, create_pool_state())
+                .unwrap();
+        for sql in [
+            "DROP TABLE IF EXISTS l8db_json_exact",
+            "CREATE TABLE l8db_json_exact (id int PRIMARY KEY, doc json)",
+            "INSERT INTO l8db_json_exact VALUES (1, '{\"n\": 9007199254740993, \"a\": [1, -9007199254740993]}'), (2, '{\"n\": [1, 2.5]}'), (3, '9007199254740993')",
+        ] {
+            adapter.execute_query(sql).await.unwrap();
+        }
+        let schema = url.rsplit('/').next().unwrap().split('?').next().unwrap();
+        let data = adapter
+            .fetch_rows(
+                schema,
+                "l8db_json_exact",
+                None,
+                10,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let first = data.rows[0]["doc"].as_str().expect("raw text").to_string();
+        assert!(first.contains("9007199254740993"), "{first}");
+        assert!(first.contains("-9007199254740993"), "{first}");
+        assert_eq!(data.rows[1]["doc"], json!({"n": [1, 2.5]}));
+        assert_eq!(data.rows[2]["doc"], json!("9007199254740993"));
+        let query = adapter
+            .execute_query("SELECT doc FROM l8db_json_exact WHERE id = 1")
+            .await
+            .unwrap();
+        assert_eq!(query.rows[0]["doc"], json!(first));
+        adapter
+            .execute_query(&format!(
+                "UPDATE l8db_json_exact SET doc = '{}' WHERE id = 1",
+                first.replace('\'', "''")
+            ))
+            .await
+            .unwrap();
+        let check = adapter
+            .execute_query("SELECT CAST(JSON_EXTRACT(doc, '$.n') AS CHAR) AS n FROM l8db_json_exact WHERE id = 1")
+            .await
+            .unwrap();
+        assert_eq!(check.rows[0]["n"], json!("9007199254740993"));
+        adapter
+            .execute_query("DROP TABLE l8db_json_exact")
+            .await
+            .unwrap();
     }
 }

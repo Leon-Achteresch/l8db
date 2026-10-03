@@ -29,16 +29,197 @@ pub fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
-fn default_sql(value: &str) -> String {
-    let trimmed = value.trim();
-    let upper = trimmed.to_uppercase();
-    if upper == "NULL" || upper.starts_with("CURRENT_TIMESTAMP") {
-        trimmed.to_string()
-    } else if trimmed.ends_with(')') {
-        format!("({trimmed})")
-    } else {
-        lit(trimmed)
+struct ColumnDefinition {
+    data_type: String,
+    nullable: bool,
+    default: Option<String>,
+    extra: String,
+    charset: Option<String>,
+    collation: Option<String>,
+    table_collation: Option<String>,
+    comment: String,
+    generation: Option<String>,
+    check: Option<String>,
+    mariadb: bool,
+    legacy_mysql: bool,
+}
+
+const MULTI_STATEMENT_EXPLAIN: &str =
+    "EXPLAIN unterstützt nur eine einzelne Anweisung. Bitte die gewünschte Anweisung markieren.";
+
+fn has_flag(extra: &str, flag: &str) -> bool {
+    extra
+        .split_whitespace()
+        .any(|token| token.eq_ignore_ascii_case(flag))
+}
+
+fn on_update_clause(extra: &str) -> Option<String> {
+    let tokens: Vec<&str> = extra.split_whitespace().collect();
+    tokens.windows(3).find_map(|w| {
+        (w[0].eq_ignore_ascii_case("on") && w[1].eq_ignore_ascii_case("update"))
+            .then(|| w[2].to_string())
+    })
+}
+
+fn unescape_info_expr(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        match (c, chars.clone().next()) {
+            ('\\', Some(next @ ('\'' | '\\'))) => {
+                out.push(next);
+                chars.next();
+            }
+            _ => out.push(c),
+        }
     }
+    out
+}
+
+fn is_legacy_mysql(version: &str) -> bool {
+    version
+        .split('.')
+        .next()
+        .and_then(|major| major.trim().parse::<u32>().ok())
+        .is_some_and(|major| major < 8)
+}
+
+fn type_base(data_type: &str) -> String {
+    data_type
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+fn is_character_type(data_type: &str) -> bool {
+    let lower = data_type.to_ascii_lowercase();
+    matches!(
+        type_base(data_type).as_str(),
+        "char" | "varchar" | "tinytext" | "text" | "mediumtext" | "longtext" | "enum" | "set"
+    ) && !lower.contains("character set")
+        && !lower.contains("charset")
+        && !lower.contains("collate")
+}
+
+fn existing_default_sql(def: &ColumnDefinition) -> Option<String> {
+    let value = def.default.as_deref()?;
+    if def.mariadb {
+        return Some(value.to_string());
+    }
+    let base = type_base(&def.data_type);
+    let current_timestamp = matches!(base.as_str(), "timestamp" | "datetime")
+        && value
+            .trim()
+            .to_ascii_uppercase()
+            .starts_with("CURRENT_TIMESTAMP");
+    Some(if current_timestamp {
+        value.trim().to_string()
+    } else if has_flag(&def.extra, "DEFAULT_GENERATED") {
+        format!("({})", unescape_info_expr(value))
+    } else if base == "bit"
+        || (!def.legacy_mysql && matches!(base.as_str(), "binary" | "varbinary"))
+    {
+        value.to_string()
+    } else {
+        lit(value)
+    })
+}
+
+fn change_column_sql(
+    schema: &str,
+    table: &str,
+    current: &ColumnDefinition,
+    changes: &AlterColumnRequest,
+) -> String {
+    let name = changes
+        .new_name
+        .as_deref()
+        .filter(|n| !n.is_empty())
+        .unwrap_or(&changes.old_name);
+    let data_type = changes
+        .data_type
+        .as_deref()
+        .filter(|t| !t.is_empty())
+        .unwrap_or(&current.data_type);
+    let generation = current
+        .generation
+        .as_deref()
+        .filter(|g| !g.trim().is_empty() && has_flag(&current.extra, "GENERATED"));
+    let mut sql = format!(
+        "ALTER TABLE {}.{} CHANGE COLUMN {} {} {}",
+        quote(schema),
+        quote(table),
+        quote(&changes.old_name),
+        quote(name),
+        data_type
+    );
+    if is_character_type(data_type) && current.collation != current.table_collation {
+        if let Some(charset) = current.charset.as_deref().filter(|c| !c.is_empty()) {
+            sql.push_str(&format!(" CHARACTER SET {charset}"));
+            if let Some(collation) = current.collation.as_deref().filter(|c| !c.is_empty()) {
+                sql.push_str(&format!(" COLLATE {collation}"));
+            }
+        }
+    }
+    if let Some(expr) = generation {
+        let expr = if current.mariadb || current.legacy_mysql {
+            expr.to_string()
+        } else {
+            unescape_info_expr(expr)
+        };
+        let kind = if has_flag(&current.extra, "STORED") || has_flag(&current.extra, "PERSISTENT") {
+            "STORED"
+        } else {
+            "VIRTUAL"
+        };
+        sql.push_str(&format!(" GENERATED ALWAYS AS ({expr}) {kind}"));
+    }
+    if changes.set_not_null.is_some() || !(current.mariadb && generation.is_some()) {
+        if changes.set_not_null.unwrap_or(!current.nullable) {
+            sql.push_str(" NOT NULL");
+        } else {
+            sql.push_str(" NULL");
+        }
+    }
+    let default = if changes.drop_default {
+        None
+    } else {
+        changes
+            .new_default
+            .as_deref()
+            .filter(|d| !d.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                generation
+                    .is_none()
+                    .then(|| existing_default_sql(current))
+                    .flatten()
+            })
+    };
+    if let Some(d) = default {
+        sql.push_str(&format!(" DEFAULT {d}"));
+    }
+    if let Some(on_update) = on_update_clause(&current.extra) {
+        sql.push_str(&format!(" ON UPDATE {on_update}"));
+    }
+    if has_flag(&current.extra, "auto_increment") {
+        sql.push_str(" AUTO_INCREMENT");
+    }
+    if has_flag(&current.extra, "INVISIBLE") {
+        sql.push_str(" INVISIBLE");
+    }
+    if !current.comment.is_empty() {
+        sql.push_str(&format!(" COMMENT {}", lit(&current.comment)));
+    }
+    if let Some(check) = current.check.as_deref().filter(|c| !c.trim().is_empty()) {
+        sql.push_str(&format!(
+            " CHECK ({})",
+            check.replace(&quote(&changes.old_name), &quote(name))
+        ));
+    }
+    sql
 }
 
 fn map_err(e: mysql_async::Error) -> String {
@@ -109,9 +290,7 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
                 }
             }
             if column.column_type() == ColumnType::MYSQL_TYPE_JSON {
-                if let Ok(json) = serde_json::from_str(&text) {
-                    return json;
-                }
+                return super::exact_number::json_document(&text);
             }
             serde_json::Value::String(text)
         }
@@ -174,6 +353,17 @@ fn cell_opt(row: &Row, index: usize) -> Option<String> {
 
 fn cell_i64(row: &Row, index: usize) -> i64 {
     cell(row, index).parse().unwrap_or(0)
+}
+
+fn session_pid(id: i64) -> i32 {
+    i32::try_from(id).unwrap_or(-1)
+}
+
+fn kill_statement(scope: &str, pid: i32) -> Result<String, String> {
+    if pid <= 0 {
+        return Err("Diese Sitzungs-ID kann nicht sicher übernommen werden. Bitte direkt mit KILL auf dem Server beenden.".into());
+    }
+    Ok(format!("KILL {scope} {pid}"))
 }
 
 impl MysqlAdapter {
@@ -362,6 +552,53 @@ impl MysqlAdapter {
             .await
             .map_err(map_err)?;
         Ok(row.flatten().unwrap_or_default())
+    }
+
+    async fn column_definition(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+    ) -> Result<Option<ColumnDefinition>, String> {
+        let sql = format!(
+            "SELECT c.column_type, c.is_nullable, c.column_default, c.extra, c.character_set_name, c.collation_name, c.column_comment, c.generation_expression, VERSION(), t.table_collation FROM information_schema.columns c LEFT JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name WHERE c.table_schema = {} AND c.table_name = {} AND c.column_name = {}",
+            lit(schema),
+            lit(table),
+            lit(column)
+        );
+        let Some(row) = self.rows(&sql).await?.into_iter().next() else {
+            return Ok(None);
+        };
+        let version = cell(&row, 8);
+        let mariadb = version.to_ascii_lowercase().contains("mariadb");
+        let legacy_mysql = !mariadb && is_legacy_mysql(&version);
+        let check = if mariadb {
+            self.rows(&format!(
+                "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema = {} AND table_name = {} AND level = 'Column' AND constraint_name = {}",
+                lit(schema),
+                lit(table),
+                lit(column)
+            ))
+            .await
+            .ok()
+            .and_then(|rows| rows.first().and_then(|r| cell_opt(r, 0)))
+        } else {
+            None
+        };
+        Ok(Some(ColumnDefinition {
+            data_type: cell(&row, 0),
+            nullable: cell(&row, 1) == "YES",
+            default: cell_opt(&row, 2),
+            extra: cell(&row, 3),
+            charset: cell_opt(&row, 4),
+            collation: cell_opt(&row, 5),
+            table_collation: cell_opt(&row, 9),
+            comment: cell(&row, 6),
+            generation: cell_opt(&row, 7),
+            check,
+            mariadb,
+            legacy_mysql,
+        }))
     }
 
     fn function_oid(schema: &str, name: &str, routine_type: &str) -> String {
@@ -789,49 +1026,11 @@ impl DatabaseAdapter for MysqlAdapter {
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
         let current = self
-            .list_table_columns_detailed(schema, table)
+            .column_definition(schema, table, &changes.old_name)
             .await?
-            .into_iter()
-            .find(|c| c.name == changes.old_name)
             .ok_or_else(|| format!("Unbekannte Spalte: {}", changes.old_name))?;
-        let name = changes
-            .new_name
-            .as_deref()
-            .filter(|n| !n.is_empty())
-            .unwrap_or(&changes.old_name);
-        let data_type = changes
-            .data_type
-            .as_deref()
-            .filter(|t| !t.is_empty())
-            .unwrap_or(&current.data_type);
-        let not_null = changes.set_not_null.unwrap_or(!current.is_nullable);
-        let default = if changes.drop_default {
-            None
-        } else {
-            changes
-                .new_default
-                .as_deref()
-                .filter(|d| !d.is_empty())
-                .map(str::to_string)
-                .or_else(|| current.column_default.as_deref().map(default_sql))
-        };
-        let mut sql = format!(
-            "ALTER TABLE {}.{} CHANGE COLUMN {} {} {}",
-            quote(schema),
-            quote(table),
-            quote(&changes.old_name),
-            quote(name),
-            data_type
-        );
-        if not_null {
-            sql.push_str(" NOT NULL");
-        } else {
-            sql.push_str(" NULL");
-        }
-        if let Some(d) = default {
-            sql.push_str(&format!(" DEFAULT {d}"));
-        }
-        self.exec(&sql).await
+        self.exec(&change_column_sql(schema, table, &current, changes))
+            .await
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
@@ -1010,12 +1209,20 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
-        let rows = self
-            .rows(&format!(
-                "EXPLAIN {} {sql}",
-                if analyze { "ANALYZE" } else { "FORMAT=JSON" }
-            ))
-            .await?;
+        let statement = format!(
+            "EXPLAIN {} {}",
+            if analyze { "ANALYZE" } else { "FORMAT=JSON" },
+            sql.trim()
+        );
+        let mut conn = self.conn().await?;
+        let rows: Vec<Row> =
+            match timed(async { conn.exec(statement.as_str(), ()).await.map_err(map_err) }).await {
+                Ok(rows) => rows,
+                Err(e) if super::split_statements(sql).len() > 1 => {
+                    return Err(format!("{MULTI_STATEMENT_EXPLAIN} ({e})"))
+                }
+                Err(e) => return Err(e),
+            };
         let text: Vec<String> = rows.iter().map(|r| cell(r, 0)).collect();
         if analyze {
             return Ok(serde_json::Value::String(text.join("\n")));
@@ -1039,7 +1246,7 @@ impl DatabaseAdapter for MysqlAdapter {
             .map(|r| {
                 let pid = cell_i64(r, 0);
                 SessionInfo {
-                    pid: pid as i32,
+                    pid: session_pid(pid),
                     user: cell(r, 1),
                     database: cell(r, 2),
                     application: cell(r, 3),
@@ -1057,11 +1264,13 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
-        self.exec(&format!("KILL QUERY {pid}")).await.map(|_| true)
+        self.exec(&kill_statement("QUERY", pid)?)
+            .await
+            .map(|_| true)
     }
 
     async fn terminate_session(&self, pid: i32) -> Result<bool, String> {
-        self.exec(&format!("KILL CONNECTION {pid}"))
+        self.exec(&kill_statement("CONNECTION", pid)?)
             .await
             .map(|_| true)
     }
@@ -1134,6 +1343,21 @@ mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
 
+    #[test]
+    fn session_ids_never_wrap_to_other_sessions() {
+        assert_eq!(session_pid(42), 42);
+        assert_eq!(session_pid(i32::MAX as i64), i32::MAX);
+        assert_eq!(session_pid(1 << 31), -1);
+        assert_eq!(session_pid((1 << 32) + 5), -1);
+        assert_eq!(kill_statement("QUERY", 42).unwrap(), "KILL QUERY 42");
+        assert_eq!(
+            kill_statement("CONNECTION", 7).unwrap(),
+            "KILL CONNECTION 7"
+        );
+        assert!(kill_statement("QUERY", -1).is_err());
+        assert!(kill_statement("CONNECTION", 0).is_err());
+    }
+
     #[tokio::test]
     #[ignore]
     async fn live_tls_modes_fallback_and_client_certificates() {
@@ -1152,8 +1376,12 @@ mod tests {
                     .is_some_and(|v| !v.is_empty()),
             )
         };
-        let plain = "mysql://root:testpw@127.0.0.1:53306/mysql";
-        assert_eq!(cipher(plain.into()).await, Ok(false));
+        let port =
+            |name: &str, default: &str| std::env::var(name).unwrap_or_else(|_| default.into());
+        let plain_port = port("L8DB_E2E_MYSQL_PLAIN_PORT", "53306");
+        let tls_port = port("L8DB_E2E_MYSQL_TLS_PORT", "53307");
+        let plain = format!("mysql://root:testpw@127.0.0.1:{plain_port}/mysql");
+        assert_eq!(cipher(plain.clone()).await, Ok(false));
         assert_eq!(
             cipher(format!("{plain}?serverTimezone=UTC&useUnicode=true")).await,
             Ok(false)
@@ -1162,8 +1390,8 @@ mod tests {
             .await
             .unwrap_err()
             .contains("kein TLS"));
-        let tls = "mysql://root:testpw@127.0.0.1:53307/mysql";
-        assert_eq!(cipher(tls.into()).await, Ok(true));
+        let tls = format!("mysql://root:testpw@127.0.0.1:{tls_port}/mysql");
+        assert_eq!(cipher(tls.clone()).await, Ok(true));
         assert_eq!(cipher(format!("{tls}?sslmode=require")).await, Ok(true));
         assert_eq!(cipher(format!("{tls}?sslmode=disable")).await, Ok(false));
         assert!(cipher(format!("{tls}?sslmode=verify-ca")).await.is_err());
@@ -1176,7 +1404,7 @@ mod tests {
         ))
         .await
         .is_err());
-        let cert = "mysql://certuser@127.0.0.1:53307/";
+        let cert = format!("mysql://certuser@127.0.0.1:{tls_port}/");
         assert!(cipher(format!("{cert}?sslmode=require")).await.is_err());
         assert_eq!(
             cipher(format!(
@@ -1185,6 +1413,514 @@ mod tests {
             .await,
             Ok(true)
         );
+    }
+
+    fn definition(data_type: &str, default: Option<&str>, extra: &str) -> ColumnDefinition {
+        ColumnDefinition {
+            data_type: data_type.into(),
+            nullable: true,
+            default: default.map(str::to_string),
+            extra: extra.into(),
+            charset: None,
+            collation: None,
+            table_collation: None,
+            comment: String::new(),
+            generation: None,
+            check: None,
+            mariadb: false,
+            legacy_mysql: false,
+        }
+    }
+
+    fn rename(old: &str, new: &str) -> AlterColumnRequest {
+        AlterColumnRequest {
+            old_name: old.into(),
+            new_name: Some(new.into()),
+            data_type: None,
+            set_not_null: None,
+            new_default: None,
+            drop_default: false,
+        }
+    }
+
+    fn change(def: &ColumnDefinition, req: &AlterColumnRequest) -> String {
+        change_column_sql("db", "t", def, req)
+            .strip_prefix("ALTER TABLE `db`.`t` CHANGE COLUMN ")
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn change_column_keeps_mysql_column_attributes() {
+        let mut id = definition("int", None, "auto_increment INVISIBLE");
+        id.nullable = false;
+        id.comment = "pk 'c' \\ x".into();
+        assert_eq!(
+            change(&id, &rename("id", "key")),
+            r"`id` `key` int NOT NULL AUTO_INCREMENT INVISIBLE COMMENT 'pk ''c'' \\ x'"
+        );
+        let ts = definition(
+            "timestamp(3)",
+            Some("CURRENT_TIMESTAMP(3)"),
+            "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        );
+        assert_eq!(
+            change(&ts, &rename("ts", "ts")),
+            "`ts` `ts` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
+        );
+        let mut s = definition("varchar(20)", Some("it's"), "");
+        s.charset = Some("latin1".into());
+        s.collation = Some("latin1_bin".into());
+        s.nullable = false;
+        assert_eq!(
+            change(&s, &rename("s", "s2")),
+            "`s` `s2` varchar(20) CHARACTER SET latin1 COLLATE latin1_bin NOT NULL DEFAULT 'it''s'"
+        );
+        let mut widen = rename("s", "s");
+        widen.data_type = Some("TEXT".into());
+        assert_eq!(
+            change(&s, &widen),
+            "`s` `s` TEXT CHARACTER SET latin1 COLLATE latin1_bin NOT NULL DEFAULT 'it''s'"
+        );
+        widen.data_type = Some("varchar(50) COLLATE utf8mb4_bin".into());
+        assert_eq!(
+            change(&s, &widen),
+            "`s` `s` varchar(50) COLLATE utf8mb4_bin NOT NULL DEFAULT 'it''s'"
+        );
+        let inherited = ColumnDefinition {
+            table_collation: Some("latin1_bin".into()),
+            ..definition("varchar(20)", None, "")
+        };
+        let inherited = ColumnDefinition {
+            charset: Some("latin1".into()),
+            collation: Some("latin1_bin".into()),
+            ..inherited
+        };
+        assert_eq!(
+            change(&inherited, &rename("s", "s")),
+            "`s` `s` varchar(20) NULL"
+        );
+        widen.data_type = Some("int".into());
+        widen.drop_default = true;
+        assert_eq!(change(&s, &widen), "`s` `s` int NOT NULL");
+    }
+
+    #[test]
+    fn change_column_renders_mysql_defaults_and_generated_columns() {
+        let cases = [
+            ("varchar(10)", Some("NULL"), "", " DEFAULT 'NULL'"),
+            ("varchar(10)", Some(r"a\b"), "", r" DEFAULT 'a\\b'"),
+            ("varchar(10)", Some("now()"), "", " DEFAULT 'now()'"),
+            (
+                "varchar(10)",
+                Some("CURRENT_TIMESTAMP"),
+                "",
+                " DEFAULT 'CURRENT_TIMESTAMP'",
+            ),
+            ("decimal(5,2)", Some("1.50"), "", " DEFAULT '1.50'"),
+            ("bit(1)", Some("b'1'"), "", " DEFAULT b'1'"),
+            ("varbinary(4)", Some("0x6162"), "", " DEFAULT 0x6162"),
+            ("int", None, "", ""),
+            (
+                "varchar(40)",
+                Some(r"concat(_utf8mb4\'a\\\'b\',_utf8mb4\'c\\\\d\')"),
+                "DEFAULT_GENERATED",
+                r" DEFAULT (concat(_utf8mb4'a\'b',_utf8mb4'c\\d'))",
+            ),
+            (
+                "datetime",
+                Some("now()"),
+                "DEFAULT_GENERATED",
+                " DEFAULT (now())",
+            ),
+        ];
+        for (data_type, default, extra, expected) in cases {
+            assert_eq!(
+                change(&definition(data_type, default, extra), &rename("c", "c")),
+                format!("`c` `c` {data_type} NULL{expected}"),
+                "{data_type} {default:?}"
+            );
+        }
+        let mut stored = definition("decimal(7,2)", None, "STORED GENERATED");
+        stored.generation = Some("(`n` * 2)".into());
+        assert_eq!(
+            change(&stored, &rename("g", "g2")),
+            "`g` `g2` decimal(7,2) GENERATED ALWAYS AS ((`n` * 2)) STORED NULL"
+        );
+        let mut virt = definition("varchar(40)", None, "VIRTUAL GENERATED");
+        virt.generation = Some(r"concat(`s`,_utf8mb4\'x\\\'y\')".into());
+        virt.charset = Some("utf8mb4".into());
+        virt.collation = Some("utf8mb4_0900_ai_ci".into());
+        assert_eq!(
+            change(&virt, &rename("v", "v")),
+            r"`v` `v` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci GENERATED ALWAYS AS (concat(`s`,_utf8mb4'x\'y')) VIRTUAL NULL"
+        );
+        let plain = definition("int", Some("7"), "");
+        let mut new_default = rename("c", "c");
+        new_default.new_default = Some("42".into());
+        new_default.set_not_null = Some(true);
+        assert_eq!(
+            change(&plain, &new_default),
+            "`c` `c` int NOT NULL DEFAULT 42"
+        );
+    }
+
+    #[test]
+    fn change_column_renders_mysql57_binary_defaults_and_plain_generation_expressions() {
+        let legacy = |data_type: &str, default: Option<&str>, extra: &str| ColumnDefinition {
+            legacy_mysql: true,
+            ..definition(data_type, default, extra)
+        };
+        let cases = [
+            ("varbinary(4)", Some("ab"), " DEFAULT 'ab'"),
+            ("binary(2)", Some("a'"), " DEFAULT 'a'''"),
+            ("varbinary(4)", Some("0x41"), " DEFAULT '0x41'"),
+            ("bit(3)", Some("b'101'"), " DEFAULT b'101'"),
+        ];
+        for (data_type, default, expected) in cases {
+            assert_eq!(
+                change(&legacy(data_type, default, ""), &rename("c", "c")),
+                format!("`c` `c` {data_type} NULL{expected}")
+            );
+        }
+        let mut generated = legacy("varchar(20)", None, "VIRTUAL GENERATED");
+        generated.generation = Some(r"concat(`base`,'x\'y\\n')".into());
+        assert_eq!(
+            change(&generated, &rename("g", "g")),
+            r"`g` `g` varchar(20) GENERATED ALWAYS AS (concat(`base`,'x\'y\\n')) VIRTUAL NULL"
+        );
+        assert!(is_legacy_mysql("5.7.44-log"));
+        assert!(!is_legacy_mysql("8.0.36"));
+        assert!(!is_legacy_mysql("8.4.11"));
+        assert!(!is_legacy_mysql(""));
+    }
+
+    #[test]
+    fn change_column_keeps_mariadb_defaults_and_column_checks() {
+        let maria = |data_type: &str, default: Option<&str>, extra: &str| ColumnDefinition {
+            mariadb: true,
+            ..definition(data_type, default, extra)
+        };
+        let cases = [
+            ("varchar(10)", Some("'abc'"), "", " DEFAULT 'abc'"),
+            ("varchar(10)", Some("'it''s'"), "", " DEFAULT 'it''s'"),
+            ("varchar(10)", Some("'NULL'"), "", " DEFAULT 'NULL'"),
+            ("int(11)", Some("NULL"), "", " DEFAULT NULL"),
+            ("decimal(5,2)", Some("1.50"), "", " DEFAULT 1.50"),
+            ("varbinary(4)", Some("x'6162'"), "", " DEFAULT x'6162'"),
+            (
+                "varchar(40)",
+                Some(r"concat('a\'b','c')"),
+                "",
+                r" DEFAULT concat('a\'b','c')",
+            ),
+            (
+                "timestamp(3)",
+                Some("current_timestamp(3)"),
+                "on update current_timestamp(3)",
+                " DEFAULT current_timestamp(3) ON UPDATE current_timestamp(3)",
+            ),
+        ];
+        for (data_type, default, extra, expected) in cases {
+            assert_eq!(
+                change(&maria(data_type, default, extra), &rename("c", "c")),
+                format!("`c` `c` {data_type} NULL{expected}"),
+                "{data_type} {default:?}"
+            );
+        }
+        let mut json = maria("longtext", None, "");
+        json.charset = Some("utf8mb4".into());
+        json.collation = Some("utf8mb4_bin".into());
+        json.check = Some("json_valid(`j`)".into());
+        assert_eq!(
+            change(&json, &rename("j", "doc")),
+            "`j` `doc` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL CHECK (json_valid(`doc`))"
+        );
+        let mut generated = maria("varchar(40)", Some("NULL"), "VIRTUAL GENERATED");
+        generated.generation = Some(r"concat(`s`,'x\'y')".into());
+        assert_eq!(
+            change(&generated, &rename("v", "v")),
+            r"`v` `v` varchar(40) GENERATED ALWAYS AS (concat(`s`,'x\'y')) VIRTUAL"
+        );
+    }
+
+    fn live_urls() -> Vec<String> {
+        ["L8DB_SMOKE_MYSQL_URL", "L8DB_SMOKE_MARIADB_URL"]
+            .iter()
+            .filter_map(|key| std::env::var(key).ok())
+            .collect()
+    }
+
+    async fn live_scalar(adapter: &MysqlAdapter, sql: &str) -> String {
+        cell(&adapter.rows(sql).await.unwrap()[0], 0)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_explain_analyze_rolls_back_changes() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let mariadb = live_scalar(&adapter, "SELECT VERSION()")
+                .await
+                .contains("MariaDB");
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_explain_analyze, l8db_explain_other")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_analyze (id INT PRIMARY KEY, v INT) ENGINE=InnoDB")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_other (id INT PRIMARY KEY) ENGINE=InnoDB")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_analyze VALUES (1, 10), (2, 20)")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_other VALUES (1), (2)")
+                .await
+                .unwrap();
+            for sql in [
+                "UPDATE l8db_explain_analyze a JOIN l8db_explain_other o ON o.id = a.id SET a.v = a.v + 1",
+                "DELETE a FROM l8db_explain_analyze a JOIN l8db_explain_other o ON o.id = a.id",
+                "UPDATE l8db_explain_analyze SET v = 0",
+                "DELETE FROM l8db_explain_analyze",
+            ] {
+                let outcome = adapter.explain_query(sql, true).await;
+                assert!(mariadb || outcome.is_ok(), "{url}: {sql}: {outcome:?}");
+                assert_eq!(
+                    live_scalar(
+                        &adapter,
+                        "SELECT CONCAT(COUNT(*), '/', SUM(v)) FROM l8db_explain_analyze"
+                    )
+                    .await,
+                    "2/30",
+                    "{url}: {sql}"
+                );
+            }
+            if !mariadb {
+                let plan = adapter
+                    .explain_query("SELECT * FROM l8db_explain_analyze WHERE id = 1", true)
+                    .await
+                    .unwrap();
+                assert!(plan.is_string(), "{url}: {plan}");
+            }
+            assert_eq!(
+                live_scalar(&adapter, "SELECT @@autocommit").await,
+                "1",
+                "{url}"
+            );
+            adapter
+                .exec("DROP TABLE l8db_explain_analyze, l8db_explain_other")
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_explain_never_runs_trailing_statements() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_explain_guard")
+                .await
+                .unwrap();
+            adapter
+                .exec("CREATE TABLE l8db_explain_guard (id INT PRIMARY KEY)")
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_explain_guard VALUES (1), (2)")
+                .await
+                .unwrap();
+            let err = adapter
+                .explain_query(
+                    "SELECT * FROM l8db_explain_guard;\nDELETE FROM l8db_explain_guard",
+                    false,
+                )
+                .await
+                .unwrap_err();
+            assert!(err.contains("einzelne"), "{url}: {err}");
+            for sql in [
+                "SELECT * FROM l8db_explain_guard WHERE id = 1--1; DELETE FROM l8db_explain_guard",
+                "SELECT 1 /* /* */; DELETE FROM l8db_explain_guard; /* */",
+                "SELECT 1 # comment\n; DELETE FROM l8db_explain_guard",
+            ] {
+                assert!(
+                    adapter.explain_query(sql, false).await.is_err(),
+                    "{url}: {sql}"
+                );
+            }
+            assert_eq!(
+                live_scalar(&adapter, "SELECT COUNT(*) FROM l8db_explain_guard").await,
+                "2",
+                "{url}"
+            );
+            for sql in [
+                "SELECT * FROM l8db_explain_guard WHERE id = 1",
+                "SELECT * FROM l8db_explain_guard WHERE id = 1;",
+                "  SELECT ';' FROM l8db_explain_guard ; ",
+            ] {
+                let plan = adapter.explain_query(sql, false).await.unwrap();
+                assert!(plan.is_object(), "{url}: {plan}");
+            }
+            adapter.exec("DROP TABLE l8db_explain_guard").await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_keeps_column_attributes() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            let mariadb = live_scalar(&adapter, "SELECT VERSION()")
+                .await
+                .contains("MariaDB");
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_alter_keep")
+                .await
+                .unwrap();
+            adapter
+                .exec(
+                    r#"CREATE TABLE l8db_alter_keep (
+                     id INT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'pk ''c''',
+                     s VARCHAR(20) CHARACTER SET latin1 COLLATE latin1_bin NOT NULL DEFAULT 'it''s' COMMENT 'str',
+                     ts TIMESTAMP(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+                     n DECIMAL(5,2) DEFAULT 1.50,
+                     base VARCHAR(10),
+                     g DECIMAL(7,2) GENERATED ALWAYS AS (length(base) * 2) STORED,
+                     v VARCHAR(40) GENERATED ALWAYS AS (concat(base, 'x''y\\z')) VIRTUAL,
+                     b BIT(1) DEFAULT b'1',
+                     vb VARBINARY(4) DEFAULT 'ab',
+                     q VARCHAR(10) DEFAULT 'NULL',
+                     bs VARCHAR(10) DEFAULT 'a\\b',
+                     ex VARCHAR(40) DEFAULT (concat('a''b', 'c\\d')),
+                     inv INT DEFAULT 7 INVISIBLE,
+                     nd INT NULL DEFAULT NULL,
+                     j JSON,
+                     k INT CHECK (k > 0))"#,
+                )
+                .await
+                .unwrap();
+            let before = cell(
+                &adapter
+                    .rows("SHOW CREATE TABLE l8db_alter_keep")
+                    .await
+                    .unwrap()[0],
+                1,
+            );
+            for column in [
+                "id", "s", "ts", "n", "g", "v", "b", "vb", "q", "bs", "ex", "inv", "nd", "j", "k",
+            ] {
+                let renamed = if column == "k" && !mariadb {
+                    column.to_string()
+                } else {
+                    format!("{column}_r")
+                };
+                for (old, new) in [
+                    (column.to_string(), renamed.clone()),
+                    (renamed.clone(), column.to_string()),
+                ] {
+                    adapter
+                        .alter_column(
+                            &schema,
+                            "l8db_alter_keep",
+                            &AlterColumnRequest {
+                                old_name: old,
+                                new_name: Some(new),
+                                data_type: None,
+                                set_not_null: None,
+                                new_default: None,
+                                drop_default: false,
+                            },
+                        )
+                        .await
+                        .unwrap_or_else(|e| panic!("{url} {column}: {e}"));
+                }
+            }
+            let after = cell(
+                &adapter
+                    .rows("SHOW CREATE TABLE l8db_alter_keep")
+                    .await
+                    .unwrap()[0],
+                1,
+            );
+            assert_eq!(before, after, "{url}");
+            adapter.exec("DROP TABLE l8db_alter_keep").await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_alter_column_keeps_binary_defaults_and_generated_literals() {
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            adapter
+                .exec("DROP TABLE IF EXISTS l8db_alter_bin")
+                .await
+                .unwrap();
+            adapter
+                .exec(
+                    r#"CREATE TABLE l8db_alter_bin (
+                     base VARCHAR(10),
+                     vb VARBINARY(4) DEFAULT 'ab',
+                     bn BINARY(2) DEFAULT 'a''',
+                     hx VARBINARY(4) DEFAULT '0x41',
+                     b BIT(3) DEFAULT b'101',
+                     g VARCHAR(20) GENERATED ALWAYS AS (concat(base, '\\n')) VIRTUAL,
+                     q VARCHAR(20) GENERATED ALWAYS AS (concat(base, 'x''y\\z')) VIRTUAL)"#,
+                )
+                .await
+                .unwrap();
+            adapter
+                .exec("INSERT INTO l8db_alter_bin (base) VALUES ('a')")
+                .await
+                .unwrap();
+            let snapshot = || async {
+                (
+                    cell(
+                        &adapter
+                            .rows("SHOW CREATE TABLE l8db_alter_bin")
+                            .await
+                            .unwrap()[0],
+                        1,
+                    ),
+                    live_scalar(
+                        &adapter,
+                        "SELECT CONCAT(HEX(g), '/', HEX(q)) FROM l8db_alter_bin",
+                    )
+                    .await,
+                )
+            };
+            let before = snapshot().await;
+            for column in ["vb", "bn", "hx", "b", "g", "q"] {
+                for set_not_null in [None, Some(false)] {
+                    adapter
+                        .alter_column(
+                            &schema,
+                            "l8db_alter_bin",
+                            &AlterColumnRequest {
+                                old_name: column.into(),
+                                new_name: Some(column.into()),
+                                data_type: None,
+                                set_not_null,
+                                new_default: None,
+                                drop_default: false,
+                            },
+                        )
+                        .await
+                        .unwrap_or_else(|e| panic!("{url} {column}: {e}"));
+                }
+            }
+            assert_eq!(snapshot().await, before, "{url}");
+            adapter.exec("DROP TABLE l8db_alter_bin").await.unwrap();
+        }
     }
 
     #[test]

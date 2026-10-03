@@ -32,12 +32,6 @@ export function FilterValueInput({
         {...props}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
-        onPaste={(event) => {
-          const parts = splitPasted(event.clipboardData.getData("text"));
-          if (parts.length < 2) return;
-          event.preventDefault();
-          onValueChange(parts.join(", "));
-        }}
         className={className}
       />
     );

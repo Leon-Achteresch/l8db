@@ -31,6 +31,7 @@ interface QueryResultTableProps {
   isLoading: boolean;
   error: string | null;
   kind?: DatabaseKind;
+  masked?: boolean;
   onInspect?: (column: string, value: unknown, row: number) => void;
 }
 
@@ -39,15 +40,16 @@ export const QueryResultTable = memo(function QueryResultTable({
   isLoading,
   error,
   kind,
+  masked = false,
   onInspect,
 }: QueryResultTableProps) {
   const { active: resultMasks } = useActiveMasks(rawResult?.columns ?? []);
   const result = useMemo(
     () =>
-      rawResult && resultMasks.length
+      rawResult && !masked && resultMasks.length
         ? { ...rawResult, rows: applyMasks(rawResult.columns, rawResult.rows, resultMasks) }
         : rawResult,
-    [rawResult, resultMasks],
+    [rawResult, masked, resultMasks],
   );
   const workspace = useQueryWorkspace();
   const selectionKey = useContext(MasterSelectionContext);

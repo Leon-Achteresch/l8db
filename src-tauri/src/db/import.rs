@@ -41,7 +41,7 @@ impl Dialect {
     pub fn quote(self, ident: &str) -> String {
         match self {
             Dialect::Mysql => format!("`{}`", ident.replace('`', "``")),
-            Dialect::Clickhouse => format!("`{}`", ident.replace('`', "\\`")),
+            Dialect::Clickhouse => super::clickhouse::quote(ident),
             Dialect::Mssql => format!("[{}]", ident.replace(']', "]]")),
             _ => format!("\"{}\"", ident.replace('"', "\"\"")),
         }
@@ -794,50 +794,13 @@ impl PgTx {
 #[async_trait]
 impl TxSession for PgTx {
     async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
-        use tokio_postgres::SimpleQueryMessage;
         let client = &self.client;
-        super::execution::postgres(client, &self.ssl, None, async {
-            let start = std::time::Instant::now();
-            let messages = client.simple_query(sql).await.map_err(super::map_pg_err)?;
-            let mut columns = Vec::new();
-            let mut rows = Vec::new();
-            let mut affected = None;
-            for message in messages {
-                match message {
-                    SimpleQueryMessage::Row(row) => {
-                        if columns.is_empty() {
-                            columns = row
-                                .columns()
-                                .iter()
-                                .map(|column| column.name().to_string())
-                                .collect();
-                        }
-                        let object: serde_json::Map<String, serde_json::Value> = columns
-                            .iter()
-                            .enumerate()
-                            .map(|(index, name)| {
-                                (
-                                    name.clone(),
-                                    row.get(index)
-                                        .map(|v| serde_json::Value::String(v.to_string()))
-                                        .unwrap_or(serde_json::Value::Null),
-                                )
-                            })
-                            .collect();
-                        rows.push(serde_json::Value::Object(object));
-                    }
-                    SimpleQueryMessage::CommandComplete(count) => affected = Some(count),
-                    _ => {}
-                }
-            }
-            Ok(QueryResult {
-                columns,
-                rows,
-                rows_affected: affected,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                truncated: false,
-            })
-        })
+        super::execution::postgres(
+            client,
+            &self.ssl,
+            None,
+            super::postgres::run_simple_query(client, sql),
+        )
         .await
     }
 

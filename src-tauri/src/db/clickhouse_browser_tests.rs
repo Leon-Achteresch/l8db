@@ -154,6 +154,60 @@ async fn dispatch(
     }
 }
 
+async fn serve(
+    mut stream: tokio::net::TcpStream,
+    uri: String,
+    pool: PoolState,
+) -> Result<(), String> {
+    let mut bytes = Vec::new();
+    let mut buffer = [0; 8192];
+    let (head, size) = loop {
+        let count = stream.read(&mut buffer).await.map_err(|e| e.to_string())?;
+        if count == 0 {
+            return Ok(());
+        }
+        bytes.extend_from_slice(&buffer[..count]);
+        if let Some(head) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+            let headers = String::from_utf8_lossy(&bytes[..head]);
+            let size = headers
+                .lines()
+                .find_map(|line| {
+                    line.to_lowercase()
+                        .strip_prefix("content-length:")
+                        .and_then(|s| s.trim().parse::<usize>().ok())
+                })
+                .unwrap_or(0);
+            break (head + 4, size);
+        }
+    };
+    while bytes.len() < head + size {
+        let count = stream.read(&mut buffer).await.map_err(|e| e.to_string())?;
+        if count == 0 {
+            return Ok(());
+        }
+        bytes.extend_from_slice(&buffer[..count]);
+    }
+    let response = if size == 0 {
+        json!(null)
+    } else {
+        let request: Value =
+            serde_json::from_slice(&bytes[head..head + size]).map_err(|e| e.to_string())?;
+        match dispatch(
+            request["command"].as_str().unwrap_or(""),
+            &request["args"],
+            &uri,
+            pool,
+        )
+        .await
+        {
+            Ok(value) => json!({"result": value}),
+            Err(error) => json!({"error": error}),
+        }
+    }
+    .to_string();
+    stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}", response.len(), response).as_bytes()).await.map_err(|e| e.to_string())
+}
+
 #[tokio::test]
 #[ignore = "isolated browser lab bridge; requires L8DB_E2E_CLICKHOUSE_URL"]
 async fn clickhouse_browser_bridge() {
@@ -167,52 +221,13 @@ async fn clickhouse_browser_bridge() {
         .unwrap();
     println!("ClickHouse browser bridge ready on 127.0.0.1:27021");
     loop {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut bytes = Vec::new();
-        let mut buffer = [0; 8192];
-        let (head, size) = loop {
-            let count = stream.read(&mut buffer).await.unwrap();
-            if count == 0 {
-                return;
-            }
-            bytes.extend_from_slice(&buffer[..count]);
-            if let Some(head) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                let headers = String::from_utf8_lossy(&bytes[..head]);
-                let size = headers
-                    .lines()
-                    .find_map(|line| {
-                        line.to_lowercase()
-                            .strip_prefix("content-length:")
-                            .and_then(|s| s.trim().parse::<usize>().ok())
-                    })
-                    .unwrap_or(0);
-                break (head + 4, size);
-            }
-        };
-        while bytes.len() < head + size {
-            let count = stream.read(&mut buffer).await.unwrap();
-            if count == 0 {
-                return;
-            }
-            bytes.extend_from_slice(&buffer[..count]);
-        }
-        let response = if size == 0 {
-            json!(null)
-        } else {
-            let request: Value = serde_json::from_slice(&bytes[head..head + size]).unwrap();
-            match dispatch(
-                request["command"].as_str().unwrap(),
-                &request["args"],
-                &uri,
-                pool.clone(),
-            )
-            .await
-            {
-                Ok(value) => json!({"result": value}),
-                Err(error) => json!({"error": error}),
-            }
-        }
-        .to_string();
-        stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}", response.len(), response).as_bytes()).await.unwrap();
+        let (stream, _) = listener.accept().await.unwrap();
+        let uri = uri.clone();
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let _ =
+                tokio::time::timeout(std::time::Duration::from_secs(60), serve(stream, uri, pool))
+                    .await;
+        });
     }
 }

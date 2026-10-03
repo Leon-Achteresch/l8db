@@ -17,7 +17,7 @@ export async function bundleFixture(entry: string) {
           }));
           build.onLoad({ filter: /.*/, namespace: "fixture-stub" }, () => ({
             contents:
-              "export async function readCommunityExtension(){ throw new Error('unavailable') }",
+              "export async function readCommunityExtension(){ throw new Error('unavailable') } export async function adviseIndexes(){ throw new Error('unavailable') }",
             loader: "js",
           }));
           build.onResolve({ filter: /^@\// }, (args) => {
