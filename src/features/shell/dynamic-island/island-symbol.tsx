@@ -12,13 +12,13 @@ const CROSS_PATH = "M4.75 4.75l6.5 6.5M11.25 4.75l-6.5 6.5";
 
 export function IslandSymbol({ glyph }: { glyph: IslandGlyph }) {
   if (glyph.kind === "search")
-    return <Search aria-hidden className="size-3.5 shrink-0 text-white/60" strokeWidth={2} />;
+    return <Search aria-hidden className="size-3.5 shrink-0 text-current/60" strokeWidth={2} />;
   if (glyph.kind === "wave") return <IslandWaveform color={glyph.color} />;
   if (glyph.kind === "ring") return <IslandRing percent={glyph.percent} />;
   if (glyph.kind === "emoji") return <IslandEmoji emoji={glyph.emoji} effect={glyph.effect} />;
   if (glyph.kind === "icon") {
     const Icon = glyph.icon;
-    return <Icon aria-hidden className="size-3.5 shrink-0 text-white/70" strokeWidth={2} />;
+    return <Icon aria-hidden className="size-3.5 shrink-0 text-current/70" strokeWidth={2} />;
   }
   if (glyph.kind === "dot")
     return (

@@ -218,7 +218,7 @@ export function ConnectionsView() {
       <div className="relative flex h-full min-h-0 w-full flex-col p-4 md:p-6">
         <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold tracking-tight text-foreground md:text-2xl">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
               {editorId ? (selected ? "Verbindung bearbeiten" : "Neue Verbindung") : "Verbindungen"}
             </h1>
             {!editorId && (
@@ -299,7 +299,7 @@ export function ConnectionsView() {
               }
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border/70 bg-card/20 p-4 md:p-6 shadow-xs">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
                 {filtered.map(renderCard)}
                 {baasCards}

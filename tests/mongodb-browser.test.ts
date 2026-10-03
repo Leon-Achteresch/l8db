@@ -137,9 +137,9 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
         await loadProviders();
       });
       await page.getByText("items", { exact: true }).first().click();
-      await page.getByRole("tab", { name: "Columns", exact: true }).click();
+      await page.getByRole("tab", { name: "Spalten", exact: true }).click();
       await page.getByText("Primary Keys", { exact: true }).first().waitFor();
-      await page.getByRole("tab", { name: "Indexes", exact: true }).click();
+      await page.getByRole("tab", { name: "Indizes", exact: true }).click();
       await page.getByText("_id_", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Neuer Index", exact: true }).click();
       const indexCommand = page.getByRole("textbox", { name: "Index-Befehl", exact: true });

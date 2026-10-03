@@ -82,8 +82,8 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
         onHoverEnd={() => setHovered(false)}
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         className={cn(
-          "relative flex h-7 max-w-full items-center justify-center overflow-hidden rounded-full bg-black text-white shadow-sm ring-1 ring-black/5",
-          "transition-[background-color,box-shadow] duration-300 hover:bg-neutral-900 dark:ring-white/10",
+          "relative flex h-7 max-w-full items-center justify-center overflow-hidden rounded-full bg-card text-foreground shadow-xs ring-1 ring-border",
+          "transition-[background-color,box-shadow] duration-300 hover:bg-muted dark:bg-black dark:text-white dark:ring-white/10 dark:hover:bg-neutral-900",
           TONE_GLOW[view.tone ?? "neutral"],
         )}
       >
@@ -95,7 +95,7 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
             if (view.duration) dismissIslandMoment(view.key);
             onOpen();
           }}
-          className="absolute inset-0 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset"
+          className="absolute inset-0 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
         />
         <div className="pointer-events-none grid place-items-center">
           <AnimatePresence initial={false}>
@@ -122,7 +122,7 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
                 {view.title}
               </span>
               {view.detail ? (
-                <span className="min-w-0 truncate text-white/55 @max-[14rem]/header-search:hidden">
+                <span className="min-w-0 truncate text-current/55 @max-[14rem]/header-search:hidden">
                   {view.detail}
                 </span>
               ) : null}
@@ -134,11 +134,11 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
                       value={view.percent / 100}
                       locales="de-DE"
                       format={{ style: "percent" }}
-                      className="text-[11px] text-white/70 tabular-nums"
+                      className="text-[11px] text-current/70 tabular-nums"
                     />
                   ) : null}
                   {view.more ? (
-                    <span className="rounded-full bg-white/15 px-1.5 text-[10px] font-medium leading-4">
+                    <span className="rounded-full bg-current/15 px-1.5 text-[10px] font-medium leading-4">
                       +{view.more}
                     </span>
                   ) : null}
@@ -149,13 +149,13 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
                         view.action?.run();
                         dismissIslandMoment(view.key);
                       }}
-                      className="pointer-events-auto -mr-1 h-5 cursor-pointer rounded-full bg-white/15 px-2 text-[11px] font-medium transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                      className="pointer-events-auto -mr-1 h-5 cursor-pointer rounded-full bg-current/15 px-2 text-[11px] font-medium transition-colors hover:bg-current/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                       {view.action.label}
                     </button>
                   ) : null}
                   {view.idle ? (
-                    <kbd className="inline-flex items-center rounded-full bg-white/10 px-1.5 py-px font-sans text-[10px] text-white/60">
+                    <kbd className="inline-flex items-center rounded-full bg-current/10 px-1.5 py-px font-sans text-[10px] text-current/60">
                       {shortcut}
                     </kbd>
                   ) : null}

@@ -21,16 +21,16 @@ export const TABLE_DETAIL_TABS: {
   capability?: keyof Capabilities;
 }[] = [
   { id: "data", label: "Daten" },
-  { id: "columns", label: "Columns" },
+  { id: "columns", label: "Spalten" },
   { id: "definition", label: "Definition", entity: "view" },
   { id: "triggers", label: "Trigger", entity: "table", capability: "triggers" },
-  { id: "indexes", label: "Indexes", entity: "table", capability: "indexes" },
+  { id: "indexes", label: "Indizes", entity: "table", capability: "indexes" },
   { id: "constraints", label: "Constraints", entity: "table", capability: "constraints" },
   { id: "rls", label: "RLS", entity: "table", capability: "rls" },
   { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
-  { id: "grants", label: "Grants", capability: "object_grants" },
-  { id: "used-by", label: "Used By", capability: "used_by" },
-  { id: "performance", label: "Performance" },
+  { id: "grants", label: "Rechte", capability: "object_grants" },
+  { id: "used-by", label: "Verwendet in", capability: "used_by" },
+  { id: "performance", label: "Leistung" },
   { id: "audit", label: "Audit", capability: "object_admin" },
 ];
 
