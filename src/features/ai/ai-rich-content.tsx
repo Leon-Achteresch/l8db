@@ -1,39 +1,77 @@
+import {
+  Database,
+  Eye,
+  Search,
+  ShieldCheck,
+  ShieldX,
+  SquarePen,
+  Terminal,
+  Wrench,
+} from "lucide-react";
 import { parseAiDiff } from "@/lib/ai/diff";
 import type { AiRichBlock } from "@/lib/ai/rich";
-import { useSettingsStore } from "@/lib/settings";
+import { AiWorkRow } from "./ai-work-row";
 import { FileDiff } from "./beui/agents/file-diff";
 import { ImageGeneration } from "./beui/agents/image-generation";
 import { TodoList } from "./beui/agents/todo-list";
-import { ToolResult, ToolResultOutput } from "./beui/agents/tool-result";
 
-export function AiRichContent({ blocks, running }: { blocks: AiRichBlock[]; running: boolean }) {
-  const easyMode = useSettingsStore((state) => state.easyMode);
-  const tools = blocks.filter((block) => block.type === "tool");
-  const results = tools.map((tool) => (
-    <ToolResult
-      key={tool.id}
-      tool={tool.name}
-      title={tool.name}
-      status={
-        tool.status === "running" && !running
-          ? "cancelled"
-          : (tool.status as "running" | "success" | "error" | "cancelled")
-      }
-      kind="request"
-      defaultOpen={false}
-      maxHeight={280}
-      copyText={tool.output}
-    >
-      {tool.output ? (
-        <ToolResultOutput language="text">{tool.output}</ToolResultOutput>
-      ) : (
-        <p className="text-xs text-muted-foreground">Keine Textausgabe gemeldet.</p>
-      )}
-    </ToolResult>
-  ));
+function toolIcon(name: string) {
+  if (/search|find|grep/i.test(name)) return Search;
+  if (/query|sql|execute|benchmark/i.test(name)) return Database;
+  if (/list|describe|read|get|schema|show/i.test(name)) return Eye;
+  if (/bash|shell|command|exec|run/i.test(name)) return Terminal;
+  if (/write|edit|patch|apply|create/i.test(name)) return SquarePen;
+  return Wrench;
+}
+
+export function AiRichContent({
+  blocks,
+  running,
+  showWork = true,
+}: {
+  blocks: AiRichBlock[];
+  running: boolean;
+  showWork?: boolean;
+}) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-1">
       {blocks.map((block) => {
+        if (block.type === "tool") {
+          if (!showWork) return null;
+          const status = block.status === "running" && !running ? "cancelled" : block.status;
+          return (
+            <AiWorkRow
+              key={block.id}
+              icon={toolIcon(block.name)}
+              active={status === "running"}
+              failed={status === "error"}
+              label={
+                status === "running"
+                  ? `Führt ${block.name} aus`
+                  : status === "error"
+                    ? `${block.name} fehlgeschlagen`
+                    : status === "cancelled"
+                      ? `${block.name} abgebrochen`
+                      : `${block.name} ausgeführt`
+              }
+              detail={block.output || undefined}
+            />
+          );
+        }
+        if (block.type === "decision")
+          return showWork ? (
+            <AiWorkRow
+              key={block.id}
+              icon={block.outcome === "denied" ? ShieldX : ShieldCheck}
+              label={`${block.title} · ${
+                block.outcome === "allowed"
+                  ? "Einmal erlaubt"
+                  : block.outcome === "denied"
+                    ? "Abgelehnt"
+                    : "Beantwortet"
+              }`}
+            />
+          ) : null;
         if (block.type === "plan")
           return (
             <TodoList
@@ -42,7 +80,7 @@ export function AiRichContent({ blocks, running }: { blocks: AiRichBlock[]; runn
               title="Plan des Agents"
               defaultOpen={false}
               collapseOnComplete
-              className="text-xs"
+              className="py-1 text-xs"
             />
           );
         if (block.type === "diff")
@@ -55,6 +93,7 @@ export function AiRichContent({ blocks, running }: { blocks: AiRichBlock[]; runn
               defaultOpen={false}
               maxHeight={280}
               status="complete"
+              className="my-1"
             />
           );
         if (block.type === "image")
@@ -72,43 +111,15 @@ export function AiRichContent({ blocks, running }: { blocks: AiRichBlock[]; runn
               }
               size="fluid"
               interactive={false}
-              className="max-w-sm"
+              className="my-1 max-w-sm"
             >
               {block.src && (
                 <img src={block.src} alt={block.label} className="h-full w-full object-contain" />
               )}
             </ImageGeneration>
           );
-        if (block.type === "decision")
-          return (
-            <p
-              key={block.id}
-              className="rounded-lg border px-3 py-2 text-[11px] text-muted-foreground"
-            >
-              {block.title} ·{" "}
-              {block.outcome === "allowed"
-                ? "Einmal erlaubt"
-                : block.outcome === "denied"
-                  ? "Abgelehnt"
-                  : "Beantwortet"}
-            </p>
-          );
         return null;
       })}
-      {tools.length > 0 &&
-        (easyMode ? (
-          <details className="group/tools text-xs">
-            <summary className="inline-flex min-h-7 cursor-pointer list-none items-center gap-1 rounded-md text-muted-foreground hover:text-foreground">
-              {tools.length} {tools.length === 1 ? "Tool verwendet" : "Tools verwendet"}
-              <span aria-hidden="true" className="transition-transform group-open/tools:rotate-90">
-                ›
-              </span>
-            </summary>
-            <div className="mt-2 space-y-2">{results}</div>
-          </details>
-        ) : (
-          <div className="space-y-2">{results}</div>
-        ))}
     </div>
   );
 }

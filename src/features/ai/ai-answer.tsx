@@ -34,6 +34,7 @@ export function AiAnswer({ text, streaming }: { text: string; streaming: boolean
         return (
           <CodeBlock
             key={String(index)}
+            className="my-2 rounded-lg border border-border/70 bg-secondary"
             code={code}
             language={
               supported.includes(language as AgentCodeLanguage)

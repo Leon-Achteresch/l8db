@@ -1,5 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronDown, Database, History, Maximize2, Plus, Settings2, X } from "lucide-react";
+import {
+  ChevronDown,
+  Database,
+  History,
+  ListPlus,
+  Maximize2,
+  Plus,
+  Settings2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
@@ -25,6 +34,7 @@ import {
 } from "@/lib/db/ai";
 import { useDbSelectionStore } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AiApproval } from "./ai-approval";
 import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
@@ -32,7 +42,6 @@ import { AiOnboarding } from "./ai-onboarding";
 import { AiProviderPicker } from "./ai-provider-picker";
 import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiSettings } from "./ai-settings";
-import { AiStarters } from "./ai-starters";
 import { AiTranscript } from "./ai-transcript";
 import { AiUsage } from "./ai-usage";
 import { AISidebar } from "./beui/agents/ai-sidebar";
@@ -63,6 +72,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const [allowDdl, setAllowDdl] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<AiEvent[]>([]);
+  const [queue, setQueue] = useState<{ id: string; text: string }[]>([]);
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [usage, setUsage] = useState<Record<string, unknown>>({});
   const [runStatus, setRunStatus] = useState("");
@@ -178,6 +188,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       parentId: turn[turn.length - 1].id ?? null,
       role: "assistant",
       text: "",
+      createdAt: Date.now(),
     };
     const base = session ?? {
       id: crypto.randomUUID(),
@@ -333,7 +344,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       else setError(String(error));
     } finally {
       if (liveSession.current?.leafId === assistantId) {
-        if (stopping.current) updateLast((last) => ({ ...last, stopped: true }));
+        updateLast((last) => ({
+          ...last,
+          durationMs: Date.now() - (last.createdAt ?? Date.now()),
+          ...(stopping.current ? { stopped: true } : {}),
+        }));
         if (synced) liveSession.current = { ...liveSession.current, nativeLeafId: assistantId };
         saveLive();
       }
@@ -345,7 +360,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     }
   };
   const send = (text = prompt) => {
-    if (!text.trim() || run.current) return;
+    if (!text.trim()) return;
+    if (run.current) {
+      setQueue((entries) => [...entries, { id: crypto.randomUUID(), text: text.trim() }]);
+      setPrompt("");
+      return;
+    }
     void runTurn(
       thread,
       {
@@ -353,10 +373,16 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         parentId: thread.at(-1)?.id ?? null,
         role: "user",
         text: text.trim(),
+        createdAt: Date.now(),
       },
       () => setPrompt(""),
     );
   };
+  useEffect(() => {
+    if (runId || !queue.length) return;
+    setQueue(queue.slice(1));
+    send(queue[0].text);
+  });
   const edit = (message: AiMessage, text: string) => {
     const index = thread.indexOf(message);
     if (index < 0 || !text.trim()) return;
@@ -365,6 +391,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       parentId: thread[index - 1]?.id ?? null,
       role: "user",
       text: text.trim(),
+      createdAt: Date.now(),
     });
   };
   const retry = (message: AiMessage) => {
@@ -381,6 +408,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setAllowDdl(false);
     setMentioned([]);
     setApprovals([]);
+    setQueue([]);
     setUsage({});
     setView("chat");
     input.current?.focus();
@@ -596,24 +624,20 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             )}
           {thread.length > 0 && (
             <AiTranscript
-              fullPage={fullPage}
               messages={thread}
               session={session}
-              approvals={approvals}
               runId={runId}
               runStatus={runStatus}
-              onResolved={resolve}
-              onError={setError}
               onEdit={edit}
               onRetry={retry}
               onBranch={switchBranch}
             />
           )}
           <div
-            className={`shrink-0 px-3 pt-2 pb-3 ${fullPage ? "mx-auto w-full max-w-3xl" : ""} ${thread.length ? "" : "my-auto"}`}
+            className={`mx-auto w-full max-w-[46rem] shrink-0 px-3 pt-2 pb-3 ${thread.length ? "" : "my-auto"}`}
           >
             {!thread.length && (
-              <h2 className="mb-5 text-center text-xl font-medium tracking-tight">
+              <h2 className="pb-6 text-center text-2xl font-normal tracking-tight">
                 {active ? `Was möchtest du über ${active.name} wissen?` : "Wie kann ich helfen?"}
               </h2>
             )}
@@ -654,16 +678,59 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 ))}
               </div>
             )}
+            {queue.length > 0 && (
+              <ul aria-label="Warteschlange" className="mb-2 space-y-1">
+                {queue.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex items-center gap-2 rounded-lg border bg-muted/30 py-1 pr-1 pl-2.5 text-xs"
+                  >
+                    <ListPlus className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{entry.text}</span>
+                    <IconButton
+                      aria-label="Aus Warteschlange entfernen"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={() =>
+                        setQueue((entries) => entries.filter((item) => item.id !== entry.id))
+                      }
+                    >
+                      <X className="size-3" />
+                    </IconButton>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {runId && approvals.length > 0 && (
+              <div className="max-h-[50vh] space-y-2 overflow-auto rounded-t-xl border border-b-0 border-amber-500/30 bg-amber-500/5 p-2">
+                {approvals.map((event) => (
+                  <AiApproval
+                    key={String(event.data.id)}
+                    event={event}
+                    runId={runId}
+                    onResolved={resolve}
+                    onError={setError}
+                  />
+                ))}
+              </div>
+            )}
             <PromptInput
               inputRef={input}
               aria-label="Nachricht an AI"
-              placeholder="Frage zu deinen Daten …"
+              placeholder={
+                runId && approvals.length
+                  ? "Beantworte die Freigabe, um fortzufahren"
+                  : "Frage zu deinen Daten …"
+              }
               value={prompt}
               onValueChange={setPrompt}
               loading={Boolean(runId)}
+              queueable
               onStop={cancel}
               disabled={
                 loading ||
+                Boolean(runId && approvals.length) ||
                 Boolean(
                   status &&
                     (provider.cli
@@ -673,7 +740,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               }
               onSubmit={(text) => send(text)}
               onKeyDown={(event) => {
-                if (
+                if (event.key === "Escape" && runId) {
+                  event.preventDefault();
+                  cancel();
+                } else if (
                   event.key === "Enter" &&
                   !event.shiftKey &&
                   !event.nativeEvent.isComposing &&
@@ -741,7 +811,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                   />
                 </>
               }
-              className="rounded-xl bg-muted/15 shadow-xs"
+              className={`rounded-xl bg-muted/15 shadow-xs ${runId && approvals.length ? "rounded-t-none" : ""}`}
             />
             <div className="mt-1 flex items-center justify-between gap-2">
               <Popover open={contextOpen} onOpenChange={setContextOpen}>
@@ -802,14 +872,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 onSettings={() => setView("settings")}
               />
             </div>
-            {!thread.length && (
-              <AiStarters
-                onPick={(text) => {
-                  setPrompt(text);
-                  input.current?.focus();
-                }}
-              />
-            )}
           </div>
         </>
       )}

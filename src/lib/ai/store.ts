@@ -80,7 +80,10 @@ function sanitizeSession(session: AiSession): AiSession {
   return {
     ...session,
     messages: session.messages.map(
-      ({ id, parentId, role, text, rich, reasoning, error, stopped }, index) => ({
+      (
+        { id, parentId, role, text, rich, reasoning, error, stopped, createdAt, durationMs },
+        index,
+      ) => ({
         id: id ?? `m${index}`,
         ...(parentId !== undefined ? { parentId } : {}),
         role,
@@ -89,6 +92,8 @@ function sanitizeSession(session: AiSession): AiSession {
         ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
         ...(typeof error === "string" && error ? { error } : {}),
         ...(stopped ? { stopped: true } : {}),
+        ...(typeof createdAt === "number" ? { createdAt } : {}),
+        ...(typeof durationMs === "number" ? { durationMs } : {}),
       }),
     ),
   };
