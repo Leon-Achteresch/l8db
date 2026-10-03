@@ -12,6 +12,7 @@ import {
   type TransferOutcome,
   type TransferPlan,
   type TransferProgress,
+  type TransferSchemaPair,
 } from "@/lib/db";
 import { prepareConnection } from "@/lib/schema-compare/store";
 import { defaultCompareTypes } from "@/lib/schema-compare/types";
@@ -82,6 +83,8 @@ export function useTransfer() {
   const connections = useConnectionsStore((state) => state.connections);
   const [source, setSource] = useState<TransferSide>(EMPTY_TRANSFER_SIDE);
   const [target, setTarget] = useState<TransferSide>(EMPTY_TRANSFER_SIDE);
+  const [sourceSchemas, setSourceSchemas] = useState<string[]>([]);
+  const [targetSchemas, setTargetSchemas] = useState<string[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [foldNames, setFoldNames] = useState(true);
@@ -92,25 +95,28 @@ export function useTransfer() {
   const [progress, setProgress] = useState<TransferProgress["progress"] | null>(null);
   const [outcome, setOutcome] = useState<TransferOutcome | null>(null);
   const jobIdRef = useRef<string | null>(null);
+  const planRunRef = useRef(0);
+  const configRef = useRef({ source, target, pairs: [] as TransferSchemaPair[], foldNames });
 
   const sourceConnection = connections.find((entry) => entry.id === source.connectionId) ?? null;
   const targetConnection = connections.find((entry) => entry.id === target.connectionId) ?? null;
   const readOnly = isReadOnlyConnection(targetConnection);
-  const sameEndpoint =
-    Boolean(sourceConnection && targetConnection) &&
-    source.connectionId === target.connectionId &&
-    (source.database ?? "") === (target.database ?? "") &&
-    schemas.some((schema) => (mapping[schema] ?? schema) === schema);
   const pairs = schemas.map((schema) => ({
     source: schema,
     target: (mapping[schema] ?? "").trim() || schema,
   }));
+  const sameEndpoint =
+    Boolean(sourceConnection && targetConnection) &&
+    source.connectionId === target.connectionId &&
+    (source.database ?? "") === (target.database ?? "") &&
+    pairs.some((pair) => pair.source === pair.target);
   const ready =
     Boolean(sourceConnection && targetConnection) &&
     schemas.length > 0 &&
     !readOnly &&
-    !sameEndpoint &&
-    !running;
+    !sameEndpoint;
+  const planKey = ready ? JSON.stringify([source, target, pairs, foldNames]) : null;
+  configRef.current = { source, target, pairs, foldNames };
 
   useEffect(() => {
     if (!running) return;
@@ -124,36 +130,47 @@ export function useTransfer() {
     };
   }, [running]);
 
-  const invalidate = () => {
+  useEffect(() => {
     setPlan(null);
-    setOutcome(null);
     setError(null);
-  };
-
-  const analyze = async () => {
-    if (!sourceConnection || !targetConnection || !ready) return;
-    invalidate();
-    setPlanning("Quelle wird analysiert…");
-    try {
-      const [left, right] = await Promise.all([
-        prepareConnection(sourceConnection.id),
-        prepareConnection(targetConnection.id),
-      ]);
-      const from = endpoint(left, source.database);
-      let next = await planTransfer(
-        right.kind,
-        effectiveConnectionString(right),
-        { source: from, schemas: pairs, foldNames },
-        target.database ?? undefined,
-      );
-      if (next.native) next = await withNativeStructure(next, from, setPlanning);
-      setPlan(next);
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
+    setOutcome(null);
+    const run = ++planRunRef.current;
+    const config = configRef.current;
+    if (!planKey || !config.source.connectionId || !config.target.connectionId) {
       setPlanning(null);
+      return;
     }
-  };
+    const alive = () => planRunRef.current === run;
+    setPlanning("Plan wird erstellt…");
+    const timer = window.setTimeout(async () => {
+      try {
+        const [left, right] = await Promise.all([
+          prepareConnection(config.source.connectionId as string),
+          prepareConnection(config.target.connectionId as string),
+        ]);
+        const from = endpoint(left, config.source.database);
+        let next = await planTransfer(
+          right.kind,
+          effectiveConnectionString(right),
+          { source: from, schemas: config.pairs, foldNames: config.foldNames },
+          config.target.database ?? undefined,
+        );
+        if (!alive()) return;
+        if (next.native)
+          next = await withNativeStructure(next, from, (text) => {
+            if (alive()) setPlanning(text);
+          });
+        if (alive()) setPlan(next);
+      } catch (cause) {
+        if (alive()) setError(errorText(cause));
+      } finally {
+        if (alive()) setPlanning(null);
+      }
+    }, 500);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [planKey]);
 
   const start = async () => {
     if (!plan || !sourceConnection || !targetConnection || running) return;
@@ -176,9 +193,10 @@ export function useTransfer() {
         { jobId },
       );
       setOutcome(result);
-      if (result.committed)
+      if (result.committed) {
+        setPlan(null);
         toast.success(`${result.rows} Zeilen in ${result.tables.length} Tabellen übertragen.`);
-      else toast.error(result.error ?? "Transfer fehlgeschlagen.");
+      } else toast.error(result.error ?? "Transfer fehlgeschlagen.");
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -191,35 +209,35 @@ export function useTransfer() {
     if (jobIdRef.current) void cancelExecution(jobIdRef.current);
   };
 
+  const toggleSchema = (schema: string) =>
+    setSchemas((current) =>
+      current.includes(schema)
+        ? current.filter((entry) => entry !== schema)
+        : sourceSchemas.filter((entry) => entry === schema || current.includes(entry)),
+    );
+
   return {
     source,
     setSource: (value: TransferSide) => {
       setSource(value);
       setSchemas([]);
-      invalidate();
     },
     target,
-    setTarget: (value: TransferSide) => {
-      setTarget(value);
-      invalidate();
-    },
+    setTarget,
     sourceConnection,
     targetConnection,
+    sourceSchemas,
+    setSourceSchemas,
+    targetSchemas,
+    setTargetSchemas,
     schemas,
-    setSchemas: (value: string[]) => {
-      setSchemas(value);
-      invalidate();
-    },
+    toggleSchema,
+    setSchemas,
     mapping,
-    setMapping: (schema: string, value: string) => {
-      setMapping((current) => ({ ...current, [schema]: value }));
-      invalidate();
-    },
+    setMapping: (schema: string, value: string) =>
+      setMapping((current) => ({ ...current, [schema]: value })),
     foldNames,
-    setFoldNames: (value: boolean) => {
-      setFoldNames(value);
-      invalidate();
-    },
+    setFoldNames,
     crossFamily: Boolean(
       sourceConnection && targetConnection && sourceConnection.kind !== targetConnection.kind,
     ),
@@ -232,7 +250,6 @@ export function useTransfer() {
     running,
     progress,
     outcome,
-    analyze,
     start,
     cancel,
   };
