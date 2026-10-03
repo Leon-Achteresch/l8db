@@ -1,0 +1,19 @@
+import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import { useEffect, useState } from "react";
+
+export function IslandElapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - since) / 1000));
+  return (
+    <span aria-hidden className="shrink-0 font-mono text-[11px] text-white/70 tabular-nums">
+      <NumberFlowGroup>
+        <NumberFlow value={Math.floor(seconds / 60)} />:
+        <NumberFlow value={seconds % 60} format={{ minimumIntegerDigits: 2 }} />
+      </NumberFlowGroup>
+    </span>
+  );
+}
