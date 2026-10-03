@@ -11,6 +11,7 @@ export const NEW_FEATURES = {
   "ai.context.mcp": "0.8.0",
   "ai.history": "0.8.0",
   "ai.usage": "0.8.0",
+  "ai.onboarding": "0.10.0",
   "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",
