@@ -44,9 +44,13 @@ export interface AiServer {
 }
 export interface AiMessage {
   id?: string;
+  parentId?: string | null;
   role: "user" | "assistant";
   text: string;
   rich?: AiRichBlock[];
+  reasoning?: string;
+  error?: string;
+  stopped?: boolean;
 }
 export interface AiConnection {
   id: string;

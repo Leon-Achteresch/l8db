@@ -70,6 +70,26 @@ export function Markdown({ source, className }: { source: string; className?: st
             </ul>
           );
         }
+        if (block.t === "ol") {
+          return (
+            <ol
+              key={index}
+              start={block.start}
+              className="mt-2 list-decimal space-y-1 pl-5 first:mt-0"
+            >
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{renderInline(item)}</li>
+              ))}
+            </ol>
+          );
+        }
+        if (block.t === "quote") {
+          return (
+            <blockquote key={index} className="mt-2 border-l-2 pl-3 first:mt-0">
+              {renderInline(block.children)}
+            </blockquote>
+          );
+        }
         if (block.t === "hr") {
           return <hr key={index} className="my-4 border-border" />;
         }

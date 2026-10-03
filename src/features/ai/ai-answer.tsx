@@ -3,33 +3,25 @@ import type { AgentCodeLanguage } from "./beui/agents/agent-code";
 import { CodeBlock } from "./beui/agents/code-block";
 import { StreamingResponse } from "./beui/agents/streaming-response";
 
-export function AiAnswer({
-  text,
-  streaming,
-  copyText = text,
-  actions = true,
-}: {
-  text: string;
-  streaming: boolean;
-  copyText?: string;
-  actions?: boolean;
-}) {
+export function AiAnswer({ text, streaming }: { text: string; streaming: boolean }) {
   const parts = text.split(/(```[^\n]*\n[\s\S]*?(?:```|$))/g);
   return (
     <StreamingResponse
       status={streaming ? "streaming" : "complete"}
-      copyText={copyText}
       announce={false}
-      showActions={actions && !streaming && Boolean(text)}
-      className="text-xs"
-      contentClassName="text-xs leading-relaxed"
+      showActions={false}
+      className="text-sm"
+      contentClassName="text-sm leading-relaxed"
     >
       {parts.map((part, index) => {
         if (!part.startsWith("```"))
           return part ? <AiMarkdown key={String(index)} source={part} /> : null;
         const newline = part.indexOf("\n");
         const language = part.slice(3, newline).trim();
-        const code = part.slice(newline + 1).replace(/```$/, "");
+        const code = part
+          .slice(newline + 1)
+          .replace(/```$/, "")
+          .replace(/\n$/, "");
         const supported: AgentCodeLanguage[] = [
           "bash",
           "diff",
@@ -49,6 +41,7 @@ export function AiAnswer({
                 : "text"
             }
             status={streaming && !part.endsWith("```") ? "streaming" : "complete"}
+            showLineNumbers={false}
             maxHeight={320}
           />
         );
