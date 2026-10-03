@@ -300,6 +300,7 @@ pub async fn ai_run(
         id: request.run_id.clone(),
         owner: window.label().into(),
         plan_only: context::is_plan(&request),
+        approval: request.profile.approval.clone(),
         state: state.inner().clone(),
         channel: events,
     });
