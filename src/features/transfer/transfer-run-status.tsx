@@ -1,6 +1,7 @@
-import { CircleCheckIcon, CircleXIcon, LoaderIcon } from "lucide-react";
+import { CircleCheckIcon, CircleXIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import type { TransferOutcome, TransferProgress } from "@/lib/db";
 
 const PHASE_LABELS: Record<TransferProgress["progress"]["phase"], string> = {
@@ -25,12 +26,18 @@ export function TransferRunStatus({
     const tables = progress?.tables ?? 0;
     const done = progress ? progress.tableIndex : 0;
     return (
-      <div className="flex flex-col gap-2 rounded-md border p-3">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="flex items-center gap-2">
-            <LoaderIcon className="size-3.5 animate-spin" />
-            {progress ? PHASE_LABELS[progress.phase] : "Transfer wird vorbereitet"}
-            {progress?.table && <span className="font-mono">{progress.table}</span>}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="flex min-w-0 items-center gap-2">
+            <Spinner className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {progress ? PHASE_LABELS[progress.phase] : "Transfer wird vorbereitet"}
+              {progress?.table && (
+                <span className="ml-2 font-mono text-xs text-muted-foreground">
+                  {progress.table}
+                </span>
+              )}
+            </span>
           </span>
           <Button variant="outline" size="sm" onClick={onCancel}>
             Abbrechen
@@ -47,20 +54,20 @@ export function TransferRunStatus({
   if (!outcome) return null;
   if (outcome.committed)
     return (
-      <div className="flex flex-col gap-1 rounded-md border border-emerald-600/40 bg-emerald-600/10 p-3 text-xs">
+      <div className="flex flex-col gap-1 text-sm">
         <span className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
           <CircleCheckIcon className="size-4" />
           {outcome.rows} Zeilen in {outcome.tables.length} Tabellen übertragen und verifiziert.
         </span>
         {outcome.warnings.map((warning) => (
-          <span key={warning} className="text-amber-700 dark:text-amber-400">
+          <span key={warning} className="text-xs text-amber-700 dark:text-amber-400">
             {warning}
           </span>
         ))}
       </div>
     );
   return (
-    <div className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs">
+    <div className="flex flex-col gap-1 text-sm">
       <span className="flex items-center gap-2 font-medium text-destructive">
         <CircleXIcon className="size-4" />
         Transfer fehlgeschlagen.{" "}
@@ -70,9 +77,13 @@ export function TransferRunStatus({
             : "Alle angelegten Objekte wurden wieder entfernt."
           : "Das Ziel ist nicht vollständig bereinigt."}
       </span>
-      {outcome.error && <pre className="font-mono whitespace-pre-wrap">{outcome.error}</pre>}
+      {outcome.error && (
+        <pre className="font-mono text-xs whitespace-pre-wrap text-destructive">
+          {outcome.error}
+        </pre>
+      )}
       {outcome.leftovers.length > 0 && (
-        <div>
+        <div className="text-xs">
           <p className="font-medium">Manuell zu entfernen:</p>
           <ul className="list-disc pl-4 font-mono">
             {outcome.leftovers.map((entry) => (
