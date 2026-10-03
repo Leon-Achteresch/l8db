@@ -113,6 +113,29 @@ describe("Verknüpfungen", () => {
     });
   });
 
+  test("Oracle-Tabellenaliase ohne AS, andere Dialekte mit AS", () => {
+    const ds = syncJoins(
+      {
+        ...emptySimple(),
+        schema: "public",
+        table: "order_items",
+        dimension: { column: joinRef(customers.id, "country"), bucket: "none" },
+        metrics: [{ id: "a", agg: "sum", column: "qty", label: "" }],
+      },
+      [customers, orders],
+    );
+    const oracle = buildSimpleSql(ds, "oracle");
+    expect(oracle).toContain('FROM "public"."order_items" t1\n');
+    expect(oracle).toContain('LEFT JOIN "public"."orders" t2 ON t2."id" = t1."order_id"');
+    expect(oracle).toContain('LEFT JOIN "public"."customers" t3 ON t3."id" = t2."customer_id"');
+    expect(oracle).not.toMatch(/\bAS t\d/);
+    for (const kind of ["postgres", "mysql", "mssql", "sqlite", "clickhouse", "duckdb"] as const) {
+      const sql = buildSimpleSql(ds, kind);
+      expect(sql).toMatch(/order_items.? AS t1\n/);
+      expect(sql).toMatch(/orders.? AS t2 ON t2\./);
+    }
+  });
+
   test("ohne Verknüpfung keine Tabellen-Aliase", () => {
     const sql = buildSimpleSql({ ...emptySimple(), table: "orders", joins: [] }, "postgres");
     expect(sql).toContain('FROM "orders"\n');

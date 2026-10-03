@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
-import { installVersioningLab } from "./fixtures/versioning-lab";
+import { installVersioningLab, versioningAppUrl } from "./fixtures/versioning-lab";
 
 const enabled = process.env.L8DB_VERSIONING_LAB;
 
@@ -22,7 +22,7 @@ for (const engine of ["chromium", "webkit"] as const) {
       page.setDefaultTimeout(15000);
       try {
         await installVersioningLab(page, repo);
-        await page.goto("http://localhost:1420/versioning");
+        await page.goto(`${versioningAppUrl}/versioning`);
         await page
           .getByRole("textbox", { name: "Projektname", exact: true })
           .fill("Invoice Product");
@@ -54,7 +54,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         });
         await page.getByRole("button", { name: "Versionierung aktualisieren" }).click();
         await page.getByRole("tab", { name: "Kunden", exact: true }).click();
-        await page.getByText("Kunde A", { exact: true }).waitFor();
+        await page.getByText("Kunde A", { exact: true }).first().waitFor();
         const panel = page.locator("#versioning-panel");
         expect(await panel.getAttribute("aria-hidden")).toBe("false");
         expect(await page.locator("select:visible").count()).toBe(0);
@@ -128,8 +128,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
         await branches.waitFor({ state: "hidden" });
-        await page.emulateMedia({ reducedMotion: "reduce" });
-        await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
+        await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
         await page.locator("html.dark").waitFor();
         await page.setViewportSize({ width: 1000, height: 800 });
         await page.screenshot({ path: `/tmp/l8db-versioning-${engine}-compact.png` });

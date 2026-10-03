@@ -1,0 +1,429 @@
+{
+  "title": "Aus Daten wird ein Überblick",
+  "subtitle": "Die ausführliche Dashboard-Tour",
+  "voice": "Anna",
+  "wordsPerMinute": 162,
+  "chapters": [
+    "Dein Dashboard",
+    "Der erste Chart",
+    "Daten visuell gestalten",
+    "16 Charttypen",
+    "Eigene SQL-Abfragen",
+    "Charts und Dashboards organisieren",
+    "Laden, leere Daten und Fehler",
+    "Themes und Fenstergrößen",
+    "Dein nächster Schritt"
+  ],
+  "shots": [
+    {
+      "screenshot": "31-dashboard-ueberblick",
+      "chapter": 0,
+      "title": "Deine Daten. Dein Überblick.",
+      "detail": "Kennzahlen, Verläufe und Anteile in einem Dashboard.",
+      "voice": "Wie entwickelt sich dein Umsatz, und welche Kanäle tragen dazu bei? In dieser Tour baust du eigene Auswertungen auf und lernst alle sechzehn Charttypen kennen. Die gezeigten Werte sind Beispieldaten.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "01-einstieg",
+      "chapter": 1,
+      "title": "Starte mit einer Frage",
+      "detail": "Entwicklung verstehen, Kategorien vergleichen oder Anteile erkennen.",
+      "voice": "Der Einstieg beginnt mit deiner Frage. Möchtest du eine Entwicklung verstehen, Kategorien vergleichen oder Anteile erkennen? Erstelle dafür ein Dashboard oder öffne eine vorhandene Dashboard-Datei.",
+      "zoom": 1.18,
+      "focus": [0.4, 0.4]
+    },
+    {
+      "screenshot": "02-keine-verbindung",
+      "chapter": 1,
+      "title": "Zuerst die Verbindung",
+      "detail": "Eine aktive Datenbankverbindung ist die Grundlage der Auswertung.",
+      "voice": "Ist noch keine Verbindung aktiv, zeigt dir die App den nächsten Schritt. Wähle zuerst deine Datenbankverbindung. Danach kannst du die verfügbaren Tabellen und Views für deine Charts verwenden.",
+      "zoom": 1.4,
+      "focus": [0.52, 0.49]
+    },
+    {
+      "screenshot": "03-dashboard-leer",
+      "chapter": 1,
+      "title": "Dein erster Chart",
+      "detail": "Einen Chart erstellen oder aus der Sammlung laden.",
+      "voice": "Ein neues Dashboard startet mit einer freien Arbeitsfläche. Erstelle deinen ersten Chart oder lade einen gespeicherten Chart aus deiner Sammlung. Im Bearbeitungsmodus kannst du anschließend das Layout anpassen.",
+      "zoom": 1.2,
+      "focus": [0.52, 0.49]
+    },
+    {
+      "screenshot": "04-dashboard-leer-ansicht",
+      "chapter": 1,
+      "title": "Ansicht und Bearbeitung",
+      "detail": "Die Ansicht schützt das Layout vor versehentlichem Verschieben.",
+      "voice": "Die Ansicht schützt das Layout. Auch ein leeres Dashboard erklärt dir, wie du weitermachst: Wechsle in die Bearbeitung, um Charts hinzuzufügen und auf der Arbeitsfläche anzuordnen.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "05-builder-ohne-quelle",
+      "chapter": 1,
+      "title": "Ein Builder. Drei Schritte.",
+      "detail": "Daten gestalten → Darstellung wählen → Quelle und SQL prüfen.",
+      "voice": "Der Chart-Builder führt dich durch drei Bereiche: Daten gestalten, Darstellung sowie Quelle und SQL. Rechts bleiben die Live-Vorschau und die Daten hinter dem Chart sichtbar. Beginne mit deiner Datenquelle.",
+      "zoom": 1.12,
+      "focus": [0.5, 0.46]
+    },
+    {
+      "screenshot": "06-datenquelle-auswahl",
+      "chapter": 1,
+      "title": "Tabelle oder View wählen",
+      "detail": "Die Auswahl zeigt die verfügbaren Quellen deiner Datenbank.",
+      "voice": "Wähle eine Tabelle oder View aus deiner Datenbank. In unserem Beispiel nutzen wir die Bestellungen. Sobald die Quelle ausgewählt ist, lädt der Builder die verfügbaren Datenfelder.",
+      "zoom": 1.65,
+      "focus": [0.32, 0.38]
+    },
+    {
+      "screenshot": "07-builder-standard",
+      "chapter": 2,
+      "title": "Felder verstehen",
+      "detail": "Datentypen helfen bei der Auswahl von Zahlen, Texten und Datumsfeldern.",
+      "voice": "Die Feldbibliothek zeigt Namen und Datentypen. Die erste Kennzahl zählt standardmäßig die Zeilen. Wähle ein Feld aus und entscheide rechts, ob es eine Kennzahl, eine Aufteilung oder ein Filter werden soll.",
+      "zoom": 1.45,
+      "focus": [0.36, 0.53]
+    },
+    {
+      "screenshot": "08-builder-auswertung",
+      "chapter": 2,
+      "title": "Umsatz pro Monat",
+      "detail": "revenue als Summe · created_at als monatliche Aufteilung.",
+      "voice": "Für den Monatsumsatz verwenden wir das Umsatzfeld als Summe und das Datumsfeld als monatliche Aufteilung. Gib dem Chart einen verständlichen Titel. Die Vorschau zeigt unmittelbar, wie sich die Auswertung verändert.",
+      "zoom": 1.15,
+      "focus": [0.5, 0.49]
+    },
+    {
+      "screenshot": "09-builder-zweite-aufteilung",
+      "chapter": 2,
+      "title": "Eine zweite Perspektive",
+      "detail": "Mit einer zweiten Aufteilung werden mehrere Datenreihen sichtbar.",
+      "voice": "Mit einer zweiten Aufteilung ergänzt du eine weitere Perspektive. Hier teilen wir den Monatsumsatz zusätzlich nach Ländern auf. So erkennst du die Entwicklung einzelner Gruppen innerhalb derselben Auswertung.",
+      "zoom": 1.12,
+      "focus": [0.58, 0.52]
+    },
+    {
+      "screenshot": "10-filter-bereich",
+      "chapter": 2,
+      "title": "Den Ausschnitt bestimmen",
+      "detail": "Für Zahlen kannst du beispielsweise einen Wertebereich festlegen.",
+      "voice": "Filter begrenzen den betrachteten Ausschnitt. Für ein Zahlenfeld kannst du beispielsweise einen Wertebereich festlegen. In dieser Demo wählen wir Umsätze zwischen hundert und tausend und wenden die Bedingung an.",
+      "zoom": 1.5,
+      "focus": [0.43, 0.58]
+    },
+    {
+      "screenshot": "11-filter-angewendet",
+      "chapter": 2,
+      "title": "Filter bleiben sichtbar",
+      "detail": "Die aktive Bedingung gehört zur Auswertung und ist überprüfbar.",
+      "voice": "Nach dem Anwenden bleibt die Bedingung im Builder sichtbar. So kannst du nachvollziehen, welche Einschränkung zur Auswertung gehört, und sie bei Bedarf wieder bearbeiten oder entfernen. Die Darstellung nutzt hier weiterhin vorbereitete Beispieldaten.",
+      "zoom": 1.4,
+      "focus": [0.43, 0.61]
+    },
+    {
+      "screenshot": "12-feldsuche-leer",
+      "chapter": 2,
+      "title": "Felder gezielt finden",
+      "detail": "Die Suche grenzt die Feldbibliothek ein und erklärt fehlende Treffer.",
+      "voice": "Bei vielen Spalten hilft die Feldsuche. Gibt es keinen Treffer, erklärt der leere Zustand, dass kein Feld zum Suchbegriff passt. Passe die Suche an, um wieder passende Felder auszuwählen.",
+      "zoom": 1.6,
+      "focus": [0.31, 0.49]
+    },
+    {
+      "screenshot": "13-chartgalerie",
+      "chapter": 3,
+      "title": "Die passende Darstellung",
+      "detail": "Überblick, Verlauf, Vergleich, Anteile, Zusammenhänge und Daten.",
+      "voice": "Die Chartgalerie ordnet sechzehn Darstellungen nach ihrer Aufgabe. Suche nach Überblick, Verlauf, Vergleich, Anteilen, Zusammenhängen oder Daten im Detail. Entscheidend ist, welche Frage dein Chart beantworten soll.",
+      "zoom": 1.35,
+      "focus": [0.37, 0.49]
+    },
+    {
+      "screenshot": "14-chartgalerie-zusammenhaenge",
+      "chapter": 3,
+      "title": "Anforderungen erkennen",
+      "detail": "Die Galerie zeigt, welche Aufteilungen und Kennzahlen benötigt werden.",
+      "voice": "Jede Darstellung hat passende Voraussetzungen. Die Galerie erklärt, wie viele Kennzahlen und Aufteilungen nötig sind. Bei fehlenden Feldern kannst du gezielt zum Datenbereich zurückkehren und deine Zuordnung ergänzen.",
+      "zoom": 1.5,
+      "focus": [0.36, 0.46]
+    },
+    {
+      "screenshot": "15-darstellung-feinschliff",
+      "chapter": 3,
+      "title": "Den Chart lesbar machen",
+      "detail": "Legende, Kopfzahl, Gitterlinien, Kurvenform und Farben gezielt wählen.",
+      "voice": "Im Feinschliff passt du die Darstellung an. Wähle je nach Chart Legende, Kopfzahl, Gitterlinien, Kurvenform und Farben. Blende die Elemente ein, die beim Lesen helfen, und prüfe das Ergebnis in der Vorschau.",
+      "zoom": 1.4,
+      "focus": [0.4, 0.58]
+    },
+    {
+      "screenshot": "chart-01-kpi",
+      "chapter": 3,
+      "title": "Kennzahl",
+      "detail": "Eine zentrale Zahl, ergänzt um einen Trend, wenn Daten dafür vorliegen.",
+      "voice": "Die Kennzahl stellt einen zentralen Wert in den Mittelpunkt. Bei einer zeitlichen Aufteilung kann ein kleiner Verlauf den Trend ergänzen. Sie eignet sich für den schnellen Überblick am Anfang eines Dashboards."
+    },
+    {
+      "screenshot": "chart-02-line",
+      "chapter": 3,
+      "title": "Linien",
+      "detail": "Entwicklungen über eine Achse und mehrere Kennzahlen vergleichen.",
+      "voice": "Linien zeigen Entwicklungen über eine gemeinsame Achse. Mehrere Kennzahlen können eigene Linien erhalten. Achte beim Vergleich auf passende Größenordnungen, damit eine kleine Datenreihe neben großen Werten noch erkennbar bleibt."
+    },
+    {
+      "screenshot": "chart-03-area",
+      "chapter": 3,
+      "title": "Verlauf mit Fläche",
+      "detail": "Die Fläche betont die Größe der Werte über den Verlauf.",
+      "voice": "Die Flächendarstellung betont zusätzlich die Größe der Werte entlang des Verlaufs. Sie hilft, Phasen mit hohen und niedrigen Werten zu erkennen. Je nach Einstellung können mehrere Reihen auch gestapelt dargestellt werden."
+    },
+    {
+      "screenshot": "chart-04-column",
+      "chapter": 3,
+      "title": "Säulen",
+      "detail": "Kategorien vergleichen oder mehrere Kennzahlen nebeneinander betrachten.",
+      "voice": "Säulen vergleichen Kategorien entlang einer gemeinsamen Skala. Mit mehreren Kennzahlen kannst du Werte je Kategorie gemeinsam betrachten. Eine gestapelte Darstellung zeigt, wie sich ein Gesamtwert aus seinen einzelnen Reihen zusammensetzt."
+    },
+    {
+      "screenshot": "chart-05-bars",
+      "chapter": 3,
+      "title": "Pipeline und Balken",
+      "detail": "Horizontale Balken zeigen Rangfolgen und relative Größen.",
+      "voice": "Horizontale Balken machen Rangfolgen schnell lesbar. Auch längere Kategorienamen lassen sich gut zuordnen. In der Pipeline-Darstellung kannst du zusätzlich relative Größen erkennen, zum Beispiel beim Vergleich verschiedener Vertriebskanäle."
+    },
+    {
+      "screenshot": "chart-06-funnel",
+      "chapter": 3,
+      "title": "Funnel",
+      "detail": "Stufen und ihre relativen Größen – mit fachlich sinnvoller Reihenfolge.",
+      "voice": "Ein Funnel stellt aufeinanderfolgende Stufen dar. Für einen echten Prozess müssen deine Daten die passenden Stufen und ihre Reihenfolge enthalten. Die gezeigten Kanäle demonstrieren hier nur die Form mit Beispieldaten."
+    },
+    {
+      "screenshot": "chart-07-donut",
+      "chapter": 3,
+      "title": "Donut",
+      "detail": "Die Zusammensetzung eines Gesamtwerts auf einen Blick.",
+      "voice": "Der Donut zeigt, wie sich ein Gesamtwert auf Kategorien verteilt. Er eignet sich besonders für wenige gut unterscheidbare Anteile. In dieser Demo sehen wir die Umsatzanteile der einzelnen Kanäle."
+    },
+    {
+      "screenshot": "chart-08-rings",
+      "chapter": 3,
+      "title": "Ringe",
+      "detail": "Kategorien als konzentrische Ringe miteinander vergleichen.",
+      "voice": "Die Ringdarstellung ordnet Kategorien als konzentrische Ringe an. So lassen sich ihre relativen Größen in einer kompakten Form gegenüberstellen. Die zugehörige Legende hilft, jeden Ring seiner Kategorie zuzuordnen."
+    },
+    {
+      "screenshot": "chart-09-radar",
+      "chapter": 3,
+      "title": "Radar",
+      "detail": "Profile über mehrere Kategorien – möglichst mit vergleichbaren Skalen.",
+      "voice": "Radar-Charts stellen Profile über mehrere Kategorien dar. Unterschiedliche Kennzahlen bilden eigene Flächen oder Linien. Verwende möglichst vergleichbare Skalen, damit Unterschiede in der Form auch fachlich sinnvoll interpretiert werden können."
+    },
+    {
+      "screenshot": "chart-10-scatter",
+      "chapter": 3,
+      "title": "Blasen",
+      "detail": "Zwei Kennzahlen bestimmen die Position; eine dritte kann die Größe steuern.",
+      "voice": "Beim Blasendiagramm bestimmen zwei Kennzahlen die Position auf der X- und Y-Achse. Eine dritte kann die Größe steuern. Kategorien können über Farben unterschieden werden. So werden Muster und ungewöhnliche Kombinationen sichtbar."
+    },
+    {
+      "screenshot": "chart-11-sankey",
+      "chapter": 3,
+      "title": "Fluss und Sankey",
+      "detail": "Zwei Aufteilungen verbinden Quellen und Ziele über eine Kennzahl.",
+      "voice": "Der Fluss-Chart verbindet Quellen und Ziele. Dafür brauchst du zwei Aufteilungen und eine Kennzahl für die Stärke der Verbindung. Im Beispiel sehen wir, wie verschiedene Kanäle zu Shop oder Beratung führen."
+    },
+    {
+      "screenshot": "chart-12-score",
+      "chapter": 3,
+      "title": "Score",
+      "detail": "Erreichte Werte und Zielwerte pro Kategorie gegenüberstellen.",
+      "voice": "Der Score stellt erreichte Werte ihren Zielwerten gegenüber. Zwei Kennzahlen liefern Ist und Ziel, eine Aufteilung unterscheidet die Kategorien. Damit kannst du beispielsweise die Zielerreichung verschiedener Kanäle gemeinsam betrachten."
+    },
+    {
+      "screenshot": "chart-13-gauge",
+      "chapter": 3,
+      "title": "Tacho",
+      "detail": "Ein erreichter Wert im Verhältnis zu einem gemeinsamen Ziel.",
+      "voice": "Der Tacho zeigt einen erreichten Wert im Verhältnis zu einem Zielwert. Dafür brauchst du zwei Kennzahlen und keine Aufteilung. Die Darstellung eignet sich für einen einzelnen Fortschritt, etwa die Bestellungen gegenüber einem Monatsziel."
+    },
+    {
+      "screenshot": "chart-14-treemap",
+      "chapter": 3,
+      "title": "Treemap",
+      "detail": "Rechteckflächen machen die Größenverhältnisse der Kategorien sichtbar.",
+      "voice": "In der Treemap wird jede Kategorie zu einer Fläche. Größere Werte erhalten größere Rechtecke. So erkennst du die dominierenden Bestandteile einer Verteilung und kannst viele Kategorien auf einer gemeinsamen Fläche überblicken."
+    },
+    {
+      "screenshot": "chart-15-heatmap",
+      "chapter": 3,
+      "title": "Heatmap",
+      "detail": "Zwei Aufteilungen ergeben eine Matrix; die Farbe vermittelt den Wert.",
+      "voice": "Die Heatmap kombiniert zwei Aufteilungen zu einer Matrix. Die Farbe jeder Zelle vermittelt die Größe einer Kennzahl. Im Beispiel vergleichen wir Bestellungen nach Wochentag und Region und erkennen dabei wiederkehrende Muster."
+    },
+    {
+      "screenshot": "chart-16-table",
+      "chapter": 3,
+      "title": "Tabelle",
+      "detail": "Einzelne Werte genau nachlesen und mit dem Chart abgleichen.",
+      "voice": "Die Tabelle zeigt die Werte direkt. Sie ist hilfreich, wenn du einzelne Ergebnisse genau nachlesen oder die Darstellung mit ihren zugrunde liegenden Zahlen vergleichen möchtest. Auch im Builder bleiben die Daten hinter dem Chart zugänglich."
+    },
+    {
+      "screenshot": "16-quelle-sql",
+      "chapter": 4,
+      "title": "Die Quelle nachvollziehen",
+      "detail": "Im visuellen Modus übernimmt der Builder die Abfrageerstellung.",
+      "voice": "Im Bereich Quelle und SQL kannst du die Herkunft deiner Auswertung nachvollziehen. Der visuelle Modus erstellt die Abfrage aus deinen Einstellungen. Bei Bedarf wechselst du hier zum Schreiben einer eigenen SQL-Abfrage.",
+      "zoom": 1.2,
+      "focus": [0.43, 0.45]
+    },
+    {
+      "screenshot": "17-sql-editor",
+      "chapter": 4,
+      "title": "Eigene SQL-Abfragen",
+      "detail": "Eine SELECT-Abfrage liefert die Ergebnisspalten für deinen Chart.",
+      "voice": "Im SQL-Modus schreibst du deine eigene SELECT-Abfrage. Unser Beispiel gruppiert Bestellungen nach Monat und summiert den Umsatz. Die Ergebnisspalten werden anschließend den Rollen im Chart zugeordnet. Die Vorschau verwendet hier simulierte Abfrageergebnisse.",
+      "zoom": 1.45,
+      "focus": [0.38, 0.41]
+    },
+    {
+      "screenshot": "18-sql-spaltenzuordnung",
+      "chapter": 4,
+      "title": "Das Ergebnis zuordnen",
+      "detail": "Ergebnisspalten als Aufteilungen, Kennzahlen und Datum auswählen.",
+      "voice": "Ordne die Spalten des SQL-Ergebnisses zu. Wähle die Aufteilung, deine Kennzahlen und gegebenenfalls ein Datumsfeld. Auch mit einer eigenen Abfrage bleibt die Darstellung im selben Chart-Builder einstellbar.",
+      "zoom": 1.35,
+      "focus": [0.38, 0.47]
+    },
+    {
+      "screenshot": "19-dashboard-bearbeitung",
+      "chapter": 5,
+      "title": "Charts im Dashboard anordnen",
+      "detail": "Im Bearbeitungsmodus verschieben, vergrößern und erneut bearbeiten.",
+      "voice": "Auf dem Dashboard kannst du deine Charts anordnen. Im Bearbeitungsmodus verschiebst du eine Karte am Griff und veränderst ihre Größe an der Ecke. Über Bearbeiten gelangst du wieder zu Daten und Darstellung.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "20-dashboard-aktionen",
+      "chapter": 5,
+      "title": "Weitere Dashboard-Aktionen",
+      "detail": "Aktualisierung, Sammlungen und Verwaltung über das Aktionsmenü.",
+      "voice": "Das Aktionsmenü bündelt weitere Aufgaben rund um dein Dashboard. Hier findest du unter anderem Aktualisierung und Verwaltung. So bleiben die wichtigsten Aktionen erreichbar, ohne die Arbeitsfläche dauerhaft mit zusätzlichen Bedienelementen zu füllen.",
+      "zoom": 1.6,
+      "focus": [0.82, 0.27]
+    },
+    {
+      "screenshot": "21-dashboard-sammlung",
+      "chapter": 5,
+      "title": "Dashboards verwalten",
+      "detail": "Lokale Dashboards und geöffnete Dashboard-Dateien im Überblick.",
+      "voice": "Die Dashboard-Verwaltung bietet einen Überblick über lokale Dashboards und Dashboard-Dateien. So kannst du zwischen Auswertungen wechseln und vorhandene Arbeitsstände wieder öffnen. Die aktive Verbindung gibt dabei den Datenkontext vor.",
+      "zoom": 1.2,
+      "focus": [0.74, 0.5]
+    },
+    {
+      "screenshot": "22-chart-sammlung-leer",
+      "chapter": 5,
+      "title": "Eine Sammlung aufbauen",
+      "detail": "Gespeicherte Charts können später erneut verwendet werden.",
+      "voice": "Die Chart-Sammlung startet leer und erklärt, wie du sie aufbaust. Speichere wiederverwendbare Auswertungen, damit du sie später erneut einsetzen kannst. Das ist praktisch für Charts, die in mehreren Dashboards gebraucht werden.",
+      "zoom": 1.18,
+      "focus": [0.74, 0.48]
+    },
+    {
+      "screenshot": "23-chart-sammlung",
+      "chapter": 5,
+      "title": "Gespeicherte Charts verwenden",
+      "detail": "Vorhandene Auswertungen in ein Dashboard laden.",
+      "voice": "Ein gespeicherter Chart erscheint als eigener Eintrag in der Sammlung. Von dort kannst du ihn in dein Dashboard laden. Prüfe bei der Wiederverwendung, ob die Datenquelle zur aktuell gewählten Verbindung passt.",
+      "zoom": 1.22,
+      "focus": [0.74, 0.43]
+    },
+    {
+      "screenshot": "24-dashboard-ansicht",
+      "chapter": 5,
+      "title": "Das Layout schützen",
+      "detail": "Fertig wechseln und das Dashboard ohne versehentliches Verschieben lesen.",
+      "voice": "Wenn dein Layout steht, wechsle mit Fertig in die Ansicht. Die Charts bleiben lesbar, während ihre Positionen geschützt sind. Für weitere Änderungen kannst du jederzeit wieder die Bearbeitung öffnen.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "32-dashboard-ueberblick-bearbeiten",
+      "chapter": 5,
+      "title": "Einen Überblick zusammenstellen",
+      "detail": "Kennzahlen oben, Verlauf und Verteilung darunter – passend zu deiner Frage.",
+      "voice": "Mehrere Charts ergeben einen gemeinsamen Überblick. In dieser Demo stehen Kennzahlen oben, Verlauf und Verteilung darunter. Ordne die Karten so an, dass die wichtigste Frage zuerst beantwortet wird und Details danach folgen.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "25-vorschau-laedt",
+      "chapter": 6,
+      "title": "Wenn Daten geladen werden",
+      "detail": "Die Vorschau zeigt den Ladezustand, bis das Ergebnis vorliegt.",
+      "voice": "Während eine Abfrage läuft, zeigt die Vorschau einen Ladezustand. Auch der Datenbereich erklärt, dass die Daten geladen werden. Warte auf das Ergebnis, bevor du die sichtbare Auswertung beurteilst.",
+      "zoom": 1.45,
+      "focus": [0.75, 0.48]
+    },
+    {
+      "screenshot": "26-vorschau-leer",
+      "chapter": 6,
+      "title": "Keine Daten für die Auswahl",
+      "detail": "Ein leeres Ergebnis ist ein eigener Zustand; prüfe Quelle und Filter.",
+      "voice": "Liefert die Auswahl keine Zeilen, erklärt die Vorschau den leeren Zustand. Prüfe die Quelle, den Zeitraum und deine Filter. Ein leeres Ergebnis sollte zuerst fachlich eingeordnet werden, bevor du daraus eine Aussage ableitest.",
+      "zoom": 1.45,
+      "focus": [0.75, 0.48]
+    },
+    {
+      "screenshot": "27-vorschau-fehler",
+      "chapter": 6,
+      "title": "Fehler nachvollziehen",
+      "detail": "Die Fehlermeldung erscheint in Vorschau und Datentabelle.",
+      "voice": "Bei einem Fehler zeigt die App die Rückmeldung in der Vorschau und im Datenbereich. In dieser Demo simulieren wir eine nicht erreichbare Quelle. Prüfe die Verbindung und versuche es erneut, sobald die Ursache behoben ist.",
+      "zoom": 1.45,
+      "focus": [0.75, 0.48]
+    },
+    {
+      "screenshot": "28-dashboard-dunkel",
+      "chapter": 7,
+      "title": "Das dunkle Theme",
+      "detail": "Dashboard, Charts und Bedienelemente passen sich dem Theme an.",
+      "voice": "Das Dashboard ist auch im dunklen Theme nutzbar. Oberflächen, Beschriftungen und Bedienelemente passen sich an, während die Chartfarben die Datenreihen unterscheiden. Prüfe auch hier, ob deine gewählten Farben gut lesbar sind.",
+      "zoom": 1.12,
+      "focus": [0.53, 0.53]
+    },
+    {
+      "screenshot": "29-builder-dunkel",
+      "chapter": 7,
+      "title": "Der Builder im dunklen Theme",
+      "detail": "SQL, Live-Vorschau und Daten bleiben im selben Arbeitsbereich.",
+      "voice": "Auch der Chart-Builder folgt dem dunklen Theme. SQL-Editor, Live-Vorschau und Datenansicht bleiben gemeinsam erreichbar. So kannst du zwischen Datenarbeit und Darstellung wechseln, ohne den Arbeitskontext zu verlassen.",
+      "zoom": 1.12,
+      "focus": [0.5, 0.49]
+    },
+    {
+      "screenshot": "30-builder-kleines-fenster",
+      "chapter": 7,
+      "title": "Ein kleineres Fenster",
+      "detail": "Die Tour zeigt den Builder zusätzlich bei 1280 × 720 Pixeln.",
+      "voice": "Der Builder lässt sich auch in einem kleineren Fenster verwenden. Hier siehst du die Oberfläche bei zwölfhundertachtzig mal siebenhundertzwanzig Pixeln. Vergrößere das Fenster, wenn du mehr Raum für Vorschau und Daten brauchst.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "33-dashboard-ueberblick-dunkel",
+      "chapter": 7,
+      "title": "Der gesamte Überblick im Dunkeln",
+      "detail": "Mehrere Kennzahlen und Charts bleiben gemeinsam sichtbar.",
+      "voice": "Auch ein Dashboard mit mehreren Charts bleibt im dunklen Theme übersichtlich. Gruppiere zusammengehörige Kennzahlen und lasse den größeren Darstellungen ausreichend Platz. Das hilft beim schnellen Lesen und beim Vergleich der Ergebnisse.",
+      "zoom": 1
+    },
+    {
+      "screenshot": "31-dashboard-ueberblick",
+      "chapter": 8,
+      "title": "Baue deinen eigenen Überblick",
+      "detail": "Verbindung wählen → Daten gestalten → Chart auswählen → Dashboard anordnen.",
+      "voice": "Jetzt kennst du den gesamten Weg: Verbindung wählen, Daten gestalten, eine passende Darstellung auswählen und die Charts anordnen. Starte mit einer konkreten Frage und einem Chart. Ergänze danach die Perspektiven, die dir beim Verstehen deiner Daten helfen.",
+      "zoom": 1
+    }
+  ]
+}

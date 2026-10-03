@@ -33,6 +33,8 @@ struct Context {
 tokio::task_local! {
     static CONTEXT: Context;
     static PROGRESS: Arc<dyn Fn(u64) + Send + Sync>;
+    static SESSION: Option<String>;
+    static DEADLINE: Duration;
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;
@@ -69,6 +71,18 @@ pub fn cancellation_token() -> CancellationToken {
     CONTEXT
         .try_with(|ctx| ctx.cancel.clone())
         .unwrap_or_default()
+}
+
+pub fn session_id() -> Option<String> {
+    SESSION.try_with(Clone::clone).ok().flatten()
+}
+
+pub async fn with_session<T, F>(session: Option<String>, future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let session = session.filter(|id| !id.is_empty() && id.len() <= 128);
+    SESSION.scope(session, future).await
 }
 
 pub fn query_duration() -> Duration {
@@ -165,12 +179,17 @@ where
         if native_cancel {
             future.await
         } else {
-            tokio::time::timeout(query_duration(), future)
+            let deadline = query_duration();
+            tokio::time::timeout(deadline, DEADLINE.scope(deadline, future))
                 .await
                 .map_err(|_| timeout_message())?
         }
     })
     .await
+}
+
+pub fn query_deadline() -> Option<Duration> {
+    DEADLINE.try_with(|deadline| *deadline).ok()
 }
 
 pub async fn connect<T, F>(future: F) -> Result<T, String>

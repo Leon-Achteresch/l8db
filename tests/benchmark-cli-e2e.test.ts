@@ -85,7 +85,7 @@ describe.skipIf(!E2E)("Benchmark über MCP und CLI mit dem echten Binary", () =>
       }),
       call(4, "execute", {
         connection: "BenchRW",
-        sql: `INSERT INTO ${TABLE} SELECT g, CASE WHEN g % 2 = 0 THEN 'paid' ELSE 'open' END FROM generate_series(1, 1000) g`,
+        sql: `INSERT INTO ${TABLE} SELECT g, CASE WHEN g % 2 = 0 THEN 'paid' ELSE 'open' END FROM generate_series(1, 1000) AS s(g)`,
         confirm: true,
       }),
     ]);

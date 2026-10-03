@@ -213,3 +213,35 @@ async fn postgres_row_edits_stay_inside_one_partition_or_child() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+#[ignore]
+async fn postgres_transaction_batches_return_the_first_result_set() {
+    let url = std::env::var("L8DB_SMOKE_POSTGRES_URL")
+        .expect("Set L8DB_SMOKE_POSTGRES_URL to run this ignored test");
+    let pool = create_pool_state();
+    let manager = create_transaction_state();
+    let tx = manager
+        .begin(DatabaseKind::Postgres, &url, None, &pool)
+        .await
+        .unwrap();
+    let wide = manager
+        .execute(&tx, "SELECT 1 AS a, 2 AS b; SELECT 3 AS c")
+        .await
+        .unwrap();
+    assert_eq!(wide.columns, vec!["a", "b"]);
+    assert_eq!(wide.rows, vec![serde_json::json!({"a": "1", "b": "2"})]);
+    let narrow = manager
+        .execute(&tx, "SELECT 1 AS a; SELECT 2 AS b, 3 AS c")
+        .await
+        .unwrap();
+    assert_eq!(narrow.columns, vec!["a"]);
+    assert_eq!(narrow.rows, vec![serde_json::json!({"a": "1"})]);
+    let empty = manager
+        .execute(&tx, "SELECT 1 AS a WHERE false; SELECT 2 AS b")
+        .await
+        .unwrap();
+    assert_eq!(empty.columns, vec!["a"]);
+    assert!(empty.rows.is_empty());
+    manager.rollback(&tx).await.unwrap();
+}

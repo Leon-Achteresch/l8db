@@ -86,7 +86,7 @@ pub fn run() {
     }
     builder
         .setup(move |app| {
-            windows::install_quick_menu();
+            windows::install_quick_menu(app.handle());
             windows::handle_args(app.handle(), &args, false);
             Ok(())
         })

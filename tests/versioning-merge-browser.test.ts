@@ -61,6 +61,7 @@ test.skipIf(!process.env.L8DB_VERSIONING_BROWSER)(
               };
             case "read":
               if (request.path === "database/project.json") return project;
+              if (request.path !== file) return null;
               if (request.revision === "b".repeat(40)) return base;
               if (request.revision === "c".repeat(40)) return incoming;
               return working;

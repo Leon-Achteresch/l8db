@@ -2,11 +2,17 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import type { MonitorViewState } from "./use-monitor-view";
 
-export function MonitorLatencyChart({ data }: { data: MonitorViewState["latencyData"] }) {
+export function MonitorLatencyChart({
+  data,
+  className = "h-64 w-full",
+}: {
+  data: MonitorViewState["latencyData"];
+  className?: string;
+}) {
   return (
     <ChartContainer
       config={{ duration: { label: "Laufzeit", color: "var(--primary)" } }}
-      className="h-64 w-full"
+      className={className}
     >
       <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <defs>

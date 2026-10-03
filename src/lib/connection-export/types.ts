@@ -12,26 +12,29 @@ export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
 
 export const CONNECTION_EXPORT_VERSION = 1;
 
-export const KINDS: DatabaseKind[] = [
-  "postgres",
-  "mysql",
-  "sqlite",
-  "mssql",
-  "clickhouse",
-  "mongodb",
-  "redis",
-  "oracle",
-  "cassandra",
-  "duckdb",
-  "odbc",
-  "elasticsearch",
-  "influxdb",
-  "sqlite_http",
-  "dynamodb",
-  "athena",
-  "bigquery",
-  "snowflake",
-];
+const KIND_SET: Record<DatabaseKind, true> = {
+  postgres: true,
+  mysql: true,
+  sqlite: true,
+  mssql: true,
+  clickhouse: true,
+  mongodb: true,
+  redis: true,
+  oracle: true,
+  cassandra: true,
+  duckdb: true,
+  odbc: true,
+  elasticsearch: true,
+  influxdb: true,
+  sqlite_http: true,
+  dynamodb: true,
+  athena: true,
+  bigquery: true,
+  snowflake: true,
+  s3: true,
+};
+
+export const KINDS = Object.keys(KIND_SET) as DatabaseKind[];
 
 export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];
 

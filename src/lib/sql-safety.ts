@@ -294,23 +294,7 @@ function definesRoutine(words: Token[]): boolean {
   return object !== undefined && ROUTINE_WORDS.has(object.word);
 }
 
-function opensBody(words: Token[], dialect: string): boolean {
-  return words.some(
-    (token, index) =>
-      token.word === "BEGIN" &&
-      (words[index + 1]?.word === "ATOMIC" ||
-        (["sqlite", "sqlite_http"].includes(dialect) &&
-          words[0]?.word === "CREATE" &&
-          words.some((other) => other.word === "TRIGGER"))),
-  );
-}
-
-function controlsTransaction(
-  words: Token[],
-  dialect: string,
-  insideBody: boolean,
-  managed: boolean,
-): boolean {
+function controlsTransaction(words: Token[], dialect: string, managed: boolean): boolean {
   const first = words[0]?.word;
   const second = words[1]?.word;
   if (
@@ -321,7 +305,7 @@ function controlsTransaction(
     (first === "BEGIN" &&
       dialect === "mssql" &&
       ["TRAN", "TRANSACTION", "DISTRIBUTED"].includes(second)) ||
-    (first === "END" && END_COMMITS.has(dialect) && !insideBody)
+    (first === "END" && END_COMMITS.has(dialect))
   )
     return true;
   if (!managed) return false;
@@ -352,22 +336,19 @@ function transactionIssue(
   managed: boolean,
 ): "control" | "implicit" | null {
   if (dialect === "redis" || dialect === "mongodb") return null;
-  let insideBody = false;
-  let routine = false;
   for (const statement of splitSqlStatements(sql, dialect).statements) {
     if (dialect === "mssql") {
+      let routine = false;
       for (const [index, batch] of statement.text.split(GO_LINE).entries()) {
         if (index > 0) routine = false;
         const words = sqlTokens(batch, dialect);
         routine ||= definesRoutine(words);
-        if (!routine && controlsTransaction(words, dialect, false, managed)) return "control";
+        if (!routine && controlsTransaction(words, dialect, managed)) return "control";
       }
       continue;
     }
     const words = sqlTokens(statement.text, dialect);
-    if (controlsTransaction(words, dialect, insideBody, managed)) return "control";
-    if (insideBody && words[0]?.word === "END") insideBody = false;
-    else insideBody ||= opensBody(words, dialect);
+    if (controlsTransaction(words, dialect, managed)) return "control";
     if (managed && commitsImplicitly(words, dialect)) return "implicit";
   }
   return null;

@@ -1,10 +1,8 @@
-use futures_util::TryStreamExt;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
-use tokio_postgres::SimpleQueryMessage;
 
 use super::pool::PoolState;
 use super::provider::DatabaseKind;
@@ -162,11 +160,24 @@ fn parse_key(ctid: &str) -> Result<Key, String> {
         })
 }
 
-fn where_key(kind: DatabaseKind, key: &Key) -> String {
+fn key_lit(kind: DatabaseKind, binary: bool, value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) if binary => {
+            binary_lit(kind, text).unwrap_or_else(|| lit(kind, text))
+        }
+        other => json_lit(kind, other),
+    }
+}
+
+fn where_key(kind: DatabaseKind, key: &Key, binary: &HashSet<String>) -> String {
     key.iter()
         .map(|(col, val)| match val {
             serde_json::Value::Null => format!("{} IS NULL", quote(kind, col)),
-            other => format!("{} = {}", quote(kind, col), json_lit(kind, other)),
+            other => format!(
+                "{} = {}",
+                quote(kind, col),
+                key_lit(kind, binary.contains(col), other)
+            ),
         })
         .collect::<Vec<_>>()
         .join(" AND ")
@@ -205,6 +216,15 @@ impl Generic {
             .filter(|c| c.is_primary_key)
             .map(|c| c.name)
             .collect())
+    }
+
+    async fn where_key(&self, schema: &str, table: &str, key: &Key) -> Result<String, String> {
+        let values: HashMap<String, Option<String>> = key
+            .iter()
+            .map(|(col, value)| (col.clone(), json_to_text(value)))
+            .collect();
+        let binary = self.binary_columns(schema, table, &values).await?;
+        Ok(where_key(self.kind, key, &binary))
     }
 
     async fn execute(&self, sql: &str) -> Result<QueryResult, String> {
@@ -260,7 +280,7 @@ impl Generic {
             "UPDATE {} SET {} WHERE {}",
             self.target(schema, table),
             set_parts.join(", "),
-            where_key(self.kind, &key)
+            self.where_key(schema, table, &key).await?
         );
         if self.execute(&sql).await?.rows_affected == Some(0) {
             return Err("Zeile nicht gefunden".to_string());
@@ -327,7 +347,7 @@ impl Generic {
                                 .collect();
                             return Ok(serde_json::Value::Object(obj));
                         }
-                        where_key(self.kind, &key)
+                        self.where_key(schema, table, &key).await?
                     }
                 };
                 self.execute(&format!("SELECT * FROM {target} WHERE {where_sql}"))
@@ -353,7 +373,7 @@ impl Generic {
         let sql = format!(
             "SELECT * FROM {} WHERE {}",
             self.target(schema, table),
-            where_key(self.kind, &key)
+            self.where_key(schema, table, &key).await?
         );
         let source = self
             .execute(&sql)
@@ -380,7 +400,7 @@ impl Generic {
         let sql = format!(
             "DELETE FROM {} WHERE {}",
             self.target(schema, table),
-            where_key(self.kind, &key)
+            self.where_key(schema, table, &key).await?
         );
         let res = self.execute(&sql).await?;
         if res.rows_affected == Some(0) {
@@ -570,48 +590,12 @@ impl TransactionManager {
             TransactionEntry::Dynamo(d) => return d.execute(sql).await,
         };
         let conn = session.lock().await?;
-        let outcome = super::execution::postgres(&conn, &ssl, Some(session), async {
-            let start = std::time::Instant::now();
-            let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
-            futures_util::pin_mut!(messages);
-
-            let mut columns: Vec<String> = Vec::new();
-            let mut rows: Vec<serde_json::Value> = Vec::new();
-            let mut rows_affected: Option<u64> = None;
-
-            while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
-                match msg {
-                    SimpleQueryMessage::Row(row) => {
-                        if columns.is_empty() {
-                            columns = super::unique_column_names(
-                                row.columns().iter().map(|c| c.name().to_string()).collect(),
-                            );
-                        }
-                        let mut obj = serde_json::Map::new();
-                        for (i, col) in columns.iter().enumerate() {
-                            let val = row
-                                .get(i)
-                                .map(|v| serde_json::Value::String(v.to_string()))
-                                .unwrap_or(serde_json::Value::Null);
-                            obj.insert(col.clone(), val);
-                        }
-                        rows.push(serde_json::Value::Object(obj));
-                    }
-                    SimpleQueryMessage::CommandComplete(count) => {
-                        rows_affected = Some(count);
-                    }
-                    _ => {}
-                }
-            }
-
-            Ok(QueryResult {
-                columns,
-                rows,
-                rows_affected,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                truncated: false,
-            })
-        })
+        let outcome = super::execution::postgres(
+            &conn,
+            &ssl,
+            Some(session),
+            super::postgres::run_simple_query(&conn, sql),
+        )
         .await;
         session.finish(outcome)
     }
@@ -983,11 +967,81 @@ mod tests {
         assert!(parse_key("{}").is_err());
         let key = parse_key(r#"{"id":1,"name":"a'b","x":null}"#).unwrap();
         assert_eq!(
-            where_key(DatabaseKind::Sqlite, &key),
+            where_key(DatabaseKind::Sqlite, &key, &HashSet::new()),
             r#""id" = 1 AND "name" = 'a''b' AND "x" IS NULL"#
         );
         assert_eq!(quote(DatabaseKind::Mysql, "a`b"), "`a``b`");
         assert_eq!(lit(DatabaseKind::Mssql, "x"), "N'x'");
+    }
+
+    #[test]
+    fn binary_key_columns_match_as_binary_literals() {
+        let key = parse_key(r#"{"id":"\\x0a0B","name":"\\x41","n":7}"#).unwrap();
+        let binary = HashSet::from(["id".to_string()]);
+        for (kind, blob) in [
+            (DatabaseKind::Mysql, "X'0a0B'"),
+            (DatabaseKind::Sqlite, "X'0a0B'"),
+            (DatabaseKind::SqliteHttp, "X'0a0B'"),
+            (DatabaseKind::Mssql, "0x0a0B"),
+        ] {
+            let sql = where_key(kind, &key, &binary);
+            for expected in [
+                format!("{} = {blob}", quote(kind, "id")),
+                format!("{} = {}", quote(kind, "name"), lit(kind, "\\x41")),
+                format!("{} = 7", quote(kind, "n")),
+            ] {
+                assert!(sql.contains(&expected), "{kind:?}: {sql} lacks {expected}");
+            }
+        }
+        let not_hex = parse_key(r#"{"id":"abc"}"#).unwrap();
+        assert_eq!(
+            where_key(DatabaseKind::Mysql, &not_hex, &binary),
+            "`id` = 'abc'"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_blob_primary_keys_can_be_updated_and_deleted() {
+        let path =
+            std::env::temp_dir().join(format!("l8db-blob-key-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        let pool = super::super::pool::create_pool_state();
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Sqlite,
+            &url,
+            None,
+            pool.clone(),
+        )
+        .unwrap();
+        for sql in [
+            "CREATE TABLE t (id BLOB PRIMARY KEY, note TEXT)",
+            "INSERT INTO t VALUES (X'0102', 'a'), (X'0a0b', 'b')",
+        ] {
+            adapter.execute_query(sql).await.unwrap();
+        }
+        let tx = create_transaction_state();
+        let id = tx
+            .begin(DatabaseKind::Sqlite, &url, None, &pool)
+            .await
+            .unwrap();
+        let updates = HashMap::from([("note".to_string(), Some("changed".to_string()))]);
+        tx.update_row(&id, "main", "t", r#"{"id":"\\x0102"}"#, &updates)
+            .await
+            .unwrap();
+        tx.delete_row(&id, "main", "t", r#"{"id":"\\x0a0b"}"#)
+            .await
+            .unwrap();
+        let rows = tx
+            .execute(&id, "SELECT hex(id) AS id, note FROM t ORDER BY id")
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["id"], "0102");
+        assert_eq!(rows[0]["note"], "changed");
+        tx.rollback(&id).await.unwrap();
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -1292,6 +1346,98 @@ mod tests {
             "CREATE TABLE l8_tx_test (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50))",
         )
         .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn mysql_big_integer_and_binary_keys_hit_exactly_one_row() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_MYSQL_URL") else {
+            return;
+        };
+        let schema = std::env::var("L8DB_SMOKE_MYSQL_SCHEMA").unwrap_or_else(|_| "test".into());
+        let pool = super::super::pool::create_pool_state();
+        let adapter =
+            super::super::create_adapter_from_string(DatabaseKind::Mysql, &url, None, pool.clone())
+                .unwrap();
+        for sql in [
+            "DROP TABLE IF EXISTS l8_tx_bigkey",
+            "DROP TABLE IF EXISTS l8_tx_binkey",
+            "CREATE TABLE l8_tx_bigkey (id BIGINT UNSIGNED PRIMARY KEY, note VARCHAR(20))",
+            "INSERT INTO l8_tx_bigkey VALUES (9007199254740992, 'keep'), (9007199254740993, 'drop'), (9007199254740994, 'edit')",
+            "CREATE TABLE l8_tx_binkey (id BINARY(2) PRIMARY KEY, note VARCHAR(20))",
+            "INSERT INTO l8_tx_binkey VALUES (X'0102', 'a'), (X'0a0b', 'b')",
+        ] {
+            adapter.execute_query(sql).await.unwrap();
+        }
+        let rows = adapter
+            .fetch_rows(
+                &schema,
+                "l8_tx_bigkey",
+                None,
+                10,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .rows;
+        let key = |index: usize| rows[index]["__ctid__"].as_str().unwrap().to_string();
+        assert_eq!(key(1), r#"{"id":"9007199254740993"}"#);
+        let tx = create_transaction_state();
+        let id = tx
+            .begin(DatabaseKind::Mysql, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.delete_row(&id, &schema, "l8_tx_bigkey", &key(1))
+            .await
+            .unwrap();
+        let updates = HashMap::from([("note".to_string(), Some("edited".to_string()))]);
+        tx.update_row(&id, &schema, "l8_tx_bigkey", &key(2), &updates)
+            .await
+            .unwrap();
+        let binary_rows = adapter
+            .fetch_rows(
+                &schema,
+                "l8_tx_binkey",
+                None,
+                10,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .rows;
+        let binary_key = binary_rows[0]["__ctid__"].as_str().unwrap().to_string();
+        tx.update_row(&id, &schema, "l8_tx_binkey", &binary_key, &updates)
+            .await
+            .unwrap();
+        tx.commit(&id).await.unwrap();
+        let left = adapter
+            .execute_query("SELECT CAST(id AS CHAR) AS id, note FROM l8_tx_bigkey ORDER BY id")
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(left.len(), 2);
+        assert_eq!(left[0]["id"], "9007199254740992");
+        assert_eq!(left[0]["note"], "keep");
+        assert_eq!(left[1]["id"], "9007199254740994");
+        assert_eq!(left[1]["note"], "edited");
+        let edited = adapter
+            .execute_query("SELECT HEX(id) AS id FROM l8_tx_binkey WHERE note = 'edited'")
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(edited.len(), 1);
+        assert_eq!(edited[0]["id"], "0102");
+        for sql in ["DROP TABLE l8_tx_bigkey", "DROP TABLE l8_tx_binkey"] {
+            adapter.execute_query(sql).await.unwrap();
+        }
     }
 
     #[tokio::test]

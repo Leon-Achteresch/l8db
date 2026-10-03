@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
-  ASSET_BASE,
-  DAY,
-  eligibleVideos,
-  type FeatureVideo,
-  parseFeed,
-} from "../src/lib/feature-videos/model";
-import {
   assetUrls,
   deletableReleases,
   emptyRegistry,
   readRegistry,
   reconcile,
 } from "../scripts/feature-videos/retention";
+import {
+  ASSET_BASE,
+  DAY,
+  eligibleVideos,
+  type FeatureVideo,
+  parseFeed,
+} from "../src/lib/feature-videos/model";
 
 const now = Date.parse("2026-09-23T12:00:00Z");
 export function video(overrides: Partial<FeatureVideo> = {}): FeatureVideo {
@@ -54,10 +54,21 @@ const context = { version: "0.6.132", platform: "macos", easyMode: false, capabi
 describe("feature feed", () => {
   test("accepts bounded media from the dedicated release", () =>
     expect(parseFeed(feed(), now).items).toHaveLength(1));
+  test("accepts dashboard navigation while keeping the automatic clip duration bounded", () => {
+    expect(
+      parseFeed(feed([video({ actionTarget: "dashboard", durationSeconds: 30 })]), now).items[0]
+        .actionTarget,
+    ).toBe("dashboard");
+    expect(() =>
+      parseFeed(feed([video({ actionTarget: "dashboard", durationSeconds: 31 })]), now),
+    ).toThrow();
+  });
   test.each([
     { poster: "https://evil.example/fv-easy-mode-1.jpg" },
     { poster: `${ASSET_BASE}../latest.json` },
     { actionId: "delete-database" },
+    { actionTarget: "https://example.com" },
+    { actionTarget: "dashboard", actionId: "compare" },
     { expiresAt: new Date(now + 91 * DAY).toISOString() },
     { minAppVersion: "0.6.100" },
     { maxAppVersionExclusive: "0.6.100" },

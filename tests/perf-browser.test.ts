@@ -59,6 +59,14 @@ for (const kind of ["table", "result"])
             {
               name: "app-alias",
               setup(build) {
+                build.onResolve({ filter: /^@\/router$/ }, () => ({
+                  path: "router",
+                  namespace: "router-stub",
+                }));
+                build.onLoad({ filter: /.*/, namespace: "router-stub" }, () => ({
+                  contents: "export const router = null;",
+                  loader: "js",
+                }));
                 build.onResolve({ filter: /^@\// }, ({ path }) => ({
                   path: Bun.resolveSync(
                     resolve(import.meta.dir, "../src", path.slice(2)),
@@ -195,10 +203,11 @@ for (const kind of ["table", "result"])
             const direction = turn % 8 < 4 ? 1 : -1;
             await page.mouse.wheel(240 * direction, 240 * direction);
             await page.waitForTimeout(32);
-            const coverage = await page.evaluate(() => {
+            const coverage = await page.evaluate(async () => {
+              await new Promise(requestAnimationFrame);
               const scroller = document.querySelector(".overflow-auto")!;
               const box = scroller.getBoundingClientRect();
-              const header = document.querySelector("thead")!.getBoundingClientRect();
+              const header = document.querySelector("thead th")!.getBoundingClientRect();
               return [header.bottom + 10, box.bottom - 20].every((y) => {
                 const cell = document.elementFromPoint(box.left + 80, y)?.closest("td");
                 return !!cell?.closest("tr[data-index]") && !cell.hasAttribute("aria-hidden");
@@ -254,12 +263,16 @@ for (const kind of ["table", "result"])
             const unchanged = await page.evaluate(async () => {
               const scroller = document.querySelector<HTMLElement>(".overflow-auto")!;
               const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
-              scroller.scrollLeft = 650;
+              const start =
+                (document.querySelector<HTMLElement>(
+                  'tbody tr[data-index="0"] td[data-col="col_1"]',
+                )?.offsetLeft ?? 0) + 20;
+              scroller.scrollLeft = start;
               await settle();
               const row = document.querySelector('tbody tr[data-index="0"]')!;
               const cells = [...row.children];
               const headers = [...document.querySelectorAll("thead th")];
-              scroller.scrollLeft = 680;
+              scroller.scrollLeft = start + 30;
               await settle();
               return {
                 cells:
@@ -302,7 +315,7 @@ for (const kind of ["table", "result"])
               await page
                 .getByRole("menuitem", { name: "Aufsteigend sortieren", exact: true })
                 .click();
-              await header.locator(".lucide-arrow-up").waitFor();
+              await header.locator("span.text-primary > svg").waitFor();
               await header.click({ button: "right" });
               await page.getByRole("menuitem", { name: "Spalte ausblenden", exact: true }).click();
               await header.waitFor({ state: "detached" });

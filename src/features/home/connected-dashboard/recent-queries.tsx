@@ -7,8 +7,8 @@ type HistoryEntry = ReturnType<typeof useQueryHistoryStore.getState>["entries"][
 
 export function RecentQueries({ recent }: { recent: HistoryEntry[] }) {
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between">
+    <section className="flex h-full flex-col">
+      <div className="mb-3 flex shrink-0 items-center justify-between">
         <h2 className="text-sm font-semibold">Letzte Abfragen</h2>
         <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
           <Link to="/query">
@@ -18,7 +18,7 @@ export function RecentQueries({ recent }: { recent: HistoryEntry[] }) {
         </Button>
       </div>
       {recent.length ? (
-        <div className="divide-y rounded-xl border bg-card">
+        <div className="min-h-0 flex-1 divide-y overflow-auto rounded-xl border bg-card">
           {recent.map((entry) => (
             <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
               <SquareTerminal

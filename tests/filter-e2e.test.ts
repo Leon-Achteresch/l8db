@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { chromium } from "playwright";
+import { ensureSeeded, PSQL, postgresUrl } from "./fixtures/psql-lab";
 
-const PSQL = process.env.L8DB_PSQL ?? "/opt/homebrew/opt/postgresql@18/bin/psql";
 const BASE = process.env.L8DB_FILTER_URL ?? "http://localhost:1420";
 const DB = process.env.L8DB_FILTER_DB ?? "l8db_small";
 type Row = Record<string, unknown>;
@@ -88,12 +88,13 @@ window.__TAURI_INTERNALS__ = {
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 localStorage.setItem("l8db.settings", JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }));
-localStorage.setItem("l8db.connections", JSON.stringify({ state: { connections: [{ id: "c1", name: "Filter-Test", kind: "postgres", connectionString: "postgres://leon@localhost/${DB}", sslMode: "disable" }], activeId: "c1", favoriteServerKeys: [], serverOrder: [] }, version: 0 }));
+localStorage.setItem("l8db.connections", JSON.stringify({ state: { connections: [{ id: "c1", name: "Filter-Test", kind: "postgres", connectionString: "${postgresUrl(DB)}", sslMode: "disable" }], activeId: "c1", favoriteServerKeys: [], serverOrder: [] }, version: 0 }));
 `;
 
 test.skipIf(!process.env.L8DB_FILTER_E2E)(
   "table filter parses free-form SQL and matches case-insensitively on real Postgres",
   async () => {
+    ensureSeeded(DB, "public.kunde", `${import.meta.dir}/fixtures/filter-e2e-seed.sql`);
     const browser = await chromium.launch();
     const errors: string[] = [];
     log.length = 0;

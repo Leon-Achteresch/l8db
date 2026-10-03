@@ -26,7 +26,8 @@ export function maskHost(host: string): string {
 }
 
 const SECRET_TEXT =
-  /(password|passwd|pwd|token|secret|api[_-]?key|apikey|authorization|bearer|passphrase)\s*[:=]\s*\S+/gi;
+  /(password|passwd|pwd|token|secret|api[_-]?key|apikey|authorization|bearer|passphrase)["']?\s*[:=]\s*(?:(?:bearer|basic|digest|token)\s+)?(?:"[^"]*"?|'[^']*'?|\{[^}]*\}?|\S+)/gi;
+const BEARER_TEXT = /\b(bearer)\s+[A-Za-z0-9._~+/=-]+/gi;
 
 export function redactErrorMessage(message: string): string {
   return message
@@ -34,7 +35,8 @@ export function redactErrorMessage(message: string): string {
       const parsed = splitConnectionString(stripConnectionSecrets(url));
       return parsed.host ? `${parsed.scheme}://${maskHost(parsed.host)}` : "<url>";
     })
-    .replace(SECRET_TEXT, (match) => `${match.split(/[:=]/)[0]}=<redacted>`)
+    .replace(SECRET_TEXT, (_match, key: string) => `${key}=<redacted>`)
+    .replace(BEARER_TEXT, (_match, scheme: string) => `${scheme} <redacted>`)
     .slice(0, 500);
 }
 

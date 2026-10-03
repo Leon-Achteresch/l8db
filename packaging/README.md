@@ -15,17 +15,16 @@ kopiert werden.
 
 - `src-tauri/tauri.conf.json`: `productName: "l8db"`, `identifier: "com.leon.l8db"`,
   `bundle.targets: "all"`, `createUpdaterArtifacts: true`.
-- `.github/workflows/release.yml`: Tag-Schema `v__VERSION__`, Release-Name `l8db v__VERSION__`,
-  Matrix `macos-latest --target universal-apple-darwin`, `windows-latest` und
-  `ubuntu-22.04` (beide ohne `--target`, also x64/amd64).
-  Die Version wird von `.github/scripts/compute-release-version.mjs` als `<major>.<minor>.<commit-count>`
-  berechnet - daher die `v0.1.x`-Reihe.
+- `.github/workflows/release.yml`: Tags `v<version>`, Release-Name `l8db v<version>`,
+  Matrix `macos-15` mit `universal-apple-darwin`, `windows-2025` mit
+  `x86_64-pc-windows-msvc` und `ubuntu-22.04` mit `x86_64-unknown-linux-gnu`.
+  Die stabile SemVer-Version steht vor dem Build im gemergten Release-PR.
 - Tauri-Namensschema daraus:
   - macOS: `l8db_<version>_universal.dmg` (plus `l8db.app` im DMG)
   - Windows: `l8db_<version>_x64_en-US.msi` (WiX) und `l8db_<version>_x64-setup.exe` (NSIS)
   - Linux: `l8db_<version>_amd64.deb`, `l8db_<version>_amd64.AppImage`
-- Updater: `includeUpdaterJson: true` erzeugt `latest.json` neben den Bundles,
-  `updaterJsonPreferNsis: true` laesst den Windows-Eintrag auf das NSIS-Setup zeigen.
+- Updater: Der finale Verifikationsjob erzeugt `latest.json` einmal aus den
+  geprueften Signaturen. Der Windows-Eintrag zeigt auf das NSIS-Setup.
   `latest.json` ist **nur** fuer den In-App-Updater, nicht fuer diese Kanaele.
 
 > Die exakten Namen vor dem ersten Publizieren einmal gegen ein echtes Release pruefen:
@@ -78,7 +77,7 @@ Pro Release:
 
 ```bash
 # 1. Version/sha256 aktualisieren (manuell oder per Script)
-node scripts/update-packaging.mjs --release release.json
+node scripts/update-packaging.mjs --release release.json --metadata release-metadata.json
 
 # 2. In den Tap kopieren
 cp packaging/homebrew/l8db.rb ../homebrew-tap/Casks/l8db.rb
@@ -100,9 +99,8 @@ einmal vertraut werden: `brew trust --cask Leon-Achteresch/tap/l8db`.
 Hinweise:
 - `sha256 :no_check` ist als Uebergang moeglich (im Cask dokumentiert), deaktiviert aber die
   Integritaetspruefung. Nur im eigenen Tap, nie fuer homebrew/cask.
-- Die App ist nicht notarisiert. Gatekeeper kann den ersten Start deshalb blockieren;
-  Nutzer muessen die App einmal ueber den Finder mit „Oeffnen“ bestaetigen. Das Cask
-  entfernt das Quarantaene-Attribut bewusst nicht.
+- Der Release-Prozess signiert und notarisiert die App und prueft das DMG mit
+  Gatekeeper. Das Cask entfernt das Quarantaene-Attribut nicht.
 - Ein Eintrag in `homebrew/homebrew-cask` selbst verlangt zusaetzlich eine gewisse
   Projekt-Reichweite (Sterne/Alter) - der eigene Tap ist der realistische Weg.
 
@@ -134,9 +132,8 @@ winget install --manifest manifests\l\LeonAchteresch\l8db\0.1.7
 Hinweise:
 - Der erste PR erfordert zusaetzlich das `version`-Manifest; danach reicht pro Release ein neuer
   Versionsordner - alte Versionsordner bleiben stehen.
-- `ProductCode` im Installer-Manifest ist derzeit auskommentiert, weil er nur aus dem gebauten
-  MSI ablesbar ist. `wingetcreate` traegt ihn automatisch ein; ohne ihn erkennt winget ein
-  bestehendes Setup unter Umstaenden nicht als dasselbe Paket.
+- Der Release-Prozess liest `ProductCode` aus dem gebauten MSI; das Hilfsscript
+  uebernimmt ihn in das Installer-Manifest, damit winget das installierte Paket erkennt.
 - Die Bundles sind nicht codesigniert. Die automatische Validierung von winget-pkgs meldet das
   (SmartScreen/Defender-Warnungen), blockiert aber nicht zwingend.
 
@@ -198,34 +195,18 @@ Submission:
 
 ## Hilfsscript
 
-`scripts/update-packaging.mjs` patcht Version und sha256 in alle Manifeste. Reines Node, keine
-Dependencies.
+`scripts/update-packaging.mjs` aktualisiert alle Vorlagen gemeinsam. Der unabhängige Workflow **Release follow-up** erzeugt nach einer verifizierten App-Veröffentlichung einen PR von `automation/packaging` nach `main`. Das Script benötigt die vom neuen Release-Prozess erzeugte `release-metadata.json`. Sie enthält geprüfte Artefakt-Hashes, den LICENSE-Hash und den tatsächlichen MSI ProductCode.
 
-```bash
-# Release-Metadaten holen
-gh api repos/Leon-Achteresch/l8db/releases/latest > release.json
-
-# Erst schauen, was passieren wuerde
-node scripts/update-packaging.mjs --release release.json --dry-run
-
-# Dann schreiben
-node scripts/update-packaging.mjs --release release.json
-
-# Ohne digest-Feld: Artefakte herunterladen und lokal hashen
-gh release download v0.1.7 --repo Leon-Achteresch/l8db --dir /tmp/l8db
-node scripts/update-packaging.mjs --release release.json --artifacts /tmp/l8db
-
-# Oder aus einer Checksummen-Datei
-node scripts/update-packaging.mjs --release release.json --checksums SHA256SUMS
-
-node scripts/update-packaging.mjs --help
+```sh
+gh api repos/Leon-Achteresch/l8db/releases/tags/v0.8.25 > /tmp/l8db-release.json
+gh release download v0.8.25 --repo Leon-Achteresch/l8db \
+  --pattern release-metadata.json --dir /tmp/l8db-packaging
+node scripts/update-packaging.mjs --release /tmp/l8db-release.json \
+  --metadata /tmp/l8db-packaging/release-metadata.json --dry-run
 ```
 
-Was es **nicht** kann und was danach von Hand zu tun ist:
+Die Version im Beispiel durch den gewünschten neuen Release ersetzen. Ohne `--dry-run` werden die vorbereiteten Änderungen geschrieben. Releases vor der Einführung dieses Prozesses besitzen noch keine `release-metadata.json`.
 
-- `.SRCINFO` bleibt eine gepatchte Kopie - vor dem AUR-Push trotzdem
-  `makepkg --printsrcinfo > .SRCINFO` laufen lassen.
-- Der zweite Hash im PKGBUILD (LICENSE aus dem Tag) wird nicht gesetzt -> `updpkgsums`.
-- `ProductCode` im winget-Installer-Manifest bleibt leer.
-- Fehlt ein Artefakt im Release, bleibt der jeweilige Hash unveraendert
-  und das Script warnt.
+Fehlende Installer, ungültige oder widersprüchliche Hashes, fremde Download-URLs, ein falscher LICENSE-Hash, ein fehlender MSI ProductCode oder eine unvollständige Vorlage lassen das Script vor jeder Dateiveränderung fehlschlagen. Es gibt keinen Fallback auf alte Hashes. Bei lokalen Artefakten können `--artifacts` beziehungsweise `--checksums` die Hashes liefern; sie müssen weiterhin zu den Release-Metadaten passen. `--license-file` akzeptiert die lokale LICENSE des Tags und prüft ihren Hash.
+
+Die Vorlagen im Repository werden nicht automatisch in Homebrew-Tap, winget-pkgs, AUR oder Flathub veröffentlicht. Die Schritte zur externen Einreichung oben bleiben gültig. Der Flatpak-Eintrag bleibt bis zur Behebung der dort beschriebenen offenen Punkte eine Vorlage.

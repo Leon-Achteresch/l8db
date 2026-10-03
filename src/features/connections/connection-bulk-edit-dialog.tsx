@@ -13,13 +13,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ServerGroup } from "@/lib/connection-groups";
-import {
-  connectionSummary,
-  normalizeOracleHost,
-  updateOracleConnectionEndpoint,
-} from "@/lib/connection-url";
+import { connectionSummary, updateOracleConnectionTarget } from "@/lib/connection-url";
 import { useConnectionsStore } from "@/lib/connections";
-import { activateConnection, closeSshTunnel } from "@/lib/ssh";
+import { activateConnection } from "@/lib/ssh";
+import { closeUnsharedTunnel } from "./connection-editor/connection-operations";
 
 interface Props {
   open: boolean;
@@ -48,9 +45,10 @@ export function ConnectionBulkEditDialog({ open, group, onOpenChange }: Props) {
     setSaving(true);
     try {
       const hostValue = host.trim();
-      const normalizedHost = normalizeOracleHost(hostValue);
       const serviceValue = serviceName.trim();
       if (!serviceValue) throw new Error("Der Service-Name ist erforderlich.");
+      for (const connection of group.connections)
+        updateOracleConnectionTarget(connection, hostValue, serviceValue);
       const ids = new Set(group.connections.map((connection) => connection.id));
       const store = useConnectionsStore.getState();
       if (store.activeId && ids.has(store.activeId)) {
@@ -64,21 +62,13 @@ export function ConnectionBulkEditDialog({ open, group, onOpenChange }: Props) {
       await Promise.all(
         current
           .filter((connection) => connection.tunnelPort)
-          .map((connection) => closeSshTunnel(connection.id).catch(() => undefined)),
+          .map((connection) => closeUnsharedTunnel(connection.id)),
       );
       useConnectionsStore.setState((state) => ({
         connections: state.connections.map((connection) => {
           if (!ids.has(connection.id)) return connection;
           return {
-            ...connection,
-            connectionString: updateOracleConnectionEndpoint(
-              connection.connectionString,
-              hostValue,
-              serviceValue,
-            ),
-            ssh: connection.ssh
-              ? { ...connection.ssh, remoteHost: normalizedHost.replace(/^\[|\]$/g, "") }
-              : connection.ssh,
+            ...updateOracleConnectionTarget(connection, hostValue, serviceValue),
             tunnelPort: null,
           };
         }),

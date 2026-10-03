@@ -10,6 +10,10 @@ export const NEW_FEATURES = {
   "ai.context.mcp": "0.8.0",
   "ai.history": "0.8.0",
   "ai.usage": "0.8.0",
+  "home.customize": "0.8.0",
+  "dashboard.visual-builder": "0.8.0",
+  "dashboard.chart-gallery": "0.8.0",
+  "er-diagram.clusters": "0.8.0",
   "versioning.overview": "0.8.0",
   "versioning.branches.swimlanes": "0.8.0",
   "versioning.releases.generate": "0.8.0",
@@ -114,15 +118,18 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
   };
 
   let snapshot = readSeen();
+  let changedAt = 0;
 
   const publish = (next: Set<NewFeatureId>) => {
     if (next.size === snapshot.size && [...next].every((id) => snapshot.has(id))) return;
     snapshot = next;
+    changedAt = Date.now();
     for (const listener of listeners) listener();
   };
 
   return {
     getSnapshot: () => snapshot,
+    changedWithin: (ms: number) => Date.now() - changedAt < ms,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -138,6 +145,18 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
       publish(new Set([...snapshot, id]));
     },
     refresh: () => publish(readSeen()),
+  };
+}
+
+export function createFeatureDwell(durationMs: number, onDone: (id: NewFeatureId) => void) {
+  const elapsed = new Map<NewFeatureId, number>();
+  return (id: NewFeatureId) => {
+    const startedAt = Date.now();
+    const timer = setTimeout(() => onDone(id), Math.max(0, durationMs - (elapsed.get(id) ?? 0)));
+    return () => {
+      clearTimeout(timer);
+      elapsed.set(id, (elapsed.get(id) ?? 0) + Date.now() - startedAt);
+    };
   };
 }
 
@@ -160,6 +179,10 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
 
 export function markNewFeatureSeen(id: NewFeatureId): void {
   store.markSeen(id);
+}
+
+export function newFeatureJustSeen(): boolean {
+  return store.changedWithin(250);
 }
 
 export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {

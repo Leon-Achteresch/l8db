@@ -927,6 +927,7 @@ impl OracleAdapter {
             self.password.clone(),
             self.connect_string.clone(),
         );
+        let timeout = super::execution::query_deadline();
         tokio::task::spawn_blocking(move || {
             let mut guard = conn
                 .lock()
@@ -934,7 +935,12 @@ impl OracleAdapter {
             if guard.1.elapsed() > IDLE_CHECK_AFTER && guard.0.ping().is_err() {
                 guard.0 = connect_sync(&user, &password, &connect_string)?;
             }
-            let result = f(&guard.0);
+            let result = with_call_timeout(&guard.0, timeout, f);
+            if result.is_err() && guard.0.ping().is_err() {
+                if let Ok(fresh) = connect_sync(&user, &password, &connect_string) {
+                    guard.0 = fresh;
+                }
+            }
             guard.1 = Instant::now();
             result
         })
@@ -953,7 +959,13 @@ impl OracleAdapter {
                 Ok(BlockingPool::<Connection>::new(capacity))
             })
             .await?;
-        pool.run(|| self.open_raw(), |c| c.ping().is_ok(), f).await
+        let timeout = super::execution::query_deadline();
+        pool.run(
+            || self.open_raw(),
+            |c| c.ping().is_ok(),
+            move |c| with_call_timeout(c, timeout, f),
+        )
+        .await
     }
 
     async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
@@ -2677,6 +2689,30 @@ impl DatabaseAdapter for OracleAdapter {
     }
 }
 
+fn with_call_timeout<T>(
+    conn: &Connection,
+    timeout: Option<std::time::Duration>,
+    f: impl FnOnce(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    let Some(timeout) = timeout else {
+        return f(conn);
+    };
+    conn.set_call_timeout(Some(timeout)).map_err(map_err)?;
+    let (done, finished) = std::sync::mpsc::channel::<()>();
+    let result = std::thread::scope(|scope| {
+        scope.spawn(move || {
+            if finished.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+                let _ = conn.break_execution();
+            }
+        });
+        let result = f(conn);
+        drop(done);
+        result
+    });
+    let _ = conn.set_call_timeout(None);
+    result
+}
+
 pub fn ensure_client_lib() {
     if oracle::InitParams::is_initialized() {
         return;
@@ -2953,6 +2989,79 @@ mod tests {
                 .capabilities()
                 .explain
         );
+    }
+
+    #[tokio::test]
+    async fn call_timeout_follows_the_query_deadline() {
+        use super::super::execution::{query_deadline, run, run_query, ExecutionOptions};
+        let options = || {
+            Some(ExecutionOptions {
+                query_timeout: Some(7),
+                ..Default::default()
+            })
+        };
+        assert_eq!(query_deadline(), None);
+        let timed = run_query(options(), false, async { Ok(query_deadline()) }).await;
+        assert_eq!(timed, Ok(Some(std::time::Duration::from_secs(7))));
+        let native = run_query(options(), true, async { Ok(query_deadline()) }).await;
+        assert_eq!(native, Ok(None));
+        let untimed = run(options(), false, async { Ok(query_deadline()) }).await;
+        assert_eq!(untimed, Ok(None));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_timed_out_query_releases_the_shared_connection() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        use super::super::execution::{run_query, ExecutionOptions};
+        let adapter = OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "call-timeout".into(),
+        )
+        .unwrap();
+        adapter.execute_query("SELECT 1 FROM dual").await.unwrap();
+        let options = || {
+            Some(ExecutionOptions {
+                query_timeout: Some(5),
+                ..Default::default()
+            })
+        };
+        let started = Instant::now();
+        let slow = run_query(
+            options(),
+            false,
+            adapter
+                .execute_query("SELECT COUNT(*) FROM all_objects a, all_objects b, all_objects c"),
+        )
+        .await;
+        assert!(slow.is_err());
+        let next = run_query(
+            options(),
+            false,
+            adapter.execute_query("SELECT 42 AS answer FROM dual"),
+        )
+        .await
+        .expect("connection must be usable after a timeout");
+        assert_eq!(next.rows.len(), 1);
+        assert!(started.elapsed() < std::time::Duration::from_secs(8));
+        let started = Instant::now();
+        let sleeping = run_query(
+            options(),
+            false,
+            adapter.execute_query("BEGIN DBMS_SESSION.SLEEP(40); END;"),
+        )
+        .await;
+        assert!(sleeping.is_err());
+        let after_sleep = adapter.execute_query("SELECT 1 FROM dual").await;
+        assert!(after_sleep.is_ok(), "{after_sleep:?}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(20));
+        let untimed = adapter
+            .execute_query("BEGIN DBMS_SESSION.SLEEP(6); END;")
+            .await;
+        assert!(untimed.is_ok(), "{untimed:?}");
     }
 
     #[tokio::test]

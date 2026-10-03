@@ -1,0 +1,86 @@
+name: Release follow-up
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published stable app tag to process again
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-followup
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      packaging: ${{ steps.release.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node .github/scripts/release.mjs followup
+
+  packaging:
+    needs: resolve
+    if: needs.resolve.outputs.packaging == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - name: Generate packaging manifests from verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          gh release download "$RELEASE_TAG" --pattern release-metadata.json --dir "$RUNNER_TEMP/packaging"
+          node scripts/update-packaging.mjs --release "$RUNNER_TEMP/release.json" --metadata "$RUNNER_TEMP/packaging/release-metadata.json"
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          token: ${{ secrets.RELEASE_PR_TOKEN }}
+          base: main
+          branch: automation/packaging
+          add-paths: packaging
+          commit-message: 'chore(packaging): update to v${{ needs.resolve.outputs.version }}'
+          title: 'chore(packaging): update to v${{ needs.resolve.outputs.version }}'
+          body: |
+            Aktualisiert Homebrew, winget, AUR und die Flatpak-Vorlage aus dem veröffentlichten Release.
+            Versionen, SHA-256 und MSI ProductCode stammen aus den verifizierten Artefakten.
+            Die Veröffentlichung in externen Paket-Repositories bleibt ein separater Schritt.
+
+  feature-videos:
+    needs: resolve
+    if: needs.resolve.outputs.tag != ''
+    uses: ./.github/workflows/feature-videos.yml
+    with:
+      release_tag: ${{ needs.resolve.outputs.tag }}
+    permissions:
+      contents: write

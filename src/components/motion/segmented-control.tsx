@@ -40,7 +40,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
         <label
           key={option.value}
           className={cn(
-            "relative isolate flex-1 cursor-pointer rounded-lg px-3 py-[max(0.125rem,calc(0.5rem+var(--ui-density-step)))] text-center text-xs font-medium transition-colors has-focus-visible:outline-2 has-focus-visible:outline-ring has-focus-visible:outline-offset-2",
+            "relative isolate flex-1 cursor-pointer rounded-xl px-3 py-[max(0.125rem,calc(0.5rem+var(--ui-density-step)))] text-center text-xs font-medium transition-colors has-focus-visible:outline-2 has-focus-visible:outline-ring has-focus-visible:outline-offset-2",
             value === option.value
               ? "text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -59,7 +59,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
             <motion.span
               layoutId={reduce ? undefined : id}
               transition={reduce ? { duration: 0 } : SPRING}
-              className="absolute inset-0 -z-10 rounded-lg bg-card shadow-sm ring-1 ring-border/60"
+              className="absolute inset-0 -z-10 rounded-xl bg-card shadow-sm ring-1 ring-border/60"
             />
           )}
           {option.label}

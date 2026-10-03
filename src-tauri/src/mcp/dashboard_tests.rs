@@ -797,3 +797,57 @@ fn places_widgets_in_free_slots() {
     let full: Vec<Value> = (0..4).map(|i| widget(i * 3, 0, 3, 4)).collect();
     assert_eq!(place(&full, 12, 2), (0, 4));
 }
+
+#[test]
+fn only_read_only_expert_sql_of_known_connections_is_trusted() {
+    let config = McpConfig {
+        connections: vec![
+            connection(
+                "pg",
+                "PG",
+                DatabaseKind::Postgres,
+                "postgres://u@h/db",
+                true,
+            ),
+            connection("my", "My", DatabaseKind::Mysql, "mysql://u@h/db", false),
+        ],
+        ..McpConfig::default()
+    };
+    let board = |connection: &str, sqls: &[&str]| {
+        let datasets: Vec<Value> = sqls
+            .iter()
+            .map(|sql| json!({"id": "d", "mode": "expert", "sql": sql}))
+            .chain([json!({"id": "s", "mode": "simple", "sql": "DELETE FROM x"})])
+            .collect();
+        json!({"id": "m1", "connectionId": connection, "datasets": datasets, "widgets": [], "trusted": true})
+    };
+    for (connection, sqls) in [
+        (
+            "pg",
+            vec!["SELECT status, count(*) AS n FROM orders GROUP BY status"],
+        ),
+        ("my", vec!["select 1 as n", "  "]),
+        ("pg", vec![]),
+    ] {
+        assert!(trusted(&board(connection, &sqls), &config), "{sqls:?}");
+    }
+    for (connection, sqls) in [
+        ("pg", vec!["DELETE FROM orders RETURNING status, 1 AS n"]),
+        (
+            "pg",
+            vec![
+                "select 1 as n",
+                "UPDATE orders SET status = 'x' RETURNING status",
+            ],
+        ),
+        ("pg", vec!["select 1 as n; drop table orders"]),
+        (
+            "pg",
+            vec!["select set_config('default_transaction_read_only', 'off', false)"],
+        ),
+        ("my", vec!["insert into orders values (1)"]),
+        ("unknown", vec!["select 1 as n"]),
+    ] {
+        assert!(!trusted(&board(connection, &sqls), &config), "{sqls:?}");
+    }
+}

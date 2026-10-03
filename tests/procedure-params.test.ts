@@ -42,10 +42,10 @@ describe("formatParamValue", () => {
 });
 
 describe("buildProcedureCall", () => {
-  test("baut CALL für Postgres ohne OUT-Parameter", () => {
+  test("baut CALL für Postgres mit NULL für OUT-Parameter", () => {
     const params = parseProcedureParams("a integer, OUT r text");
     expect(buildProcedureCall("postgres", "public", "do_it", params, { a: "7" })).toBe(
-      'CALL "public"."do_it"(7)',
+      'CALL "public"."do_it"(7, NULL)',
     );
   });
 

@@ -18,6 +18,10 @@ function isWordChar(ch: string | undefined): boolean {
   return ch !== undefined && WORD_CHAR.test(ch);
 }
 
+const ROUTINE_OBJECTS = ["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
+const MSSQL_BATCH_OBJECTS = ["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
+const END_SUFFIXES = ["IF", "LOOP", "WHILE", "REPEAT"];
+
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
 }
@@ -51,6 +55,9 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
   let hasCode = false;
   let unterminated = false;
   let plsql = false;
+  let batch = false;
+  let blockDepth = 0;
+  let delimiter = ";";
   const leadingWords: string[] = [];
 
   const flush = (endExclusive: number) => {
@@ -67,7 +74,20 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
     segmentStart = -1;
     hasCode = false;
     plsql = false;
+    batch = false;
+    blockDepth = 0;
     leadingWords.length = 0;
+  };
+
+  const lineEndFrom = (from: number) => {
+    const newline = sql.indexOf("\n", from);
+    return newline < 0 ? length : newline;
+  };
+
+  const readWord = (from: number) => {
+    let end = from;
+    while (end < length && isWordChar(sql[end])) end += 1;
+    return end;
   };
 
   while (index < length) {
@@ -79,6 +99,12 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         continue;
       }
       segmentStart = index;
+    }
+
+    if (delimiter !== ";" && sql.startsWith(delimiter, index)) {
+      flush(index);
+      index += delimiter.length;
+      continue;
     }
 
     if ((ch === "-" && sql[index + 1] === "-") || (dialect === "mysql" && ch === "#")) {
@@ -157,6 +183,65 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         hasCode = true;
         continue;
       }
+    }
+
+    if (dialect !== "oracle" && /[A-Za-z_]/.test(ch) && !isWordChar(sql[index - 1])) {
+      const start = index;
+      index = readWord(start);
+      const word = sql.slice(start, index).toUpperCase();
+      if (dialect === "mssql" && word === "GO") {
+        const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
+        const lineEnd = lineEndFrom(index);
+        const rest = sql.slice(index, lineEnd).trim();
+        if (!sql.slice(lineStart, start).trim() && (!rest || rest.startsWith("--"))) {
+          flush(start);
+          index = lineEnd;
+          continue;
+        }
+      }
+      if (dialect === "mysql" && word === "DELIMITER" && !hasCode && leadingWords.length === 0) {
+        const lineEnd = lineEndFrom(index);
+        const next = sql.slice(index, lineEnd).trim().split(/\s+/)[0];
+        if (next && isSpace(sql[index] ?? "")) {
+          delimiter = next;
+          segmentStart = -1;
+          index = lineEnd;
+          continue;
+        }
+      }
+      hasCode = true;
+      if (leadingWords.length < 8) leadingWords.push(word);
+      const first = leadingWords[0];
+      if (dialect === "mssql") {
+        const object = leadingWords.slice(1).find((w) => w !== "OR" && w !== "ALTER");
+        batch ||=
+          (first === "CREATE" || first === "ALTER") &&
+          object !== undefined &&
+          MSSQL_BATCH_OBJECTS.includes(object);
+        continue;
+      }
+      const prev = sql[start - 1];
+      if (
+        first !== "CREATE" ||
+        prev === "." ||
+        prev === "@" ||
+        !leadingWords.slice(1).some((w) => ROUTINE_OBJECTS.includes(w))
+      )
+        continue;
+      if (word === "BEGIN" || word === "CASE") blockDepth += 1;
+      else if (word === "END") {
+        let next = index;
+        while (next < length && isSpace(sql[next])) next += 1;
+        const nextEnd = readWord(next);
+        const suffix = sql.slice(next, nextEnd).toUpperCase();
+        if (END_SUFFIXES.includes(suffix)) {
+          index = nextEnd;
+          continue;
+        }
+        if (suffix === "CASE") index = nextEnd;
+        blockDepth = Math.max(0, blockDepth - 1);
+      }
+      continue;
     }
 
     if (ch === "'") {
@@ -245,7 +330,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
 
     if (ch === ";") {
       index += 1;
-      if (!plsql) flush(index);
+      if (!plsql && !batch && blockDepth === 0 && delimiter === ";") flush(index);
       continue;
     }
 

@@ -15,6 +15,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { type AlterSequenceRequest, alterSequence, type SequenceInfo } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { sequenceChanges } from "./sequence-changes";
 
 export interface EditSequenceDialogProps {
   sequence: SequenceInfo;
@@ -44,14 +45,7 @@ export function EditSequenceDialog({
     if (!connection) return;
     setSaving(true);
     try {
-      const changes: AlterSequenceRequest = {};
-      if (form.increment_by !== sequence.increment_by) changes.increment_by = form.increment_by;
-      if (form.min_value !== sequence.min_value) changes.min_value = form.min_value;
-      if (form.max_value !== sequence.max_value) changes.max_value = form.max_value;
-      if (form.cycle !== sequence.cycle) changes.cycle = form.cycle;
-      if (form.restart_with && form.restart_with.trim() !== "")
-        changes.restart_with = form.restart_with;
-
+      const changes = sequenceChanges(sequence, form);
       await alterSequence(
         connection.kind,
         effectiveConnectionString(connection),
@@ -64,7 +58,7 @@ export function EditSequenceDialog({
       onSuccess();
       onOpenChange(false);
     } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }

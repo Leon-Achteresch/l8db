@@ -1,60 +1,50 @@
-# Releases und Changelog
+# Releases
 
-Der Release-Workflow baut und veröffentlicht die App nach Änderungen auf `main`.
-Er ruft die CI einmal als Voraussetzung auf; ein Push nach `main` startet sie nicht
-zusätzlich als eigenen Lauf. `cargo clippy --all-targets` prüft dabei auch den
-Rust-Code, sodass kein separater `cargo check` nötig ist.
-Nach erfolgreichen Builds auf allen Plattformen erzeugt er `CHANGELOG.md` aus
-der Git-Historie und erstellt einen Pull Request von `automation/changelog`
-nach `main`. Ein bereits offener PR wird beim nächsten Release aktualisiert.
-Ohne Änderungen an der Datei wird kein neuer PR erstellt.
+## Ablauf
 
-Der PR wird regulär geprüft und gemergt; das Ruleset für `main` bleibt aktiv.
-Der Workflow pusht keine Commits direkt nach `main`. Der Branch
-`automation/changelog` muss für den Token-Inhaber beschreibbar sein, einschließlich
-der von der Action verwendeten Force-Pushes beim Aktualisieren eines offenen PRs.
+1. Änderungen auf `main` starten **Prepare release PR**. Der Workflow erstellt oder aktualisiert `automation/release`. Der PR enthält die nächste Version in `package.json`, `Cargo.toml`, `Cargo.lock` und `tauri.conf.json`, die vollständige `CHANGELOG.md` und `.github/release-plan.json`. Er durchläuft die normalen Reviews und Pflichtchecks. Es gibt keine direkten Bot-Pushes nach `main`.
+2. Erst der Merge eines gültigen Release-Plans startet die Veröffentlichung. Der Plan enthält den ursprünglichen Quellcommit und den Hash des Changelogs. Weitere Code- oder Abhängigkeitsänderungen machen den Plan ungültig und erfordern einen aktualisierten Release-PR.
+3. Die CI und drei unsignierte Produktionskompilierungen laufen parallel. Kompilierungsjobs haben Leserechte und erhalten keine Signierschlüssel. Rust ist auf `1.99.0` in `.github/actions/setup-rust/action.yml`, Bun auf `1.3.10` und Node auf `24.14.0` festgelegt. CI, PR-Builds und Produktionsbuilds haben eigene Cache-Namespaces; Zielarchitekturen fließen in die Schlüssel ein. GitHub Actions sind auf Commit-SHAs festgelegt und bleiben über Dependabot aktualisierbar.
+4. Nach erfolgreichen Prüfungen und Kompilierungen wird ein Release-Entwurf für den konkreten Commit angelegt. Separate Jobs prüfen die übertragenen Binärdateien und paketieren sie mit `tauri bundle`, ohne erneut zu kompilieren. Nur diese Jobs erhalten die jeweiligen Signierzugänge. macOS behält Developer ID, Hardened Runtime, Notarisierung und Gatekeeper-Prüfung.
+5. Auf jedem Betriebssystem laufen native Installations- und Upgrade-Prüfungen. Die vorherige stabile Version und die neue Version werden gestartet; die native CLI muss funktionieren und die GUI darf beim Start nicht abstürzen. Windows prüft NSIS-Upgrade und MSI-Inhalt, Linux AppImage-Ersetzung und Debian-Inhalt, macOS DMG-Installation und App-Ersetzung. Die enthaltenen Programme müssen dem gebauten beziehungsweise signierten Programm entsprechen. Tests laufen ausschließlich auf isolierten GitHub-Runnern.
+6. `finalize` lädt alle Artefakte herunter, prüft Größen, SHA-256, Paketformate, Plattformzuordnung und Updater-Signaturen gegen den eingecheckten öffentlichen Schlüssel. Die Signaturen im Manifest müssen exakt den geprüften `.sig`-Dateien entsprechen. Erst danach werden `latest.json`, `SHA256SUMS` und `release-metadata.json` hochgeladen und der Release veröffentlicht. Ein älterer Release darf `latest` nicht ersetzen.
+7. **Release follow-up** wird unabhängig über `workflow_run` gestartet. Er erstellt einen Packaging-PR und startet die Feature-Videos. Fehler in diesen Jobs ändern den Status der App-Veröffentlichung nicht.
+
+Die vorherigen Commit-Zählerversionen werden automatisch übernommen: Aus Quellversion `0.8.0` und veröffentlichtem `v0.8.24` entsteht `0.8.25`. Bereits reservierte Entwürfe zählen ebenfalls zur Versionsuntergrenze. Die Quellversion am neuen Release-Tag entspricht künftig der ausgelieferten Version.
+
+## Release vorbereiten
+
+Die Version folgt Semantic Versioning und wird aus den Conventional Commits seit dem letzten veröffentlichten Tag abgeleitet: `feat` erhöht Minor, alles andere Patch, `!` oder `BREAKING CHANGE:` erhöht Major (vor 1.0 Minor). Für eine abweichende oder explizite stabile Version **Prepare release PR** manuell auf `main` starten und `bump` beziehungsweise `version` setzen. Versionsnummern müssen alle veröffentlichten und reservierten Versionen übersteigen. Der Workflow erzeugt den prüfbaren PR; er merged ihn nicht selbst.
+
+Der Changelog wird vor dem Build erzeugt und unverändert mitgeliefert. Er berücksichtigt nur stabile, vom Quellcommit erreichbare App-Tags. Feature-Videos, fremde Branch-Tags und der bereits vorhandene Kandidatentag werden nicht als Versionsgrenzen verwendet. Keine manuelle Nachpflege nach der Veröffentlichung nötig.
+
+## Wiederholungen und Fehler
+
+- Fehlgeschlagene Jobs desselben Laufs wiederholen. Erfolgreiche Kompilierungsartefakte bleiben sieben Tage verfügbar; wiederholte Kompilierungen ersetzen nur ihren eigenen Snapshot.
+- Ein Entwurf wird nur wiederverwendet, wenn Version und vollständiger Quellcommit übereinstimmen. Codeänderungen nach einem fehlgeschlagenen Release bekommen einen neuen Release-PR und eine neue Version. Alte Entwürfe bleiben für Diagnose und manuelle Bereinigung erhalten.
+- Ist genau dieser Commit schon veröffentlicht, überspringt der Release-Workflow sämtliche Builds und Schreibzugriffe. Die Unveränderlichkeit veröffentlichter Releases bleibt aktiv.
+- Packaging oder Videos über **Release follow-up** mit `release_tag` erneut starten. Packaging wird nur für die höchste veröffentlichte stabile Version aktualisiert; ein alter Wiederholungslauf darf keinen aktuellen Paket-PR zurücksetzen.
+- Nach Ablauf der Kompilierungsartefakte den gesamten unveröffentlichten Lauf wiederholen. Bereits veröffentlichte Releases brauchen keinen erneuten Build.
+
+Die Job-Tabelle in der Release-Zusammenfassung zeigt Laufzeiten und Ergebnisse. Laufzeitverbesserungen anhand mehrerer warmer Läufe vergleichen; Runner-Wartezeiten, Paket-Mirrors und Apple-Verarbeitung bleiben variable Größen.
 
 ## Einmalige Einrichtung
 
-Als Repository-Secret `RELEASE_PR_TOKEN` einen Fine-grained Personal Access Token
-hinterlegen, der auf dieses Repository beschränkt ist und folgende Repository-Rechte hat:
+`RELEASE_PR_TOKEN` bleibt ein auf dieses Repository beschränkter Fine-grained Personal Access Token mit **Contents: Read and write** und **Pull requests: Read and write**. Der Inhaber benötigt Schreibzugriff auf `automation/release` und `automation/packaging`, einschließlich der Force-Pushes beim Aktualisieren offener PRs. Ein erforderliches Organisations-Approval muss erfolgt sein.
 
-- Contents: Read and write
-- Pull requests: Read and write
+Der Token wird ausschließlich für die Automations-PRs verwendet, damit deren `pull_request`-Checks starten. Ein `GITHUB_TOKEN`-PR würde diese Checks nicht auslösen. Die eigentlichen Releases benötigen den PR-Token nicht. Rulesets, Reviews und Pflichtchecks für `main` bleiben aktiv.
 
-Der Token-Inhaber benötigt Schreibzugriff auf das Repository. Eine gegebenenfalls
-erforderliche Freigabe durch die Organisation muss erfolgt sein.
-Der Workflow prüft vor dem Veröffentlichen, ob das Secret vorhanden ist.
+Für Signierung und Notarisierung gelten weiterhin die unten beschriebenen Secrets. Es gibt keinen unsignierten Produktions-Fallback.
 
-Der separate Token sorgt dafür, dass das Erstellen und Aktualisieren des PRs die
-regulären `pull_request`-CI-Checks auslöst. Mit dem standardmäßigen `GITHUB_TOKEN`
-würden diese Workflows nicht starten; erforderliche Checks könnten dadurch den
-Merge blockieren. Siehe die [Dokumentation der PR-Action](https://github.com/peter-evans/create-pull-request#token).
+## Lokal prüfen
 
-## Verhalten beim Merge
+```sh
+bun run production:check
+bun run test:release
+actionlint
+```
 
-Changelog-Commits enthalten kein `[skip ci]`, sodass die Pflichtchecks normal laufen.
-Nur der Release-Workflow ignoriert Pushes, die ausschließlich `CHANGELOG.md`
-ändern. Dadurch entsteht keine Schleife aus Release, Changelog-PR und erneutem
-Release. Enthält ein Push weitere Änderungen, wird wie bisher veröffentlicht.
-
-Manuelle Releases über `workflow_dispatch` bleiben auf `main` möglich, auch ohne
-weitere Dateiänderungen. Auf anderen Branches wird kein Release vorbereitet oder
-veröffentlicht.
-
-## Produktionskonfiguration
-
-`bun run production:check` prüft vor jedem Tauri-Releasebuild die Versionsgleichheit,
-die CSP samt Hash des Erweiterungs-Startskripts, lokale Fensterberechtigungen und
-die Updater-Konfiguration. Die CI testet zusätzlich den gebauten Client mit Monaco
-und die Erweiterungsisolation unter Chromium und WebKit.
-
-Die Release-Matrix lädt zunächst alle Plattformartefakte in einen Entwurf hoch.
-Erst nach erfolgreichen Checks und Builds sowie der Prüfung von `latest.json`,
-Installern und Signaturdateien für beide Mac-Architekturen, Linux und Windows
-veröffentlicht der `finalize`-Job den Release. Die wiederverwendete CI verwendet
-eine eigene Concurrency-Gruppe, damit sie den aufrufenden Release nicht abbricht. Bei einem Fehler bleibt er als Entwurf
-stehen; ein erneuter Lauf kann ihn vervollständigen.
+`actionlint` benötigt für die vollständige Shell-Prüfung zusätzlich ShellCheck. CI prüft die Workflow-Struktur mit actionlint `1.7.12`; die Regressionstests prüfen Job-Abhängigkeiten, Rechte, Secret-Trennung, Versionen, Wiederholungen, Signaturen und atomare Packaging-Vorbereitung. Native Installationsprüfungen benötigen die tatsächlichen signierten Installer und laufen erst in der Release-Matrix. Sie prüfen Installation, Ersetzung und Start; sie ersetzen keine vollständige Bedienprüfung oder einen automatisierten Durchlauf der gesamten Updater-Oberfläche.
 
 ### Lokale macOS-Signierung und Notarisierung
 
@@ -166,20 +156,8 @@ App-Start. Die Entwicklungs-CSP erlaubt zusätzlich Vite-HMR und dessen Inline-S
 Offene Upstream-Sicherheitsbefunde und Verifikationsgrenzen stehen in
 [PRODUCTION.md](PRODUCTION.md).
 
-## Feature-Videos
+## Packaging und Feature-Videos
 
-Nach `finalize` ruft der Release-Workflow `.github/workflows/feature-videos.yml` auf.
-Er nimmt neue kuratierte Features aus dem veröffentlichten App-Commit auf und
-speichert sie kostenlos als einzelne Pre-Releases im selben Repository. Jeder
-Clip wird zuerst als Entwurf mit allen Medien aufgebaut und danach veröffentlicht.
-Die bestehende Unveränderlichkeit der App-Releases bleibt aktiv. Der zentrale
-Release `feature-videos` enthält ausschließlich den bearbeitbaren JSON-Feed.
-Kein Medien-Release wird als neueste App-Version markiert.
+Der Packaging-PR aktualisiert Homebrew, winget, AUR und die Flatpak-Vorlage anhand der veröffentlichten Artefakt-Hashes, des LICENSE-Hashes und des aus dem tatsächlichen MSI gelesenen ProductCode. Fehlende Dateien, Hashes, URLs oder Vorlagenfelder brechen ab, bevor irgendeine Vorlage geschrieben wird. Externe Paket-Repositories werden nicht direkt beschrieben. Details stehen in [packaging/README.md](../packaging/README.md).
 
-Ein täglicher Lauf entfernt abgelaufene Einträge und löscht die zugehörigen
-vollständigen Video-Releases nach 48 Stunden. Es werden nur eigens markierte
-Video-Releases bereinigt. Der vorhandene `GITHUB_TOKEN` genügt; es sind keine
-zusätzlichen Secrets oder Speicherkonten erforderlich.
-
-Aufnahme, manuelle Veröffentlichung, Ablaufregeln und Tests stehen in
-[Feature-Videos](../docs/feature-videos-plan.md).
+Feature-Videos werden nach dem App-Release im unabhängigen Folge-Workflow aufgenommen und als eigene Pre-Releases gespeichert. Der tägliche Ablauf entfernt die dafür markierten Medien nach 48 Stunden. App-Releases und ihre Unveränderlichkeit bleiben erhalten; kein Medien-Release wird als neueste App-Version markiert. Ein fehlgeschlagener Medienlauf lässt sich separat wiederholen. Details stehen in [Feature-Videos](../docs/feature-videos-plan.md).

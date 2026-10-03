@@ -324,7 +324,7 @@ impl Server {
         );
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
         let adapter = server::adapter(connection, &self.pool)?;
         let mut reports = Vec::new();
         let mut skipped = Vec::new();

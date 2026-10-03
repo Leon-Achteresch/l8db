@@ -1,5 +1,5 @@
 import { Bug, CircleDot, Code2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -52,6 +52,11 @@ export function DebugDialog(
   const [context] = useState(props.context);
   const [availability, setAvailability] = useState<DebugAvailability>();
   const [sql, setSql] = useState(() => initialCall(props, context));
+  const latestSql = useRef(sql);
+  const editSql = useCallback((value: string) => {
+    latestSql.current = value;
+    setSql(value);
+  }, []);
   const [snapshot, setSnapshot] = useState<DebugSnapshot>();
   const [breakpoints, setBreakpoints] = useState<DebugBreakpoint[]>([]);
   const [error, setError] = useState<string>();
@@ -119,7 +124,12 @@ export function DebugDialog(
         session.current = undefined;
       }
       const id = crypto.randomUUID();
-      const next = await debugLaunch(context, { id, oid: props.oid, sql, breakpoints });
+      const next = await debugLaunch(context, {
+        id,
+        oid: props.oid,
+        sql: latestSql.current,
+        breakpoints,
+      });
       session.current = id;
       if (!mounted.current) {
         await debugStop(context, id);
@@ -257,7 +267,7 @@ export function DebugDialog(
             </div>
             <DebugEditor
               source={preparing ? sql : (snapshot?.source ?? "")}
-              onChange={preparing ? setSql : undefined}
+              onChange={preparing ? editSql : undefined}
               line={preparing ? undefined : frame?.line}
               enabled={Boolean(paused && frame)}
               breakpoints={

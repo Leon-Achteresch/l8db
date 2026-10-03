@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import {
   type NotebookCell,
   type NotebookCellType,
@@ -147,3 +148,35 @@ export const useNotebookStore = create<NotebookState>()(
     },
   ),
 );
+
+type PersistedNotebook = Pick<NotebookState, "doc" | "filePath" | "dirty" | "recent">;
+
+syncAcrossWindows("l8db.notebook", (value) => {
+  let stored: Partial<PersistedNotebook> | undefined;
+  try {
+    stored = (JSON.parse(value ?? "null") as { state?: Partial<PersistedNotebook> } | null)?.state;
+  } catch {
+    return;
+  }
+  if (!stored) return;
+  const current = useNotebookStore.getState();
+  const next: Partial<NotebookState> = {};
+  if (
+    Array.isArray(stored.recent) &&
+    JSON.stringify(stored.recent) !== JSON.stringify(current.recent)
+  )
+    next.recent = stored.recent;
+  const sameFile = current.filePath !== null && current.filePath === (stored.filePath ?? null);
+  if (
+    stored.doc &&
+    (!current.dirty || sameFile) &&
+    (JSON.stringify(stored.doc) !== JSON.stringify(current.doc) ||
+      (stored.filePath ?? null) !== current.filePath ||
+      Boolean(stored.dirty) !== current.dirty)
+  ) {
+    next.doc = stored.doc;
+    next.filePath = stored.filePath ?? null;
+    next.dirty = Boolean(stored.dirty);
+  }
+  if (Object.keys(next).length > 0) useNotebookStore.setState(next);
+});

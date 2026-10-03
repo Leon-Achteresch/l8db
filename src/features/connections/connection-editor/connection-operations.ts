@@ -9,7 +9,13 @@ import {
   useConnectionsStore,
   usesTunnel,
 } from "@/lib/connections";
-import { listSchemas, type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import {
+  connectionInOtherWindow,
+  listSchemas,
+  type ProviderInfo,
+  type SslMode,
+  testConnectionString,
+} from "@/lib/db";
 import type { ExtensionManager } from "@/lib/extensions/manager";
 import type { MaskRule } from "@/lib/masking";
 import {
@@ -57,6 +63,21 @@ export interface ConnectionOperationsContext {
   tags: string;
   vault: { host: ExtensionManager; name: string } | null;
   onSaved: () => void;
+}
+
+export async function databasePasswordToSave(
+  connectionString: string,
+  connection: Pick<SavedConnection, "id" | "connectionString"> | undefined,
+): Promise<string | null> {
+  const typed = extractUrlPassword(connectionString);
+  if (typed !== null || !connection) return typed;
+  if (extractUrlPassword(connection.connectionString) !== null) return null;
+  return loadSecret(connection.id);
+}
+
+export async function closeUnsharedTunnel(id: string): Promise<void> {
+  const shared = await connectionInOtherWindow(id).catch(() => false);
+  if (!shared) await closeSshTunnel(id).catch(() => undefined);
 }
 
 export function createConnectionOperations(ctx: ConnectionOperationsContext) {
@@ -130,8 +151,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
       const config = await configuration();
       const configInfo = providers.find((entry) => entry.kind === config.kind) ?? info;
       const id = connection?.id ?? crypto.randomUUID();
-      const dbPassword =
-        extractUrlPassword(config.connectionString) ?? (connection ? await loadSecret(id) : null);
+      const dbPassword = await databasePasswordToSave(config.connectionString, connection);
       if (connection && useConnectionsStore.getState().activeId === id) {
         const outcome = await activateConnection(null);
         if (!outcome.ok) throw new Error(outcome.error);
@@ -170,7 +190,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
           await deleteSecret(account).catch(() => undefined);
         }
       }
-      if (usesTunnel(connection)) await closeSshTunnel(id).catch(() => undefined);
+      if (usesTunnel(connection)) await closeUnsharedTunnel(id);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
       const input = {
         name: name.trim(),

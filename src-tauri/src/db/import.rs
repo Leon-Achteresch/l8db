@@ -41,7 +41,7 @@ impl Dialect {
     pub fn quote(self, ident: &str) -> String {
         match self {
             Dialect::Mysql => format!("`{}`", ident.replace('`', "``")),
-            Dialect::Clickhouse => format!("`{}`", ident.replace('`', "\\`")),
+            Dialect::Clickhouse => super::clickhouse::quote(ident),
             Dialect::Mssql => format!("[{}]", ident.replace(']', "]]")),
             _ => format!("\"{}\"", ident.replace('"', "\"\"")),
         }

@@ -1,0 +1,16 @@
+name: Browser test runtimes
+description: Cache browsers for the installed Playwright version and install system dependencies
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      run: |
+        playwright_version=$(node -p "require('playwright/package.json').version")
+        echo "version=$playwright_version" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.version.outputs.version }}-chromium-webkit
+    - shell: bash
+      run: bunx playwright install --with-deps chromium webkit

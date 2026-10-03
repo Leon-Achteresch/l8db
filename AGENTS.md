@@ -21,6 +21,13 @@ Biome is configured; run `bun run check` for frontend lint and formatting checks
 Production configuration checks: `bun run production:check`. CSP browser tests: build first, then run `L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts` (use `webkit` instead of `1` for WebKit).
 Use Bun 1.3.10 and commit `bun.lock`; do not add an npm lockfile.
 
+## Git & Releases
+
+- Daily work goes to `development` (features: `merge --no-ff`). Never open a PR from `development` to `main`.
+- Releases use the `release` skill (`.claude/skills/release/SKILL.md`): `/release` cuts `release/vX.Y.Z` from `development` and opens the PR to `main`, `/release fix` commits review fixes on the release branch and merges them back into `development`, `/release finish` back-merges `main` into `development`, deletes the branch and handles the `automation/release` version PR. `development` stays open for the next release the whole time.
+- Release PRs are merged with a merge commit, never squashed.
+- Versions follow SemVer from Conventional Commits since the last tag (`feat` → minor, otherwise patch, `!`/`BREAKING CHANGE:` → major, minor before 1.0); see `.github/RELEASING.md`. Commit messages must therefore use Conventional Commit prefixes.
+
 ## Toolchain
 
 - **`bun` is required** — `tauri.conf.json` hardcodes `bun run dev` and `bun run build` as the before-dev/build hooks.

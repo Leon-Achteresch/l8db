@@ -9,17 +9,27 @@ const zoomedOut = (state: ReactFlowState) => state.transform[2] < COMPACT_ZOOM;
 const ROW_PITCH = ROW_HEIGHT + 1;
 const HANDLE_CLASS = "!w-2 !h-2 !bg-primary !border-primary-foreground";
 
-export function TableNode({ data }: NodeProps<TableNodeType>) {
+export function TableNode({ data, selected }: NodeProps<TableNodeType>) {
   const fullDetail = useContext(ErFullDetailContext);
   const compact = useStore(zoomedOut) && !fullDetail;
   return (
-    <div className="min-w-[220px] rounded-lg border border-border bg-card shadow-md overflow-hidden">
+    <div
+      className={`min-w-[220px] rounded-lg border border-border bg-card shadow-md overflow-hidden ${selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+    >
       <div className="bg-primary px-3 py-2 text-primary-foreground font-semibold text-sm flex items-center gap-2">
         <span className="truncate">{data.label}</span>
-        <span className="ml-auto text-[10px] font-normal opacity-70">{data.schema}</span>
+        <span
+          className="ml-auto max-w-24 truncate text-[10px] font-normal opacity-70"
+          title={data.schema}
+        >
+          {data.schema}
+        </span>
       </div>
       {compact ? (
-        <div className="relative" style={{ height: data.columns.length * ROW_PITCH - 1 }}>
+        <div
+          className="relative"
+          style={{ height: Math.max(0, data.columns.length * ROW_PITCH - 1) }}
+        >
           {data.columns.map((col, index) =>
             col.isTarget || col.isForeignKey ? (
               <div

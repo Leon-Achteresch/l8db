@@ -17,6 +17,7 @@ import type {
   SaveConnectionsResult,
   VaultConnection,
 } from "../../../packages/extension-api/src";
+import type { QueryParam } from "./query-params";
 
 export type {
   DatabaseInfo,
@@ -82,7 +83,7 @@ export interface ExtensionStorage {
 }
 export interface QueryRequest {
   sql: string;
-  params?: (string | null)[];
+  params?: QueryParam[];
   write: boolean;
 }
 export interface CoreServices {
