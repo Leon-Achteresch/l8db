@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDown, Database, History, Maximize2, Plus, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
@@ -451,17 +452,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     </>
   );
   const settingsButton = (
-    <Button
-      size={fullPage ? "sm" : "icon"}
+    <IconButton
+      size="icon"
       variant={view === "settings" ? "secondary" : "ghost"}
       aria-label="AI-Einstellungen"
-      className={fullPage ? "w-full justify-start" : undefined}
       disabled={Boolean(runId)}
       onClick={() => setView(view === "settings" ? "chat" : "settings")}
     >
       <Settings2 className="size-4" />
-      {fullPage && "Einstellungen"}
-    </Button>
+    </IconButton>
   );
   const main = (
     <>
@@ -754,22 +753,22 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         {fullPage ? (
           <>
             <div className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
-              <div className="shrink-0 p-2">
+              <div className="flex shrink-0 items-center gap-1 p-2">
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="w-full justify-start"
+                  className="flex-1 justify-start"
                   disabled={Boolean(runId)}
                   onClick={newChat}
                 >
                   <Plus className="size-4" />
                   Neues Gespräch
                 </Button>
+                {settingsButton}
               </div>
               <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto px-3 pb-3">
                 {historyList}
               </div>
-              <div className="shrink-0 border-t p-2">{settingsButton}</div>
             </div>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">{main}</div>
           </>
