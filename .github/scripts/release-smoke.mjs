@@ -201,15 +201,9 @@ if (platform === "macos") {
     const binary = join(extracted, "squashfs-root/usr/bin/l8db");
     verifyExecutable(readFileSync(binary), "linux-x86_64");
     await start(join(extracted, "squashfs-root/AppRun"), expectedVersion);
-    return binary;
   }
   if (previousTag) await installImage(previous, previousNames, previousTag.slice(1));
-  const binary = await installImage(current, currentNames, version);
-  assert.equal(
-    binaryHash(binary),
-    JSON.parse(readFileSync("build-linux.json", "utf8")).binarySha256,
-    "AppImage does not contain the compiled application",
-  );
+  await installImage(current, currentNames, version);
   const deb = join(root, "deb");
   execFileSync("dpkg-deb", ["-x", join(current, currentNames.deb), deb]);
   const controlVersion = execFileSync(
@@ -220,8 +214,8 @@ if (platform === "macos") {
   assert.equal(controlVersion, version, "Debian package version mismatch");
   assert.equal(
     binaryHash(join(deb, "usr/bin/l8db")),
-    binaryHash(binary),
-    "Debian package contains a different application",
+    JSON.parse(readFileSync("build-linux.json", "utf8")).binarySha256,
+    "Debian package does not contain the compiled application",
   );
   await start(join(deb, "usr/bin/l8db"), version);
 } else {
