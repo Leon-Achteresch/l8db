@@ -30,7 +30,7 @@ export function MetricsWidget() {
   return (
     <section
       aria-label="Datenbankobjekte"
-      className="grid h-full auto-cols-[minmax(130px,1fr)] grid-flow-col divide-x divide-border/70 overflow-x-auto overflow-y-hidden rounded-2xl border bg-card"
+      className="grid h-full auto-cols-[minmax(130px,1fr)] grid-flow-col divide-x divide-border/70 overflow-x-auto overflow-y-hidden rounded-xl border bg-card"
     >
       {metrics.map(({ label, query, icon }) => (
         <DashboardMetric

@@ -77,49 +77,42 @@ export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: Detail
       return {
         label: "id",
         align: "text-left" as const,
-        colorClass: "text-amber-500 bg-amber-500/10 border-amber-500/20",
         iconName: "Key",
       };
     case "uuid":
       return {
         label: "uuid",
         align: "text-left" as const,
-        colorClass: "text-yellow-500 bg-yellow-500/10 border-yellow-500/20",
         iconName: "Fingerprint",
       };
     case "number":
       return {
         label: "num",
         align: "text-left" as const,
-        colorClass: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
         iconName: "Hash",
       };
     case "boolean":
       return {
         label: "bool",
         align: "text-left" as const,
-        colorClass: "text-sky-500 bg-sky-500/10 border-sky-500/20",
         iconName: "Binary",
       };
     case "date":
       return {
         label: "date",
         align: "text-left" as const,
-        colorClass: "text-rose-500 bg-rose-500/10 border-rose-500/20",
         iconName: "Calendar",
       };
     case "json":
       return {
         label: "json",
         align: "text-left" as const,
-        colorClass: "text-purple-500 bg-purple-500/10 border-purple-500/20",
         iconName: "Braces",
       };
     case "text":
       return {
         label: "text",
         align: "text-left" as const,
-        colorClass: "text-slate-500 bg-slate-500/10 border-slate-500/20",
         iconName: "Type",
       };
   }

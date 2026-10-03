@@ -182,12 +182,15 @@ export function AppHeader() {
               disabled={isRefreshing}
               aria-label="Objekte aktualisieren"
               className={cn(
-                "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer",
+                "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors cursor-pointer",
                 "hover:bg-muted hover:text-foreground",
                 "disabled:pointer-events-none disabled:opacity-50",
               )}
             >
-              <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} strokeWidth={2} />
+              <RefreshCw
+                className={cn("size-4", isRefreshing && "animate-spin")}
+                strokeWidth={1.75}
+              />
             </button>
           </Tooltip>
         ) : null}
@@ -210,7 +213,7 @@ export function AppHeader() {
               }
               aria-expanded={versioning.open}
               aria-controls="versioning-panel"
-              aria-description={hasNewVersioningFeatures ? "Neue Funktionen" : "Beta"}
+              aria-description={hasNewVersioningFeatures ? "Neue Funktionen" : undefined}
               onClick={() => {
                 if (versioning.mode === "tab") {
                   useTableTabs.getState().openToolTab("versioning");
@@ -219,14 +222,16 @@ export function AppHeader() {
                 } else versioning.setOpen(!versioning.open);
               }}
               className={cn(
-                "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                 versioning.open && "bg-primary/12 text-foreground",
               )}
             >
-              <GitPullRequestIcon className="size-4" strokeWidth={2} />
-              <span className="pointer-events-none absolute -right-2 -top-0.5 rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
-                {hasNewVersioningFeatures ? "NEW" : "Beta"}
-              </span>
+              <GitPullRequestIcon className="size-4" strokeWidth={1.75} />
+              {hasNewVersioningFeatures ? (
+                <span className="pointer-events-none absolute -right-2 -top-0.5 rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
+                  NEW
+                </span>
+              ) : null}
               {versioning.pending > 0 ? (
                 <span
                   data-testid="versioning-badge"
@@ -253,12 +258,12 @@ export function AppHeader() {
               data-tour="header-tx"
               aria-label="Transaktionen"
               className={cn(
-                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer",
+                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors cursor-pointer",
                 "hover:bg-muted hover:text-foreground",
                 panelOpen && "bg-primary/12 text-foreground",
               )}
             >
-              <GitBranchIcon className="size-4" strokeWidth={2} />
+              <GitBranchIcon className="size-4" strokeWidth={1.75} />
               {txCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground">
                   {txCount}
@@ -275,12 +280,12 @@ export function AppHeader() {
             to="/drivers"
             aria-label="Treiber"
             className={cn(
-              "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+              "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
               section === "/drivers" && "bg-primary/12 text-foreground",
             )}
           >
-            <PlugZap className="size-4" strokeWidth={2} />
+            <PlugZap className="size-4" strokeWidth={1.75} />
           </Link>
         </Tooltip>
 
@@ -292,7 +297,7 @@ export function AppHeader() {
             aria-expanded={aiOpen || aiPage}
             aria-controls="ai-workspace"
             className={cn(
-              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               (aiOpen || aiPage) && "bg-primary/12 text-foreground",
             )}
             onClick={() => {
@@ -302,7 +307,7 @@ export function AppHeader() {
               } else setAiOpen(!aiOpen);
             }}
           >
-            <Sparkles className="size-4" strokeWidth={2} />
+            <Sparkles className="size-4" strokeWidth={1.75} />
           </button>
         </Tooltip>
         {!easyMode && (
@@ -311,12 +316,12 @@ export function AppHeader() {
               to="/mcp"
               aria-label="MCP"
               className={cn(
-                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
                 "hover:bg-muted hover:text-foreground",
                 section === "/mcp" && "bg-primary/12 text-foreground",
               )}
             >
-              <Bot className="size-4" strokeWidth={2} />
+              <Bot className="size-4" strokeWidth={1.75} />
             </Link>
           </Tooltip>
         )}
@@ -326,12 +331,12 @@ export function AppHeader() {
             to="/settings"
             aria-label={hasNewSettingsFeatures ? "Einstellungen, neue Funktionen" : "Einstellungen"}
             className={cn(
-              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
               section === "/settings" && "bg-primary/12 text-foreground",
             )}
           >
-            <Settings className="size-4" strokeWidth={2} />
+            <Settings className="size-4" strokeWidth={1.75} />
             {hasNewSettingsFeatures ? (
               <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
             ) : null}
