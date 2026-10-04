@@ -363,9 +363,20 @@ export function StepGraphCanvas({
       if (!box || !width || !height) return viewport;
       const { x, y, zoom } = viewport;
       const margin = 24;
-      const left = box.x * zoom + x;
       const top = box.y * zoom + y;
-      const right = left + Math.min(box.width, 320) * zoom;
+      let minX = box.x;
+      let maxX = box.x + Math.min(box.width, 320);
+      for (const edge of graph.edges) {
+        const target = edge.source === id ? absolute.get(edge.target) : null;
+        if (!target) continue;
+        const from = Math.min(minX, target.x);
+        const to = Math.max(maxX, target.x + target.width);
+        if ((to - from) * zoom > width - 2 * EDGE_SPACE) continue;
+        minX = from;
+        maxX = to;
+      }
+      const left = minX * zoom + x;
+      const right = maxX * zoom + x;
       const bottom = top + Math.min(box.height, LOOP_HEADER) * zoom;
       const fitted = fitX(zoom);
       const dx =
@@ -381,7 +392,7 @@ export function StepGraphCanvas({
           : 0;
       return { x: x + dx, y: y + dy, zoom };
     },
-    [absolute, width, height, fitX],
+    [absolute, graph.edges, width, height, fitX],
   );
 
   const ensureVisible = useCallback(
