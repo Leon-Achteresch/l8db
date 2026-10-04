@@ -71,6 +71,7 @@ const MIN_ZOOM = 0.92;
 const EDGE_SPACE = 16;
 const PEEK_SPACE = 64;
 const CONTROLS_GUTTER = 56;
+const CONTROLS_HEIGHT = 124;
 const SMOOTH_OUT = (t: number) => 1 - (1 - t) ** 5;
 
 const THEME = {
@@ -330,38 +331,6 @@ export function StepGraphCanvas({
     [graph.edges, boxes, selectedEdge, dropEdge, parents, lanes],
   );
 
-  const reveal = useCallback(
-    (viewport: Viewport, id: string): Viewport => {
-      const box = absolute.get(id);
-      if (!box || !width || !height) return viewport;
-      const { x, y, zoom } = viewport;
-      const margin = 24;
-      const left = box.x * zoom + x;
-      const top = box.y * zoom + y;
-      const right = left + Math.min(box.width, 320) * zoom;
-      const bottom = top + Math.min(box.height, LOOP_HEADER) * zoom;
-      const dx =
-        left < CONTROLS_GUTTER || right > width - margin
-          ? Math.max(CONTROLS_GUTTER - left, (width - left - right) / 2)
-          : 0;
-      const dy =
-        top < margin || bottom > height - PEEK_SPACE
-          ? Math.max(margin - top, (height - top - bottom) / 2)
-          : 0;
-      return { x: x + dx, y: y + dy, zoom };
-    },
-    [absolute, width, height],
-  );
-
-  const ensureVisible = useCallback(
-    (id: string) => {
-      const current = flow.getViewport();
-      const next = reveal(current, id);
-      if (next.x !== current.x || next.y !== current.y) void flow.setViewport(next);
-    },
-    [flow, reveal],
-  );
-
   const bounds = useMemo(() => {
     const all = [...absolute.values()];
     if (!all.length) return null;
@@ -375,6 +344,55 @@ export function StepGraphCanvas({
     };
   }, [absolute]);
 
+  const fitX = useCallback(
+    (zoom: number): number | null => {
+      if (!bounds || !width) return null;
+      const span = bounds.width * zoom;
+      for (const left of [CONTROLS_GUTTER, EDGE_SPACE]) {
+        const room = width - left - EDGE_SPACE;
+        if (span <= room) return left + (room - span) / 2 - bounds.minX * zoom;
+      }
+      return null;
+    },
+    [bounds, width],
+  );
+
+  const reveal = useCallback(
+    (viewport: Viewport, id: string): Viewport => {
+      const box = absolute.get(id);
+      if (!box || !width || !height) return viewport;
+      const { x, y, zoom } = viewport;
+      const margin = 24;
+      const left = box.x * zoom + x;
+      const top = box.y * zoom + y;
+      const right = left + Math.min(box.width, 320) * zoom;
+      const bottom = top + Math.min(box.height, LOOP_HEADER) * zoom;
+      const fitted = fitX(zoom);
+      const dx =
+        left < EDGE_SPACE || right > width - margin
+          ? fitted !== null
+            ? fitted - x
+            : Math.max(EDGE_SPACE - left, (width - left - right) / 2)
+          : 0;
+      const floor = left + dx < CONTROLS_GUTTER ? CONTROLS_HEIGHT : PEEK_SPACE;
+      const dy =
+        top < margin || bottom > height - floor
+          ? Math.max(margin - top, (height - top - bottom) / 2)
+          : 0;
+      return { x: x + dx, y: y + dy, zoom };
+    },
+    [absolute, width, height, fitX],
+  );
+
+  const ensureVisible = useCallback(
+    (id: string) => {
+      const current = flow.getViewport();
+      const next = reveal(current, id);
+      if (next.x !== current.x || next.y !== current.y) void flow.setViewport(next);
+    },
+    [flow, reveal],
+  );
+
   const fits =
     bounds !== null &&
     bounds.width * MIN_ZOOM <= width - CONTROLS_GUTTER - EDGE_SPACE &&
@@ -385,16 +403,13 @@ export function StepGraphCanvas({
     const room = width - CONTROLS_GUTTER - EDGE_SPACE;
     const fit = Math.min(room / bounds.width, (height - 2 * EDGE_SPACE) / bounds.height);
     const zoom = fit >= MIN_ZOOM ? Math.min(1, fit) : 1;
-    const x =
-      bounds.width * zoom <= room
-        ? CONTROLS_GUTTER + (room - bounds.width * zoom) / 2 - bounds.minX * zoom
-        : CONTROLS_GUTTER - bounds.minX * zoom;
+    const x = fitX(zoom) ?? CONTROLS_GUTTER - bounds.minX * zoom;
     const y =
       bounds.height * zoom <= height - 2 * EDGE_SPACE
         ? (height - bounds.height * zoom) / 2 - bounds.minY * zoom
         : EDGE_SPACE - bounds.minY * zoom;
     return { x, y, zoom };
-  }, [bounds, width, height]);
+  }, [bounds, width, height, fitX]);
 
   const focusStep = useCallback(
     (id: string) => {
@@ -417,7 +432,10 @@ export function StepGraphCanvas({
     lastWidth.current = width;
     if (!placed.current || !previous || !width || previous === width) return;
     const viewport = flow.getViewport();
-    const shifted = { ...viewport, x: viewport.x + (width - previous) / 2 };
+    const shifted = {
+      ...viewport,
+      x: fitX(viewport.zoom) ?? viewport.x + (width - previous) / 2,
+    };
     const id = selectedRef.current;
     void flow.setViewport(shifted);
     if (id)
@@ -425,7 +443,7 @@ export function StepGraphCanvas({
         duration: reduce ? 0 : 250,
         ease: SMOOTH_OUT,
       });
-  }, [width, flow, reveal, reduce]);
+  }, [width, flow, reveal, reduce, fitX]);
 
   useEffect(() => {
     if (selectedId) ensureVisible(selectedId);
