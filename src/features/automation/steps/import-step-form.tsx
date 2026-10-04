@@ -35,17 +35,17 @@ export function ImportStepForm({ action, onChange }: StepFormProps<"import">) {
   return (
     <div className="flex flex-col gap-8">
       <FormSection title="Datei">
-        <div className="grid gap-4 @lg/step:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
-          <FormRow label="Datei" error={fileError}>
-            <PathInput
-              mode="open"
-              extensions={EXTENSIONS[action.format]}
-              value={action.file}
-              placeholder="/pfad/zu/daten.csv"
-              onChange={(file) => onChange({ ...action, file })}
-            />
-          </FormRow>
-          <FormRow label="Format" bind={false}>
+        <FormRow label="Datei" error={fileError}>
+          <PathInput
+            mode="open"
+            extensions={EXTENSIONS[action.format]}
+            value={action.file}
+            placeholder="/pfad/zu/daten.csv"
+            onChange={(file) => onChange({ ...action, file })}
+          />
+        </FormRow>
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+          <FormRow label="Format" bind={false} className="w-44">
             <Select
               value={action.format}
               onValueChange={(format) =>
@@ -64,37 +64,37 @@ export function ImportStepForm({ action, onChange }: StepFormProps<"import">) {
               </SelectContent>
             </Select>
           </FormRow>
-        </div>
-        {action.format === "csv" && (
-          <div className="flex flex-wrap items-end gap-6">
-            <FormRow label="Trennzeichen" className="w-28">
-              <Input
-                value={action.delimiter ?? ""}
-                placeholder=","
-                maxLength={2}
-                className="font-mono"
-                onChange={(event) =>
-                  onChange({ ...action, delimiter: optionalText(event.target.value) })
-                }
+          {action.format === "csv" && (
+            <>
+              <FormRow label="Trennzeichen" className="w-28">
+                <Input
+                  value={action.delimiter ?? ""}
+                  placeholder=","
+                  maxLength={2}
+                  className="font-mono"
+                  onChange={(event) =>
+                    onChange({ ...action, delimiter: optionalText(event.target.value) })
+                  }
+                />
+              </FormRow>
+              <SwitchRow
+                label="Erste Zeile ist Kopfzeile"
+                className="pb-2"
+                checked={action.hasHeader}
+                onCheckedChange={(hasHeader) => onChange({ ...action, hasHeader })}
+              />
+            </>
+          )}
+          {action.format === "xlsx" && (
+            <FormRow label="Blatt" hint="Leer = erstes Blatt" className="w-56">
+              <TemplateInput
+                value={action.sheet ?? ""}
+                placeholder="Tabelle1"
+                onChange={(sheet) => onChange({ ...action, sheet: optionalText(sheet) })}
               />
             </FormRow>
-            <SwitchRow
-              label="Erste Zeile ist Kopfzeile"
-              className="pb-2"
-              checked={action.hasHeader}
-              onCheckedChange={(hasHeader) => onChange({ ...action, hasHeader })}
-            />
-          </div>
-        )}
-        {action.format === "xlsx" && (
-          <FormRow label="Blatt" hint="Leer = erstes Blatt" className="max-w-72">
-            <TemplateInput
-              value={action.sheet ?? ""}
-              placeholder="Tabelle1"
-              onChange={(sheet) => onChange({ ...action, sheet: optionalText(sheet) })}
-            />
-          </FormRow>
-        )}
+          )}
+        </div>
       </FormSection>
 
       <FormSection title="Ziel">

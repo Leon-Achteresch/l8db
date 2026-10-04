@@ -49,7 +49,7 @@ export function RetryFields({ value, onChange, offLabel }: Props) {
         </Label>
       </div>
       {value && (
-        <div className="grid grid-cols-2 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none @lg/step:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none @lg/step:grid-cols-3">
           <FormRow label="Versuche">
             <Input
               type="number"
@@ -79,7 +79,7 @@ export function RetryFields({ value, onChange, offLabel }: Props) {
               onChange={(event) => patch({ maxDelaySeconds: optionalNumber(event.target.value) })}
             />
           </FormRow>
-          <FormRow label="Pausen" bind={false}>
+          <FormRow label="Pausen" bind={false} className="col-span-full">
             <SegmentedControl
               label="Pausen zwischen Versuchen"
               value={value.backoff}

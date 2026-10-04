@@ -30,7 +30,7 @@ function sideFields({ title, side, value, onChange }: SideProps, tableError: str
         capability="data_compare"
         onChange={(next) => onChange({ ...value, ...next })}
       />
-      <div className="grid gap-3 @lg/step:grid-cols-3">
+      <div className="grid gap-3 @lg/step:grid-cols-2">
         <FormRow label="Schema">
           <TemplateInput
             value={value.schema}
@@ -47,7 +47,7 @@ function sideFields({ title, side, value, onChange }: SideProps, tableError: str
             onChange={(table) => onChange({ ...value, table })}
           />
         </FormRow>
-        <FormRow label="Filter" hint="WHERE-Bedingung, optional">
+        <FormRow label="Filter" hint="WHERE-Bedingung, optional" className="@lg/step:col-span-2">
           <TemplateInput
             value={value.filter ?? ""}
             mono

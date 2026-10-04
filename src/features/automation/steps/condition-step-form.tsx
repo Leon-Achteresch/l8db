@@ -13,8 +13,8 @@ export function ConditionStepForm({ action, onChange }: StepFormProps<"condition
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3 @lg/step:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,2fr)]">
-        <FormRow label="Wenn" error={leftError}>
+      <div className="grid gap-3 @lg/step:grid-cols-2">
+        <FormRow label="Wenn" error={leftError} className="@lg/step:col-span-2">
           <TemplateInput
             value={action.left}
             placeholder="${last.rows}"
