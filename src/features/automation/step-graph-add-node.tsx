@@ -18,7 +18,7 @@ export function StepGraphAddNode({ data }: NodeProps<Extract<StepFlowNode, { typ
         <button
           type="button"
           data-testid={`automation-loop-add-${data.parentId}`}
-          className="nodrag flex size-full items-center justify-center gap-1 rounded-full border border-dashed border-violet-500/35 bg-card text-[11px] font-medium text-muted-foreground transition-colors duration-150 outline-none hover:border-violet-500/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.97]"
+          className="nodrag flex size-full items-center justify-center gap-1 rounded-full border border-dashed border-violet-500/35 bg-card text-[11px] font-medium text-muted-foreground transition-[color,border-color,scale] duration-150 outline-none hover:border-violet-500/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.96]"
         >
           <PlusIcon className="size-3.5" aria-hidden />
           Schritt in Schleife

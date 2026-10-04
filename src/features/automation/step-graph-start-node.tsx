@@ -29,7 +29,9 @@ export function StepGraphStartNode({ data }: NodeProps<Extract<StepFlowNode, { t
             className="flex min-w-0 items-center gap-1.5 text-xs leading-[17px]"
           >
             <CalendarClockIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="truncate">{describeSchedule(schedule, data.taskNames)}</span>
+            <span className="truncate" title={describeSchedule(schedule, data.taskNames)}>
+              {describeSchedule(schedule, data.taskNames)}
+            </span>
           </span>
         ))
       )}

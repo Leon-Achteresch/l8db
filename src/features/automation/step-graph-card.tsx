@@ -43,6 +43,7 @@ export function StepGraphCard({ data, className }: Props) {
       tabIndex={focusable ? 0 : -1}
       aria-label={label}
       aria-current={selected ? "step" : undefined}
+      title={summary ? `${name}\n${summary}` : name}
       onClick={() => select(step.id)}
       onFocus={() => focus(step.id)}
       onKeyDown={(event) => keyDown(step.id, event)}

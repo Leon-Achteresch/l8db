@@ -16,7 +16,8 @@ export function StepGraphStepNode({ data }: NodeProps<Extract<StepFlowNode, { ty
         data.selected ? "border-primary ring-2 ring-primary/30" : "hover:border-foreground/20",
         !data.step.enabled && "border-dashed bg-card/70",
         !data.selected && statusTone(data.status),
-        enter && "animate-in duration-200 ease-out fade-in-0 zoom-in-95 motion-reduce:zoom-in-100",
+        enter &&
+          "animate-in duration-250 ease-smooth-out fade-in-0 zoom-in-96 motion-reduce:zoom-in-100",
       )}
       style={{ width: STEP_WIDTH, height: STEP_HEIGHT }}
     >
