@@ -101,7 +101,7 @@ export function StepGraphEdge({
         {label && (
           <span
             className={cn(
-              "nodrag nopan pointer-events-none absolute rounded bg-background/90 px-1 text-[11px] leading-4 font-medium",
+              "nodrag nopan pointer-events-none absolute rounded bg-background/90 px-1 text-[11px] whitespace-nowrap leading-4 font-medium",
               failure
                 ? "text-red-700 dark:text-red-300"
                 : data?.role === "goto"
@@ -125,7 +125,7 @@ export function StepGraphEdge({
             aria-label={`Verbindung „${label ?? "Ablauf"}“ entfernen`}
             title="Entfernen (Entf)"
             onClick={() => disconnect(id)}
-            className="nodrag nopan pointer-events-auto absolute grid size-5 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs hover:text-destructive"
+            className="nodrag nopan pointer-events-auto absolute grid size-5 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs before:absolute before:-inset-0.5 before:content-[''] hover:text-destructive"
             style={{ transform: `translate(-50%, -50%) translate(${midX}px, ${midY}px)` }}
           >
             <XIcon className="size-3" />
@@ -140,7 +140,7 @@ export function StepGraphEdge({
                 aria-label="Schritt hier einfügen"
                 title="Schritt hier einfügen"
                 className={cn(
-                  "nodrag nopan pointer-events-auto absolute grid size-5 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs transition-[opacity,scale,color] duration-150 ease-out outline-none hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95",
+                  "nodrag nopan pointer-events-auto absolute grid size-5 place-items-center rounded-full border bg-card text-muted-foreground shadow-xs transition-[opacity,scale,color] duration-150 ease-out outline-none before:absolute before:-inset-0.5 before:content-[''] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.96]",
                   data?.dropping
                     ? "scale-125 border-primary text-primary opacity-100"
                     : "opacity-70 hover:opacity-100",

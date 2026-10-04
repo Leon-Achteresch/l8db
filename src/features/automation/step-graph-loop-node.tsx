@@ -20,7 +20,8 @@ export function StepGraphLoopNode({
         data.selected ? "border-primary ring-2 ring-primary/30" : "hover:border-violet-500/50",
         !data.step.enabled && "border-dashed",
         !data.selected && statusTone(data.status),
-        enter && "animate-in duration-200 ease-out fade-in-0 zoom-in-95 motion-reduce:zoom-in-100",
+        enter &&
+          "animate-in duration-250 ease-smooth-out fade-in-0 zoom-in-96 motion-reduce:zoom-in-100",
       )}
       style={{ width, height }}
     >

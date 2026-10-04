@@ -426,7 +426,7 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
                 {(selected || steps.length === 0) && (
                   <aside
                     aria-label={selected ? "Schritt bearbeiten" : "Schrittkatalog"}
-                    className="flex w-[min(30rem,50%)] shrink-0 flex-col border-l bg-background animate-in duration-200 ease-out fade-in-0 slide-in-from-right-2 motion-reduce:slide-in-from-right-0"
+                    className="flex w-[min(30rem,50%)] shrink-0 flex-col border-l bg-background animate-in duration-250 ease-smooth-out fade-in-0 slide-in-from-right-2 motion-reduce:slide-in-from-right-0"
                   >
                     {selected ? (
                       stepEditor(selected, () => setSelectedId(null))
