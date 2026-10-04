@@ -113,22 +113,98 @@ pub(super) fn prepare(sql: &str) -> String {
     statement
 }
 
+fn is_plsql_unit(sql: &str, tokens: &[Range<usize>]) -> bool {
+    if !is_plsql(sql, tokens) {
+        return false;
+    }
+    let mut words = tokens
+        .iter()
+        .map(|r| sql[r.clone()].to_ascii_uppercase())
+        .skip(1)
+        .skip_while(|w| {
+            matches!(
+                w.as_str(),
+                "OR" | "REPLACE" | "EDITIONABLE" | "NONEDITIONABLE"
+            )
+        });
+    match words.next().as_deref() {
+        Some("TYPE") => words.next().as_deref() == Some("BODY"),
+        _ => true,
+    }
+}
+
+#[derive(Default)]
+struct PlsqlUnit {
+    active: bool,
+    depth: usize,
+    pending: usize,
+    header: bool,
+    closed: bool,
+    skip: bool,
+}
+
+impl PlsqlUnit {
+    fn word(&mut self, word: &str, next: Option<&str>) {
+        if self.skip {
+            self.skip = false;
+            return;
+        }
+        match word.to_ascii_uppercase().as_str() {
+            "PROCEDURE" | "FUNCTION" if self.depth == 1 => self.header = true,
+            "IS" | "AS" if self.header => {
+                self.header = false;
+                self.pending += 1;
+            }
+            ";" => self.header = false,
+            "BEGIN" if self.depth > 1 => self.depth += 1,
+            "BEGIN" if self.pending > 0 => {
+                self.depth += 1;
+                self.pending -= 1;
+            }
+            "CASE" => self.depth += 1,
+            "END" => {
+                let next = next.map(str::to_ascii_uppercase);
+                match next.as_deref() {
+                    Some("IF" | "LOOP") => self.skip = true,
+                    Some("CASE") => {
+                        self.skip = true;
+                        self.depth = self.depth.saturating_sub(1);
+                    }
+                    _ => self.depth = self.depth.saturating_sub(1),
+                }
+                if self.depth == 0 {
+                    self.closed = true;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 pub(super) fn split_statements(sql: &str) -> Vec<String> {
     let tokens = tokens(sql);
     let mut out = Vec::new();
     let mut start = 0;
-    let mut plsql = false;
+    let mut unit = PlsqlUnit::default();
     for (index, token) in tokens.iter().enumerate() {
-        plsql |= is_plsql(sql, &tokens[start..=index]);
+        let text = &sql[token.clone()];
+        if unit.active {
+            if !sql[..token.start].ends_with('$') {
+                unit.word(text, tokens.get(index + 1).map(|r| &sql[r.clone()]));
+            }
+        } else if is_plsql_unit(sql, &tokens[start..=index]) {
+            unit.active = true;
+            unit.depth = 1;
+        }
         let slash = is_slash(sql, token);
-        if slash || (&sql[token.clone()] == ";" && !plsql) {
+        if slash || (text == ";" && (!unit.active || unit.closed)) {
             let end = if slash { token.start } else { token.end };
             let statement = sql[tokens[start].start..end].trim();
             if !prepare(statement).is_empty() {
                 out.push(statement.to_string());
             }
             start = index + 1;
-            plsql = false;
+            unit = PlsqlUnit::default();
         }
     }
     if let Some(first) = tokens.get(start) {
@@ -589,6 +665,24 @@ mod tests {
         );
         assert_eq!(split_statements(BODY), vec![BODY]);
         assert!(split_statements(";\n/\n-- comment").is_empty());
+    }
+
+    #[test]
+    fn splits_units_at_closing_end_without_slash() {
+        let spec = "CREATE OR REPLACE PACKAGE demo AS\n  PROCEDURE run;\n  FUNCTION calc(x NUMBER) RETURN NUMBER;\nEND demo;";
+        let body = "CREATE OR REPLACE PACKAGE BODY demo AS\n  PROCEDURE log_it(msg VARCHAR2);\n  PROCEDURE log_it(msg VARCHAR2) IS\n    PROCEDURE inner IS BEGIN NULL; END;\n  BEGIN\n    inner;\n  END log_it;\n  FUNCTION calc(x NUMBER) RETURN NUMBER IS\n    v NUMBER := CASE WHEN x > 1 THEN 1 ELSE 0 END;\n  BEGIN\n    CASE v WHEN 1 THEN v := 2; ELSE v := 3; END CASE;\n    FOR i IN 1..2 LOOP v := v + i; END LOOP;\n    RETURN v;\n  END;\n  PROCEDURE run IS BEGIN log_it('x'); END run;\nBEGIN\n  run;\nEND demo;";
+        let proc = "CREATE OR REPLACE PROCEDURE outer_p IS\n  PROCEDURE inner_p IS BEGIN NULL; END inner_p;\nBEGIN\n  inner_p;\nEXCEPTION WHEN OTHERS THEN NULL;\nEND outer_p;";
+        let block =
+            "DECLARE n NUMBER; BEGIN n := 1; $IF DBMS_DB_VERSION.VER_LE_12 $THEN NULL; $END END;";
+        let type_spec =
+            "CREATE OR REPLACE TYPE demo_t AS OBJECT (id NUMBER, MEMBER FUNCTION f RETURN NUMBER);";
+        let type_body = "CREATE OR REPLACE TYPE BODY demo_t AS\n  MEMBER FUNCTION f RETURN NUMBER IS BEGIN RETURN id; END;\nEND;";
+        let query = "SELECT demo.calc(2) FROM DUAL;";
+        let script = [spec, body, proc, block, type_spec, type_body, query].join("\n\n");
+        assert_eq!(
+            split_statements(&script),
+            vec![spec, body, proc, block, type_spec, type_body, query]
+        );
     }
 
     #[test]
