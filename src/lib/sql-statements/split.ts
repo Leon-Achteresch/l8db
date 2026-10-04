@@ -21,6 +21,8 @@ function isWordChar(ch: string | undefined): boolean {
 const ROUTINE_OBJECTS = ["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
 const MSSQL_BATCH_OBJECTS = ["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
 const END_SUFFIXES = ["IF", "LOOP", "WHILE", "REPEAT"];
+const ORACLE_CREATE_MODIFIERS = ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
+const ORACLE_PLSQL_OBJECTS = ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER"];
 
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
@@ -55,6 +57,10 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
   let hasCode = false;
   let unterminated = false;
   let plsql = false;
+  let plsqlDepth = 0;
+  let plsqlPending = 0;
+  let plsqlHeader = false;
+  let plsqlClosed = false;
   let batch = false;
   let blockDepth = 0;
   let delimiter = ";";
@@ -74,6 +80,10 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
     segmentStart = -1;
     hasCode = false;
     plsql = false;
+    plsqlDepth = 0;
+    plsqlPending = 0;
+    plsqlHeader = false;
+    plsqlClosed = false;
     batch = false;
     blockDepth = 0;
     leadingWords.length = 0;
@@ -168,19 +178,55 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       }
       if (/[A-Za-z_]/.test(ch)) {
         const start = index;
-        while (index < length && isWordChar(sql[index])) index += 1;
-        if (leadingWords.length < 6) leadingWords.push(sql.slice(start, index).toUpperCase());
-        const first = leadingWords[0];
-        const object = leadingWords
-          .slice(1)
-          .find((word) => !["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"].includes(word));
-        plsql ||=
-          first === "BEGIN" ||
-          first === "DECLARE" ||
-          (first === "CREATE" &&
-            object !== undefined &&
-            ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER", "TYPE"].includes(object));
+        while (
+          index < length &&
+          (isWordChar(sql[index]) || sql[index] === "$" || sql[index] === "#")
+        )
+          index += 1;
         hasCode = true;
+        if (sql[start - 1] === "$") continue;
+        const word = sql.slice(start, index).toUpperCase();
+        if (!plsql) {
+          if (leadingWords.length < 6) leadingWords.push(word);
+          const first = leadingWords[0];
+          const objectIndex = leadingWords.findIndex(
+            (w, i) => i > 0 && !ORACLE_CREATE_MODIFIERS.includes(w),
+          );
+          const object = objectIndex > 0 ? leadingWords[objectIndex] : undefined;
+          plsql =
+            first === "BEGIN" ||
+            first === "DECLARE" ||
+            (first === "CREATE" &&
+              object !== undefined &&
+              (ORACLE_PLSQL_OBJECTS.includes(object) ||
+                (object === "TYPE" && leadingWords[objectIndex + 1] === "BODY")));
+          if (plsql) plsqlDepth = 1;
+          continue;
+        }
+        if ((word === "PROCEDURE" || word === "FUNCTION") && plsqlDepth === 1) plsqlHeader = true;
+        else if ((word === "IS" || word === "AS") && plsqlHeader) {
+          plsqlHeader = false;
+          plsqlPending += 1;
+        } else if (word === "BEGIN") {
+          if (plsqlDepth > 1) plsqlDepth += 1;
+          else if (plsqlPending > 0) {
+            plsqlDepth += 1;
+            plsqlPending -= 1;
+          }
+        } else if (word === "CASE") plsqlDepth += 1;
+        else if (word === "END") {
+          let next = index;
+          while (next < length && isSpace(sql[next])) next += 1;
+          const nextEnd = readWord(next);
+          const suffix = sql.slice(next, nextEnd).toUpperCase();
+          if (suffix === "IF" || suffix === "LOOP") {
+            index = nextEnd;
+            continue;
+          }
+          if (suffix === "CASE") index = nextEnd;
+          plsqlDepth = Math.max(0, plsqlDepth - 1);
+          if (plsqlDepth === 0) plsqlClosed = true;
+        }
         continue;
       }
     }
@@ -330,7 +376,8 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
 
     if (ch === ";") {
       index += 1;
-      if (!plsql && !batch && blockDepth === 0 && delimiter === ";") flush(index);
+      plsqlHeader = false;
+      if ((!plsql || plsqlClosed) && !batch && blockDepth === 0 && delimiter === ";") flush(index);
       continue;
     }
 
