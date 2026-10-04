@@ -26,7 +26,12 @@ export function AppNavRail() {
         (item) =>
           isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
       )
-    : [connectItem];
+    : [
+        connectItem,
+        ...appSidebarData.navMain.filter(
+          (item) => item.connectionFree && isEasyModeRouteVisible(item.url, easyMode),
+        ),
+      ];
   const activeUrl = useRouterSelect(
     (state) =>
       [...appSidebarData.navMain, connectItem].find((item) =>

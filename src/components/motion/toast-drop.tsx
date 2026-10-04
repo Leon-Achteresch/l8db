@@ -77,7 +77,7 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
     };
 
     const enter = (toast: HTMLElement) => {
-      if (toast.dataset.front !== "true") return reveal(toast);
+      if (toast.dataset.front !== "true" || toast.dataset.yPosition !== "top") return reveal(toast);
       const previous = current.current?.toast;
       if (previous && previous !== toast) reveal(previous);
       const geometry = reduce ? null : measure(toast);
@@ -94,6 +94,7 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
     };
 
     const leave = (toast: HTMLElement) => {
+      if (toast.dataset.yPosition !== "top") return;
       if (current.current && current.current.toast !== toast) return;
       if (!toast.hasAttribute("data-dropped")) {
         reveal(toast);
