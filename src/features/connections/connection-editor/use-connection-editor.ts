@@ -18,6 +18,7 @@ import { createConnectionOperations } from "./connection-operations";
 import { createConnectionUrlActions } from "./connection-url-actions";
 import { seedFields, seedMode } from "./seed";
 import type { ConnectionEditorProps, Mode, TestResult } from "./types";
+import { useCloudAuthDraft } from "./use-cloud-auth-draft";
 import { jumpHostDraft, useNetworkDraft } from "./use-network-draft";
 
 export function useConnectionEditor({
@@ -69,6 +70,7 @@ export function useConnectionEditor({
   const [sshKey, setSshKey] = useState(seed?.ssh?.keyFile ?? "");
   const [sshPassword, setSshPassword] = useState("");
   const network = useNetworkDraft(seed, connection?.id);
+  const cloudAuth = useCloudAuthDraft(seed);
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -98,12 +100,14 @@ export function useConnectionEditor({
   const quickKind = kindFromUrl(value) ?? kind;
   const quickProviderId = value.trim() ? detectProvider(value, quickKind) : provider;
   const quickInfo = providers.find((entry) => entry.id === quickProviderId) ?? info;
+  const cloudAuthValue = cloudAuth.resolve(mode === "string" ? quickKind : kind);
   const poolerWarning =
     (mode === "string" ? quickProviderId : provider) === "supabase" &&
     (port === "6543" || /:6543(?:\/|$)/.test(value));
   const advancedOpen = Boolean(
     seed?.ssh?.host ||
       seed?.proxy?.host ||
+      seed?.commandTunnel?.command ||
       seed?.readOnly ||
       seed?.schemas?.length ||
       seed?.color ||
@@ -159,7 +163,7 @@ export function useConnectionEditor({
     file,
     tnsAlias,
     user,
-    password,
+    password: cloudAuthValue ? "" : password,
     host,
     port,
     database,
@@ -175,6 +179,7 @@ export function useConnectionEditor({
     sshPassword,
     network,
     connection,
+    cloudAuth: cloudAuthValue,
   });
 
   const { test, scanSchemas, save } = createConnectionOperations({
@@ -200,6 +205,7 @@ export function useConnectionEditor({
     environment,
     maskRules,
     tags,
+    cloudAuth: cloudAuthValue,
     vault: vault && storeInVault ? { host: extensionHost, name: vault.name } : null,
     onSaved,
   });
@@ -253,6 +259,8 @@ export function useConnectionEditor({
     applySshConfig,
     busy,
     caps,
+    cloudAuth,
+    cloudAuthActive: Boolean(cloudAuthValue),
     color,
     database,
     databaseLabel,

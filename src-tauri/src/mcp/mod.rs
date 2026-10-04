@@ -2,6 +2,7 @@ pub mod benchmark;
 pub mod clients;
 pub mod config;
 pub mod dashboard;
+pub mod health;
 pub mod nosql;
 pub mod redact;
 pub mod server;

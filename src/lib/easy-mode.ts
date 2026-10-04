@@ -4,6 +4,7 @@ const advancedRoutes = new Set([
   "mcp",
   "versioning",
   "monitor",
+  "health",
   "sessions",
   "replication",
   "compare",

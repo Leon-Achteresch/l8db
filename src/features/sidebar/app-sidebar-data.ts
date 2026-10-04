@@ -10,6 +10,7 @@ import {
   NotebookPenIcon,
   Route as RouteIcon,
   SquareTerminalIcon,
+  StethoscopeIcon,
   Table2,
   WorkflowIcon,
 } from "lucide-react";
@@ -44,6 +45,13 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       available: (caps) => caps.compile_objects,
     },
     { title: "Monitor", url: "/monitor", icon: GaugeIcon },
+    {
+      title: "Health",
+      url: "/health",
+      icon: StethoscopeIcon,
+      featureScope: "health",
+      available: (caps) => caps.health_advisor,
+    },
     {
       title: "Query Builder",
       url: "/query-builder",

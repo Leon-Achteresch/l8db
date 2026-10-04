@@ -18,6 +18,7 @@ import { ErFocusPanel } from "@/features/er-diagram/er-diagram-view/er-focus-pan
 import { ErViewportWatcher } from "@/features/er-diagram/er-diagram-view/er-viewport-watcher";
 import { ExportButtons } from "@/features/er-diagram/er-diagram-view/export-buttons";
 import { nodeTypes } from "@/features/er-diagram/er-diagram-view/node-types";
+import { TextExportMenu } from "@/features/er-diagram/er-diagram-view/text-export-menu";
 import type { ErNodeType } from "@/features/er-diagram/er-diagram-view/types";
 import { useClusterGraph } from "@/features/er-diagram/er-diagram-view/use-cluster-graph";
 import { useActiveConnection } from "@/lib/connections";
@@ -182,6 +183,7 @@ export function ERDiagramInner() {
           setExporting={setExporting}
           prepareExport={prepareExport}
         />
+        <TextExportMenu schema={erSchema} />
         <Popover>
           <PopoverTrigger asChild>
             <button

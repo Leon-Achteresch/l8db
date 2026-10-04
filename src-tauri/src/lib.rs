@@ -466,11 +466,13 @@ pub fn run() {
             db::secrets::delete_secret,
             db::ssh::open_ssh_tunnel,
             db::ssh::open_proxy_tunnel,
+            db::ssh::open_command_tunnel,
             db::ssh::config::list_ssh_config_hosts,
             db::ssh::close_ssh_tunnel,
             db::ssh::list_ssh_tunnels,
             db::commands::explain_query,
             index_advisor::advise_indexes,
+            db::postgres_health::run_database_health_checks,
             db::commands::list_materialized_views,
             db::commands::refresh_materialized_view,
             db::commands::drop_materialized_view,
@@ -500,6 +502,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|_app, _event| {
+            if let tauri::RunEvent::Exit = _event {
+                db::ssh::command::kill_all();
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
                 let actions = urls

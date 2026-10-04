@@ -80,6 +80,7 @@ export interface Capabilities {
   ssh: boolean;
   backup: boolean;
   object_storage: boolean;
+  health_advisor: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

@@ -38,9 +38,16 @@ export interface ProxyTunnelRequest {
   remote_port: number;
 }
 
+export interface CommandTunnelRequest {
+  id: string;
+  command: string;
+  local_port: number | null;
+  timeout_secs: number | null;
+}
+
 export interface SshTunnelInfo {
   id: string;
-  kind: "ssh" | "proxy";
+  kind: "ssh" | "proxy" | "command";
   local_port: number;
   ssh_host: string;
   ssh_port: number;
