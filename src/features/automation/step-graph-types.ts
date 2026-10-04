@@ -48,7 +48,7 @@ export const SMALL_HEIGHT = 30;
 export const START_LINE = 17;
 export const LOOP_HEADER = 64;
 export const LOOP_PADDING = 18;
-export const LOOP_LANE_PADDING = 48;
+export const LOOP_LANE_PADDING = 76;
 export const GOTO_COLOR = "oklch(0.62 0.15 237)";
 
 export function statusTone(status: RunStatus | null): string {
