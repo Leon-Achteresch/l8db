@@ -55,6 +55,19 @@ export function TableCopyStepForm({ action, onChange }: StepFormProps<"table_cop
       <FormSection title="Tabellen">
         <FormRow label="Quelle → Ziel" error={tablesError} hint="Schema.Tabelle" bind={false}>
           <div className="flex flex-col gap-1.5">
+            {action.tables.length > 0 && (
+              <div
+                aria-hidden
+                className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto_minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-1 px-0.5 text-[11px] font-medium text-muted-foreground"
+              >
+                <span>Schema</span>
+                <span>Tabelle</span>
+                <span className="mx-0.5 w-3.5" />
+                <span>Zielschema</span>
+                <span>Zieltabelle</span>
+                <span className="w-9" />
+              </div>
+            )}
             {action.tables.map((item, index) => (
               <div
                 key={`${index}-${action.tables.length}`}

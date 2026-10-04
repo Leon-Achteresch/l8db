@@ -66,10 +66,13 @@ export function summarizeStep(
         action.file ? basename(action.file) : null,
         action.table ? `→ ${action.table}` : null,
       );
-    case "compare":
-      return action.left.table || action.right.table
-        ? `${action.left.table} ↔ ${action.right.table}`
+    case "compare": {
+      const side = (value: { connection: string; table: string }) =>
+        [conn(value.connection), value.table].filter(Boolean).join(" › ");
+      return action.left.table || action.right.table || action.left.connection
+        ? `${side(action.left) || "?"} ↔ ${side(action.right) || "?"}`
         : "";
+    }
     case "check": {
       const check = action.check;
       const target = "table" in check && check.table ? check.table : "";
@@ -88,8 +91,14 @@ export function summarizeStep(
     case "mkdir":
     case "file_exists":
       return action.path;
-    case "zip":
-      return action.output.path ? `→ ${basename(action.output.path)}` : "";
+    case "zip": {
+      const sources = action.sources.filter((entry) => entry.trim());
+      const first = sources[0] ? basename(sources[0]) : null;
+      return parts(
+        first && (sources.length > 1 ? `${first} +${sources.length - 1}` : first),
+        action.output.path ? `→ ${basename(action.output.path)}` : null,
+      );
+    }
     case "unzip":
       return action.archive ? `${basename(action.archive)} → ${action.target}` : "";
     case "cleanup":

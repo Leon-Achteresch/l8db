@@ -27,7 +27,7 @@ export function UnzipStepForm({ action, onChange }: StepFormProps<"unzip">) {
       </FormRow>
       <SwitchRow
         label="Vorhandene Dateien überschreiben"
-        description="Einträge mit .. oder absoluten Pfaden werden immer abgelehnt."
+        description="An: Gleichnamige Dateien im Zielordner werden ersetzt. Aus: Der Schritt bricht vor dem Entpacken ab, sobald eine Datei schon existiert. Einträge mit .. oder absoluten Pfaden werden immer abgelehnt."
         checked={action.overwrite}
         onCheckedChange={(overwrite) => onChange({ ...action, overwrite })}
       />
