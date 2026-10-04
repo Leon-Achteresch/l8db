@@ -1,4 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
 import type { BackupOptions } from "./backup";
 import { invoke } from "./core";
 import type { DatagenLocale } from "./datagen";
@@ -720,5 +719,7 @@ export const uninstallAutomationBackground = () =>
   invoke<BackgroundStatus>("automation_uninstall_background");
 export const automationCliCommand = (taskId: string) =>
   invoke<string>("automation_cli_command", { taskId });
-export const onAutomationEvent = (handler: (event: AutomationEvent) => void) =>
-  listen<AutomationEvent>("automation-event", ({ payload }) => handler(payload));
+export const onAutomationEvent = async (handler: (event: AutomationEvent) => void) => {
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<AutomationEvent>("automation-event", ({ payload }) => handler(payload));
+};

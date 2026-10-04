@@ -92,7 +92,7 @@ const {
 type Saved = Parameters<typeof buildAutomationConnection>[0];
 
 const base: Saved = {
-  id: "pg",
+  id: "auto-pg",
   name: "Produktion",
   kind: "postgres",
   connectionString:
@@ -162,7 +162,7 @@ describe("buildAutomationConnection", () => {
       base,
       { ...base, id: "tmp", name: "Datei", temporary: true },
     ]);
-    expect(list.map((entry) => entry.id)).toEqual(["pg"]);
+    expect(list.map((entry) => entry.id)).toEqual(["auto-pg"]);
   });
 
   test("SSH und Proxy werden 1:1 übernommen, Tags als Namen", () => {
@@ -226,7 +226,7 @@ describe("initAutomationSync", () => {
     initAutomationSync();
     await wait(20);
     expect(syncCalls.length).toBe(1);
-    expect((syncCalls[0] as { id: string }[]).map((entry) => entry.id)).toEqual(["pg"]);
+    expect((syncCalls[0] as { id: string }[]).map((entry) => entry.id)).toEqual(["auto-pg"]);
 
     useConnectionsStore.setState({ connections: [{ ...base, name: "Prod A" }] });
     useConnectionsStore.setState({ connections: [{ ...base, name: "Prod B" }] });
