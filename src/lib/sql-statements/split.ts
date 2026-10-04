@@ -404,7 +404,13 @@ export function statementAtOffset(
   for (const statement of statements) {
     if (position >= statement.start && position <= statement.end) return statement;
   }
+  const last = statements.at(-1);
+  if (last && position > last.end && !sql.slice(last.end, position).trim()) return last;
   return null;
+}
+
+export function runsOneStatementPerCall(dialect?: string): boolean {
+  return dialect === "oracle";
 }
 
 export function sqlToRun(sql: string, selectedSql: string): string {

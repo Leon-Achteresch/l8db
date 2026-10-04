@@ -13,6 +13,7 @@ import { confirmSqlExecution, type QueryResult } from "@/lib/db";
 import { invalidateTableReads } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { locateText } from "@/lib/sql-diagnostics";
+import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -33,6 +34,7 @@ interface UseRunSqlParams {
   markQueryTabExecuted: (tabId: string, sql: string) => void;
   setEditorFocus: (focus: boolean) => void;
   collectOutput: () => Promise<void>;
+  runMultiStatement: (text: string) => Promise<void>;
 }
 
 export function useRunSql({
@@ -46,6 +48,7 @@ export function useRunSql({
   markQueryTabExecuted,
   setEditorFocus,
   collectOutput,
+  runMultiStatement,
 }: UseRunSqlParams) {
   const queryClient = useQueryClient();
   const recordHistory = useQueryHistoryStore((state) => state.record);
@@ -70,6 +73,14 @@ export function useRunSql({
     async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
+      if (
+        !bound &&
+        runsOneStatementPerCall(connection.kind) &&
+        splitSqlStatements(sql, connection.kind).statements.length > 1
+      ) {
+        await runMultiStatement(sql);
+        return;
+      }
       if (
         !bound &&
         !skipBind &&
@@ -171,6 +182,7 @@ export function useRunSql({
       editorSqlRef,
       cursorOffsetRef,
       setEditorFocus,
+      runMultiStatement,
     ],
   );
 

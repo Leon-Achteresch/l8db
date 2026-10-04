@@ -6,4 +6,4 @@ export {
   summarizeStatement,
 } from "./classify";
 export type { SqlSplitResult, SqlStatement } from "./split";
-export { splitSqlStatements, sqlToRun, statementAtOffset } from "./split";
+export { runsOneStatementPerCall, splitSqlStatements, sqlToRun, statementAtOffset } from "./split";
