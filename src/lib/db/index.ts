@@ -1,5 +1,6 @@
 export * from "./admin";
 export * from "./appwrite";
+export * from "./automation";
 export * from "./baas-file";
 export * from "./backup";
 export * from "./catalog";

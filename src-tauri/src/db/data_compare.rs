@@ -45,6 +45,8 @@ pub struct CompareRequest {
     pub right: CompareSide,
     pub key_columns: Vec<String>,
     pub compare_columns: Vec<String>,
+    #[serde(default)]
+    pub compare_all: bool,
 }
 
 #[derive(Default, Serialize)]
@@ -122,7 +124,16 @@ pub async fn compare(
     }
     let left = read(&request.left, pool_state).await?;
     let right = read(&request.right, pool_state).await?;
-    for name in request.key_columns.iter().chain(&request.compare_columns) {
+    let compare_columns = if request.compare_all && request.compare_columns.is_empty() {
+        left.columns
+            .iter()
+            .filter(|name| !request.key_columns.contains(name))
+            .cloned()
+            .collect()
+    } else {
+        request.compare_columns.clone()
+    };
+    for name in request.key_columns.iter().chain(&compare_columns) {
         if !left.columns.contains(name) || !right.columns.contains(name) {
             return Err(format!("Spalte {name} fehlt auf einer Seite."));
         }
@@ -140,8 +151,7 @@ pub async fn compare(
             return Err("Vergleich abgebrochen; kein vollständiges Ergebnis.".into());
         }
         let other = right.remove(&key);
-        let differences: Vec<Value> = request
-            .compare_columns
+        let differences: Vec<Value> = compare_columns
             .iter()
             .filter_map(|column| {
                 other.as_ref().and_then(|other| {
@@ -262,6 +272,7 @@ mod tests {
             right: side("compare_right"),
             key_columns: vec!["a".into(), "b".into()],
             compare_columns: vec!["value".into()],
+            compare_all: false,
         };
         let pool = crate::db::pool::create_pool_state();
         let start = std::time::Instant::now();
