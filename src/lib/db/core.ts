@@ -47,6 +47,8 @@ const CONFIGURED_COMMANDS = new Set([
 ]);
 
 const WRITE_COMMANDS = new Set([
+  "branching_run",
+  "branching_update",
   "versioning_run",
   "versioning_run_fleet",
   "versioning_run_seed",

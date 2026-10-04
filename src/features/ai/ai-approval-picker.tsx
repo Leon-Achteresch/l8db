@@ -38,14 +38,14 @@ export function AiApprovalPicker({ profile, disabled }: Props) {
           type="button"
           aria-label="Freigaben auswählen"
           disabled={disabled}
-          className="flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
+          className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-[12px] outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-foreground/[0.06]"
         >
-          <ShieldCheck className="size-3.5" />
-          <span>{current.name}</span>
+          <ShieldCheck className="size-3.5 shrink-0 opacity-70" />
+          <span className="truncate">{current.name}</span>
           {feature.isNew && <NewBadge />}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-64 rounded-2xl">
+      <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-64 rounded-2xl">
         <DropdownMenuLabel className="text-[11px] text-muted-foreground">
           Freigaben · Datenbank-Änderungen fragen immer
         </DropdownMenuLabel>

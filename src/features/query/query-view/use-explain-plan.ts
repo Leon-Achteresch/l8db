@@ -4,6 +4,7 @@ import { type ExplainNode, explainQuery } from "@/lib/db";
 import { normalizeExplainResult } from "@/lib/explain-normalize";
 import { supports } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
+import { expandSessionViews, sessionViewsFor } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { opensManagedTransaction } from "@/lib/sql-statements";
@@ -71,7 +72,7 @@ export function useExplainPlan({
         const plans = await explainQuery(
           connection.kind,
           effectiveConnectionString(connection),
-          target,
+          expandSessionViews(target, sessionViewsFor(connection.id, database), connection.kind),
           analyze,
           database ?? undefined,
         );

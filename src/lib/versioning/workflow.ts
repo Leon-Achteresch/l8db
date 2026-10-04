@@ -8,6 +8,8 @@ export type VersioningArea =
   | "branches"
   | "releases"
   | "targets"
+  | "reviews"
+  | "delivery"
   | "seeds"
   | "activity";
 
@@ -57,7 +59,7 @@ export function targetProgress(
     }
   }
   return {
-    label: pending ? `${pending} Updates offen` : "Aktuell",
+    label: pending ? `${pending} ${pending === 1 ? "Update" : "Updates"} offen` : "Aktuell",
     pending,
     state: pending ? ("pending" as const) : ("current" as const),
   };

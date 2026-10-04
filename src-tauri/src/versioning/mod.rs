@@ -1,4 +1,6 @@
 pub mod control;
+pub mod delivery;
+pub mod forge;
 pub mod metadata;
 pub mod runner;
 pub mod seeds;
@@ -567,7 +569,13 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 return Err("Bitte vor der Synchronisierung alle Änderungen committen oder außerhalb von l8db sichern.".into());
             }
             let result = match request.action.as_str() {
-                "fetch" => git(&root, &["fetch", "origin"]).await,
+                "fetch" => {
+                    let fetched = git(&root, &["fetch", "--prune", "origin"]).await;
+                    if fetched.is_ok() {
+                        let _ = git(&root, &["remote", "set-head", "origin", "--auto"]).await;
+                    }
+                    fetched
+                }
                 "pull" => git(&root, &["pull", "--ff-only"]).await,
                 _ => {
                     let branch =
@@ -577,6 +585,80 @@ pub async fn handle(request: Request) -> Result<Value, String> {
             };
             result.map_err(|_| "Git-Synchronisierung fehlgeschlagen. Remote, Berechtigungen und Git-Anmeldung prüfen; Pull benötigt einen konfliktfreien Fast-forward.".to_string())?;
             Ok(Value::Null)
+        }
+        "remote" => {
+            let Ok(url) = git(&root, &["remote", "get-url", "origin"]).await else {
+                return Ok(json!({"configured": false}));
+            };
+            let url = url.trim();
+            let remote = forge::parse_remote(url).ok();
+            let integration = delivery::integration(&root).await?;
+            let head = revision(&root, "HEAD").await.ok();
+            let branch = git(&root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+                .await
+                .ok()
+                .map(|value| value.trim().to_string());
+            let (ahead, behind) = match (&integration, &head) {
+                (Some(integration), Some(head)) => {
+                    let counts = git(
+                        &root,
+                        &[
+                            "rev-list",
+                            "--left-right",
+                            "--count",
+                            &format!("{head}...{}", integration.commit),
+                        ],
+                    )
+                    .await?;
+                    let mut parts = counts
+                        .split_whitespace()
+                        .map(|value| value.parse::<u64>().unwrap_or(0));
+                    (parts.next(), parts.next())
+                }
+                _ => (None, None),
+            };
+            Ok(json!({
+                "configured": true,
+                "identity": delivery::identity(url).ok(),
+                "web": remote.as_ref().map(|remote| remote.web.clone()),
+                "kind": remote.as_ref().and_then(|remote| remote.kind),
+                "defaultBranch": integration.as_ref().map(|integration| integration.branch.clone()),
+                "defaultCommit": integration.as_ref().map(|integration| integration.commit.clone()),
+                "head": head,
+                "branch": branch,
+                "ahead": ahead,
+                "behind": behind,
+            }))
+        }
+        "between" => {
+            let base = revision(&root, request.base.as_deref().ok_or("Basis fehlt")?).await?;
+            let head = revision(&root, request.incoming.as_deref().ok_or("Quelle fehlt")?).await?;
+            let start = git(&root, &["merge-base", &base, &head])
+                .await
+                .map_err(|_| "Die Branches haben keine gemeinsame Basis.".to_string())?;
+            let output = git(
+                &root,
+                &[
+                    "diff",
+                    "--name-status",
+                    "-z",
+                    "--no-renames",
+                    start.trim(),
+                    &head,
+                    "--",
+                    "database/",
+                ],
+            )
+            .await?;
+            let mut parts = output.split('\0').filter(|part| !part.is_empty());
+            let mut files = Vec::new();
+            while let (Some(status), Some(path)) = (parts.next(), parts.next()) {
+                if files.len() >= 2000 {
+                    return Err("Zu viele geänderte Dateien".into());
+                }
+                files.push(json!({"status": status, "path": path}));
+            }
+            Ok(json!({"base": start.trim(), "head": head, "files": files}))
         }
         "merge" => {
             let values = [

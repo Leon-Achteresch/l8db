@@ -7,7 +7,7 @@ import type {
   Table,
   VisibilityState,
 } from "@tanstack/react-table";
-import { type Dispatch, memo, type SetStateAction } from "react";
+import { type CSSProperties, type Dispatch, memo, type SetStateAction } from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
 import { gridMatchKey } from "@/lib/grid-search";
 import { cellKey, type GridCellRef } from "@/lib/grid-selection";
@@ -29,6 +29,7 @@ export type DataTableRowProps = {
   customCellColumns: Set<string>;
   monochromeCells: boolean;
   isMarked: boolean;
+  ruleColor?: string;
   isContextMenuTarget?: boolean;
   toggleRowMarker: (row: TableRow) => void;
   columnWindow: ColumnWindowItem[];
@@ -68,6 +69,7 @@ export const DataTableRow = memo(function DataTableRow({
   customCellColumns,
   monochromeCells,
   isMarked,
+  ruleColor,
   isContextMenuTarget,
   toggleRowMarker,
   pageOffset,
@@ -97,6 +99,10 @@ export const DataTableRow = memo(function DataTableRow({
   const rowIndex = row.index;
   const rowCtid = row.original.__ctid__ as string | undefined;
   const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
+  const ruleBackground =
+    ruleColor && !isMarked && !isRowEditing
+      ? `color-mix(in oklab, ${ruleColor} 18%, var(--background))`
+      : undefined;
   return (
     <tr
       ref={measureElement}
@@ -106,6 +112,11 @@ export const DataTableRow = memo(function DataTableRow({
       data-marked={isMarked || undefined}
       data-context-menu-target={isContextMenuTarget || undefined}
       data-dynamic-height={isRowEditing || customCellColumns.size > 0 || undefined}
+      style={
+        ruleBackground
+          ? ({ "--row-bg": ruleBackground, backgroundColor: ruleBackground } as CSSProperties)
+          : undefined
+      }
       className={cn(
         "group/row",
         isMarked

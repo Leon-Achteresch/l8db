@@ -44,6 +44,27 @@ export function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
 }
 
+const BUILD_NEUTRAL = [
+  /^\.github\/scripts\/(?!set-version\.mjs$|build-snapshot\.mjs$)/,
+  /^\.github\/RELEASING\.md$/,
+  /^\.claude\//,
+  /^docs\//,
+  /^tests\//,
+];
+
+export function buildNeutral(files) {
+  return files.every((file) => BUILD_NEUTRAL.some((pattern) => pattern.test(file)));
+}
+
+export function buildEquivalent(from, to) {
+  if (from === to) return true;
+  try {
+    return buildNeutral(git("diff", "--name-only", from, to).split("\n").filter(Boolean));
+  } catch {
+    return false;
+  }
+}
+
 export function gh(...args) {
   return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
 }

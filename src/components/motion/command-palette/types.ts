@@ -21,4 +21,5 @@ export interface CommandPaletteProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   maxVisible?: number;
+  queryItem?: (query: string) => CommandItem;
 }

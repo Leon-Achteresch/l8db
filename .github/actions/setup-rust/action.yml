@@ -18,9 +18,15 @@ runs:
         toolchain: 1.99.0
         targets: ${{ inputs.targets }}
         components: ${{ inputs.components }}
+    - id: key
+      shell: bash
+      env:
+        CACHE: ${{ inputs.cache }}
+        TARGETS: ${{ inputs.targets }}
+      run: echo "shared=${CACHE}-${TARGETS//,/-}" >> "$GITHUB_OUTPUT"
     - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c
       with:
         workspaces: src-tauri -> target
-        shared-key: ${{ inputs.cache }}-${{ inputs.targets }}
+        shared-key: ${{ steps.key.outputs.shared }}
         cache-targets: ${{ inputs.cache != 'packaging' }}
         save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

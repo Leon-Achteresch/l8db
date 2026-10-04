@@ -40,6 +40,15 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
     reference: "VS Code: Strg+Umschalt+N Neues Fenster",
   },
   {
+    id: "ai.toggle",
+    label: "KI-Assistent öffnen oder schließen",
+    description: "Fragen zu deinen Daten in Alltagssprache stellen",
+    area: "Allgemein",
+    defaultHotkey: "Mod+J",
+    ignoreInputs: false,
+    origin: "l8db",
+  },
+  {
     id: "settings.open",
     label: "Einstellungen öffnen",
     description: "App-Einstellungen inklusive Hotkey-Konfiguration",

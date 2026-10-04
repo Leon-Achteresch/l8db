@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { releaseNotes } from "../.github/scripts/release.mjs";
 import { releaseState } from "../.github/scripts/release-plan.mjs";
-import { compareVersions, nextVersion, semanticBump } from "../.github/scripts/release-utils.mjs";
+import {
+  buildNeutral,
+  compareVersions,
+  nextVersion,
+  semanticBump,
+} from "../.github/scripts/release-utils.mjs";
 
 const sha = "a".repeat(40);
 const published = {
@@ -58,4 +63,17 @@ describe("release version planning and retries", () => {
     expect(releaseNotes("0.8.25", changelog)).not.toContain("Old");
     expect(() => releaseNotes("0.8.26", changelog)).toThrow("Missing release notes");
   });
+});
+
+test("reuses compiled snapshots only when no build input changed", () => {
+  expect(buildNeutral([".github/scripts/release-smoke.mjs", "tests/a.test.ts", "docs/x.md"])).toBe(
+    true,
+  );
+  expect(buildNeutral([".github/scripts/release.mjs", ".github/RELEASING.md"])).toBe(true);
+  expect(buildNeutral([".github/scripts/set-version.mjs"])).toBe(false);
+  expect(buildNeutral([".github/scripts/build-snapshot.mjs"])).toBe(false);
+  expect(buildNeutral([".github/workflows/release.yml"])).toBe(false);
+  expect(buildNeutral([".github/actions/setup-rust/action.yml"])).toBe(false);
+  expect(buildNeutral(["src/main.tsx"])).toBe(false);
+  expect(buildNeutral(["src-tauri/Cargo.toml"])).toBe(false);
 });

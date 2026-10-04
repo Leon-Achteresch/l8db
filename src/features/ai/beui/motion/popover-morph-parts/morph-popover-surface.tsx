@@ -13,7 +13,7 @@ import {
 
 export function MorphPopoverSurface({
   children,
-  side = "bottom",
+  side: preferredSide = "bottom",
   align = "end",
   sideOffset = 8,
   radius = 16,
@@ -23,15 +23,38 @@ export function MorphPopoverSurface({
   const reduce = useReducedMotion() ?? false;
   const [isPresent, safeToRemove] = usePresence();
   const layout = usePopoverPortalPosition(ctx.triggerRef, ctx.contentRef, isPresent);
+  const margin = 8;
+  const below = layout ? layout.trigger.top + layout.trigger.height + sideOffset : 0;
+  const above = layout ? layout.trigger.top - layout.content.height - sideOffset : 0;
+  const fitsBelow = layout ? below + layout.content.height <= window.innerHeight - margin : true;
+  const fitsAbove = above >= margin;
+  const side =
+    preferredSide === "bottom"
+      ? fitsBelow || !fitsAbove
+        ? "bottom"
+        : "top"
+      : fitsAbove || !fitsBelow
+        ? "top"
+        : "bottom";
   const left = layout
-    ? align === "end"
-      ? layout.trigger.left + layout.trigger.width - layout.content.width
-      : layout.trigger.left
+    ? Math.max(
+        margin,
+        Math.min(
+          align === "end"
+            ? layout.trigger.left + layout.trigger.width - layout.content.width
+            : layout.trigger.left,
+          window.innerWidth - layout.content.width - margin,
+        ),
+      )
     : 0;
   const top = layout
-    ? side === "bottom"
-      ? layout.trigger.top + layout.trigger.height + sideOffset
-      : layout.trigger.top - layout.content.height - sideOffset
+    ? Math.max(
+        margin,
+        Math.min(
+          side === "bottom" ? below : above,
+          window.innerHeight - layout.content.height - margin,
+        ),
+      )
     : 0;
   const wrap = reduce
     ? undefined

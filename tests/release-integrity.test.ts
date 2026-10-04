@@ -168,6 +168,16 @@ describe("release artifact integrity", () => {
     bytes.writeUInt16LE(0x8664, 68);
     expect(() => verifyExecutable(bytes, "windows-x86_64")).not.toThrow();
   });
+  test("accepts thin macOS executables only for their own architecture", () => {
+    const bytes = Buffer.alloc(64);
+    bytes.writeUInt32LE(0xfeedfacf, 0);
+    bytes.writeUInt32LE(0x0100000c, 4);
+    expect(() => verifyExecutable(bytes, "darwin-arm64")).not.toThrow();
+    expect(() => verifyExecutable(bytes, "darwin-x86_64")).toThrow("Wrong macOS architecture");
+    bytes.writeUInt32LE(0x01000007, 4);
+    expect(() => verifyExecutable(bytes, "darwin-x86_64")).not.toThrow();
+    expect(() => verifyExecutable(bytes, "darwin-universal")).toThrow();
+  });
   test("accepts the minisign-verify upstream prehashed compatibility vector", async () => {
     const file = join(temporary(), "test");
     writeFileSync(file, "test");

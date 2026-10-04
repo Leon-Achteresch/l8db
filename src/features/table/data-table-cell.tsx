@@ -189,7 +189,7 @@ export const DataTableCell = memo(function DataTableCell({
             "after:pointer-events-none after:absolute after:inset-0 after:-z-10 after:bg-[var(--cell-tint)]",
             isMarked
               ? "bg-[color-mix(in_oklab,var(--primary)_10%,var(--background))]"
-              : "bg-background row-hover:bg-[color-mix(in_oklab,var(--muted)_15%,var(--background))]",
+              : "bg-[var(--row-bg,var(--background))] row-hover:bg-[color-mix(in_oklab,var(--muted)_15%,var(--row-bg,var(--background)))]",
           ),
         !isSticky && isSelected && "bg-primary/10",
         !isSticky && isMatch && "bg-amber-400/15",

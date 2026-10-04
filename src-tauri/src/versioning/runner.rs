@@ -19,6 +19,8 @@ pub struct Request {
     pub target_id: String,
     pub run_id: String,
     pub artifact: String,
+    #[serde(default)]
+    pub promotion: Vec<super::delivery::Promotion>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,12 +185,9 @@ async fn identity(
     expected: &Value,
     transactions: &db::transaction::TransactionState,
 ) -> Result<(), String> {
-    let sql = if connection.kind == DatabaseKind::Postgres {
-        "SELECT current_database() AS \"database\", current_user AS \"user\", COALESCE(inet_server_addr()::text, 'local') AS \"server\", inet_server_port()::text AS \"port\", NULL::text AS \"edition\""
-    } else {
-        "SELECT SYS_CONTEXT('USERENV', 'DB_UNIQUE_NAME') AS \"database\", SYS_CONTEXT('USERENV', 'SESSION_USER') AS \"user\", SYS_CONTEXT('USERENV', 'SERVER_HOST') AS \"server\", SYS_CONTEXT('USERENV', 'CON_NAME') AS \"port\", SYS_CONTEXT('USERENV', 'CURRENT_EDITION_NAME') AS \"edition\" FROM dual"
-    };
-    let actual = transactions.execute(tx, sql).await?;
+    let actual = transactions
+        .execute(tx, super::seeds::identity_sql(connection.kind))
+        .await?;
     if actual.rows.len() != 1 || actual.rows[0] != *expected {
         return Err(
             "Ausführungssitzung zeigt auf eine andere Datenbank, Rolle oder Edition".into(),
@@ -216,11 +215,11 @@ async fn authorize(
         schemas: vec![],
         tx_id: None,
     };
-    let current = control::handle(control, pool, transactions).await?;
-    if let Some(target) = shared {
-        super::team::verify_policy(&target, &current["policy"])?;
+    let current = control::handle(control, pool.clone(), transactions).await?;
+    if let Some(shared) = &shared {
+        super::team::verify_policy(&shared.target, &current["policy"])?;
     }
-    Ok(())
+    super::delivery::verify(request, shared.as_ref(), &current["policy"], pool).await
 }
 #[cfg(test)]
 pub static LOST_COMMIT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);

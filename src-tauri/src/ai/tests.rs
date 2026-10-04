@@ -37,6 +37,7 @@ fn request() -> RunRequest {
         servers: vec![],
         allow_writes: true,
         allow_ddl: true,
+        attachments: vec![],
     }
 }
 
@@ -74,6 +75,7 @@ fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
     });
     (
         Run {
+            scope: Default::default(),
             id: "fixture-run".into(),
             owner: "fixture-window".into(),
             plan_only: false,
@@ -1123,4 +1125,58 @@ async fn external_http_mcp_returns_matching_sse_response_before_eof() {
             "tools/call"
         ]
     );
+}
+
+#[test]
+fn default_model_prefers_current_chat_models() {
+    let ids = |list: &[&str]| list.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        super::byok::pick_model(
+            "openai",
+            &ids(&[
+                "whisper-1",
+                "gpt-4o-mini",
+                "gpt-5-mini",
+                "gpt-5",
+                "gpt-4o-mini-tts"
+            ])
+        )
+        .as_deref(),
+        Some("gpt-5-mini")
+    );
+    assert_eq!(
+        super::byok::pick_model(
+            "anthropic",
+            &ids(&[
+                "claude-opus-4-1",
+                "claude-sonnet-4-20250514",
+                "claude-sonnet-4-5-20250929"
+            ])
+        )
+        .as_deref(),
+        Some("claude-sonnet-4-5-20250929")
+    );
+    assert_eq!(
+        super::byok::pick_model(
+            "google",
+            &ids(&[
+                "gemini-2.0-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro"
+            ])
+        )
+        .as_deref(),
+        Some("gemini-2.5-flash")
+    );
+    assert_eq!(
+        super::byok::pick_model("ollama", &ids(&["nomic-embed-text", "llama3.2:latest"]))
+            .as_deref(),
+        Some("llama3.2:latest")
+    );
+    assert_eq!(
+        super::byok::pick_model("lmstudio", &ids(&["qwen2.5-7b-instruct"])).as_deref(),
+        Some("qwen2.5-7b-instruct")
+    );
+    assert_eq!(super::byok::pick_model("ollama", &[]), None);
 }

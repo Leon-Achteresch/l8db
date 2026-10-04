@@ -163,6 +163,56 @@ test("Oracle specification and body are separate compilation units", () => {
   ]);
 });
 
+test("Oracle PL/SQL units end at their closing END without a slash", () => {
+  const spec = `CREATE OR REPLACE PACKAGE demo AS
+  PROCEDURE run;
+  FUNCTION calc(x NUMBER) RETURN NUMBER;
+END demo;`;
+  const body = `CREATE OR REPLACE PACKAGE BODY demo AS
+  PROCEDURE log_it(msg VARCHAR2);
+  PROCEDURE log_it(msg VARCHAR2) IS
+    PROCEDURE inner IS BEGIN NULL; END;
+  BEGIN
+    inner;
+  END log_it;
+  FUNCTION calc(x NUMBER) RETURN NUMBER IS
+    v NUMBER := CASE WHEN x > 1 THEN 1 ELSE 0 END;
+  BEGIN
+    CASE v WHEN 1 THEN v := 2; ELSE v := 3; END CASE;
+    FOR i IN 1..2 LOOP v := v + i; END LOOP;
+    RETURN v;
+  END;
+  PROCEDURE run IS BEGIN log_it('x'); END run;
+BEGIN
+  run;
+END demo;`;
+  const proc = `CREATE OR REPLACE PROCEDURE outer_p IS
+  PROCEDURE inner_p IS BEGIN NULL; END inner_p;
+BEGIN
+  inner_p;
+EXCEPTION WHEN OTHERS THEN NULL;
+END outer_p;`;
+  const block =
+    "DECLARE n NUMBER; BEGIN n := 1; $IF DBMS_DB_VERSION.VER_LE_12 $THEN NULL; $END END;";
+  const typeSpec =
+    "CREATE OR REPLACE TYPE demo_t AS OBJECT (id NUMBER, MEMBER FUNCTION f RETURN NUMBER);";
+  const typeBody = `CREATE OR REPLACE TYPE BODY demo_t AS
+  MEMBER FUNCTION f RETURN NUMBER IS BEGIN RETURN id; END;
+END;`;
+  const sql = [spec, body, proc, block, typeSpec, typeBody, "SELECT demo.calc(2) FROM DUAL;"].join(
+    "\n\n",
+  );
+  expect(splitSqlStatements(sql, "oracle").statements.map((s) => s.text)).toEqual([
+    spec,
+    body,
+    proc,
+    block,
+    typeSpec,
+    typeBody,
+    "SELECT demo.calc(2) FROM DUAL;",
+  ]);
+});
+
 test("Oracle anonymous blocks and stored routines retain inner semicolons", () => {
   for (const sql of [
     "BEGIN NULL; END;",

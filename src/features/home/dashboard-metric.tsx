@@ -13,16 +13,16 @@ interface Props {
 
 export function DashboardMetric({ label, value, loading, error, icon: Icon }: Props) {
   return (
-    <div className="min-w-0 px-5 py-5">
+    <div className="flex min-w-0 flex-col justify-center px-4 py-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon className="size-3.5 text-primary" />
+        <Icon className="size-3.5" />
         {label}
       </div>
       {loading ? (
-        <Skeleton className="mt-3 h-8 w-12" />
+        <Skeleton className="mt-1.5 h-7 w-12" />
       ) : (
         <p
-          className="mt-2 text-3xl font-medium tracking-tight"
+          className="mt-1 text-2xl font-semibold tracking-tight tabular-nums"
           title={error ? "Konnte nicht geladen werden" : undefined}
         >
           {error ? "—" : metricFormatter.format(value ?? 0)}

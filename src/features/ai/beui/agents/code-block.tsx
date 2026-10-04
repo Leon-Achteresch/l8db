@@ -1,5 +1,5 @@
 "use client";
-import { Check, Copy, FileCode2, LoaderCircle } from "lucide-react";
+import { Check, Copy, FileCode2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import {
   type ReactNode,
@@ -100,21 +100,6 @@ export function CodeBlock({
         <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/55">
           {language}
         </span>
-        <span
-          className={cn(
-            "ml-auto inline-flex shrink-0 items-center gap-1 text-[10px] font-medium",
-            streaming
-              ? "text-blue-600 dark:text-blue-400"
-              : "text-emerald-600 dark:text-emerald-400",
-          )}
-        >
-          {streaming ? (
-            <LoaderCircle className={cn("size-3", !reduce && "animate-spin")} />
-          ) : (
-            <Check className="size-3" />
-          )}
-          {streaming ? "Writing" : "Ready"}
-        </span>
         {copyable || onCopy ? (
           <motion.button
             type="button"
@@ -123,7 +108,7 @@ export function CodeBlock({
             onClick={handleCopy}
             whileTap={reduce ? undefined : { scale: 0.9 }}
             transition={SPRING_PRESS}
-            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="ml-auto grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
           </motion.button>

@@ -110,6 +110,14 @@ pub fn validate_seed(sql: &str, schema: &str, kind: DatabaseKind) -> Result<Vec<
     Ok(statements)
 }
 
+pub(super) fn identity_sql(kind: DatabaseKind) -> &'static str {
+    if kind == DatabaseKind::Postgres {
+        "SELECT current_database() AS \"database\", current_user AS \"user\", COALESCE(inet_server_addr()::text, 'local') AS \"server\", inet_server_port()::text AS \"port\", NULL::text AS \"edition\""
+    } else {
+        "SELECT SYS_CONTEXT('USERENV', 'DB_UNIQUE_NAME') AS \"database\", SYS_CONTEXT('USERENV', 'SESSION_USER') AS \"user\", SYS_CONTEXT('USERENV', 'SERVER_HOST') AS \"server\", SYS_CONTEXT('USERENV', 'CON_NAME') AS \"port\", SYS_CONTEXT('USERENV', 'CURRENT_EDITION_NAME') AS \"edition\" FROM dual"
+    }
+}
+
 pub(super) fn physical_key(kind: DatabaseKind, schema: &str, row: &Value) -> String {
     let text = format!(
         "{{\"kind\":{},\"database\":{},\"server\":{},\"port\":{},\"schema\":{},\"edition\":{}}}",
@@ -258,12 +266,7 @@ pub async fn run(
         } else {
             transactions.versioning_oracle_timeout(&tx, 60000).await?;
         }
-        let context = if c.kind == DatabaseKind::Postgres {
-            "SELECT current_database() AS \"database\", current_user AS \"user\", COALESCE(inet_server_addr()::text, 'local') AS \"server\", inet_server_port()::text AS \"port\", NULL::text AS \"edition\""
-        } else {
-            "SELECT SYS_CONTEXT('USERENV', 'DB_UNIQUE_NAME') AS \"database\", SYS_CONTEXT('USERENV', 'SESSION_USER') AS \"user\", SYS_CONTEXT('USERENV', 'SERVER_HOST') AS \"server\", SYS_CONTEXT('USERENV', 'CON_NAME') AS \"port\", SYS_CONTEXT('USERENV', 'CURRENT_EDITION_NAME') AS \"edition\" FROM dual"
-        };
-        let identity = transactions.execute(&tx, context).await?;
+        let identity = transactions.execute(&tx, identity_sql(c.kind)).await?;
         let row = identity.rows.first().ok_or("Datenbankidentität fehlt.")?;
         let key = physical_key(c.kind, &c.schema, row);
         if let Some(shared) = shared_target {

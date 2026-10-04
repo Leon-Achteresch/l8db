@@ -1,4 +1,4 @@
-import { Columns2, Maximize2, Minimize2, PanelBottom } from "lucide";
+import { Maximize2, Minimize2 } from "lucide";
 import { GaugeIcon, PanelLeftIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import type { ReactNode } from "react";
@@ -51,26 +51,6 @@ export function ToolbarViewControls({
       >
         <GaugeIcon className="size-3.5" />
         Analyse
-      </Button>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        title={
-          workspace.layout === "vertical"
-            ? "Ergebnisse rechts anzeigen"
-            : "Ergebnisse unten anzeigen"
-        }
-        aria-label="Aufteilung wechseln"
-        onClick={() =>
-          workspace.update({
-            layout: workspace.layout === "vertical" ? "horizontal" : "vertical",
-          })
-        }
-      >
-        <MorphIcon
-          icon={workspace.layout === "vertical" ? Columns2 : PanelBottom}
-          className="size-3.5"
-        />
       </Button>
       <Button
         size="icon-sm"

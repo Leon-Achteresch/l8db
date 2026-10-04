@@ -28,6 +28,8 @@ fn base(profile: &Profile) -> Result<String, String> {
             "openai" => "https://api.openai.com/v1",
             "anthropic" => "https://api.anthropic.com/v1",
             "google" => "https://generativelanguage.googleapis.com/v1beta",
+            "ollama" => "http://localhost:11434/v1",
+            "lmstudio" => "http://localhost:1234/v1",
             "compatible" => return Err("API-Endpunkt fehlt".into()),
             _ => return Err("Unbekannter API-Provider".into()),
         }
@@ -38,9 +40,99 @@ fn base(profile: &Profile) -> Result<String, String> {
         .into())
 }
 
+pub fn keyless(provider: &str) -> bool {
+    matches!(provider, "compatible" | "ollama" | "lmstudio")
+}
+
+pub fn local(provider: &str) -> bool {
+    matches!(provider, "ollama" | "lmstudio")
+}
+
+pub async fn reachable(profile: &Profile) -> bool {
+    let Ok(base) = base(profile) else {
+        return false;
+    };
+    let Ok(client) = integrations::client() else {
+        return false;
+    };
+    tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        client.get(format!("{base}/models")).send(),
+    )
+    .await
+    .is_ok_and(|response| response.is_ok_and(|response| response.status().is_success()))
+}
+
+pub fn pick_model(provider: &str, ids: &[String]) -> Option<String> {
+    const SKIP: [&str; 18] = [
+        "embed",
+        "audio",
+        "realtime",
+        "transcribe",
+        "tts",
+        "image",
+        "dall-e",
+        "whisper",
+        "moderation",
+        "search",
+        "instruct",
+        "babbage",
+        "davinci",
+        "computer-use",
+        "live",
+        "lite",
+        "nano",
+        "guard",
+    ];
+    let usable: Vec<&String> = ids
+        .iter()
+        .filter(|id| {
+            let id = id.to_ascii_lowercase();
+            if local(provider) {
+                !id.contains("embed")
+            } else {
+                !SKIP.iter().any(|word| id.contains(word))
+            }
+        })
+        .collect();
+    let preferred: &[(&str, &str)] = match provider {
+        "openai" => &[("gpt-", "mini"), ("gpt-", "")],
+        "anthropic" => &[("sonnet", ""), ("opus", ""), ("haiku", "")],
+        "google" => &[("gemini", "flash"), ("gemini", "pro")],
+        _ => &[],
+    };
+    for (first, second) in preferred {
+        if let Some(id) = usable
+            .iter()
+            .filter(|id| id.contains(first) && id.contains(second))
+            .max()
+        {
+            return Some(id.to_string());
+        }
+    }
+    usable.first().map(|id| id.to_string())
+}
+
+async fn default_model(profile: &Profile) -> Result<String, String> {
+    let list = models(profile).await?;
+    let ids: Vec<String> = list["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|model| model["id"].as_str().map(str::to_string))
+        .collect();
+    pick_model(&profile.provider, &ids).ok_or_else(|| {
+        if local(&profile.provider) {
+            "Kein Modell geladen. Im lokalen Server zuerst ein Modell laden.".into()
+        } else {
+            "Kein passendes Modell gefunden. Modell im Auswahlmenü wählen.".into()
+        }
+    })
+}
+
 async fn key(profile: &Profile) -> Result<Option<String>, String> {
     let key = crate::db::secrets::load_secret(format!("ai:{}:key", profile.id)).await?;
-    if key.is_none() && profile.provider != "compatible" {
+    if key.is_none() && !keyless(&profile.provider) {
         return Err("API-Schlüssel fehlt. Im Provider speichern.".into());
     }
     Ok(key)
@@ -509,26 +601,25 @@ pub async fn run(
 ) -> Result<(), String> {
     let key = key(&request.profile).await?;
     let client = integrations::client()?;
+    let mut profile = request.profile.clone();
+    if profile.model.trim().is_empty() {
+        profile.model = default_model(&profile).await?;
+        run.emit("metadata", json!({"model": profile.model}));
+    }
+    let profile = &profile;
     let mut messages: Vec<Value> = request
         .messages
         .iter()
         .map(|message| json!({"role": message.role, "content": message.text}))
         .collect();
-    let mut tools = crate::mcp::server::tool_definitions()
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let mut tools = super::context::tool_definitions();
     tools.extend(external.tools.clone());
     for round in 1..=12 {
-        let (url, body) = payload(&request.profile, instructions, &messages, &tools)?;
-        let response = auth(
-            client.post(url).json(&body),
-            &request.profile,
-            key.as_deref(),
-        )
-        .send()
-        .await
-        .map_err(|_| "Provider nicht erreichbar. Netzwerk und API-Endpunkt prüfen.")?;
+        let (url, body) = payload(profile, instructions, &messages, &tools)?;
+        let response = auth(client.post(url).json(&body), profile, key.as_deref())
+            .send()
+            .await
+            .map_err(|_| "Provider nicht erreichbar. Netzwerk und API-Endpunkt prüfen.")?;
         if !response.status().is_success() {
             return Err(format!(
                 "Provider: HTTP {}. Anmeldung, Modell und Kontingent prüfen.",
@@ -558,11 +649,11 @@ pub async fn run(
             }
             buffer.extend_from_slice(&chunk);
             while let Some(bytes) = frame(&mut buffer) {
-                consume(&bytes, &request.profile.provider, &mut result, run)?;
+                consume(&bytes, &profile.provider, &mut result, run)?;
             }
         }
         if !buffer.is_empty() {
-            consume(&buffer, &request.profile.provider, &mut result, run)?;
+            consume(&buffer, &profile.provider, &mut result, run)?;
         }
         if !result.complete {
             return Err("Provider-Stream wurde vor dem Abschluss unterbrochen. Es wurden keine weiteren Tools ausgeführt.".into());
@@ -588,10 +679,10 @@ pub async fn run(
         let tool_calls: Vec<Value> = calls.iter().map(|call| { let mut value = json!({"id": call.id, "type": "function", "function": {"name": call.name, "arguments": if call.arguments.is_empty() { "{}" } else { &call.arguments }}}); if let Some(signature) = &call.signature { value["signature"] = signature.clone(); } value }).collect();
         let mut assistant =
             json!({"role": "assistant", "content": result.text, "tool_calls": tool_calls});
-        if request.profile.provider == "anthropic" {
+        if profile.provider == "anthropic" {
             assistant["nativeContent"] = json!(native_content);
         }
-        if request.profile.provider != "google" {
+        if profile.provider != "google" {
             for call in assistant["tool_calls"].as_array_mut().into_iter().flatten() {
                 if let Some(object) = call.as_object_mut() {
                     object.remove("signature");

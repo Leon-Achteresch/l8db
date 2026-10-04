@@ -3,6 +3,7 @@ import { Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { isConnectionQuery } from "@/lib/query-client";
+import { useSessionViewsStore } from "@/lib/session-views";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ export async function disconnectActiveConnection(queryClient?: QueryClient): Pro
     });
   }
   const ok = await activateConnectionWithToast(null);
+  if (ok) useSessionViewsStore.getState().clearConnection(id);
   if (ok && queryClient) {
     await queryClient.cancelQueries({
       predicate: (query) => isConnectionQuery(query.queryKey, id),

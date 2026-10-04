@@ -1,8 +1,5 @@
 use super::runtime::Run;
-use crate::mcp::{
-    config::McpConfig,
-    server::{tool_definitions, Server},
-};
+use crate::mcp::{config::McpConfig, server::Server};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -33,7 +30,7 @@ async fn dispatch(
             json!({"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "l8db_ai", "version": env!("CARGO_PKG_VERSION")}, "instructions": format!("Use l8db_ai tools for database access and respect their policies. Only selected connections are available; the first is the primary database. Current connections: {}", config.connections.iter().map(|connection| json!({"id": connection.id, "name": connection.name, "kind": connection.kind, "database": connection.database, "schemas": connection.schemas})).collect::<Vec<_>>().iter().map(Value::to_string).collect::<Vec<_>>().join(", "))})
         }
         "tools/list" => {
-            let mut tools = tool_definitions().as_array().cloned().unwrap_or_default();
+            let mut tools = super::context::tool_definitions();
             tools.extend(external.lock().await.tools.clone());
             json!({"tools": tools})
         }

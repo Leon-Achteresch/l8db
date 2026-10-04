@@ -73,3 +73,11 @@ export function versioningRunFleet(requests: Record<string, unknown>[]): Promise
   }
   return invoke("versioning_run_fleet", { requests });
 }
+
+export function versioningForge<T>(request: Record<string, unknown>): Promise<T> {
+  return invoke("versioning_forge", { request });
+}
+
+export function versioningDelivery<T>(request: Record<string, unknown>): Promise<T> {
+  return invoke("versioning_delivery", { request });
+}

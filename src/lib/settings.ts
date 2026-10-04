@@ -11,6 +11,8 @@ export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | 
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
+export type SidebarObjectNav = "tabs" | "select";
+
 export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
   | "system"
@@ -79,11 +81,13 @@ export interface SettingsState {
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
   hideOwnSchemaSelect: boolean;
+  sidebarObjectNav: SidebarObjectNav;
   searchIncludeColumns: boolean;
   uiDensity: UiDensity;
   uiScale: number;
   sidebarExtraCompact: boolean;
   navInHeader: boolean;
+  dynamicIsland: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   connectionTimeout: number;
@@ -134,12 +138,14 @@ export interface SettingsState {
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
   setHideOwnSchemaSelect: (value: boolean) => void;
+  setSidebarObjectNav: (value: SidebarObjectNav) => void;
   setSearchIncludeColumns: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setUiScale: (v: number) => void;
   resetAppearance: () => void;
   setSidebarExtraCompact: (value: boolean) => void;
   setNavInHeader: (value: boolean) => void;
+  setDynamicIsland: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setConnectionTimeout: (v: number) => void;
@@ -215,13 +221,15 @@ const DEFAULT_SETTINGS = {
   highlightNullValues: true,
   translateFilterOperators: true,
   hideOwnSchemaSelect: true,
+  sidebarObjectNav: "tabs" as SidebarObjectNav,
   searchIncludeColumns: true,
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
   sidebarExtraCompact: false,
   navInHeader: false,
+  dynamicIsland: true,
   fitColumnsToHeader: true,
-  monochromeCells: false,
+  monochromeCells: true,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -298,11 +306,13 @@ export const useSettingsStore = create<SettingsState>()(
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
+      setSidebarObjectNav: (sidebarObjectNav) => set({ sidebarObjectNav }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
       setNavInHeader: (navInHeader) => set({ navInHeader }),
+      setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       resetAppearance: () =>
@@ -311,8 +321,9 @@ export const useSettingsStore = create<SettingsState>()(
           uiDensity: "normal",
           sidebarExtraCompact: false,
           navInHeader: false,
+          dynamicIsland: true,
           fitColumnsToHeader: true,
-          monochromeCells: false,
+          monochromeCells: true,
         }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -344,9 +355,11 @@ export const useSettingsStore = create<SettingsState>()(
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,
+          sidebarObjectNav: saved?.sidebarObjectNav === "select" ? "select" : "tabs",
           navInHeader: saved?.navInHeader === true,
+          dynamicIsland: saved?.dynamicIsland !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
-          monochromeCells: saved?.monochromeCells === true,
+          monochromeCells: saved?.monochromeCells !== false,
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
         };
       },

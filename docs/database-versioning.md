@@ -2,11 +2,13 @@
 
 Die Ansicht **Versionierung** verbindet ein lokales Git-Repository mit SQL-Datenbanken (PostgreSQL, Oracle, MySQL/MariaDB, SQL Server, SQLite, DuckDB, ClickHouse). Das Modell ist zustandsbasiert wie bei Redgate SQL Source Control, dbForge Source Control oder DataGrip-DDL-Mappings: Pro Objekt liegt eine Definitionsdatei im Repository. Releases, Kunden-Deployments und Development-Seeds gibt es für PostgreSQL und Oracle; bei den übrigen Familien sind die Tabs **Releases**, **Kunden** und **Seeds** ausgeblendet. Ein Git-Branch beschreibt einen Entwicklungsstand. Jede verbundene Datenbank hat unabhängig davon einen geprüften Release-Stand. Branch-Wechsel führen kein SQL aus.
 
+Der Bereich **Datenbank** der Versionierung bietet Branches, verschlüsselte Sicherungen und Wiederherstellungen direkt auf dem PostgreSQL-Server nach dem Vorbild von Neon; siehe [Datenbank-Branching](database-branching.md). Dieses Dokument beschreibt den Bereich **Git & Releases**.
+
 Die [Erweiterung für den produktiven Betrieb](database-versioning-operations.md) beschreibt Release-Linien, Update-Regeln, Datenprüfungen, Sitzungs- und Zeitlimits, Oracle-Metadaten sowie die zugrunde liegende Web-Recherche und verbleibende Grenzen.
 
 Die [Sicherheitsbewertung für den Unternehmenseinsatz](database-versioning-enterprise-review.md) nennt verbindliche offene Punkte und die tatsächlich durchgeführten nativen Labortests. Für einen regulierten Unternehmenseinsatz besteht noch keine Produktionsfreigabe.
 
-Das Git-Symbol oben rechts öffnet die zuletzt verwendete Ansicht. Der Umschalter im Kopf der Versionierung wechselt zwischen Seitenpanel und einem eigenen Tab im Arbeitsbereich. Entwürfe, Zielauswahl und geprüfte Rollout-Pläne bleiben dabei erhalten. Im Panel bleibt der bisherige Arbeitsbereich sichtbar; Transaktionspanel und Versionierung wechseln sich ab. Die Tabs **Übersicht**, **Branches**, **Änderungen**, **Releases**, **Kunden**, **Seeds** und **Aktivität** trennen den nächsten Arbeitsschritt, Git-Verlauf, Dateien, Release-Erstellung, Rollouts und Beispieldaten. Alle Auswahllisten sind durchsuchbar und per Tastatur bedienbar.
+Das Git-Symbol oben rechts öffnet die zuletzt verwendete Ansicht. Der Umschalter im Kopf der Versionierung wechselt zwischen Seitenpanel und einem eigenen Tab im Arbeitsbereich. Entwürfe, Zielauswahl und geprüfte Rollout-Pläne bleiben dabei erhalten. Im Panel bleibt der bisherige Arbeitsbereich sichtbar; Transaktionspanel und Versionierung wechseln sich ab. Die Tabs **Übersicht**, **Branches**, **Änderungen**, **Reviews**, **Releases**, **Auslieferung**, **Kunden**, **Seeds** und **Aktivität** trennen den nächsten Arbeitsschritt, Git-Verlauf, Dateien, Pull Requests, Release-Erstellung, den Weg über Test nach Produktion, Rollouts und Beispieldaten. Alle Auswahllisten sind durchsuchbar und per Tastatur bedienbar.
 
 Die **Übersicht** zeigt offene Git-Dateien, Release-Entwürfe und Ziele mit Aufgaben. Sie führt von der Schema-Aufnahme über Baseline und Migration zu Kundenzuordnung und Rollout. Fehlende Baselines und ungeklärte Deployments werden als konkrete Aufgaben aufgeführt. Nur commitete Releases derselben Vorgängerkette zählen als verfügbare Updates.
 
@@ -18,7 +20,7 @@ Das Badge zählt geänderte Git-Dateien, einen ungespeicherten Entwurf sowie Zie
 2. Mit der aktiven SQL-Verbindung ein Projekt anlegen.
 3. In **Änderungen** eine Entwicklungsdatenbank (Verbindung, Datenbank, Schema) verknüpfen. Mit **Verknüpfung in Git speichern** wird die Quelle pro Git-Branch in `database/team.json` geteilt. Verbindungsreferenzen werden auf jedem Rechner ausdrücklich einem lokalen Profil zugeordnet. Ein unter **Branches** zugeordnetes Development-Ziel wird als Quelle angeboten.
 4. **Vergleichen** liest alle unterstützten Objekte des Schemas und zeigt pro Objekt, ob es in der Datenbank abweicht, neu ist oder fehlt, jeweils mit Diff Repository ↔ Datenbank. Ausgewählte Objekte mit **Ins Repository übernehmen** speichern: Neue Objekte werden in `project.json` aufgenommen, in der Datenbank fehlende Objekte samt Datei entfernt. Für die Gegenrichtung öffnet **Repository-Stand im Editor** die gespeicherte Definition als SQL-Tab; ausgeführt wird dabei nichts automatisch.
-5. Unter **Repository** die Dateien prüfen, bearbeiten und gezielt oder mit **Alle für Commit** committen. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
+5. Unter **Commit** sind alle offenen Dateien vorausgewählt: Nachricht eingeben und **Commit** klicken. Einzelne Dateien lassen sich abwählen, anklicken öffnet den Diff zum Bearbeiten. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
 
 Ab hier nur PostgreSQL und Oracle:
 
@@ -59,13 +61,60 @@ Unterschiedliche Versionsstände benötigen keine dauerhaften Kundenbranches. Ab
 
 Für solche Varianten unterstützt der Dateieditor einen Drei-Wege-Merge: gemeinsamer Basis-Commit, neuer Produkt-Commit und aktueller Kundenentwurf. Konflikte bleiben sichtbar und müssen aufgelöst werden. Das Ergebnis kann als eigener Release mit passender Vorgängerkette gepflegt werden. Ein Kundenrelease darf keine Migrationen aus einer fremden Vorgängerkette überspringen. l8db übernimmt keine automatische fachliche Zusammenführung kundenspezifischer Logik.
 
+## Ein Repository für viele Kunden: Reviews und Auslieferung
+
+Alle Kunden eines Produkts teilen ein Git-Repository mit dem Remote `origin` auf GitHub (auch Enterprise Server), GitLab, Azure DevOps oder Gitea/Forgejo. Änderungen gelangen nur über Pull Requests in den Hauptbranch, also den Standardbranch des Remotes. Jeder Kunde hat getrennte Verbindungen für Test- und Produktivsystem, gegebenenfalls auf verschiedenen Servern.
+
+1. Auf einem Feature-Branch entwickeln und den Release festschreiben, wie oben beschrieben.
+2. **Reviews → Pull Request erstellen** veröffentlicht den Branch und öffnet einen Pull Request in den Hauptbranch. Die Beschreibung ist vorbefüllt mit Releases, Migrationen, erkannten Risiken, geänderten Dateien und einer Prüfliste.
+3. Kolleginnen und Kollegen prüfen unter **Reviews** oder auf der Plattform: geänderte Dateien unter `database/` als Diff, **Freigeben**, **Änderungen anfordern** oder **Kommentieren**. Eigene Pull Requests lassen sich nicht freigeben. **Mergen** ist gesperrt bei Entwürfen, fehlender Freigabe, angeforderten Änderungen, laufenden oder fehlgeschlagenen Prüfungen und Konflikten. Zur Auswahl stehen Merge-Commit und Squash.
+4. **Auslieferung** zeigt je Kunde Test- und Produktivsystem mit aktuellem Release. **Ausliefern** übergibt die Ziele und den neuesten Release ihrer Release-Linie an **Kunden**; Planung, SQL-Vorschau, Freigaben und Rollout laufen dort unverändert. **Alle Testsysteme** und **Alle Produktivsysteme** bündeln alle offenen Ziele einer Stufe. Ist lokal ein anderer Branch geöffnet oder weicht der Stand vom Remote ab, bietet die Ansicht den Wechsel auf den aktuellen Hauptbranch an. Steht der nächste Release noch auf keinem Testsystem des Kunden, weist die Produktionsspalte darauf hin.
+5. **Kunde anlegen** legt Test- und Produktivsystem in einem Schritt an. Die Stufe (`development`, `test`, `production`) wird mit dem Ziel in `database/team.json` gespeichert. Ältere Ziele ohne Stufe gelten anhand des Produktionskennzeichens beziehungsweise des Umgebungsnamens als Produktion, Entwicklung oder Test. Als Testnachweis zählen nur ausdrücklich als Test gekennzeichnete Ziele.
+
+### Git-Plattform verbinden
+
+Der Zugangstoken liegt im OS-Schlüsselbund unter `versioning-forge:<host>` und wird ausschließlich an den Host von `origin` gesendet. Verbindungen erfolgen nur über HTTPS (HTTP nur auf Loopback), ohne Weiterleitungen und mit begrenzter Antwortgröße. Fehlermeldungen enthalten den Token nicht. Selbst betriebene Instanzen werden beim Verbinden einer Plattform zugeordnet.
+
+- GitHub: Classic Token mit `repo` oder Fine-grained Token mit Lesezugriff auf Inhalte und Schreibzugriff auf Pull Requests.
+- GitLab: persönlicher Zugangstoken mit `api`.
+- Azure DevOps: persönlicher Zugangstoken mit `Code: Read & write`.
+- Gitea/Forgejo: Token mit Lese- und Schreibrechten für Repositorys und Lesezugriff auf den Benutzer.
+
+### Auslieferungsregeln in der Zieldatenbank
+
+Unter **Kunden → Update-Regeln** legt ein Regeladministrator je Zieldatenbank fest, was ausgeliefert werden darf. Die Regeln liegen mit Revision und Journaleintrag in `L8DB_VERSIONING_POLICY` der Zieldatenbank, nicht im Repository. Wer Repository oder Teamkonfiguration ändert, kann sie daher nicht abschwächen.
+
+- **Nur gemergte Releases aus dem Hauptbranch** bindet die Datenbank an ein Repository (`host/pfad` von `origin`).
+- **Review verlangen** setzt eine Mindestanzahl von 1 bis 10 Freigaben im gemergten Pull Request.
+- **Vorher auf Test** gilt nur für Produktion: Derselbe Release muss auf einem Testsystem desselben Kunden fehlerfrei ausgeliefert sein.
+
+Vor jedem Rollout, einzeln und in Wellen, prüft das Backend unmittelbar vor dem ersten Schreibzugriff:
+
+1. **Repository**: `origin` entspricht dem gebundenen Repository.
+2. **Im Hauptbranch**: Der Release-Commit ist Vorfahre des aktuellen Standardbranches, der per `git ls-remote` direkt vom Remote gelesen wird. Der Commit muss lokal vorliegen; sonst zuerst abrufen.
+3. **Review**: Jeder Commit des Hauptbranches (First-Parent), der die Release-Datei berührt, benötigt einen gemergten Pull Request mit ausreichend vielen aktuellen Freigaben anderer Personen und ohne offene Änderungsanforderung. Direkt gepushte Release-Dateien fallen durch.
+4. **Vorher auf Test**: Die Verbindung des Testsystems muss zur Teamkonfiguration passen (Server, Datenbank, Schema und geprüfte physische Identität). Sein Ledger muss denselben Release-Hash im Status fertig und ohne laufende Sperre zeigen.
+
+Der Plan unter **Kunden** zeigt diese Prüfungen mit den gefundenen Pull Requests. Der erste nicht erfüllte Punkt blockiert den Rollout.
+
+### Empfehlungen und Grenzen
+
+- Auf der Plattform Branch-Schutz für den Hauptbranch aktivieren: keine direkten Pushes, verpflichtende Freigaben und bei GitLab und Azure DevOps das Zurücksetzen von Freigaben nach neuen Commits. Dort sind Freigaben nicht an einen Commit gebunden; GitHub und Gitea werten nur Reviews auf dem letzten Commit.
+- Die Review-Regel prüft Release-Dateien. Direkte Pushes und Änderungen an `database/team.json`, etwa an den Testsystemen, schließt nur der Branch-Schutz der Plattform vollständig aus.
+- Releases, die vor Einführung der Review-Regel ohne Pull Request in den Hauptbranch kamen, erfüllen sie nicht. Solche Stände vorher ausliefern oder die Regel vorübergehend abschalten; die Änderung wird im Datenbankjournal festgehalten.
+- Die Repository-Bindung vergleicht Host und Pfad von `origin`. SSH-Host-Aliasse aus `~/.ssh/config` werden nicht aufgelöst; alle Beteiligten müssen denselben Host verwenden.
+- Bitbucket wird nicht unterstützt. Pull Requests aus Forks lassen sich nicht lokal als Diff anzeigen.
+- Mit aktiven Regeln benötigt ein Rollout Netzwerkzugriff auf den Remote, für die Review-Regel zusätzlich einen Plattform-Token.
+- Ältere l8db-Versionen kennen diese Regeln nicht. Sie ignorieren sie beim Rollout und entfernen sie beim Speichern der Update-Regeln. Alle Teammitglieder benötigen daher mindestens diese Version.
+- Die Regeln setzt l8db vor dem Schreibzugriff durch. Wer mit direkten Schreibrechten SQL an l8db vorbei ausführt, wird dadurch nicht aufgehalten; ein getrennter Deployment-Account bleibt erforderlich, siehe [Erweiterung für den produktiven Betrieb](database-versioning-operations.md).
+
 ## Speicherung und Prüfungen
 
 - `database/project.json`: Projekt und explizit verwaltete Objekte.
 - `database/objects/`: lesbare Definitionen; Packages mit separater Specification und Body.
 - `database/releases/<id>.json`: vollständiger erwarteter Objektstand, Vorgänger und Migrationen mit SHA-256-Prüfsummen.
 - `database/seeds/seed.sql`: separat versionierte Development-Daten mit INSERT-Anweisungen.
-- `database/team.json`: Kunden, Umgebungen, logische Verbindungen, TLS-/Tunnelanforderungen, Update-Regeln, geprüfte Datenbankidentitäten und Branch-Zuordnungen. Keine Zugangsdaten, lokalen Profil-IDs oder Laufzeit-Historie.
+- `database/team.json`: Kunden, Umgebungen und Stufen, logische Verbindungen, TLS-/Tunnelanforderungen, Update-Regeln, geprüfte Datenbankidentitäten und Branch-Zuordnungen. Keine Zugangsdaten, lokalen Profil-IDs oder Laufzeit-Historie.
 - Git-Common-Directory, `l8db-targets.json`: private Profilzuordnungen, Baselines und Deployment-Ereignisse, gemeinsam für Worktrees. Zugangsdaten bleiben im OS-Schlüsselbund.
 - Im Zielschema, `L8DB_VERSIONING_STATE`: gemeinsamer Release-Hash, Status und Deployment-Sperre pro Projekt. Die Baseline-Zuordnung legt diese Tabelle an und benötigt entsprechende Rechte.
 
@@ -104,6 +153,14 @@ bun test tests/versioning.test.ts
 bun test tests/versioning-workflow.test.ts tests/versioning-drift.test.ts
 cargo test --manifest-path src-tauri/Cargo.toml versioning::tests --lib
 cargo test --manifest-path src-tauri/Cargo.toml seed --lib
+bun test tests/versioning-delivery.test.ts
+cargo test --manifest-path src-tauri/Cargo.toml versioning:: --lib
+```
+
+Die Plattform-Clients für GitHub, GitLab, Azure DevOps und Gitea werden gegen einen lokalen HTTP-Testserver geprüft, einschließlich Authentifizierungs-Header, abgewiesener Weiterleitungen und Fehlermeldungen ohne Token. Die Auslieferungsregeln prüft ein ignorierter Live-Test gegen eine lokale PostgreSQL-Datenbank. Er legt die Schemas `l8db_delivery_test` und `l8db_delivery_prod` an und entfernt sie wieder:
+
+```sh
+L8DB_E2E_DELIVERY_URL='postgresql://user:pass@127.0.0.1:5432/db?sslmode=disable' cargo test --manifest-path src-tauri/Cargo.toml live_production_requires_the_same_release_on_test --lib -- --ignored
 ```
 
 Die Live-Tests verwenden echte Git-Repositories, PostgreSQL und Oracle. Eine explizit aktivierte, ignorierte Rust-Testfunktion stellt ausschließlich für das lokale Labor eine HTTP-Brücke bereit. Sie wird nicht in den normalen Anwendungsbetrieb eingebunden. Sie verlangt isolierte Loopback-Datenbanken auf Ports 55440 und 55441 und beschränkt Git-Zugriffe auf das Laborverzeichnis.

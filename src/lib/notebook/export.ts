@@ -74,6 +74,9 @@ export function markdownToHtml(source: string): string {
         return `<h${block.level}>${inlineHtml(block.children)}</h${block.level}>`;
       if (block.t === "ul")
         return `<ul>${block.items.map((item) => `<li>${inlineHtml(item)}</li>`).join("")}</ul>`;
+      if (block.t === "ol")
+        return `<ol start="${block.start}">${block.items.map((item) => `<li>${inlineHtml(item)}</li>`).join("")}</ol>`;
+      if (block.t === "quote") return `<blockquote>${inlineHtml(block.children)}</blockquote>`;
       if (block.t === "hr") return "<hr>";
       if (block.t === "pre") return `<pre>${escapeHtml(block.v)}</pre>`;
       return `<p>${inlineHtml(block.children)}</p>`;

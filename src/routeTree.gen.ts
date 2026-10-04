@@ -25,6 +25,7 @@ import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppAiRouteImport } from './routes/_app.ai'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
+import { Route as AppWorkspaceAutomationRouteImport } from './routes/_app._workspace.automation'
 import { Route as AppWorkspaceBackupRouteImport } from './routes/_app._workspace.backup'
 import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspace.compare'
 import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
@@ -134,6 +135,11 @@ const AppPlainAvailableExtensionsRoute =
 const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceAutomationRoute = AppWorkspaceAutomationRouteImport.update({
+  id: '/automation',
+  path: '/automation',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceBackupRoute = AppWorkspaceBackupRouteImport.update({
@@ -325,6 +331,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/ai': typeof AppAiRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/automation': typeof AppWorkspaceAutomationRoute
   '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
@@ -372,6 +379,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/ai': typeof AppAiRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/automation': typeof AppWorkspaceAutomationRoute
   '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
@@ -421,6 +429,7 @@ export interface FileRoutesById {
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
   '/_app/ai': typeof AppAiRoute
   '/_app/_plain/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/_app/_workspace/automation': typeof AppWorkspaceAutomationRoute
   '/_app/_workspace/backup': typeof AppWorkspaceBackupRoute
   '/_app/_workspace/compare': typeof AppWorkspaceCompareRoute
   '/_app/_workspace/create-table': typeof AppWorkspaceCreateTableRoute
@@ -471,6 +480,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/ai'
     | '/available-extensions'
+    | '/automation'
     | '/backup'
     | '/compare'
     | '/create-table'
@@ -518,6 +528,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/ai'
     | '/available-extensions'
+    | '/automation'
     | '/backup'
     | '/compare'
     | '/create-table'
@@ -566,6 +577,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace'
     | '/_app/ai'
     | '/_app/_plain/available-extensions'
+    | '/_app/_workspace/automation'
     | '/_app/_workspace/backup'
     | '/_app/_workspace/compare'
     | '/_app/_workspace/create-table'
@@ -727,6 +739,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppWorkspaceIndexRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/automation': {
+      id: '/_app/_workspace/automation'
+      path: '/automation'
+      fullPath: '/automation'
+      preLoaderRoute: typeof AppWorkspaceAutomationRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/backup': {
@@ -982,6 +1001,7 @@ const AppWorkspaceQueryRouteWithChildren =
   AppWorkspaceQueryRoute._addFileChildren(AppWorkspaceQueryRouteChildren)
 
 interface AppWorkspaceRouteChildren {
+  AppWorkspaceAutomationRoute: typeof AppWorkspaceAutomationRoute
   AppWorkspaceBackupRoute: typeof AppWorkspaceBackupRoute
   AppWorkspaceCompareRoute: typeof AppWorkspaceCompareRoute
   AppWorkspaceCreateTableRoute: typeof AppWorkspaceCreateTableRoute
@@ -1016,6 +1036,7 @@ interface AppWorkspaceRouteChildren {
 }
 
 const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
+  AppWorkspaceAutomationRoute: AppWorkspaceAutomationRoute,
   AppWorkspaceBackupRoute: AppWorkspaceBackupRoute,
   AppWorkspaceCompareRoute: AppWorkspaceCompareRoute,
   AppWorkspaceCreateTableRoute: AppWorkspaceCreateTableRoute,

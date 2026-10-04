@@ -11,6 +11,7 @@ import {
   Route as RouteIcon,
   SquareTerminalIcon,
   Table2,
+  WorkflowIcon,
 } from "lucide-react";
 
 import type { Capabilities } from "@/lib/db";
@@ -22,6 +23,7 @@ export type AppSidebarNavItem = {
   icon: LucideIcon;
   available?: (caps: Capabilities) => boolean;
   featureScope?: string;
+  connectionFree?: boolean;
 };
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
@@ -67,6 +69,13 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       url: "/saved-plan",
       icon: RouteIcon,
       available: (caps) => caps.explain,
+    },
+    {
+      title: "Automatisierung",
+      url: "/automation",
+      icon: WorkflowIcon,
+      featureScope: "automation",
+      connectionFree: true,
     },
   ],
 };
