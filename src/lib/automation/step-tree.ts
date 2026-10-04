@@ -27,7 +27,7 @@ export function findStep(steps: Step[], id: string): FlatStep | null {
   return flattenSteps(steps).find((entry) => entry.step.id === id) ?? null;
 }
 
-function mapLevel(
+export function mapLevel(
   steps: Step[],
   parentId: string | null,
   change: (level: Step[]) => Step[],
