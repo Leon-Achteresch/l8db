@@ -137,12 +137,12 @@ for (const engine of [chromium, webkit]) {
           element.scrollLeft = 850;
         });
         await page.waitForTimeout(100);
-        await page.getByRole("tab", { name: "Columns", exact: true }).click();
+        await page.getByRole("tab", { name: "Spalten", exact: true }).click();
         await page.getByRole("link", { name: "Orders", exact: true }).click();
         await page.getByRole("link", { name: "Customers", exact: true }).click();
         expect(
           await page
-            .getByRole("tab", { name: "Columns", exact: true })
+            .getByRole("tab", { name: "Spalten", exact: true })
             .getAttribute("aria-selected"),
         ).toBe("true");
         await page.getByRole("tab", { name: "Daten", exact: true }).click();

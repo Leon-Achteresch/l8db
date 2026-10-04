@@ -6,7 +6,7 @@ mod bigquery;
 mod cassandra;
 mod clickhouse;
 pub mod commands;
-mod connection;
+pub(crate) mod connection;
 pub(crate) use connection::connection_string_is_read_only;
 pub mod constraints;
 pub mod csv_stream;

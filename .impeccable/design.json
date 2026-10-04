@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T21:00:00+02:00",
+  "title": "Design System: l8db",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Bench Navy", "canonical": "oklch(0.4 var(--db-chroma) var(--db-hue))", "tonalRamp": ["oklch(0.15 0.12 248)", "oklch(0.25 0.12 248)", "oklch(0.35 0.12 248)", "oklch(0.45 0.12 248)", "oklch(0.55 0.12 248)", "oklch(0.68 0.1 248)", "oklch(0.82 0.06 248)", "oklch(0.95 0.02 248)"] },
+      "primary-foreground": { "role": "primary", "displayName": "Navy Paper", "canonical": "oklch(0.99 0.005 var(--db-hue))" },
+      "ring": { "role": "primary", "displayName": "Focus Ring", "canonical": "oklch(0.5 0.06 var(--db-hue))" },
+      "dark-primary": { "role": "primary", "displayName": "Night Navy", "canonical": "oklch(0.78 calc(var(--db-chroma) + 0.02) var(--db-hue))" },
+      "access-read": { "role": "secondary", "displayName": "Access Emerald", "canonical": "var(--color-emerald-500)", "tonalRamp": ["oklch(0.26 0.05 163)", "oklch(0.38 0.08 163)", "oklch(0.5 0.12 163)", "oklch(0.6 0.15 163)", "oklch(0.696 0.17 162.48)", "oklch(0.8 0.13 163)", "oklch(0.9 0.07 163)", "oklch(0.97 0.02 163)"] },
+      "access-write": { "role": "secondary", "displayName": "Access Amber", "canonical": "var(--color-amber-500)", "tonalRamp": ["oklch(0.28 0.06 70)", "oklch(0.4 0.1 70)", "oklch(0.52 0.14 70)", "oklch(0.65 0.17 70)", "oklch(0.769 0.188 70.08)", "oklch(0.85 0.14 75)", "oklch(0.92 0.08 80)", "oklch(0.97 0.03 85)"] },
+      "access-schema": { "role": "secondary", "displayName": "Access Red", "canonical": "var(--color-red-500)", "tonalRamp": ["oklch(0.26 0.09 25)", "oklch(0.38 0.14 25)", "oklch(0.5 0.2 25)", "oklch(0.637 0.237 25.331)", "oklch(0.72 0.18 22)", "oklch(0.81 0.11 20)", "oklch(0.9 0.05 18)", "oklch(0.97 0.015 17)"] },
+      "figure-lime": { "role": "tertiary", "displayName": "Figure Lime", "canonical": "#a3e635" },
+      "figure-blue": { "role": "tertiary", "displayName": "Figure Blue", "canonical": "#3b82f6" },
+      "figure-violet": { "role": "tertiary", "displayName": "Figure Violet", "canonical": "#c084fc" },
+      "figure-pink": { "role": "tertiary", "displayName": "Figure Pink", "canonical": "#f472b6" },
+      "figure-yellow": { "role": "tertiary", "displayName": "Figure Yellow", "canonical": "#facc15" },
+      "figure-teal": { "role": "tertiary", "displayName": "Figure Teal", "canonical": "#2dd4bf" },
+      "figure-orange": { "role": "tertiary", "displayName": "Figure Orange", "canonical": "#fb923c" },
+      "figure-slate": { "role": "tertiary", "displayName": "Figure Slate", "canonical": "#94a3b8" },
+      "background": { "role": "neutral", "displayName": "Tinted Paper", "canonical": "oklch(0.975 0.004 var(--db-hue))", "tonalRamp": ["oklch(0.15 0.02 248)", "oklch(0.21 0.022 248)", "oklch(0.3 0.02 248)", "oklch(0.46 0.012 248)", "oklch(0.6 0.01 248)", "oklch(0.75 0.008 248)", "oklch(0.89 0.008 248)", "oklch(0.975 0.004 248)"] },
+      "foreground": { "role": "neutral", "displayName": "Ink", "canonical": "oklch(0.22 0.012 var(--db-hue))" },
+      "card": { "role": "neutral", "displayName": "Card White", "canonical": "oklch(0.995 0.002 var(--db-hue))" },
+      "card-foreground": { "role": "neutral", "displayName": "Card Ink", "canonical": "oklch(0.2 0.01 var(--db-hue))" },
+      "popover": { "role": "neutral", "displayName": "Popover White", "canonical": "oklch(0.995 0.003 var(--db-hue))" },
+      "secondary": { "role": "neutral", "displayName": "Mist", "canonical": "oklch(0.95 0.008 var(--db-hue))" },
+      "muted": { "role": "neutral", "displayName": "Mist", "canonical": "oklch(0.955 0.006 var(--db-hue))" },
+      "muted-foreground": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "oklch(0.46 0.012 var(--db-hue))" },
+      "accent": { "role": "neutral", "displayName": "Mist Accent", "canonical": "oklch(0.945 0.01 var(--db-hue))" },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "oklch(0.89 0.008 var(--db-hue))" },
+      "input": { "role": "neutral", "displayName": "Input Hairline", "canonical": "oklch(0.91 0.008 var(--db-hue))" },
+      "sidebar": { "role": "neutral", "displayName": "Rail", "canonical": "oklch(0.965 0.004 var(--db-hue))" },
+      "sidebar-accent": { "role": "neutral", "displayName": "Rail Accent", "canonical": "oklch(0.925 0.008 var(--db-hue))" },
+      "destructive": { "role": "neutral", "displayName": "Signal Red", "canonical": "oklch(0.56 0.2 28)" },
+      "dark-background": { "role": "neutral", "displayName": "Night Ground", "canonical": "oklch(0.175 0.02 var(--db-hue))" },
+      "dark-card": { "role": "neutral", "displayName": "Night Card", "canonical": "oklch(0.21 0.022 var(--db-hue))" },
+      "dark-foreground": { "role": "neutral", "displayName": "Night Ink", "canonical": "oklch(0.97 0.01 var(--db-hue))" },
+      "dark-muted-foreground": { "role": "neutral", "displayName": "Night Quiet Ink", "canonical": "oklch(0.74 0.03 var(--db-hue))" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Empty-state heading of the AI and comparable single-purpose screens." },
+      "headline": { "displayName": "Question", "purpose": "The user's question in the AI transcript." },
+      "title": { "displayName": "Title", "purpose": "Panel and rail headers, conversation titles, figure captions." },
+      "body": { "displayName": "Answer Prose", "purpose": "AI answer prose at 90% foreground, held to the reading measure." },
+      "body-ui": { "displayName": "Body UI", "purpose": "Work-line rows, follow-up questions, tabs, markdown tables." },
+      "label": { "displayName": "Label", "purpose": "Figure labels, row counts, captions, menu hints." },
+      "micro": { "displayName": "Micro", "purpose": "Chips such as Produktion, menu footnotes." },
+      "mono": { "displayName": "Mono", "purpose": "SQL, tool output, identifiers and the number inside Abb. n." }
+    },
+    "shadows": [
+      { "name": "hairline-lift", "value": "0 1px 2px oklch(0 0 0 / 4%)", "purpose": "Figure cards at rest." },
+      { "name": "card-ambient", "value": "inset 0 1px 0 oklch(1 0 0 / 0.28), 0 10px 28px -22px oklch(0 0 0 / 0.35)", "purpose": "shadcn cards." },
+      { "name": "composer-float", "value": "0 1px 2px oklch(0 0 0 / 4%), 0 10px 28px -16px oklch(0 0 0 / 18%)", "purpose": "The AI composer." },
+      { "name": "active-tab", "value": "0 1px 3px oklch(0 0 0 / 8%)", "purpose": "Selected pill in segmented tabs." },
+      { "name": "menu-drop", "value": "drop-shadow(0 8px 16px rgb(0 0 0 / 0.14)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.08))", "purpose": "Icon menus (as filter)." },
+      { "name": "toast", "value": "0 14px 36px -10px oklch(0 0 0 / 24%), 0 4px 10px -4px oklch(0 0 0 / 12%)", "purpose": "Transient notices, the only strong shadow." },
+      { "name": "figure-focus", "value": "0 0 0 3px color-mix(in oklab, var(--primary) 14%, transparent)", "purpose": "A focused figure in the results shelf." },
+      { "name": "station-halo", "value": "0 0 0 3px var(--background)", "purpose": "Cuts a work-line station out of its rule." }
+    ],
+    "motion": [
+      { "name": "ease-smooth-out", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Default curve for buttons, menus, toasts and theme shifts." },
+      { "name": "button", "value": "160ms", "purpose": "Button colour, shadow and press transitions." },
+      { "name": "control", "value": "200ms", "purpose": "Input focus, chevron rotation, follow-up arrow slide." },
+      { "name": "access-tint", "value": "300ms", "purpose": "Access strip tint change." },
+      { "name": "figure-focus", "value": "500ms", "purpose": "Figure focus ring and border in the shelf." },
+      { "name": "db-theme", "value": "420ms", "purpose": "Background, text and border shift when the database hue changes." },
+      { "name": "icon-menu-open", "value": "340ms ease-smooth-out", "purpose": "Icon menu morph from its trigger." },
+      { "name": "icon-menu-close", "value": "180ms cubic-bezier(0.4, 0, 1, 1)", "purpose": "Icon menu morph back." },
+      { "name": "reduced-motion", "value": "0.01ms", "purpose": "All animations and transitions collapse under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action of a view; one per region.",
+      "html": "<button class=\"ds-btn-primary\">SQL-Abfrage</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid transparent; border-radius: 12px; background: var(--primary, oklch(0.4 0.12 248)); color: var(--primary-foreground, oklch(0.99 0.005 248)); font-family: 'IBM Plex Sans Variable', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 80%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, oklch(0.5 0.06 248)) 50%, transparent); } .ds-btn-primary:active { transform: scale(0.98); }"
+    },
+    {
+      "name": "Ghost Icon Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Toolbar and header icons; Mist fill on hover.",
+      "html": "<button class=\"ds-btn-ghost\" aria-label=\"Neues Gespräch\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7\"/><path d=\"M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z\"/></svg></button>",
+      "css": ".ds-btn-ghost { display: inline-grid; place-items: center; width: 36px; height: 36px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--foreground, oklch(0.22 0.012 248)); cursor: pointer; transition: background-color 200ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-ghost:hover { background: var(--muted, oklch(0.955 0.006 248)); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, oklch(0.5 0.06 248)) 50%, transparent); } .ds-btn-ghost:active { transform: scale(0.98); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Single-line field with a navy focus border and soft ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Tabelle suchen ...\" />",
+      "css": ".ds-input { height: 36px; width: 260px; padding: 4px 12px; border: 1px solid var(--input, oklch(0.91 0.008 248)); border-radius: 12px; background: color-mix(in oklab, var(--background, oklch(0.975 0.004 248)) 80%, transparent); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.35); color: var(--foreground, oklch(0.22 0.012 248)); font-family: 'IBM Plex Sans Variable', sans-serif; font-size: 14px; outline: none; transition: border-color 200ms, box-shadow 200ms; } .ds-input::placeholder { color: var(--muted-foreground, oklch(0.46 0.012 248)); } .ds-input:focus-visible { border-color: var(--primary, oklch(0.4 0.12 248)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, oklch(0.5 0.06 248)) 40%, transparent); }"
+    },
+    {
+      "name": "AI Panel Tabs",
+      "kind": "nav",
+      "refersTo": "panel-tab-active",
+      "description": "Underline tabs Gespräch | Ergebnisse n in the AI panel.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab\" aria-selected=\"true\">Gespräch</button><button class=\"ds-tab\" aria-selected=\"false\">Ergebnisse <span class=\"ds-count\">2</span></button></div>",
+      "css": ".ds-tabs { display: flex; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border, oklch(0.89 0.008 248)); font-family: 'IBM Plex Sans Variable', sans-serif; } .ds-tab { display: flex; align-items: center; gap: 6px; height: 36px; margin-bottom: -1px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted-foreground, oklch(0.46 0.012 248)); font-size: 13px; cursor: pointer; transition: color 150ms; } .ds-tab:hover, .ds-tab:focus-visible { color: var(--foreground, oklch(0.22 0.012 248)); outline: none; } .ds-tab[aria-selected=\"true\"] { border-bottom-color: var(--primary, oklch(0.4 0.12 248)); color: var(--foreground, oklch(0.22 0.012 248)); font-weight: 500; } .ds-count { padding: 0 6px; border-radius: 9px; background: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 10%, transparent); color: var(--primary, oklch(0.4 0.12 248)); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Access Strip",
+      "kind": "custom",
+      "refersTo": "access-strip-read",
+      "description": "Composer top edge tinted by AI access level: connection, level, approval mode.",
+      "html": "<div class=\"ds-access\" role=\"toolbar\"><button class=\"ds-access-btn ds-strong\">perf</button><span class=\"ds-access-sep\"></span><button class=\"ds-access-btn\"><span class=\"ds-dot\"></span>Nur lesen</button><span class=\"ds-access-sep\"></span><button class=\"ds-access-btn\">Immer fragen</button></div>",
+      "css": ".ds-access { display: flex; align-items: center; gap: 2px; height: 36px; width: 420px; padding: 0 6px; border-bottom: 1px solid oklch(0 0 0 / 7%); border-radius: 18px 18px 0 0; background: color-mix(in oklab, oklch(0.696 0.17 162.48) 6%, var(--card, oklch(0.995 0.002 248))); color: oklch(0.378 0.077 168.94); font-family: 'IBM Plex Sans Variable', sans-serif; transition: background-color 300ms, color 300ms; } .ds-access-btn { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: 9px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; transition: background-color 150ms; } .ds-access-btn:hover { background: oklch(0.22 0.012 248 / 6%); } .ds-access-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring, oklch(0.5 0.06 248)); } .ds-strong { font-weight: 500; } .ds-dot { width: 8px; height: 8px; border-radius: 9999px; background: oklch(0.696 0.17 162.48); } .ds-access-sep { width: 1px; height: 14px; background: currentColor; opacity: 0.15; }"
+    },
+    {
+      "name": "Figure Card",
+      "kind": "card",
+      "refersTo": "figure-card",
+      "description": "Numbered AI result: Abb. label, title, view switch, chart or table, row count and SQL disclosure.",
+      "html": "<figure class=\"ds-figure\"><figcaption class=\"ds-figcap\"><span class=\"ds-abb\">Abb.<span class=\"ds-num\">1</span></span><span class=\"ds-figtitle\">Umsatz pro Monat</span><span class=\"ds-seg\"><button class=\"ds-seg-btn\" aria-pressed=\"true\">Diagramm</button><button class=\"ds-seg-btn\" aria-pressed=\"false\">Tabelle</button></span></figcaption><div class=\"ds-figbody\"><span style=\"height:40%;background:#a3e635\"></span><span style=\"height:65%;background:#a3e635\"></span><span style=\"height:55%;background:#a3e635\"></span><span style=\"height:85%;background:#a3e635\"></span></div><div class=\"ds-figfoot\"><span>6 Zeilen</span><button class=\"ds-sql\">SQL</button></div></figure>",
+      "css": ".ds-figure { width: 380px; margin: 0; overflow: hidden; border: 1px solid var(--border, oklch(0.89 0.008 248)); border-radius: 15px; background: var(--card, oklch(0.995 0.002 248)); box-shadow: 0 1px 2px oklch(0 0 0 / 4%); font-family: 'IBM Plex Sans Variable', sans-serif; transition: box-shadow 500ms, border-color 500ms; } .ds-figure:hover { border-color: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 50%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 14%, transparent); } .ds-figcap { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 6px 6px 12px; } .ds-abb { padding: 2px 6px; border-radius: 9px; background: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 10%, transparent); color: var(--primary, oklch(0.4 0.12 248)); font-size: 11px; font-weight: 600; } .ds-num { margin-left: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } .ds-figtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--foreground, oklch(0.22 0.012 248)); } .ds-seg { display: flex; padding: 2px; border-radius: 12px; background: var(--muted, oklch(0.955 0.006 248)); } .ds-seg-btn { height: 24px; padding: 0 8px; border: 0; border-radius: 9px; background: transparent; color: var(--muted-foreground, oklch(0.46 0.012 248)); font-size: 11px; cursor: pointer; } .ds-seg-btn[aria-pressed=\"true\"] { background: var(--background, oklch(0.975 0.004 248)); color: var(--foreground, oklch(0.22 0.012 248)); font-weight: 500; box-shadow: 0 1px 2px oklch(0 0 0 / 5%); } .ds-figbody { display: flex; align-items: flex-end; gap: 12px; height: 120px; padding: 4px 12px 8px; } .ds-figbody span { flex: 1; border-radius: 6px 6px 0 0; } .ds-figfoot { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 0 12px; border-top: 1px solid var(--border, oklch(0.89 0.008 248)); background: color-mix(in oklab, var(--muted, oklch(0.955 0.006 248)) 25%, transparent); color: var(--muted-foreground, oklch(0.46 0.012 248)); font-size: 11px; font-variant-numeric: tabular-nums; } .ds-sql { height: 24px; padding: 0 6px; border: 0; border-radius: 9px; background: transparent; color: inherit; font-size: 11px; cursor: pointer; } .ds-sql:hover { background: var(--muted, oklch(0.955 0.006 248)); color: var(--foreground, oklch(0.22 0.012 248)); }"
+    },
+    {
+      "name": "Figure Reference",
+      "kind": "card",
+      "refersTo": "figure-reference",
+      "description": "Compact transcript row that points to a figure in the results shelf.",
+      "html": "<button class=\"ds-figref\"><span class=\"ds-abb\">Abb.<span class=\"ds-num\">2</span></span><span class=\"ds-reftext\"><span class=\"ds-reftitle\">Top 5 Kunden nach Umsatz</span><span class=\"ds-refmeta\">Diagramm · 5 Zeilen</span></span><svg class=\"ds-arrow\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7h10v10\"/><path d=\"M7 17 17 7\"/></svg></button>",
+      "css": ".ds-figref { display: flex; align-items: center; gap: 12px; width: 380px; padding: 10px 12px; border: 1px solid var(--border, oklch(0.89 0.008 248)); border-radius: 15px; background: var(--card, oklch(0.995 0.002 248)); text-align: left; font-family: 'IBM Plex Sans Variable', sans-serif; cursor: pointer; transition: border-color 150ms, background-color 150ms; } .ds-figref:hover { border-color: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 40%, transparent); background: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 3%, var(--card, oklch(0.995 0.002 248))); } .ds-figref:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring, oklch(0.5 0.06 248)); } .ds-figref .ds-abb { padding: 2px 6px; border-radius: 9px; background: color-mix(in oklab, var(--primary, oklch(0.4 0.12 248)) 10%, transparent); color: var(--primary, oklch(0.4 0.12 248)); font-size: 11px; font-weight: 600; } .ds-figref .ds-num { margin-left: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } .ds-reftext { flex: 1; min-width: 0; } .ds-reftitle { display: block; font-size: 13px; font-weight: 500; color: var(--foreground, oklch(0.22 0.012 248)); } .ds-refmeta { display: block; font-size: 11px; color: var(--muted-foreground, oklch(0.46 0.012 248)); } .ds-arrow { color: var(--muted-foreground, oklch(0.46 0.012 248)); transition: transform 150ms; } .ds-figref:hover .ds-arrow { transform: translate(2px, -2px); }"
+    },
+    {
+      "name": "Work Line",
+      "kind": "custom",
+      "refersTo": "work-station",
+      "description": "Vertical rule with station dots recording each agent step, including approvals.",
+      "html": "<div class=\"ds-work\"><span class=\"ds-rule\"></span><div class=\"ds-row\"><span class=\"ds-station ds-lead\"></span>3 Schritte · unter 1 s</div><div class=\"ds-row\"><span class=\"ds-station\"></span>Datenabfrage ausgeführt</div><div class=\"ds-row\"><span class=\"ds-station ds-allowed\"></span>Erlaubt: UPDATE orders</div><div class=\"ds-row\"><span class=\"ds-station ds-active\"></span>Denkt nach</div></div>",
+      "css": ".ds-work { position: relative; width: 360px; padding-left: 24px; font-family: 'IBM Plex Sans Variable', sans-serif; } .ds-rule { position: absolute; top: 12px; bottom: 8px; left: 7px; width: 1px; background: linear-gradient(to bottom, var(--border, oklch(0.89 0.008 248)), var(--border, oklch(0.89 0.008 248)), transparent); } .ds-row { position: relative; display: flex; align-items: center; min-height: 28px; font-size: 13px; color: var(--muted-foreground, oklch(0.46 0.012 248)); border-radius: 9px; padding: 0 6px; margin-left: -6px; transition: background-color 150ms; } .ds-row:hover { background: color-mix(in oklab, var(--muted, oklch(0.955 0.006 248)) 60%, transparent); } .ds-station { position: absolute; top: 9px; left: -15px; width: 9px; height: 9px; border-radius: 9999px; background: color-mix(in oklab, var(--muted-foreground, oklch(0.46 0.012 248)) 45%, transparent); box-shadow: 0 0 0 3px var(--background, oklch(0.975 0.004 248)); } .ds-lead { background: var(--background, oklch(0.975 0.004 248)); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--muted-foreground, oklch(0.46 0.012 248)) 60%, transparent), 0 0 0 3px var(--background, oklch(0.975 0.004 248)); } .ds-allowed { background: oklch(0.769 0.188 70.08); } .ds-active { background: var(--primary, oklch(0.4 0.12 248)); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Bench",
+    "overview": "l8db is a workbench for long sessions next to editors and terminals. The chrome is a family of near-white (or near-black) neutrals that all carry one hue, `--db-hue` (248 by default), so the whole app shifts tone with the active database without ever becoming colourful. Colour is spent where it carries meaning: the navy primary for focus, selection and the primary action; destructive red; the AI's three access colours; and the chart palette that makes data legible. Everything else is quiet, dense and tabular.\n\nThe surface is built from shadcn primitives restyled onto that tinted ground: generously rounded corners rooted in one radius token (12px), hairline borders, whisper-light shadows, IBM Plex Sans at small desktop sizes with tabular figures everywhere. A user-selectable density setting moves control heights in quarter-rem steps without changing the language.\n\nThe AI assistant extends the bench with its own surface language. It answers in short prose and hands over numbered figures (\"Abb. 1\", \"Abb. 2\") that collect in a results shelf; a thin work line with station dots runs beside every answer and records each step, including approvals; and the composer wears an access strip as its top edge whose tint says what the AI may do to the database right now.",
+    "keyCharacteristics": [
+      "Neutrals tinted by a single database hue, light and dark.",
+      "Navy primary used sparingly for focus, selection, figure labels and the main action.",
+      "IBM Plex Sans throughout, 10 to 15px for UI, tabular numerals by default; monospace only for machine text.",
+      "One radius root (12px) scaled into a family of soft corners.",
+      "Flat surfaces with hairline borders; shadows are barely there.",
+      "AI answers as prose plus numbered figures, a station-dot work line and a colour-coded access strip."
+    ],
+    "rules": [
+      { "name": "The Tinted Neutral Rule", "body": "Every solid neutral is an OKLCH value at `--db-hue` with chroma at or below 0.03. Translucent white or black borders and shadows are the only untinted values.", "section": "colors" },
+      { "name": "The Access Is Colour Rule", "body": "Emerald, amber and red mean read, write and schema/production access in the AI. They are never used decoratively elsewhere on an AI surface.", "section": "colors" },
+      { "name": "The Shared Figure Palette Rule", "body": "Charts draw series colours from the shared figure palette, in order, so the same result looks the same in a figure, the shelf and a dashboard.", "section": "colors" },
+      { "name": "The Mono For Machines Rule", "body": "Monospace is for SQL, identifiers, raw output and figure numbers. Prose, labels and buttons stay in Plex Sans.", "section": "typography" },
+      { "name": "The Tabular Ground Rule", "body": "The body sets `font-variant-numeric: tabular-nums`; numbers in tables, counts and timers align without per-element opt-in.", "section": "typography" },
+      { "name": "The Reading Measure Rule", "body": "Transcript content is capped at 704px (44rem; 46rem for the full-page empty state) and centred; answers never stretch to the window.", "section": "layout" },
+      { "name": "The Whisper Shadow Rule", "body": "Resting surfaces use a shadow no darker than 4% at small offsets; anything heavier is reserved for floating, transient layers.", "section": "elevation" },
+      { "name": "The One Radius Root Rule", "body": "New radii are expressed as a multiple of `--radius`, never as a free pixel value, so the whole app stays concentric when the root changes.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do derive every new neutral from `--db-hue` in OKLCH so the surface follows the active database.",
+      "Do reserve Bench Navy for focus, selection, the primary action and figure labels.",
+      "Do number every AI chart or table as \"Abb. n\" and send it to the results shelf.",
+      "Do show the AI's access level as the composer's tinted top edge, with production writes always red.",
+      "Do record every agent step, including approvals as \"Erlaubt\"/\"Abgelehnt\", as a station on the work line.",
+      "Do draw chart series from the shared figure palette in order.",
+      "Do honour reduced motion: pulses, morphs and pings collapse to fades or stop."
+    ],
+    "donts": [
+      "Don't use emerald, amber or red for decoration on AI surfaces; they mean access.",
+      "Don't put more than new, history, one overflow menu and close in the AI panel header.",
+      "Don't set prose, labels or buttons in monospace.",
+      "Don't let AI answer text run wider than the 704px reading measure.",
+      "Don't introduce radii that are not multiples of `--radius`.",
+      "Don't put heavy shadows on resting surfaces; strong shadows belong to toasts and floating menus."
+    ]
+  }
+}

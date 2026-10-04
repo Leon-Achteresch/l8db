@@ -1899,7 +1899,11 @@ pub async fn run(
     })
 }
 
-fn scoped_database(kind: DatabaseKind, database: Option<String>, schema: &str) -> Option<String> {
+pub(crate) fn scoped_database(
+    kind: DatabaseKind,
+    database: Option<String>,
+    schema: &str,
+) -> Option<String> {
     if kind == DatabaseKind::Mongodb && !schema.is_empty() {
         Some(schema.to_string())
     } else {

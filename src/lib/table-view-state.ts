@@ -12,6 +12,13 @@ export interface FilterCondition {
   dataType?: string;
 }
 
+export interface RowRule {
+  id: string;
+  color: string;
+  combinator: "AND" | "OR";
+  conditions: FilterCondition[];
+}
+
 export interface TableViewState {
   filter: string;
   filterRaw: boolean;
@@ -23,6 +30,7 @@ export interface TableViewState {
   filterConditions: FilterCondition[];
   filterCombinator: "AND" | "OR";
   filterSql: string;
+  rowRules: RowRule[];
   columnSizing: ColumnSizingState;
   scroll: { top: number; left: number; identity: string };
 }

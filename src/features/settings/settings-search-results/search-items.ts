@@ -44,6 +44,14 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["schema", "benutzer", "user", "auswahl", "sidebar", "oracle"],
   },
   {
+    id: "sidebar-object-nav",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Objekttypen in der Seitenleiste",
+    description: "Objekttypen als Icon-Leiste oder als Auswahl wechseln.",
+    keywords: ["sidebar", "seitenleiste", "tabbar", "tabs", "auswahl", "select", "objekttyp"],
+  },
+  {
     id: "table-tabs",
     tabId: "general",
     tabLabel: "Allgemein",
@@ -110,6 +118,23 @@ export const SEARCH_ITEMS: SearchItem[] = [
     title: "Navigation im Header",
     description: "Bereiche oben im Header statt in der Leiste am linken Rand anzeigen.",
     keywords: ["navigation", "header", "leiste", "rail", "bereiche", "layout"],
+  },
+  {
+    id: "dynamic-island",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Dynamic Island",
+    description: "Ladezustände, Updates und Begrüßungen in der Suche im Header anzeigen.",
+    keywords: [
+      "dynamic island",
+      "insel",
+      "suche",
+      "header",
+      "begrüßung",
+      "laden",
+      "update",
+      "animation",
+    ],
   },
   {
     id: "density",

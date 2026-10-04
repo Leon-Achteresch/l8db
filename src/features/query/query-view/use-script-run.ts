@@ -8,6 +8,7 @@ import { invalidateTableReads } from "@/lib/query-client";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
+import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { getQueryTransaction } from "@/lib/transactions";
 
@@ -66,11 +67,16 @@ export function useScriptRun({
       isTransactionalStatement(statement.text, connection.kind),
     );
     if (existingTx) setScriptMode("existing-transaction");
-    else if (hasDml && caps.transactions && useSettingsStore.getState().transactionsEnabled)
+    else if (
+      hasDml &&
+      caps.transactions &&
+      useSettingsStore.getState().transactionsEnabled &&
+      !scriptPolicyIssue(sql, connection.kind, true)
+    )
       setScriptMode("new-transaction");
     else setScriptMode("autocommit");
     setScriptDialogOpen(true);
-  }, [connection, database, caps.transactions, scriptSplit]);
+  }, [connection, database, caps.transactions, scriptSplit, sql]);
 
   const runScript = useCallback(
     async (mode: ScriptRunMode, stopOnError = true) => {

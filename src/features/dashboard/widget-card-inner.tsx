@@ -89,23 +89,23 @@ export function WidgetCardInner({
   const legendRows = Math.ceil(legend.length / legendColumns);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card p-4">
-      <div className="mb-2 flex shrink-0 flex-wrap items-start justify-between gap-2">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card p-5 shadow-xs">
+      <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
             {!locked && (
               <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
             )}
-            <span className="truncate font-medium text-foreground/80" title={title}>
+            <span className="truncate" title={title}>
               {title}
             </span>
           </div>
           {options.showValue && (
-            <div className="mt-0.5 flex items-center gap-2">
+            <div className="mt-1.5 flex items-center gap-2.5">
               {query.isPending && sql ? (
-                <Skeleton className="h-7 w-16" />
+                <Skeleton className="h-9 w-20" />
               ) : (
-                <span className="text-2xl font-semibold tracking-tight tabular-nums">
+                <span className="text-3xl font-semibold tracking-tight tabular-nums">
                   {shape && !problem ? (
                     <ChartHeadline headline={headlineValue(widget.chart, rows, shape)} />
                   ) : (
@@ -116,8 +116,10 @@ export function WidgetCardInner({
               {delta !== null && (
                 <span
                   className={cn(
-                    "rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                    delta >= 0 ? "bg-lime-300/70 text-lime-950" : "bg-rose-200/80 text-rose-950",
+                    "rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums",
+                    delta >= 0
+                      ? "bg-lime-400/20 text-lime-700 dark:bg-lime-400/15 dark:text-lime-300"
+                      : "bg-rose-500/15 text-rose-700 dark:text-rose-400",
                   )}
                 >
                   <AnimatedNumber
@@ -142,7 +144,10 @@ export function WidgetCardInner({
                 locked ? setViewPeriod(period as Period) : onChange({ period: period as Period })
               }
             >
-              <SelectTrigger size="sm" className="h-7 gap-1 rounded-lg text-xs">
+              <SelectTrigger
+                size="sm"
+                className="h-8 gap-1.5 rounded-lg bg-muted/40 text-xs font-medium"
+              >
                 <CalendarIcon className="size-3.5" />
                 <span className={widget.w < 4 ? "sr-only" : undefined}>
                   <SelectValue />
@@ -208,7 +213,7 @@ export function WidgetCardInner({
         )}
       </div>
       {legendRows > 0 && widget.h >= 5 + legendRows && (
-        <div className="mt-3 shrink-0">
+        <div className="mt-4 shrink-0">
           <LegendCards items={legend} columns={legendColumns} />
         </div>
       )}

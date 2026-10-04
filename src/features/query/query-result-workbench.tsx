@@ -1,4 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { MoreHorizontal } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,14 +7,25 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { CreateViewDialog, isViewableSelect } from "@/features/query/create-view-dialog";
+import { ResultTitle } from "@/features/query/query-view/result-title";
 import { copyText } from "@/lib/clipboard";
+import { useConnectionsStore } from "@/lib/connections/store";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
+import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
+import { temporaryViewMode } from "@/lib/session-views";
 import { cn } from "@/lib/utils";
 import { QueryCellInspector } from "./query-cell-inspector";
 import { useMaskedQueryResult } from "./query-result-masking";
@@ -43,12 +55,23 @@ export function QueryResultWorkbench({
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [cell, setCell] = useState<{ column: string; value: unknown; row: number } | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const viewConnection = useConnectionsStore((s) =>
+    s.connections.find((c) => c.id === chart?.connectionId),
+  );
+  const viewsSupported = useCapabilities(kind).views || temporaryViewMode(kind) !== null;
+  const canCreateView =
+    viewsSupported &&
+    Boolean(chart?.sqlCapable && viewConnection && !viewConnection.readOnly) &&
+    isViewableSelect(chart?.sql ?? "");
   const jsonScrollRef = useRef<HTMLPreElement>(null);
   const [lastResult, setLastResult] = useState(result);
   if (lastResult !== result) {
     setLastResult(result);
     setSearch("");
+    setSearchOpen(false);
     setCell(null);
   }
   const { masked } = useMaskedQueryResult(result);
@@ -113,9 +136,18 @@ export function QueryResultWorkbench({
     if (chart && chartView) chart.onChange({ ...chart.state, view: "grid" });
   };
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onKeyDownCapture={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          e.stopPropagation();
+          setSearchOpen(true);
+        }
+      }}
+    >
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5">
-        <span className="font-medium text-xs">Ergebnisse</span>
+        <ResultTitle />
         <span
           role="status"
           className={cn(
@@ -135,67 +167,80 @@ export function QueryResultWorkbench({
             {statusText}
           </span>
         )}
-        <Input
-          className="h-7 w-48 text-xs"
-          aria-label="Ergebnisse durchsuchen"
-          placeholder="Ergebnisse durchsuchen…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {!chartView && workspace.resultView === "json" && (
+        {searchOpen && (
+          <Input
+            autoFocus
+            className="h-7 w-48 text-xs"
+            aria-label="Ergebnisse durchsuchen"
+            placeholder="Ergebnisse durchsuchen…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              setSearch("");
+              setSearchOpen(false);
+            }}
+          />
+        )}
+        {!chartView && workspace.resultView === "json" && term && (
           <span className="text-[10px] tabular-nums text-muted-foreground">
             {filtered?.rows.length} / {result.rows.length} Zeilen
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Button
-            size="sm"
-            className="h-7 text-xs"
-            variant={!chartView && workspace.resultView === "table" ? "secondary" : "ghost"}
-            aria-pressed={!chartView && workspace.resultView === "table"}
-            onClick={() => showGrid("table")}
-          >
-            Tabelle
-          </Button>
-          <Button
-            size="sm"
-            className="h-7 text-xs"
-            variant={!chartView && workspace.resultView === "json" ? "secondary" : "ghost"}
-            aria-pressed={!chartView && workspace.resultView === "json"}
-            onClick={() => showGrid("json")}
-          >
-            JSON
-          </Button>
-          {chart && (
-            <Button
-              size="sm"
-              className="h-7 text-xs"
-              variant={chartView ? "secondary" : "ghost"}
-              aria-pressed={chartView}
-              onClick={() => chart.onChange({ ...chart.state, view: "chart" })}
-            >
-              Diagramm
-            </Button>
-          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                className="h-7 text-xs"
-                variant="ghost"
-                title="Suchergebnisse kopieren; lokale Spaltenfilter und Sortierung gelten nur in der Tabelle"
-              >
-                Kopieren
+              <Button size="icon" className="size-7" variant="ghost" aria-label="Ergebnisoptionen">
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {COPY_FORMATS.map((format) => (
-                <DropdownMenuItem key={format.value} onSelect={() => void handleCopy(format.value)}>
-                  Als {format.label}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuRadioGroup
+                value={chartView ? "chart" : workspace.resultView}
+                onValueChange={(value) =>
+                  value === "chart" && chart
+                    ? chart.onChange({ ...chart.state, view: "chart" })
+                    : showGrid(value as "table" | "json")
+                }
+              >
+                <DropdownMenuRadioItem value="table">Tabelle</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="json">JSON</DropdownMenuRadioItem>
+                {chart && <DropdownMenuRadioItem value="chart">Diagramm</DropdownMenuRadioItem>}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Kopieren</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {COPY_FORMATS.map((format) => (
+                    <DropdownMenuItem
+                      key={format.value}
+                      onSelect={() => void handleCopy(format.value)}
+                    >
+                      Als {format.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              {canCreateView && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setViewDialogOpen(true)}>
+                    Als View speichern…
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+          {chart && viewConnection && (
+            <CreateViewDialog
+              open={viewDialogOpen}
+              onOpenChange={setViewDialogOpen}
+              sql={chart.sql}
+              connection={viewConnection}
+              database={chart.database}
+            />
+          )}
           {actions}
         </div>
       </div>
@@ -219,6 +264,7 @@ export function QueryResultWorkbench({
             contain: "strict",
           }}
           data-slot="query-json-rows"
+          tabIndex={-1}
         >
           <div className="relative" style={{ height: jsonVirtualizer.getTotalSize() }}>
             {jsonVirtualizer.getVirtualItems().map((virtualRow) => {

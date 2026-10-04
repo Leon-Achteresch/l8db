@@ -74,7 +74,7 @@ fn tool_text(text: String, is_error: bool) -> Value {
     json!({"content": [{"type": "text", "text": text}], "isError": is_error})
 }
 
-pub(super) fn database_arg() -> Value {
+pub(crate) fn database_arg() -> Value {
     json!({"type": "string", "description": "Database to use instead of the one in the connection URL, e.g. a MongoDB database. search without database covers every MongoDB database."})
 }
 
@@ -689,15 +689,19 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
     url.to_string()
 }
 
-pub(super) fn adapter(
-    connection: &McpConnection,
-    pool: &PoolState,
-) -> Result<Box<dyn db::DatabaseAdapter>, String> {
+pub(crate) fn connection_url(connection: &McpConnection) -> Result<String, String> {
     let password = match connection.kind {
         DatabaseKind::Sqlite | DatabaseKind::Duckdb => None,
         _ => crate::db::secrets::read_secret(&connection.id)?,
     };
-    let url = with_password(connection, password.as_deref());
+    Ok(with_password(connection, password.as_deref()))
+}
+
+pub(crate) fn adapter(
+    connection: &McpConnection,
+    pool: &PoolState,
+) -> Result<Box<dyn db::DatabaseAdapter>, String> {
+    let url = connection_url(connection)?;
     db::create_adapter_from_string(
         connection.kind,
         &url,

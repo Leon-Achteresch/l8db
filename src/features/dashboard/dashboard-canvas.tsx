@@ -56,7 +56,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
     }));
 
   return (
-    <div ref={containerRef} className="relative min-h-full p-4 sm:p-6">
+    <div ref={containerRef} className="relative min-h-full px-4 pb-6 sm:px-6">
       {mounted && widgets.length > 0 && (
         <GridLayout
           width={width}

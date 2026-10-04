@@ -28,7 +28,7 @@ export function AiReasoningPicker({ profile, models, disabled }: Props) {
           type="button"
           aria-label="Reasoning auswählen"
           disabled={disabled}
-          className="flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
+          className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
         >
           <Brain className="size-3.5" />
           <span className="capitalize">{profile.effort || "Auto"}</span>

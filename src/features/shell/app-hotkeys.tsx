@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppHotkeyBindings } from "@/features/shell/app-hotkey-bindings";
+import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection } from "@/lib/connections";
 import { openAppWindow } from "@/lib/db";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
@@ -138,6 +139,13 @@ export function AppHotkeys() {
     { id: "go.forward", action: () => router.history.forward() },
     { id: "go.connections", action: () => void navigate({ to: "/connections" }) },
     { id: "settings.open", action: () => void navigate({ to: "/settings" }) },
+    {
+      id: "ai.toggle",
+      action: () => {
+        const ai = useAiStore.getState();
+        ai.setOpen(!ai.open);
+      },
+    },
     {
       id: "window.new",
       action: () =>

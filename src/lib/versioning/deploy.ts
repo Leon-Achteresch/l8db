@@ -10,6 +10,13 @@ import { bindingMatches } from "./binding";
 import { captureObjects } from "./capture";
 import { mappedCheck, preflightChecks, runReleaseChecks } from "./checks";
 import { control, initialPolicy, type PolicyRecord, sharedTarget } from "./control";
+import {
+  checkDelivery,
+  type DeliveryReport,
+  type Promotion,
+  promotionSources,
+  runRequest,
+} from "./delivery";
 import { baselineLedger, readLedger, releaseHash } from "./ledger";
 import {
   checksum,
@@ -52,6 +59,9 @@ export interface DeploymentPlan {
   risks: string[];
   policy: PolicyRecord;
   reviewArtifact: string;
+  delivery: DeliveryReport | null;
+  promotion: Promotion[];
+  promotionProblems: string[];
 }
 
 export function assertReviewedToken(reviewed: string, current: string, now = Date.now()) {
@@ -247,7 +257,8 @@ export async function planDeployment(
       target.ledgerSchema || target.schema || from.objects[0]?.object.selection.schema || undefined,
   };
   const binding = await databaseBinding(connection, target);
-  const registered = (await readTargets(repo, project.id)).store.targets.find(
+  const stored = (await readTargets(repo, project.id)).store.targets;
+  const registered = stored.find(
     (entry) =>
       entry.id !== target.id &&
       entry.binding?.physicalKey &&
@@ -368,6 +379,16 @@ export async function planDeployment(
     sql,
   });
   const hash = await checksum(reviewArtifact);
+  const rules = shared.record.policy.delivery ?? null;
+  const sources =
+    rules?.testFirst && target.production
+      ? await promotionSources(target, stored, project)
+      : { promotion: [], problems: [] };
+  const delivery = rules
+    ? await checkDelivery(
+        runRequest(repo, project, target, connection, reviewArtifact, sources.promotion),
+      )
+    : null;
   return {
     target,
     from,
@@ -381,6 +402,9 @@ export async function planDeployment(
     risks: [...new Set(chain.flatMap(releaseRisks))],
     policy: shared.record,
     reviewArtifact,
+    delivery,
+    promotion: sources.promotion,
+    promotionProblems: sources.problems,
   };
 }
 
@@ -401,20 +425,9 @@ export async function deploy(
   if (plan.differences.some((item) => item.status !== "unchanged"))
     throw new Error("Direkte Datenbankänderungen erkannt. Bitte zuerst prüfen und zusammenführen.");
   if (!plan.releases.length) return;
-  const id = await versioningRun({
-    repo,
-    targetId,
-    runId: crypto.randomUUID(),
-    artifact: plan.reviewArtifact,
-    connection: {
-      kind: connection.kind,
-      connectionString: effectiveConnectionString(connection),
-      database: target.database,
-      schema: plan.target.ledgerSchema,
-      projectId: project.id,
-      readOnly: connection.readOnly ?? false,
-    },
-  });
+  const id = await versioningRun(
+    runRequest(repo, project, plan.target, connection, plan.reviewArtifact, plan.promotion),
+  );
   for (;;) {
     const status = await versioningRunStatus(id);
     onProgress?.(`${target.name}: ${status.release || "Wird geprüft"}`);

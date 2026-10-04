@@ -79,6 +79,9 @@ Promise.all([
           .then(({ initMcpDashboardSync }) => initMcpDashboardSync())
           .catch(() => undefined);
         void import("@/lib/mcp").then(({ initMcpSync }) => initMcpSync()).catch(() => undefined);
+        void import("@/lib/automation/sync")
+          .then(({ initAutomationSync }) => initAutomationSync())
+          .catch(() => undefined);
       });
     void extensionHost
       .start()

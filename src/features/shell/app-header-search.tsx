@@ -13,11 +13,14 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
+import { NewBadge } from "@/components/new-badge";
 import {
   buildHotkeyItems,
   buildNotebookItems,
   buildObjectItems,
 } from "@/features/shell/app-header-search/command-items";
+import { DynamicIsland } from "@/features/shell/dynamic-island";
+import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
@@ -27,6 +30,7 @@ import {
   useHotkeysStore,
   useResolvedHotkey,
 } from "@/lib/hotkeys";
+import { markNewFeatureSeen, useHasNewFeatures } from "@/lib/new-features";
 import { useNotebookStore } from "@/lib/notebook/store";
 import { supports } from "@/lib/providers";
 import { useAllSchemaObjectsQuery } from "@/lib/queries";
@@ -50,6 +54,7 @@ const ShortcutsDialog = lazy(() =>
 
 export function AppHeaderSearch() {
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const dynamicIsland = useSettingsStore((state) => state.dynamicIsland);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => (open ? state.location.pathname : "") });
@@ -142,6 +147,23 @@ export function AppHeaderSearch() {
       },
     }));
   }, [extensionHost, extensionVersion]);
+
+  const askNew = useHasNewFeatures("ai.ask");
+  const askAiItem = useCallback(
+    (query: string): CommandItem => ({
+      id: "ai:ask",
+      label: `KI fragen: „${query}“`,
+      group: "KI",
+      icon: Sparkles,
+      badge: askNew ? <NewBadge /> : undefined,
+      onSelect: () => {
+        markNewFeatureSeen("ai.ask");
+        setOpen(false);
+        useAiStore.getState().ask(query);
+      },
+    }),
+    [askNew],
+  );
 
   const items = useMemo<CommandItem[]>(() => {
     if (!open) return NO_ITEMS;
@@ -253,30 +275,38 @@ export function AppHeaderSearch() {
 
   return (
     <>
-      <button
-        type="button"
-        ref={searchButtonRef}
-        data-tour="header-search"
-        data-toast-origin
-        aria-label="Suchen"
-        onClick={() => setOpen(true)}
-        style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        className={cn(
-          "inline-flex h-7 w-full max-w-[460px] items-center gap-2 rounded-full",
-          "border border-border/70 bg-muted/40 px-3 @max-[8rem]/header-search:gap-0 @max-[8rem]/header-search:px-1.5",
-          "text-xs text-muted-foreground transition-colors",
-          "cursor-pointer select-none",
-          "hover:border-primary/35 hover:bg-card",
-        )}
-      >
-        <Search className="size-3.5 shrink-0 opacity-60" strokeWidth={2} />
-        <span className="min-w-0 flex-1 truncate text-left @max-[8rem]/header-search:hidden">
-          Suchen
-        </span>
-        <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
-          {formatHotkeyDisplay(paletteHotkey)}
-        </kbd>
-      </button>
+      {dynamicIsland ? (
+        <DynamicIsland
+          buttonRef={searchButtonRef}
+          shortcut={formatHotkeyDisplay(paletteHotkey)}
+          onOpen={() => setOpen(true)}
+        />
+      ) : (
+        <button
+          type="button"
+          ref={searchButtonRef}
+          data-tour="header-search"
+          data-toast-origin
+          aria-label="Suchen"
+          onClick={() => setOpen(true)}
+          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          className={cn(
+            "inline-flex h-7 w-full max-w-[460px] items-center gap-2 rounded-full",
+            "border border-border/70 bg-muted/40 px-3 @max-[8rem]/header-search:gap-0 @max-[8rem]/header-search:px-1.5",
+            "text-xs text-muted-foreground transition-colors",
+            "cursor-pointer select-none",
+            "hover:border-primary/35 hover:bg-card",
+          )}
+        >
+          <Search className="size-3.5 shrink-0 opacity-60" strokeWidth={2} />
+          <span className="min-w-0 flex-1 truncate text-left @max-[8rem]/header-search:hidden">
+            Suchen
+          </span>
+          <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
+            {formatHotkeyDisplay(paletteHotkey)}
+          </kbd>
+        </button>
+      )}
       <CommandPalette
         items={items}
         open={open}
@@ -284,6 +314,7 @@ export function AppHeaderSearch() {
         placeholder="Objekte und Verbindungen…"
         emptyMessage="Keine Treffer"
         maxVisible={MAX_VISIBLE_RESULTS}
+        queryItem={askAiItem}
       />
       {objectSearchMounted.current && (
         <Suspense fallback={null}>

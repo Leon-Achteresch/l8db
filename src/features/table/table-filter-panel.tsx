@@ -2,6 +2,7 @@ import {
   ChevronDownIcon,
   Code2Icon,
   FilterIcon,
+  PaletteIcon,
   PlayIcon,
   PlusIcon,
   RotateCcwIcon,
@@ -24,12 +25,15 @@ import {
 } from "@/lib/filter-parser";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { activeRuleConditions, describeRule } from "@/lib/row-rules";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
 import { ActiveFilterBadge } from "./table-filter-panel/active-filter-badge";
 import { FilterConditionRow } from "./table-filter-panel/filter-condition-row";
 import { createId, emptyCondition } from "./table-filter-panel/filter-conditions";
-import type { FilterMode } from "./table-filter-panel/filter-types";
+import type { Combinator, FilterMode } from "./table-filter-panel/filter-types";
+import { RowRuleBadge } from "./table-filter-panel/row-rule-badge";
+import { RuleColorPopover } from "./table-filter-panel/rule-color-popover";
 
 const SqlEditor = lazy(() =>
   import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
@@ -60,10 +64,25 @@ export function TableFilterPanel({
   const native = redis;
   const [open, setOpen] = useTableViewState(stateKey, "filterOpen", false);
   const [mode, setMode] = useTableViewState(stateKey, "filterMode", "simple");
-  const [conditions, setConditions] = useTableViewState(stateKey, "filterConditions", () => [
-    emptyCondition(),
-  ]);
-  const [combinator, setCombinator] = useTableViewState(stateKey, "filterCombinator", "AND");
+  const [filterConditions, setFilterConditions] = useTableViewState(
+    stateKey,
+    "filterConditions",
+    () => [emptyCondition()],
+  );
+  const [filterCombinator, setFilterCombinator] = useTableViewState(
+    stateKey,
+    "filterCombinator",
+    "AND",
+  );
+  const [rules, setRules] = useTableViewState(stateKey, "rowRules", []);
+  const [ruleMode, setRuleMode] = useState(false);
+  const [ruleColor, setRuleColor] = useState("#3b82f6");
+  const [ruleConditions, setRuleConditions] = useState(() => [emptyCondition()]);
+  const [ruleCombinator, setRuleCombinator] = useState<Combinator>("AND");
+  const conditions = ruleMode ? ruleConditions : filterConditions;
+  const setConditions = ruleMode ? setRuleConditions : setFilterConditions;
+  const combinator = ruleMode ? ruleCombinator : filterCombinator;
+  const setCombinator = ruleMode ? setRuleCombinator : setFilterCombinator;
   const [sql, setSql] = useTableViewState(stateKey, "filterSql", "");
   const [parseError, setParseError] = useState("");
   const [badgeDraft, setBadgeDraft] = useState<string | null>(null);
@@ -95,8 +114,8 @@ export function TableFilterPanel({
   };
 
   const importFilter = (parsed: ParsedFilter) => {
-    setConditions(parsed.conditions.map((condition) => ({ ...condition, id: createId() })));
-    setCombinator(parsed.combinator);
+    setFilterConditions(parsed.conditions.map((condition) => ({ ...condition, id: createId() })));
+    setFilterCombinator(parsed.combinator);
     setParseError("");
   };
 
@@ -114,8 +133,8 @@ export function TableFilterPanel({
           return;
         }
       } else {
-        setConditions([emptyCondition()]);
-        setCombinator("AND");
+        setFilterConditions([emptyCondition()]);
+        setFilterCombinator("AND");
       }
     }
     if (next === "sql" && (!json || !sql.trim())) {
@@ -124,7 +143,22 @@ export function TableFilterPanel({
     setMode(next);
   };
 
+  const addRule = () => {
+    const active = activeRuleConditions(ruleConditions);
+    if (!active.length) return;
+    setRules((current) => [
+      ...current,
+      { id: createId(), color: ruleColor, combinator: ruleCombinator, conditions: active },
+    ]);
+    setRuleConditions([emptyCondition()]);
+    setRuleCombinator("AND");
+  };
+
   const apply = () => {
+    if (ruleMode) {
+      addRule();
+      return;
+    }
     const next =
       !native && !json && mode === "sql" ? normalizeFilterExpressionQuotes(draft) : draft;
     if (next !== draft) setSql(next);
@@ -134,8 +168,8 @@ export function TableFilterPanel({
 
   const reset = () => {
     setBadgeDraft(null);
-    setConditions([emptyCondition()]);
-    setCombinator("AND");
+    setFilterConditions([emptyCondition()]);
+    setFilterCombinator("AND");
     setSql("");
     setParseError("");
     onApply("", false);
@@ -176,11 +210,32 @@ export function TableFilterPanel({
         ) : (
           <span className="hidden text-xs text-muted-foreground sm:inline">Keine Filter aktiv</span>
         )}
+
+        {rules.map((rule) => (
+          <RowRuleBadge
+            key={rule.id}
+            color={rule.color}
+            label={describeRule(rule.conditions, rule.combinator)}
+            onRemove={() => setRules((current) => current.filter((item) => item.id !== rule.id))}
+          />
+        ))}
+
+        {!native && (
+          <RuleColorPopover
+            color={ruleColor}
+            setColor={setRuleColor}
+            ruleMode={ruleMode}
+            setRuleMode={(value) => {
+              setRuleMode(value);
+              if (value) setOpen(true);
+            }}
+          />
+        )}
       </div>
 
       <Collapse open={open} durationMs={260}>
         <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
-          {!native && (
+          {!native && !ruleMode && (
             <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
               <TabsList>
                 <TabsTrigger value="simple">
@@ -212,7 +267,7 @@ export function TableFilterPanel({
               }}
               className="font-mono text-xs"
             />
-          ) : json && mode === "sql" ? (
+          ) : json && mode === "sql" && !ruleMode ? (
             <Textarea
               aria-label="MongoDB-Filter"
               value={sql}
@@ -220,7 +275,7 @@ export function TableFilterPanel({
               placeholder={caps.filter_hint}
               className="h-36 font-mono text-xs"
             />
-          ) : mode === "simple" ? (
+          ) : mode === "simple" || ruleMode ? (
             <div ref={listRef} className="space-y-2">
               {conditions.map((condition, index) => (
                 <FilterConditionRow
@@ -244,7 +299,11 @@ export function TableFilterPanel({
               </Button>
 
               <p className="break-all font-mono text-xs text-muted-foreground">
-                {compiledSimple === "" ? "" : `${json ? "JSON" : "WHERE"} ${compiledSimple}`}
+                {compiledSimple === ""
+                  ? ""
+                  : ruleMode
+                    ? `Markiert: ${describeRule(conditions, combinator)}`
+                    : `${json ? "JSON" : "WHERE"} ${compiledSimple}`}
               </p>
             </div>
           ) : (
@@ -272,27 +331,42 @@ export function TableFilterPanel({
           )}
         </div>
         <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={reset}
-            disabled={!hasActiveFilter && draft === ""}
-            className="w-full sm:w-auto"
-          >
-            <RotateCcwIcon />
-            Zurücksetzen
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={apply}
-            disabled={!isDirty}
-            className="w-full sm:w-auto"
-          >
-            <PlayIcon />
-            Filter anwenden
-          </Button>
+          {!ruleMode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={reset}
+              disabled={!hasActiveFilter && draft === ""}
+              className="w-full sm:w-auto"
+            >
+              <RotateCcwIcon />
+              Zurücksetzen
+            </Button>
+          )}
+          {ruleMode ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={addRule}
+              disabled={activeRuleConditions(ruleConditions).length === 0}
+              className="w-full sm:w-auto"
+            >
+              <PaletteIcon style={{ color: ruleColor }} />
+              Regel hinzufügen
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              onClick={apply}
+              disabled={!isDirty}
+              className="w-full sm:w-auto"
+            >
+              <PlayIcon />
+              Filter anwenden
+            </Button>
+          )}
         </div>
       </Collapse>
     </div>

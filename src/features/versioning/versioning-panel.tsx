@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useSnapshotScheduler } from "@/lib/branching/scheduler";
 import { useTransactionStore } from "@/lib/transactions";
 import { useVersioningPanel } from "@/lib/versioning/panel";
 import { useVersioning } from "./use-versioning";
@@ -11,6 +12,7 @@ const VersioningView = lazy(() =>
 
 export function VersioningPanel() {
   const workspace = useVersioning();
+  useSnapshotScheduler();
   const [visited, setVisited] = useState(false);
   const open = useVersioningPanel((state) => state.open);
   const setOpen = useVersioningPanel((state) => state.setOpen);

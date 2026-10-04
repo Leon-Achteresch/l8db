@@ -18,6 +18,30 @@ Interne Tools verwenden denselben Dispatcher wie der bestehende MCP: Suche, Tabe
 
 Native Skills und MCPs bleiben in der CLI-Konfiguration verfügbar. Zusätzlich lassen sich Skills gezielt aus `SKILL.md` auswählen und externe MCP-Server über Stdio oder Streamable HTTP für BYOK verbinden. Externe Tools benötigen eine ausdrückliche Freigabe pro Aufruf. Keine Ausführung über eine interpolierte Shell.
 
+## Für Einsteiger
+
+Antworten richten sich an Menschen ohne SQL-Kenntnisse. Das Modell soll zuerst in einfachen Worten antworten und Listen, Rankings, Verläufe und Aufteilungen über das Tool `visualize` zeigen. `visualize` führt eine Leseabfrage über denselben Weg wie `query` aus (maximal 500 Zeilen, Standard 200) und l8db zeigt das Ergebnis als Diagramm oder Tabelle im Chat. Die Karte lässt sich zwischen Diagramm und Tabelle umschalten, als CSV oder Excel speichern und als SQL in einem Abfrage-Tab öffnen. Normale `query`-Aufrufe zeigen in der Werkzeugzeile das ausgeführte SQL und das Ergebnis als Tabelle mit denselben Aktionen.
+
+Nach einer Datenfrage beendet das Modell seine Antwort mit einem Codeblock `followups`. l8db zeigt daraus klickbare Anschlussfragen unter der letzten Antwort und lässt den Block beim Kopieren und Exportieren weg. Ein leerer Chat bietet Beispielfragen an, die aus den Tabellennamen der aktiven Verbindung abgeleitet werden (ohne Modellaufruf). Gespräche lassen sich im Verlauf als Markdown exportieren.
+
+Zugang: ⌘J öffnet und schließt den Assistenten. In der Befehlspalette erscheint zu jeder Eingabe der Eintrag „KI fragen“, der die Eingabe direkt an den Chat schickt.
+
+## Einrichtung
+
+Der Einrichtungsassistent bietet drei Wege: CLI-Agent, eigener API-Schlüssel und lokales Modell (Ollama unter `http://localhost:11434/v1`, LM Studio unter `http://localhost:1234/v1`, beide über die OpenAI-kompatible Schnittstelle ohne Schlüssel). Lokale Anbieter gelten als eingerichtet, solange ihr Server auf `GET /models` antwortet. Am Ende schickt der Assistent eine echte Testanfrage („Antworte nur mit dem Wort OK.“). So fallen fehlende Anmeldung, ungültige Schlüssel, fehlendes Kontingent und nicht geladene Modelle sofort auf. Dieselbe Prüfung steht in den Einstellungen als „Verbindung testen“ bereit. Die Testanfrage kostet bei bezahlten Anbietern wenige Token.
+
+Ohne gewähltes Modell wählt l8db bei API-Anbietern ein aktuelles Chatmodell aus der Modellliste (OpenAI: neuestes `gpt-*-mini`, Anthropic: neuestes Sonnet, Google: neuestes Gemini Flash, lokal: erstes Modell ohne Embedding). Der zuletzt gewählte Anbieter bleibt über Neustarts erhalten. Ist er nicht eingerichtet, ein anderer aber schon, wechselt der Chat beim Öffnen einmalig dorthin.
+
+## Dateien anhängen
+
+CSV, TSV, Excel, JSON, NDJSON und Parquet lassen sich über das Plus-Menü anhängen oder auf das KI-Panel ziehen. Das Ablegen außerhalb des Panels öffnet Dateien wie bisher. l8db liest Spalten, erkannte Typen, Zeilenzahl und die ersten 20 Zeilen mit den Import-Parsern und gibt sie dem Modell als Kontext mit. Anhänge bleiben an der Nachricht und gelten für das ganze Gespräch (höchstens zehn).
+
+Das Tool `import_file` legt aus einem Anhang immer eine neue Tabelle an und lädt alle Zeilen über den vorhandenen Dateiimport. Es fragt jedes Mal nach einer Freigabe, auch im Modus „Alles automatisch“, und ist für schreibgeschützte, als Produktion markierte und Plan-Modus-Verbindungen gesperrt. Bestehende Tabellen werden nie verändert. Spaltentypen schlägt das Modell im Dialekt der Zieldatenbank vor; ohne Angabe wird Text verwendet. Typen sind auf Buchstaben, Ziffern, Leerzeichen, Klammern, Komma und Unterstrich beschränkt.
+
+## KI-Wissen
+
+Pro Verbindung speichert l8db Notizen, ein Glossar und Beschreibungen für Tabellen und Spalten in `ai-knowledge.json` im Konfigurationsordner. Das Wissen der ausgewählten Verbindungen steht in jedem Gespräch im Systemprompt (höchstens etwa 24 KB) und ist dort als Hinweis, nicht als Anweisung gekennzeichnet. Es lässt sich im Plus-Menü unter „KI-Wissen“ bearbeiten. „Mit KI erzeugen“ startet ein Gespräch, in dem das Modell alle Tabellen ansieht und die Beschreibungen über das Tool `knowledge` speichert. Das Tool fragt im Modus „Immer fragen“ vor dem Speichern und ist im Plan-Modus gesperrt.
+
 ## Prüfung
 
 Akzeptanz umfasst Provider-Protokolle einschließlich Fehlern und Abbruch, Kontextauswahl und Tunnelfehler, restriktive Zusammenführung von Richtlinien, echte Datenbankabfragen an synthetischen SQLite-Daten, Tool-Freigaben, Provider-Streaming mit lokalen HTTP-Fixtures, externe MCP-Verbindungen, Persistenz ohne Schlüssel sowie Bedienprüfung der Island in der App. Live-Modellanfragen setzen verfügbare Konten oder API-Schlüssel voraus und werden separat vom deterministischen Testumfang ausgewiesen.

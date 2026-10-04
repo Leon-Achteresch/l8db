@@ -9,7 +9,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
-
+import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { QueryEditorContent } from "./query-view/query-editor-content";
 import { QueryResultsContent } from "./query-view/query-results-content";
@@ -84,6 +84,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const caps = useCapabilities(connection?.kind);
   const schema = useQueryRegistry(connection, database, caps);
+  const sessionViews = useSessionViews(connection?.id, database);
   const output = useServerOutput(connection, database, caps);
 
   const { runSql, bind } = useRunSql({
@@ -257,6 +258,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                 onInsert={(text) => editorApiRef.current?.insertText(text)}
                 onJump={(line, column) => editorApiRef.current?.revealMatch(line, column)}
                 onClose={() => workspace.update({ navigatorVisible: false })}
+                sessionViews={sessionViews}
+                onRemoveSessionView={(name) =>
+                  useSessionViewsStore.getState().remove(scopeKey(connection.id, database), name)
+                }
               />
             )
           }

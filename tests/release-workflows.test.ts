@@ -46,5 +46,25 @@ test("production matrices use explicit runners and immutable action references",
   }
   const rust = Bun.YAML.parse(readFileSync(".github/actions/setup-rust/action.yml", "utf8"));
   expect(rust.runs.steps[0].with.toolchain).toMatch(/^\d+\.\d+\.\d+$/);
-  expect(rust.runs.steps[1].with["shared-key"]).toContain("inputs.cache");
+  expect(rust.runs.steps[1].env.CACHE).toContain("inputs.cache");
+  expect(rust.runs.steps[1].run).toContain("TARGETS//,/-");
+  expect(rust.runs.steps[2].with["shared-key"]).toContain("steps.key.outputs.shared");
+});
+
+test("macOS architectures compile in parallel and unpublished snapshots can be reused", () => {
+  const platforms = release.jobs.build.strategy.matrix.include.map(
+    (target: { platform: string }) => target.platform,
+  );
+  expect(platforms).toEqual(["macos-arm64", "macos-x64", "linux", "windows"]);
+  expect(release.jobs.build.if).toContain("reuse_run_id == ''");
+  for (const job of ["draft", "package", "finalize"]) {
+    expect(release.jobs[job].if).toContain("!cancelled()");
+    expect(release.jobs[job].if).toContain("needs.build.result == 'skipped'");
+  }
+  const download = release.jobs.package.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("actions/download-artifact"),
+  );
+  expect(download.with["run-id"]).toContain("needs.prepare.outputs.reuse_run_id");
+  expect(release.jobs.package.permissions.actions).toBe("read");
+  expect(JSON.stringify(release.jobs.package.steps)).toContain("lipo -create");
 });

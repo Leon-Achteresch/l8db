@@ -61,6 +61,7 @@ test.skipIf(!enabled)(
       expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
 
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
+      await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "Gemini CLI", exact: true }).click();
       await page.getByRole("radio", { name: "Eigene Modell-ID …", exact: true }).click();
       await page.getByLabel("Modell-ID", { exact: true }).fill("private-model");
@@ -104,7 +105,8 @@ test.skipIf(!enabled)(
       ]);
       expect(first.skills).toEqual(["/tmp/ai-fixture/.agents/skills/sql/SKILL.md"]);
       expect(first).toMatchObject({ allowWrites: false, allowDdl: false });
-      await panel.getByRole("button", { name: "Im Arbeitsbereich öffnen", exact: true }).click();
+      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Im Arbeitsbereich öffnen" }).click();
       await page.waitForURL("**/ai");
       await page
         .getByRole("separator", { name: "AI-Panelbreite anpassen" })
@@ -156,9 +158,11 @@ test.skipIf(!enabled)(
           1,
       );
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
+      await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
+      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
       await panel
         .getByLabel("API-Schlüssel", { exact: true })
         .fill("fixture-api-key-never-persist");
@@ -170,16 +174,17 @@ test.skipIf(!enabled)(
         "fixture-api-key-never-persist",
       );
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
+      await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI-compatible · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
+      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
       await panel.getByLabel("API-Endpoint", { exact: true }).fill("http://localhost:11434/v1");
-      await panel.getByRole("button", { name: "AI-Einstellungen", exact: true }).click();
+      await panel.getByRole("button", { name: "Zurück zum Gespräch", exact: true }).click();
       await panel.getByLabel("Nachricht an AI").fill("Test local model without API key");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
       await panel.getByText("Local compatible response", { exact: true }).waitFor();
       expect(await panel.getByText("complete.", { exact: true }).count()).toBe(0);
-      await panel.getByRole("button", { name: "Gesprächsverlauf", exact: true }).click();
       expect(
         await panel.getByText("Inspect the selected databases", { exact: true }).isVisible(),
       ).toBe(true);
@@ -263,7 +268,7 @@ test.skipIf(!enabled)(
       expect(await answerTable.textContent()).not.toContain("---");
       expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
-      await panel.getByText("Tool verwendet", { exact: false }).last().click();
+      expect(await panel.getByText("Tool verwendet", { exact: false }).count()).toBe(0);
       expect(await panel.getByText("execute_query", { exact: true }).count()).toBeGreaterThan(0);
       const toolResultLabel = await panel
         .getByRole("button")
@@ -292,7 +297,6 @@ test.skipIf(!enabled)(
         localStorage.getItem("l8db.ai")?.includes('"outcome":"denied"'),
       );
       await page.reload();
-      await panel.getByRole("button", { name: "Gesprächsverlauf", exact: true }).click();
       await panel.getByRole("treeitem", { name: "empty-schema", exact: false }).click();
       await panel.getByAltText("Bild aus Agent-Ergebnis").waitFor();
       expect(await panel.getByText("SQL proposal", { exact: true }).isVisible()).toBe(true);
@@ -318,7 +322,6 @@ test.skipIf(!enabled)(
       await storageError.waitFor();
       expect(await page.evaluate(() => localStorage.getItem("l8db.ai"))).toBe(savedHistory);
       await panel.getByRole("button", { name: "Agent stoppen", exact: true }).click();
-      await panel.getByRole("button", { name: "Gesprächsverlauf", exact: true }).click();
       await page.evaluate(() => Object.assign(window, { aiStorageFull: false }));
       await panel.getByRole("button", { name: "Actions for quota-fixture", exact: true }).click();
       await page.getByRole("button", { name: "quota-fixture löschen", exact: true }).click();

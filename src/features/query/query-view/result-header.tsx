@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import type { QueryResult } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
+import { ResultTitle } from "./result-title";
+
 interface ResultHeaderProps {
   isRunning: boolean;
   error: string | null;
@@ -14,7 +16,7 @@ interface ResultHeaderProps {
 export function ResultHeader({ isRunning, error, result, statusText, actions }: ResultHeaderProps) {
   return (
     <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
-      <span className="font-medium">Ergebnisse</span>
+      <ResultTitle />
       <span
         role="status"
         className={cn(

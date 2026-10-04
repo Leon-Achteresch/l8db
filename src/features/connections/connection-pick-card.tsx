@@ -134,7 +134,7 @@ export function ConnectionPickCard({
             </div>
           }
           footer={
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
               {connection.temporary ? (
                 <Button
                   variant="ghost"
@@ -158,12 +158,7 @@ export function ConnectionPickCard({
               )}
               <div className="flex items-center gap-1">
                 {active ? (
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={onOpen}
-                    className="border-red-500/30 text-red-600 hover:bg-red-500/10 dark:text-red-400"
-                  >
+                  <Button variant="outline" size="xs" onClick={onOpen}>
                     <Unplug className="size-3" />
                     Trennen
                   </Button>
@@ -289,10 +284,8 @@ function ConnectionCardShell({
       animate={{ opacity: 1, scale: 1 }}
       {...rest}
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-foreground/25 hover:shadow-md",
-        active
-          ? "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/30 shadow-xs"
-          : "border-border/80",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-colors duration-150 hover:border-foreground/20",
+        active ? "border-primary/40 ring-1 ring-primary/15" : "border-border/80",
         className,
       )}
     >
@@ -309,7 +302,7 @@ function ConnectionCardShell({
           <div className="flex min-w-0 items-center gap-2.5">
             <div
               className={cn(
-                "relative grid size-10 shrink-0 place-items-center rounded-lg border bg-background/80 shadow-2xs transition-transform group-hover:scale-105",
+                "relative grid size-9 shrink-0 place-items-center rounded-lg border bg-background",
                 active && "border-primary/40",
               )}
             >
@@ -334,7 +327,7 @@ function ConnectionCardShell({
           {actions}
         </div>
 
-        <div className="mt-3 rounded-lg border border-border/50 bg-muted/30 p-2.5 text-[11px]">
+        <div className="mt-3 text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Database className="size-3 shrink-0 text-muted-foreground/70" />
             <span className="truncate font-mono font-medium text-foreground/90">

@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { listAllColumns, listMaterializedViews, listTables, listViews } from "@/lib/db";
 import { useSchemasQuery } from "@/lib/queries";
+import { useSessionViews } from "@/lib/session-views";
 import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format-options";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -14,6 +15,7 @@ export function useQueryRegistry(
   caps: QueryViewCapabilities,
 ) {
   const { data: schemas } = useSchemasQuery();
+  const sessionViews = useSessionViews(connection?.id, database);
 
   const {
     data: tables,
@@ -69,10 +71,16 @@ export function useQueryRegistry(
         ...(tables ?? []),
         ...(views ?? []),
         ...(matviews ?? []).map(({ schema, name }) => ({ schema, name })),
+        ...sessionViews.map(({ name }) => ({ schema: "", name })),
       ],
-      columns: columns ?? [],
+      columns: [
+        ...(columns ?? []),
+        ...sessionViews.flatMap((view) =>
+          view.columns.map((name) => ({ schema: "", table: view.name, name, data_type: "" })),
+        ),
+      ],
     }),
-    [schemas, tables, views, matviews, columns],
+    [schemas, tables, views, matviews, columns, sessionViews],
   );
 
   const dialectLabel = useMemo(

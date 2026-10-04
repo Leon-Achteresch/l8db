@@ -1314,35 +1314,39 @@ pub async fn csv_import(
                 serde_json::json!({ "jobId": job_id, "rows": rows }),
             );
         },
-        super::execution::run(options, true, async {
-            if !kind.capabilities().csv_import {
-                return Err("Dateiimport wird für diesen Datenbanktyp nicht unterstützt.".into());
-            }
-            match super::import::Dialect::from_kind(kind) {
-                Some(super::import::Dialect::Postgres) | None => {
-                    create_adapter_from_string(
-                        kind,
-                        &connection_string,
-                        database.as_deref(),
-                        pool_state.inner().clone(),
-                    )?
-                    .csv_import(&request)
-                    .await
-                }
-                Some(_) => {
-                    super::import::import(
-                        kind,
-                        &connection_string,
-                        database.as_deref(),
-                        pool_state.inner().clone(),
-                        &request,
-                    )
-                    .await
-                }
-            }
-        }),
+        super::execution::run(
+            options,
+            true,
+            run_csv_import(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+                &request,
+            ),
+        ),
     )
     .await
+}
+
+pub async fn run_csv_import(
+    kind: DatabaseKind,
+    connection_string: &str,
+    database: Option<&str>,
+    pool: PoolState,
+    request: &crate::db::CsvImportRequest,
+) -> Result<crate::db::CsvImportOutcome, String> {
+    if !kind.capabilities().csv_import {
+        return Err("Dateiimport wird für diesen Datenbanktyp nicht unterstützt.".into());
+    }
+    match super::import::Dialect::from_kind(kind) {
+        Some(super::import::Dialect::Postgres) | None => {
+            create_adapter_from_string(kind, connection_string, database, pool)?
+                .csv_import(request)
+                .await
+        }
+        Some(_) => super::import::import(kind, connection_string, database, pool, request).await,
+    }
 }
 
 #[tauri::command]

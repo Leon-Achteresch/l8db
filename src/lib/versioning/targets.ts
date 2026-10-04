@@ -56,7 +56,14 @@ export async function addTarget(
   connections: SavedConnection[],
   input: Pick<
     DatabaseTarget,
-    "name" | "connectionId" | "database" | "schema" | "production" | "customer" | "environment"
+    | "name"
+    | "connectionId"
+    | "database"
+    | "schema"
+    | "production"
+    | "customer"
+    | "environment"
+    | "stage"
   >,
 ) {
   const connection = connections.find((item) => item.id === input.connectionId);
@@ -80,6 +87,8 @@ export async function addTarget(
     throw new Error(
       `Schema ${schema} ist in der gewählten Datenbank nicht vorhanden oder nicht lesbar.`,
     );
+  if (input.stage && (input.stage === "production") !== input.production)
+    throw new Error("Die Stufe Produktion folgt dem Produktionsschutz des Ziels.");
   const candidate: DatabaseTarget = {
     id: crypto.randomUUID(),
     name: input.name.trim(),
@@ -89,6 +98,7 @@ export async function addTarget(
     database,
     schema,
     production: input.production,
+    ...(input.stage ? { stage: input.stage } : {}),
     release: null,
     history: [],
   };
@@ -153,17 +163,20 @@ export async function updateTargetDetails(
   repo: string,
   projectId: string,
   id: string,
-  details: Pick<DatabaseTarget, "name" | "customer" | "environment">,
+  details: Pick<DatabaseTarget, "name" | "customer" | "environment" | "stage">,
 ) {
   if (!details.name.trim() || !details.customer?.trim() || !details.environment?.trim())
     throw new Error("Kunde, Umgebung und Zielname ausfüllen.");
   const { store, text } = await readTargets(repo, projectId);
   const target = store.targets.find((item) => item.id === id);
   if (!target) throw new Error("Zielzuordnung fehlt.");
+  if (details.stage && (details.stage === "production") !== target.production)
+    throw new Error("Die Stufe Produktion folgt dem Produktionsschutz des Ziels.");
   Object.assign(target, {
     name: details.name.trim(),
     customer: details.customer.trim(),
     environment: details.environment.trim(),
+    ...(details.stage ? { stage: details.stage } : {}),
   });
   await saveTargets(repo, store, text);
 }

@@ -1,5 +1,7 @@
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
+import { rowRuleColor } from "@/lib/row-rules";
 import { useSettingsStore } from "@/lib/settings";
 import { DataTableRow } from "../data-table-row";
 import type { DataTableProps } from "../data-table-types";
@@ -58,6 +60,7 @@ type Props = Pick<
     "emptyMessage" | "onSaveRow" | "canEditCell" | "onInsertRow" | "onDeleteRow" | "columnDetails"
   > & {
     columnNames: string[];
+    stateKey?: string;
     page: number;
     pageSize: number;
   };
@@ -115,8 +118,10 @@ export function DataTableBody({
   onInsertRow,
   onDeleteRow,
   columnDetails,
+  stateKey,
 }: Props) {
   const monochromeCells = useSettingsStore((state) => state.monochromeCells);
+  const [rules] = useTableViewState(stateKey, "rowRules", []);
 
   return (
     <ContextMenu onOpenChange={(open) => !open && setMenuRow(null)}>
@@ -163,6 +168,7 @@ export function DataTableBody({
                     customCellColumns={customCellColumns}
                     monochromeCells={monochromeCells}
                     isMarked={markedRows.has(row.original)}
+                    ruleColor={rules.length ? rowRuleColor(row.original, rules) : undefined}
                     isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}

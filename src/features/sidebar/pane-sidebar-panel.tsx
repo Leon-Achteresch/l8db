@@ -10,12 +10,14 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { PaneNumber } from "@/features/shell/split-pane/pane-number";
+import { SidebarObjectSelect } from "@/features/sidebar/sidebar-object-select";
 import { SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { PaneTabTargetContext } from "@/lib/pane-tab-target";
+import { useSettingsStore } from "@/lib/settings";
 import { useSplitView } from "@/lib/split-view";
 import { remoteTab } from "@/lib/table-tabs";
 
@@ -38,6 +40,9 @@ export function PaneSidebarPanel({ index }: { index: number }) {
   const plainFunctions = q.functions?.filter((f) => f.return_type !== "PACKAGE");
   const tabs = useSidebarTabs(Boolean(packages?.length)).filter((tab) => tab.value !== "queries");
   const sidebarTab = tabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
+  const objectNav = useSettingsStore((state) => state.sidebarObjectNav);
+  const changeTab = (value: string) =>
+    startTransition(() => setSelectedTab(value as SidebarTabValue));
   const current = remoteTab(useSplitView((state) => state.panes[index]));
   const setPaneTab = useSplitView((state) => state.setPaneTab);
   const feature = useNewFeatureVisibility<HTMLDivElement>("split.pane-tables");
@@ -78,30 +83,31 @@ export function PaneSidebarPanel({ index }: { index: number }) {
           scope={scope}
         />
       </SidebarHeader>
-      {tabs.length > 1 ? (
+      {tabs.length > 1 && objectNav === "tabs" ? (
         <div
           ref={objectsFeature.ref}
           className="flex shrink-0 items-center gap-1 border-b px-2 py-2"
         >
           <div className="min-w-0 flex-1">
-            <SidebarObjectTabs
-              tabs={tabs}
-              value={sidebarTab}
-              onValueChange={(value) =>
-                startTransition(() => setSelectedTab(value as SidebarTabValue))
-              }
-            />
+            <SidebarObjectTabs tabs={tabs} value={sidebarTab} onValueChange={changeTab} />
           </div>
           {objectsFeature.isNew && <NewBadge />}
         </div>
       ) : null}
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>
-            {caps.object_storage && sidebarTab === "tables"
-              ? "Buckets"
-              : sidebarTabLabel(sidebarTab)}
-          </SidebarGroupLabel>
+          {tabs.length > 1 && objectNav === "select" ? (
+            <div ref={objectsFeature.ref} className="flex min-w-0 items-center gap-1">
+              <SidebarObjectSelect tabs={tabs} value={sidebarTab} onValueChange={changeTab} />
+              {objectsFeature.isNew && <NewBadge />}
+            </div>
+          ) : (
+            <SidebarGroupLabel>
+              {caps.object_storage && sidebarTab === "tables"
+                ? "Buckets"
+                : sidebarTabLabel(sidebarTab)}
+            </SidebarGroupLabel>
+          )}
           <SidebarGroupContent>
             <PaneTabTargetContext.Provider
               value={{ current, open: (tab) => setPaneTab(index, connection.id, tab) }}

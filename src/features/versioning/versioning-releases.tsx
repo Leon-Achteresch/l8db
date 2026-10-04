@@ -256,6 +256,7 @@ export function VersioningReleases({
             <div className="space-y-1.5">
               <span className="text-xs font-medium">Vorgänger</span>
               <VersioningSelect
+                hideLabel
                 label="Vorgänger-Release"
                 value={parent}
                 onChange={(value) => {

@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
+  ChevronRightIcon,
   DatabaseIcon,
   EllipsisIcon,
   FolderOpenIcon,
@@ -215,56 +216,65 @@ export function DashboardEditor({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-muted/15">
-      <header className="shrink-0 border-b bg-background px-5 pt-4 pb-3 sm:px-7">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-            <LayoutDashboardIcon className="size-4" />
-            <span>Dashboards</span>
-            <span className="text-border">/</span>
-            <span className="max-w-52 truncate">{connection?.name}</span>
-          </div>
-          <nav aria-label="Dashboard-Auswahl" className="flex items-center gap-2">
-            <Select
-              value={dashboard.id}
-              onValueChange={(id) => {
-                const target = siblings.find((item) => item.id === id);
-                if (target?.database)
-                  useDbSelectionStore.getState().setDatabase(connectionId, target.database);
-                store.setActive(connectionId, id);
-              }}
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
+      <header className="shrink-0 px-5 pt-4 pb-4 sm:px-7">
+        <nav
+          aria-label="Dashboard-Auswahl"
+          className="mb-3 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <LayoutDashboardIcon className="size-3.5 shrink-0" />
+          <span>Dashboards</span>
+          <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
+          <span className="max-w-40 truncate">{connection?.name}</span>
+          <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
+          <span className="inline-flex items-center gap-1 truncate">
+            <DatabaseIcon className="size-3.5 shrink-0" />
+            {database || "Aktive Datenbank"}
+          </span>
+          <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
+          <Select
+            value={dashboard.id}
+            onValueChange={(id) => {
+              const target = siblings.find((item) => item.id === id);
+              if (target?.database)
+                useDbSelectionStore.getState().setDatabase(connectionId, target.database);
+              store.setActive(connectionId, id);
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              className="h-6 max-w-48 gap-1 border-transparent bg-transparent px-1.5 text-xs text-foreground/80 shadow-none hover:bg-muted dark:bg-transparent"
+              aria-label="Dashboard auswählen"
             >
-              <SelectTrigger className="h-8 w-44 text-xs" aria-label="Dashboard auswählen">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {siblings.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Neues Dashboard"
-              onClick={() => store.add(connectionId, database)}
-            >
-              <PlusIcon />
-            </Button>
-          </nav>
-        </div>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {siblings.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Neues Dashboard"
+            onClick={() => store.add(connectionId, database)}
+          >
+            <PlusIcon />
+          </Button>
+        </nav>
         <div className="flex flex-wrap items-center gap-3">
           {editing ? (
             <Input
-              className="h-10 w-64 max-w-full border-transparent bg-transparent px-0 text-xl! font-semibold tracking-tight shadow-none hover:border-border focus-visible:px-2"
+              className="h-9 w-64 max-w-full border-transparent bg-transparent px-0 text-2xl! font-semibold tracking-tight shadow-none hover:border-border focus-visible:px-2 dark:bg-transparent"
               aria-label="Dashboard-Name"
               value={dashboard.name}
               onChange={(e) => update({ name: e.target.value })}
             />
           ) : (
-            <h1 className="truncate text-xl font-semibold tracking-tight">{dashboard.name}</h1>
+            <h1 className="truncate text-2xl font-semibold tracking-tight">{dashboard.name}</h1>
           )}
           {path && (
             <span
@@ -282,6 +292,12 @@ export function DashboardEditor({
               MCP
             </span>
           )}
+          {dashboard.refreshSec > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <TimerIcon className="size-3.5" />
+              {dashboard.refreshSec} s
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             {editing && (
               <UndoRedoControls
@@ -292,7 +308,7 @@ export function DashboardEditor({
                 onRedo={redoDashboards}
               />
             )}
-            <Button variant="ghost" size="sm" onClick={() => setDrawer("charts")}>
+            <Button variant="outline" size="sm" onClick={() => setDrawer("charts")}>
               <LibraryIcon /> Gespeicherte Charts
             </Button>
             {editing && (
@@ -313,7 +329,7 @@ export function DashboardEditor({
             </Button>
             <IconMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Weitere Dashboard-Aktionen">
+                <Button variant="outline" size="icon-sm" aria-label="Weitere Dashboard-Aktionen">
                   <EllipsisIcon />
                 </Button>
               </DropdownMenuTrigger>
@@ -363,35 +379,6 @@ export function DashboardEditor({
             </IconMenu>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <DatabaseIcon className="size-3.5" /> {database || "Aktive Datenbank"}
-          </span>
-          <span>
-            {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "Chart" : "Charts"} ·{" "}
-            {
-              new Set(
-                dashboard.datasets
-                  .filter((d) => d.simple.table || d.mode === "expert")
-                  .map((d) =>
-                    d.mode === "expert" ? d.id : `${d.simple.schema}.${d.simple.table}`,
-                  ),
-              ).size
-            }{" "}
-            Datenquellen
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <TimerIcon className="size-3.5" />{" "}
-            {dashboard.refreshSec
-              ? `Aktualisierung alle ${dashboard.refreshSec} s`
-              : "Manuelle Aktualisierung"}
-          </span>
-          <span className="sm:ml-auto">
-            {editing
-              ? "Charts am Griff verschieben · an der Ecke vergrößern"
-              : "Ansicht · Layout geschützt"}
-          </span>
-        </div>
       </header>
       <DashboardLibraryDrawer
         open={drawer === "dashboards"}
@@ -423,7 +410,7 @@ export function DashboardEditor({
           />
         </Suspense>
       )}
-      <div className="relative min-h-0 flex-1 overflow-y-auto bg-muted/20">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         <DashboardCanvas
           dashboardId={dashboard.id}
           onEdit={editing ? startEdit : undefined}

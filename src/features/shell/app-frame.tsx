@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export function AppFrame() {
   const fullAiPage = useRouterSelect((state) => state.location.pathname === "/ai");
-  const aiOpen = useAiStore((state) => state.open) && !fullAiPage;
+  const aiOpen = useAiStore((state) => state.open && !state.minimized) && !fullAiPage;
   const navInHeader = useSettingsStore((state) => state.navInHeader);
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-sidebar">

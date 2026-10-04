@@ -100,15 +100,19 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
           expect(errors).toEqual([]);
         }
       }
-      await page.getByRole("button", { name: "JSON", exact: true }).click();
+      await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
+      await page.getByRole("menuitemradio", { name: "JSON", exact: true }).click();
+      await page.locator("[data-slot=query-json-rows]").click();
+      await page.keyboard.press("ControlOrMeta+f");
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("elio");
       if (
         !(await page.locator("pre").innerText()).includes("elio") ||
         (await page.locator("pre").innerText()).includes("mara")
       )
         throw Error("Result search failed");
-      await page.getByRole("button", { name: "Tabelle", exact: true }).click();
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("");
+      await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
+      await page.getByRole("menuitemradio", { name: "Tabelle", exact: true }).click();
       await page.getByRole("button", { name: "Anpassen", exact: true }).click();
       await page.getByRole("button", { name: "Analysieren Ergebnisse rechts" }).click();
       await page.getByLabel("Zeilenhöhe der Ergebnisse").click();
