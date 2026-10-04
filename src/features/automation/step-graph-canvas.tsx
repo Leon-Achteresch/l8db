@@ -658,7 +658,7 @@ export function StepGraphCanvas({
                 size="icon-sm"
                 aria-label="Vergrößern"
                 title="Vergrößern"
-                onClick={() => void flow.zoomIn({ duration: reduce ? 0 : 160, ease: SMOOTH_OUT })}
+                onClick={() => void flow.zoomIn({ duration: reduce ? 0 : 250, ease: SMOOTH_OUT })}
               >
                 <PlusIcon />
               </Button>
@@ -668,7 +668,7 @@ export function StepGraphCanvas({
                 size="icon-sm"
                 aria-label="Verkleinern"
                 title="Verkleinern"
-                onClick={() => void flow.zoomOut({ duration: reduce ? 0 : 160, ease: SMOOTH_OUT })}
+                onClick={() => void flow.zoomOut({ duration: reduce ? 0 : 250, ease: SMOOTH_OUT })}
               >
                 <MinusIcon />
               </Button>

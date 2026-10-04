@@ -4,7 +4,7 @@ import type { Step } from "@/lib/db/automation";
 import { cn } from "@/lib/utils";
 
 const BASE =
-  "!size-2 !min-h-0 !min-w-0 !border-[1.5px] !border-card transition-opacity duration-150 opacity-0 group-hover/node:opacity-100 group-focus-within/node:opacity-100 group-data-[selected=true]/node:opacity-100";
+  "!size-2 !min-h-0 !min-w-0 !border-[1.5px] !border-card transition-[opacity,scale] duration-150 opacity-0 before:absolute before:-inset-2 before:content-[''] group-hover/node:opacity-100 group-focus-within/node:opacity-100 group-data-[selected=true]/node:opacity-100";
 
 const POSITION = {
   success: {

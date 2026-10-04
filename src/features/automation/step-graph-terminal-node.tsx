@@ -45,7 +45,9 @@ export function StepGraphTerminalNode({
         />
       )}
       <Icon className="size-3.5 shrink-0" aria-hidden />
-      <span className="truncate">{label}</span>
+      <span className="truncate" title={label}>
+        {label}
+      </span>
       {kind === "entry" && (
         <Handle
           type="source"
