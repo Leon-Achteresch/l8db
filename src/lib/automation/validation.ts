@@ -305,6 +305,20 @@ function stepIssues(
   return issues;
 }
 
+export function stepVariables(steps: Step[]): string[] {
+  return steps.flatMap((step) => {
+    const action = step.action;
+    if (action.type === "loop") return stepVariables(action.steps);
+    const name =
+      action.type === "set_variable"
+        ? action.name
+        : action.type === "file_exists" || action.type === "http" || action.type === "shell"
+          ? action.capture
+          : null;
+    return name?.trim() ? [name.trim()] : [];
+  });
+}
+
 export function scheduleIssues(schedule: Schedule, task: Task): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const push = (field: string, message: string, severity: Severity = "error") =>
@@ -410,7 +424,8 @@ export function validateTask(task: Task): ValidationIssue[] {
     for (const issue of channelIssues(rule.channel))
       push(`notifications.${rule.id}.${issue.field}`, issue.message, "warning");
   }
-  issues.push(...stepIssues(task, task.steps, names, []));
+  const known = new Set([...names, ...stepVariables(task.steps)]);
+  issues.push(...stepIssues(task, task.steps, known, []));
   return issues;
 }
 

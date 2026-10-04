@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { IF_EXISTS_LABELS } from "@/lib/automation/labels";
+import { renderExample } from "@/lib/automation/placeholders";
 import type { IfExists, OutputSpec } from "@/lib/db/automation";
 import { FormRow } from "./form-row";
 import { PathInput } from "./path-input";
@@ -25,7 +26,7 @@ interface Props {
 }
 
 function example(path: string, extension: string, timestamp: boolean): string {
-  const name = path.split(/[\\/]/).pop() || `ausgabe.${extension}`;
+  const name = renderExample(path).split(/[\\/]/).pop() || `ausgabe.${extension}`;
   const dot = name.lastIndexOf(".");
   const base = dot > 0 ? name.slice(0, dot) : name;
   const ext = dot > 0 ? name.slice(dot + 1) : extension;

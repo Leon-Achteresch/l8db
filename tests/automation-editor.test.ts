@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { newStep, newTask } from "../src/lib/automation/defaults";
-import { findPlaceholders, unsafeSqlPlaceholders } from "../src/lib/automation/placeholders";
+import {
+  findPlaceholders,
+  renderExample,
+  unsafeSqlPlaceholders,
+} from "../src/lib/automation/placeholders";
 import { ACTION_TYPES, STEP_CATALOG } from "../src/lib/automation/step-catalog";
 import { insertStep, moveStep, removeStep } from "../src/lib/automation/step-tree";
 import { TASK_TEMPLATES } from "../src/lib/automation/templates";
@@ -179,6 +183,44 @@ describe("placeholders", () => {
         severity: "warning",
       },
     ]);
+  });
+});
+
+describe("step variables", () => {
+  test("variables set by steps are known to later steps", () => {
+    const set = newStep("set_variable");
+    if (set.action.type === "set_variable") set.action.name = "zeilen";
+    const exists = newStep("file_exists");
+    if (exists.action.type === "file_exists") exists.action.capture = "datei_da";
+    const http = newStep("http");
+    if (http.action.type === "http") http.action.capture = "antwort";
+    const shell = newStep("shell");
+    if (shell.action.type === "shell") shell.action.capture = "ausgabe";
+    const log = newStep("log");
+    if (log.action.type === "log")
+      log.action.message = "${zeilen} ${datei_da} ${antwort} ${ausgabe} ${fehlt}";
+    const loop = newStep("loop");
+    if (loop.action.type === "loop") {
+      loop.action.over = { type: "list", values: "a" };
+      loop.action.steps = [log];
+    }
+    const issues = validateTask({ ...newTask("t"), steps: [set, exists, http, shell, loop] });
+    expect(
+      issues
+        .filter((issue) => issue.message.startsWith("Unbekannte Variable"))
+        .map((issue) => issue.message),
+    ).toEqual(["Unbekannte Variable „fehlt“."]);
+  });
+});
+
+describe("example file names", () => {
+  test("builtin placeholders get example values", () => {
+    expect(renderExample("~/b/shop-${date}.dump")).toBe("~/b/shop-2026-10-04.dump");
+    expect(renderExample("${task|filename}-${timestamp}.zip")).toBe(
+      "Täglicher Bericht-20261004-073000.zip",
+    );
+    expect(renderExample("${date:%Y_%m}-${date-1d}")).toBe("2026_10-2026-10-03");
+    expect(renderExample("${filiale.code}-${x:-std}.csv")).toBe("${filiale.code}-std.csv");
   });
 });
 
