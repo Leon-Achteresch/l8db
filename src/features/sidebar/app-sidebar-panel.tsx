@@ -13,10 +13,12 @@ import {
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
+import { SidebarObjectSelect } from "@/features/sidebar/sidebar-object-select";
 import { SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { INVALID_GROUP_TYPES } from "@/lib/invalid-objects";
+import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 
 import { SchemaManagerDialog } from "./app-sidebar-panel/schema-manager-dialog";
@@ -55,6 +57,9 @@ export function AppSidebarPanel() {
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchModalMounted, setSearchModalMounted] = useState(false);
+  const objectNav = useSettingsStore((state) => state.sidebarObjectNav);
+  const changeTab = (value: string) =>
+    startTransition(() => setSidebarTab(value as typeof sidebarTab));
 
   return (
     <Sidebar
@@ -86,15 +91,9 @@ export function AppSidebarPanel() {
           />
         ) : null}
       </SidebarHeader>
-      {activeConnection ? (
+      {activeConnection && objectNav === "tabs" ? (
         <div className="shrink-0 border-b px-2 py-2" data-tour="sidebar-tabs">
-          <SidebarObjectTabs
-            tabs={sidebarTabs}
-            value={sidebarTab}
-            onValueChange={(value) =>
-              startTransition(() => setSidebarTab(value as typeof sidebarTab))
-            }
-          />
+          <SidebarObjectTabs tabs={sidebarTabs} value={sidebarTab} onValueChange={changeTab} />
         </div>
       ) : null}
       <SidebarContent>
@@ -105,11 +104,21 @@ export function AppSidebarPanel() {
               sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"
             }
           >
-            <SidebarGroupLabel className="flex-1">
-              {caps.object_storage && sidebarTab === "tables"
-                ? "Buckets"
-                : sidebarTabLabel(sidebarTab)}
-            </SidebarGroupLabel>
+            {activeConnection && objectNav === "select" ? (
+              <div className="flex min-w-0 flex-1" data-tour="sidebar-tabs">
+                <SidebarObjectSelect
+                  tabs={sidebarTabs}
+                  value={sidebarTab}
+                  onValueChange={changeTab}
+                />
+              </div>
+            ) : (
+              <SidebarGroupLabel className="flex-1">
+                {caps.object_storage && sidebarTab === "tables"
+                  ? "Buckets"
+                  : sidebarTabLabel(sidebarTab)}
+              </SidebarGroupLabel>
+            )}
             {sidebarTab === "functions" ||
             sidebarTab === "procedures" ||
             sidebarTab === "packages" ||
@@ -150,8 +159,8 @@ export function AppSidebarPanel() {
             <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
           </Suspense>
         )}
-        {activeConnection ? <SidebarFooterActions caps={caps} /> : null}
       </SidebarContent>
+      {activeConnection ? <SidebarFooterActions caps={caps} /> : null}
       <SchemaManagerDialog open={schemaDialogOpen} onOpenChange={setSchemaDialogOpen} />
     </Sidebar>
   );

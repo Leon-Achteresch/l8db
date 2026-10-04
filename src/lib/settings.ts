@@ -11,6 +11,8 @@ export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | 
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
+export type SidebarObjectNav = "tabs" | "select";
+
 export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
   | "system"
@@ -79,6 +81,7 @@ export interface SettingsState {
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
   hideOwnSchemaSelect: boolean;
+  sidebarObjectNav: SidebarObjectNav;
   searchIncludeColumns: boolean;
   uiDensity: UiDensity;
   uiScale: number;
@@ -135,6 +138,7 @@ export interface SettingsState {
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
   setHideOwnSchemaSelect: (value: boolean) => void;
+  setSidebarObjectNav: (value: SidebarObjectNav) => void;
   setSearchIncludeColumns: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setUiScale: (v: number) => void;
@@ -217,6 +221,7 @@ const DEFAULT_SETTINGS = {
   highlightNullValues: true,
   translateFilterOperators: true,
   hideOwnSchemaSelect: true,
+  sidebarObjectNav: "tabs" as SidebarObjectNav,
   searchIncludeColumns: true,
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
@@ -301,6 +306,7 @@ export const useSettingsStore = create<SettingsState>()(
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
+      setSidebarObjectNav: (sidebarObjectNav) => set({ sidebarObjectNav }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
@@ -349,6 +355,7 @@ export const useSettingsStore = create<SettingsState>()(
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,
+          sidebarObjectNav: saved?.sidebarObjectNav === "select" ? "select" : "tabs",
           navInHeader: saved?.navInHeader === true,
           dynamicIsland: saved?.dynamicIsland !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,

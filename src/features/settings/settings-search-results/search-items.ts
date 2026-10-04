@@ -44,6 +44,14 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["schema", "benutzer", "user", "auswahl", "sidebar", "oracle"],
   },
   {
+    id: "sidebar-object-nav",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Objekttypen in der Seitenleiste",
+    description: "Objekttypen als Icon-Leiste oder als Auswahl wechseln.",
+    keywords: ["sidebar", "seitenleiste", "tabbar", "tabs", "auswahl", "select", "objekttyp"],
+  },
+  {
     id: "table-tabs",
     tabId: "general",
     tabLabel: "Allgemein",
