@@ -15,6 +15,7 @@ import {
   RefreshCwIcon,
   TriangleAlertIcon,
   TypeIcon,
+  WorkflowIcon,
 } from "lucide-react";
 import { type LazyExoticComponent, lazy } from "react";
 
@@ -34,7 +35,8 @@ export type ToolId =
   | "backup"
   | "notebook"
   | "create-table"
-  | "saved-plan";
+  | "saved-plan"
+  | "automation";
 
 type ToolEntry = {
   path: string;
@@ -197,6 +199,17 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     iconColor: "text-cyan-500",
     Component: lazy(() =>
       import("@/features/explain/saved-plan-view").then((m) => ({ default: m.SavedPlanView })),
+    ),
+  },
+  automation: {
+    path: "/automation",
+    label: "Automatisierung",
+    Icon: WorkflowIcon,
+    iconColor: "text-fuchsia-500",
+    Component: lazy(() =>
+      import("@/features/automation/automation-view").then((m) => ({
+        default: m.AutomationView,
+      })),
     ),
   },
 };

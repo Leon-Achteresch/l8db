@@ -1,5 +1,6 @@
 mod ai;
 mod appwrite;
+mod automation;
 mod baas_file;
 mod check_cli;
 mod community_extensions;
@@ -53,6 +54,12 @@ pub fn run() {
     if args.iter().any(|arg| arg == "--check") {
         std::process::exit(check_cli::cli(&args));
     }
+    if args
+        .iter()
+        .any(|arg| arg == "--run-task" || arg == "--list-tasks" || arg == "--automation-tick")
+    {
+        std::process::exit(automation::cli::cli(&args));
+    }
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
@@ -88,6 +95,7 @@ pub fn run() {
         .setup(move |app| {
             windows::install_quick_menu(app.handle());
             windows::handle_args(app.handle(), &args, false);
+            automation::init(app.handle());
             Ok(())
         })
         .plugin(desktop::log_plugin())
@@ -123,6 +131,7 @@ pub fn run() {
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
+        .manage(automation::AutomationState::default())
         .invoke_handler(tauri::generate_handler![
             ai::ai_environment,
             ai::ai_status,
@@ -134,6 +143,33 @@ pub fn run() {
             ai::ai_approve,
             ai::ai_respond,
             desktop::set_crash_reporting,
+            automation::automation_sync_connections,
+            automation::automation_list_tasks,
+            automation::automation_get_task,
+            automation::automation_save_task,
+            automation::automation_delete_tasks,
+            automation::automation_duplicate_task,
+            automation::automation_set_enabled,
+            automation::automation_validate_task,
+            automation::automation_export_tasks,
+            automation::automation_import_tasks,
+            automation::automation_run_task,
+            automation::automation_cancel_run,
+            automation::automation_list_runs,
+            automation::automation_get_run,
+            automation::automation_delete_runs,
+            automation::automation_export_runs,
+            automation::automation_preview_schedule,
+            automation::automation_next_runs,
+            automation::automation_get_settings,
+            automation::automation_save_settings,
+            automation::automation_test_channel,
+            automation::automation_test_connection,
+            automation::automation_set_alert_mute,
+            automation::automation_background_status,
+            automation::automation_install_background,
+            automation::automation_uninstall_background,
+            automation::automation_cli_command,
             convex::convex_connect,
             convex::convex_profiles,
             convex::convex_disconnect,

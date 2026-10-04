@@ -1,0 +1,1407 @@
+{
+  "id": "task-1",
+  "name": "Alle Schritttypen",
+  "description": "**Fixture** für Rust und TypeScript",
+  "folder": "Tests/Fixtures",
+  "tags": [
+    "fixture",
+    "v1"
+  ],
+  "enabled": true,
+  "steps": [
+    {
+      "id": "step-1",
+      "name": "SQL",
+      "enabled": true,
+      "action": {
+        "type": "sql",
+        "connections": [
+          "conn-a",
+          "Reporting"
+        ],
+        "database": null,
+        "sql": "update t set x = 1",
+        "file": null
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "next"
+      },
+      "retry": {
+        "attempts": 2,
+        "delaySeconds": 5,
+        "backoff": "exponential",
+        "maxDelaySeconds": 60
+      },
+      "timeoutSeconds": 120
+    },
+    {
+      "id": "step-2",
+      "name": "Export Abfrage",
+      "enabled": true,
+      "action": {
+        "type": "export",
+        "connection": "conn-a",
+        "database": "app",
+        "source": {
+          "type": "query",
+          "sql": "select * from t"
+        },
+        "format": "csv",
+        "output": {
+          "path": "${output_dir}/bericht.csv",
+          "appendTimestamp": true,
+          "ifExists": "rename",
+          "zip": false,
+          "cleanup": {
+            "olderThanDays": 30,
+            "keepLast": 10
+          }
+        },
+        "csv": {
+          "delimiter": ";",
+          "quote": "\"",
+          "header": true,
+          "nullText": "",
+          "lineEnding": "\n",
+          "bom": true
+        },
+        "sheetName": null,
+        "maxRows": 1000
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-3",
+      "name": "Export Tabelle",
+      "enabled": true,
+      "action": {
+        "type": "export",
+        "connection": "conn-a",
+        "database": null,
+        "source": {
+          "type": "table",
+          "schema": "public",
+          "table": "t",
+          "filter": null
+        },
+        "format": "xlsx",
+        "output": {
+          "path": "t.xlsx",
+          "appendTimestamp": false,
+          "ifExists": "overwrite",
+          "zip": true,
+          "cleanup": null
+        },
+        "csv": null,
+        "sheetName": "Daten",
+        "maxRows": null
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-4",
+      "name": "Backup",
+      "enabled": true,
+      "action": {
+        "type": "backup",
+        "connection": "conn-a",
+        "database": "app",
+        "output": {
+          "path": "backup.dump",
+          "appendTimestamp": true,
+          "ifExists": "rename",
+          "zip": false,
+          "cleanup": {
+            "olderThanDays": 30,
+            "keepLast": 10
+          }
+        },
+        "options": {
+          "format": "custom"
+        }
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-5",
+      "name": "Restore",
+      "enabled": true,
+      "action": {
+        "type": "restore",
+        "connection": "conn-b",
+        "database": null,
+        "path": "/tmp/backup.dump",
+        "options": {},
+        "allowProduction": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-6",
+      "name": "Transfer",
+      "enabled": true,
+      "action": {
+        "type": "transfer",
+        "source": "conn-a",
+        "sourceDatabase": null,
+        "target": "conn-b",
+        "targetDatabase": "copy",
+        "schemas": [
+          {
+            "source": "public",
+            "target": "public"
+          }
+        ],
+        "foldNames": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-7",
+      "name": "Tabellenkopie",
+      "enabled": true,
+      "action": {
+        "type": "table_copy",
+        "source": "conn-a",
+        "sourceDatabase": null,
+        "target": "conn-b",
+        "targetDatabase": null,
+        "tables": [
+          {
+            "schema": "public",
+            "table": "t",
+            "targetSchema": "public",
+            "targetTable": "t_copy"
+          }
+        ],
+        "mode": "truncate",
+        "includePrimaryKey": true,
+        "includeIndexes": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-8",
+      "name": "Testdaten",
+      "enabled": true,
+      "action": {
+        "type": "datagen",
+        "connection": "conn-a",
+        "database": null,
+        "schema": "public",
+        "table": "t",
+        "rows": 500,
+        "seed": 42,
+        "locale": "de",
+        "transaction": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-9",
+      "name": "Import",
+      "enabled": true,
+      "action": {
+        "type": "import",
+        "connection": "conn-a",
+        "database": null,
+        "schema": "public",
+        "table": "t",
+        "file": "/tmp/in.csv",
+        "format": "csv",
+        "delimiter": ";",
+        "hasHeader": true,
+        "sheet": null,
+        "columns": [
+          {
+            "source": 0,
+            "target": "id"
+          },
+          {
+            "source": 1,
+            "target": "name"
+          }
+        ],
+        "conflict": {
+          "constraint": "t_pkey",
+          "updateColumns": [
+            "name"
+          ]
+        }
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-10",
+      "name": "Vergleich",
+      "enabled": true,
+      "action": {
+        "type": "compare",
+        "left": {
+          "connection": "conn-a",
+          "database": null,
+          "schema": "public",
+          "table": "orders",
+          "filter": "status = 'open'"
+        },
+        "right": {
+          "connection": "conn-b",
+          "database": "copy",
+          "schema": "public",
+          "table": "orders",
+          "filter": null
+        },
+        "keyColumns": [
+          "id"
+        ],
+        "compareColumns": [],
+        "failIfDifferent": true,
+        "report": {
+          "path": "diff.json",
+          "appendTimestamp": true,
+          "ifExists": "rename",
+          "zip": false,
+          "cleanup": {
+            "olderThanDays": 30,
+            "keepLast": 10
+          }
+        }
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-11",
+      "name": "Zeilenzahl",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "row_count",
+          "schema": "public",
+          "table": "t",
+          "sql": null,
+          "op": "gt",
+          "value": 0.5
+        },
+        "severity": "error"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-12",
+      "name": "Wert",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "value",
+          "sql": "select sum(x) from t",
+          "op": "eq",
+          "value": "10",
+          "tolerance": 0.5
+        },
+        "severity": "warning"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-13",
+      "name": "Not Null",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "not_null",
+          "schema": "public",
+          "table": "t",
+          "column": "id"
+        },
+        "severity": "error"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-14",
+      "name": "Eindeutig",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "unique",
+          "schema": "public",
+          "table": "t",
+          "columns": [
+            "id",
+            "name"
+          ]
+        },
+        "severity": "error"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-15",
+      "name": "Erlaubte Werte",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "accepted_values",
+          "schema": "public",
+          "table": "t",
+          "column": "status",
+          "values": [
+            "open",
+            "closed"
+          ]
+        },
+        "severity": "error"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-16",
+      "name": "Aktualität",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "freshness",
+          "schema": "public",
+          "table": "t",
+          "column": "updated_at",
+          "warnAfterMinutes": 60,
+          "errorAfterMinutes": 120
+        },
+        "severity": "error"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-17",
+      "name": "Eigene Prüfung",
+      "enabled": true,
+      "action": {
+        "type": "check",
+        "connection": "conn-a",
+        "database": null,
+        "check": {
+          "type": "query",
+          "sql": "select * from t where x < 0"
+        },
+        "severity": "warning"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-18",
+      "name": "Alarm Zeilen",
+      "enabled": true,
+      "action": {
+        "type": "alert",
+        "connection": "conn-a",
+        "database": null,
+        "sql": "select 1",
+        "condition": {
+          "type": "has_rows"
+        },
+        "rearmMinutes": 60,
+        "notifyOnResolve": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-19",
+      "name": "Alarm leer",
+      "enabled": true,
+      "action": {
+        "type": "alert",
+        "connection": "conn-a",
+        "database": null,
+        "sql": "select 1",
+        "condition": {
+          "type": "no_rows"
+        },
+        "rearmMinutes": null,
+        "notifyOnResolve": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-20",
+      "name": "Alarm Wert",
+      "enabled": true,
+      "action": {
+        "type": "alert",
+        "connection": "conn-a",
+        "database": null,
+        "sql": "select count(*) as n from t",
+        "condition": {
+          "type": "value",
+          "column": "n",
+          "op": "gte",
+          "threshold": "100"
+        },
+        "rearmMinutes": null,
+        "notifyOnResolve": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-21",
+      "name": "Alarm Fehler",
+      "enabled": true,
+      "action": {
+        "type": "alert",
+        "connection": "conn-a",
+        "database": null,
+        "sql": "select 1",
+        "condition": {
+          "type": "error"
+        },
+        "rearmMinutes": null,
+        "notifyOnResolve": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-22",
+      "name": "Shell",
+      "enabled": true,
+      "action": {
+        "type": "shell",
+        "program": "sh",
+        "args": [
+          "-c",
+          "echo ok"
+        ],
+        "cwd": "/tmp",
+        "env": {
+          "FOO": "bar"
+        },
+        "successCodes": [
+          0,
+          3
+        ],
+        "capture": "shell_out"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-23",
+      "name": "HTTP",
+      "enabled": true,
+      "action": {
+        "type": "http",
+        "method": "post",
+        "url": "https://example.com/hook",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"run\":\"${run_id}\"}",
+        "expectStatus": "200-299",
+        "capture": "body"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-24",
+      "name": "Kopieren",
+      "enabled": true,
+      "action": {
+        "type": "file_copy",
+        "from": "/tmp/a/*.csv",
+        "to": "/tmp/b/",
+        "overwrite": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-25",
+      "name": "Verschieben",
+      "enabled": true,
+      "action": {
+        "type": "file_move",
+        "from": "/tmp/b/x.csv",
+        "to": "/tmp/c/x.csv",
+        "overwrite": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-26",
+      "name": "Löschen",
+      "enabled": true,
+      "action": {
+        "type": "file_delete",
+        "path": "/tmp/c/*.tmp"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-27",
+      "name": "Ordner",
+      "enabled": true,
+      "action": {
+        "type": "mkdir",
+        "path": "/tmp/d"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-28",
+      "name": "Existiert",
+      "enabled": true,
+      "action": {
+        "type": "file_exists",
+        "path": "/tmp/d/flag",
+        "failIfMissing": false,
+        "capture": "flag"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-29",
+      "name": "Zip",
+      "enabled": true,
+      "action": {
+        "type": "zip",
+        "sources": [
+          "/tmp/b/*.csv"
+        ],
+        "output": {
+          "path": "archiv.zip",
+          "appendTimestamp": true,
+          "ifExists": "rename",
+          "zip": false,
+          "cleanup": {
+            "olderThanDays": 30,
+            "keepLast": 10
+          }
+        }
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-30",
+      "name": "Unzip",
+      "enabled": true,
+      "action": {
+        "type": "unzip",
+        "archive": "/tmp/archiv.zip",
+        "target": "/tmp/e",
+        "overwrite": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-31",
+      "name": "Aufräumen",
+      "enabled": true,
+      "action": {
+        "type": "cleanup",
+        "dir": "/tmp/e",
+        "pattern": "*.csv",
+        "cleanup": {
+          "olderThanDays": 7,
+          "keepLast": null
+        }
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-32",
+      "name": "Benachrichtigen",
+      "enabled": true,
+      "action": {
+        "type": "notify",
+        "channel": {
+          "type": "email",
+          "profileId": "smtp-1",
+          "to": [
+            "ops@example.com"
+          ],
+          "cc": []
+        },
+        "title": "Bericht",
+        "body": "${run.summary}",
+        "attachOutputs": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-33",
+      "name": "Warten",
+      "enabled": true,
+      "action": {
+        "type": "wait",
+        "seconds": 5,
+        "until": null
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-34",
+      "name": "Variable",
+      "enabled": true,
+      "action": {
+        "type": "set_variable",
+        "name": "count",
+        "value": "",
+        "query": {
+          "connection": "conn-a",
+          "database": null,
+          "sql": "select count(*) from t",
+          "mode": "first_value",
+          "separator": null
+        },
+        "calculate": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-35",
+      "name": "Bedingung",
+      "enabled": true,
+      "action": {
+        "type": "condition",
+        "left": "${count}",
+        "op": "gt",
+        "right": "0",
+        "then": {
+          "type": "goto",
+          "stepId": "step-1"
+        },
+        "otherwise": {
+          "type": "end_success"
+        }
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-37",
+      "name": "Schleife Abfrage",
+      "enabled": true,
+      "action": {
+        "type": "loop",
+        "over": {
+          "type": "query",
+          "connection": "conn-a",
+          "database": null,
+          "sql": "select id from t"
+        },
+        "steps": [
+          {
+            "id": "step-36",
+            "name": "Inneres Log",
+            "enabled": true,
+            "action": {
+              "type": "log",
+              "level": "debug",
+              "message": "${item.id}"
+            },
+            "onSuccess": {
+              "type": "next"
+            },
+            "onFailure": {
+              "type": "end_failure"
+            },
+            "retry": null,
+            "timeoutSeconds": null
+          }
+        ],
+        "item": "row",
+        "maxIterations": 100,
+        "continueOnError": true
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-38",
+      "name": "Schleife Verbindungen",
+      "enabled": true,
+      "action": {
+        "type": "loop",
+        "over": {
+          "type": "connections",
+          "connections": [],
+          "tag": "prod"
+        },
+        "steps": [],
+        "item": "item",
+        "maxIterations": null,
+        "continueOnError": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-39",
+      "name": "Schleife Liste",
+      "enabled": true,
+      "action": {
+        "type": "loop",
+        "over": {
+          "type": "list",
+          "values": "a,b,c"
+        },
+        "steps": [],
+        "item": "item",
+        "maxIterations": null,
+        "continueOnError": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-40",
+      "name": "Schleife Dateien",
+      "enabled": true,
+      "action": {
+        "type": "loop",
+        "over": {
+          "type": "files",
+          "dir": "/tmp",
+          "pattern": "*.csv"
+        },
+        "steps": [],
+        "item": "file",
+        "maxIterations": null,
+        "continueOnError": false
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-41",
+      "name": "Task starten",
+      "enabled": true,
+      "action": {
+        "type": "run_task",
+        "task": "Nachlauf",
+        "wait": true,
+        "vars": {
+          "day": "${date}"
+        },
+        "environment": "staging"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-42",
+      "name": "Log",
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "level": "warn",
+        "message": "Fertig"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    },
+    {
+      "id": "step-43",
+      "name": "Fehler",
+      "enabled": false,
+      "action": {
+        "type": "fail",
+        "message": "Abbruch"
+      },
+      "onSuccess": {
+        "type": "next"
+      },
+      "onFailure": {
+        "type": "end_failure"
+      },
+      "retry": null,
+      "timeoutSeconds": null
+    }
+  ],
+  "schedules": [
+    {
+      "id": "schedule-1",
+      "enabled": true,
+      "trigger": {
+        "type": "interval",
+        "every": 15,
+        "unit": "minutes"
+      },
+      "timezone": null,
+      "startAt": "2026-11-01T00:00",
+      "endAt": "2026-12-31T23:59",
+      "exclusions": [],
+      "window": {
+        "from": "08:00",
+        "to": "18:00"
+      },
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-2",
+      "enabled": true,
+      "trigger": {
+        "type": "daily",
+        "times": [
+          "06:00",
+          "18:00"
+        ]
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [
+        "2026-12-25"
+      ],
+      "window": null,
+      "vars": {
+        "mode": "full"
+      },
+      "environment": "production"
+    },
+    {
+      "id": "schedule-3",
+      "enabled": true,
+      "trigger": {
+        "type": "weekly",
+        "weekdays": [
+          1,
+          4
+        ],
+        "times": [
+          "07:30"
+        ]
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-4",
+      "enabled": true,
+      "trigger": {
+        "type": "monthly",
+        "days": [
+          1,
+          15
+        ],
+        "lastDay": true,
+        "times": [
+          "02:00"
+        ]
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-5",
+      "enabled": true,
+      "trigger": {
+        "type": "monthly_nth",
+        "nth": -1,
+        "weekday": 5,
+        "times": [
+          "17:00"
+        ]
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-6",
+      "enabled": true,
+      "trigger": {
+        "type": "cron",
+        "expression": "0 */2 * * *"
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-7",
+      "enabled": false,
+      "trigger": {
+        "type": "once",
+        "at": "2026-12-24T10:00"
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-8",
+      "enabled": true,
+      "trigger": {
+        "type": "app_start",
+        "delaySeconds": 30
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    },
+    {
+      "id": "schedule-9",
+      "enabled": true,
+      "trigger": {
+        "type": "after_task",
+        "taskId": "task-0",
+        "on": "always"
+      },
+      "timezone": "Europe/Berlin",
+      "startAt": null,
+      "endAt": null,
+      "exclusions": [],
+      "window": null,
+      "vars": {},
+      "environment": null
+    }
+  ],
+  "variables": [
+    {
+      "name": "var_text",
+      "kind": "text",
+      "defaultValue": "1",
+      "choices": [],
+      "prompt": false,
+      "description": "Variable text"
+    },
+    {
+      "name": "var_number",
+      "kind": "number",
+      "defaultValue": "1",
+      "choices": [],
+      "prompt": false,
+      "description": "Variable number"
+    },
+    {
+      "name": "var_boolean",
+      "kind": "boolean",
+      "defaultValue": "1",
+      "choices": [],
+      "prompt": false,
+      "description": "Variable boolean"
+    },
+    {
+      "name": "var_date",
+      "kind": "date",
+      "defaultValue": "1",
+      "choices": [],
+      "prompt": false,
+      "description": "Variable date"
+    },
+    {
+      "name": "var_choice",
+      "kind": "choice",
+      "defaultValue": "1",
+      "choices": [
+        "a",
+        "b"
+      ],
+      "prompt": true,
+      "description": "Variable choice"
+    },
+    {
+      "name": "var_secret",
+      "kind": "secret",
+      "defaultValue": "",
+      "choices": [],
+      "prompt": false,
+      "description": "Variable secret"
+    }
+  ],
+  "environments": [
+    {
+      "name": "staging",
+      "variables": {
+        "var_text": "s"
+      }
+    },
+    {
+      "name": "production",
+      "variables": {}
+    }
+  ],
+  "defaultEnvironment": "staging",
+  "notifications": [
+    {
+      "id": "notify-1",
+      "enabled": true,
+      "when": "failure",
+      "channel": {
+        "type": "native"
+      },
+      "title": "",
+      "body": "",
+      "attachOutputs": false,
+      "skipIfEmpty": false
+    },
+    {
+      "id": "notify-2",
+      "enabled": true,
+      "when": "success",
+      "channel": {
+        "type": "email",
+        "profileId": "smtp-1",
+        "to": [
+          "a@example.com"
+        ],
+        "cc": [
+          "b@example.com"
+        ]
+      },
+      "title": "OK",
+      "body": "${run.summary}",
+      "attachOutputs": true,
+      "skipIfEmpty": true
+    },
+    {
+      "id": "notify-3",
+      "enabled": false,
+      "when": "alert_triggered",
+      "channel": {
+        "type": "webhook",
+        "webhookId": "hook-1"
+      },
+      "title": "",
+      "body": "",
+      "attachOutputs": false,
+      "skipIfEmpty": false
+    }
+  ],
+  "timeoutSeconds": 3600,
+  "retry": {
+    "attempts": 1,
+    "delaySeconds": 10,
+    "backoff": "fixed",
+    "maxDelaySeconds": null
+  },
+  "maxConsecutiveFailures": 3,
+  "missedRuns": "skip",
+  "background": true,
+  "retention": {
+    "keepDays": 14,
+    "keepRuns": null
+  },
+  "needsReview": false,
+  "revision": 7,
+  "createdAt": "2026-10-01T08:00:00.000Z",
+  "updatedAt": "2026-10-04T09:30:00.000Z"
+}
