@@ -8,6 +8,7 @@ import {
   Panel,
   ReactFlow,
   useReactFlow,
+  type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { LoaderCircleIcon, MaximizeIcon, MinusIcon, PlusIcon } from "lucide-react";
@@ -32,6 +33,7 @@ import {
   moveToInsert,
   resetConnection,
   resolveConnection,
+  START_ID,
   type StepGraphNode,
 } from "@/lib/automation/step-graph";
 import { summarizeStep } from "@/lib/automation/step-summary";
@@ -65,6 +67,9 @@ export interface StepGraphProps {
   taskName: (ref: string) => string;
   taskNames: Record<string, string>;
 }
+
+const HOME_ZOOM = 1;
+const TOOLBAR_SPACE = 64;
 
 const THEME = {
   "--xy-background-color": "transparent",
@@ -323,24 +328,58 @@ export function StepGraphCanvas({
     [graph.edges, boxes, selectedEdge, dropEdge, parents, lanes],
   );
 
-  const ensureVisible = useCallback(
-    (id: string) => {
+  const reveal = useCallback(
+    (viewport: Viewport, id: string): Viewport => {
       const box = absolute.get(id);
-      if (!box || !width || !height) return;
-      const { x, y, zoom } = flow.getViewport();
+      if (!box || !width || !height) return viewport;
+      const { x, y, zoom } = viewport;
       const margin = 24;
       const left = box.x * zoom + x;
       const top = box.y * zoom + y;
       const right = left + Math.min(box.width, 320) * zoom;
       const bottom = top + Math.min(box.height, LOOP_HEADER) * zoom;
       const dx =
-        left < margin ? margin - left : right > width - margin ? width - margin - right : 0;
+        left < margin || right > width - margin
+          ? Math.max(margin - left, (width - left - right) / 2)
+          : 0;
       const dy =
-        top < margin ? margin - top : bottom > height - margin ? height - margin - bottom : 0;
-      if (dx || dy) void flow.setViewport({ x: x + dx, y: y + dy, zoom });
+        top < margin || bottom > height - TOOLBAR_SPACE
+          ? Math.max(margin - top, (height - top - bottom) / 2)
+          : 0;
+      return { x: x + dx, y: y + dy, zoom };
     },
-    [absolute, flow, width, height],
+    [absolute, width, height],
   );
+
+  const ensureVisible = useCallback(
+    (id: string) => {
+      const current = flow.getViewport();
+      const next = reveal(current, id);
+      if (next.x !== current.x || next.y !== current.y) void flow.setViewport(next);
+    },
+    [flow, reveal],
+  );
+
+  const home = useCallback((): Viewport | null => {
+    const all = [...absolute.values()];
+    const start = absolute.get(START_ID);
+    if (!all.length || !start || !width || !height) return null;
+    const minX = Math.min(...all.map((box) => box.x));
+    const maxX = Math.max(...all.map((box) => box.x + box.width));
+    const minY = Math.min(...all.map((box) => box.y));
+    const maxY = Math.max(...all.map((box) => box.y + box.height));
+    const zoom = HOME_ZOOM;
+    const margin = 16;
+    const x =
+      (maxX - minX) * zoom <= width - 2 * margin
+        ? (width - (maxX - minX) * zoom) / 2 - minX * zoom
+        : Math.max(width / 2 - (start.x + start.width / 2) * zoom, margin - minX * zoom);
+    const y =
+      (maxY - minY) * zoom <= height - 2 * margin
+        ? (height - (maxY - minY) * zoom) / 2 - minY * zoom
+        : margin - minY * zoom;
+    return { x, y, zoom };
+  }, [absolute, width, height]);
 
   const focusStep = useCallback(
     (id: string) => {
@@ -355,38 +394,30 @@ export function StepGraphCanvas({
     [ensureVisible],
   );
 
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
   const lastWidth = useRef(0);
   useEffect(() => {
     const previous = lastWidth.current;
     lastWidth.current = width;
     if (!placed.current || !previous || !width || previous === width) return;
     const viewport = flow.getViewport();
-    void flow.setViewport({ ...viewport, x: viewport.x + (width - previous) / 2 });
-  }, [width, flow]);
+    const shifted = { ...viewport, x: viewport.x + (width - previous) / 2 };
+    const id = selectedRef.current;
+    void flow.setViewport(id ? reveal(shifted, id) : shifted);
+  }, [width, flow, reveal]);
 
   useEffect(() => {
     if (selectedId) ensureVisible(selectedId);
   }, [selectedId, ensureVisible]);
 
   useEffect(() => {
-    if (placed.current || !boxes || !width || !height) return;
+    if (placed.current || !boxes) return;
+    const viewport = home();
+    if (!viewport) return;
     placed.current = true;
-    const root = [...absolute.values()];
-    const minX = Math.min(...root.map((box) => box.x));
-    const maxX = Math.max(...root.map((box) => box.x + box.width));
-    const minY = Math.min(...root.map((box) => box.y));
-    const maxY = Math.max(...root.map((box) => box.y + box.height));
-    const zoom = Math.max(
-      0.7,
-      Math.min(1, width / (maxX - minX + 48), height / (maxY - minY + 48)),
-    );
-    const fitsY = (maxY - minY) * zoom <= height - 32;
-    void flow.setViewport({
-      zoom,
-      x: (width - (maxX - minX) * zoom) / 2 - minX * zoom,
-      y: fitsY ? (height - (maxY - minY) * zoom) / 2 - minY * zoom : 16 - minY * zoom,
-    });
-  }, [boxes, absolute, width, height, flow]);
+    void flow.setViewport(viewport);
+  }, [boxes, home, flow]);
 
   const keyDown = useCallback(
     (id: string, event: KeyboardEvent<HTMLElement>) => {
@@ -622,16 +653,17 @@ export function StepGraphCanvas({
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={() =>
-                  void flow.fitView({ padding: 0.12, maxZoom: 1, duration: reduce ? 0 : 200 })
-                }
+                onClick={() => {
+                  const viewport = home();
+                  if (viewport) void flow.setViewport(viewport, { duration: reduce ? 0 : 200 });
+                }}
               >
                 <MaximizeIcon className="size-3.5" />
                 Einpassen
               </Button>
             </ButtonGroup>
           </Panel>
-          {width >= 640 && (
+          {width >= 640 && !selectedId && (
             <MiniMap
               pannable
               zoomable
