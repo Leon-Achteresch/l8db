@@ -22,6 +22,8 @@ export function SettingsGeneralTab() {
     setTranslateFilterOperators,
     hideOwnSchemaSelect,
     setHideOwnSchemaSelect,
+    sidebarObjectNav,
+    setSidebarObjectNav,
   } = useSettingsStore();
 
   const handleReset = () => {
@@ -83,6 +85,22 @@ export function SettingsGeneralTab() {
             checked={hideOwnSchemaSelect}
             onCheckedChange={setHideOwnSchemaSelect}
             aria-label="Eigenes Schema ohne Auswahl"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Objekttypen in der Seitenleiste"
+          description="Tabellen, Views, Funktionen und weitere Objekttypen als Icon-Leiste oder als beschriftete Auswahl über der Liste wechseln."
+          featureId="settings.general.sidebar-object-nav"
+        >
+          <SegmentedControl
+            value={sidebarObjectNav}
+            onChange={setSidebarObjectNav}
+            label="Objekttypen in der Seitenleiste"
+            options={[
+              { value: "tabs", label: "Tabbar" },
+              { value: "select", label: "Auswahl" },
+            ]}
           />
         </SettingsRow>
 
