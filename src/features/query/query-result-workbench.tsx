@@ -264,6 +264,7 @@ export function QueryResultWorkbench({
             contain: "strict",
           }}
           data-slot="query-json-rows"
+          tabIndex={-1}
         >
           <div className="relative" style={{ height: jsonVirtualizer.getTotalSize() }}>
             {jsonVirtualizer.getVirtualItems().map((virtualRow) => {
