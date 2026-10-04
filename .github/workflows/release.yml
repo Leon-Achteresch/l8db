@@ -233,7 +233,7 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           for archive in compiled/build.tar compiled/*/build.tar; do
-            tar -xzf "$archive"
+            if [ -f "$archive" ]; then tar -xzf "$archive"; fi
           done
           if [ "$RELEASE_PLATFORM" = macos ]; then
             for arch in arm64:aarch64 x64:x86_64; do
