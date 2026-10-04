@@ -5,8 +5,9 @@ import { useConnectionsStore } from "@/lib/connections";
 import { control, type PolicyRecord } from "@/lib/versioning/control";
 import { identifier, releaseTrack } from "@/lib/versioning/model";
 import { readTargets, saveTargets } from "@/lib/versioning/repository";
-import type { DatabaseTarget } from "@/lib/versioning/types";
+import type { DatabaseTarget, DeliveryRules } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningDeliveryRules } from "./versioning-delivery-rules";
 import { VersioningSelect } from "./versioning-select";
 
 export function VersioningTargetPolicy({
@@ -29,6 +30,7 @@ export function VersioningTargetPolicy({
   const [reviewers, setReviewers] = useState("");
   const [administrators, setAdministrators] = useState("");
   const [production, setProduction] = useState(target.production);
+  const [delivery, setDelivery] = useState<DeliveryRules | null>(null);
   const connection = useConnectionsStore((state) =>
     state.connections.find((item) => item.id === target.connectionId),
   );
@@ -58,6 +60,7 @@ export function VersioningTargetPolicy({
         setReviewers(record.policy.reviewers.join(", "));
         setAdministrators(record.policy.administrators.join(", "));
         setProduction(record.policy.production);
+        setDelivery(record.policy.delivery ?? null);
         setLoadError(null);
       })
       .catch((error) => {
@@ -100,6 +103,7 @@ export function VersioningTargetPolicy({
         administrators: list(administrators),
         operators: list(operators),
         reviewers: list(reviewers),
+        delivery,
       };
       if (requireApproval && !next.reviewers.length)
         throw new Error("Mindestens einen Freigeber angeben.");
@@ -187,6 +191,12 @@ export function VersioningTargetPolicy({
               />
               Produktionsschutz
             </label>
+            <VersioningDeliveryRules
+              repo={workspace.repo}
+              value={delivery}
+              production={production}
+              onChange={setDelivery}
+            />
             <p className="text-[10px] text-muted-foreground">
               Gemeinsam in der Datenbank · Revision {record?.revision ?? "—"}. Freigaben benötigen
               einen anderen Datenbankbenutzer.

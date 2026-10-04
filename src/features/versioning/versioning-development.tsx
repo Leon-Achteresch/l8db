@@ -6,7 +6,7 @@ import {
   GitMergeIcon,
   Undo2Icon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DefinitionDiffEditor } from "@/features/compare/definition-diff-editor";
@@ -29,7 +29,20 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
   const [original, setOriginal] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(() => [
+    ...changedFiles(status?.changes ?? "").keys(),
+  ]);
+  const known = useRef(new Set(selected));
+  useEffect(() => {
+    const current = changedFiles(status?.changes ?? "");
+    setSelected((items) => [
+      ...new Set([
+        ...items.filter((item) => current.has(item)),
+        ...[...current.keys()].filter((item) => !known.current.has(item)),
+      ]),
+    ]);
+    known.current = new Set(current.keys());
+  }, [status?.changes]);
   const [message, setMessage] = useState("");
   const [mergeBranch, setMergeBranch] = useState("");
   const [mergedFrom, setMergedFrom] = useState<string | null>(null);
@@ -99,44 +112,49 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
   const mergeSource = mergeBranches.includes(mergeBranch) ? mergeBranch : (mergeBranches[0] ?? "");
   const changes = changedFiles(status.changes);
   const files = status.files.filter((file) => showAll || changes.has(file));
+  const canCommit =
+    selected.length > 0 && Boolean(message.trim()) && !workspace.dirty && !workspace.busy;
+  const committed = `${selected.length} ${selected.length === 1 ? "Datei" : "Dateien"} committet`;
+  const commit = async () => {
+    await workspace.git("commit", message, selected);
+    setSelected([]);
+    setMessage("");
+    if (path) await load(path);
+  };
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <VersioningDatabaseChanges workspace={workspace} />
-      <div className="flex items-center gap-2 border-t border-border/50 pt-4">
-        <div className="flex-1">
-          <h2 className="text-xs font-semibold">Repository</h2>
+      <div className="flex flex-col gap-3 border-t border-border/50 pt-4">
+        <div>
+          <h2 className="text-xs font-semibold">Commit</h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {changes.size} offen · {status.files.length} Dateien
+            {changes.size
+              ? `${changes.size} offene Änderungen im Branch ${status.branch ?? "HEAD"} · Nachricht eingeben und committen.`
+              : `Keine offenen Änderungen · ${status.files.length} Dateien im Repository`}
           </p>
         </div>
-        <VersioningPopover
-          icon={GitCommitHorizontalIcon}
-          label={`Änderungen committen${selected.length ? ` (${selected.length})` : ""}`}
-          disabled={workspace.busy || !selected.length}
-        >
-          <p className="text-xs text-muted-foreground">{selected.length} ausgewählte Dateien</p>
-          <Input
-            aria-label="Commit-Nachricht"
-            placeholder="Was hat sich geändert?"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-          />
-          <Button
-            size="sm"
-            disabled={!selected.length || !message.trim() || workspace.dirty}
-            onClick={() =>
-              void run(async () => {
-                await workspace.git("commit", message, selected);
-                setSelected([]);
-                setMessage("");
-                if (path) await load(path);
-              }, "Ausgewählte Dateien committet")
-            }
-          >
-            <CheckIcon className="size-3.5" />
-            Commit erstellen
-          </Button>
-        </VersioningPopover>
+        {changes.size > 0 && (
+          <div className="flex gap-2">
+            <Input
+              aria-label="Commit-Nachricht"
+              placeholder="Was hat sich geändert?"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && canCommit) void run(commit, committed);
+              }}
+            />
+            <Button
+              size="sm"
+              className="shrink-0"
+              disabled={!canCommit}
+              onClick={() => void run(commit, committed)}
+            >
+              <GitCommitHorizontalIcon className="size-3.5" />
+              Commit{selected.length ? ` (${selected.length})` : ""}
+            </Button>
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1 text-[11px]">
         <button
@@ -170,7 +188,7 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
             checked={Boolean(changes.size) && selected.length === changes.size}
             onChange={(event) => setSelected(event.target.checked ? [...changes.keys()] : [])}
           />
-          Alle für Commit
+          Alle auswählen
         </label>
       </div>
       <div className="max-h-72 overflow-y-auto">

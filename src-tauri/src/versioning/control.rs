@@ -55,6 +55,8 @@ pub struct Policy {
     pub administrators: Vec<String>,
     #[serde(default)]
     pub reviewers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<super::delivery::Delivery>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -494,6 +496,9 @@ pub async fn handle(
                 || (next.require_approval && next.reviewers.is_empty())
             {
                 return Err("Ungültige Kundenregeln".into());
+            }
+            if let Some(delivery) = &next.delivery {
+                super::delivery::validate(delivery)?;
             }
             let tx = lock(&c, &[], &transactions, &pool).await?;
             let outcome = async {

@@ -13,6 +13,7 @@ interface VersioningSelectProps {
   options: { value: string; label: string }[];
   placeholder?: string;
   disabled?: boolean;
+  hideLabel?: boolean;
 }
 
 export function VersioningSelect({
@@ -22,8 +23,9 @@ export function VersioningSelect({
   options,
   placeholder,
   disabled,
+  hideLabel,
 }: VersioningSelectProps) {
-  return (
+  const select = (
     <Select
       value={value || options.some((option) => option.value === "") ? `selection:${value}` : ""}
       onValueChange={(next) => onChange(next.slice(10))}
@@ -40,5 +42,12 @@ export function VersioningSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+  if (hideLabel) return select;
+  return (
+    <div className="min-w-0 space-y-1.5 text-xs">
+      <span className="block font-medium">{label}</span>
+      {select}
+    </div>
   );
 }

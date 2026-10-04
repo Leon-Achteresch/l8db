@@ -1,7 +1,7 @@
 import type { SavedConnection } from "@/lib/connections";
 import { versioningRunFleet, versioningRunStatus } from "@/lib/db";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { control } from "./control";
+import { blockingGate, GATE_LABELS, runRequest } from "./delivery";
 import { assertReviewedToken, type DeploymentPlan, planDeployment } from "./deploy";
 import { readTargets } from "./repository";
 import type { DatabaseTarget, VersioningProject } from "./types";
@@ -29,6 +29,15 @@ export async function preflightFleet(
       const plan = await planDeployment(repo, project, target, connection, releaseId);
       if (plan.differences.some((difference) => difference.status !== "unchanged"))
         throw new Error("Direkte Datenbankänderungen erkannt. Stand zuerst abgleichen.");
+      const gate = plan.releases.length ? blockingGate(plan.delivery) : null;
+      if (gate)
+        throw new Error(
+          `Auslieferungsregel „${GATE_LABELS[gate.id]}“: ${gate.detail}${
+            gate.id === "test" && plan.promotionProblems.length
+              ? ` (${plan.promotionProblems.join(" · ")})`
+              : ""
+          }`,
+        );
       const identity = plan.binding.physicalKey ?? plan.binding.fingerprint;
       if (identities.has(identity))
         throw new Error(
@@ -79,20 +88,7 @@ export async function deployFleet(
   const requests = wave.map((plan) => {
     const connection = connections.find((item) => item.id === plan.target.connectionId);
     if (!connection) throw new Error("Zielverbindung fehlt.");
-    return {
-      repo,
-      targetId: plan.target.id,
-      runId: crypto.randomUUID(),
-      artifact: plan.reviewArtifact,
-      connection: {
-        kind: connection.kind,
-        connectionString: effectiveConnectionString(connection),
-        database: plan.target.database,
-        schema: plan.target.ledgerSchema,
-        projectId: project.id,
-        readOnly: connection.readOnly ?? false,
-      },
-    };
+    return runRequest(repo, project, plan.target, connection, plan.reviewArtifact, plan.promotion);
   });
   const id = await versioningRunFleet(requests);
   for (;;) {

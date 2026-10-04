@@ -1,6 +1,7 @@
 mod ai;
 mod appwrite;
 mod baas_file;
+mod branching;
 mod check_cli;
 mod community_extensions;
 mod convex;
@@ -238,6 +239,23 @@ pub fn run() {
             versioning::runner::versioning_run_fleet,
             versioning::runner::versioning_run_status,
             versioning::versioning_oracle_timeout,
+            versioning::forge::versioning_forge,
+            versioning::delivery::versioning_delivery,
+            branching::branching_overview,
+            branching::branching_columns,
+            branching::branching_schema,
+            branching::branching_snapshot,
+            branching::branching_run,
+            branching::branching_update,
+            branching::branching_verify,
+            branching::branching_local,
+            branching::branching_schedules,
+            branching::branching_jobs,
+            branching::branching_audit,
+            branching::branching_audit_export,
+            branching::branching_vault,
+            branching::branching_recovery_key,
+            branching::branching_recovery_import,
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
             extension_process::extension_process_run,

@@ -25,6 +25,7 @@ import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningDeliveryGates } from "./versioning-delivery-gates";
 import { VersioningPopover } from "./versioning-popover";
 import { VersioningSelect } from "./versioning-select";
 import { VersioningTargetDetails } from "./versioning-target-details";
@@ -79,6 +80,14 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       workspace.setRequestedReleaseId("");
     }
   }, [workspace.requestedReleaseId, workspace.setRequestedReleaseId, releases]);
+  useEffect(() => {
+    if (!workspace.requestedTargetIds.length) return;
+    setSelection(workspace.requestedTargetIds);
+    setPlans([]);
+    setPreflight([]);
+    setConfirmation("");
+    workspace.setRequestedTargetIds([]);
+  }, [workspace.requestedTargetIds, workspace.setRequestedTargetIds]);
   useEffect(() => {
     if (!setupOpen || !selectedConnection) {
       setAvailableSchemas([]);
@@ -725,6 +734,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                 {item.binding.label}
                 {item.binding.edition ? ` · Edition ${item.binding.edition}` : ""}
               </p>
+              {item.delivery && item.releases.length > 0 && (
+                <VersioningDeliveryGates
+                  workspace={workspace}
+                  report={item.delivery}
+                  problems={item.promotionProblems}
+                />
+              )}
               {item.policy.policy.requireApproval && (
                 <Button
                   size="sm"

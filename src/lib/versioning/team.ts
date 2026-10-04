@@ -16,6 +16,7 @@ const fields = [
   "name",
   "customer",
   "environment",
+  "stage",
   "connectionRef",
   "database",
   "schema",
@@ -95,6 +96,9 @@ export function parseTeamConfiguration(raw: string, projectId: string): TeamConf
       (target.database !== null && !text(target.database)) ||
       !text(target.schema) ||
       typeof target.production !== "boolean" ||
+      (target.stage !== undefined &&
+        (!["development", "test", "production"].includes(target.stage) ||
+          (target.stage === "production") !== target.production)) ||
       [target.customer, target.environment, target.ledgerSchema].some(
         (value) => value !== undefined && !text(value),
       ) ||

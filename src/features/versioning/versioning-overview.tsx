@@ -48,10 +48,19 @@ export function VersioningOverview({
   }[] = [
     {
       area: "development",
-      title: "Schema aufnehmen",
-      detail: `${project.objects.length} verwaltete Objekte · Entwicklungsdatenbank vergleichen und Änderungen übernehmen.`,
+      title: "Datenbank mit Repository vergleichen",
+      detail: `${project.objects.length} verwaltete Objekte · Entwicklungsdatenbank vergleichen und geänderte Objekte als Dateien übernehmen.`,
       done: project.objects.length > 0,
-      action: "Änderungen prüfen",
+      action: "Vergleichen",
+    },
+    {
+      area: "development",
+      title: "Änderungen committen",
+      detail: changes.size
+        ? `${changes.size} offene Dateien im Branch ${status?.branch ?? "HEAD"} · Nachricht eingeben und committen.`
+        : "Alle Dateien sind committet.",
+      done: changes.size === 0,
+      action: "Commit öffnen",
     },
     {
       area: "releases",
@@ -79,14 +88,6 @@ export function VersioningOverview({
       action: "Rollout öffnen",
     },
   ];
-  if (changes.size > 0 && schemaChanges.length === 0)
-    steps.splice(2, 0, {
-      area: "development",
-      title: "Git-Dateien committen",
-      detail: "Seeds und weitere Dateiänderungen prüfen und gezielt im aktuellen Branch committen.",
-      done: false,
-      action: "Dateien prüfen",
-    });
   const visibleSteps = steps.filter(
     (step) => deployable(project.kind) || step.area === "development",
   );
@@ -98,6 +99,11 @@ export function VersioningOverview({
         <h2 className="text-sm font-semibold">Was als Nächstes ansteht</h2>
         {feature.isNew && <NewBadge />}
       </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {deployable(project.kind)
+          ? "Ablauf: Datenbank vergleichen → Änderungen committen → Release erstellen → bei Kunden ausrollen."
+          : "Ablauf: Datenbank vergleichen → Änderungen committen."}
+      </p>
       <div className="rounded-xl bg-primary/5 p-4">
         <p className="text-[11px] text-muted-foreground">
           {next ? "Nächster Schritt" : "Aktueller Stand"}
