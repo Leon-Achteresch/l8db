@@ -1,4 +1,4 @@
-import { HistoryIcon, ListTreeIcon } from "lucide-react";
+import { HistoryIcon, ListTreeIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cloneStep, newStep } from "@/lib/automation/defaults";
 import { placeholderSuggestions } from "@/lib/automation/placeholders";
+import type { GraphInsert } from "@/lib/automation/step-graph";
 import {
   type FlatStep,
   flattenSteps,
@@ -16,15 +17,20 @@ import {
 } from "@/lib/automation/step-tree";
 import { useAutomationStore } from "@/lib/automation/store";
 import { toast } from "@/lib/automation/toast";
+import { useAutomationUiState } from "@/lib/automation/ui-state";
 import { useConnectionsStore } from "@/lib/connections/store";
 import type { ActionType, Step, Task, TaskSummary, ValidationIssue } from "@/lib/db/automation";
+import { useElementSize } from "@/lib/hooks/use-element-size";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { NotificationsTab } from "./notifications-tab";
 import { ScheduleTab } from "./schedule-tab";
+import { StepAddMenu } from "./step-add-menu";
 import { StepCatalogGrid } from "./step-catalog-grid";
 import { StepEditor } from "./step-editor";
 import { StepFormContext, type StepFormContextValue } from "./step-form-context";
+import { StepGraphView } from "./step-graph-view";
 import { StepList } from "./step-list";
+import { StepViewSwitch } from "./step-view-switch";
 import { TaskEditorHeader } from "./task-editor-header";
 import { TaskGeneralTab } from "./task-general-tab";
 import { TaskRunBar } from "./task-run-bar";
@@ -91,10 +97,15 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
   const [tab, setTab] = useState<TabId>("steps");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const stepView = useAutomationUiState((state) => state.stepView);
+  const size = useElementSize<HTMLDivElement>();
+  const narrow = size.width > 0 && size.width < 768;
+  const graphMode = stepView === "graph" && !narrow;
 
   const steps = task?.steps ?? [];
   const flat = useMemo(() => flattenSteps(steps), [steps]);
-  const selected = flat.find((entry) => entry.step.id === selectedId) ?? flat[0] ?? null;
+  const picked = flat.find((entry) => entry.step.id === selectedId) ?? null;
+  const selected = graphMode ? picked : (picked ?? flat[0] ?? null);
 
   const connectionName = useCallback(
     (ref: string) => connections.find((connection) => connection.id === ref)?.name ?? ref,
@@ -102,6 +113,10 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
   );
   const taskName = useCallback(
     (ref: string) => tasks.find((entry) => entry.task.id === ref)?.task.name ?? ref,
+    [tasks],
+  );
+  const taskNames = useMemo(
+    () => Object.fromEntries(tasks.map((entry) => [entry.task.id, entry.task.name])),
     [tasks],
   );
 
@@ -161,6 +176,15 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
     setTab("steps");
   };
 
+  const insertAt = useCallback(
+    (insert: GraphInsert, type: ActionType) => {
+      const step = newStep(type);
+      setSteps((current) => insertStep(current, insert.parentId, insert.index, step));
+      setSelectedId(step.id);
+    },
+    [setSteps],
+  );
+
   const removeSelected = (id: string) => {
     const previous = steps;
     const entry = flat.find((item) => item.step.id === id);
@@ -169,7 +193,8 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
     const next =
       flat.slice(position + 1).find((item) => item.parentId === entry?.parentId) ??
       flat[position - 1];
-    setSelectedId(next && next.step.id !== id ? next.step.id : null);
+    const fallback = next && next.step.id !== id ? next.step.id : null;
+    setSelectedId((current) => (graphMode && current !== id ? current : fallback));
     toast(`„${entry?.step.name || "Schritt"}“ gelöscht`, {
       action: {
         label: "Rückgängig",
@@ -236,6 +261,21 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
     if (issue.stepId) setSelectedId(issue.stepId);
   };
 
+  const stepEditor = (entry: FlatStep, onClose?: () => void) =>
+    stepContext && (
+      <StepFormContext.Provider value={stepContext}>
+        <StepEditor
+          key={entry.step.id}
+          entry={entry}
+          onChange={(step) => setSteps((current) => updateStep(current, step.id, () => step))}
+          onDuplicate={() => duplicate(entry.step.id)}
+          onRemove={() => removeSelected(entry.step.id)}
+          onMove={(delta) => move(entry, delta)}
+          onClose={onClose}
+        />
+      </StepFormContext.Provider>
+    );
+
   if (!task) {
     return editor.loadError ? (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
@@ -263,6 +303,7 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
 
   return (
     <div
+      ref={size.ref}
       data-testid="automation-task-editor"
       className="@container/editor flex h-full min-h-0 flex-col bg-background"
     >
@@ -328,42 +369,102 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
         <StepFormContext.Provider value={taskContext}>
           <TabsContent
             value="steps"
-            className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset @xl/editor:flex-row"
+            className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
           >
-            <aside className="flex max-h-[38%] w-full shrink-0 flex-col border-b @xl/editor:max-h-none @xl/editor:w-56 @xl/editor:border-r @xl/editor:border-b-0 @3xl/editor:w-64 @4xl/editor:w-80">
-              <StepList
-                steps={steps}
-                selectedId={selected?.step.id ?? null}
-                issues={issues}
-                onSelect={setSelectedId}
-                onChange={setSteps}
-                onAdd={addStep}
-                onRemove={removeSelected}
-                onDuplicate={duplicate}
-                connectionName={connectionName}
-                taskName={taskName}
-              />
-            </aside>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-              {selected && stepContext ? (
-                <StepFormContext.Provider value={stepContext}>
-                  <StepEditor
-                    key={selected.step.id}
-                    entry={selected}
-                    onChange={(step) =>
-                      setSteps((current) => updateStep(current, step.id, () => step))
-                    }
-                    onDuplicate={() => duplicate(selected.step.id)}
-                    onRemove={() => removeSelected(selected.step.id)}
-                    onMove={(delta) => move(selected, delta)}
-                  />
-                </StepFormContext.Provider>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <StepCatalogGrid onPick={(type) => addStep(type, null)} />
-                </div>
+            <div className="flex h-11 shrink-0 items-center gap-3 border-b px-3">
+              <StepViewSwitch forced={narrow} />
+              {graphMode && (
+                <>
+                  <span
+                    aria-hidden
+                    className="hidden items-center gap-3 text-[11px] text-muted-foreground @4xl/editor:flex"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-px w-4 bg-muted-foreground/60" />
+                      Ablauf
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-4 border-t border-dashed border-destructive" />
+                      Bei Fehler
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-px w-4 bg-sky-600" />
+                      Gehe zu
+                    </span>
+                  </span>
+                  <StepAddMenu onPick={(type) => addStep(type, null)} align="end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="automation-add-step"
+                      className="ml-auto h-7 text-xs"
+                    >
+                      <PlusIcon />
+                      Schritt hinzufügen
+                    </Button>
+                  </StepAddMenu>
+                </>
               )}
             </div>
+            {graphMode ? (
+              <div className="flex min-h-0 flex-1">
+                <StepGraphView
+                  task={task}
+                  selectedId={selected?.step.id ?? null}
+                  issues={issues}
+                  runSteps={activeRun?.steps ?? null}
+                  onSelect={setSelectedId}
+                  onChange={setSteps}
+                  onInsert={insertAt}
+                  onRemove={removeSelected}
+                  onDuplicate={duplicate}
+                  connectionName={connectionName}
+                  taskName={taskName}
+                  taskNames={taskNames}
+                />
+                {(selected || steps.length === 0) && (
+                  <aside
+                    aria-label={selected ? "Schritt bearbeiten" : "Schrittkatalog"}
+                    className="flex w-[min(30rem,50%)] shrink-0 flex-col border-l bg-background animate-in duration-200 ease-out fade-in-0 slide-in-from-right-2 motion-reduce:slide-in-from-right-0"
+                  >
+                    {selected ? (
+                      stepEditor(selected, () => setSelectedId(null))
+                    ) : (
+                      <div className="min-h-0 flex-1 overflow-y-auto">
+                        <StepCatalogGrid onPick={(type) => addStep(type, null)} />
+                      </div>
+                    )}
+                  </aside>
+                )}
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col @xl/editor:flex-row">
+                <aside className="flex max-h-[38%] w-full shrink-0 flex-col border-b @xl/editor:max-h-none @xl/editor:w-56 @xl/editor:border-r @xl/editor:border-b-0 @3xl/editor:w-64 @4xl/editor:w-80">
+                  <StepList
+                    steps={steps}
+                    selectedId={selected?.step.id ?? null}
+                    issues={issues}
+                    onSelect={setSelectedId}
+                    onChange={setSteps}
+                    onAdd={addStep}
+                    onRemove={removeSelected}
+                    onDuplicate={duplicate}
+                    connectionName={connectionName}
+                    taskName={taskName}
+                  />
+                </aside>
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  {selected ? (
+                    stepEditor(selected)
+                  ) : (
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <StepCatalogGrid onPick={(type) => addStep(type, null)} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </TabsContent>
           <TabsContent
             value="schedule"

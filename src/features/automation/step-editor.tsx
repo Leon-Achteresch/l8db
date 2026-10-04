@@ -5,6 +5,7 @@ import {
   EllipsisIcon,
   Trash2Icon,
   TriangleAlertIcon,
+  XIcon,
 } from "lucide-react";
 import { useId } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,9 +31,10 @@ interface Props {
   onDuplicate: () => void;
   onRemove: () => void;
   onMove: (delta: number) => void;
+  onClose?: () => void;
 }
 
-export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove }: Props) {
+export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onClose }: Props) {
   const { step, number, index, siblings } = entry;
   const catalog = STEP_CATALOG[step.action.type];
   const Icon = catalog.icon;
@@ -110,6 +112,19 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove }: P
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {onClose && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Schritt schließen"
+            title="Schließen (Esc)"
+            onClick={onClose}
+            className="-mr-2"
+          >
+            <XIcon />
+          </Button>
+        )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div
