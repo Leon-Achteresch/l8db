@@ -169,15 +169,17 @@ export function ExportStepForm({ action, onChange }: StepFormProps<"export">) {
               </SelectContent>
             </Select>
           </FormRow>
-          <FormRow label="Höchstens Zeilen" hint="Leer = bis 1 000 000">
+          <FormRow label="Höchstens Zeilen" hint="Leer = bis 1.000.000">
             <Input
-              type="number"
-              min={1}
               inputMode="numeric"
-              placeholder="1 000 000"
-              value={action.maxRows ?? ""}
+              placeholder="1.000.000"
+              className="tabular-nums"
+              value={action.maxRows === null ? "" : action.maxRows.toLocaleString("de-DE")}
               onChange={(event) =>
-                onChange({ ...action, maxRows: optionalNumber(event.target.value) })
+                onChange({
+                  ...action,
+                  maxRows: optionalNumber(event.target.value.replace(/\D/g, "")),
+                })
               }
             />
           </FormRow>

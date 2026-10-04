@@ -16,11 +16,25 @@ export function RunTaskStepForm({ action, onChange }: StepFormProps<"run_task">)
   const { tasks, task } = useStepForm();
   const error = useFieldError("task");
   const others = tasks.filter((entry) => entry.task.id !== task.id);
-  const known = others.some((entry) => entry.task.id === action.task);
+  const target = others.find((entry) => entry.task.id === action.task)?.task;
+  const known = Boolean(target);
+  const emptyWarning =
+    target && target.steps.length === 0
+      ? `„${target.name}“ hat keine Schritte; der gestartete Lauf endet sofort.`
+      : null;
+  const environment = action.environment?.trim();
+  const environmentWarning =
+    target && environment && !environment.includes("${")
+      ? target.environments.some((entry) => entry.name === environment)
+        ? null
+        : target.environments.length
+          ? `Umgebung „${environment}“ gibt es in „${target.name}“ nicht.`
+          : `„${target.name}“ hat keine Umgebungen.`
+      : null;
 
   return (
     <div className="flex flex-col gap-4">
-      <FormRow label="Task" error={error} bind={false}>
+      <FormRow label="Task" error={error} warning={emptyWarning} bind={false}>
         <Select value={action.task} onValueChange={(next) => onChange({ ...action, task: next })}>
           <SelectTrigger
             aria-label="Task"
@@ -51,7 +65,12 @@ export function RunTaskStepForm({ action, onChange }: StepFormProps<"run_task">)
         checked={action.wait}
         onCheckedChange={(wait) => onChange({ ...action, wait })}
       />
-      <FormRow label="Umgebung" hint="Leer = Standard des gestarteten Tasks" className="max-w-72">
+      <FormRow
+        label="Umgebung"
+        hint="Leer = Standard des gestarteten Tasks"
+        warning={environmentWarning}
+        className="max-w-72"
+      >
         <TemplateInput
           value={action.environment ?? ""}
           placeholder="Standard"
