@@ -112,6 +112,11 @@ describe("statementAtOffset", () => {
     expect(statementAtOffset("SELECT 1; SELECT 'offen", 3)).toBeNull();
   });
 
+  test("falls back to the last statement in trailing whitespace", () => {
+    expect(statementAtOffset(sql, sql.length)?.text).toBe("SELECT 2;");
+    expect(statementAtOffset("SELECT 1;\n\n  ", 11)?.text).toBe("SELECT 1;");
+  });
+
   test("clamps out-of-range offsets", () => {
     expect(statementAtOffset("SELECT 1;", 999)?.text).toBe("SELECT 1;");
   });
