@@ -67,7 +67,7 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
           />
         </div>
         {risky && (
-          <span className="hidden shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 @md/step:inline-flex dark:text-amber-400">
+          <span className="hidden shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 @xl/step:inline-flex dark:text-amber-400">
             <TriangleAlertIcon className="size-3" aria-hidden />
             Verändert Daten/Dateien
           </span>
@@ -132,7 +132,7 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
           className="mx-auto flex max-w-3xl flex-col gap-8 px-5 pt-5 pb-16 animate-in duration-150 fade-in-0"
         >
           {risky && (
-            <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-pretty text-amber-800 @md/step:hidden dark:text-amber-300">
+            <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-pretty text-amber-800 @xl/step:hidden dark:text-amber-300">
               <TriangleAlertIcon className="mt-px size-3.5 shrink-0" aria-hidden />
               Verändert Daten/Dateien
             </p>

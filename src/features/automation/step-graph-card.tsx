@@ -1,5 +1,5 @@
 import { RotateCwIcon, TimerIcon, TriangleAlertIcon } from "lucide-react";
-import { runStatusLabel } from "@/lib/automation/format";
+import { formatDuration, runStatusLabel } from "@/lib/automation/format";
 import { STEP_CATALOG, STEP_GROUP_TONE } from "@/lib/automation/step-catalog";
 import { cn } from "@/lib/utils";
 import { StatusIcon } from "./status-icon";
@@ -95,10 +95,10 @@ export function StepGraphCard({ data, className }: Props) {
             {step.timeoutSeconds && (
               <span
                 className="inline-flex items-center gap-0.5"
-                title={`Timeout ${step.timeoutSeconds} s`}
+                title={`Timeout ${formatDuration(step.timeoutSeconds * 1000)}`}
               >
                 <TimerIcon className="size-2.5" aria-hidden />
-                {step.timeoutSeconds} s
+                {formatDuration(step.timeoutSeconds * 1000)}
               </span>
             )}
             {issues && (
