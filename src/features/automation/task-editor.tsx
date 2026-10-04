@@ -28,6 +28,7 @@ import { StepAddMenu } from "./step-add-menu";
 import { StepCatalogGrid } from "./step-catalog-grid";
 import { StepEditor } from "./step-editor";
 import { StepFormContext, type StepFormContextValue } from "./step-form-context";
+import { GOTO_COLOR } from "./step-graph-types";
 import { StepGraphView } from "./step-graph-view";
 import { StepList } from "./step-list";
 import { StepViewSwitch } from "./step-view-switch";
@@ -388,7 +389,7 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
                       Bei Fehler
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-px w-4 bg-sky-600" />
+                      <span className="h-px w-4" style={{ background: GOTO_COLOR }} />
                       Gehe zu
                     </span>
                   </span>
