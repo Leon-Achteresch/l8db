@@ -62,6 +62,23 @@ function anchors(graph: StepGraph) {
     });
 }
 
+function alignTerminals(graph: StepGraph, boxes: Map<string, GraphBox>) {
+  const last = graph.nodes
+    .filter((node) => node.parentId === null && (node.kind === "step" || node.kind === "loop"))
+    .at(-1);
+  const anchorId = last?.id ?? "__start";
+  const anchor = boxes.get(anchorId);
+  const success = boxes.get("__end_success");
+  const failure = boxes.get("__end_failure");
+  const linked = graph.edges.some(
+    (edge) => edge.source === anchorId && edge.target === "__end_success",
+  );
+  if (!anchor || !success || !linked) return;
+  const shift = anchor.x + anchor.width / 2 - (success.x + success.width / 2);
+  success.x += shift;
+  if (failure && failure.y === success.y) failure.x += shift;
+}
+
 export async function layoutStepGraph(
   graph: StepGraph,
   startLines: number,
@@ -120,6 +137,7 @@ export async function layoutStepGraph(
     }
   };
   visit(laid.children);
+  alignTerminals(graph, boxes);
   return boxes;
 }
 

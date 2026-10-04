@@ -49,7 +49,7 @@ import { useElementSize } from "@/lib/hooks/use-element-size";
 import { type StepGraphActions, StepGraphContext } from "./step-graph-context";
 import { edgeLanes, type GraphBox, layoutStepGraph, startLines } from "./step-graph-layout";
 import { stepEdgeTypes, stepNodeTypes } from "./step-graph-node-types";
-import { GOTO_COLOR, type StepFlowEdge, type StepFlowNode } from "./step-graph-types";
+import { GOTO_COLOR, LOOP_HEADER, type StepFlowEdge, type StepFlowNode } from "./step-graph-types";
 
 export interface StepGraphProps {
   task: Task;
@@ -328,18 +328,16 @@ export function StepGraphCanvas({
       const box = absolute.get(id);
       if (!box || !width || !height) return;
       const { x, y, zoom } = flow.getViewport();
+      const margin = 24;
       const left = box.x * zoom + x;
       const top = box.y * zoom + y;
-      const inside =
-        left >= 8 &&
-        top >= 8 &&
-        left + Math.min(box.width, 320) * zoom <= width - 8 &&
-        top + Math.min(box.height, 80) * zoom <= height - 8;
-      if (inside) return;
-      void flow.setCenter(box.x + box.width / 2, box.y + Math.min(box.height, 64) / 2, {
-        zoom,
-        duration: 0,
-      });
+      const right = left + Math.min(box.width, 320) * zoom;
+      const bottom = top + Math.min(box.height, LOOP_HEADER) * zoom;
+      const dx =
+        left < margin ? margin - left : right > width - margin ? width - margin - right : 0;
+      const dy =
+        top < margin ? margin - top : bottom > height - margin ? height - margin - bottom : 0;
+      if (dx || dy) void flow.setViewport({ x: x + dx, y: y + dy, zoom });
     },
     [absolute, flow, width, height],
   );
@@ -356,6 +354,15 @@ export function StepGraphCanvas({
     },
     [ensureVisible],
   );
+
+  const lastWidth = useRef(0);
+  useEffect(() => {
+    const previous = lastWidth.current;
+    lastWidth.current = width;
+    if (!placed.current || !previous || !width || previous === width) return;
+    const viewport = flow.getViewport();
+    void flow.setViewport({ ...viewport, x: viewport.x + (width - previous) / 2 });
+  }, [width, flow]);
 
   useEffect(() => {
     if (selectedId) ensureVisible(selectedId);
@@ -624,13 +631,15 @@ export function StepGraphCanvas({
               </Button>
             </ButtonGroup>
           </Panel>
-          <MiniMap
-            pannable
-            zoomable
-            ariaLabel="Übersicht des Ablaufs"
-            className="!m-3 overflow-hidden rounded-lg border shadow-xs"
-            style={{ width: 132, height: 92 }}
-          />
+          {width >= 640 && (
+            <MiniMap
+              pannable
+              zoomable
+              ariaLabel="Übersicht des Ablaufs"
+              className="!m-3 overflow-hidden rounded-lg border shadow-xs"
+              style={{ width: 120, height: 80 }}
+            />
+          )}
         </ReactFlow>
         <p aria-live="polite" className="sr-only">
           {announcement}

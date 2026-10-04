@@ -35,7 +35,7 @@ const edge = (graph: ReturnType<typeof buildStepGraph>, id: string) =>
 describe("step graph projection", () => {
   test("empty task connects start to the success terminal with an insert point", () => {
     const graph = buildStepGraph([]);
-    expect(graph.nodes.map((node) => node.kind)).toEqual(["start", "end_success", "end_failure"]);
+    expect(graph.nodes.map((node) => node.kind)).toEqual(["start", "end_success"]);
     expect(graph.edges).toHaveLength(1);
     expect(graph.edges[0]).toMatchObject({
       source: START_ID,

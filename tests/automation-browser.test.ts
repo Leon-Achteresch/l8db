@@ -336,5 +336,101 @@ async function flow(theme: "light" | "dark") {
   }
 }
 
+async function graphFlow(theme: "light" | "dark") {
+  mkdirSync(ARTIFACTS, { recursive: true });
+  const server = await createServer();
+  const browser = await launchBrowser();
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+    colorScheme: theme,
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const seed: AutomationSeed = {
+    storage: automationStorage(theme),
+    tasks: [BACKUP_TASK],
+    runs: [],
+    alerts: [],
+  };
+  try {
+    await page.addInitScript(mockAutomationInit, seed);
+    await page.goto(`http://localhost:${server.port}/connections`);
+    const link = page.locator('a[href="/automation"]').first();
+    await link.waitFor({ timeout: 15000 });
+    await link.click();
+    const row = page.locator(`[data-task-row="${BACKUP_TASK.id}"]`);
+    await row.waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+    await row.click();
+
+    const graph = page.getByTestId("automation-step-graph");
+    await graph.waitFor({ timeout: 10000 });
+    const backup = page.getByTestId("automation-step-node-step-backup");
+    await backup.waitFor({ timeout: 10000 });
+    expect(await graph.locator('[data-testid^="automation-step-node-"]').count()).toBe(3);
+
+    await backup.locator("[data-graph-step]").click();
+    const editor = page.getByTestId("automation-task-editor");
+    await expect(editor.getByLabel("Name des Schritts").inputValue()).resolves.toBe(
+      "Datenbank sichern",
+    );
+    await shot(page, theme, "16-graph-selected");
+
+    await page.waitForTimeout(350);
+    await graph.locator('[data-insert-edge="step-backup:success"]').click();
+    await page.getByRole("option", { name: /Log-Eintrag/ }).click({ timeout: 5000 });
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll(
+          '[data-testid="automation-step-graph"] [data-testid^="automation-step-node-"]',
+        ).length === 4,
+      undefined,
+      { timeout: 5000 },
+    );
+    await expect(editor.getByLabel("Name des Schritts").inputValue()).resolves.toBe("Log-Eintrag");
+
+    await editor.getByLabel("Schritt schließen").click();
+    await graph.getByRole("button", { name: "Einpassen" }).click();
+    await page.waitForTimeout(400);
+    await backup.hover();
+    const handle = backup.locator('.react-flow__handle[data-handleid="failure"]');
+    const from = await handle.boundingBox();
+    const to = await page.getByTestId("automation-step-node-step-notify").boundingBox();
+    if (!from || !to) throw new Error("Graph-Elemente nicht sichtbar");
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + 8, { steps: 12 });
+    await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 2 });
+    await page.mouse.up();
+    await graph.getByText("Bei Fehler").first().waitFor({ timeout: 5000 });
+    await shot(page, theme, "17-graph-goto");
+
+    await page.getByTestId("automation-save").click();
+    await page.waitForFunction(
+      () =>
+        (
+          (window as unknown as { __automationCalls: { cmd: string }[] }).__automationCalls ?? []
+        ).some((entry) => entry.cmd === "automation_save_task"),
+      undefined,
+      { timeout: 5000 },
+    );
+    const saved = (await calls(page, "automation_save_task")).at(-1)?.args.task as {
+      steps: { id: string; name: string; onFailure: unknown }[];
+    };
+    expect(saved.steps.map((entry) => entry.name)).toEqual([
+      "Datenbank sichern",
+      "Log-Eintrag",
+      "Alte Sicherungen löschen",
+      "Bericht senden",
+    ]);
+    expect(saved.steps[0].onFailure).toEqual({ type: "goto", stepId: "step-notify" });
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+    server.stop(true);
+  }
+}
+
 test.skipIf(!ENABLED)("Automatisierung: Abläufe im hellen Design", () => flow("light"), 120000);
 test.skipIf(!ENABLED)("Automatisierung: Abläufe im dunklen Design", () => flow("dark"), 120000);
+test.skipIf(!ENABLED)("Automatisierung: Schritte als Graph", () => graphFlow("light"), 120000);

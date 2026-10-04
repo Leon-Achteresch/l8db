@@ -173,7 +173,8 @@ export function buildStepGraph(steps: Step[]): StepGraph {
   const graph: StepGraph = { nodes: [node(START_ID, "start", null, null, null, -1)], edges: [] };
   buildLevel(steps, null, "", graph);
   graph.nodes.push(node(terminalId(null, "end_success"), "end_success", null, null, null, -1));
-  graph.nodes.push(node(terminalId(null, "end_failure"), "end_failure", null, null, null, -1));
+  if (steps.length)
+    graph.nodes.push(node(terminalId(null, "end_failure"), "end_failure", null, null, null, -1));
   return graph;
 }
 
