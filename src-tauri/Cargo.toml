@@ -43,7 +43,7 @@ russh = "0.63"
 base64 = "0.22"
 bb8 = "0.9"
 bb8-postgres = "0.9"
-tokio = { version = "1", features = ["time", "macros", "rt", "net", "process", "io-util", "fs", "sync"] }
+tokio = { version = "1", features = ["time", "macros", "rt", "net", "process", "io-util", "fs", "sync", "signal"] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 tauri-plugin-updater = "2"
@@ -80,6 +80,11 @@ tauri-plugin-log = "2"
 tauri-plugin-window-state = "2"
 log = "0.4"
 sentry = { version = "0.49", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "native-tls"] }
+croner = "4"
+chrono-tz = "0.10"
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-native-tls", "hostname"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
+notify-rust = "4"
 
 
 [features]
@@ -104,9 +109,9 @@ objc2 = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
-webview2-com = "0.38"
-windows-core = "0.61"
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem"] }
+webview2-com = "0.39"
+windows-core = "0.62"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem"] }
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "winauth"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
