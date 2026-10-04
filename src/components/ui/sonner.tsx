@@ -4,7 +4,7 @@ import { type CSSProperties, type MouseEvent, useRef } from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { ToastDrop } from "@/components/motion/toast-drop";
 
-const OFFSET = { top: "calc(var(--app-header-height) + 24px)" };
+const OFFSET = { top: "calc(var(--app-header-height) + 24px)", bottom: "40px" };
 const WIDTH = { "--width": "min(380px, calc(100vw - 32px))" } as CSSProperties;
 
 function dismissOnClick(event: MouseEvent<HTMLDivElement>) {
