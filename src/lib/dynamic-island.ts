@@ -154,8 +154,8 @@ function weekdayNote(date: Date): string | undefined {
   return undefined;
 }
 
-export function greetingName(home: string | null | undefined): string | null {
-  const account = home?.split(/[\\/]/).filter(Boolean).pop() ?? "";
+export function greetingName(home: unknown): string | null {
+  const account = (typeof home === "string" ? home : "").split(/[\\/]/).filter(Boolean).pop() ?? "";
   const first = account.split(/[._\s-]/)[0] ?? "";
   if (first.length < 2 || !/^\p{L}+$/u.test(first) || GENERIC_ACCOUNTS.has(first.toLowerCase()))
     return null;

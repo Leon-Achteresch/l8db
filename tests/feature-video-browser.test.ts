@@ -205,7 +205,7 @@ test.skipIf(!process.env.L8DB_FEATURE_VIDEO_BROWSER)(
       await page.getByRole("button", { name: /Über & Updates/ }).click();
       await page.waitForURL("**/settings?tab=about");
       expect(new URL(page.url()).searchParams.get("tab")).toBe("about");
-      await page.getByRole("button", { name: "Allgemein Design & Oberfläche" }).click();
+      await page.getByRole("button", { name: "Allgemein", exact: true }).click();
       await page.getByRole("heading", { name: "Allgemein", exact: true }).waitFor();
       Object.assign(item, { actionTarget: "dashboard" });
       await page.evaluate(() => localStorage.removeItem("l8db.feature-videos"));
