@@ -1,4 +1,5 @@
 import {
+  cloudAuthConnectionString,
   isReadOnlyConnection,
   type SavedConnection,
   useConnectionsStore,
@@ -99,16 +100,18 @@ export function effectiveConnectionString(connection: SavedConnection): string {
   const serverReadOnly =
     isReadOnlyConnection(connection) ||
     (isProductionLocked(connection) && capabilitiesFor(connection.kind).read_only_mode);
-  const base = proxyUserConnectionString(
-    serverReadOnly ? readOnlyConnectionString(raw) : raw,
+  const base = cloudAuthConnectionString(
+    proxyUserConnectionString(serverReadOnly ? readOnlyConnectionString(raw) : raw, connection),
     connection,
   );
   if (!usesTunnel(connection)) return base;
   if (!connection.tunnelPort)
     throw new Error(
-      connection.ssh?.host
-        ? "SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden."
-        : "Proxy-Tunnel ist nicht verbunden. Bitte erneut verbinden.",
+      connection.commandTunnel?.command
+        ? "Befehls-Tunnel ist nicht verbunden. Bitte erneut verbinden."
+        : connection.ssh?.host
+          ? "SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden."
+          : "Proxy-Tunnel ist nicht verbunden. Bitte erneut verbinden.",
     );
   return tunneledConnectionString(base, connection.tunnelPort, connection.kind);
 }

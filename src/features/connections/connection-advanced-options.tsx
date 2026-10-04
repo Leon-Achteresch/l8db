@@ -1,5 +1,6 @@
 import { ChevronDown, Eye, LockKeyhole, Network } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,8 +20,11 @@ import {
 import type { Capabilities, SslMode } from "@/lib/db";
 import { ENVIRONMENTS } from "@/lib/environments";
 import type { MaskRule } from "@/lib/masking";
+import { useHasNewFeatures } from "@/lib/new-features";
 import type { SshConfigDraft } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
+import { CommandTunnelFields } from "./connection-editor/command-tunnel-fields";
+import { CommandTunnelToggle } from "./connection-editor/command-tunnel-toggle";
 import { ProxyFields } from "./connection-editor/proxy-fields";
 import { SshAuthFields } from "./connection-editor/ssh-auth-fields";
 import { SshConfigImport } from "./connection-editor/ssh-config-import";
@@ -116,6 +120,7 @@ export function ConnectionAdvancedOptions({
   connection,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
+  const hasNew = useHasNewFeatures(caps.ssh ? "connections.editor" : undefined);
   const showSecurity = caps.ssl || caps.ssh || caps.read_only_mode;
 
   return (
@@ -127,7 +132,10 @@ export function ConnectionAdvancedOptions({
             open && "rotate-180",
           )}
         />
-        <span className="flex-1">Erweitert</span>
+        <span className="flex flex-1 items-center gap-1.5">
+          Erweitert
+          {hasNew && <NewBadge />}
+        </span>
         <span className="text-[11px] font-normal text-muted-foreground">
           SSL, SSH, Proxy, Umgebung, Farbe
         </span>
@@ -184,6 +192,7 @@ export function ConnectionAdvancedOptions({
                 />
               </label>
             )}
+            {caps.ssh && <CommandTunnelToggle network={network} />}
             {caps.read_only_mode && (
               <label className="flex items-center justify-between gap-3 text-xs font-medium sm:col-span-2">
                 <span className="flex flex-col gap-0.5">
@@ -245,6 +254,7 @@ export function ConnectionAdvancedOptions({
         {caps.ssh && network.proxyEnabled && (
           <ProxyFields network={network} sshEnabled={sshEnabled} connection={connection} />
         )}
+        {caps.ssh && network.commandEnabled && <CommandTunnelFields network={network} />}
         <ConnectionField
           id="connection-tags"
           label="Tags"

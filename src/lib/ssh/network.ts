@@ -1,9 +1,16 @@
 import { parseConnectionUrl } from "@/lib/connection-url";
-import type { NetworkProxy, SshAuth, SshConnection, SshJumpHost } from "@/lib/connections";
-import { type DatabaseKind, openProxyTunnel, openSshTunnel } from "@/lib/db";
+import type {
+  NetworkCommand,
+  NetworkProxy,
+  SshAuth,
+  SshConnection,
+  SshJumpHost,
+} from "@/lib/connections";
+import { type DatabaseKind, openCommandTunnel, openProxyTunnel, openSshTunnel } from "@/lib/db";
 import { providerForKind } from "@/lib/providers";
 import { loadSecret } from "@/lib/secrets";
 import type {
+  CommandTunnelRequest,
   ProxyRequest,
   ProxyTunnelRequest,
   SshAuthRequest,
@@ -57,6 +64,7 @@ export interface NetworkSecrets {
 export interface NetworkTarget {
   ssh?: SshConnection | null;
   proxy?: NetworkProxy | null;
+  commandTunnel?: NetworkCommand | null;
   kind: DatabaseKind;
   connectionString: string;
 }
@@ -156,6 +164,53 @@ export function buildProxyTunnelRequest(
   };
 }
 
+export const COMMAND_PORT_PLACEHOLDER = "{localPort}";
+
+export interface CommandTunnelPreset {
+  id: string;
+  label: string;
+  template: string;
+}
+
+export const COMMAND_TUNNEL_PRESETS: CommandTunnelPreset[] = [
+  {
+    id: "kubernetes",
+    label: "Kubernetes",
+    template: "kubectl port-forward svc/postgres {localPort}:5432 -n default",
+  },
+  {
+    id: "aws-ssm",
+    label: "AWS SSM",
+    template:
+      "aws ssm start-session --target i-0123456789abcdef0 --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=db.internal,portNumber=5432,localPortNumber={localPort}",
+  },
+  {
+    id: "cloudflare",
+    label: "Cloudflare Access",
+    template: "cloudflared access tcp --hostname db.example.com --url localhost:{localPort}",
+  },
+  { id: "custom", label: "Eigener Befehl", template: "" },
+];
+
+export function buildCommandTunnelRequest(
+  id: string,
+  command: NetworkCommand,
+): CommandTunnelRequest {
+  const template = command.command.trim();
+  const localPort = command.localPort || null;
+  if (!template) throw new Error("Der Tunnel-Befehl fehlt.");
+  if (!template.includes(COMMAND_PORT_PLACEHOLDER) && !localPort)
+    throw new Error(
+      `Der Tunnel-Befehl muss ${COMMAND_PORT_PLACEHOLDER} enthalten oder einen festen lokalen Port angeben.`,
+    );
+  return {
+    id,
+    command: template,
+    local_port: localPort,
+    timeout_secs: command.timeoutSecs || null,
+  };
+}
+
 async function safeLoad(account: string): Promise<string | null> {
   try {
     return await loadSecret(account);
@@ -179,6 +234,8 @@ export async function openNetworkTunnel(
   secrets: NetworkSecrets,
   acceptNewHostKey: boolean,
 ): Promise<SshTunnelInfo> {
+  if (target.commandTunnel?.command?.trim())
+    return openCommandTunnel(buildCommandTunnelRequest(id, target.commandTunnel));
   if (target.ssh?.host)
     return openSshTunnel(
       buildSshTunnelRequest(id, target.ssh, target.proxy, secrets, acceptNewHostKey),
@@ -192,7 +249,9 @@ export async function openNetworkTunnel(
         proxyTarget(target.connectionString, target.kind),
       ),
     );
-  throw new Error("Für diese Verbindung ist weder SSH noch ein Proxy konfiguriert.");
+  throw new Error(
+    "Für diese Verbindung ist weder SSH, ein Proxy noch ein Tunnel-Befehl konfiguriert.",
+  );
 }
 
 export interface SshConfigDraft {

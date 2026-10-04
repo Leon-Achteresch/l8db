@@ -81,8 +81,9 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
 ];
 
 export function mcpSupported(
-  connection: Pick<SavedConnection, "kind" | "ssh" | "proxy">,
+  connection: Pick<SavedConnection, "kind" | "ssh" | "proxy" | "commandTunnel">,
 ): string | null {
+  if (connection.commandTunnel?.command) return "Befehls-Tunnel werden vom MCP nicht unterstützt";
   if (connection.ssh?.host) return "SSH-Tunnel werden vom MCP nicht unterstützt";
   if (connection.proxy?.host) return "Proxy-Verbindungen werden vom MCP nicht unterstützt";
   if (!MCP_SQL_KINDS.includes(connection.kind))

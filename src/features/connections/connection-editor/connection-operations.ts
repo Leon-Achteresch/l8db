@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { errorText, vaultSave } from "@/features/community-extensions/password-manager";
 import { connectionError } from "@/lib/connection-url";
 import {
+  type CloudAuth,
   type ConnectionEnvironment,
   type SavedConnection,
   useConnectionsStore,
@@ -61,6 +62,7 @@ export interface ConnectionOperationsContext {
   environment: ConnectionEnvironment | null;
   maskRules: MaskRule[];
   tags: string;
+  cloudAuth: CloudAuth | null;
   vault: { host: ExtensionManager; name: string } | null;
   onSaved: () => void;
 }
@@ -104,6 +106,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     environment,
     maskRules,
     tags,
+    cloudAuth,
     vault,
     onSaved,
   } = ctx;
@@ -199,9 +202,11 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         sslMode: ssl,
         ssh: config.ssh,
         proxy: config.proxy,
+        commandTunnel: config.commandTunnel,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
         readOnly: readOnly && configInfo.capabilities.read_only_mode,
+        cloudAuth,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,
         color,

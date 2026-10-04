@@ -1,4 +1,5 @@
 mod auth;
+pub mod command;
 pub mod config;
 mod proxy;
 
@@ -81,6 +82,7 @@ pub struct ProxyTunnelRequest {
 pub enum TunnelKind {
     Ssh,
     Proxy,
+    Command,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -722,6 +724,29 @@ impl SshTunnelManager {
         Ok(info)
     }
 
+    pub async fn open_command(
+        &self,
+        request: command::CommandTunnelRequest,
+    ) -> Result<SshTunnelInfo, String> {
+        let signature = signature(&request);
+        if let Some(info) = self.reuse(&request.id, &signature).await? {
+            return Ok(info);
+        }
+        let (guard, port, stderr) = command::start(&request).await?;
+        let info = command::info(&request, port);
+        let broken = Arc::new(OnceLock::new());
+        let task = tokio::spawn(command::supervise(
+            request.id.clone(),
+            guard,
+            stderr,
+            broken.clone(),
+            self.notifier.get().cloned(),
+        ));
+        self.register(info.clone(), signature, task, Some(broken))
+            .await;
+        Ok(info)
+    }
+
     pub async fn close(&self, id: &str) -> Result<(), String> {
         let removed = self.tunnels.lock().await.remove(id);
         if let Some(tunnel) = removed {
@@ -771,6 +796,19 @@ pub async fn open_proxy_tunnel(
         super::execution::connect(ssh_state.open_proxy(request)),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn open_command_tunnel(
+    app: tauri::AppHandle,
+    request: command::CommandTunnelRequest,
+    ssh_state: tauri::State<'_, SshState>,
+    options: Option<super::execution::ExecutionOptions>,
+) -> Result<SshTunnelInfo, String> {
+    ssh_state.notify_with(Arc::new(move |failure| {
+        let _ = tauri::Emitter::emit(&app, "ssh-tunnel-failed", failure);
+    }));
+    super::execution::run(options, false, ssh_state.open_command(request)).await
 }
 
 #[tauri::command]

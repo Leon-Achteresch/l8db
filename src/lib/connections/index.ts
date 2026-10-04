@@ -1,3 +1,5 @@
+export type { CloudAuth, CloudAuthMode } from "./cloud-auth";
+export { activeCloudAuth, cloudAuthConnectionString, cloudAuthModes } from "./cloud-auth";
 export {
   ConnectionScopeContext,
   useActiveConnection,
@@ -11,6 +13,7 @@ export type {
   ConnectionEnvironment,
   ConnectionInput,
   ConnectionTag,
+  NetworkCommand,
   NetworkProxy,
   ProxyType,
   SavedConnection,

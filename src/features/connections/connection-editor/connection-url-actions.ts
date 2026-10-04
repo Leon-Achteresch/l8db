@@ -1,6 +1,11 @@
 import { withTimeout } from "@/lib/async";
 import { kindFromUrl, parseConnectionUrl } from "@/lib/connection-url";
-import type { SavedConnection, SshAuth } from "@/lib/connections";
+import {
+  type CloudAuth,
+  cloudAuthConnectionString,
+  type SavedConnection,
+  type SshAuth,
+} from "@/lib/connections";
 import type { DatabaseKind, ProviderInfo, SslMode } from "@/lib/db";
 import { loadSecret, withSslModeParam } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
@@ -40,6 +45,7 @@ export interface ConnectionUrlActionsContext {
   sshPassword: string;
   network: NetworkDraft;
   connection: SavedConnection | undefined;
+  cloudAuth: CloudAuth | null;
 }
 
 export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
@@ -69,6 +75,7 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
     sshPassword,
     network,
     connection,
+    cloudAuth,
   } = ctx;
 
   function makeUrl() {
@@ -166,6 +173,19 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
       if (!network.proxyHost.trim()) throw new Error("Der Proxy-Host ist erforderlich.");
       validatePort(network.proxyPort);
     }
+    const useCommand = Boolean(target) && inputInfo.capabilities.ssh && network.commandEnabled;
+    if (useCommand) {
+      if (useSsh || useProxy)
+        throw new Error("Ein Tunnel-Befehl lässt sich nicht mit SSH oder Proxy kombinieren.");
+      if (!network.commandTemplate.trim()) throw new Error("Der Tunnel-Befehl fehlt.");
+      if (network.commandLocalPort.trim()) validatePort(network.commandLocalPort.trim());
+      else if (!network.commandTemplate.includes("{localPort}"))
+        throw new Error(
+          "Der Tunnel-Befehl muss {localPort} enthalten oder einen festen lokalen Port angeben.",
+        );
+      if (!/^\d+$/.test(network.commandTimeout.trim()) || Number(network.commandTimeout) < 1)
+        throw new Error("Das Zeitlimit muss eine positive Zahl in Sekunden sein.");
+    }
     const jumpHosts = useSsh ? jumpHostsConfig() : [];
     const secret =
       sshAuth === "agent"
@@ -213,6 +233,13 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
             ...(proxyUser ? { username: proxyUser } : {}),
           }
         : null,
+      commandTunnel: useCommand
+        ? {
+            command: network.commandTemplate.trim(),
+            localPort: network.commandLocalPort.trim() ? Number(network.commandLocalPort) : null,
+            timeoutSecs: Number(network.commandTimeout),
+          }
+        : null,
     };
   }
 
@@ -221,8 +248,11 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
     let tunnelOpened = false;
     try {
       const config = await configuration();
-      let url = config.connectionString;
-      if (config.ssh || config.proxy) {
+      let url = cloudAuthConnectionString(config.connectionString, {
+        kind: config.kind,
+        cloudAuth,
+      });
+      if (config.ssh || config.proxy || config.commandTunnel) {
         const tunnel = await openNetworkTunnel(
           tunnelId,
           config,

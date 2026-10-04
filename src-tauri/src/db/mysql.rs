@@ -373,8 +373,10 @@ impl MysqlAdapter {
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let mut url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige MySQL-URL".to_string())?;
+        let resolved = super::cloud_auth::resolve(connection_string.trim())?;
+        let mut url =
+            url::Url::parse(&resolved).map_err(|_| "Ungültige MySQL-URL".to_string())?;
+        let token_auth = super::cloud_auth::has_marker(&url);
         if !matches!(url.scheme(), "mysql" | "mariadb") {
             return Err("Eine mysql:// URL ist erforderlich".to_string());
         }
@@ -439,6 +441,9 @@ impl MysqlAdapter {
                 | "conn_ttl" => kept.push((k, v)),
                 _ => {}
             }
+        }
+        if token_auth {
+            ssl = ssl.max(SslMode::Require);
         }
         url.set_scheme("mysql").ok();
         url.query_pairs_mut()

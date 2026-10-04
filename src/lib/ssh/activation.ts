@@ -175,7 +175,7 @@ export async function restoreSshTunnel(): Promise<void> {
   const outcome = await ensureSshTunnel(active);
   if (!outcome.ok) {
     toast.error(
-      `${active?.ssh?.host ? "SSH-Tunnel" : "Proxy-Tunnel"} fehlgeschlagen: ${outcome.error ?? "Unbekannter Fehler"}`,
+      `${active?.commandTunnel?.command ? "Befehls-Tunnel" : active?.ssh?.host ? "SSH-Tunnel" : "Proxy-Tunnel"} fehlgeschlagen: ${outcome.error ?? "Unbekannter Fehler"}`,
     );
     await activateConnection(null);
   }

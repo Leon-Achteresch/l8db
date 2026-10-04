@@ -84,6 +84,7 @@ pub struct Capabilities {
     pub ssh: bool,
     pub backup: bool,
     pub object_storage: bool,
+    pub health_advisor: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -147,6 +148,7 @@ const NONE: Capabilities = Capabilities {
     ssh: true,
     backup: false,
     object_storage: false,
+    health_advisor: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -198,6 +200,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                health_advisor: true,
                 backup: true,
                 query_stats: true,
                 debugger: true,
