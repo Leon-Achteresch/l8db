@@ -579,14 +579,18 @@ pub async fn import_file(
             .collect(),
         rows: Vec::new(),
     };
-    let outcome = crate::db::commands::run_csv_import(
-        resolved.kind,
-        &resolved.url,
-        resolved.database.as_deref(),
-        pool,
-        &request,
-    )
-    .await?;
+    let database = resolved.database.as_deref();
+    let outcome = match crate::db::import::Dialect::from_kind(resolved.kind) {
+        Some(crate::db::import::Dialect::Postgres) | None => {
+            crate::db::create_adapter_from_string(resolved.kind, &resolved.url, database, pool)?
+                .csv_import(&request)
+                .await?
+        }
+        Some(_) => {
+            crate::db::import::import(resolved.kind, &resolved.url, database, pool, &request)
+                .await?
+        }
+    };
     if let Some(row) = outcome.failed_row {
         return Err(format!(
             "Zeile {row}, Spalte {}: {}",
