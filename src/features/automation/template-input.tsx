@@ -4,6 +4,7 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -52,6 +53,13 @@ export function TemplateInput({
     return scored.slice(0, 8);
   }, [query, suggestions]);
   const open = matches.length > 0;
+
+  useLayoutEffect(() => {
+    const field = ref.current;
+    if (!multiline || !(field instanceof HTMLTextAreaElement)) return;
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight + 2}px`;
+  }, [multiline, value]);
 
   const detect = (field: Field) => {
     const caret = field.selectionStart ?? field.value.length;
@@ -126,7 +134,9 @@ export function TemplateInput({
     onBlur: () => setQuery(null),
     className: cn(
       "w-full min-w-0 rounded-lg border border-input bg-transparent pr-9 pl-2.5 text-sm transition-[border-color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30",
-      multiline ? "resize-y py-2 leading-relaxed" : "h-[calc(2.25rem+var(--ui-density-step))]",
+      multiline
+        ? "max-h-96 resize-y py-2 leading-relaxed"
+        : "h-[calc(2.25rem+var(--ui-density-step))]",
       mono && "font-mono text-[13px]",
       className,
     ),
