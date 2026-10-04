@@ -2,6 +2,7 @@ export * from "./admin";
 export * from "./appwrite";
 export * from "./baas-file";
 export * from "./backup";
+export * from "./branching";
 export * from "./catalog";
 export * from "./columns";
 export * from "./convex";

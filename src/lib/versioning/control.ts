@@ -1,7 +1,7 @@
 import type { SavedConnection } from "@/lib/connections";
 import { versioningControl } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
-import type { DatabaseTarget, VersioningProject } from "./types";
+import type { DatabaseTarget, DeliveryRules, VersioningProject } from "./types";
 
 export interface SharedPolicy {
   track: string;
@@ -12,6 +12,7 @@ export interface SharedPolicy {
   operators: string[];
   administrators: string[];
   reviewers: string[];
+  delivery?: DeliveryRules | null;
 }
 
 export interface PolicyRecord {

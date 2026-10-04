@@ -106,12 +106,11 @@ test.skipIf(!process.env.L8DB_VERSIONING_BROWSER)(
       expect(await save.isEnabled()).toBe(true);
       await save.click();
       await page.getByRole("checkbox", { name: `Commit: database/objects/orders.sql` }).check();
-      await page.getByRole("button", { name: "Änderungen committen (1)" }).click();
       await page.getByRole("textbox", { name: "Commit-Nachricht" }).fill("Resolve product change");
-      await page.getByRole("button", { name: "Commit erstellen" }).click();
+      await page.getByRole("button", { name: "Commit (1)" }).click();
       await page
         .locator("#versioning-panel")
-        .getByText("Ausgewählte Dateien committet", { exact: true })
+        .getByText("1 Datei committet", { exact: true })
         .waitFor();
       const actions = await page.evaluate(
         () => (window as unknown as { versioningMergeActions: string[] }).versioningMergeActions,

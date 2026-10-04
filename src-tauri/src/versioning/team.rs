@@ -35,9 +35,10 @@ struct Connection {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Target {
     pub id: String,
-    name: String,
-    customer: Option<String>,
+    pub name: String,
+    pub customer: Option<String>,
     environment: Option<String>,
+    pub stage: Option<String>,
     connection_ref: String,
     pub database: Option<String>,
     pub schema: String,
@@ -45,7 +46,7 @@ pub struct Target {
     track: Option<String>,
     pinned_release: Option<String>,
     paused: Option<bool>,
-    ledger_schema: Option<String>,
+    pub ledger_schema: Option<String>,
     pub expected_physical_key: Option<String>,
     require_approval: Option<bool>,
     operators: Option<Vec<String>>,
@@ -74,7 +75,12 @@ pub async fn committed(root: &Path) -> Result<Option<String>, String> {
     Ok(current)
 }
 
-pub async fn verify_request(request: &super::runner::Request) -> Result<Option<Target>, String> {
+pub struct Verified {
+    pub target: Target,
+    pub team: Configuration,
+}
+
+pub async fn verify_request(request: &super::runner::Request) -> Result<Option<Verified>, String> {
     let directory = fs::canonicalize(&request.repo).map_err(|e| e.to_string())?;
     let root = std::path::PathBuf::from(
         super::git(&directory, &["rev-parse", "--show-toplevel"])
@@ -89,8 +95,9 @@ pub async fn verify_request(request: &super::runner::Request) -> Result<Option<T
         serde_json::from_str(&request.artifact).map_err(|_| "Freigabeartefakt ist ungültig")?;
     let target = team
         .targets
-        .into_iter()
+        .iter()
         .find(|target| target.id == request.target_id)
+        .cloned()
         .ok_or("Rollout-Ziel fehlt in der Git-Teamkonfiguration")?;
     let c = &request.connection;
     let physical = super::seeds::physical_key(c.kind, &c.schema, &artifact["execution"]["context"]);
@@ -103,7 +110,7 @@ pub async fn verify_request(request: &super::runner::Request) -> Result<Option<T
     {
         return Err("Rollout-Ziel, Datenbankidentität oder Teamkonfiguration wurde seit der Planung geändert.".into());
     }
-    Ok(Some(target))
+    Ok(Some(Verified { target, team }))
 }
 
 pub fn verify_policy(target: &Target, policy: &Value) -> Result<(), String> {
@@ -207,6 +214,10 @@ pub fn parse(content: &str) -> Result<Configuration, String> {
                 || !valid(&entry.name)
                 || !valid(&entry.schema)
                 || !refs.contains(entry.connection_ref.as_str())
+                || entry.stage.as_deref().is_some_and(|stage| {
+                    !["development", "test", "production"].contains(&stage)
+                        || (stage == "production") != entry.production
+                })
                 || [
                     &entry.customer,
                     &entry.environment,

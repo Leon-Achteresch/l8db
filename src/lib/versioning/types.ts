@@ -91,11 +91,21 @@ export interface DeploymentEvent {
   inFlightStatement?: string | null;
 }
 
+export type TargetStage = "development" | "test" | "production";
+
+export interface DeliveryRules {
+  repository: string;
+  review: boolean;
+  approvals: number;
+  testFirst: boolean;
+}
+
 export interface DatabaseTarget {
   id: string;
   name: string;
   customer?: string;
   environment?: string;
+  stage?: TargetStage;
   connectionId: string;
   connectionRef?: string;
   expectedPhysicalKey?: string;
@@ -194,7 +204,9 @@ export interface RepositoryRequest {
     | "local-write"
     | "targets-write"
     | "merge-base"
-    | "merge";
+    | "merge"
+    | "remote"
+    | "between";
   repo: string;
   path?: string;
   content?: string;
@@ -204,6 +216,19 @@ export interface RepositoryRequest {
   paths?: string[];
   base?: string;
   incoming?: string;
+}
+
+export interface RemoteStatus {
+  configured: boolean;
+  identity?: string | null;
+  web?: string | null;
+  kind?: "github" | "gitlab" | "azure" | "gitea" | null;
+  defaultBranch?: string | null;
+  defaultCommit?: string | null;
+  head?: string | null;
+  branch?: string | null;
+  ahead?: number | null;
+  behind?: number | null;
 }
 
 export interface ObjectDifference {

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { STAGE_LABELS, targetStage } from "@/lib/versioning/delivery";
 import { removeTarget, updateTargetDetails } from "@/lib/versioning/targets";
-import type { DatabaseTarget } from "@/lib/versioning/types";
+import type { DatabaseTarget, TargetStage } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningSelect } from "./versioning-select";
 
 export function VersioningTargetDetails({
   workspace,
@@ -19,6 +21,7 @@ export function VersioningTargetDetails({
     target.environment || (target.production ? "Produktion" : "Development"),
   );
   const [name, setName] = useState(target.name);
+  const [stage, setStage] = useState<TargetStage>(targetStage(target));
   const [removing, setRemoving] = useState(false);
   return (
     <details className="border-t border-border/50 pt-3 text-xs">
@@ -39,6 +42,17 @@ export function VersioningTargetDetails({
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
+        {!target.production && (
+          <VersioningSelect
+            label="Stufe"
+            value={stage}
+            onChange={(value) => setStage(value as TargetStage)}
+            options={(["test", "development"] as const).map((value) => ({
+              value,
+              label: STAGE_LABELS[value],
+            }))}
+          />
+        )}
         <Button
           size="sm"
           disabled={!customer.trim() || !environment.trim() || !name.trim()}
@@ -49,6 +63,7 @@ export function VersioningTargetDetails({
                 name,
                 customer,
                 environment,
+                stage: target.production ? target.stage : stage,
               });
               onSaved();
               await workspace.refresh();

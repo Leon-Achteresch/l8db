@@ -127,6 +127,7 @@ async fn enterprise_controls_and_executor_locks() {
             operators: vec![],
             administrators: vec![],
             reviewers: vec![],
+            delivery: None,
         };
         control::initialize(adapter.as_ref(), &connection, &policy)
             .await
@@ -561,6 +562,7 @@ async fn lost_commit_reply(
         target_id: "edge".into(),
         run_id: id.clone(),
         artifact,
+        promotion: vec![],
     };
     super::runner::start(run, pool, transactions).await.unwrap();
     for _ in 0..100 {

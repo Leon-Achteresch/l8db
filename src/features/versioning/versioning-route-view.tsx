@@ -24,7 +24,7 @@ export function VersioningRouteView() {
           <GitPullRequestIcon className="size-7 text-muted-foreground/50" strokeWidth={1.4} />
           <h1 className="text-sm font-medium">Versionierung</h1>
           <p className="max-w-64 text-xs leading-relaxed text-muted-foreground">
-            Branches, Migrationen, Kundenstände und Development-Seeds.
+            Datenbank-Branches, Sicherungen, Migrationen und Releases.
           </p>
           <Button
             variant="ghost"
