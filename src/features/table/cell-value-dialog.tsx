@@ -32,6 +32,7 @@ import {
 } from "@/lib/value-viewers/binary";
 import { pickBytesFromFile } from "@/lib/value-viewers/binary-file";
 import { isGeometryDataType, toEwkt, tryParseGeometry } from "@/lib/value-viewers/geometry";
+import { JsonEditor } from "./json-editor/json-editor";
 import { ValueViewerPanel } from "./value-viewers/value-viewer-panel";
 
 const LARGE_DRAFT = 256 * 1024;
@@ -72,6 +73,7 @@ export function CellValueDialog({
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<CellDraft>(initialDraft);
   const [loadedFile, setLoadedFile] = useState<{ name: string; size: number } | null>(null);
+  const [jsonSession, setJsonSession] = useState(0);
   const isBinaryValue =
     isBinaryDataType(dataType) ||
     (typeof value === "string" && value.startsWith("\\x")) ||
@@ -79,6 +81,10 @@ export function CellValueDialog({
   const isGeometryValue =
     isGeometryDataType(dataType) ||
     (typeof value === "object" && value !== null && "coordinates" in value);
+  const jsonUi = kind === "json" && !isBinaryValue && !isGeometryValue;
+  const viewText = useMemo(() => (jsonUi ? toCellDraft(value, "json").text : ""), [jsonUi, value]);
+  const showJsonEditor =
+    jsonUi && (isEditing ? !draft.isNull : value !== null && value !== undefined);
 
   const validation = validateCellDraft(draft, kind);
   const isDirty = geometryDraft
@@ -141,7 +147,12 @@ export function CellValueDialog({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl sm:max-w-3xl border border-border bg-popover shadow-lg">
+      <DialogContent
+        className={cn(
+          "border border-border bg-popover shadow-lg",
+          jsonUi ? "max-w-5xl sm:max-w-5xl" : "max-w-3xl sm:max-w-3xl",
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-semibold">
             <DatabaseIcon className="size-4 text-primary" />
@@ -201,7 +212,7 @@ export function CellValueDialog({
                   Als WKT
                 </Button>
               )}
-              {isEditing && kind === "json" && !draft.isNull && (
+              {isEditing && kind === "json" && !jsonUi && !draft.isNull && (
                 <Button type="button" variant="outline" size="sm" onClick={handleFormat}>
                   <BracesIcon className="size-3.5" />
                   Formatieren
@@ -222,9 +233,19 @@ export function CellValueDialog({
               )}
             </div>
           </div>
+          {showJsonEditor && (
+            <JsonEditor
+              key={jsonSession}
+              text={isEditing ? draft.text : viewText}
+              readOnly={!isEditing || isSaving}
+              columnName={columnName}
+              onChange={(text) => setDraft({ text, isNull: false })}
+            />
+          )}
           {isEditing ? (
             <div className="flex flex-col gap-2">
-              {loadedFile || (!draft.isNull && draft.text.length > LARGE_DRAFT && isBinaryValue) ? (
+              {showJsonEditor ? null : loadedFile ||
+                (!draft.isNull && draft.text.length > LARGE_DRAFT && isBinaryValue) ? (
                 <div className="flex min-h-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center text-xs">
                   <span className="font-medium">
                     {loadedFile ? `Datei „${loadedFile.name}“` : "Großer Binärwert"}
@@ -247,7 +268,7 @@ export function CellValueDialog({
                   )}
                 />
               )}
-              {!validation.ok && (
+              {!validation.ok && !showJsonEditor && (
                 <p className="text-xs text-destructive font-mono">{validation.error}</p>
               )}
               <div className="flex items-center justify-end gap-2">
@@ -258,6 +279,7 @@ export function CellValueDialog({
                   disabled={isSaving}
                   onClick={() => {
                     resetDraft();
+                    setJsonSession((session) => session + 1);
                     setIsEditing(false);
                   }}
                 >
@@ -274,7 +296,7 @@ export function CellValueDialog({
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : showJsonEditor ? null : (
             <ValueViewerPanel
               value={value}
               dataType={dataType}
