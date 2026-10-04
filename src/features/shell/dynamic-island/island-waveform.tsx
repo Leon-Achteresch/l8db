@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 const BARS = [
   { id: "a", peak: 0.55, duration: 0.9, delay: 0 },
@@ -9,14 +9,19 @@ const BARS = [
 ];
 
 export function IslandWaveform({ color }: { color?: string }) {
+  const reduce = useReducedMotion();
   return (
     <span aria-hidden className="flex h-3.5 shrink-0 items-center gap-[2px]" style={{ color }}>
       {BARS.map((bar) => (
         <motion.span
           key={bar.id}
           className="h-full w-[2.5px] rounded-full bg-current"
-          initial={{ scaleY: 0.3 }}
-          animate={{ scaleY: [0.3, bar.peak, 0.3] }}
+          initial={{ transform: `scaleY(${reduce ? bar.peak : 0.3})` }}
+          animate={
+            reduce
+              ? undefined
+              : { transform: ["scaleY(0.3)", `scaleY(${bar.peak})`, "scaleY(0.3)"] }
+          }
           transition={{
             duration: bar.duration,
             delay: bar.delay,

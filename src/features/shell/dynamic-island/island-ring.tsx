@@ -1,6 +1,3 @@
-import { motion } from "motion/react";
-import { SPRING_SWAP } from "@/lib/ease";
-
 export function IslandRing({ percent }: { percent: number }) {
   return (
     <svg aria-hidden viewBox="0 0 16 16" className="size-4 shrink-0 -rotate-90 text-sky-400">
@@ -13,7 +10,7 @@ export function IslandRing({ percent }: { percent: number }) {
         strokeOpacity={0.25}
         strokeWidth={2.5}
       />
-      <motion.circle
+      <circle
         cx="8"
         cy="8"
         r="6"
@@ -21,9 +18,9 @@ export function IslandRing({ percent }: { percent: number }) {
         stroke="currentColor"
         strokeWidth={2.5}
         strokeLinecap="round"
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: Math.min(1, Math.max(0.02, percent / 100)) }}
-        transition={SPRING_SWAP}
+        pathLength={1}
+        strokeDasharray={1}
+        strokeDashoffset={1 - Math.min(1, Math.max(0.02, percent / 100))}
       />
     </svg>
   );
