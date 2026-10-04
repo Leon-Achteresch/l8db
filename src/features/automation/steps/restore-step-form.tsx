@@ -1,7 +1,8 @@
+import { Input } from "@/components/ui/input";
 import { ConnectionFields } from "../connection-fields";
 import { FormRow } from "../form-row";
 import { PathInput } from "../path-input";
-import { type StepFormProps, useFieldError } from "../step-form-context";
+import { optionalNumber, type StepFormProps, useFieldError } from "../step-form-context";
 import { SwitchRow } from "../switch-row";
 
 export function RestoreStepForm({ action, onChange }: StepFormProps<"restore">) {
@@ -27,11 +28,38 @@ export function RestoreStepForm({ action, onChange }: StepFormProps<"restore">) 
           onChange={(path) => onChange({ ...action, path })}
         />
       </FormRow>
+      <FormRow
+        label="Parallele Jobs"
+        hint="Leer = ein Job. Nur bei Formaten, die das können."
+        className="max-w-48"
+      >
+        <Input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          placeholder="1"
+          value={options.jobs ?? ""}
+          onChange={(event) => setOptions({ jobs: optionalNumber(event.target.value) })}
+        />
+      </FormRow>
       <div className="flex flex-col gap-3">
         <SwitchRow
           label="Vorhandene Objekte vorher entfernen"
           checked={Boolean(options.clean)}
           onCheckedChange={(clean) => setOptions({ clean })}
+        />
+        <SwitchRow
+          label="Nur entfernen, was existiert"
+          description="Fehlende Objekte beim Entfernen überspringen statt abzubrechen. Wirkt nur zusammen mit dem Schalter darüber."
+          disabled={!options.clean}
+          checked={Boolean(options.ifExists)}
+          onCheckedChange={(ifExists) => setOptions({ ifExists })}
+        />
+        <SwitchRow
+          label="Ohne Eigentümer"
+          description="Besitzrechte aus dem Backup nicht übernehmen; Objekte gehören dem verbundenen Benutzer."
+          checked={Boolean(options.noOwner)}
+          onCheckedChange={(noOwner) => setOptions({ noOwner })}
         />
         <SwitchRow
           label="In einer Transaktion"
