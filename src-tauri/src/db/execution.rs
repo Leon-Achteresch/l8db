@@ -35,6 +35,7 @@ tokio::task_local! {
     static PROGRESS: Arc<dyn Fn(u64) + Send + Sync>;
     static SESSION: Option<String>;
     static DEADLINE: Duration;
+    static UNCLAMPED: ();
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;
@@ -86,6 +87,11 @@ where
 }
 
 pub fn query_duration() -> Duration {
+    let max = if UNCLAMPED.try_with(|_| ()).is_ok() {
+        UNCLAMPED_MAX_SECONDS
+    } else {
+        300
+    };
     Duration::from_secs(
         CONTEXT
             .try_with(|ctx| {
@@ -94,8 +100,17 @@ pub fn query_duration() -> Duration {
                     .unwrap_or_else(|| DEFAULT_QUERY_SECONDS.load(Ordering::Relaxed))
             })
             .unwrap_or_else(|_| DEFAULT_QUERY_SECONDS.load(Ordering::Relaxed))
-            .clamp(5, 300),
+            .clamp(5, max),
     )
+}
+
+pub const UNCLAMPED_MAX_SECONDS: u64 = 30 * 24 * 60 * 60;
+
+pub async fn without_query_limit<T, F>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    UNCLAMPED.scope((), future).await
 }
 
 pub fn connection_duration() -> Duration {
@@ -376,6 +391,16 @@ mod tests {
         let (a, b) = tokio::join!(a, b);
         assert_eq!(a.unwrap(), (5, 60));
         assert_eq!(b.unwrap(), (300, 3));
+        let unclamped = without_query_limit(run(
+            Some(ExecutionOptions {
+                query_timeout: Some(900),
+                ..Default::default()
+            }),
+            false,
+            async { Ok(query_duration().as_secs()) },
+        ))
+        .await;
+        assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
     }
 
