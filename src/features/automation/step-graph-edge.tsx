@@ -101,7 +101,7 @@ export function StepGraphEdge({
         {label && (
           <span
             className={cn(
-              "nodrag nopan pointer-events-none absolute rounded bg-background/90 px-1 text-[10px] leading-4 font-medium",
+              "nodrag nopan pointer-events-none absolute rounded bg-background/90 px-1 text-[11px] leading-4 font-medium",
               failure
                 ? "text-red-700 dark:text-red-300"
                 : data?.role === "goto"
