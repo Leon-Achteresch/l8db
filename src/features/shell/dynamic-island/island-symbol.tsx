@@ -1,16 +1,17 @@
 import { Search } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { IslandEmoji } from "@/features/shell/dynamic-island/island-emoji";
 import { IslandRing } from "@/features/shell/dynamic-island/island-ring";
 import { IslandWaveform } from "@/features/shell/dynamic-island/island-waveform";
 import type { IslandGlyph } from "@/lib/dynamic-island";
-import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
+import { SPRING_PRESS } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 const CHECK_PATH = "M3.5 8.5l3 3 6-7";
 const CROSS_PATH = "M4.75 4.75l6.5 6.5M11.25 4.75l-6.5 6.5";
 
 export function IslandSymbol({ glyph }: { glyph: IslandGlyph }) {
+  const reduce = useReducedMotion();
   if (glyph.kind === "search")
     return <Search aria-hidden className="size-3.5 shrink-0 text-current/60" strokeWidth={2} />;
   if (glyph.kind === "wave") return <IslandWaveform color={glyph.color} />;
@@ -23,15 +24,9 @@ export function IslandSymbol({ glyph }: { glyph: IslandGlyph }) {
   if (glyph.kind === "dot")
     return (
       <span aria-hidden className="relative flex size-3.5 shrink-0 items-center justify-center">
-        <motion.span
-          className="absolute size-2 rounded-full"
+        <span
+          className="absolute size-2 animate-ping rounded-full opacity-60 motion-reduce:hidden"
           style={{ background: glyph.color }}
-          animate={{ scale: [1, 2.4], opacity: [0.55, 0] }}
-          transition={{
-            duration: 1.6,
-            repeat: Number.POSITIVE_INFINITY,
-            ease: "easeOut",
-          }}
         />
         <span className="relative size-2 rounded-full" style={{ background: glyph.color }} />
       </span>
@@ -39,15 +34,15 @@ export function IslandSymbol({ glyph }: { glyph: IslandGlyph }) {
   return (
     <motion.span
       aria-hidden
-      initial={{ scale: 0.3 }}
-      animate={{ scale: 1 }}
+      initial={reduce ? false : { transform: "scale(0.3)" }}
+      animate={{ transform: "scale(1)" }}
       transition={SPRING_PRESS}
       className={cn(
         "flex size-4 shrink-0 items-center justify-center rounded-full",
         glyph.kind === "check" ? "bg-emerald-500" : "bg-red-500",
       )}
     >
-      <svg
+      <motion.svg
         aria-hidden
         viewBox="0 0 16 16"
         className="size-2.5"
@@ -56,14 +51,12 @@ export function IslandSymbol({ glyph }: { glyph: IslandGlyph }) {
         strokeWidth={2.6}
         strokeLinecap="round"
         strokeLinejoin="round"
+        initial={reduce ? false : { opacity: 0, transform: "scale(0.4) rotate(-35deg)" }}
+        animate={{ opacity: 1, transform: "scale(1) rotate(0deg)" }}
+        transition={{ ...SPRING_PRESS, delay: 0.1 }}
       >
-        <motion.path
-          d={glyph.kind === "check" ? CHECK_PATH : CROSS_PATH}
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 0.35, ease: EASE_OUT, delay: 0.12 }}
-        />
-      </svg>
+        <path d={glyph.kind === "check" ? CHECK_PATH : CROSS_PATH} />
+      </motion.svg>
     </motion.span>
   );
 }
