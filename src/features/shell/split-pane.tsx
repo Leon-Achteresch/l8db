@@ -1,8 +1,8 @@
 import { useDraggable, useDroppable } from "@dnd-kit/react";
 import { useNavigate } from "@tanstack/react-router";
+import { warn as splitDebug } from "@tauri-apps/plugin-log";
 import { GripVerticalIcon, XIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { warn as splitDebug } from "@tauri-apps/plugin-log";
 import { toast } from "sonner";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
@@ -81,12 +81,16 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const selectConnection = async (value: string) => {
     const id =
       value === ACTIVE_VALUE || value === useConnectionsStore.getState().activeId ? null : value;
-    void splitDebug(`[split-debug] select index=${index} value=${value} id=${id} tab=${tab ? tabKey(tab) : "none"} kind=${tab?.kind} remote=${remote} focused=${focused}`).catch(() => undefined);
+    void splitDebug(
+      `[split-debug] select index=${index} value=${value} id=${id} tab=${tab ? tabKey(tab) : "none"} kind=${tab?.kind} remote=${remote} focused=${focused}`,
+    ).catch(() => undefined);
     if (id) {
       const connection = connections.find((entry) => entry.id === id);
       if (!connection) return;
       const passwordOk = await ensurePassword(id);
-      void splitDebug(`[split-debug] password=${passwordOk} tunnel=${usesTunnel(connection)}`).catch(() => undefined);
+      void splitDebug(
+        `[split-debug] password=${passwordOk} tunnel=${usesTunnel(connection)}`,
+      ).catch(() => undefined);
       if (!passwordOk) return;
       if (usesTunnel(connection) && !connection.tunnelPort) {
         const outcome = await ensureSshTunnel(
@@ -111,7 +115,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
     }
     if (!id) openTab(tab);
     setPaneTab(index, id, tab);
-    void splitDebug(`[split-debug] after setPaneTab ${JSON.stringify({ panes: useSplitView.getState().panes, focused: useSplitView.getState().focusedPane })}`).catch(() => undefined);
+    void splitDebug(
+      `[split-debug] after setPaneTab ${JSON.stringify({ panes: useSplitView.getState().panes, focused: useSplitView.getState().focusedPane })}`,
+    ).catch(() => undefined);
     if (!id) navigateToTab(navigate, { ...tab, connectionId: undefined });
   };
 
