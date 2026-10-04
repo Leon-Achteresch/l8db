@@ -165,3 +165,44 @@ export function placeholderSuggestions(
   ]);
   return [...loop, ...own, ...env, ...BUILTIN_PLACEHOLDERS, ...steps];
 }
+
+const EXAMPLE_DATE = new Date(2026, 9, 4, 7, 30, 0);
+
+function strftime(format: string, date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const parts: Record<string, string> = {
+    Y: String(date.getFullYear()),
+    m: pad(date.getMonth() + 1),
+    d: pad(date.getDate()),
+    H: pad(date.getHours()),
+    M: pad(date.getMinutes()),
+    S: pad(date.getSeconds()),
+  };
+  return format.replace(/%([YmdHMS%])/g, (_, key: string) => (key === "%" ? "%" : parts[key]));
+}
+
+const SHIFT_DAYS: Record<string, number> = { d: 1, w: 7, M: 30, y: 365 };
+
+export function exampleValue(name: string): string | null {
+  const builtin = BUILTIN_PLACEHOLDERS.find((entry) => entry.name === name);
+  if (builtin) return builtin.example;
+  const shift = /^date([+-])(\d+)([smhdwMy])(?::(.+))?$/.exec(name);
+  if (shift) {
+    const days = (SHIFT_DAYS[shift[3]] ?? 0) * Number(shift[2]) * (shift[1] === "-" ? -1 : 1);
+    const date = new Date(EXAMPLE_DATE.getTime() + days * 86_400_000);
+    return strftime(shift[4] ?? "%Y-%m-%d", date);
+  }
+  if (name.startsWith("date:")) return strftime(name.slice(5), EXAMPLE_DATE);
+  return null;
+}
+
+export function renderExample(text: string): string {
+  let result = "";
+  let index = 0;
+  for (const found of findPlaceholders(text)) {
+    const value = exampleValue(found.name) ?? found.fallback;
+    result += text.slice(index, found.start) + (value ?? text.slice(found.start, found.end));
+    index = found.end;
+  }
+  return result + text.slice(index);
+}
