@@ -11,7 +11,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LoaderCircleIcon, MaximizeIcon, MinusIcon, PlusIcon } from "lucide-react";
+import { LoaderCircleIcon, LocateFixedIcon, MinusIcon, PlusIcon } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
@@ -33,7 +33,6 @@ import {
   moveToInsert,
   resetConnection,
   resolveConnection,
-  START_ID,
   type StepGraphNode,
 } from "@/lib/automation/step-graph";
 import { summarizeStep } from "@/lib/automation/step-summary";
@@ -68,8 +67,11 @@ export interface StepGraphProps {
   taskNames: Record<string, string>;
 }
 
-const HOME_ZOOM = 1;
-const TOOLBAR_SPACE = 64;
+const MIN_ZOOM = 0.92;
+const EDGE_SPACE = 16;
+const PEEK_SPACE = 64;
+const CONTROLS_GUTTER = 56;
+const SMOOTH_OUT = (t: number) => 1 - (1 - t) ** 5;
 
 const THEME = {
   "--xy-background-color": "transparent",
@@ -339,11 +341,11 @@ export function StepGraphCanvas({
       const right = left + Math.min(box.width, 320) * zoom;
       const bottom = top + Math.min(box.height, LOOP_HEADER) * zoom;
       const dx =
-        left < margin || right > width - margin
-          ? Math.max(margin - left, (width - left - right) / 2)
+        left < CONTROLS_GUTTER || right > width - margin
+          ? Math.max(CONTROLS_GUTTER - left, (width - left - right) / 2)
           : 0;
       const dy =
-        top < margin || bottom > height - TOOLBAR_SPACE
+        top < margin || bottom > height - PEEK_SPACE
           ? Math.max(margin - top, (height - top - bottom) / 2)
           : 0;
       return { x: x + dx, y: y + dy, zoom };
@@ -360,26 +362,39 @@ export function StepGraphCanvas({
     [flow, reveal],
   );
 
-  const home = useCallback((): Viewport | null => {
+  const bounds = useMemo(() => {
     const all = [...absolute.values()];
-    const start = absolute.get(START_ID);
-    if (!all.length || !start || !width || !height) return null;
+    if (!all.length) return null;
     const minX = Math.min(...all.map((box) => box.x));
-    const maxX = Math.max(...all.map((box) => box.x + box.width));
     const minY = Math.min(...all.map((box) => box.y));
-    const maxY = Math.max(...all.map((box) => box.y + box.height));
-    const zoom = HOME_ZOOM;
-    const margin = 16;
+    return {
+      minX,
+      minY,
+      width: Math.max(...all.map((box) => box.x + box.width)) - minX,
+      height: Math.max(...all.map((box) => box.y + box.height)) - minY,
+    };
+  }, [absolute]);
+
+  const fits =
+    bounds !== null &&
+    bounds.width * MIN_ZOOM <= width - CONTROLS_GUTTER - EDGE_SPACE &&
+    bounds.height * MIN_ZOOM <= height - 2 * EDGE_SPACE;
+
+  const home = useCallback((): Viewport | null => {
+    if (!bounds || !width || !height) return null;
+    const room = width - CONTROLS_GUTTER - EDGE_SPACE;
+    const fit = Math.min(room / bounds.width, (height - 2 * EDGE_SPACE) / bounds.height);
+    const zoom = fit >= MIN_ZOOM ? Math.min(1, fit) : 1;
     const x =
-      (maxX - minX) * zoom <= width - 2 * margin
-        ? (width - (maxX - minX) * zoom) / 2 - minX * zoom
-        : Math.max(width / 2 - (start.x + start.width / 2) * zoom, margin - minX * zoom);
+      bounds.width * zoom <= room
+        ? CONTROLS_GUTTER + (room - bounds.width * zoom) / 2 - bounds.minX * zoom
+        : CONTROLS_GUTTER - bounds.minX * zoom;
     const y =
-      (maxY - minY) * zoom <= height - 2 * margin
-        ? (height - (maxY - minY) * zoom) / 2 - minY * zoom
-        : margin - minY * zoom;
+      bounds.height * zoom <= height - 2 * EDGE_SPACE
+        ? (height - bounds.height * zoom) / 2 - bounds.minY * zoom
+        : EDGE_SPACE - bounds.minY * zoom;
     return { x, y, zoom };
-  }, [absolute, width, height]);
+  }, [bounds, width, height]);
 
   const focusStep = useCallback(
     (id: string) => {
@@ -404,8 +419,13 @@ export function StepGraphCanvas({
     const viewport = flow.getViewport();
     const shifted = { ...viewport, x: viewport.x + (width - previous) / 2 };
     const id = selectedRef.current;
-    void flow.setViewport(id ? reveal(shifted, id) : shifted);
-  }, [width, flow, reveal]);
+    void flow.setViewport(shifted);
+    if (id)
+      void flow.setViewport(reveal(shifted, id), {
+        duration: reduce ? 0 : 250,
+        ease: SMOOTH_OUT,
+      });
+  }, [width, flow, reveal, reduce]);
 
   useEffect(() => {
     if (selectedId) ensureVisible(selectedId);
@@ -553,7 +573,11 @@ export function StepGraphCanvas({
   }, []);
 
   if (layoutError) {
-    return <p className="p-4 text-xs text-destructive">Layout fehlgeschlagen: {layoutError}</p>;
+    return (
+      <p className="p-4 text-xs text-pretty text-destructive">
+        Layout fehlgeschlagen: {layoutError}. Die Ansicht „Liste“ zeigt alle Schritte.
+      </p>
+    );
   }
 
   return (
@@ -571,7 +595,7 @@ export function StepGraphCanvas({
         }}
       >
         {!boxes && (
-          <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground animate-in fade-in-0 fill-mode-backwards delay-300 duration-150">
             <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" />
             Layout wird berechnet …
           </div>
@@ -627,14 +651,14 @@ export function StepGraphCanvas({
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
           <Panel position="bottom-left" className="!m-3">
-            <ButtonGroup aria-label="Ansicht">
+            <ButtonGroup orientation="vertical" aria-label="Ansicht">
               <Button
                 type="button"
                 variant="outline"
                 size="icon-sm"
                 aria-label="Vergrößern"
                 title="Vergrößern"
-                onClick={() => void flow.zoomIn({ duration: reduce ? 0 : 160 })}
+                onClick={() => void flow.zoomIn({ duration: reduce ? 0 : 160, ease: SMOOTH_OUT })}
               >
                 <PlusIcon />
               </Button>
@@ -644,26 +668,30 @@ export function StepGraphCanvas({
                 size="icon-sm"
                 aria-label="Verkleinern"
                 title="Verkleinern"
-                onClick={() => void flow.zoomOut({ duration: reduce ? 0 : 160 })}
+                onClick={() => void flow.zoomOut({ duration: reduce ? 0 : 160, ease: SMOOTH_OUT })}
               >
                 <MinusIcon />
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
+                size="icon-sm"
+                aria-label="Einpassen"
+                title="Einpassen"
                 onClick={() => {
                   const viewport = home();
-                  if (viewport) void flow.setViewport(viewport, { duration: reduce ? 0 : 200 });
+                  if (viewport)
+                    void flow.setViewport(viewport, {
+                      duration: reduce ? 0 : 250,
+                      ease: SMOOTH_OUT,
+                    });
                 }}
               >
-                <MaximizeIcon className="size-3.5" />
-                Einpassen
+                <LocateFixedIcon />
               </Button>
             </ButtonGroup>
           </Panel>
-          {width >= 640 && !selectedId && (
+          {width >= 560 && !fits && (
             <MiniMap
               pannable
               zoomable
