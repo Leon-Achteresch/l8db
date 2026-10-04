@@ -63,7 +63,7 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
             onChange={(event) => onChange({ ...step, name: event.target.value })}
             placeholder={catalog.label}
             aria-label="Name des Schritts"
-            className="-mx-1 min-w-0 rounded-md bg-transparent px-1 text-[15px] font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="-mx-1 min-w-0 text-ellipsis rounded-md bg-transparent px-1 text-[15px] font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
           />
         </div>
         {risky && (
