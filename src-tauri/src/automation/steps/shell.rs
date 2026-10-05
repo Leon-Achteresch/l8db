@@ -66,7 +66,7 @@ pub async fn shell(ctx: &mut StepContext<'_>, config: &Action) -> Result<StepOut
     if program.trim().is_empty() {
         return Err("Programm fehlt.".into());
     }
-    let mut command = tokio::process::Command::new(program.trim());
+    let mut command = crate::process::command(program.trim());
     for arg in args {
         command.arg(ctx.vars.render(arg)?);
     }

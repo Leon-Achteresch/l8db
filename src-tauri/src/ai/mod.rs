@@ -63,7 +63,7 @@ pub fn command(profile: &Profile) -> Result<tokio::process::Command, String> {
     } else {
         profile.binary.trim()
     };
-    let mut command = tokio::process::Command::new(program);
+    let mut command = crate::process::command(program);
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default();

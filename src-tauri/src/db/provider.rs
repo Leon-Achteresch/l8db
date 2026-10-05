@@ -884,16 +884,13 @@ pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
 fn shell(command: &str) -> tokio::process::Command {
     #[cfg(windows)]
     {
-        let mut process = tokio::process::Command::new("cmd");
-        process
-            .arg("/C")
-            .raw_arg(command)
-            .creation_flags(0x0800_0000);
+        let mut process = crate::process::command("cmd");
+        process.arg("/C").raw_arg(command);
         process
     }
     #[cfg(not(windows))]
     {
-        let mut process = tokio::process::Command::new("sh");
+        let mut process = crate::process::command("sh");
         process.arg("-c").arg(command);
         process
     }
@@ -902,7 +899,7 @@ fn shell(command: &str) -> tokio::process::Command {
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     let command = install_command(kind)?;
     if std::env::consts::OS == "macos" && command.contains("brew ") {
-        let brew = tokio::process::Command::new("sh")
+        let brew = crate::process::command("sh")
             .arg("-c")
             .arg("command -v brew")
             .output()
