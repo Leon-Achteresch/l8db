@@ -80,7 +80,6 @@ export function AppHeader() {
   }, [syncWithBackend]);
 
   useLayoutEffect(() => {
-    if (section === "/about") return;
     const header = headerRef.current;
     const leading = leadingRef.current;
     const actions = actionsRef.current;
@@ -118,9 +117,7 @@ export function AppHeader() {
     observer.observe(leading);
     observer.observe(actions);
     return () => observer.disconnect();
-  }, [section]);
-
-  if (section === "/about") return null;
+  }, []);
 
   return (
     <header
