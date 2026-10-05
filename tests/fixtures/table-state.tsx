@@ -14,6 +14,9 @@ import { TooltipProvider } from "../../src/components/ui/tooltip";
 import { TableView } from "../../src/features/table/table-view";
 import { useConnectionsStore } from "../../src/lib/connections";
 import { useDbSelectionStore } from "../../src/lib/db-selection";
+import { ExtensionManager } from "../../src/lib/extensions/manager";
+import { ExtensionHostContext } from "../../src/lib/extensions/react-context";
+import { SandboxRuntime } from "../../src/lib/extensions/sandbox-runtime";
 import { useSettingsStore } from "../../src/lib/settings";
 import "../../src/index.css";
 
@@ -31,6 +34,12 @@ useConnectionsStore.setState({
 });
 useDbSelectionStore.getState().setDatabase("state-test", "first");
 useSettingsStore.setState({ rowLimit: 100 });
+const extensions = new ExtensionManager(
+  { list: async () => [] } as unknown as ConstructorParameters<typeof ExtensionManager>[0],
+  new SandboxRuntime(),
+  {} as ConstructorParameters<typeof ExtensionManager>[2],
+  "0.7.0",
+);
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 });
@@ -90,11 +99,13 @@ const router = createRouter({
   history: createMemoryHistory({ initialEntries: ["/tables/public/customers"] }),
 });
 createRoot(document.getElementById("root")!).render(
-  <HotkeysProvider>
-    <TooltipProvider>
-      <QueryClientProvider client={client}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </TooltipProvider>
-  </HotkeysProvider>,
+  <ExtensionHostContext.Provider value={extensions}>
+    <HotkeysProvider>
+      <TooltipProvider>
+        <QueryClientProvider client={client}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </TooltipProvider>
+    </HotkeysProvider>
+  </ExtensionHostContext.Provider>,
 );
