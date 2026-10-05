@@ -87,7 +87,9 @@ export function TableView(props: TableViewProps) {
 
   const extensionActions = useTableExtensionActions(
     { connection, database, schema, table, filter, filterRaw, sorting, isView },
-    caps.full_table_export && (isView ? viewTab : tableTab) === "data",
+    !caps.object_storage &&
+      caps.query_language === "sql" &&
+      (isView ? viewTab : tableTab) === "data",
   );
 
   if (!connection) {
