@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronRightIcon,
@@ -8,18 +7,6 @@ import {
   SquareTerminalIcon,
   TrashIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   ContextMenu,
@@ -29,73 +16,44 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
-import { useCompileObject } from "@/features/functions/use-compile-object";
-import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
-import { useActiveConnection } from "@/lib/connections";
-import { executeQuery, type SchemaCopyObjectType } from "@/lib/db";
-import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
-import { buildInvalidSet, isPackageInvalid } from "@/lib/invalid-objects";
-import { packageOid } from "@/lib/plsql";
-import { useInvalidObjectsQuery } from "@/lib/queries";
-import { effectiveConnectionString } from "@/lib/ssh";
+import type { PackagePart } from "@/lib/plsql";
 import { useTableTabs } from "@/lib/table-tabs";
 import { PartNode } from "./part-node";
 import { usePackageNavigate } from "./use-package-navigate";
 
 export type DropKind = "package" | "body";
 
-export function PackageNode({ schema, name }: { schema: string; name: string }) {
+interface PackageNodeProps {
+  schema: string;
+  name: string;
+  invalid: boolean;
+  canCopy: boolean;
+  canCompile: boolean;
+  onCopy: () => void;
+  onCompile: (part: PackagePart) => void;
+  onDrop: (kind: DropKind) => void;
+}
+
+export function PackageNode({
+  schema,
+  name,
+  invalid,
+  canCopy,
+  canCompile,
+  onCopy,
+  onCompile,
+  onDrop,
+}: PackageNodeProps) {
   const go = usePackageNavigate(schema, name);
   const navigate = useNavigate();
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
-  const closeTab = useTableTabs((state) => state.closeTab);
-  const capabilities = useActiveCapabilities();
-  const connection = useActiveConnection();
-  const database = useActiveDatabase();
-  const queryClient = useQueryClient();
-  const { compile } = useCompileObject();
-  const [dropKind, setDropKind] = useState<DropKind | null>(null);
-  const [dropping, setDropping] = useState(false);
-  const [copyTarget, setCopyTarget] = useState<{
-    schema: string;
-    name: string;
-    objectType: SchemaCopyObjectType;
-  } | null>(null);
-  const { data: invalidObjects } = useInvalidObjectsQuery();
-  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
-  const invalid = isPackageInvalid(invalidSet, schema, name);
   const label = `${schema}.${name}`;
 
   const openInEditor = () => {
     const id = openQueryTabWithSql(`BEGIN\n  ${label}.;\nEND;`, label);
     void navigate({ to: "/query/$id", params: { id } });
-  };
-
-  const handleDrop = async () => {
-    if (!dropKind || !connection) return;
-    setDropping(true);
-    try {
-      await executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        `DROP PACKAGE ${dropKind === "body" ? "BODY " : ""}"${schema}"."${name}"`,
-        database ?? undefined,
-      );
-      toast.success(dropKind === "body" ? `Body von ${label} gelöscht` : `${label} gelöscht`);
-      if (dropKind === "package") closeTab(`package:${schema}.${name}`);
-      await queryClient.invalidateQueries({ queryKey: ["functions"] });
-      await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
-      await queryClient.invalidateQueries({ queryKey: ["invalid-objects"] });
-      await queryClient.invalidateQueries({ queryKey: ["compile-errors"] });
-    } catch (e) {
-      toast.error(`${label} konnte nicht gelöscht werden`, { description: String(e) });
-    } finally {
-      setDropping(false);
-      setDropKind(null);
-    }
   };
 
   return (
@@ -125,68 +83,36 @@ export function PackageNode({ schema, name }: { schema: string; name: string }) 
               <CopyIcon />
               Namen kopieren
             </ContextMenuItem>
-            {capabilities.schema_object_copy ? (
-              <ContextMenuItem
-                onSelect={() => setCopyTarget({ schema, name, objectType: "package" })}
-              >
+            {canCopy ? (
+              <ContextMenuItem onSelect={onCopy}>
                 <CopyIcon />
                 In anderem Schema erstellen
               </ContextMenuItem>
             ) : null}
-            {capabilities.compile_objects ? (
+            {canCompile ? (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem
-                  onSelect={() =>
-                    void compile(packageOid(schema, name, "spec"), "package_spec", label)
-                  }
-                >
+                <ContextMenuItem onSelect={() => onCompile("spec")}>
                   <HammerIcon />
                   Spec kompilieren
                 </ContextMenuItem>
-                <ContextMenuItem
-                  onSelect={() =>
-                    void compile(packageOid(schema, name, "body"), "package_body", label)
-                  }
-                >
+                <ContextMenuItem onSelect={() => onCompile("body")}>
                   <HammerIcon />
                   Body kompilieren
                 </ContextMenuItem>
               </>
             ) : null}
             <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={() => setDropKind("body")}>
+            <ContextMenuItem variant="destructive" onSelect={() => onDrop("body")}>
               <TrashIcon />
               Body löschen
             </ContextMenuItem>
-            <ContextMenuItem variant="destructive" onSelect={() => setDropKind("package")}>
+            <ContextMenuItem variant="destructive" onSelect={() => onDrop("package")}>
               <TrashIcon />
               Package löschen
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        <CopyToSchemaDialog target={copyTarget} onClose={() => setCopyTarget(null)} />
-        <AlertDialog open={dropKind !== null} onOpenChange={(open) => !open && setDropKind(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {dropKind === "body" ? `Body von "${name}" löschen?` : `Package "${name}" löschen?`}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {dropKind === "body"
-                  ? "Der Package Body wird unwiderruflich gelöscht (DROP PACKAGE BODY). Die Spec bleibt erhalten."
-                  : "Spec und Body werden unwiderruflich gelöscht (DROP PACKAGE). Abhängige Objekte werden INVALID."}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={dropping}>Abbrechen</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDrop} disabled={dropping}>
-                {dropping ? <Spinner className="size-4" /> : null}
-                {dropKind === "body" ? "Drop Body" : "Drop Package"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
         <CollapsibleContent>
           <SidebarMenuSub>
             <PartNode schema={schema} name={name} part="spec" title="Spec" />
