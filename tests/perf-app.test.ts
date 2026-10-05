@@ -517,7 +517,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       await app.page.locator(".monaco-editor .view-lines").first().click();
       await app.page.keyboard.type("select 'perf wide'");
-      await app.page.getByRole("button", { name: "Ausführen", exact: true }).first().click();
+      await app.page.getByRole("button", { name: "Statement ausführen", exact: true }).first().click();
       await app.page.waitForSelector('tbody tr[data-index="0"]');
       const scroll = await measure("wide-query-result-scroll", app.page, () =>
         app.page.evaluate(async () => {
