@@ -1,5 +1,9 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createTestDatabase } from "../extention/table-json-viewer/create-test-database";
 import manifest from "../extention/table-json-viewer/l8db-extension.json";
 import { assembleTableJson, detectMapping } from "../extention/table-json-viewer/src/assemble";
 import { activate } from "../extention/table-json-viewer/src/extension";
@@ -11,6 +15,7 @@ import type {
   TableSnapshot,
 } from "../packages/extension-api/src";
 import { validateArchive, validateManifest } from "../packages/extension-api/src/manifest";
+import { readTableSnapshot } from "../src/lib/extensions/table-snapshot";
 
 const columns = [
   "REF",
@@ -118,6 +123,23 @@ function harness(picks: (string | undefined)[] = [], entrypoint = activate) {
   } as unknown as L8dbApi;
   entrypoint({ subscriptions: [] } as unknown as ExtensionContext, api);
   return { commands, storage, panels, notifications };
+}
+
+async function packagedEntrypoint() {
+  const archive = validateArchive(
+    JSON.parse(
+      await readFile(
+        new URL(
+          "../extention/table-json-viewer/community.table-json-viewer-0.1.0.l8db-extension",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ),
+  );
+  const module = { exports: {} as { activate: typeof activate } };
+  new Function("module", "exports", archive.files[archive.manifest.main])(module, module.exports);
+  return module.exports.activate;
 }
 
 describe("TableJSONViewer", () => {
@@ -250,23 +272,79 @@ describe("TableJSONViewer", () => {
   });
 
   test("the packaged extension executes without imports or access to app internals", async () => {
-    const archive = validateArchive(
-      JSON.parse(
-        await readFile(
-          new URL(
-            "../extention/table-json-viewer/community.table-json-viewer-0.1.0.l8db-extension",
-            import.meta.url,
-          ),
-          "utf8",
-        ),
-      ),
-    );
-    const module = { exports: {} as { activate: typeof activate } };
-    new Function("module", "exports", archive.files[archive.manifest.main])(module, module.exports);
-    const { commands, panels } = harness([], module.exports.activate);
+    const { commands, panels } = harness([], await packagedEntrypoint());
     await commands.get("tablejson.show")?.(snapshot() as unknown as Json);
     expect(JSON.parse(panels[0].options.text)).toEqual({
       DeliveryOrderResponse: Object.fromEntries(fields),
     });
+  });
+
+  test("assembles the supplied SQL from a real filtered database into the native panel", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "l8db-table-json-"));
+    let db: Database | undefined;
+    try {
+      const result = await createTestDatabase(join(directory, "test.sqlite"));
+      expect(result.rows).toBe(12);
+      db = new Database(result.path);
+      const database = db;
+      const read = async (filter: string) =>
+        readTableSnapshot(
+          {
+            connectionId: "test-sqlite",
+            database: null,
+            schema: "main",
+            table: "IFC_SENDEN_POS",
+            filter,
+          },
+          {
+            count: async () =>
+              database
+                .query<{ count: number }, []>(
+                  `SELECT COUNT(*) AS count FROM IFC_SENDEN_POS WHERE ${filter}`,
+                )
+                .get()?.count ?? 0,
+            fetch: async (limit) => ({
+              columns,
+              rows: database
+                .query<Record<string, string | number | null>, [number]>(
+                  `SELECT * FROM IFC_SENDEN_POS WHERE ${filter} ORDER BY POS_NR DESC LIMIT ?`,
+                )
+                .all(limit),
+            }),
+          },
+        );
+      const table = await read("REF_KOPF = 8292");
+      expect(table.rows.at(-1)?.WERT_NAME).toBe("DeliveryOrderResponse");
+      const { commands, panels, notifications } = harness([], await packagedEntrypoint());
+      await commands.get("tablejson.show")?.(table as unknown as Json);
+      expect(JSON.parse(panels[0].options.text)).toEqual({
+        DeliveryOrderResponse: {
+          Location: "Meppen",
+          Warehouse: "Meppen",
+          Client: "buah",
+          OrderStatus: "planed",
+          OrderNumber: "10000603",
+          OrderReferenz: null,
+          OrderCommNumber: null,
+          PurchaseNumber: null,
+          DeliveryNoteNumber: "LS102082175",
+          DeliveryDate: "2026-10-03",
+          ProcessTimestamp: "2026-10-02T12:54:31+02:00",
+        },
+      });
+      expect(panels[0].options.description).toContain("REF_KOPF = 8292");
+      expect(panels[0].options.description).toContain("12 Zeilen · 1 Dokument");
+      await commands.get("tablejson.show")?.((await read("REF_KOPF = 9999")) as unknown as Json);
+      expect(panels).toHaveLength(1);
+      expect(notifications).toEqual(["Keine Zeilen für diesen Filter."]);
+      await expect(createTestDatabase(result.path)).rejects.toThrow("EEXIST");
+      expect(
+        database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM IFC_SENDEN_POS").get()
+          ?.count,
+      ).toBe(12);
+    } finally {
+      db?.close();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

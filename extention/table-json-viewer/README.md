@@ -48,9 +48,23 @@ Für die bereitgestellten Beispieldaten entsteht:
 }
 ```
 
-Der Tabellenzugriff berücksichtigt Filtermodus, Sortierung, aktive Transaktion und SSH-Tunnel. Er ist für Provider mit vollständigem Tabellenexport verfügbar. Es werden höchstens 50.000 Zeilen und 4 MiB Snapshot-Daten übernommen. Bei Überschreitung oder unvollständigem Abruf wird abgebrochen; es wird kein gekürztes Dokument als vollständige JSON angezeigt. Ändert sich die Zeilenzahl während des Abrufs, muss erneut geladen werden. Ohne aktive Transaktion ist der Abruf kein garantierter Datenbank-Snapshot.
+Der Tabellenzugriff berücksichtigt Filtermodus, Sortierung, aktive Transaktion und SSH-Tunnel. Er ist für SQL-Datenbanken einschließlich Oracle verfügbar und benötigt keinen vollständigen Tabellenexport. Es werden höchstens 50.000 Zeilen und 4 MiB Snapshot-Daten übernommen. Bei Überschreitung oder unvollständigem Abruf wird abgebrochen; es wird kein gekürztes Dokument als vollständige JSON angezeigt. Ändert sich die Zeilenzahl während des Abrufs, muss erneut geladen werden. Ohne aktive Transaktion ist der Abruf kein garantierter Datenbank-Snapshot.
 
 ## Entwicklung
+
+### Testdatenbank
+
+Das mitgelieferte `IFC_SENDEN_POS.sql` enthält die INSERTs für ein Dokument mit `REF_KOPF = 8292`. Eine separate SQLite-Datei mit den neun Originalspalten wird so angelegt:
+
+```sh
+bun extention/table-json-viewer/create-test-database.ts
+```
+
+Die Datei liegt unter `test-artifacts/table-json-viewer.sqlite`. Sie kann als SQLite-Verbindung in der Dev-Instanz geöffnet werden: Schema `main`, Tabelle `IFC_SENDEN_POS`, Filter `REF_KOPF = 8292`. Ein anderer Ausgabepfad kann als erstes Argument angegeben werden. Vorhandene Dateien werden nicht überschrieben.
+
+Das SQL-Skript wird unverändert über das temporär angehängte Schema `EUROTIME` ausgeführt. In der fertigen SQLite-Datei liegt die Tabelle im Schema `main`. Der Regressionstest liest diese Daten aus einer echten SQLite-Datenbank, lädt die Zeilen in umgekehrter Reihenfolge und führt das gepackte Extension-Command aus. Er prüft das vollständige Dokument, NULL-Werte, die als String erhaltene Bestellnummer und einen Filter ohne Treffer.
+
+### Extension bauen und prüfen
 
 ```sh
 bun run extension dev extention/table-json-viewer
