@@ -288,7 +288,7 @@ mod tests {
     }
 
     fn has(tool: &str) -> bool {
-        std::process::Command::new("sh")
+        crate::process::std_command("sh")
             .arg("-c")
             .arg(format!("command -v {tool}"))
             .stdout(Stdio::null())
