@@ -14,4 +14,6 @@ Andere Ansichten können `useNewFeatureVisibility<HTMLElement>(featureId)` am ta
 
 Liegt das Feature hinter weiteren Schritten (Dialog, Tab, Bearbeitungsmodus, eingeklappter Abschnitt, nicht installierte Erweiterung), braucht jeder dieser Schritte einen Wegweiser mit `useHasNewFeatures(scope)` und `NewBadge`. Sonst zeigt die Navigation einen Punkt, die Seite aber kein Badge, und der Punkt verschwindet nie. Beispiele: Dashboard „Bearbeiten“ → „Chart erstellen“ → Tab „Daten gestalten“, Passwortmanager „Ändern“.
 
+Solange irgendein Feature der aktuellen Version ungesehen ist, zeigt der AppHeader oben links einen Button „Alle Neuigkeiten als gelesen markieren“. Er markiert alle Features auf einmal (`markAllNewFeaturesSeen`), alle sichtbaren Badges fallen animiert weg und der Button verschwindet.
+
 Der Status liegt pro Funktion und Einführungsversion in `localStorage`. Er bleibt nach einem Neustart erhalten und wird über das `storage` Ereignis zwischen offenen Fenstern synchronisiert. Bei einem erneuten Launch derselben Funktion unter einer anderen Version wird ihre Version in der Registrierung geändert, wodurch das Badge einmal neu erscheint.

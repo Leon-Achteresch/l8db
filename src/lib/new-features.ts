@@ -118,6 +118,10 @@ export function featureStorageKey(id: NewFeatureId): string {
   return `${STORAGE_PREFIX}:${NEW_FEATURES[id]}:${id}`;
 }
 
+function currentFeatureIds(version: string): NewFeatureId[] {
+  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter((id) => NEW_FEATURES[id] === version);
+}
+
 export function hasNewFeatures(
   scope: string | undefined,
   seen: ReadonlySet<NewFeatureId>,
@@ -174,6 +178,17 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
       }
       publish(new Set([...snapshot, id]));
     },
+    markAllSeen: () => {
+      const ids = currentFeatureIds(version);
+      for (const id of ids) {
+        try {
+          storage?.setItem(featureStorageKey(id), "1");
+        } catch {
+          break;
+        }
+      }
+      publish(new Set(ids));
+    },
     refresh: () => publish(readSeen()),
   };
 }
@@ -211,6 +226,10 @@ export function markNewFeatureSeen(id: NewFeatureId): void {
   store.markSeen(id);
 }
 
+export function markAllNewFeaturesSeen(): void {
+  store.markAllSeen();
+}
+
 export function newFeatureJustSeen(): boolean {
   return store.changedWithin(250);
 }
@@ -221,4 +240,9 @@ export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
 
 export function useHasNewFeatures(scope: string | undefined): boolean {
   return hasNewFeatures(scope, useSeenNewFeatures());
+}
+
+export function useHasAnyNewFeatures(): boolean {
+  const seen = useSeenNewFeatures();
+  return currentFeatureIds(appVersion).some((id) => !seen.has(id));
 }
