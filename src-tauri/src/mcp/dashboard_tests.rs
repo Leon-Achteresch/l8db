@@ -290,10 +290,12 @@ fn rejects_invalid_charts_without_touching_the_file() {
         spec
     };
     let cases = [
-        (base(json!({"type": "pie"})), "unbekannt"),
+        (base(json!({"type": "spaghetti"})), "unbekannt"),
         (base(json!({"type": null})), "type fehlt"),
         (
-            base(json!({"type": "donut", "dimension": null})),
+            base(
+                json!({"type": "donut", "dimension": null, "sql": "SELECT COUNT(*) AS n FROM orders"}),
+            ),
             "braucht dimension",
         ),
         (base(json!({"type": "gauge"})), "nur ohne dimension"),
@@ -365,8 +367,11 @@ fn rejects_invalid_charts_without_touching_the_file() {
         (base(json!({"h": 99})), "h für 'column' muss 5 bis 40"),
         (base(json!({"y": "top"})), "y muss eine Ganzzahl"),
         (base(json!({"colour": "red"})), "Unbekanntes Feld 'colour'"),
-        (base(json!({"metrics": "n"})), "metrics muss eine Liste"),
-        (base(json!({"title": 5})), "title muss ein Text"),
+        (
+            base(json!({"metrics": {"a": 1}})),
+            "metrics muss eine Liste",
+        ),
+        (base(json!({"title": {"a": 1}})), "title muss ein Text"),
         (json!("column"), "muss ein Objekt sein"),
     ];
     for (spec, expected) in cases {
@@ -850,4 +855,47 @@ fn only_read_only_expert_sql_of_known_connections_is_trusted() {
     ] {
         assert!(!trusted(&board(connection, &sqls), &config), "{sqls:?}");
     }
+}
+
+#[test]
+fn accepts_loose_llm_arguments_and_infers_mappings() {
+    let mut lab = lab();
+    let charts = json!([
+        {"chart": "pie", "title": "Status", "query": "SELECT status, COUNT(*) AS orders FROM orders GROUP BY status"},
+        {"type": "bar", "title": "Regions", "sql": "SELECT region, SUM(amount) AS revenue FROM orders GROUP BY region", "x": "region", "y": "revenue", "w": "6"},
+        {"type": "number", "title": "Total", "sql": "SELECT SUM(amount) AS total FROM orders"},
+        {"type": "line_chart", "title": "Trend", "sql": "SELECT created_at AS day, COUNT(*) AS orders, SUM(amount) AS revenue FROM orders GROUP BY day ORDER BY day", "date_column": "day", "options": "{\"showLegend\": true}"},
+        {"type": "heatmap", "title": "Matrix", "sql": "SELECT region, status, COUNT(*) AS n FROM orders GROUP BY region, status"}
+    ]);
+    let text = lab.ok(json!({
+        "action": "create",
+        "connection": "Shop",
+        "name": "Loose",
+        "refresh_sec": "60",
+        "charts": charts.to_string()
+    }));
+    assert!(
+        text.contains("Mapping ergänzt: dimension=status, metrics=orders"),
+        "{text}"
+    );
+    let board = lab.only();
+    assert_eq!(board["refreshSec"], 60);
+    assert_eq!(widget(&board, "Status")["chart"], "donut");
+    assert_eq!(widget(&board, "Regions")["chart"], "column");
+    assert_eq!(widget(&board, "Regions")["w"], 6);
+    assert_eq!(widget(&board, "Total")["chart"], "kpi");
+    assert_eq!(widget(&board, "Trend")["options"]["showLegend"], true);
+    let mapping = |title: &str| dataset_for(&board, title)["mapping"].clone();
+    assert_eq!(mapping("Regions")["dimension"], "region");
+    assert_eq!(mapping("Regions")["metrics"], json!(["revenue"]));
+    assert_eq!(mapping("Total")["metrics"], json!(["total"]));
+    assert_eq!(mapping("Total")["dimension"], Value::Null);
+    assert_eq!(mapping("Trend")["dimension"], "day");
+    assert_eq!(mapping("Trend")["dateColumn"], "day");
+    assert_eq!(mapping("Trend")["metrics"], json!(["orders", "revenue"]));
+    assert_eq!(mapping("Matrix")["dimension2"], "status");
+    assert_eq!(mapping("Matrix")["metrics"], json!(["n"]));
+    lab.ok(json!({"action": "add_charts", "dashboard": "Loose", "charts": {"type": "kpi", "title": "Single", "sql": "SELECT COUNT(*) AS n FROM orders"}}));
+    lab.ok(json!({"action": "update_chart", "dashboard": "Loose", "chart": "Single", "spec": "{\"title\": \"Renamed\"}"}));
+    assert_eq!(widget(&lab.only(), "Renamed")["chart"], "kpi");
 }
