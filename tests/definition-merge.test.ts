@@ -3,6 +3,7 @@ import {
   applyDefinitionHunk,
   definitionHunks,
   draftLineOrigins,
+  unchangedLineRanges,
 } from "../src/lib/definition-merge";
 
 test("übernimmt unabhängige Änderungen von beiden Seiten in einen Entwurf", () => {
@@ -70,4 +71,22 @@ test("Hunks überführen den Entwurf zufällig veränderter Texte vollständig i
     );
     expect(merged).toBe(source);
   }
+});
+
+test("unchangedLineRanges keeps one context line around each hunk", () => {
+  const hunks = [
+    { sourceStart: 3, sourceEnd: 4, draftStart: 3, draftEnd: 3 },
+    { sourceStart: 8, sourceEnd: 8, draftStart: 7, draftEnd: 9 },
+  ];
+  expect(unchangedLineRanges(hunks, "source", 12)).toEqual([
+    { start: 2, end: 2 },
+    { start: 6, end: 7 },
+    { start: 10, end: 11 },
+  ]);
+  expect(unchangedLineRanges(hunks, "draft", 13)).toEqual([
+    { start: 2, end: 2 },
+    { start: 5, end: 6 },
+    { start: 11, end: 12 },
+  ]);
+  expect(unchangedLineRanges([], "source", 3)).toEqual([{ start: 2, end: 2 }]);
 });
