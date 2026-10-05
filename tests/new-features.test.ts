@@ -59,6 +59,21 @@ describe("new feature discovery", () => {
     expect(createNewFeatureStore(storage, "0.7.1").getSnapshot().size).toBe(0);
   });
 
+  test("marking all seen hides every current release badge at once", () => {
+    const storage = memoryStorage();
+    const store = createNewFeatureStore(storage, "0.7.0");
+    let notifications = 0;
+    store.subscribe(() => notifications++);
+
+    store.markAllSeen();
+
+    expect(notifications).toBe(1);
+    expect(hasNewFeatures("settings", store.getSnapshot(), "0.7.0")).toBe(false);
+    expect(hasNewFeatures("baas", store.getSnapshot(), "0.7.0")).toBe(false);
+    expect(storage.getItem(featureStorageKey("settings.data.transfer"))).toBe("1");
+    expect(storage.getItem(featureStorageKey("ai.chat"))).toBeNull();
+  });
+
   test("view time accumulates across interrupted sightings", async () => {
     const done: string[] = [];
     const startDwell = createFeatureDwell(60, (id) => done.push(id));
