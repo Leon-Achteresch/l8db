@@ -75,6 +75,10 @@ describe("json-editor", () => {
     expect(findMatches(doc, "ad").map(pathId)).toEqual(['["user","name"]']);
     expect(tableShape([{ a: 1 }, { b: 2 }])?.columns).toEqual(["a", "b"]);
     expect(tableShape([1, 2])).toBeNull();
+    expect(tableShape({ DeliveryOrderResponse: { Location: "Meppen" } })).toEqual({
+      columns: ["DeliveryOrderResponse"],
+      rows: [{ DeliveryOrderResponse: { Location: "Meppen" } }],
+    });
     expect(stringHint("https://l8db.dev")).toBe("url");
     expect(stringHint("2026-10-03T12:00:00Z")).toBe("date");
     expect(stringHint('{"nested":true}')).toBe("json");
