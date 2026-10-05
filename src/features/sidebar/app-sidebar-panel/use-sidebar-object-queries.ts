@@ -1,3 +1,4 @@
+import { useActiveCapabilities } from "@/lib/db-selection";
 import {
   useExtensionsQuery,
   useFunctionsQuery,
@@ -9,7 +10,6 @@ import {
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
-import { useActiveCapabilities } from "@/lib/db-selection";
 import type { SidebarTabValue } from "./sidebar-tab";
 
 export function useSidebarObjectQueries(selectedTab: SidebarTabValue) {

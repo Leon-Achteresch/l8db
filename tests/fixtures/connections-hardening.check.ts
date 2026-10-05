@@ -342,7 +342,7 @@ describe("removing connections warns about unsaved query tabs", () => {
     useConnectionsStore.setState({ activeId: "active" });
     useTableTabs.setState({
       tabs: [
-        { kind: "query", id: "q1", title: "Query 1", sql: "select 1" },
+        { kind: "query", id: "q1", title: "Query 1", sql: "delete from t" },
         { kind: "query", id: "q2", title: "Query 2", sql: "  " },
         { kind: "table", schema: "public", table: "t" },
       ],

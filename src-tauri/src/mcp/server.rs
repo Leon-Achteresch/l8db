@@ -210,9 +210,7 @@ impl Server {
                             }
                             "query" => self.query(config, connection, &args).await,
                             "benchmark" => self.benchmark(config, connection, &args).await,
-                            "health" => {
-                                super::health::call(connection, &self.pool, &args).await
-                            }
+                            "health" => super::health::call(connection, &self.pool, &args).await,
                             _ => self.execute(config, connection, &args).await,
                         };
                         if matches!(name, "query" | "execute" | "benchmark") {
