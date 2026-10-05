@@ -6,7 +6,9 @@ import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { MaskingToggle } from "@/features/table/masking-toggle";
 import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
+import { TableExtensionActions } from "@/features/table/table-extension-actions";
 import { useReadOnlyConnection } from "@/lib/connections";
+import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
 
 import type { useTableViewModel } from "./use-table-view-model";
@@ -30,9 +32,11 @@ type Props = Pick<
 > & {
   schema: string;
   table: string;
+  extensionActions: ReturnType<typeof useTableExtensionActions>;
 };
 
 export function TableToolbarActions({
+  extensionActions,
   connection,
   database,
   stateKey,
@@ -66,8 +70,13 @@ export function TableToolbarActions({
       {isData && caps.query_language === "redis" && (
         <RedisKeyActions key={`${connection?.id}:${database}`} />
       )}
-      {(canMask || canTestData || canPaste || canAdd || canExport) && (
-        <TableActionsMenu>
+      {(canMask ||
+        canTestData ||
+        canPaste ||
+        canAdd ||
+        canExport ||
+        extensionActions.actions.length > 0) && (
+        <TableActionsMenu isNew={extensionActions.isNew}>
           {canAdd && (
             <IconMenuItem
               icon={<PlusIcon />}
@@ -91,6 +100,9 @@ export function TableToolbarActions({
             />
           )}
           {canMask && <MaskingToggle />}
+          {extensionActions.actions.length > 0 &&
+            (canMask || canTestData || canPaste || canAdd) && <IconMenuSeparator />}
+          <TableExtensionActions {...extensionActions} />
           {canExport && (
             <>
               <IconMenuSeparator />

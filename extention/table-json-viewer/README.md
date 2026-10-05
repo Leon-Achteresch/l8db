@@ -7,8 +7,8 @@ Community-Extension für Tabellen, die ein JSON-Dokument als einzelne Knoten spe
 1. `community.table-json-viewer-0.1.0.l8db-extension` unter Einstellungen → Community-Extensions importieren. Das Paket benötigt die hier ergänzte l8db-Version mit `table/toolbar` und `panels.openJson`.
 2. Die Extension aktivieren und Datenbank-Lesezugriff sowie eigenen Einstellungsspeicher erlauben.
 3. Eine Tabelle oder View öffnen und zum Beispiel auf `REF_KOPF = 10271` filtern.
-4. Über dem Tabellenfilter auf **TableJSONViewer** klicken.
-5. Bei abweichenden Spaltennamen **TableJSONViewer: Spalten zuordnen** wählen. Die Zuordnung wird pro Verbindung, Datenbank und Tabelle gespeichert.
+4. Das Drei-Punkte-Menü der Tabelle öffnen und das Symbol mit geschweiften Klammern (**TableJSONViewer**) wählen.
+5. Bei abweichenden Spaltennamen im selben Menü das Einstellungssymbol (**TableJSONViewer: Spalten zuordnen**) wählen. Die Zuordnung wird pro Verbindung, Datenbank und Tabelle gespeichert.
 
 Die Extension benötigt weder Netzwerkzugriff noch Datenbank-Schreibrechte. Datenbankzugänge werden nicht an die Extension übergeben. Der Zusammenbau läuft im Extension-Sandbox-Worker; die Anzeige nutzt den nativen JSON-Viewer.
 
