@@ -4,7 +4,7 @@ import { type RefObject, useCallback, useMemo, useState } from "react";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
-import { invalidateTableReads } from "@/lib/query-client";
+import { invalidateAfterSql } from "@/lib/query-client";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
@@ -128,7 +128,7 @@ export function useScriptRun({
         setError(String(failure));
         setErrorSource(null);
       } finally {
-        if (connection) await invalidateTableReads(queryClient, connection.id, database);
+        if (connection) await invalidateAfterSql(queryClient, connection.id, database, text);
         await collectOutput();
         runningRef.current = false;
         setIsRunning(false);

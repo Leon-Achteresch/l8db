@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createAppQueryClient,
+  invalidateAfterSql,
   invalidateTableReads,
   isConnectionQuery,
   sameTableSource,
@@ -17,6 +18,35 @@ describe("query cache performance and isolation", () => {
       predicate: (entry) => isConnectionQuery(entry.queryKey, "a"),
     });
     expect(await client.fetchQuery(query)).toBe(2);
+    client.clear();
+  });
+
+  test("schema changing SQL refreshes cached metadata, plain DML only table reads", async () => {
+    const client = createAppQueryClient();
+    const calls = { definition: 0, rows: 0 };
+    const definition = {
+      queryKey: ["view-definition", "a", "db", "app", "v_orders"],
+      queryFn: async () => ++calls.definition,
+    };
+    const rows = {
+      queryKey: ["rows", "a", "db", "app", "v_orders"],
+      queryFn: async () => ++calls.rows,
+    };
+    await client.fetchQuery(definition);
+    await client.fetchQuery(rows);
+    await invalidateAfterSql(client, "a", "db", "UPDATE orders SET created = 1");
+    expect(await client.fetchQuery(definition)).toBe(1);
+    expect(await client.fetchQuery(rows)).toBe(2);
+    await invalidateAfterSql(client, "b", "db", "DROP VIEW v_orders");
+    expect(await client.fetchQuery(definition)).toBe(1);
+    await invalidateAfterSql(
+      client,
+      "a",
+      "db",
+      "SELECT 1 FROM dual;\ncreate or replace view v_orders as select id, total from orders",
+    );
+    expect(await client.fetchQuery(definition)).toBe(2);
+    expect(await client.fetchQuery(rows)).toBe(3);
     client.clear();
   });
 

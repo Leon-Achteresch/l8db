@@ -14,6 +14,7 @@ import { updateViewDefinition } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useViewDefinitionQuery } from "@/lib/queries";
 import { buildViewDdl } from "@/lib/query-builder";
+import { invalidateConnectionQueries } from "@/lib/query-client";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface ViewDefinitionPanelProps {
@@ -102,8 +103,7 @@ export function ViewDefinitionPanel({ schema, view }: ViewDefinitionPanelProps) 
       setDraft(null);
       setCompileStatus("idle");
       setCompileError(null);
-      await queryClient.invalidateQueries({ queryKey: ["view-definition"] });
-      await queryClient.invalidateQueries({ queryKey: ["rows"] });
+      await invalidateConnectionQueries(queryClient, connection.id);
     } catch (e) {
       toast.error(String(e));
     } finally {

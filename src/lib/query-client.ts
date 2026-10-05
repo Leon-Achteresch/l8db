@@ -66,6 +66,25 @@ export function sameTableSource(previous: readonly unknown[], next: readonly unk
   );
 }
 
+const SCHEMA_CHANGE = /\b(?:create|alter|drop|rename|comment\s+on|grant|revoke)\b/i;
+
+export function invalidateConnectionQueries(client: QueryClient, connectionId: string) {
+  return client.invalidateQueries({
+    predicate: (query) => isConnectionQuery(query.queryKey, connectionId),
+  });
+}
+
+export function invalidateAfterSql(
+  client: QueryClient,
+  connectionId: string,
+  database: string | null | undefined,
+  sql: string,
+) {
+  return SCHEMA_CHANGE.test(sql)
+    ? invalidateConnectionQueries(client, connectionId)
+    : invalidateTableReads(client, connectionId, database);
+}
+
 export function invalidateTableReads(
   client: QueryClient,
   connectionId: string,
