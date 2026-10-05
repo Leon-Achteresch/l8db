@@ -67,7 +67,7 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.getByRole("button", { name: "Anpassen", exact: true }).waitFor();
       await page.locator(".monaco-editor").first().waitFor();
       await page.screenshot({ path: "/tmp/l8db-query-before.png" });
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("mara@example.test", { exact: true }).waitFor();
       for (const [format, title] of [
         ["CSV", "CSV exportieren"],
