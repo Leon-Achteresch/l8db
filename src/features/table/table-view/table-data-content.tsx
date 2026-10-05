@@ -46,7 +46,6 @@ type Props = Pick<
   | "sorting"
   | "setSorting"
   | "revealColumn"
-  | "setRevealColumn"
   | "page"
   | "setPage"
   | "addRowSignal"
@@ -89,7 +88,6 @@ export function TableDataContent({
   sorting,
   setSorting,
   revealColumn,
-  setRevealColumn,
   page,
   setPage,
   addRowSignal,
@@ -132,7 +130,6 @@ export function TableDataContent({
           columnDetails={columnDetails}
           activeFilter={filter}
           onApply={handleFilterChange}
-          onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
         />
       </div>
       {isLoading || (!isError && !gridReady) ? (
