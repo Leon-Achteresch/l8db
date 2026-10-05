@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { JsonEditor } from "@/features/table/json-editor/json-editor";
 import type { Json } from "@/lib/extensions/contracts";
 import { useExtensionHost, useExtensionPanels } from "@/lib/extensions/react-context";
 
@@ -36,6 +37,27 @@ export function ExtensionPanelView({
     return (
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
         <p className="text-sm text-muted-foreground font-medium">Panel nicht verfügbar.</p>
+      </div>
+    );
+  }
+  if (snapshot.json) {
+    return (
+      <div className="flex size-full min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+        <div className="shrink-0">
+          <h1 className="text-sm font-semibold">{snapshot.title}</h1>
+          {snapshot.json.description && (
+            <p className="mt-1 break-words text-xs text-muted-foreground">
+              {snapshot.json.description}
+            </p>
+          )}
+        </div>
+        <JsonEditor
+          key={snapshot.updatedAt}
+          text={snapshot.json.text}
+          readOnly
+          columnName={snapshot.json.filename ?? snapshot.title}
+          className="h-full min-h-0 flex-1"
+        />
       </div>
     );
   }

@@ -280,7 +280,7 @@
             "required": ["command", "location"],
             "properties": {
               "command": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
-              "location": { "enum": ["palette", "view/title", "view/item", "statusBar", "explain/toolbar", "editor/plan"] },
+              "location": { "enum": ["palette", "view/title", "view/item", "statusBar", "explain/toolbar", "editor/plan", "table/toolbar"] },
               "view": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
               "group": { "type": "string", "minLength": 1, "maxLength": 4096 }
             }

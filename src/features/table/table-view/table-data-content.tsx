@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
+import { TableExtensionActions } from "@/features/table/table-extension-actions";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
@@ -99,6 +100,18 @@ export function TableDataContent({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {connection && caps.full_table_export && (
+        <TableExtensionActions
+          connection={connection}
+          database={database}
+          schema={schema}
+          table={table}
+          filter={filter}
+          filterRaw={filterRaw}
+          sorting={sorting}
+          isView={isView}
+        />
+      )}
       <TableViewsPanel
         schema={schema}
         table={table}

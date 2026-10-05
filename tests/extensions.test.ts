@@ -436,3 +436,47 @@ test("duplicate views roll back installation", async () => {
   await expect(manager.installExtension(duplicate)).rejects.toThrow(ExtensionError);
   expect(manager.commands.owner("test.run")).toBe("test.rich");
 });
+
+test("native JSON panels validate content and enforce panel ownership", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", []);
+  await manager.activate("test.rich");
+  const rpc = runtime.rpc.get("test.rich")!;
+  const options = { text: '{"Location":"Meppen"}', filename: "responses", description: "1 Dokument" };
+  await rpc("panels.openJson", ["test.panel", options]);
+  const first = manager.listPanels()[0];
+  expect(first.json).toEqual(options);
+  expect(first.html).toBe("");
+  await rpc("panels.openJson", ["test.panel", options]);
+  expect(manager.listPanels()[0].updatedAt).toBeGreaterThan(first.updatedAt);
+  await expect(rpc("panels.openJson", ["other.panel", options])).rejects.toThrow(ExtensionError);
+  await expect(rpc("panels.openJson", ["test.panel", { text: "invalid" }])).rejects.toThrow("Invalid JSON");
+  await expect(rpc("panels.openJson", ["test.panel", { text: "{}", filename: 1 }])).rejects.toThrow("options");
+  await expect(rpc("panels.openJson", ["test.panel", { text: " ".repeat(4 * 1024 * 1024 + 1) }])).rejects.toThrow("options");
+  expect(manager.listPanels()[0].json).toEqual(options);
+  await rpc("panels.open", ["test.panel", "<p>HTML</p>"]);
+  expect(manager.listPanels()[0].json).toBeUndefined();
+});
+
+test("table commands require read permission before fetching or sharing data", async () => {
+  const { manager } = setup();
+  const extension = archive();
+  extension.manifest.contributes!.menus = [{ command: "test.hello", location: "table/toolbar" }];
+  await manager.installExtension(extension);
+  let reads = 0;
+  const snapshot = { connectionId: "c1", database: "db", schema: "public", table: "nodes", filter: "id = 1", columns: ["name"], rows: [{ name: "Location" }] };
+  const read = async () => { reads++; return snapshot; };
+  await expect(manager.executeTableCommand("test.hello", read)).rejects.toThrow(ExtensionError);
+  await manager.enableExtension("test.example", []);
+  await expect(manager.executeTableCommand("test.hello", read)).rejects.toThrow("database:read");
+  expect(reads).toBe(0);
+  await manager.enableExtension("test.example", ["database:read"]);
+  expect(await manager.executeTableCommand("test.hello", read)).toEqual(snapshot);
+  expect(reads).toBe(1);
+  await expect(manager.executeTableCommand("unknown", read)).rejects.toThrow(ExtensionError);
+  await expect(manager.executeTableCommand("test.hello", async () => {
+    manager.registry.get("test.example").grants = [];
+    return snapshot;
+  })).rejects.toThrow("database:read");
+});
