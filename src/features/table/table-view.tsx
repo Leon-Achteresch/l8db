@@ -10,6 +10,7 @@ import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel } from "./table-view/lazy-panels";
 import { TableDataContent } from "./table-view/table-data-content";
@@ -84,6 +85,11 @@ export function TableView(props: TableViewProps) {
     addRowSignal,
   } = useTableViewModel(props);
 
+  const extensionActions = useTableExtensionActions(
+    { connection, database, schema, table, filter, filterRaw, sorting, isView },
+    caps.full_table_export && (isView ? viewTab : tableTab) === "data",
+  );
+
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
@@ -140,6 +146,7 @@ export function TableView(props: TableViewProps) {
   if (isView) {
     return (
       <ViewDetailTabs
+        extensionActions={extensionActions}
         caps={caps}
         availableTabs={availableTabs}
         viewTab={viewTab}
@@ -176,6 +183,7 @@ export function TableView(props: TableViewProps) {
       >
         <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
         <TableToolbarActions
+          extensionActions={extensionActions}
           connection={connection}
           database={database}
           stateKey={stateKey}

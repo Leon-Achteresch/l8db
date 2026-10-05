@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 import { Suspense } from "react";
+import { IconMenuSeparator } from "@/components/icon-menu";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
+import { TableExtensionActions } from "@/features/table/table-extension-actions";
 import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel, ViewDefinitionPanel } from "./lazy-panels";
 import { TableExportDialogs } from "./table-export-dialogs";
@@ -36,9 +39,11 @@ type Props = Pick<
   schema: string;
   table: string;
   dataContent: ReactNode;
+  extensionActions: ReturnType<typeof useTableExtensionActions>;
 };
 
 export function ViewDetailTabs({
+  extensionActions,
   caps,
   availableTabs,
   viewTab,
@@ -73,16 +78,20 @@ export function ViewDetailTabs({
         <TableDetailTabBar tabs={availableTabs} activeTab={viewTab} />
         <div className="ml-auto flex items-center gap-1">
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
-          {viewTab === "data" && data && (
-            <TableActionsMenu>
-              <TableExportMenu
-                exporting={exporting}
-                showSql={true}
-                onCsv={() => setCsvExportOpen(true)}
-                onXlsx={() => setXlsxExportOpen(true)}
-                onFormat={setDataExportFormat}
-                onExport={handleExport}
-              />
+          {viewTab === "data" && (data || extensionActions.actions.length > 0) && (
+            <TableActionsMenu isNew={extensionActions.isNew}>
+              <TableExtensionActions {...extensionActions} />
+              {data && extensionActions.actions.length > 0 && <IconMenuSeparator />}
+              {data && (
+                <TableExportMenu
+                  exporting={exporting}
+                  showSql={true}
+                  onCsv={() => setCsvExportOpen(true)}
+                  onXlsx={() => setXlsxExportOpen(true)}
+                  onFormat={setDataExportFormat}
+                  onExport={handleExport}
+                />
+              )}
             </TableActionsMenu>
           )}
         </div>

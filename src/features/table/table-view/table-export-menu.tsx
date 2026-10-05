@@ -17,6 +17,7 @@ import {
   IconMenuSubContent,
   IconMenuSubTrigger,
 } from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DATA_EXPORT_FORMATS, type DataExportFormat } from "@/lib/export-formats";
@@ -80,18 +81,25 @@ export function TableExportMenu({
   );
 }
 
-export function TableActionsMenu({ children }: { children: React.ReactNode }) {
+export function TableActionsMenu({
+  children,
+  isNew = false,
+}: {
+  children: React.ReactNode;
+  isNew?: boolean;
+}) {
   return (
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           size="icon"
           variant="ghost"
-          className="size-7"
+          className="relative size-7"
           aria-label="Weitere Aktionen"
           data-tour="table-add"
         >
           <EllipsisIcon className="size-3.5" />
+          {isNew && <NewBadge className="absolute -right-1 -top-1" />}
         </Button>
       </DropdownMenuTrigger>
       <IconMenuContent>{children}</IconMenuContent>
