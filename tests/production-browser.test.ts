@@ -43,7 +43,7 @@ test.skipIf(!process.env.L8DB_PRODUCTION_BROWSER)(
       });
       await page.goto(`http://localhost:${server.port}/query`);
       await page.locator(".monaco-editor").first().waitFor({ timeout: 30000 });
-      await page.getByRole("button", { name: "Ausführen", exact: true }).first().waitFor();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).first().waitFor();
       await page.waitForFunction(() => document.fonts.status === "loaded");
       if (workers.length === 0) await page.waitForEvent("worker", { timeout: 10000 });
       expect(workers.length).toBeGreaterThan(0);

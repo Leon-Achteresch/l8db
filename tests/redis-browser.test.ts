@@ -251,7 +251,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.locator('[data-tour="sidebar-table"]').first().click({ button: "right" });
       expect(await page.getByRole("menuitem", { name: "Drop Table", exact: true }).count()).toBe(0);
       await page.getByRole("menuitem", { name: "Im Editor öffnen", exact: true }).click();
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("SCAN 0 MATCH * COUNT 100", { exact: true }).first().waitFor();
       expect(await page.getByRole("dialog").count()).toBe(0);
       await page.locator(".monaco-editor .view-lines").first().click();
@@ -259,7 +259,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.keyboard.type('SET browser:editor "value; spaced"');
       await page.keyboard.press("Enter");
       await page.keyboard.type("GET browser:editor");
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("value; spaced", { exact: true }).first().waitFor({ timeout: 5000 });
       expect(await page.getByRole("dialog").count()).toBe(0);
       await page.screenshot({ path: "/tmp/l8db-redis-query.png" });
