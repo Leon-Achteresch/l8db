@@ -1,11 +1,20 @@
+import { isReadOnlyStatement } from "@/lib/perf-test/sql-noise";
+import { splitSqlStatements } from "@/lib/sql-statements/split";
 import type { QueryTab, Tab } from "./types";
 
 export function isQueryTabDirty(tab: QueryTab): boolean {
   return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
 }
 
+function onlyReadsData(sql: string): boolean {
+  const { statements } = splitSqlStatements(sql);
+  return statements.length > 0 && statements.every((s) => isReadOnlyStatement(s.text));
+}
+
 export function queryNeedsCloseConfirmation(tab: QueryTab): boolean {
-  return isQueryTabDirty(tab) || (!tab.filePath && tab.sql.trim().length > 0);
+  return (
+    isQueryTabDirty(tab) || (!tab.filePath && tab.sql.trim().length > 0 && !onlyReadsData(tab.sql))
+  );
 }
 
 export function hasUnexecutedQueryChanges(tab: QueryTab): boolean {
