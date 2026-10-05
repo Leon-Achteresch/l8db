@@ -1,11 +1,12 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { readTextFile, stat, writeTextFile } from "@tauri-apps/plugin-fs";
+import { stat, writeTextFile } from "@tauri-apps/plugin-fs";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
 import {
   defaultSqlFileName,
   fileMtimeChanged,
+  readSqlText,
   sqlFileSizeError,
   sqlFileTitle,
 } from "@/lib/sql-file";
@@ -36,7 +37,7 @@ export async function openSqlPathAsTab(path: string): Promise<string | null> {
     const meta = await readFileMeta(path);
     const sizeError = sqlFileSizeError(meta.size);
     if (sizeError) throw new Error(sizeError);
-    const sql = await readTextFile(path);
+    const sql = await readSqlText(path);
     return useTableTabs.getState().openFileQueryTab({
       path,
       sql,
@@ -120,7 +121,7 @@ export function useQueryFile(tabId: string) {
     const tab = findQueryTab(tabId);
     if (!tab?.filePath) return false;
     try {
-      const sql = await readTextFile(tab.filePath);
+      const sql = await readSqlText(tab.filePath);
       const meta = await readFileMeta(tab.filePath);
       useTableTabs.getState().reloadQueryTabFromFile(tabId, sql, meta.mtime);
       return true;

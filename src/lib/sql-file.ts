@@ -1,4 +1,18 @@
+import { readFile } from "@tauri-apps/plugin-fs";
+
 export const MAX_SQL_FILE_BYTES = 10 * 1024 * 1024;
+
+export function decodeSqlText(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
+export async function readSqlText(path: string): Promise<string> {
+  return decodeSqlText(await readFile(path));
+}
 
 export function sqlFileTitle(path: string): string {
   const segments = path.split(/[\\/]/);
