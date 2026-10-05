@@ -374,8 +374,7 @@ impl MysqlAdapter {
         key: String,
     ) -> Result<Self, String> {
         let resolved = super::cloud_auth::resolve(connection_string.trim())?;
-        let mut url =
-            url::Url::parse(&resolved).map_err(|_| "Ungültige MySQL-URL".to_string())?;
+        let mut url = url::Url::parse(&resolved).map_err(|_| "Ungültige MySQL-URL".to_string())?;
         let token_auth = super::cloud_auth::has_marker(&url);
         if !matches!(url.scheme(), "mysql" | "mariadb") {
             return Err("Eine mysql:// URL ist erforderlich".to_string());
