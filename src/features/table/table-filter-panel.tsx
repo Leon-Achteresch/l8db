@@ -45,7 +45,6 @@ interface TableFilterPanelProps {
   columnDetails?: DetailedColumnInfo[];
   activeFilter: string;
   onApply: (where: string, isRaw: boolean) => void;
-  onColumnSelect?: (column: string) => void;
 }
 
 export function TableFilterPanel({
@@ -54,7 +53,6 @@ export function TableFilterPanel({
   columnDetails,
   activeFilter,
   onApply,
-  onColumnSelect,
 }: TableFilterPanelProps) {
   const listRef = useListAnimation<HTMLDivElement>();
   const caps = useActiveCapabilities();
@@ -288,7 +286,6 @@ export function TableFilterPanel({
                   columns={columns}
                   updateCondition={updateCondition}
                   removeCondition={removeCondition}
-                  onColumnSelect={onColumnSelect}
                   apply={apply}
                 />
               ))}
