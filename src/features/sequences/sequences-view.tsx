@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { PencilIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { SearchIcon, TriangleAlertIcon } from "lucide-react";
 import { useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
@@ -10,6 +9,7 @@ import type { SequenceInfo } from "@/lib/db";
 import { useSequencesQuery } from "@/lib/queries";
 import { EditSequenceDialog } from "./sequences-view/edit-sequence-dialog";
 import { canEditSequences } from "./sequences-view/sequence-changes";
+import { SequenceRow } from "./sequences-view/sequence-row";
 
 export function SequencesView() {
   const connection = useActiveConnection();
@@ -100,7 +100,7 @@ export function SequencesView() {
             {filtered.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted-foreground">Keine Treffer.</p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead className="sticky top-0 bg-background border-b">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
@@ -140,46 +140,12 @@ export function SequencesView() {
                   {items.map(({ index }) => {
                     const seq = filtered[index];
                     return (
-                      <tr
+                      <SequenceRow
                         key={`${seq.schema}.${seq.name}`}
-                        className="h-[33px] hover:bg-muted/40 group"
-                      >
-                        <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
-                          {seq.schema}
-                        </td>
-                        <td className="px-4 py-2 font-medium font-mono text-xs">{seq.name}</td>
-                        <td className="px-4 py-2 text-muted-foreground text-xs">{seq.data_type}</td>
-                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                          {seq.start_value}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                          {seq.min_value}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                          {seq.max_value}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                          {seq.increment_by}
-                        </td>
-                        <td className="px-4 py-2 text-center text-xs">
-                          {seq.cycle ? "Ja" : "Nein"}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                          {seq.last_value ?? <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          {editable && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => setEditingSequence(seq)}
-                            >
-                              <PencilIcon className="size-3.5" />
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
+                        seq={seq}
+                        editable={editable}
+                        onEdit={setEditingSequence}
+                      />
                     );
                   })}
                   {padBottom > 0 && <tr aria-hidden style={{ height: padBottom }} />}

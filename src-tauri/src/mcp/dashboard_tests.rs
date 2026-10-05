@@ -490,7 +490,7 @@ fn keeps_app_edits_shared_datasets_and_builder_charts() {
         ]
     }))
     .unwrap();
-    let listed = mcp_dashboards();
+    let listed = list_dashboards();
     assert_eq!(listed[0]["stamp"], stamp);
 
     lab.ok(json!({"action": "update_chart", "dashboard": "From app", "chart": "Two", "spec": {"sql": "SELECT status, SUM(amount) AS total FROM orders GROUP BY status", "metrics": ["total"]}}));
@@ -646,7 +646,7 @@ fn hides_dashboards_of_unexposed_connections() {
     assert!(lab
         .err(json!({"action": "delete", "dashboard": "Secret"}))
         .contains("nicht gefunden"));
-    assert_eq!(mcp_dashboards().len(), 2);
+    assert_eq!(list_dashboards().len(), 2);
 }
 
 #[test]
@@ -707,11 +707,11 @@ fn app_commands_guard_paths_and_keep_created_at() {
         json!({"id": "ok", "connectionId": "shop", "name": "A", "datasets": [], "widgets": []}),
     )
     .unwrap();
-    let created = mcp_dashboards()[0]["createdAt"].as_i64().unwrap();
+    let created = list_dashboards()[0]["createdAt"].as_i64().unwrap();
     std::thread::sleep(std::time::Duration::from_millis(5));
     let second = mcp_dashboard_save(json!({"id": "ok", "connectionId": "shop", "name": "B", "datasets": [], "widgets": [], "extra": "dropped"})).unwrap();
     assert_ne!(first, second);
-    let listed = mcp_dashboards();
+    let listed = list_dashboards();
     assert_eq!(listed[0]["createdAt"].as_i64().unwrap(), created);
     assert_eq!(listed[0]["name"], "B");
     assert_eq!(listed[0]["stamp"], second);
@@ -723,10 +723,10 @@ fn app_commands_guard_paths_and_keep_created_at() {
     )
     .unwrap();
     std::fs::write(dir().join("notes.txt"), "x").unwrap();
-    assert_eq!(mcp_dashboards().len(), 1);
+    assert_eq!(list_dashboards().len(), 1);
     mcp_dashboard_delete("ok".into()).unwrap();
     mcp_dashboard_delete("ok".into()).unwrap();
-    assert!(mcp_dashboards().is_empty());
+    assert!(list_dashboards().is_empty());
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
