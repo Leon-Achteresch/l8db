@@ -237,8 +237,7 @@ fn trusted(dashboard: &Value, config: &McpConfig) -> bool {
         .all(|sql| server::check_read_sql(sql, connection, &index).is_ok())
 }
 
-#[tauri::command]
-pub fn mcp_dashboards() -> Vec<Value> {
+pub fn list_dashboards() -> Vec<Value> {
     let config = config::load();
     read_all()
         .into_iter()
@@ -274,6 +273,11 @@ pub fn mcp_dashboard_save(dashboard: Value) -> Result<String, String> {
         "datasets": dashboard["datasets"],
         "widgets": dashboard["widgets"],
     }))
+}
+
+#[tauri::command]
+pub async fn mcp_dashboards() -> Vec<Value> {
+    list_dashboards()
 }
 
 #[tauri::command]
