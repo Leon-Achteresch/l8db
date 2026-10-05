@@ -130,7 +130,7 @@ async function packagedEntrypoint() {
     JSON.parse(
       await readFile(
         new URL(
-          "../extention/table-json-viewer/community.table-json-viewer-0.1.0.l8db-extension",
+          "../extention/table-json-viewer/leon-achteresch.table-json-viewer-0.1.0.l8db-extension",
           import.meta.url,
         ),
         "utf8",
@@ -264,7 +264,7 @@ describe("TableJSONViewer", () => {
 
   test("is a locally installable community extension with minimal permissions", () => {
     const validated = validateManifest(manifest);
-    expect(validated.publisher).toBe("community");
+    expect(validated.publisher).toBe("leon-achteresch");
     expect(validated.permissions).toEqual(["database:read", "filesystem:extension-storage"]);
     expect(validated.contributes?.menus?.every((menu) => menu.location === "table/toolbar")).toBe(
       true,

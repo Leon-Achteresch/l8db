@@ -4,7 +4,7 @@ Community-Extension für Tabellen, die ein JSON-Dokument als einzelne Knoten spe
 
 ## Installation und Verwendung
 
-1. `community.table-json-viewer-0.1.0.l8db-extension` unter Einstellungen → Community-Extensions importieren. Das Paket benötigt die hier ergänzte l8db-Version mit `table/toolbar` und `panels.openJson`.
+1. `leon-achteresch.table-json-viewer-0.1.0.l8db-extension` unter Einstellungen → Community-Extensions importieren. Das Paket benötigt die hier ergänzte l8db-Version mit `table/toolbar` und `panels.openJson`.
 2. Die Extension aktivieren und Datenbank-Lesezugriff sowie eigenen Einstellungsspeicher erlauben.
 3. Eine Tabelle oder View öffnen und zum Beispiel auf `REF_KOPF = 10271` filtern.
 4. Das Drei-Punkte-Menü der Tabelle öffnen und das Symbol mit geschweiften Klammern (**TableJSONViewer**) wählen.
@@ -68,7 +68,7 @@ Das SQL-Skript wird unverändert über das temporär angehängte Schema `EUROTIM
 
 ```sh
 bun run extension dev extention/table-json-viewer
-bun run extension pack extention/table-json-viewer extention/table-json-viewer/community.table-json-viewer-0.1.0.l8db-extension
+bun run extension pack extention/table-json-viewer extention/table-json-viewer/leon-achteresch.table-json-viewer-0.1.0.l8db-extension
 bun test tests/table-json-viewer.test.ts tests/table-snapshot.test.ts
 ```
 
