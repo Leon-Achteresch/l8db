@@ -38,7 +38,7 @@ fn kill_pid(pid: u32) {
     }
     #[cfg(windows)]
     {
-        let _ = std::process::Command::new("taskkill")
+        let _ = crate::process::std_command("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -128,7 +128,7 @@ fn shell_command(script: &str) -> Command {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "/bin/sh".to_string());
-        let mut command = Command::new(shell);
+        let mut command = crate::process::command(shell);
         command.arg("-lc").arg(script);
         if let Ok(path) = std::env::join_paths(crate::db::backup_tools::search_dirs()) {
             command.env("PATH", path);
@@ -138,7 +138,7 @@ fn shell_command(script: &str) -> Command {
     }
     #[cfg(windows)]
     {
-        let mut command = Command::new("cmd");
+        let mut command = crate::process::command("cmd");
         command.arg("/C").arg(script);
         command
     }

@@ -14,6 +14,7 @@ mod firebase;
 mod index_advisor;
 mod mcp;
 mod pocketbase;
+mod process;
 mod supabase;
 mod versioning;
 mod windows;

@@ -210,7 +210,7 @@ pub async fn connect(
                 if server.command.trim().is_empty() {
                     return Err("MCP-Programm fehlt".into());
                 }
-                let mut command = tokio::process::Command::new(&server.command);
+                let mut command = crate::process::command(&server.command);
                 command.args(&server.args).current_dir(cwd);
                 Transport::Stdio(Rpc::spawn(&mut command)?)
             }

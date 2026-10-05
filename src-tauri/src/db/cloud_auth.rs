@@ -348,7 +348,7 @@ pub fn az_args(resource: AzureResource, tenant: Option<&str>) -> Vec<String> {
 }
 
 fn az_command() -> std::process::Command {
-    let mut command = std::process::Command::new(if cfg!(windows) { "az.cmd" } else { "az" });
+    let mut command = crate::process::std_command(if cfg!(windows) { "az.cmd" } else { "az" });
     let mut paths: Vec<std::path::PathBuf> = std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).collect())
         .unwrap_or_default();
