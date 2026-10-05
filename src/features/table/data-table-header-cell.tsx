@@ -13,6 +13,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -77,6 +78,7 @@ export function DataTableHeaderCell({
   const { ref, handleRef } = useDraggable({ id: header.id, plugins: headerDragPlugins });
   const pinnedOffset =
     header.column.getIsPinned() === "left" ? header.column.getStart("left") : null;
+  const openFilterOnClose = useRef(false);
 
   return (
     <ContextMenu>
@@ -200,7 +202,16 @@ export function DataTableHeaderCell({
           </PopoverContent>
         )}
       </Popover>
-      <ContextMenuContent>
+      <ContextMenuContent
+        onCloseAutoFocus={(event) => {
+          if (!openFilterOnClose.current) return;
+          openFilterOnClose.current = false;
+          event.preventDefault();
+          onFilterOpenChange(true);
+          onFilterOperatorChange("eq");
+          onFilterValueChange("");
+        }}
+      >
         <ContextMenuLabel className="font-mono text-[11px]">{header.id}</ContextMenuLabel>
         <ContextMenuSeparator />
         <ContextMenuItem
@@ -228,11 +239,7 @@ export function DataTableHeaderCell({
             <ContextMenuSeparator />
             <ContextMenuItem
               onSelect={() => {
-                requestAnimationFrame(() => {
-                  onFilterOpenChange(true);
-                  onFilterOperatorChange("eq");
-                  onFilterValueChange("");
-                });
+                openFilterOnClose.current = true;
               }}
             >
               <FilterIcon />
