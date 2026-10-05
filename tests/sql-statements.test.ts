@@ -271,6 +271,35 @@ test("large Oracle packages are not split by inner procedure declarations", () =
   expect(splitSqlStatements(sql, "oracle").statements.map((s) => s.text)).toEqual([sql]);
 });
 
+test("Oracle scripts skip SQL*Plus commands and keep nested blocks together", () => {
+  const block = [
+    "declare",
+    "  v NUMBER;",
+    "begin",
+    "  begin",
+    "    select 1 into v from dual;",
+    "  exception",
+    "    when others then",
+    "      raise;",
+    "  end;",
+    "  if (v = 0) then",
+    "    insert into t values ('Pick&Pack') returning id into v;",
+    "  end if;",
+    "  commit;",
+    "end;",
+  ].join("\r\n");
+  const proc = "CREATE PROCEDURE p IS BEGIN BEGIN NULL; END; NULL; END p;";
+  const sql = `SET DEFINE OFF;\r\nPROMPT it's running\r\n${block}\r\n/\r\n${proc}\r\nSET TRANSACTION READ ONLY;\r\nEXIT`;
+  expect(splitSqlStatements(sql, "oracle")).toEqual({
+    statements: [block, proc, "SET TRANSACTION READ ONLY;"].map((text) => {
+      const start = sql.indexOf(text);
+      return { text, start, end: start + text.length };
+    }),
+    unterminated: false,
+  });
+  expect(splitSqlStatements("UPDATE t\nSET x = 1;", "oracle").statements).toHaveLength(1);
+});
+
 test("MongoDB commands remain intact with escaped quotes, semicolons and SQL-like text", () => {
   const command = JSON.stringify({
     find: "items",
