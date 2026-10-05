@@ -41,6 +41,7 @@ interface DefinitionDiffEditorProps {
   onStats?: (stats: DiffStats) => void;
   onModifiedChange?: (value: string) => void;
   readOnly?: boolean;
+  minimap?: boolean;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -51,6 +52,7 @@ export function DefinitionDiffEditor({
   onStats,
   onModifiedChange,
   readOnly = false,
+  minimap = false,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,6 +66,7 @@ export function DefinitionDiffEditor({
   const syncing = useRef(false);
   statsRef.current = onStats;
   const readOnlyRef = useRef(readOnly);
+  const minimapRef = useRef(minimap);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -77,7 +80,7 @@ export function DefinitionDiffEditor({
       automaticLayout: true,
       renderSideBySide: true,
       renderOverviewRuler: true,
-      minimap: { enabled: false },
+      minimap: { enabled: minimapRef.current },
       scrollBeyondLastLine: false,
       fontSize: 13,
       lineHeight: 22,

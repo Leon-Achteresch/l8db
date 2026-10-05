@@ -166,6 +166,8 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
         syncScroll={workspace.syncScroll ?? false}
         onSyncScrollChange={(syncScroll) => update({ syncScroll })}
+        showDraft={workspace.showDraft ?? false}
+        onShowDraftChange={(showDraft) => update({ showDraft })}
       />
     </div>
   );
