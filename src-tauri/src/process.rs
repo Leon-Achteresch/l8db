@@ -50,6 +50,38 @@ mod tests {
     }
 
     #[test]
+    fn every_production_spawn_goes_through_this_module() {
+        fn visit(dir: &std::path::Path, offenders: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                let name = path.file_name().unwrap().to_string_lossy().to_string();
+                if path.is_dir() {
+                    visit(&path, offenders);
+                } else if name.ends_with(".rs")
+                    && name != "process.rs"
+                    && !name.ends_with("tests.rs")
+                    && std::fs::read_to_string(&path)
+                        .unwrap()
+                        .contains("Command::new(")
+                {
+                    offenders.push(path.display().to_string());
+                }
+            }
+        }
+        let mut offenders = Vec::new();
+        visit(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src")
+                .as_path(),
+            &mut offenders,
+        );
+        assert!(
+            offenders.is_empty(),
+            "use crate::process::command: {offenders:?}"
+        );
+    }
+
+    #[test]
     fn sync_command_preserves_output_and_status_without_a_windows_console() {
         let (program, args) = probe();
         assert_output(std_command(program).args(args).output().unwrap());
