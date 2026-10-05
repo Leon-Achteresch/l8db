@@ -10,7 +10,7 @@ import {
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
-import { invalidateTableReads } from "@/lib/query-client";
+import { invalidateAfterSql } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
@@ -154,7 +154,7 @@ export function useRunSql({
         setResult(null);
         finishHistory({ rowCount: null, error: message });
       } finally {
-        if (executionStarted) await invalidateTableReads(queryClient, connection.id, database);
+        if (executionStarted) await invalidateAfterSql(queryClient, connection.id, database, sql);
         await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
