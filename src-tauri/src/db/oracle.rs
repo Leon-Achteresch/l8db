@@ -703,6 +703,10 @@ mod plan;
 mod sql;
 use sql::prepare;
 
+pub(crate) fn statement_count(sql: &str) -> usize {
+    sql::split_statements(sql).len()
+}
+
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
     if matches!(
         kind,
