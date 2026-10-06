@@ -589,6 +589,15 @@ fn truncate_rows(mut result: QueryResult) -> QueryResult {
     result
 }
 
+pub(crate) async fn capped_query<F>(future: F) -> Result<QueryResult, String>
+where
+    F: std::future::Future<Output = Result<QueryResult, String>>,
+{
+    super::execution::with_row_limit(MAX_RESULT_ROWS + 1, future)
+        .await
+        .map(truncate_rows)
+}
+
 #[tauri::command]
 pub async fn execute_query(
     kind: DatabaseKind,
@@ -606,9 +615,11 @@ pub async fn execute_query(
             database.as_deref(),
             pool_state.inner().clone(),
         )?;
-        super::execution::with_session(session, adapter.execute_query(&sql))
-            .await
-            .map(truncate_rows)
+        capped_query(super::execution::with_session(
+            session,
+            adapter.execute_query(&sql),
+        ))
+        .await
     })
     .await
 }
@@ -624,15 +635,16 @@ pub async fn execute_query_with_params(
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
     super::execution::run_query(options, kind.capabilities().query_cancel, async {
-        create_adapter_from_string(
-            kind,
-            &connection_string,
-            database.as_deref(),
-            pool_state.inner().clone(),
-        )?
-        .execute_query_with_params(&sql, &params)
+        capped_query(
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
+            .execute_query_with_params(&sql, &params),
+        )
         .await
-        .map(truncate_rows)
     })
     .await
 }
