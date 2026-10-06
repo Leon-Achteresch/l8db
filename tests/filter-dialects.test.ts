@@ -211,3 +211,33 @@ test("Oracle lists over 1000 values keep IN and NOT IN grouping correct", () => 
     expect(compiled?.match(/'\d+'/g)?.length).toBe(1001);
   }
 });
+
+test("date values on timestamp columns cover the whole day", () => {
+  const db = new Database(":memory:");
+  db.run("CREATE TABLE events (id INTEGER, at DATETIME)");
+  db.run(
+    "INSERT INTO events VALUES (1, '2024-01-14 23:59:59'), (2, '2024-01-15 00:00:00'), (3, '2024-01-15 18:30:00'), (4, '2024-01-16 00:00:00')",
+  );
+  const ids = (operator: string, value: string) =>
+    db
+      .query(
+        `SELECT id FROM events WHERE ${compileSingleCondition("at", operator, value, "sqlite", "DATETIME")} ORDER BY id`,
+      )
+      .all()
+      .map((row) => (row as { id: number }).id);
+  expect(ids("eq", "2024-01-15")).toEqual([2, 3]);
+  expect(ids("neq", "2024-01-15")).toEqual([1, 4]);
+  expect(ids("gt", "2024-01-15")).toEqual([4]);
+  expect(ids("lte", "2024-01-15")).toEqual([1, 2, 3]);
+  expect(ids("gte", "2024-01-15")).toEqual([2, 3, 4]);
+  expect(ids("eq", "2024-01-15 18:30:00")).toEqual([3]);
+  expect(compileSingleCondition("at", "eq", "2024-02-30", "sqlite", "DATETIME")).toBe(
+    `"at" = '2024-02-30'`,
+  );
+  expect(compileSingleCondition("d", "eq", "2024-01-15", "postgres", "date")).toBe(
+    `"d" = '2024-01-15'`,
+  );
+  expect(compileSingleCondition("at", "eq", "2024-12-31", "cassandra", "timestamp")).toBe(
+    `"at" >= '2024-12-31' AND "at" < '2025-01-01'`,
+  );
+});

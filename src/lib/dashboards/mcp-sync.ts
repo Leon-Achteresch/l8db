@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { confirmExpertSql } from "@/lib/dashboard-file";
+import { confirmExpertSql, dashboardSqlParts } from "@/lib/dashboard-file";
 import type { Dashboard } from "./model";
 import { useDashboardsStore, withoutDashboardHistory } from "./store";
 
-type Content = Pick<Dashboard, "name" | "datasets" | "widgets" | "refreshSec">;
+type Content = Pick<Dashboard, "name" | "datasets" | "widgets" | "refreshSec" | "variables">;
 
 export interface McpDashboardFile extends Content {
   id: string;
@@ -19,18 +19,13 @@ const pending = new Map<string, ReturnType<typeof setTimeout>>();
 const dropping = new Set<string>();
 const declined = new Map<string, string>();
 
-function expertSql(datasets: Dashboard["datasets"]): string {
-  return JSON.stringify(
-    datasets
-      .filter((d) => d.mode === "expert" && d.sql?.trim())
-      .map((d) => d.sql.trim())
-      .sort(),
-  );
+function expertSql(dashboard: Pick<Dashboard, "datasets" | "variables">): string {
+  return JSON.stringify(dashboardSqlParts(dashboard).sort());
 }
 
 function approved(file: McpDashboardFile, current: Dashboard | undefined): boolean {
   if (file.trusted === true) return true;
-  if (current && expertSql(current.datasets) === expertSql(file.datasets)) return true;
+  if (current && expertSql(current) === expertSql(file)) return true;
   if (declined.get(file.id) === file.stamp) return false;
   if (confirmExpertSql({ ...file, locked: true })) {
     declined.delete(file.id);
@@ -46,6 +41,7 @@ function content(dashboard: Content): string {
     dashboard.datasets,
     dashboard.widgets,
     dashboard.refreshSec,
+    dashboard.variables ?? [],
   ]);
 }
 
@@ -63,6 +59,7 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       name: file.name,
       datasets: file.datasets,
       widgets: file.widgets,
+      variables: file.variables ?? [],
       refreshSec: file.refreshSec ?? 0,
       mcpStamp: file.stamp,
     };
@@ -100,6 +97,7 @@ async function writeBack(mcpId: string): Promise<void> {
         name: dashboard.name,
         datasets: dashboard.datasets,
         widgets: dashboard.widgets,
+        ...(dashboard.variables?.length ? { variables: dashboard.variables } : {}),
         refreshSec: dashboard.refreshSec,
       },
     });

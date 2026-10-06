@@ -7,7 +7,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
-import type { SidebarEntityMatch } from "./use-sidebar-entity-filter";
+import { matchingColumnsWindow, type SidebarEntityMatch } from "./use-sidebar-entity-filter";
 
 export function SidebarPickResults({
   filtered,
@@ -25,10 +25,7 @@ export function SidebarPickResults({
   }
   const Icon = type === "view" ? EyeIcon : TableIcon;
   return (
-    <SidebarWindow
-      count={filtered.length}
-      disabled={filtered.some((item) => Boolean(item.matchingColumns?.length))}
-    >
+    <SidebarWindow count={filtered.length} measured={matchingColumnsWindow(filtered)}>
       {(index) => {
         const item = filtered[index];
         const id = `${item.schema}.${item.name}`;

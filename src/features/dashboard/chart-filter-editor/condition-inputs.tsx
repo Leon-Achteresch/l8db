@@ -49,12 +49,9 @@ export function ChartFilterConditionInputs({
           operator={operator}
           value={value}
           onValueChange={setValue}
+          date={isDateType(field.dataType)}
           type={
-            isDateType(field.dataType)
-              ? "date"
-              : isNumericType(field.dataType) && !["in", "notIn"].includes(operator)
-                ? "number"
-                : "text"
+            isNumericType(field.dataType) && !["in", "notIn"].includes(operator) ? "number" : "text"
           }
           placeholder={isNumericType(field.dataType) ? "z. B. 100" : "Wert eingeben"}
           className="h-8 min-w-40 flex-1 text-xs"

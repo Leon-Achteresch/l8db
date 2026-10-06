@@ -7,7 +7,7 @@ import {
   SquareTerminalIcon,
   TrashIcon,
 } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -49,6 +49,7 @@ export function PackageNode({
   const go = usePackageNavigate(schema, name);
   const navigate = useNavigate();
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
+  const [open, setOpen] = useState(false);
   const label = `${schema}.${name}`;
 
   const openInEditor = () => {
@@ -57,69 +58,72 @@ export function PackageNode({
   };
 
   return (
-    <Collapsible asChild className="group/pkg">
-      <SidebarMenuItem>
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <SidebarMenuButton onClick={() => go()}>
-              <CollapsibleTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <ChevronRightIcon className="transition-transform group-data-[state=open]/pkg:rotate-90" />
-              </CollapsibleTrigger>
-              <PackageIcon className="text-muted-foreground" />
-              <span className="truncate">{name}</span>
-              {invalid ? <InvalidMarker /> : null}
-            </SidebarMenuButton>
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            <ContextMenuItem onSelect={() => go("spec")}>Spec öffnen</ContextMenuItem>
-            <ContextMenuItem onSelect={() => go("body")}>Body öffnen</ContextMenuItem>
-            <CompareObjectMenuItem schema={schema} name={name} objectType="package" />
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={openInEditor}>
-              <SquareTerminalIcon />
-              Aufruf im Editor
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(label)}>
+    <SidebarMenuItem>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <SidebarMenuButton onClick={() => go()}>
+            <ChevronRightIcon
+              aria-expanded={open}
+              className={open ? "rotate-90 transition-transform" : "transition-transform"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(!open);
+              }}
+            />
+            <PackageIcon className="text-muted-foreground" />
+            <span className="truncate">{name}</span>
+            {invalid ? <InvalidMarker /> : null}
+          </SidebarMenuButton>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => go("spec")}>Spec öffnen</ContextMenuItem>
+          <ContextMenuItem onSelect={() => go("body")}>Body öffnen</ContextMenuItem>
+          <CompareObjectMenuItem schema={schema} name={name} objectType="package" />
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={openInEditor}>
+            <SquareTerminalIcon />
+            Aufruf im Editor
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(label)}>
+            <CopyIcon />
+            Namen kopieren
+          </ContextMenuItem>
+          {canCopy ? (
+            <ContextMenuItem onSelect={onCopy}>
               <CopyIcon />
-              Namen kopieren
+              In anderem Schema erstellen
             </ContextMenuItem>
-            {canCopy ? (
-              <ContextMenuItem onSelect={onCopy}>
-                <CopyIcon />
-                In anderem Schema erstellen
+          ) : null}
+          {canCompile ? (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={() => onCompile("spec")}>
+                <HammerIcon />
+                Spec kompilieren
               </ContextMenuItem>
-            ) : null}
-            {canCompile ? (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => onCompile("spec")}>
-                  <HammerIcon />
-                  Spec kompilieren
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={() => onCompile("body")}>
-                  <HammerIcon />
-                  Body kompilieren
-                </ContextMenuItem>
-              </>
-            ) : null}
-            <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={() => onDrop("body")}>
-              <TrashIcon />
-              Body löschen
-            </ContextMenuItem>
-            <ContextMenuItem variant="destructive" onSelect={() => onDrop("package")}>
-              <TrashIcon />
-              Package löschen
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-        <CollapsibleContent>
-          <SidebarMenuSub>
-            <PartNode schema={schema} name={name} part="spec" title="Spec" />
-            <PartNode schema={schema} name={name} part="body" title="Body" />
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </SidebarMenuItem>
-    </Collapsible>
+              <ContextMenuItem onSelect={() => onCompile("body")}>
+                <HammerIcon />
+                Body kompilieren
+              </ContextMenuItem>
+            </>
+          ) : null}
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onSelect={() => onDrop("body")}>
+            <TrashIcon />
+            Body löschen
+          </ContextMenuItem>
+          <ContextMenuItem variant="destructive" onSelect={() => onDrop("package")}>
+            <TrashIcon />
+            Package löschen
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+      {open ? (
+        <SidebarMenuSub>
+          <PartNode schema={schema} name={name} part="spec" title="Spec" />
+          <PartNode schema={schema} name={name} part="body" title="Body" />
+        </SidebarMenuSub>
+      ) : null}
+    </SidebarMenuItem>
   );
 }

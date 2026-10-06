@@ -153,7 +153,21 @@ async function optional<T>(run: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+export function normalizeDefinition(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n+$/, "");
+}
+
 export async function loadCompareDefinition(
+  connection: SavedConnection,
+  side: CompareSideSelection,
+): Promise<string> {
+  return normalizeDefinition(await loadRawDefinition(connection, side));
+}
+
+async function loadRawDefinition(
   connection: SavedConnection,
   side: CompareSideSelection,
 ): Promise<string> {

@@ -15,15 +15,20 @@ import {
   buildSimpleSql,
   createId,
   type DatasetFilter,
+  filterVariable,
   isDateType,
   isNumericType,
   type SimpleDataset,
   toLabel,
+  variableToken,
 } from "@/lib/dashboards";
-import { operatorNeedsValue, parseFilterList } from "@/lib/sql-filter";
+import { filterOperatorLabel, operatorNeedsValue, parseFilterList } from "@/lib/sql-filter";
 import { ChartFilterConditionInputs } from "./chart-filter-editor/condition-inputs";
 import { ChartFilterRangeInputs } from "./chart-filter-editor/range-inputs";
+import { useDashboardScope } from "./dashboard-scope";
 import { useSqlQuery } from "./use-dataset-query";
+
+const VARIABLE_OPERATORS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains"];
 
 export interface ChartFilterField {
   ref: string;
@@ -46,12 +51,15 @@ export function ChartFilterEditor({
 }) {
   const connection = useActiveConnection();
   const categorical = !isNumericType(field.dataType) && !isDateType(field.dataType);
+  const { variables } = useDashboardScope();
   const [mode, setMode] = useState(
-    filter?.rangeId || (!filter && !categorical)
-      ? "range"
-      : categorical && (!filter || ["in", "notIn"].includes(filter.operator))
-        ? "values"
-        : "condition",
+    filter && filterVariable(filter.value)
+      ? "variable"
+      : filter?.rangeId || (!filter && !categorical)
+        ? "range"
+        : categorical && (!filter || ["in", "notIn"].includes(filter.operator))
+          ? "values"
+          : "condition",
   );
   const rangeFilters = filter?.rangeId
     ? simple.filters.filter((f) => f.rangeId === filter.rangeId)
@@ -92,11 +100,13 @@ export function ChartFilterEditor({
     !upper ||
     (isNumericType(field.dataType) ? Number(lower) <= Number(upper) : lower <= upper);
   const valid =
-    mode === "range"
-      ? Boolean(lower || upper) && boundsValid
-      : mode === "values"
-        ? chosen.length > 0
-        : !operatorNeedsValue(operator) || value.trim().length > 0;
+    mode === "variable"
+      ? Boolean(filterVariable(value))
+      : mode === "range"
+        ? Boolean(lower || upper) && boundsValid
+        : mode === "values"
+          ? chosen.length > 0
+          : !operatorNeedsValue(operator) || value.trim().length > 0;
   const apply = () => {
     if (mode === "range") {
       const rangeId = filter?.rangeId ?? createId();
@@ -192,7 +202,57 @@ export function ChartFilterEditor({
           </Button>
         </div>
       )}
-      {mode === "range" ? (
+      {variables.length > 0 && (
+        <Button
+          size="xs"
+          variant={mode === "variable" ? "secondary" : "ghost"}
+          onClick={() => {
+            setMode("variable");
+            setOperator(categorical ? "eq" : "lte");
+            setValue(variableToken(variables[0].name));
+          }}
+        >
+          An Dashboard-Filter koppeln
+        </Button>
+      )}
+      {mode === "variable" ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Select value={operator} onValueChange={setOperator}>
+              <SelectTrigger aria-label="Vergleich" className="h-8 w-44 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VARIABLE_OPERATORS.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {filterOperatorLabel(key, true)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex flex-wrap gap-1.5">
+              {variables.map((variable) => {
+                const active = filterVariable(value) === variable.name;
+                return (
+                  <Button
+                    key={variable.id}
+                    size="xs"
+                    variant={active ? "default" : "outline"}
+                    aria-pressed={active}
+                    onClick={() => setValue(variableToken(variable.name))}
+                  >
+                    {variable.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Der Chart folgt dem Wert, den du oben im Dashboard einstellst. Ist der Filter leer,
+            zeigt der Chart alle Daten.
+          </p>
+        </div>
+      ) : mode === "range" ? (
         <ChartFilterRangeInputs
           field={field}
           lower={lower}

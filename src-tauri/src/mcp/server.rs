@@ -106,12 +106,13 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "query",
-            "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows.",
+            "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows. Long cells are cut at the configured cell limit; set cellChars to read long values such as view or function definitions in full.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
                 "database": database_arg(),
                 "sql": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1}
+                "limit": {"type": "integer", "minimum": 1},
+                "cellChars": {"type": "integer", "minimum": 1, "description": "Max characters per cell for this query, up to the response limit"}
             }, "required": ["connection", "sql"]}
         },
         super::dashboard::tool_definition(),
@@ -423,6 +424,10 @@ impl Server {
             adapter.execute_query(sql).await
         })
         .await?;
+        let config = &McpConfig {
+            max_cell_chars: cell_chars(args, config),
+            ..config.clone()
+        };
         Ok(format_result(&result, config, &redactor, limit))
     }
 
@@ -516,7 +521,7 @@ pub(super) fn check_write_sql(
     connection: &McpConnection,
     index: &redact::SchemaIndex,
 ) -> Result<(), String> {
-    if redact::statement_count(sql) > 1 {
+    if statement_count(connection.kind, sql) > 1 {
         return Err("Nur ein Statement pro Aufruf.".into());
     }
     if let Some(word) = redact::dangerous_word(sql) {
@@ -531,6 +536,13 @@ pub(super) fn check_write_sql(
         ));
     }
     redact::check_references(sql, index, row_values(connection.kind))
+}
+
+fn statement_count(kind: DatabaseKind, sql: &str) -> usize {
+    match kind {
+        DatabaseKind::Oracle => db::oracle::statement_count(sql),
+        _ => redact::statement_count(sql),
+    }
 }
 
 fn row_values(kind: DatabaseKind) -> bool {
@@ -566,7 +578,7 @@ pub(super) fn check_read_sql(
         }
         None => {}
     }
-    if redact::statement_count(sql) > 1 {
+    if statement_count(connection.kind, sql) > 1 {
         return Err("Nur ein Statement pro Aufruf.".into());
     }
     if let Some(word) = redact::write_word(sql) {
@@ -877,7 +889,7 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
         return raw.clone();
     };
     if let Some(password) = password {
-        let _ = url.set_password(Some(password));
+        let _ = db::set_url_password(&mut url, password);
     }
     if connection.writes_blocked() && connection.kind == DatabaseKind::Postgres {
         let mut params: Vec<String> = url
@@ -932,6 +944,13 @@ where
         future,
     )
     .await
+}
+
+fn cell_chars(args: &Value, config: &McpConfig) -> usize {
+    args.get("cellChars")
+        .and_then(Value::as_u64)
+        .map(|value| (value as usize).clamp(1, config.max_chars.max(config.max_cell_chars)))
+        .unwrap_or(config.max_cell_chars)
 }
 
 fn cell_text(value: &Value, max_chars: usize) -> String {
@@ -1091,6 +1110,35 @@ mod tests {
         assert_eq!(with_password(&sqlite, Some("x")), "sqlite:/tmp/x.db");
     }
 
+    #[tokio::test]
+    async fn clickhouse_password_with_url_characters_authenticates() {
+        let password = "Pw&x%41+y z@:/#?";
+        let server = db::http_mock::start(move |request| {
+            if request.header("x-clickhouse-user") == Some("analyst")
+                && request.header("x-clickhouse-key") == Some(password)
+            {
+                (200, b"1\n".to_vec())
+            } else {
+                (
+                    403,
+                    b"Code: 516. DB::Exception: Authentication failed (AUTHENTICATION_FAILED)"
+                        .to_vec(),
+                )
+            }
+        });
+        let mut clickhouse = connection(true);
+        clickhouse.kind = DatabaseKind::Clickhouse;
+        clickhouse.connection_string = server.base.replace("http://", "clickhouse://analyst@");
+        let adapter = db::create_adapter_from_string(
+            DatabaseKind::Clickhouse,
+            &with_password(&clickhouse, Some(password)),
+            None,
+            db::pool::create_pool_state(),
+        )
+        .unwrap();
+        adapter.test_connection().await.unwrap();
+    }
+
     #[test]
     fn private_selected_database_is_allowed_without_changing_public_config_scope() {
         let mut selected = connection(true);
@@ -1198,6 +1246,12 @@ mod tests {
         assert_eq!(
             lines[3],
             "(2 rows, 1 more not shown; raise limit or add WHERE, 2 cells redacted)"
+        );
+        assert_eq!(cell_chars(&json!({}), &config), 5);
+        assert_eq!(cell_chars(&json!({"cellChars": 1_000}), &config), 1_000);
+        assert_eq!(
+            cell_chars(&json!({"cellChars": 10_000_000}), &config),
+            config.max_chars
         );
     }
 
@@ -1442,6 +1496,30 @@ mod tests {
         assert!(check_read_sql("SELECT s._2 FROM s3://b/users.csv s", &s3, &index).is_err());
         assert!(check_read_sql("SELECT s.password FROM s3://b/users.csv s", &s3, &index).is_err());
         assert!(check_read_sql("SELECT * FROM s3://b/users.csv", &s3, &index).is_ok());
+    }
+
+    #[test]
+    fn oracle_plsql_blocks_count_as_one_statement() {
+        let index = redact::SchemaIndex::new(
+            &[],
+            &Redactor::new(&McpConfig::default().redaction, &[]),
+            &[],
+        );
+        let oracle = McpConnection {
+            kind: DatabaseKind::Oracle,
+            allow_ddl: true,
+            ..connection(false)
+        };
+        for sql in [
+            "begin\n  insert into t values (1);\n  update t set x = 2;\nend;",
+            "declare v number;\nbegin v := f_insert(1); end;",
+            "create or replace procedure p as\nbegin\n  delete from t where id = 1;\n  commit;\nend;",
+            "create or replace function f(n number) return number is\nbegin\n  insert into t values (n);\n  return n;\nend;\n/",
+        ] {
+            assert_eq!(check_write_sql(sql, &oracle, &index), Ok(()), "{sql}");
+        }
+        assert!(check_write_sql("begin null; end;\nbegin null; end;", &oracle, &index).is_err());
+        assert!(check_write_sql("delete from t; delete from u", &oracle, &index).is_err());
     }
 
     #[test]

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatSequenceDefinition, formatTableDefinition } from "../src/lib/compare-definition";
+import {
+  formatSequenceDefinition,
+  formatTableDefinition,
+  normalizeDefinition,
+} from "../src/lib/compare-definition";
 
 describe("formatTableDefinition", () => {
   test("sortiert Spalten und hängt Constraints, Indizes und Trigger an", () => {
@@ -117,5 +121,13 @@ describe("formatSequenceDefinition", () => {
         "  cycle NO",
       ].join("\n"),
     );
+  });
+});
+
+describe("normalizeDefinition", () => {
+  test("gleicht Zeilenenden, Leerzeichen am Zeilenende und das Schlussnewline an", () => {
+    expect(normalizeDefinition("SELECT 1 \r\nFROM t\r\n")).toBe("SELECT 1\nFROM t");
+    expect(normalizeDefinition("SELECT 1\nFROM t")).toBe("SELECT 1\nFROM t");
+    expect(normalizeDefinition("  a\n\n  b\n\n")).toBe("  a\n\n  b");
   });
 });

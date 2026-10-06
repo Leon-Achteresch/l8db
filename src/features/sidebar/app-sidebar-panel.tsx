@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { FilterIcon } from "lucide-react";
 import { lazy, Suspense, startTransition, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +16,7 @@ import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button"
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarObjectSelect } from "@/features/sidebar/sidebar-object-select";
 import { SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
+import { siblingConnections } from "@/lib/connection-groups";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { INVALID_GROUP_TYPES } from "@/lib/invalid-objects";
@@ -39,13 +41,17 @@ const TableSearchModal = lazy(() =>
 );
 
 export function AppSidebarPanel() {
-  const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
-  const switchTarget = connections.find((connection) => connection.id === switchTargetId);
+  const switchTarget = useConnectionsStore((state) =>
+    state.connections.find((connection) => connection.id === switchTargetId),
+  );
+  const siblings = useConnectionsStore(
+    useShallow((state) => siblingConnections(state.connections, activeConnection)),
+  );
   const navigate = useNavigate();
-  const scope = useSidebarScope(connections, activeConnection);
+  const scope = useSidebarScope(siblings, activeConnection);
   const [selectedTab, setSidebarTab] = useState<SidebarTabValue>("tables");
   const q = useSidebarObjectQueries(selectedTab);
 

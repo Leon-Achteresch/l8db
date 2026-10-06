@@ -16,7 +16,7 @@ import {
   columnOptionValue,
   parseColumnOptionValue,
 } from "@/lib/query-builder";
-import { operatorNeedsValue } from "@/lib/sql-filter";
+import { isDateFilterType, operatorNeedsValue } from "@/lib/sql-filter";
 
 interface QueryBuilderConditionsProps {
   conditions: BuilderCondition[];
@@ -75,11 +75,13 @@ export function QueryBuilderConditions({
                 onChange={(operator, value) => onChange(condition.id, { operator, value })}
                 className="w-44"
                 size="sm"
+                date={isDateFilterType(condition.dataType)}
               />
               {operatorNeedsValue(condition.operator) ? (
                 <FilterValueInput
                   key={condition.operator}
                   operator={condition.operator}
+                  date={isDateFilterType(condition.dataType)}
                   className="flex-1"
                   placeholder="Wert"
                   value={condition.value}

@@ -97,7 +97,7 @@ export function useDataTableModel({
   const { columnOrder, columnVisibility, searchColumns, columnPinning, pinnedSet } =
     useColumnLayoutState(order, hidden, pinned);
   const search = useGridSearch(data, searchColumns);
-  const { matchKeys, activeMatch, activeColumnMatch } = search;
+  const { matchesByRow, activeMatch, activeColumnMatch } = search;
   const { savedColumnSizing, setColumnSizing, columnSizing } = useColumnSizing(
     stateKey,
     order,
@@ -186,7 +186,7 @@ export function useDataTableModel({
     searchColumns,
     columnPinning,
     pinnedSet,
-    matchKeys,
+    matchesByRow,
     activeMatch,
     activeColumnMatch,
     savedColumnSizing,

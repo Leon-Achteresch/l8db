@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CHART_FIELD_MIME } from "./chart-visual-builder-model";
+import { useFieldDragActive } from "./use-field-drag-active";
 
 export function ChartFieldZone({
   title,
@@ -20,6 +21,7 @@ export function ChartFieldZone({
   children: ReactNode;
 }) {
   const [over, setOver] = useState(false);
+  const dragging = useFieldDragActive(CHART_FIELD_MIME);
   return (
     <section
       aria-label={title}
@@ -39,7 +41,9 @@ export function ChartFieldZone({
         if (ref) onDrop(ref);
       }}
       className={cn(
-        "space-y-3 rounded-xl border bg-card p-3 transition-colors",
+        "space-y-3 rounded-xl border bg-card p-3 transition-[border-color,background-color,box-shadow] duration-200",
+        dragging && !over && "border-dashed border-primary/50 bg-primary/[0.03]",
+        selectedLabel && !dragging && "border-primary/30",
         over && "border-primary bg-primary/5 ring-2 ring-primary/15",
       )}
     >
@@ -55,7 +59,10 @@ export function ChartFieldZone({
           aria-label={`${selectedLabel ?? "Ausgewähltes Feld"} zu ${title} zuweisen`}
           title={selectedLabel ? `${selectedLabel} zuweisen` : "Wähle zuerst links ein Datenfeld"}
           onClick={onAssign}
-          className="shrink-0"
+          className={cn(
+            "shrink-0",
+            selectedLabel && "bg-primary/10 text-primary hover:bg-primary/15",
+          )}
         >
           <PlusIcon /> Zuweisen
         </Button>

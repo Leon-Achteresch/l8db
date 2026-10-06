@@ -6,6 +6,9 @@ function text(value: unknown): string {
 }
 
 function compare(left: string, right: string): number {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(right.trim()) && /^\d{4}-\d{2}-\d{2}[ T]/.test(left)) {
+    return left.slice(0, 10).localeCompare(right.trim());
+  }
   const a = Number(left);
   const b = Number(right);
   if (left.trim() !== "" && right.trim() !== "" && Number.isFinite(a) && Number.isFinite(b)) {

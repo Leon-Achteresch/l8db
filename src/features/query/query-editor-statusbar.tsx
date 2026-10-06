@@ -1,23 +1,31 @@
-import { useSyncExternalStore } from "react";
+import { useDeferredValue, useMemo, useSyncExternalStore } from "react";
 
 import type { EditorPositionStore } from "@/features/query/query-view/editor-position-store";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
+import { splitSqlStatements } from "@/lib/sql-statements";
 import { cn } from "@/lib/utils";
 
 interface QueryEditorStatusbarProps {
   positionStore: EditorPositionStore;
   selectionLength: number;
-  statementCount: number;
+  sql: string;
+  dialect: string | undefined;
   dialectLabel: string;
 }
 
 export function QueryEditorStatusbar({
   positionStore,
   selectionLength,
-  statementCount,
+  sql,
+  dialect,
   dialectLabel,
 }: QueryEditorStatusbarProps) {
+  const deferredSql = useDeferredValue(sql);
+  const statementCount = useMemo(
+    () => splitSqlStatements(deferredSql, dialect).statements.length,
+    [deferredSql, dialect],
+  );
   const position = useSyncExternalStore(positionStore.subscribe, positionStore.get);
   const insertSpaces = useQueryWorkspace((s) => s.insertSpaces);
   const editorTabSize = useSettingsStore((s) => s.editorTabSize);

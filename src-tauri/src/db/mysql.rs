@@ -620,7 +620,13 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
             .map(|c| c.name_str().into_owned())
             .collect();
         let columns = super::unique_column_names(columns);
-        let rows: Vec<Row> = result.collect().await.map_err(map_err)?;
+        let limit = super::execution::row_limit();
+        let mut rows: Vec<Row> = Vec::new();
+        while let Some(row) = result.next().await.map_err(map_err)? {
+            if rows.len() < limit {
+                rows.push(row);
+            }
+        }
         let rows_affected = if columns.is_empty() {
             Some(result.affected_rows())
         } else {

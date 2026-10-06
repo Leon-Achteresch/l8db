@@ -163,7 +163,7 @@ pub fn with_password(raw: &str, password: Option<&str>) -> String {
     let Ok(mut url) = url::Url::parse(raw) else {
         return raw.to_string();
     };
-    if url.set_password(Some(password)).is_err() {
+    if crate::db::set_url_password(&mut url, password).is_err() {
         return raw.to_string();
     }
     url.to_string()
@@ -588,6 +588,13 @@ mod tests {
         );
         assert_eq!(resolved.via, Via::Direct);
         assert_eq!(resolved.database.as_deref(), Some("app"));
+        assert_eq!(
+            with_password(
+                "clickhouse://analyst@db.example.com:8123/default",
+                Some("a&b%41+c")
+            ),
+            "clickhouse://analyst:a%26b%2541%2Bc@db.example.com:8123/default"
+        );
         assert_eq!(
             with_password("Server=db;User Id=sa;Database=app", Some("x;y")),
             "Server=db;User Id=sa;Database=app;Password=\"x;y\""

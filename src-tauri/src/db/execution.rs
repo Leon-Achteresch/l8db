@@ -36,6 +36,7 @@ tokio::task_local! {
     static SESSION: Option<String>;
     static DEADLINE: Duration;
     static UNCLAMPED: ();
+    static ROW_LIMIT: usize;
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;
@@ -84,6 +85,17 @@ where
 {
     let session = session.filter(|id| !id.is_empty() && id.len() <= 128);
     SESSION.scope(session, future).await
+}
+
+pub fn row_limit() -> usize {
+    ROW_LIMIT.try_with(|limit| *limit).unwrap_or(usize::MAX)
+}
+
+pub async fn with_row_limit<T, F>(limit: usize, future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    ROW_LIMIT.scope(limit, future).await
 }
 
 pub fn query_duration() -> Duration {
