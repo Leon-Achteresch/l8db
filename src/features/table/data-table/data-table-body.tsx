@@ -30,7 +30,7 @@ type Props = Pick<
   | "hasRowActions"
   | "isSaving"
   | "markedRows"
-  | "matchKeys"
+  | "matchesByRow"
   | "menuRow"
   | "outgoingFkByColumn"
   | "paddingBottom"
@@ -38,8 +38,7 @@ type Props = Pick<
   | "rowVirtualizer"
   | "rows"
   | "scrollRef"
-  | "selectedCount"
-  | "selectedKeys"
+  | "selectedByRow"
   | "setActiveCell"
   | "setDraft"
   | "setEditingCell"
@@ -85,7 +84,7 @@ export function DataTableBody({
   hasRowActions,
   isSaving,
   markedRows,
-  matchKeys,
+  matchesByRow,
   menuRow,
   outgoingFkByColumn,
   paddingBottom,
@@ -93,8 +92,7 @@ export function DataTableBody({
   rowVirtualizer,
   rows,
   scrollRef,
-  selectedCount,
-  selectedKeys,
+  selectedByRow,
   setActiveCell,
   setDraft,
   setEditingCell,
@@ -176,13 +174,12 @@ export function DataTableBody({
                     editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
                     activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}
                     activeMatch={activeMatch?.rowIndex === rowIndex ? activeMatch : null}
-                    selectedKeys={selectedKeys}
-                    selectedCount={selectedCount}
-                    matchKeys={matchKeys}
+                    selectedColumns={selectedByRow.get(rowIndex)}
+                    matchColumns={matchesByRow.get(rowIndex)}
                     isSaving={isSaving}
                     canPickFk={canPickFk}
                     outgoingFkByColumn={outgoingFkByColumn}
-                    onSaveRow={onSaveRow}
+                    canSave={!!onSaveRow}
                     canEditCell={canEditCell}
                     focusCell={focusCell}
                     handleCellEdit={handleCellEdit}
