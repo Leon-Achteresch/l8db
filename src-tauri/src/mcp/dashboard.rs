@@ -35,6 +35,20 @@ const SPEC_KEYS: &[&str] = &[
     "w",
     "h",
 ];
+const SPEC_ALIASES: &[(&str, &str)] = &[
+    ("chart", "type"),
+    ("chartType", "type"),
+    ("kind", "type"),
+    ("query", "sql"),
+    ("name", "title"),
+    ("metric", "metrics"),
+    ("measures", "metrics"),
+    ("values", "metrics"),
+    ("category", "dimension"),
+    ("groupBy", "dimension"),
+    ("series", "dimension2"),
+    ("date", "dateColumn"),
+];
 
 struct Kind {
     name: &'static str,
@@ -65,10 +79,26 @@ const KINDS: &[Kind] = &[
 ];
 
 fn kind(name: &str) -> Result<&'static Kind, String> {
-    KINDS.iter().find(|kind| kind.name == name).ok_or_else(|| {
-        let names: Vec<&str> = KINDS.iter().map(|kind| kind.name).collect();
-        format!("type '{name}' unbekannt. Möglich: {}", names.join(", "))
-    })
+    let lower = name.trim().to_lowercase();
+    let wanted = match lower
+        .trim_end_matches("chart")
+        .trim_end_matches(['_', '-', ' '])
+    {
+        "pie" | "doughnut" => "donut",
+        "bar" | "vertical_bar" | "histogram" => "column",
+        "hbar" | "horizontal_bar" | "horizontal_bars" => "bars",
+        "number" | "stat" | "metric" | "single_value" | "big_number" => "kpi",
+        "scatterplot" | "bubble" => "scatter",
+        "timeseries" | "time_series" => "line",
+        other => other,
+    };
+    KINDS
+        .iter()
+        .find(|kind| kind.name == wanted)
+        .ok_or_else(|| {
+            let names: Vec<&str> = KINDS.iter().map(|kind| kind.name).collect();
+            format!("type '{name}' unbekannt. Möglich: {}", names.join(", "))
+        })
 }
 
 fn min_size(kind: &Kind) -> (i64, i64) {
@@ -103,7 +133,7 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart has its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn). Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, charts), update (name, refreshSec), delete, add_charts (charts), update_chart (chart + spec with changed fields only), remove_chart, preview (dashboard+chart or connection+spec, shows rows), chart_types (chart types, mapping rules, options). Layout is a 12-column grid; omit x/y for automatic placement.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart has its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn); omitted dimension/metrics are taken from the result (first text or date column, then numeric columns). Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, charts), update (name, refreshSec), delete, add_charts (charts), update_chart (chart + spec with changed fields only), remove_chart, preview (dashboard+chart or connection+spec, shows rows), chart_types (chart types, mapping rules, options). Layout is a 12-column grid; omit x/y for automatic placement.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -237,8 +267,7 @@ fn trusted(dashboard: &Value, config: &McpConfig) -> bool {
         .all(|sql| server::check_read_sql(sql, connection, &index).is_ok())
 }
 
-#[tauri::command]
-pub fn mcp_dashboards() -> Vec<Value> {
+pub fn list_dashboards() -> Vec<Value> {
     let config = config::load();
     read_all()
         .into_iter()
@@ -248,6 +277,11 @@ pub fn mcp_dashboards() -> Vec<Value> {
             value
         })
         .collect()
+}
+
+#[tauri::command]
+pub async fn mcp_dashboards() -> Vec<Value> {
+    list_dashboards()
 }
 
 #[tauri::command]
@@ -684,10 +718,34 @@ struct Built {
     report: String,
 }
 
-fn spec_object(value: &Value) -> Result<&Map<String, Value>, String> {
-    let map = value
+fn spec_object(value: &Value) -> Result<Map<String, Value>, String> {
+    let mut map = value
         .as_object()
+        .cloned()
         .ok_or("Chart-Spezifikation muss ein Objekt sein.")?;
+    for (alias, key) in SPEC_ALIASES {
+        if !map.contains_key(*key) {
+            if let Some(value) = map.remove(*alias) {
+                map.insert((*key).into(), value);
+            }
+        }
+    }
+    for (axis, key) in [("x", "dimension"), ("y", "metrics")] {
+        let named = match map.get(axis) {
+            Some(Value::String(name)) => name.trim().parse::<i64>().is_err(),
+            Some(Value::Array(list)) => !list.is_empty() && list.iter().all(Value::is_string),
+            _ => false,
+        };
+        if named && !map.contains_key(key) {
+            if let Some(value) = map.remove(axis) {
+                map.insert(key.into(), value);
+            }
+        }
+    }
+    if let Some(metric @ Value::String(_)) = map.get("metrics") {
+        let list = json!([metric]);
+        map.insert("metrics".into(), list);
+    }
     if let Some(key) = map
         .keys()
         .find(|key| !SPEC_KEYS.contains(&key.as_str()) && *key != "id" && *key != "builder")
@@ -826,7 +884,7 @@ impl Server {
             let spec = spec_object(spec).map_err(|e| format!("Chart {label}: {e}"))?;
             let others = dashboard["widgets"].as_array().cloned().unwrap_or_default();
             let built = self
-                .build(config, connection, spec, None, &others)
+                .build(config, connection, &spec, None, &others)
                 .await
                 .map_err(|e| format!("Chart {label}: {e}"))?;
             if let Some(dataset) = built.dataset {
@@ -918,11 +976,13 @@ impl Server {
                 metrics,
                 date_column: field("dateColumn")?,
             };
-            let shape = mapping.shape();
-            check_shape(kind, &shape, &period)?;
+            if !mapping.needs_inference(kind) {
+                check_shape(kind, &mapping.shape(), &period)?;
+            }
             let (sql, rows) = self
-                .check_sql(config, connection, &sql, &mut mapping, &mut notes)
+                .check_sql(config, connection, kind, &sql, &mut mapping, &mut notes)
                 .await?;
+            check_shape(kind, &mapping.shape(), &period)?;
             preview = rows;
             let id = base
                 .and_then(|d| d["id"].as_str())
@@ -1016,6 +1076,7 @@ impl Server {
         &mut self,
         config: &McpConfig,
         connection: &McpConnection,
+        kind: &Kind,
         sql: &str,
         mapping: &mut Mapping,
         notes: &mut Vec<String>,
@@ -1036,6 +1097,7 @@ impl Server {
         server::check_read_sql(&sql, connection, &index)?;
         let result = self.run_sql(config, connection, &sql).await?;
         mapping.resolve(&result.columns, notes)?;
+        mapping.infer(kind, &result, notes);
         check_numeric(&result, &mapping.metrics)?;
         if result.rows.is_empty() {
             notes.push("Ergebnis ist aktuell leer".into());
@@ -1144,7 +1206,7 @@ impl Server {
                     .build(
                         config,
                         connection,
-                        spec,
+                        &spec,
                         Some((&widget, base.as_ref())),
                         &others,
                     )
@@ -1198,17 +1260,17 @@ impl Server {
         }
         let connection = sql_connection(config, server::arg_str(args, "connection"))?;
         let spec = spec_object(args.get("spec").unwrap_or(&Value::Null))?;
-        let sql = optional_text(spec, "sql")?.ok_or("spec.sql fehlt.")?;
+        let sql = optional_text(&spec, "sql")?.ok_or("spec.sql fehlt.")?;
         let mut mapping = Mapping {
-            dimension: optional_text(spec, "dimension")?,
-            dimension2: optional_text(spec, "dimension2")?,
+            dimension: optional_text(&spec, "dimension")?,
+            dimension2: optional_text(&spec, "dimension2")?,
             metrics: strings(spec.get("metrics").unwrap_or(&Value::Null)),
-            date_column: optional_text(spec, "dateColumn")?,
+            date_column: optional_text(&spec, "dateColumn")?,
         };
         let mut problems = Vec::new();
-        if let Some(name) = optional_text(spec, "type")? {
+        if let Some(name) = optional_text(&spec, "type")? {
             let kind = kind(&name)?;
-            let period = optional_text(spec, "period")?.unwrap_or_else(|| "all".into());
+            let period = optional_text(&spec, "period")?.unwrap_or_else(|| "all".into());
             if let Err(e) = check_shape(kind, &mapping.shape(), &period) {
                 problems.push(e);
             }
@@ -1323,27 +1385,95 @@ impl Mapping {
         }
         Ok(())
     }
+
+    fn needs_inference(&self, kind: &Kind) -> bool {
+        (self.metrics.is_empty() && kind.metrics.0 > 0)
+            || (self.dimension.is_none() && matches!(kind.dim, "required" | "two"))
+            || (self.dimension2.is_none() && kind.dim == "two")
+    }
+
+    fn uses(&self, column: &str) -> bool {
+        [&self.dimension, &self.dimension2, &self.date_column]
+            .into_iter()
+            .any(|name| name.as_deref() == Some(column))
+            || self.metrics.iter().any(|metric| metric == column)
+    }
+
+    fn infer(&mut self, kind: &Kind, result: &QueryResult, notes: &mut Vec<String>) {
+        let numeric_column = |column: &str| {
+            let mut values = column_values(result, column)
+                .filter(|value| !value.is_null())
+                .peekable();
+            values.peek().is_some() && values.all(numeric)
+        };
+        let mut free: Vec<&String> = result
+            .columns
+            .iter()
+            .filter(|column| !self.uses(column))
+            .collect();
+        let take_category = |free: &mut Vec<&String>| {
+            let at = free
+                .iter()
+                .position(|column| !numeric_column(column))
+                .or((!free.is_empty()).then_some(0))?;
+            Some(free.remove(at).clone())
+        };
+        let mut filled = Vec::new();
+        if matches!(kind.dim, "required" | "two") && self.dimension.is_none() {
+            self.dimension = self
+                .date_column
+                .clone()
+                .or_else(|| take_category(&mut free));
+            filled.extend(self.dimension.as_ref().map(|c| format!("dimension={c}")));
+        }
+        if kind.dim == "two" && self.dimension2.is_none() {
+            self.dimension2 = take_category(&mut free);
+            filled.extend(self.dimension2.as_ref().map(|c| format!("dimension2={c}")));
+        }
+        if self.metrics.is_empty() && kind.metrics.0 > 0 {
+            self.metrics = free
+                .into_iter()
+                .filter(|column| numeric_column(column))
+                .take(kind.metrics.1)
+                .cloned()
+                .collect();
+            if !self.metrics.is_empty() {
+                filled.push(format!("metrics={}", self.metrics.join(",")));
+            }
+        }
+        if !filled.is_empty() {
+            notes.push(format!("Mapping ergänzt: {}", filled.join(", ")));
+        }
+    }
+}
+
+fn column_values<'a>(result: &'a QueryResult, column: &'a str) -> impl Iterator<Item = &'a Value> {
+    let index = result.columns.iter().position(|c| c == column);
+    result
+        .rows
+        .iter()
+        .take(200)
+        .filter_map(move |row| match row {
+            Value::Object(map) => map.get(column),
+            Value::Array(list) => index.and_then(|i| list.get(i)),
+            _ => None,
+        })
+}
+
+fn numeric(value: &Value) -> bool {
+    match value {
+        Value::Null | Value::Number(_) => true,
+        Value::String(s) => s.trim().parse::<f64>().is_ok(),
+        _ => false,
+    }
 }
 
 fn check_numeric(result: &QueryResult, metrics: &[String]) -> Result<(), String> {
     for metric in metrics {
-        let index = result.columns.iter().position(|c| c == metric);
-        let bad = result.rows.iter().take(200).find_map(|row| {
-            let value = match row {
-                Value::Object(map) => map.get(metric).cloned(),
-                Value::Array(list) => index.and_then(|i| list.get(i).cloned()),
-                _ => None,
-            }?;
-            match &value {
-                Value::Null | Value::Number(_) => None,
-                Value::String(s) if s.trim().parse::<f64>().is_ok() => None,
-                other => Some(other.to_string()),
-            }
-        });
-        if let Some(value) = bad {
+        if let Some(value) = column_values(result, metric).find(|value| !numeric(value)) {
             return Err(format!(
                 "metric '{metric}' ist nicht numerisch (Wert {}). In SQL casten oder als dimension nutzen.",
-                value.chars().take(40).collect::<String>()
+                value.to_string().chars().take(40).collect::<String>()
             ));
         }
     }

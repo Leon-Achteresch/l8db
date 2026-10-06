@@ -228,6 +228,7 @@
           },
           panels: {
             open: (panelId, html) => rpc("panels.open", panelId, html ?? ""),
+            openJson: (panelId, options) => rpc("panels.openJson", panelId, options),
             close: (panelId) => rpc("panels.close", panelId),
             postMessage: (panelId, msg) => rpc("panels.postMessage", panelId, msg ?? null),
             onDidReceiveMessage: (panelId, listener) => subscribeWebview(panelId, listener),

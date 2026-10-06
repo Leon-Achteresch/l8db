@@ -10,6 +10,7 @@ import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel } from "./table-view/lazy-panels";
 import { TableDataContent } from "./table-view/table-data-content";
@@ -79,11 +80,17 @@ export function TableView(props: TableViewProps) {
     sorting,
     setSorting,
     revealColumn,
-    setRevealColumn,
     page,
     setPage,
     addRowSignal,
   } = useTableViewModel(props);
+
+  const extensionActions = useTableExtensionActions(
+    { connection, database, schema, table, filter, filterRaw, sorting, isView },
+    !caps.object_storage &&
+      caps.query_language === "sql" &&
+      (isView ? viewTab : tableTab) === "data",
+  );
 
   if (!connection) {
     return (
@@ -129,7 +136,6 @@ export function TableView(props: TableViewProps) {
       sorting={sorting}
       setSorting={setSorting}
       revealColumn={revealColumn}
-      setRevealColumn={setRevealColumn}
       page={page}
       setPage={setPage}
       addRowSignal={addRowSignal}
@@ -142,6 +148,7 @@ export function TableView(props: TableViewProps) {
   if (isView) {
     return (
       <ViewDetailTabs
+        extensionActions={extensionActions}
         caps={caps}
         availableTabs={availableTabs}
         viewTab={viewTab}
@@ -178,6 +185,7 @@ export function TableView(props: TableViewProps) {
       >
         <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
         <TableToolbarActions
+          extensionActions={extensionActions}
           connection={connection}
           database={database}
           stateKey={stateKey}

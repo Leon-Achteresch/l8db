@@ -9,6 +9,7 @@ import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
 import { ConnectionAwsFields } from "./aws-fields";
 import { ConnectionBigqueryFields } from "./bigquery-fields";
+import { ConnectionCloudAuthFields } from "./cloud-auth-fields";
 import { DriverMissingNotice } from "./driver-missing-notice";
 import { ConnectionFileInput } from "./file-input";
 import { ConnectionHostFields } from "./host-fields";
@@ -30,6 +31,8 @@ export function ConnectionDetailsStep({
     advancedOpen,
     applySshConfig,
     caps,
+    cloudAuth,
+    cloudAuthActive,
     color,
     database,
     databaseLabel,
@@ -240,7 +243,11 @@ export function ConnectionDetailsStep({
           setUser={setUser}
           password={password}
           setPassword={setPassword}
+          hidePassword={cloudAuthActive}
         />
+      )}
+      {mode !== "tns" && !info.file_based && (
+        <ConnectionCloudAuthFields kind={mode === "string" ? quickKind : kind} draft={cloudAuth} />
       )}
       {mode === "string" && value.trim() ? (
         <p className="truncate text-[11px] text-muted-foreground">Erkannt: {quickInfo.name}</p>

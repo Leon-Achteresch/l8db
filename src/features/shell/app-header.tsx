@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Bot,
+  CheckCheck,
   GitBranchIcon,
   GitPullRequestIcon,
   PlugZap,
@@ -8,6 +9,7 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
@@ -23,7 +25,11 @@ import { useActiveCapabilities } from "@/lib/db-selection";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
-import { useHasNewFeatures } from "@/lib/new-features";
+import {
+  markAllNewFeaturesSeen,
+  useHasAnyNewFeatures,
+  useHasNewFeatures,
+} from "@/lib/new-features";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -65,6 +71,7 @@ export function AppHeader() {
   const hasNewSettingsFeatures = useHasNewFeatures("settings");
   const hasNewVersioningFeatures = useHasNewFeatures("versioning");
   const hasNewAiFeatures = useHasNewFeatures("ai");
+  const hasAnyNewFeatures = useHasAnyNewFeatures();
 
   useWindowTitle();
 
@@ -73,7 +80,6 @@ export function AppHeader() {
   }, [syncWithBackend]);
 
   useLayoutEffect(() => {
-    if (section === "/about") return;
     const header = headerRef.current;
     const leading = leadingRef.current;
     const actions = actionsRef.current;
@@ -111,9 +117,7 @@ export function AppHeader() {
     observer.observe(leading);
     observer.observe(actions);
     return () => observer.disconnect();
-  }, [section]);
-
-  if (section === "/about") return null;
+  }, []);
 
   return (
     <header
@@ -137,6 +141,24 @@ export function AppHeader() {
             l8db
           </Link>
         )}
+        <AnimatePresence initial={false}>
+          {hasAnyNewFeatures ? (
+            <Tooltip content="Alle Neuigkeiten als gelesen markieren" side="bottom">
+              <motion.button
+                type="button"
+                aria-label="Alle Neuigkeiten als gelesen markieren"
+                onClick={markAllNewFeaturesSeen}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.15, delay: 0.3 } }}
+                transition={{ duration: 0.18 }}
+                className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <CheckCheck className="size-4" strokeWidth={1.75} />
+              </motion.button>
+            </Tooltip>
+          ) : null}
+        </AnimatePresence>
         <div className="flex items-center gap-2">
           <EnvironmentBadge />
           <TemporaryConnectionBadge />
@@ -229,9 +251,7 @@ export function AppHeader() {
             >
               <GitPullRequestIcon className="size-4" strokeWidth={1.75} />
               {hasNewVersioningFeatures ? (
-                <span className="pointer-events-none absolute -right-2 -top-0.5 rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
-                  NEW
-                </span>
+                <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
               ) : null}
               {versioning.pending > 0 ? (
                 <span

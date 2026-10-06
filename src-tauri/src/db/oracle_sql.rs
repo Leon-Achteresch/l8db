@@ -1,9 +1,13 @@
 use std::ops::Range;
 
 fn tokens(sql: &str) -> Vec<Range<usize>> {
+    tokens_from(sql, 0)
+}
+
+fn tokens_from(sql: &str, from: usize) -> Vec<Range<usize>> {
     let bytes = sql.as_bytes();
     let mut out = Vec::new();
-    let mut i = 0;
+    let mut i = from;
     while i < bytes.len() {
         let c = bytes[i];
         if c.is_ascii_whitespace() {
@@ -141,6 +145,7 @@ struct PlsqlUnit {
     header: bool,
     closed: bool,
     skip: bool,
+    body: bool,
 }
 
 impl PlsqlUnit {
@@ -161,6 +166,8 @@ impl PlsqlUnit {
                 self.depth += 1;
                 self.pending -= 1;
             }
+            "BEGIN" if self.body => self.depth += 1,
+            "BEGIN" => self.body = true,
             "CASE" => self.depth += 1,
             "END" => {
                 let next = next.map(str::to_ascii_uppercase);
@@ -181,22 +188,73 @@ impl PlsqlUnit {
     }
 }
 
+const SQLPLUS_COMMANDS: &[&str] = &[
+    "SET", "PROMPT", "SPOOL", "WHENEVER", "DEFINE", "UNDEFINE", "REM", "REMARK", "SHOW", "EXIT",
+    "QUIT", "PAUSE", "ACCEPT", "COLUMN", "TTITLE", "BTITLE", "BREAK", "CLEAR", "TIMING",
+];
+
+fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Option<usize> {
+    let word = sql[token.clone()].to_ascii_uppercase();
+    let line_start = sql[..token.start].rfind('\n').map_or(0, |n| n + 1);
+    if !SQLPLUS_COMMANDS.contains(&word.as_str()) || !sql[line_start..token.start].trim().is_empty()
+    {
+        return None;
+    }
+    if word == "SET"
+        && next.is_some_and(|w| {
+            ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"]
+                .iter()
+                .any(|k| w.eq_ignore_ascii_case(k))
+        })
+    {
+        return None;
+    }
+    Some(
+        sql[token.end..]
+            .find('\n')
+            .map_or(sql.len(), |n| token.end + n),
+    )
+}
+
 pub(super) fn split_statements(sql: &str) -> Vec<String> {
-    let tokens = tokens(sql);
+    let mut tokens = tokens(sql);
     let mut out = Vec::new();
     let mut start = 0;
+    let mut skip_to = 0;
     let mut unit = PlsqlUnit::default();
-    for (index, token) in tokens.iter().enumerate() {
+    let mut index = 0;
+    while index < tokens.len() {
+        let token = tokens[index].clone();
+        if token.start < skip_to {
+            if token.end > skip_to {
+                tokens.truncate(index);
+                tokens.extend(tokens_from(sql, skip_to));
+            } else {
+                start = index + 1;
+                index += 1;
+            }
+            continue;
+        }
         let text = &sql[token.clone()];
+        let next = tokens.get(index + 1).map(|r| &sql[r.clone()]);
+        if index == start && !unit.active {
+            if let Some(end) = sqlplus_line_end(sql, &token, next) {
+                skip_to = end;
+                start = index + 1;
+                index += 1;
+                continue;
+            }
+        }
         if unit.active {
             if !sql[..token.start].ends_with('$') {
-                unit.word(text, tokens.get(index + 1).map(|r| &sql[r.clone()]));
+                unit.word(text, next);
             }
         } else if is_plsql_unit(sql, &tokens[start..=index]) {
             unit.active = true;
             unit.depth = 1;
+            unit.body = text.eq_ignore_ascii_case("BEGIN");
         }
-        let slash = is_slash(sql, token);
+        let slash = is_slash(sql, &token);
         if slash || (text == ";" && (!unit.active || unit.closed)) {
             let end = if slash { token.start } else { token.end };
             let statement = sql[tokens[start].start..end].trim();
@@ -206,6 +264,7 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
             start = index + 1;
             unit = PlsqlUnit::default();
         }
+        index += 1;
     }
     if let Some(first) = tokens.get(start) {
         let statement = sql[first.start..].trim();
@@ -694,6 +753,23 @@ mod tests {
         assert_eq!(
             split_statements("SELECT 1 FROM DUAL; SELECT 2 FROM DUAL;"),
             vec!["SELECT 1 FROM DUAL;", "SELECT 2 FROM DUAL;"]
+        );
+    }
+
+    #[test]
+    fn keeps_nested_blocks_and_skips_sqlplus_commands() {
+        let block = "declare\r\n  v NUMBER;\r\nbegin\r\n  begin\r\n    select 1 into v from dual;\r\n  exception\r\n    when others then\r\n      raise;\r\n  end;\r\n  if (v = 0) then\r\n    insert into t values (v) returning id into v;\r\n  end if;\r\n  commit;\r\nend;";
+        let proc = "CREATE PROCEDURE p IS BEGIN BEGIN NULL; END; NULL; END p;";
+        let script = format!(
+            "SET DEFINE OFF;\r\nPROMPT it's running\r\n{block}\r\n/\r\n{proc}\r\nSET TRANSACTION READ ONLY;\r\nEXIT"
+        );
+        assert_eq!(
+            split_statements(&script),
+            vec![block, proc, "SET TRANSACTION READ ONLY;"]
+        );
+        assert_eq!(
+            split_statements("UPDATE t\nSET x = 1;"),
+            vec!["UPDATE t\nSET x = 1;"]
         );
     }
 

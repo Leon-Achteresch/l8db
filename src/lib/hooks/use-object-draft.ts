@@ -20,7 +20,7 @@ export function useObjectDraft(objectKey: string, title: string, source: string)
           title,
           objectKey,
           sql,
-          base: store.drafts[key]?.base ?? source,
+          base: store.drafts[key]?.base || source,
         });
     },
     [connection, database, key, objectKey, source, title],
@@ -32,5 +32,5 @@ export function useObjectDraft(objectKey: string, title: string, source: string)
     },
     [key],
   );
-  return [draft?.sql ?? null, setDraft, clearSavedDraft] as const;
+  return [draft?.sql ?? null, setDraft, clearSavedDraft, draft?.base ?? ""] as const;
 }

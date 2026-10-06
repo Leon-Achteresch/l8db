@@ -86,7 +86,8 @@ fn append_option(config: &mut Config, option: String) {
 }
 
 pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, PgTls), String> {
-    let mut url = url::Url::parse(value).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
+    let resolved = super::cloud_auth::resolve(value)?;
+    let mut url = url::Url::parse(&resolved).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
     if !matches!(url.scheme(), "postgres" | "postgresql") {
         return Err("Eine postgresql:// oder postgres:// URL ist erforderlich".to_string());
     }
@@ -118,6 +119,9 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
             known if PG_OPTIONS.contains(&known) => params.push(part.to_string()),
             _ => {}
         }
+    }
+    if super::cloud_auth::has_marker(&url) {
+        tls.mode = tls.mode.max(SslMode::Require);
     }
     let query = params.join("&");
     url.set_query(if query.is_empty() { None } else { Some(&query) });

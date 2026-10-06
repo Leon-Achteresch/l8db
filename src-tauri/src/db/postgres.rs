@@ -186,7 +186,7 @@ impl PostgresAdapter {
         pool_state: PoolState,
     ) -> Result<Self, String> {
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-        let pool_key = super::connection::connection_key(connection_string, database);
+        let pool_key = super::cloud_auth::pool_key(connection_string, database);
         let read_only = super::connection::options_are_read_only(config.get_options());
         Ok(Self {
             session: None,

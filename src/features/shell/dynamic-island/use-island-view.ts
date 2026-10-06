@@ -1,4 +1,3 @@
-import { useIsFetching } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useConnectionsStore } from "@/lib/connections";
 import { ISLAND_TASK_DELAY, type IslandView, useIslandStore } from "@/lib/dynamic-island";
@@ -37,11 +36,9 @@ export function useIslandView(): IslandView {
   );
   const task = useTasksStore((state) => state.tasks.filter(isTaskActive).at(-1));
   const taskCount = useTasksStore((state) => state.tasks.filter(isTaskActive).length);
-  const loading = useIsFetching({ predicate: (query) => query.state.status === "pending" }) > 0;
   const transactions = useTransactionStore((state) => state.transactions.length);
   const showSwitch = useShownAfter(switching, 250);
   const showTask = useShownAfter(Boolean(task), ISLAND_TASK_DELAY);
-  const showLoading = useShownAfter(loading, ISLAND_TASK_DELAY);
 
   if (installPercent !== null)
     return {
@@ -72,8 +69,6 @@ export function useIslandView(): IslandView {
       more: taskCount > 1 ? taskCount - 1 : undefined,
     };
   }
-  if (showLoading)
-    return { key: "loading", glyph: { kind: "wave" }, title: "Daten werden geladen" };
   if (transactions)
     return {
       key: "idle:transaction",

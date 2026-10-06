@@ -15,7 +15,7 @@ import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { supports } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
 
-export function useFunctionsQuery() {
+export function useFunctionsQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -28,7 +28,7 @@ export function useFunctionsQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "functions"),
+    enabled: enabled && supports(connection, "functions"),
   });
 }
 

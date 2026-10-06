@@ -1,3 +1,4 @@
+import { useActiveCapabilities } from "@/lib/db-selection";
 import {
   useExtensionsQuery,
   useFunctionsQuery,
@@ -12,6 +13,7 @@ import {
 import type { SidebarTabValue } from "./sidebar-tab";
 
 export function useSidebarObjectQueries(selectedTab: SidebarTabValue) {
+  const caps = useActiveCapabilities();
   const {
     data: tables,
     isLoading: tablesLoading,
@@ -29,7 +31,9 @@ export function useSidebarObjectQueries(selectedTab: SidebarTabValue) {
     isLoading: functionsLoading,
     isError: functionsError,
     error: functionsErrorValue,
-  } = useFunctionsQuery();
+  } = useFunctionsQuery(
+    selectedTab === "functions" || selectedTab === "packages" || caps.compile_objects,
+  );
   const {
     data: procedures,
     isLoading: proceduresLoading,

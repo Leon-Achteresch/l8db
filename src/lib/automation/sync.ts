@@ -1,6 +1,10 @@
 import { useBackupToolPaths } from "@/lib/backup-runner";
 import { stripConnectionSecrets } from "@/lib/connection-export/export";
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  cloudAuthConnectionString,
+  type SavedConnection,
+  useConnectionsStore,
+} from "@/lib/connections";
 import { isReadOnlyConnection } from "@/lib/connections/secrets";
 import {
   type AutomationConnection,
@@ -34,7 +38,7 @@ function cleanConnectionString(connection: SavedConnection, readOnly: boolean): 
       value = raw;
     }
   }
-  return proxyUserConnectionString(value, connection);
+  return cloudAuthConnectionString(proxyUserConnectionString(value, connection), connection);
 }
 
 export function buildAutomationConnection(connection: SavedConnection): AutomationConnection {

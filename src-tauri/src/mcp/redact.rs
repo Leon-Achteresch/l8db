@@ -540,9 +540,26 @@ const FROM_END: &[&str] = &[
 ];
 
 pub fn write_word(sql: &str) -> Option<String> {
-    sql_words(sql)
-        .into_iter()
-        .find(|word| WRITE_WORDS.contains(&word.as_str()))
+    let tokens = tokenize(sql);
+    let word_at = |i: usize| match tokens.get(i) {
+        Some(Token::Word(word)) => Some(word.as_str()),
+        _ => None,
+    };
+    tokens.iter().enumerate().find_map(|(i, token)| {
+        let Token::Word(word) = token else {
+            return None;
+        };
+        let member = i >= 2
+            && tokens[i - 1] == Token::Dot
+            && word_at(i - 2).is_some_and(|owner| !owner.starts_with(|c: char| c.is_ascii_digit()));
+        let named = match word.as_str() {
+            "system" => tokens.get(i + 1) == Some(&Token::Dot),
+            "fetch" => i > 0 && matches!(word_at(i + 1), Some("first" | "next")),
+            "replace" => i > 0 && tokens.get(i + 1) == Some(&Token::Open),
+            _ => false,
+        };
+        (WRITE_WORDS.contains(&word.as_str()) && !member && !named).then(|| word.clone())
+    })
 }
 
 pub fn dangerous_word(sql: &str) -> Option<String> {
@@ -800,22 +817,30 @@ pub fn check_s3_select(sql: &str, index: &SchemaIndex) -> Result<(), String> {
     Ok(())
 }
 
-pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
+pub fn check_references(sql: &str, index: &SchemaIndex, row_values: bool) -> Result<(), String> {
     if let Some(pattern) = &index.invalid_pattern {
         return Err(invalid_pattern_error(pattern));
     }
     let tokens = tokenize(sql);
+    let word_at = |i: usize| match tokens.get(i) {
+        Some(Token::Word(word)) => Some(word.as_str()),
+        _ => None,
+    };
     if !index.sensitive_columns.is_empty() {
         check_renames(&tokens)?;
     }
-    for token in &tokens {
+    for (i, token) in tokens.iter().enumerate() {
         if let Token::Word(word) = token {
             if index.sensitive_columns.contains(word) {
                 return Err(format!(
                     "Spalte '{word}' ist redigiert und darf in SQL nicht referenziert werden (auch nicht per Alias, Funktion oder WHERE). SELECT * liefert sie maskiert."
                 ));
             }
-            if !index.allowed_schemas.is_empty()
+            let named = i > 0
+                && ((tokens[i - 1] == Token::Dot && tokens.get(i + 1) != Some(&Token::Dot))
+                    || word_at(i - 1) == Some("as"));
+            if !named
+                && !index.allowed_schemas.is_empty()
                 && !index.allowed_schemas.contains(word)
                 && index.tables.values().any(|schemas| schemas.contains(word))
             {
@@ -823,7 +848,7 @@ pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
                     "Schema '{word}' ist für diese Verbindung nicht freigegeben."
                 ));
             }
-            if index.table_hidden(word) {
+            if !named && index.table_hidden(word) {
                 return Err(format!(
                     "Tabelle '{word}' liegt in einem nicht freigegebenen Schema."
                 ));
@@ -840,14 +865,28 @@ pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
             {
                 return Err("Zeilenexpansion (alias.*) ist nur als direkte Spaltenauswahl erlaubt, nicht in Funktionen oder Ausdrücken.".into());
             }
+            Token::Other('*')
+                if !index.sensitive_columns.is_empty()
+                    && tokens.get(i.wrapping_sub(1)) == Some(&Token::Open)
+                    && !matches!(word_at(i.wrapping_sub(2)), Some("count" | "count_big")) =>
+            {
+                return Err("* ist als Funktionsargument nur in count(*) erlaubt, weil sonst redigierte Spalten unmaskiert ausgegeben würden. Spalten einzeln wählen.".into());
+            }
+            Token::Word(word)
+                if word == "apply"
+                    && !index.sensitive_columns.is_empty()
+                    && matches!(
+                        tokens.get(i.wrapping_sub(1)),
+                        Some(Token::Other('*') | Token::Close)
+                    ) =>
+            {
+                return Err("APPLY auf Spaltenmengen ist gesperrt, weil es redigierte Spalten umbenennt. Spalten einzeln wählen.".into());
+            }
             _ => {}
         }
     }
-    let word_at = |i: usize| match tokens.get(i) {
-        Some(Token::Word(word)) => Some(word.as_str()),
-        _ => None,
-    };
     let mut aliases: HashSet<String> = HashSet::new();
+    let mut relations: HashSet<String> = HashSet::new();
     let mut in_from = false;
     let mut depth_stack: Vec<bool> = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
@@ -872,13 +911,28 @@ pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
                     }
                 }
             }
-            Token::Word(word) if in_from && index.tables.contains_key(word) => {
+            Token::Word(word)
+                if in_from
+                    && !ALIAS_STOP.contains(&word.as_str())
+                    && !matches!(tokens.get(i + 1), Some(Token::Dot | Token::Open))
+                    && (index.tables.contains_key(word)
+                        || matches!(
+                            tokens.get(i.wrapping_sub(1)),
+                            Some(Token::Comma | Token::Dot)
+                        )
+                        || word_at(i.wrapping_sub(1))
+                            .is_some_and(|prev| FROM_START.contains(&prev))) =>
+            {
+                relations.insert(word.clone());
                 let mut j = i + 1;
                 if word_at(j) == Some("as") {
                     j += 1;
                 }
                 if let Some(next) = word_at(j) {
-                    if !ALIAS_STOP.contains(&next) && tokens.get(j + 1) != Some(&Token::Dot) {
+                    if !ALIAS_STOP.contains(&next)
+                        && !RENAME_WORD_SKIP.contains(&next)
+                        && tokens.get(j + 1) != Some(&Token::Dot)
+                    {
                         aliases.insert(next.to_string());
                     }
                 }
@@ -903,13 +957,18 @@ pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
                     && tokens.get(i.wrapping_sub(1)) != Some(&Token::Dot)
                     && !index.allowed_schemas.contains(word)
                     && !index.tables.contains_key(word)
-                    && !aliases.contains(word) =>
+                    && !aliases.contains(word)
+                    && !relations.contains(word) =>
             {
                 return Err(format!(
                     "'{word}' ist kein freigegebenes Schema, keine bekannte Tabelle und kein Alias."
                 ));
             }
-            Token::Word(word) if index.tables.contains_key(word) || aliases.contains(word) => {
+            Token::Word(word)
+                if row_values
+                    && word_at(i.wrapping_sub(1)) != Some("as")
+                    && (index.tables.contains_key(word) || aliases.contains(word)) =>
+            {
                 let prev = tokens.get(i.wrapping_sub(1));
                 let next = tokens.get(i + 1);
                 let qualified = next == Some(&Token::Dot) || prev == Some(&Token::Dot);
@@ -920,7 +979,7 @@ pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
                     );
                 if !(qualified || positional) {
                     return Err(format!(
-                        "'{word}' darf nicht als ganze Zeile ausgegeben werden. Einzelne Spalten wählen, z. B. {word}.spalte."
+                        "'{word}' ist ein Tabellenname und darf nicht als ganze Zeile ausgegeben werden. Einzelne Spalten wählen (z. B. {word}.spalte) oder einen gleichnamigen Spaltenalias umbenennen (z. B. {word}_count)."
                     ));
                 }
             }
@@ -1144,14 +1203,14 @@ mod tests {
             "select * from users order by email",
             "select id from users where id in (select id from users order by email)",
         ] {
-            assert!(check_references(sql, &idx).is_err(), "{sql}");
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
         }
         for sql in [
             "select * from users",
             "select id, name from users where id = 1",
             "select u.name from users u join orders o on o.id = u.id",
         ] {
-            assert!(check_references(sql, &idx).is_ok(), "{sql}");
+            assert!(check_references(sql, &idx, true).is_ok(), "{sql}");
         }
     }
 
@@ -1170,7 +1229,7 @@ mod tests {
             "select x from (select * from users) x",
             "select x from (select * from users) as x",
         ] {
-            assert!(check_references(sql, &idx).is_err(), "{sql}");
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
         }
         for sql in [
             "select u.* from users u",
@@ -1184,22 +1243,22 @@ mod tests {
             "select * from public.users",
             "select name from users u left join orders on orders.id = u.id where u.id > 1 order by u.id limit 5",
         ] {
-            assert!(check_references(sql, &idx).is_ok(), "{sql}");
+            assert!(check_references(sql, &idx, true).is_ok(), "{sql}");
         }
-        assert!(check_references("select status from orders", &idx).is_err());
+        assert!(check_references("select status from orders", &idx, true).is_err());
     }
 
     #[test]
     fn enforces_schema_allowlist() {
         let idx = index(&["public"]);
-        assert!(check_references("select * from secret.vault", &idx).is_err());
-        assert!(check_references("select * from vault", &idx).is_err());
-        assert!(check_references("select * from pg_catalog.pg_shadow", &idx).is_err());
-        assert!(check_references("select * from information_schema.tables", &idx).is_err());
-        assert!(check_references("select u.name from secret.vault u", &idx).is_err());
-        assert!(check_references("select * from users", &idx).is_ok());
-        assert!(check_references("select * from public.users", &idx).is_ok());
-        assert!(check_references("select u.name from users u where u.id = 1", &idx).is_ok());
+        assert!(check_references("select * from secret.vault", &idx, true).is_err());
+        assert!(check_references("select * from vault", &idx, true).is_err());
+        assert!(check_references("select * from pg_catalog.pg_shadow", &idx, true).is_err());
+        assert!(check_references("select * from information_schema.tables", &idx, true).is_err());
+        assert!(check_references("select u.name from secret.vault u", &idx, true).is_err());
+        assert!(check_references("select * from users", &idx, true).is_ok());
+        assert!(check_references("select * from public.users", &idx, true).is_ok());
+        assert!(check_references("select u.name from users u where u.id = 1", &idx, true).is_ok());
     }
 
     #[test]
@@ -1227,7 +1286,7 @@ mod tests {
             "insert into notes select * from users",
             "insert into notes (a, b, c, d) select u.* from users u",
         ] {
-            assert!(check_references(sql, &idx).is_err(), "{sql}");
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
         }
         for sql in [
             "select * from users u join orders o using (id)",
@@ -1248,7 +1307,7 @@ mod tests {
             "select count(*) from users union select count(*) from orders",
             "select top 5 * from users",
         ] {
-            assert!(check_references(sql, &idx).is_ok(), "{sql}");
+            assert!(check_references(sql, &idx, true).is_ok(), "{sql}");
         }
     }
 
@@ -1263,10 +1322,15 @@ mod tests {
             &Redactor::new(&McpConfig::default().redaction, &[]),
             &[],
         );
-        assert!(check_references("select * from generate_series(1, 3) as g(n)", &idx).is_ok());
         assert!(
-            check_references("with x(a) as (select id from orders) select a from x", &idx).is_ok()
+            check_references("select * from generate_series(1, 3) as g(n)", &idx, true).is_ok()
         );
+        assert!(check_references(
+            "with x(a) as (select id from orders) select a from x",
+            &idx,
+            true
+        )
+        .is_ok());
     }
 
     #[test]
@@ -1308,7 +1372,7 @@ mod tests {
             );
             let columns = vec![col("public", "orders", "id")];
             let idx = SchemaIndex::new(&columns, &r, &[]);
-            let err = check_references("select id from orders", &idx).unwrap_err();
+            let err = check_references("select id from orders", &idx, true).unwrap_err();
             assert!(err.contains(bad), "{err}");
             assert!(check_s3_select("select * from s3://b/k.csv", &idx).is_err());
         }
@@ -1345,5 +1409,84 @@ mod tests {
             None
         );
         assert_eq!(dangerous_word("select set_config_name from settings"), None);
+    }
+
+    #[test]
+    fn keywords_used_as_names_are_not_writes() {
+        for sql in [
+            "select t.comment, o.close, s.load from t",
+            "select name, value from system.metrics",
+            "select id from orders order by id fetch first 10 rows only",
+            "select id from orders offset 5 rows fetch next 5 rows only",
+            "select replace(name, 'a', 'b') from users",
+        ] {
+            assert_eq!(write_word(sql), None, "{sql}");
+        }
+        for (sql, word) in [
+            ("select 1.into outfile '/tmp/x'", "into"),
+            ("replace into t values (1)", "replace"),
+            ("replace t values (1)", "replace"),
+            ("fetch next from c", "fetch"),
+            ("system flush logs", "system"),
+            ("select comment from t", "comment"),
+        ] {
+            assert_eq!(write_word(sql).as_deref(), Some(word), "{sql}");
+        }
+    }
+
+    #[test]
+    fn column_aliases_named_like_tables_pass() {
+        let idx = index(&[]);
+        for sql in [
+            "select count(*) as users from users",
+            "select name, count(*) as orders from orders group by name",
+            "select v.total from monthly_view v",
+        ] {
+            assert!(check_references(sql, &idx, true).is_ok(), "{sql}");
+        }
+        let sql = "select name, count(*) as orders from orders group by name order by orders desc";
+        assert!(check_references(sql, &idx, true).is_err());
+        assert!(check_references(sql, &idx, false).is_ok());
+        let restricted = index(&["public"]);
+        for sql in [
+            "select count(*) as vault from users",
+            "select o.vault from orders o",
+            "select v.total from public.monthly_view v",
+            "with t as (select id from orders) select t.id from t",
+        ] {
+            assert!(check_references(sql, &restricted, true).is_ok(), "{sql}");
+        }
+        assert!(check_references("select id from vault", &restricted, false).is_err());
+        assert!(check_references(
+            "select x.id from users secret, secret.vault x",
+            &restricted,
+            false
+        )
+        .is_err());
+        assert!(check_references(
+            "select v.id from users u, u.secret.vault v",
+            &restricted,
+            false
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn star_inside_functions_cannot_bypass_redaction() {
+        let idx = index(&[]);
+        for sql in [
+            "select tuple(*) from users",
+            "select toJSONString(tuple(*)) as t from users",
+            "select * apply(toString) from users",
+            "select columns('.*') apply(toString) from users",
+        ] {
+            assert!(check_references(sql, &idx, false).is_err(), "{sql}");
+        }
+        for sql in [
+            "select count(*) from users",
+            "select o.id from orders o cross apply (select 1 as x) a",
+        ] {
+            assert!(check_references(sql, &idx, false).is_ok(), "{sql}");
+        }
     }
 }

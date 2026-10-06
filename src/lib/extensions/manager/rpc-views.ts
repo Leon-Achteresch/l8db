@@ -1,4 +1,4 @@
-import type { Json, StatusBarUpdate, TreeItem } from "../contracts";
+import type { Json, JsonPanelOptions, StatusBarUpdate, TreeItem } from "../contracts";
 import { ExtensionError } from "../contracts";
 import { validateTreeItems } from "../registries";
 import type { RpcContext, RpcHandler } from "./rpc-context";
@@ -71,6 +71,10 @@ async function handlePanelsClose(ctx: RpcContext): Promise<Json | void> {
   ctx.changed();
   return;
 }
+async function handlePanelsOpenJson(ctx: RpcContext): Promise<void> {
+  ctx.panels.openJson(ctx.id, ctx.text(0, 128), ctx.args[1] as unknown as JsonPanelOptions);
+  ctx.changed();
+}
 
 async function handlePanelsPostmessage(ctx: RpcContext): Promise<Json | void> {
   const { id, args, text } = ctx;
@@ -99,6 +103,7 @@ export const rpcViewsHandlers: Record<string, RpcHandler> = {
   "statusBar.set": handleStatusbarSet,
   "statusBar.hide": handleStatusbarHide,
   "panels.open": handlePanelsOpen,
+  "panels.openJson": handlePanelsOpenJson,
   "panels.close": handlePanelsClose,
   "panels.postMessage": handlePanelsPostmessage,
   "panels.onMessage": handlePanelsOnmessage,

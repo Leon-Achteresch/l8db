@@ -84,6 +84,7 @@ pub struct Capabilities {
     pub ssh: bool,
     pub backup: bool,
     pub object_storage: bool,
+    pub health_advisor: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -147,6 +148,7 @@ const NONE: Capabilities = Capabilities {
     ssh: true,
     backup: false,
     object_storage: false,
+    health_advisor: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -198,6 +200,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                health_advisor: true,
                 backup: true,
                 query_stats: true,
                 debugger: true,
@@ -881,16 +884,13 @@ pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
 fn shell(command: &str) -> tokio::process::Command {
     #[cfg(windows)]
     {
-        let mut process = tokio::process::Command::new("cmd");
-        process
-            .arg("/C")
-            .raw_arg(command)
-            .creation_flags(0x0800_0000);
+        let mut process = crate::process::command("cmd");
+        process.arg("/C").raw_arg(command);
         process
     }
     #[cfg(not(windows))]
     {
-        let mut process = tokio::process::Command::new("sh");
+        let mut process = crate::process::command("sh");
         process.arg("-c").arg(command);
         process
     }
@@ -899,7 +899,7 @@ fn shell(command: &str) -> tokio::process::Command {
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     let command = install_command(kind)?;
     if std::env::consts::OS == "macos" && command.contains("brew ") {
-        let brew = tokio::process::Command::new("sh")
+        let brew = crate::process::command("sh")
             .arg("-c")
             .arg("command -v brew")
             .output()

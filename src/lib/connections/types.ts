@@ -1,5 +1,6 @@
 import type { DatabaseKind, SslMode } from "@/lib/db";
 import type { MaskRule } from "@/lib/masking";
+import type { CloudAuth } from "./cloud-auth";
 
 export type ConnectionEnvironment = "development" | "test" | "staging" | "production";
 
@@ -73,6 +74,12 @@ export interface NetworkProxy {
   username?: string;
 }
 
+export interface NetworkCommand {
+  command: string;
+  localPort?: number | null;
+  timeoutSecs?: number | null;
+}
+
 export interface SavedConnection {
   id: string;
   name: string;
@@ -81,12 +88,14 @@ export interface SavedConnection {
   sslMode: SslMode;
   ssh?: SshConnection | null;
   proxy?: NetworkProxy | null;
+  commandTunnel?: NetworkCommand | null;
   tunnelPort?: number | null;
   tags?: ConnectionTag[];
   favorite?: boolean;
   color?: string | null;
   readOnly?: boolean;
   proxyUser?: string | null;
+  cloudAuth?: CloudAuth | null;
   schemas?: string[] | null;
   showSingleSchemaSwitcher?: boolean;
   environment?: ConnectionEnvironment | null;
@@ -95,10 +104,13 @@ export interface SavedConnection {
   vault?: boolean;
 }
 
-export function usesTunnel<T extends Pick<SavedConnection, "ssh" | "proxy">>(
-  connection: T | null | undefined,
-): connection is T {
-  return Boolean(connection?.ssh?.host || connection?.proxy?.host);
+export function usesTunnel<
+  T extends Pick<SavedConnection, "ssh" | "proxy"> &
+    Pick<Partial<SavedConnection>, "commandTunnel">,
+>(connection: T | null | undefined): connection is T {
+  return Boolean(
+    connection?.ssh?.host || connection?.proxy?.host || connection?.commandTunnel?.command?.trim(),
+  );
 }
 
 export function sortConnectionsByName(connections: SavedConnection[]): SavedConnection[] {

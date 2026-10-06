@@ -230,11 +230,7 @@ pub fn major(version: &str) -> Option<u32> {
 }
 
 pub fn command(program: &Path) -> tokio::process::Command {
-    #[allow(unused_mut)]
-    let mut process = tokio::process::Command::new(program);
-    #[cfg(windows)]
-    process.creation_flags(0x0800_0000);
-    process
+    crate::process::command(program)
 }
 
 async fn probe_version(path: &Path) -> Result<String, String> {

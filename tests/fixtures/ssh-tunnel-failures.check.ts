@@ -48,7 +48,7 @@ test("a fatal tunnel failure is shown and forces the tunnel to be reopened", asy
   expect(toasts).toEqual([
     {
       level: "error",
-      message: "SSH-Tunnel „Prod“ getrennt: SSH-Host-Key von db:22 hat sich geändert",
+      message: "Tunnel „Prod“ getrennt: SSH-Host-Key von db:22 hat sich geändert",
     },
   ]);
   expect(useConnectionsStore.getState().connections[0]?.tunnelPort).toBeNull();

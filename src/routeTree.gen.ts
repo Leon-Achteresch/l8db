@@ -31,6 +31,7 @@ import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspac
 import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
 import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
+import { Route as AppWorkspaceHealthRouteImport } from './routes/_app._workspace.health'
 import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
 import { Route as AppWorkspaceInvalidObjectsRouteImport } from './routes/_app._workspace.invalid-objects'
 import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
@@ -165,6 +166,11 @@ const AppWorkspaceEnumsRoute = AppWorkspaceEnumsRouteImport.update({
 const AppWorkspaceErDiagramRoute = AppWorkspaceErDiagramRouteImport.update({
   id: '/er-diagram',
   path: '/er-diagram',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceHealthRoute = AppWorkspaceHealthRouteImport.update({
+  id: '/health',
+  path: '/health',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceImportRoute = AppWorkspaceImportRouteImport.update({
@@ -337,6 +343,7 @@ export interface FileRoutesByFullPath {
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
+  '/health': typeof AppWorkspaceHealthRoute
   '/import': typeof AppWorkspaceImportRoute
   '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
@@ -385,6 +392,7 @@ export interface FileRoutesByTo {
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
+  '/health': typeof AppWorkspaceHealthRoute
   '/import': typeof AppWorkspaceImportRoute
   '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
@@ -435,6 +443,7 @@ export interface FileRoutesById {
   '/_app/_workspace/create-table': typeof AppWorkspaceCreateTableRoute
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
   '/_app/_workspace/er-diagram': typeof AppWorkspaceErDiagramRoute
+  '/_app/_workspace/health': typeof AppWorkspaceHealthRoute
   '/_app/_workspace/import': typeof AppWorkspaceImportRoute
   '/_app/_workspace/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/_app/_workspace/monitor': typeof AppWorkspaceMonitorRoute
@@ -486,6 +495,7 @@ export interface FileRouteTypes {
     | '/create-table'
     | '/enums'
     | '/er-diagram'
+    | '/health'
     | '/import'
     | '/invalid-objects'
     | '/monitor'
@@ -534,6 +544,7 @@ export interface FileRouteTypes {
     | '/create-table'
     | '/enums'
     | '/er-diagram'
+    | '/health'
     | '/import'
     | '/invalid-objects'
     | '/monitor'
@@ -583,6 +594,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/create-table'
     | '/_app/_workspace/enums'
     | '/_app/_workspace/er-diagram'
+    | '/_app/_workspace/health'
     | '/_app/_workspace/import'
     | '/_app/_workspace/invalid-objects'
     | '/_app/_workspace/monitor'
@@ -781,6 +793,13 @@ declare module '@tanstack/react-router' {
       path: '/er-diagram'
       fullPath: '/er-diagram'
       preLoaderRoute: typeof AppWorkspaceErDiagramRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/health': {
+      id: '/_app/_workspace/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof AppWorkspaceHealthRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/import': {
@@ -1007,6 +1026,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceCreateTableRoute: typeof AppWorkspaceCreateTableRoute
   AppWorkspaceEnumsRoute: typeof AppWorkspaceEnumsRoute
   AppWorkspaceErDiagramRoute: typeof AppWorkspaceErDiagramRoute
+  AppWorkspaceHealthRoute: typeof AppWorkspaceHealthRoute
   AppWorkspaceImportRoute: typeof AppWorkspaceImportRoute
   AppWorkspaceInvalidObjectsRoute: typeof AppWorkspaceInvalidObjectsRoute
   AppWorkspaceMonitorRoute: typeof AppWorkspaceMonitorRoute
@@ -1042,6 +1062,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceCreateTableRoute: AppWorkspaceCreateTableRoute,
   AppWorkspaceEnumsRoute: AppWorkspaceEnumsRoute,
   AppWorkspaceErDiagramRoute: AppWorkspaceErDiagramRoute,
+  AppWorkspaceHealthRoute: AppWorkspaceHealthRoute,
   AppWorkspaceImportRoute: AppWorkspaceImportRoute,
   AppWorkspaceInvalidObjectsRoute: AppWorkspaceInvalidObjectsRoute,
   AppWorkspaceMonitorRoute: AppWorkspaceMonitorRoute,

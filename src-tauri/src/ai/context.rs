@@ -110,8 +110,9 @@ pub async fn call(
     config: &McpConfig,
     run: &Run,
     name: &str,
-    mut args: Value,
+    args: Value,
 ) -> Value {
+    let mut args = crate::mcp::server::normalize_args(&tool_definitions(), name, args);
     if !args.is_object() {
         return json!({"content": [{"type": "text", "text": "Tool-Argumente müssen ein Objekt sein."}], "isError": true});
     }

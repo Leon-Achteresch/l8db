@@ -67,6 +67,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   ssh: true,
   backup: true,
   object_storage: false,
+  health_advisor: true,
   query_language: "sql",
   filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -115,6 +116,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      health_advisor: false,
       proxy_user: false,
       debugger: false,
       query_cancel: false,
@@ -148,6 +150,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      health_advisor: false,
       proxy_user: false,
       debugger: false,
       query_cancel: false,
@@ -181,6 +184,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      health_advisor: false,
       query_stats: false,
       proxy_user: false,
       debugger: false,
@@ -218,6 +222,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      health_advisor: false,
       query_stats: false,
       proxy_user: false,
       debugger: false,

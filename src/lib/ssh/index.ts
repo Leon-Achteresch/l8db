@@ -2,6 +2,7 @@ export {
   closeSshTunnel,
   listSshConfigHosts,
   listSshTunnels,
+  openCommandTunnel,
   openProxyTunnel,
   openSshTunnel,
 } from "@/lib/db";
@@ -20,8 +21,11 @@ export {
   tunneledConnectionString,
 } from "./connection-string";
 export {
+  buildCommandTunnelRequest,
   buildProxyTunnelRequest,
   buildSshTunnelRequest,
+  COMMAND_TUNNEL_PRESETS,
+  type CommandTunnelPreset,
   loadNetworkSecrets,
   type NetworkSecrets,
   ONEPASSWORD_AGENT_SOCKET_LINUX,
@@ -38,6 +42,7 @@ export {
 } from "./network";
 export { ensureSshTunnel } from "./tunnel";
 export type {
+  CommandTunnelRequest,
   ProxyRequest,
   ProxyTunnelRequest,
   SshAuthRequest,

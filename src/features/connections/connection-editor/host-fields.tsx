@@ -21,6 +21,7 @@ export function ConnectionHostFields({
   setUser,
   password,
   setPassword,
+  hidePassword = false,
 }: {
   info: ProviderInfo;
   kind: DatabaseKind;
@@ -38,6 +39,7 @@ export function ConnectionHostFields({
   setUser: (value: string) => void;
   password: string;
   setPassword: (value: string) => void;
+  hidePassword?: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -80,21 +82,23 @@ export function ConnectionHostFields({
           />
         </label>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={hidePassword ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
         <ConnectionField
           id="connection-user"
           label={windowsAuth ? "Benutzer (optional)" : "Benutzer"}
           value={user}
           onChange={(event) => setUser(event.target.value)}
         />
-        <ConnectionField
-          id="connection-password"
-          label={windowsAuth ? "Passwort (optional)" : "Passwort"}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
+        {!hidePassword && (
+          <ConnectionField
+            id="connection-password"
+            label={windowsAuth ? "Passwort (optional)" : "Passwort"}
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        )}
       </div>
     </div>
   );

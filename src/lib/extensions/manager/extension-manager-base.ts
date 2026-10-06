@@ -9,6 +9,7 @@ import type {
   Json,
   PanelSnapshot,
   StatusBarSnapshot,
+  TableSnapshot,
   ViewSnapshot,
 } from "../contracts";
 import { ExtensionError } from "../contracts";
@@ -198,6 +199,17 @@ export class ExtensionManagerBase {
       this.log(owner, "error", String(error));
       throw error;
     }
+  }
+  async executeTableCommand(id: string, read: () => Promise<TableSnapshot>) {
+    const owner = this.commands.owner(id);
+    if (!owner || !this.commands.menusFor("table/toolbar").some((menu) => menu.command === id))
+      throw new ExtensionError("CommandNotFoundError", id);
+    const extension = this.registry.get(owner);
+    if (!extension.enabled) throw new ExtensionError("ExtensionDisabledError", owner);
+    this.permissions.require(extension, "database:read");
+    const snapshot = await read();
+    this.permissions.require(extension, "database:read");
+    return this.executeCommand(id, snapshot as unknown as Json);
   }
   protected cleanup(id: string) {
     for (const resource of this.resources.get(id)?.values() ?? []) {

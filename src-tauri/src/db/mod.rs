@@ -5,6 +5,7 @@ pub mod backup_tools;
 mod bigquery;
 mod cassandra;
 mod clickhouse;
+mod cloud_auth;
 pub mod commands;
 pub(crate) mod connection;
 pub(crate) use connection::connection_string_is_read_only;
@@ -42,6 +43,7 @@ pub use odbc::configure_system_ini as configure_odbc;
 mod oracle;
 pub mod pool;
 mod postgres;
+pub mod postgres_health;
 pub mod provider;
 pub(crate) mod redis;
 pub mod schema_catalog;
@@ -1858,7 +1860,7 @@ pub fn create_adapter_from_string(
     pool_state: PoolState,
 ) -> Result<Box<dyn DatabaseAdapter>, String> {
     let database = database.filter(|db| !db.is_empty());
-    let key = connection::connection_key(connection_string, database);
+    let key = cloud_auth::pool_key(connection_string, database);
     Ok(match kind {
         DatabaseKind::Postgres => Box::new(postgres::PostgresAdapter::from_connection_string(
             connection_string,

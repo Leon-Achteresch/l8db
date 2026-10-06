@@ -52,7 +52,12 @@ export function JsonTableView({ value, basePath, onPick }: Props) {
                 return (
                   <td
                     key={column}
-                    onClick={() => has && onPick([...basePath, index, column])}
+                    onClick={() =>
+                      has &&
+                      onPick(
+                        Array.isArray(value) ? [...basePath, index, column] : [...basePath, column],
+                      )
+                    }
                     className={cn(
                       "max-w-72 cursor-pointer truncate border-b border-l border-border/60 px-2 py-1",
                       has ? KIND_TEXT[kind] : "bg-muted/30",

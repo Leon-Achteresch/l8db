@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::automation::model::{BackgroundStatus, Task};
 use crate::automation::store::Store;
@@ -172,7 +172,7 @@ fn run<const N: usize>(program: &str, args: [&str; N]) -> Result<String, String>
 }
 
 fn run_args(program: &str, args: &[String]) -> Result<String, String> {
-    let output = Command::new(program)
+    let output = crate::process::std_command(program)
         .args(args)
         .output()
         .map_err(|error| format!("{program} konnte nicht gestartet werden: {error}"))?;
@@ -223,7 +223,7 @@ fn crontab() -> String {
 }
 
 fn write_crontab(content: &str) -> Result<(), String> {
-    let mut child = Command::new("crontab")
+    let mut child = crate::process::std_command("crontab")
         .arg("-")
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())

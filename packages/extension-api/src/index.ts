@@ -23,7 +23,7 @@ export interface StatusBarContribution {
   alignment?: "left" | "right";
   priority?: number;
 }
-export type MenuLocation = "palette" | "view/title" | "view/item" | "statusBar" | "explain/toolbar" | "editor/plan";
+export type MenuLocation = "palette" | "view/title" | "view/item" | "statusBar" | "explain/toolbar" | "editor/plan" | "table/toolbar";
 export interface MenuContribution {
   command: string;
   location: MenuLocation;
@@ -117,8 +117,23 @@ export interface PanelSnapshot {
   panelId: string;
   title: string;
   html: string;
+  json?: JsonPanelOptions;
   open: boolean;
   updatedAt: number;
+}
+export interface JsonPanelOptions {
+  text: string;
+  filename?: string;
+  description?: string;
+}
+export interface TableSnapshot {
+  connectionId: string;
+  database: string | null;
+  schema: string;
+  table: string;
+  filter: string;
+  columns: string[];
+  rows: Record<string, string | null>[];
 }
 export type PromptKind = "quickPick" | "inputBox" | "message";
 export interface PromptRequest {
@@ -268,6 +283,7 @@ export interface L8dbApi {
   };
   panels: {
     open(panelId: string, html?: string): Promise<void>;
+    openJson(panelId: string, options: JsonPanelOptions): Promise<void>;
     close(panelId: string): Promise<void>;
     postMessage(panelId: string, message: Json): Promise<void>;
     onDidReceiveMessage(panelId: string, listener: (message: Json) => void | Promise<void>): Disposable;
