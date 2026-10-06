@@ -9,7 +9,8 @@ import {
 } from "@/components/ui/select";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
-import { filterSupportsOr, operatorNeedsValue } from "@/lib/sql-filter";
+import type { DetailedColumnInfo } from "@/lib/db";
+import { filterSupportsOr, isDateFilterType, operatorNeedsValue } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
 import type { Combinator } from "./filter-types";
 
@@ -20,6 +21,7 @@ export function FilterConditionRow({
   combinator,
   setCombinator,
   columns,
+  columnDetails,
   updateCondition,
   removeCondition,
   apply,
@@ -30,10 +32,15 @@ export function FilterConditionRow({
   combinator: Combinator;
   setCombinator: (value: Combinator) => void;
   columns: string[];
+  columnDetails?: DetailedColumnInfo[];
   updateCondition: (id: string, patch: Partial<Condition>) => void;
   removeCondition: (id: string) => void;
   apply: () => void;
 }) {
+  const date = isDateFilterType(
+    columnDetails?.find((column) => column.name === condition.column)?.data_type ??
+      condition.dataType,
+  );
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <div className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right">
@@ -79,6 +86,7 @@ export function FilterConditionRow({
         onChange={(operator, value) => updateCondition(condition.id, { operator, value })}
         className="w-full min-w-0 sm:w-auto sm:min-w-44"
         size="sm"
+        date={date}
       />
 
       {operatorNeedsValue(condition.operator) ? (
@@ -86,6 +94,7 @@ export function FilterConditionRow({
           key={condition.operator}
           operator={condition.operator}
           value={condition.value}
+          date={date}
           onValueChange={(value) =>
             updateCondition(condition.id, {
               value,

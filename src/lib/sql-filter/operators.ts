@@ -132,6 +132,10 @@ export function changeFilterOperator(value: string, previous: string, next: stri
     : (parseFilterList(value)[0] ?? "");
 }
 
+export function isDateFilterType(dataType?: string): boolean {
+  return !!dataType && /date|timestamp/i.test(dataType) && !/range/i.test(dataType);
+}
+
 export function operatorNeedsValue(key: string): boolean {
   return OPERATORS.find((op) => op.key === key)?.needsValue ?? true;
 }

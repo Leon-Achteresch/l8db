@@ -43,6 +43,7 @@ type DataTableHeaderCellProps = {
   onFilterValueChange: (value: string) => void;
   compiledFilter: string;
   filterOperators?: { key: string; label: string }[];
+  dateFilter?: boolean;
   filterPrefix?: string;
   onApplyFilter?: (where: string, isRaw: boolean) => void;
   onApplyColumnFilter: () => void;
@@ -66,6 +67,7 @@ export function DataTableHeaderCell({
   onFilterValueChange,
   compiledFilter,
   filterOperators,
+  dateFilter,
   filterPrefix = "WHERE",
   onApplyFilter,
   onApplyColumnFilter,
@@ -157,12 +159,14 @@ export function DataTableHeaderCell({
                   className="min-w-44 flex-1"
                   size="sm"
                   operators={filterOperators}
+                  date={dateFilter}
                 />
                 {operatorNeedsValue(filterOperator) ? (
                   <FilterValueInput
                     key={filterOperator}
                     operator={filterOperator}
                     value={filterValue}
+                    date={dateFilter}
                     onValueChange={onFilterValueChange}
                     placeholder="Wert"
                     autoFocus
