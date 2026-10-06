@@ -1,6 +1,15 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MoreHorizontal } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +76,10 @@ export function QueryResultWorkbench({
     Boolean(chart?.sqlCapable && viewConnection && !viewConnection.readOnly) &&
     isViewableSelect(chart?.sql ?? "");
   const jsonScrollRef = useRef<HTMLPreElement>(null);
+  const inspectCell = useCallback(
+    (column: string, value: unknown, row: number) => setCell({ column, value, row }),
+    [],
+  );
   const [lastResult, setLastResult] = useState(result);
   if (lastResult !== result) {
     setLastResult(result);
@@ -300,7 +313,7 @@ export function QueryResultWorkbench({
             isLoading={false}
             error={null}
             masked
-            onInspect={(column, value, row) => setCell({ column, value, row })}
+            onInspect={inspectCell}
           />
         </div>
       )}
