@@ -284,6 +284,7 @@ export function TableFilterPanel({
                   combinator={combinator}
                   setCombinator={setCombinator}
                   columns={columns}
+                  columnDetails={columnDetails}
                   updateCondition={updateCondition}
                   removeCondition={removeCondition}
                   apply={apply}

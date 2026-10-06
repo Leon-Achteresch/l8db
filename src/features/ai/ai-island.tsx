@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAiStore } from "@/lib/ai/store";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { AiResizeHandle } from "./ai-resize-handle";
-import { AiView } from "./ai-view";
+
+const AiView = lazy(() => import("./ai-view").then(({ AiView }) => ({ default: AiView })));
 
 export function AiIsland() {
   const open = useAiStore((state) => state.open);
@@ -12,6 +13,8 @@ export function AiIsland() {
   const fullPage = useRouterSelect((state) => state.location.pathname === "/ai");
   const minimized = useAiStore((state) => state.minimized) && open && !fullPage;
   const [active, setActive] = useState(false);
+  const [used, setUsed] = useState(open || fullPage);
+  if (!used && (open || fullPage)) setUsed(true);
   const panel = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLElement>(null);
   const [host] = useState(() => {
@@ -101,7 +104,13 @@ export function AiIsland() {
         data-active={active || undefined}
         className="group/mini fixed bottom-4 left-1/2 z-40 flex max-h-[85vh] w-[min(44rem,calc(100vw-2rem))] origin-bottom -translate-x-1/2 scale-[0.96] flex-col overflow-visible rounded-3xl border border-transparent data-active:overflow-hidden transition-[scale,background-color,border-color,box-shadow] duration-200 ease-out hover:scale-100 data-active:scale-100 data-active:border-border data-active:bg-background/95 data-active:shadow-2xl data-active:shadow-black/15 data-active:backdrop-blur motion-reduce:transition-none dark:data-active:shadow-black/40"
       />
-      {createPortal(<AiView fullPage={fullPage} />, host)}
+      {used &&
+        createPortal(
+          <Suspense fallback={null}>
+            <AiView fullPage={fullPage} />
+          </Suspense>,
+          host,
+        )}
     </>
   );
 }

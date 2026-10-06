@@ -98,7 +98,8 @@ export async function executeSqlWithTransactions({
   if (
     opensManagedTransaction(classified, connection.kind) &&
     transactionsCapable &&
-    useSettingsStore.getState().transactionsEnabled
+    useSettingsStore.getState().transactionsEnabled &&
+    !(connection.kind === "oracle" && managedQueryIssue(sql, connection.kind))
   ) {
     rejectUnmanageable();
     const { txId } = await ensureManagedTransaction(connection, database ?? null, {

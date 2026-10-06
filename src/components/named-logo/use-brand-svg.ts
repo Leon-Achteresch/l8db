@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
+import { brandSvgForName } from "./brand-icons";
 
 export function useBrandSvg(name: string): string | null {
   const [loaded, setLoaded] = useState<{ name: string; svg: string | null } | null>(null);
   useEffect(() => {
     let current = true;
-    void import("./brand-icons")
-      .then(({ brandSvgForName }) => {
-        if (current) setLoaded({ name, svg: brandSvgForName(name) });
+    void brandSvgForName(name)
+      .then((svg) => {
+        if (current) setLoaded({ name, svg });
       })
       .catch(() => undefined);
     return () => {

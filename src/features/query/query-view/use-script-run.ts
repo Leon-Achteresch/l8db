@@ -56,8 +56,11 @@ export function useScriptRun({
   } = exec;
 
   const scriptSplit = useMemo(
-    () => splitSqlStatements(sql, connection?.kind),
-    [sql, connection?.kind],
+    () =>
+      scriptDialogOpen
+        ? splitSqlStatements(sql, connection?.kind)
+        : { statements: [], unterminated: false },
+    [scriptDialogOpen, sql, connection?.kind],
   );
 
   const pickScriptMode = useCallback(

@@ -25,10 +25,13 @@ import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
-import type { DefinitionDiffApi, DiffStats } from "@/features/compare/definition-diff-editor";
+import {
+  type DefinitionDiffApi,
+  DefinitionDiffEditor,
+  type DiffStats,
+} from "@/features/compare/definition-diff-editor";
 import { type MergeDraftApi, MergeDraftEditor } from "@/features/compare/merge-draft-editor";
 import { MergeReferenceEditor } from "@/features/compare/merge-reference-editor";
-import { SymmetricDiffEditor } from "@/features/compare/symmetric-diff-editor";
 import {
   type CompareSideSelection,
   compareLoadErrorMessage,
@@ -351,12 +354,14 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
       ) : (
         <div className="relative min-h-0 flex-1">
           {!props.showDraft ? (
-            <SymmetricDiffEditor
+            <DefinitionDiffEditor
               ref={diffRef}
               original={leftState.definition}
               modified={rightState.definition}
               onlyDifferences={onlyDifferences}
               onStats={setDiffStats}
+              readOnly
+              minimap
             />
           ) : (
             <div className="flex h-full min-h-0 flex-col">

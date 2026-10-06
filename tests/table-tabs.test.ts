@@ -13,7 +13,7 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const { useConnectionsStore } = await import("../src/lib/connections");
-const { useTableTabs, tabKey } = await import("../src/lib/table-tabs");
+const { useTableTabs, tabKey, sameTabBarTabs } = await import("../src/lib/table-tabs");
 
 await useConnectionsStore.persist.rehydrate();
 await useTableTabs.persist.rehydrate();
@@ -403,5 +403,19 @@ describe("Vergleichs-Tabs", () => {
       .tabs.find((tab) => tab.kind === "tool" && tab.id === "second");
     expect(second).not.toHaveProperty("compare");
     expect(useTableTabs.getState().tabsByConnection[connection.id]).toContainEqual(first);
+  });
+});
+
+describe("sameTabBarTabs", () => {
+  test("ignores SQL edits but not titles or dirty state", () => {
+    const table = { kind: "table" as const, schema: "public", table: "users" };
+    const query = { kind: "query" as const, id: "q", title: "Query", sql: "select 1" };
+    const tabs = [table, query];
+    expect(sameTabBarTabs(tabs, [table, { ...query, sql: "select 12" }])).toBe(true);
+    expect(sameTabBarTabs(tabs, [table, { ...query, title: "Other" }])).toBe(false);
+    expect(sameTabBarTabs(tabs, [{ ...table }, query])).toBe(false);
+    expect(sameTabBarTabs(tabs, [table])).toBe(false);
+    const file = { ...query, filePath: "/tmp/a.sql", savedSql: "select 1" };
+    expect(sameTabBarTabs([file], [{ ...file, sql: "select 2" }])).toBe(false);
   });
 });

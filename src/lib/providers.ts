@@ -262,13 +262,18 @@ export const useProvidersStore = create<ProvidersState>()(() => ({
   loaded: false,
 }));
 
-export async function loadProviders(): Promise<void> {
-  try {
-    const providers = await listProviders();
-    if (providers.length) useProvidersStore.setState({ providers, loaded: true });
-  } catch {
-    return;
-  }
+let loading: Promise<void> | null = null;
+
+export function loadProviders(): Promise<void> {
+  loading ??= listProviders()
+    .then((providers) => {
+      if (providers.length) useProvidersStore.setState({ providers, loaded: true });
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      loading = null;
+    });
+  return loading;
 }
 
 export async function refreshDriverStatus(kind: DatabaseKind): Promise<DriverStatus> {

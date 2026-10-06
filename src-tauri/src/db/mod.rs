@@ -26,7 +26,7 @@ pub mod export_formats;
 mod filter_expr;
 mod http_api;
 #[cfg(test)]
-mod http_mock;
+pub(crate) mod http_mock;
 pub mod import;
 pub mod import_source;
 pub(crate) mod influxdb;
@@ -40,7 +40,7 @@ mod odbc;
 pub mod s3;
 #[cfg(feature = "odbc")]
 pub use odbc::configure_system_ini as configure_odbc;
-mod oracle;
+pub(crate) mod oracle;
 pub mod pool;
 mod postgres;
 pub mod postgres_health;
@@ -1829,6 +1829,23 @@ pub(crate) fn where_clause(filter: Option<&str>, allow_raw: bool) -> Result<Stri
     }
 }
 
+const URI_COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'!')
+    .remove(b'~')
+    .remove(b'*')
+    .remove(b'\'')
+    .remove(b'(')
+    .remove(b')');
+
+pub fn set_url_password(url: &mut url::Url, password: &str) -> Result<(), ()> {
+    url.set_password(Some(
+        &percent_encoding::utf8_percent_encode(password, URI_COMPONENT).to_string(),
+    ))
+}
+
 pub fn create_adapter(
     config: ConnectionConfig,
     pool_state: PoolState,
@@ -2628,6 +2645,9 @@ mod clickhouse_browser_tests;
 
 #[cfg(test)]
 mod load_perf_tests;
+
+#[cfg(test)]
+mod row_path_perf_tests;
 
 #[cfg(test)]
 mod live_plan_tests;

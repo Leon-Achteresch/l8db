@@ -21,7 +21,7 @@ interface QueryEditorContentProps {
   bookmarks: ReturnType<typeof useQueryTabBookmarks>;
   registry: ComponentProps<typeof QueryEditorPane>["registry"];
   statusVisible: boolean;
-  statementCount: number;
+  dialect: string | undefined;
   dialectLabel: string;
   editorSync: EditorStateSync;
   onSave: () => void;
@@ -39,7 +39,7 @@ export function QueryEditorContent({
   bookmarks,
   registry,
   statusVisible,
-  statementCount,
+  dialect,
   dialectLabel,
   editorSync,
   onSave,
@@ -83,7 +83,8 @@ export function QueryEditorContent({
         <QueryEditorStatusbar
           positionStore={cursor.positionStore}
           selectionLength={cursor.selectedSql.length}
-          statementCount={statementCount}
+          sql={sql}
+          dialect={dialect}
           dialectLabel={dialectLabel}
         />
       )}

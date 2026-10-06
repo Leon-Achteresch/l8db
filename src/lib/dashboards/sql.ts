@@ -1,8 +1,15 @@
 import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier, type SqlIdentifierStyle } from "@/lib/export";
 import { compileConditionExpression } from "@/lib/sql-filter";
-import { aliasOf, datasetJoins, parseRef } from "./joins";
+import { aliasOf, calcOf, datasetJoins, parseRef, replaceFieldTokens } from "./joins";
 import type { Agg, Dataset, DatasetMetric, Period, SimpleDataset, TimeBucket } from "./model";
+import {
+  EMPTY_SCOPE,
+  filterVariable,
+  scopeValue,
+  substituteVariables,
+  type VariableScope,
+} from "./variables";
 
 export function createId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -45,7 +52,12 @@ export function isDateType(type: string): boolean {
   return /date|time/i.test(type);
 }
 
-function refExpr(ref: string, ds: SimpleDataset, style: SqlIdentifierStyle): string {
+function refExpr(ref: string, ds: SimpleDataset, style: SqlIdentifierStyle, depth = 0): string {
+  const calc = calcOf(ref, ds);
+  if (calc)
+    return depth > 4
+      ? "NULL"
+      : `(${replaceFieldTokens(calc.expr.trim() || "NULL", (inner) => refExpr(inner, ds, style, depth + 1))})`;
   const { join, column } = parseRef(ref, ds);
   const name = quoteIdentifier(column, style);
   const joins = datasetJoins(ds);
@@ -103,8 +115,17 @@ export function aggSql(agg: Agg, col: string): string {
   }
 }
 
+function aggregatedCalc(metric: DatasetMetric, ds: SimpleDataset): boolean {
+  return Boolean(metric.column && calcOf(metric.column, ds)?.aggregate);
+}
+
 function aggExpr(metric: DatasetMetric, ds: SimpleDataset, style: SqlIdentifierStyle): string {
+  if (aggregatedCalc(metric, ds)) return refExpr(metric.column ?? "", ds, style);
   return aggSql(metric.agg, metric.column ? refExpr(metric.column, ds, style) : "*");
+}
+
+function summarizes(metric: DatasetMetric, ds: SimpleDataset): boolean {
+  return metric.agg !== "none" || aggregatedCalc(metric, ds);
 }
 
 export function periodStart(period: Period, now = new Date()): string | null {
@@ -146,6 +167,7 @@ export function buildSimpleSql(
   ds: SimpleDataset,
   kind: DatabaseKind | null,
   period: Period = "all",
+  scope: VariableScope = EMPTY_SCOPE,
 ): string {
   if (!ds.table) return "";
   const style = identifierStyleForKind(kind);
@@ -166,13 +188,10 @@ export function buildSimpleSql(
   const metrics = ds.metrics.filter((m) => m.agg === "count" || m.column);
   select.push(...metrics.map((m, i) => `${aggExpr(m, ds, style)} AS ${q(metricKey(i))}`));
   if (select.length === 0) select.push("*");
+  const plain = (m: DatasetMetric) => !summarizes(m, ds) && Boolean(m.column);
   const grouped =
-    metrics.some((m) => m.agg !== "none") &&
-    (groups.length > 0 || metrics.some((m) => m.agg === "none" && m.column));
-  if (grouped)
-    groups.push(
-      ...metrics.filter((m) => m.agg === "none" && m.column).map((m) => aggExpr(m, ds, style)),
-    );
+    metrics.some((m) => summarizes(m, ds)) && (groups.length > 0 || metrics.some(plain));
+  if (grouped) groups.push(...metrics.filter(plain).map((m) => aggExpr(m, ds, style)));
   const limit = Math.max(1, Math.floor(ds.limit || 50));
   const lines = [`SELECT ${kind === "mssql" ? `TOP ${limit} ` : ""}${select.join(", ")}`];
   const joins = datasetJoins(ds);
@@ -183,21 +202,28 @@ export function buildSimpleSql(
       joins.find((j) => j.id === join.parent),
       joins,
     );
+    const alias = aliasOf(join, joins);
+    const pairs = [{ from: join.fromColumn, to: join.toColumn }, ...(join.extra ?? [])].filter(
+      (pair) => pair.from && pair.to,
+    );
     lines.push(
-      `LEFT JOIN ${table(join.schema, join.table)}${as}${aliasOf(join, joins)} ON ${aliasOf(join, joins)}.${q(join.toColumn)} = ${parent}.${q(join.fromColumn)}`,
+      `${join.kind === "inner" ? "INNER" : "LEFT"} JOIN ${table(join.schema, join.table)}${as}${alias} ON ${pairs.map((pair) => `${alias}.${q(pair.to)} = ${parent}.${q(pair.from)}`).join(" AND ")}`,
     );
   }
   const where = ds.filters
     .filter((f) => f.column)
-    .map((f) =>
-      compileConditionExpression(
+    .map((f) => {
+      const name = filterVariable(f.value);
+      const value = name === null ? f.value : scopeValue(scope, name);
+      if (value === null || (name !== null && !value.trim())) return null;
+      return compileConditionExpression(
         refExpr(f.column, ds, style),
         f.operator,
-        f.value,
+        value,
         kind,
         f.dataType,
-      ),
-    )
+      );
+    })
     .filter((part): part is string => part !== null);
   const start = periodStart(period);
   if (ds.dateColumn && start)
@@ -216,11 +242,16 @@ export function buildSimpleSql(
     lines.push(`ORDER BY ${orderTarget} ${ds.sort === "metric_desc" ? "DESC" : "ASC"}`);
   if (kind === "oracle") lines.push(`FETCH FIRST ${limit} ROWS ONLY`);
   else if (kind !== "mssql") lines.push(`LIMIT ${limit}`);
-  return lines.join("\n");
+  return substituteVariables(lines.join("\n"), scope, kind);
 }
 
-export function buildExpertSql(ds: Dataset, kind: DatabaseKind | null, period: Period): string {
-  const sql = ds.sql.trim().replace(/;+\s*$/, "");
+export function buildExpertSql(
+  ds: Dataset,
+  kind: DatabaseKind | null,
+  period: Period,
+  scope: VariableScope = EMPTY_SCOPE,
+): string {
+  const sql = substituteVariables(ds.sql.trim().replace(/;+\s*$/, ""), scope, kind);
   const start = periodStart(period);
   if (!sql || !ds.mapping.dateColumn || !start) return sql;
   const style = identifierStyleForKind(kind);
@@ -228,8 +259,13 @@ export function buildExpertSql(ds: Dataset, kind: DatabaseKind | null, period: P
   return `SELECT * FROM (\n${sql}\n) ${kind === "oracle" ? "" : "AS "}q WHERE q.${col} >= ${dateLiteral(start, kind)}`;
 }
 
-export function datasetSql(ds: Dataset, kind: DatabaseKind | null, period: Period): string {
+export function datasetSql(
+  ds: Dataset,
+  kind: DatabaseKind | null,
+  period: Period,
+  scope: VariableScope = EMPTY_SCOPE,
+): string {
   return ds.mode === "simple"
-    ? buildSimpleSql(ds.simple, kind, period)
-    : buildExpertSql(ds, kind, period);
+    ? buildSimpleSql(ds.simple, kind, period, scope)
+    : buildExpertSql(ds, kind, period, scope);
 }

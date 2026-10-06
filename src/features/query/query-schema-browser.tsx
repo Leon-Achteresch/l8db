@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { DatabaseIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ColumnInfo, DatabaseKind, TableInfo } from "@/lib/db";
@@ -56,10 +56,13 @@ export function QuerySchemaBrowser({
     count: visibleMembers.length,
     getScrollElement: () => memberScrollRef.current,
     estimateSize: () => 28,
-    getItemKey: (index) => {
-      const member = visibleMembers[index];
-      return `${member.kind}:${member.name}:${member.line}`;
-    },
+    getItemKey: useCallback(
+      (index: number) => {
+        const member = visibleMembers[index];
+        return `${member.kind}:${member.name}:${member.line}`;
+      },
+      [visibleMembers],
+    ),
     overscan: 10,
     initialRect: { width: 300, height: 600 },
   });
@@ -92,7 +95,10 @@ export function QuerySchemaBrowser({
     count: visible.length,
     getScrollElement: () => schemaScrollRef.current,
     estimateSize: () => 40,
-    getItemKey: (index) => JSON.stringify([visible[index].schema, visible[index].name]),
+    getItemKey: useCallback(
+      (index: number) => JSON.stringify([visible[index].schema, visible[index].name]),
+      [visible],
+    ),
     overscan: 10,
     initialRect: { width: 300, height: 600 },
   });
@@ -121,7 +127,7 @@ export function QuerySchemaBrowser({
     count: statements.length,
     getScrollElement: () => statementScrollRef.current,
     estimateSize: () => 57,
-    getItemKey: (index) => statements[index].start,
+    getItemKey: useCallback((index: number) => statements[index].start, [statements]),
     overscan: 8,
     initialRect: { width: 300, height: 600 },
   });

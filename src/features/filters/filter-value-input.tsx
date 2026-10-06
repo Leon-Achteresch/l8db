@@ -3,6 +3,7 @@ import { type ComponentProps, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { operatorNeedsList, parseFilterList } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
+import { DateFilterInput } from "./date-filter-input";
 
 function splitPasted(text: string): string[] {
   return text
@@ -15,17 +16,29 @@ type FilterValueInputProps = Omit<ComponentProps<typeof Input>, "value" | "onCha
   operator: string;
   value: string;
   onValueChange: (value: string) => void;
+  date?: boolean;
 };
 
 export function FilterValueInput({
   operator,
   value,
   onValueChange,
+  date,
   className,
   ...props
 }: FilterValueInputProps) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  if (date && !operatorNeedsList(operator)) {
+    return (
+      <DateFilterInput
+        {...props}
+        value={value}
+        onValueChange={onValueChange}
+        className={className}
+      />
+    );
+  }
   if (!operatorNeedsList(operator)) {
     return (
       <Input

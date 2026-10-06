@@ -209,6 +209,48 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Sidebar-Spaltensuche bleibt virtualisiert",
+  async () => {
+    const app = await open("/", 'a[data-name="table_0000"]');
+    try {
+      const longTasks = await app.page.evaluateHandle(() => {
+        const durations: number[] = [];
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) durations.push(entry.duration);
+        }).observe({ type: "longtask" });
+        return durations;
+      });
+      await app.page.locator('[data-tour="sidebar-search"] input').first().click();
+      await app.page.keyboard.type("col_1", { delay: 30 });
+      await app.page.locator('[data-slot="sidebar-menu-sub-button"]').first().waitFor();
+      await app.page.waitForTimeout(500);
+      const dom = await app.page.evaluate(() => ({
+        items: document.querySelectorAll("[data-slot=sidebar-menu-item]").length,
+        nodes: document.querySelectorAll("*").length,
+      }));
+      const worst = await longTasks.evaluate((durations) => Math.max(0, ...durations));
+      console.log(
+        `perf sidebar-column-search: ${dom.items} Einträge, ${dom.nodes} Knoten, längster Task ${worst.toFixed(0)} ms`,
+      );
+      expect(dom.items).toBeLessThan(60);
+      expect(worst).toBeLessThan(200);
+
+      await app.page.locator("[data-slot=sidebar-content]").evaluate(async (scroller) => {
+        for (let step = 0; step < 6; step++) {
+          scroller.scrollTop = scroller.scrollHeight;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      });
+      await app.page.locator('a[data-name="table_0499"]').waitFor();
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  180000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   "Dashboard bleibt beim Scrollen flüssig",
   async () => {
     const app = await open("/dashboard", ".react-grid-item");

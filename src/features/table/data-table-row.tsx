@@ -9,8 +9,7 @@ import type {
 } from "@tanstack/react-table";
 import { type CSSProperties, type Dispatch, memo, type SetStateAction } from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
-import { gridMatchKey } from "@/lib/grid-search";
-import { cellKey, type GridCellRef } from "@/lib/grid-selection";
+import type { GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
 import { cn } from "@/lib/utils";
 import { DataTableCell } from "./data-table-cell";
@@ -37,14 +36,13 @@ export type DataTableRowProps = {
   editingCell: EditingCell | null;
   activeCell: GridCellRef | null;
   activeMatch: GridCellRef | null;
-  selectedKeys: Set<string>;
-  selectedCount: number;
-  matchKeys: Set<string>;
+  selectedColumns: Set<string> | undefined;
+  matchColumns: Set<string> | undefined;
   isSaving: boolean;
   canPickFk: boolean;
   outgoingFkByColumn: Map<string, ForeignKeyInfo>;
   canEditCell: DataTableProps["canEditCell"];
-  onSaveRow: DataTableProps["onSaveRow"];
+  canSave: boolean;
   focusCell: (cell: GridCellRef | null, extend?: boolean, additive?: boolean) => void;
   handleCellEdit: (row: Row<TableRow>, columnId: string) => void;
   handleCellCopy: (value: unknown) => void;
@@ -80,13 +78,12 @@ export const DataTableRow = memo(function DataTableRow({
   editingCell,
   activeCell,
   activeMatch,
-  selectedKeys,
-  selectedCount,
-  matchKeys,
+  selectedColumns,
+  matchColumns,
   isSaving,
   canPickFk,
   outgoingFkByColumn,
-  onSaveRow,
+  canSave,
   canEditCell,
   focusCell,
   handleCellEdit,
@@ -144,8 +141,8 @@ export const DataTableRow = memo(function DataTableRow({
           !isRowEditing && activeCell?.rowIndex === rowIndex && activeCell.columnId === columnId;
         const pinnedOffset =
           cellIndex > 0 && column.getIsPinned() === "left" ? column.getStart("left") : null;
-        const isSelected = selectedCount > 1 && selectedKeys.has(cellKey(rowIndex, columnId));
-        const isMatch = matchKeys.has(gridMatchKey(rowIndex, columnId));
+        const isSelected = !!selectedColumns?.has(columnId);
+        const isMatch = !!matchColumns?.has(columnId);
         const isActiveMatch =
           activeMatch?.rowIndex === rowIndex && activeMatch.columnId === columnId;
 
@@ -159,7 +156,7 @@ export const DataTableRow = memo(function DataTableRow({
             fontSize={fontSize}
             isSaving={isSaving}
             canPickFk={canPickFk}
-            onSaveRow={onSaveRow}
+            canSave={canSave}
             canEditCell={canEditCell}
             focusCell={focusCell}
             handleCellEdit={handleCellEdit}

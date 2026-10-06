@@ -14,10 +14,26 @@ export function parseDashboard(text: string): DashboardFile {
   return parsed;
 }
 
+export function dashboardSqlParts(dashboard: Pick<Dashboard, "datasets" | "variables">): string[] {
+  return [
+    ...dashboard.datasets
+      .filter((d) => d.mode === "expert" && d.sql?.trim())
+      .map((d) => `${d.name}:\n${d.sql.trim()}`),
+    ...dashboard.datasets.flatMap((d) =>
+      d.mode === "expert"
+        ? []
+        : (d.simple?.calculated ?? [])
+            .filter((field) => field.expr?.trim())
+            .map((field) => `${d.name} · Formel ${field.label}:\n${field.expr.trim()}`),
+    ),
+    ...(dashboard.variables ?? [])
+      .filter((v) => v.optionsSql?.trim())
+      .map((v) => `Filter ${v.label}:\n${v.optionsSql?.trim()}`),
+  ];
+}
+
 export function confirmExpertSql(dashboard: DashboardFile): boolean {
-  const queries = dashboard.datasets
-    .filter((d) => d.mode === "expert" && d.sql?.trim())
-    .map((d) => `${d.name}:\n${d.sql.trim()}`);
+  const queries = dashboardSqlParts(dashboard);
   if (!queries.length) return true;
   return window.confirm(
     `Das Dashboard enthält ${queries.length} SQL-Abfrage(n), die direkt auf der Datenbank ausgeführt werden:\n\n${queries.join("\n\n")}\n\nFortfahren?`,
@@ -25,8 +41,8 @@ export function confirmExpertSql(dashboard: DashboardFile): boolean {
 }
 
 export function serializeDashboard(dashboard: Dashboard): string {
-  const { name, datasets, widgets, refreshSec, locked } = dashboard;
-  return `${JSON.stringify({ name, datasets, widgets, refreshSec, locked }, null, 2)}\n`;
+  const { name, datasets, widgets, variables, refreshSec, locked } = dashboard;
+  return `${JSON.stringify({ name, datasets, widgets, ...(variables?.length ? { variables } : {}), refreshSec, locked }, null, 2)}\n`;
 }
 
 export async function fileStamp(path: string): Promise<string> {

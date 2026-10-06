@@ -91,6 +91,16 @@ export function mergeSelectionCells(
   return cells;
 }
 
+export function cellsByRow(cells: GridCellRef[]): Map<number, Set<string>> {
+  const rows = new Map<number, Set<string>>();
+  for (const cell of cells) {
+    const columns = rows.get(cell.rowIndex);
+    if (columns) columns.add(cell.columnId);
+    else rows.set(cell.rowIndex, new Set([cell.columnId]));
+  }
+  return rows;
+}
+
 export function cellsToTsv(
   rows: Record<string, unknown>[],
   cells: GridCellRef[],

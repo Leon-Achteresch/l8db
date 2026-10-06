@@ -1,61 +1,35 @@
-import anthropic from "thesvg/anthropic";
-import auth0 from "thesvg/auth0";
-import clerk from "thesvg/clerk";
-import datadog from "thesvg/datadog";
-import discord from "thesvg/discord";
-import docker from "thesvg/docker";
-import elasticsearch from "thesvg/elasticsearch";
-import figma from "thesvg/figma";
-import firebase from "thesvg/firebase";
-import github from "thesvg/github";
-import gitlab from "thesvg/gitlab";
-import googleGemini from "thesvg/google-gemini";
-import grafana from "thesvg/grafana";
-import kafka from "thesvg/kafka";
-import kubernetes from "thesvg/kubernetes";
-import meilisearch from "thesvg/meilisearch";
-import notion from "thesvg/notion";
-import openai from "thesvg/openai";
-import paypal from "thesvg/paypal";
-import prisma from "thesvg/prisma";
-import sentry from "thesvg/sentry";
-import shopify from "thesvg/shopify";
-import slack from "thesvg/slack";
-import stripe from "thesvg/stripe";
-import typesense from "thesvg/typesense";
-import vercel from "thesvg/vercel";
 import { thesvgSvgForSlug } from "../provider-logo/icons";
 import { candidateKeys } from "./name-keys";
 
 type IconModule = { svg: string };
 
-const BRAND_ICONS: Record<string, IconModule> = {
-  anthropic,
-  auth0,
-  clerk,
-  datadog,
-  discord,
-  docker,
-  elasticsearch,
-  figma,
-  firebase,
-  github,
-  gitlab,
-  "google-gemini": googleGemini,
-  grafana,
-  kafka,
-  kubernetes,
-  meilisearch,
-  notion,
-  openai,
-  paypal,
-  prisma,
-  sentry,
-  shopify,
-  slack,
-  stripe,
-  typesense,
-  vercel,
+const BRAND_ICONS: Record<string, () => Promise<{ default: IconModule }>> = {
+  anthropic: () => import("thesvg/anthropic"),
+  auth0: () => import("thesvg/auth0"),
+  clerk: () => import("thesvg/clerk"),
+  datadog: () => import("thesvg/datadog"),
+  discord: () => import("thesvg/discord"),
+  docker: () => import("thesvg/docker"),
+  elasticsearch: () => import("thesvg/elasticsearch"),
+  figma: () => import("thesvg/figma"),
+  firebase: () => import("thesvg/firebase"),
+  github: () => import("thesvg/github"),
+  gitlab: () => import("thesvg/gitlab"),
+  "google-gemini": () => import("thesvg/google-gemini"),
+  grafana: () => import("thesvg/grafana"),
+  kafka: () => import("thesvg/kafka"),
+  kubernetes: () => import("thesvg/kubernetes"),
+  meilisearch: () => import("thesvg/meilisearch"),
+  notion: () => import("thesvg/notion"),
+  openai: () => import("thesvg/openai"),
+  paypal: () => import("thesvg/paypal"),
+  prisma: () => import("thesvg/prisma"),
+  sentry: () => import("thesvg/sentry"),
+  shopify: () => import("thesvg/shopify"),
+  slack: () => import("thesvg/slack"),
+  stripe: () => import("thesvg/stripe"),
+  typesense: () => import("thesvg/typesense"),
+  vercel: () => import("thesvg/vercel"),
 };
 
 const NAME_TO_BRAND: Record<string, string> = {
@@ -154,16 +128,13 @@ const NAME_TO_TECH: Record<string, string> = {
   cosmosdb: "azure-azure-cosmos-db",
 };
 
-export function brandSvgForName(name: string): string | null {
+export async function brandSvgForName(name: string): Promise<string | null> {
   for (const key of candidateKeys(name)) {
-    const slug = NAME_TO_BRAND[key];
-    if (slug) {
-      const icon = BRAND_ICONS[slug];
-      if (icon) return icon.svg;
-    }
-    const tech = NAME_TO_TECH[key];
+    const slug = Object.hasOwn(NAME_TO_BRAND, key) ? NAME_TO_BRAND[key] : undefined;
+    if (slug && Object.hasOwn(BRAND_ICONS, slug)) return (await BRAND_ICONS[slug]()).default.svg;
+    const tech = Object.hasOwn(NAME_TO_TECH, key) ? NAME_TO_TECH[key] : undefined;
     if (tech) {
-      const svg = thesvgSvgForSlug(tech);
+      const svg = await thesvgSvgForSlug(tech);
       if (svg) return svg;
     }
   }

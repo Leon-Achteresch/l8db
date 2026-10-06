@@ -52,6 +52,12 @@ export default defineConfig(async () => ({
     ],
   },
 
+  build: {
+    rolldownOptions: {
+      output: { codeSplitting: { groups: [{ name: "boot", tags: ["$initial" as const] }] } },
+    },
+  },
+
   clearScreen: false,
   server: {
     port: 1420,

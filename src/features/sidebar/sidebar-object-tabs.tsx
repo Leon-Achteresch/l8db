@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { startTransition, useOptimistic } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -17,8 +18,17 @@ export function SidebarObjectTabs({
   value: string;
   onValueChange: (value: string) => void;
 }) {
+  const [shown, setShown] = useOptimistic(value);
   return (
-    <Tabs value={value} onValueChange={onValueChange}>
+    <Tabs
+      value={shown}
+      onValueChange={(next) =>
+        startTransition(() => {
+          setShown(next);
+          onValueChange(next);
+        })
+      }
+    >
       <TabsList className="w-full">
         {tabs.map((tab) => (
           <Tooltip
@@ -27,7 +37,11 @@ export function SidebarObjectTabs({
             side="bottom"
             wrapperClassName="h-full flex-1"
           >
-            <TabsTrigger value={tab.value} className="h-full w-full px-0" aria-label={tab.label}>
+            <TabsTrigger
+              value={tab.value}
+              className="h-full w-full px-0 transition-none"
+              aria-label={tab.label}
+            >
               <tab.icon className="size-4" />
             </TabsTrigger>
           </Tooltip>

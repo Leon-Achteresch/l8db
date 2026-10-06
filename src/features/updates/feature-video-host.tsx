@@ -17,8 +17,15 @@ export function FeatureVideoHost() {
     (toast) => !toast.delete && (toast.type === "error" || toast.type === "warning"),
   );
   const [environment, setEnvironment] = useState({ blocked: true, idle: false, ready: false });
+  const watching =
+    Boolean(activeId) ||
+    (enabled &&
+      !sessionUsed &&
+      !import.meta.env.DEV &&
+      items.slice(0, 3).some((item) => !history[item.id]));
 
   useEffect(() => {
+    if (!watching) return;
     const start = Date.now();
     let lastInput = start;
     const input = () => {
@@ -51,13 +58,14 @@ export function FeatureVideoHost() {
     document.addEventListener("pointerdown", input, true);
     document.addEventListener("visibilitychange", inspect);
     const timer = window.setInterval(inspect, 500);
+    inspect();
     return () => {
       clearInterval(timer);
       document.removeEventListener("keydown", input, true);
       document.removeEventListener("pointerdown", input, true);
       document.removeEventListener("visibilitychange", inspect);
     };
-  }, []);
+  }, [watching]);
 
   const suspended = environment.blocked || !onboardingDone || tourActive || urgent;
   useEffect(() => {

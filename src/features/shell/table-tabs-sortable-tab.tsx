@@ -15,7 +15,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import type * as React from "react";
+import { memo, type RefObject } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -32,26 +32,27 @@ import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 import { cn } from "@/lib/utils";
 
+export interface TableTabActions {
+  preload: (tab: Tab) => void;
+  navigate: (tab: Tab) => void;
+  close: (tab: Tab) => void;
+  closeOthers: (tab: Tab) => void;
+  closeToRight: (tab: Tab) => void;
+  closeAll: () => void;
+  split: (tab: Tab) => void;
+  copy: (value: string) => void;
+}
+
 export interface TableTabsSortableTabProps {
   tab: Tab;
   index: number;
   isActive: boolean;
   isPending?: boolean;
-  onPreload?: () => void;
   isInPane?: boolean;
   canSplit?: boolean;
   hasTabsToRight: boolean;
   tabsCount: number;
-  onNavigate: () => void;
-  onClose: () => void;
-  onCloseOthers: () => void;
-  onCloseToRight: () => void;
-  onCloseAll: () => void;
-  onAuxClick: (event: React.MouseEvent) => void;
-  onMouseDown: (event: React.MouseEvent) => void;
-  onCopyTable?: () => void;
-  onCopyFull?: () => void;
-  onSplit?: () => void;
+  actions: RefObject<TableTabActions>;
 }
 
 function tabVisual(tab: Tab) {
@@ -89,26 +90,16 @@ function tabVisual(tab: Tab) {
   }
 }
 
-export function TableTabsSortableTab({
+export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   tab,
   index,
   isActive,
   isPending = false,
-  onPreload,
   isInPane = false,
   canSplit = true,
   hasTabsToRight,
   tabsCount,
-  onNavigate,
-  onClose,
-  onCloseOthers,
-  onCloseToRight,
-  onCloseAll,
-  onAuxClick,
-  onMouseDown,
-  onCopyTable,
-  onCopyFull,
-  onSplit,
+  actions,
 }: TableTabsSortableTabProps) {
   const reduceMotion = useReducedMotion();
   const easyMode = useSettingsStore((state) => state.easyMode);
@@ -123,6 +114,8 @@ export function TableTabsSortableTab({
   const { Icon, iconColor } = tabVisual(tab);
 
   const label = tabLabel(tab);
+  const onPreload = () => actions.current.preload(tab);
+  const onClose = () => actions.current.close(tab);
 
   return (
     <ContextMenu>
@@ -133,8 +126,15 @@ export function TableTabsSortableTab({
           layout={!isDragging && !reduceMotion ? "position" : false}
           layoutDependency={index}
           transition={{ layout: SPRING }}
-          onAuxClick={onAuxClick}
-          onMouseDown={onMouseDown}
+          onAuxClick={(event) => {
+            if (event.button !== 1) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+          }}
+          onMouseDown={(event) => {
+            if (event.button === 1) event.preventDefault();
+          }}
           className={cn(
             "group relative isolate flex h-7 shrink-0 cursor-grab items-center rounded-full pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
             isActive
@@ -159,7 +159,7 @@ export function TableTabsSortableTab({
             transition={SPRING_PRESS}
             onPointerEnter={onPreload}
             onFocus={onPreload}
-            onClick={onNavigate}
+            onClick={() => actions.current.navigate(tab)}
             aria-busy={isPending || undefined}
             title={label}
             aria-current={isActive ? "page" : undefined}
@@ -211,31 +211,41 @@ export function TableTabsSortableTab({
             <XIcon className="size-3" />
           </ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem disabled={tabsCount <= 1} onSelect={onCloseOthers}>
+        <ContextMenuItem
+          disabled={tabsCount <= 1}
+          onSelect={() => actions.current.closeOthers(tab)}
+        >
           Andere schließen
         </ContextMenuItem>
-        <ContextMenuItem disabled={!hasTabsToRight} onSelect={onCloseToRight}>
+        <ContextMenuItem
+          disabled={!hasTabsToRight}
+          onSelect={() => actions.current.closeToRight(tab)}
+        >
           Tabs rechts schließen
         </ContextMenuItem>
-        <ContextMenuItem onSelect={onCloseAll}>Alle schließen</ContextMenuItem>
-        {!easyMode && onSplit && (
-          <ContextMenuItem disabled={!canSplit} onSelect={onSplit}>
+        <ContextMenuItem onSelect={() => actions.current.closeAll()}>
+          Alle schließen
+        </ContextMenuItem>
+        {!easyMode && (
+          <ContextMenuItem disabled={!canSplit} onSelect={() => actions.current.split(tab)}>
             Rechts teilen
           </ContextMenuItem>
         )}
-        {tab.kind === "table" && onCopyTable && onCopyFull && (
+        {tab.kind === "table" && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={onCopyTable}>
+            <ContextMenuItem onSelect={() => actions.current.copy(tab.table)}>
               Tabellenname kopieren
               <ContextMenuShortcut>
                 <CopyIcon className="size-3.5" />
               </ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem onSelect={onCopyFull}>Vollständigen Namen kopieren</ContextMenuItem>
+            <ContextMenuItem onSelect={() => actions.current.copy(`${tab.schema}.${tab.table}`)}>
+              Vollständigen Namen kopieren
+            </ContextMenuItem>
           </>
         )}
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});

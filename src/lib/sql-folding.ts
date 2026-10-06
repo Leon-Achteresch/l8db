@@ -12,6 +12,7 @@ interface Opener {
 }
 
 const BEGIN_SKIP = new Set(["TRANSACTION", "TRAN", "WORK", "DEFERRED", "IMMEDIATE", "EXCLUSIVE"]);
+const WORD = /[A-Za-z_][A-Za-z0-9_$#]*/y;
 
 export function sqlFoldingRanges(text: string): SqlFoldRange[] {
   const ranges: SqlFoldRange[] = [];
@@ -45,6 +46,10 @@ export function sqlFoldingRanges(text: string): SqlFoldRange[] {
       line += 1;
       index += 1;
       lineHasCodeBefore = false;
+      continue;
+    }
+    if (char === " " || char === "\t" || char === "\r") {
+      index += 1;
       continue;
     }
     if (char === "-" && text[index + 1] === "-") {
@@ -120,7 +125,8 @@ export function sqlFoldingRanges(text: string): SqlFoldRange[] {
       index += 1;
       continue;
     }
-    const word = /^[A-Za-z_][A-Za-z0-9_$#]*/.exec(text.slice(index, index + 128));
+    WORD.lastIndex = index;
+    const word = WORD.exec(text);
     if (word) {
       const upper = word[0].toUpperCase();
       const atLineStart = !lineHasCodeBefore;

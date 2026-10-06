@@ -4,13 +4,16 @@ import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from 
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
-import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
+import {
+  type TableTabActions,
+  TableTabsSortableTab,
+} from "@/features/shell/table-tabs-sortable-tab";
 import { copyText } from "@/lib/clipboard";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
@@ -19,12 +22,16 @@ import { onHotkeyAction } from "@/lib/hotkeys";
 import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
-import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const allTabs = useTableTabs((state) => state.tabs);
+  const shownTabs = useRef<Tab[]>([]);
+  const allTabs = useTableTabs((state) => {
+    if (!sameTabBarTabs(shownTabs.current, state.tabs)) shownTabs.current = state.tabs;
+    return shownTabs.current;
+  });
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
@@ -50,7 +57,9 @@ export function TableTabs() {
   };
 
   const isTabActive = (tab: Tab) =>
-    split ? panes[focusedPane] === tabKey(tab) : tab === activeWorkspaceTab;
+    split
+      ? panes[focusedPane] === tabKey(tab)
+      : activeWorkspaceTab !== undefined && tabKey(tab) === tabKey(activeWorkspaceTab);
 
   const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
@@ -86,13 +95,6 @@ export function TableTabs() {
     navigateToTab(navigate, tab);
   };
 
-  const handleAuxClick = (event: React.MouseEvent, tab: Tab) => {
-    if (event.button !== 1) return;
-    event.preventDefault();
-    event.stopPropagation();
-    handleClose(tab);
-  };
-
   const handleNewQueryTab = () => {
     const id = openQueryTab();
     void navigate({ to: "/query/$id", params: { id } });
@@ -103,9 +105,21 @@ export function TableTabs() {
     if (id) void navigate({ to: "/query/$id", params: { id } });
   };
 
-  const handleCopy = (value: string) => {
-    void copyText(value);
+  const tabActions: TableTabActions = {
+    preload: (tab) => preloadTab(router, tab),
+    navigate: (tab) => {
+      if (split) reveal(tabKey(tab));
+      navigateToTab(navigate, tab);
+    },
+    close: handleClose,
+    closeOthers: handleCloseOthers,
+    closeToRight: handleCloseToRight,
+    closeAll: handleCloseAll,
+    split: handleSplitTab,
+    copy: (value) => void copyText(value),
   };
+  const actions = useRef(tabActions);
+  actions.current = tabActions;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -125,28 +139,11 @@ export function TableTabs() {
                 index={allTabs.indexOf(tab)}
                 isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}
                 isPending={Boolean(pendingTab && tabKey(pendingTab) === tabKey(tab))}
-                onPreload={() => preloadTab(router, tab)}
                 isInPane={split && panes.includes(tabKey(tab))}
                 hasTabsToRight={index < tabs.length - 1}
                 tabsCount={tabs.length}
                 canSplit={!easyMode && panes.length < MAX_SPLIT_PANES}
-                onNavigate={() => {
-                  if (split) reveal(tabKey(tab));
-                  navigateToTab(navigate, tab);
-                }}
-                onClose={() => handleClose(tab)}
-                onCloseOthers={() => handleCloseOthers(tab)}
-                onCloseToRight={() => handleCloseToRight(tab)}
-                onCloseAll={handleCloseAll}
-                onSplit={() => handleSplitTab(tab)}
-                onAuxClick={(event) => handleAuxClick(event, tab)}
-                onMouseDown={(event) => {
-                  if (event.button === 1) event.preventDefault();
-                }}
-                onCopyTable={tab.kind === "table" ? () => handleCopy(tab.table) : undefined}
-                onCopyFull={
-                  tab.kind === "table" ? () => handleCopy(`${tab.schema}.${tab.table}`) : undefined
-                }
+                actions={actions}
               />
             ))}
           </div>

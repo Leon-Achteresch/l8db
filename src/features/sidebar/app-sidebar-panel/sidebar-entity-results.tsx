@@ -21,7 +21,7 @@ import { EntityMatchingColumns } from "./entity-matching-columns";
 import { SidebarEntityButton } from "./sidebar-entity-button";
 import { TableEntityMenuItems } from "./table-entity-menu-items";
 import { useSidebarEntityActions } from "./use-sidebar-entity-actions";
-import type { SidebarEntityMatch } from "./use-sidebar-entity-filter";
+import { matchingColumnsWindow, type SidebarEntityMatch } from "./use-sidebar-entity-filter";
 
 export const SidebarEntityResults = memo(function SidebarEntityResults({
   filtered,
@@ -55,10 +55,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
   } = useSidebarEntityActions(type);
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
-  const windowDisabled = useMemo(
-    () => filtered.some((item) => Boolean(item.matchingColumns?.length)),
-    [filtered],
-  );
+  const measured = useMemo(() => matchingColumnsWindow(filtered), [filtered]);
 
   return (
     <>
@@ -75,7 +72,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
       {filtered.length === 0 ? (
         <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
-        <SidebarWindow count={filtered.length} disabled={windowDisabled}>
+        <SidebarWindow count={filtered.length} measured={measured}>
           {(index) => {
             const item = filtered[index];
             const menuButton = (
