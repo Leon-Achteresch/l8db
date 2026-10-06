@@ -112,6 +112,13 @@ export interface DatasetFilter {
   dataType?: string;
 }
 
+export type JoinKind = "left" | "inner";
+
+export interface JoinPair {
+  from: string;
+  to: string;
+}
+
 export interface DatasetJoin {
   id?: string;
   parent?: string | null;
@@ -119,6 +126,29 @@ export interface DatasetJoin {
   table: string;
   fromColumn: string;
   toColumn: string;
+  kind?: JoinKind;
+  extra?: JoinPair[];
+  manual?: boolean;
+}
+
+export interface CalculatedField {
+  id: string;
+  label: string;
+  expr: string;
+  aggregate: boolean;
+  type?: "number" | "text" | "date";
+}
+
+export type VariableType = "text" | "number" | "date" | "select";
+
+export interface DashboardVariable {
+  id: string;
+  name: string;
+  label: string;
+  type: VariableType;
+  defaultValue: string;
+  options?: string[];
+  optionsSql?: string;
 }
 
 export interface SimpleDataset {
@@ -126,6 +156,7 @@ export interface SimpleDataset {
   table: string;
   join: DatasetJoin | null;
   joins?: DatasetJoin[];
+  calculated?: CalculatedField[];
   dimension: { column: string; bucket: TimeBucket } | null;
   dimension2: string | null;
   metrics: DatasetMetric[];
@@ -171,6 +202,7 @@ export interface Dashboard {
   name: string;
   datasets: Dataset[];
   widgets: Widget[];
+  variables?: DashboardVariable[];
   refreshSec: number;
   locked: boolean;
   createdAt: number;

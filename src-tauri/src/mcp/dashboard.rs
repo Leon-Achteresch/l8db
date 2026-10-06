@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use super::config::{self, McpConfig, McpConnection};
+use super::dashboard_builder as builder;
 use super::redact::{self, Redactor};
 use super::server::{self, Server, SQL_KINDS};
 use crate::db::QueryResult;
@@ -19,11 +20,19 @@ const MAX_NAME_CHARS: usize = 120;
 const PERIODS: &[&str] = &["all", "7d", "30d", "90d", "quarter", "year"];
 const REFRESH_HINT: &str = "refreshSec muss 0 (aus) oder 10 bis 86400 sein";
 const SERIES_KINDS: &[&str] = &["column", "line", "area", "radar", "sankey", "heatmap"];
-const DATA_KEYS: &[&str] = &["sql", "dimension", "dimension2", "metrics", "dateColumn"];
+const DATA_KEYS: &[&str] = &[
+    "sql",
+    "builder",
+    "dimension",
+    "dimension2",
+    "metrics",
+    "dateColumn",
+];
 const SPEC_KEYS: &[&str] = &[
     "type",
     "title",
     "sql",
+    "builder",
     "dimension",
     "dimension2",
     "metrics",
@@ -118,7 +127,8 @@ pub fn tool_definition() -> Value {
         "properties": {
             "type": {"type": "string", "enum": kinds},
             "title": {"type": "string"},
-            "sql": {"type": "string", "description": "One read-only SELECT. Column aliases are the names used by the mapping fields."},
+            "sql": {"type": "string", "description": "One read-only SELECT. Column aliases are the names used by the mapping fields. Use {{variable}} for dashboard filters."},
+            "builder": {"type": "object", "description": "Instead of sql: visual dataset the user can keep editing in the l8db chart studio. See action=chart_types for the format (table, joins, fields, dimension, dimension2, metrics, filters, dateColumn, sort, limit)."},
             "dimension": nullable("Result column for categories / x-axis"),
             "dimension2": nullable("Second category column: series split (column, line, area, radar), target (sankey), columns (heatmap)"),
             "metrics": {"type": "array", "items": {"type": "string"}, "description": "Numeric result columns"},
@@ -133,17 +143,19 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart has its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn); omitted dimension/metrics are taken from the result (first text or date column, then numeric columns). Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, charts), update (name, refreshSec), delete, add_charts (charts), update_chart (chart + spec with changed fields only), remove_chart, preview (dashboard+chart or connection+spec, shows rows), chart_types (chart types, mapping rules, options). Layout is a 12-column grid; omit x/y for automatic placement.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "chart_types"]},
+                "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "run", "chart_types"]},
                 "connection": {"type": "string", "description": "Connection name or id (create, list filter, preview without dashboard)"},
                 "dashboard": {"type": "string", "description": "Dashboard id or name"},
                 "name": {"type": "string"},
                 "refreshSec": {"type": "integer", "description": "Auto refresh in seconds, 0 = off"},
                 "chart": {"type": "string", "description": "Chart id or title"},
-                "limit": {"type": "integer", "minimum": 1, "description": "Preview rows, default 20"},
+                "limit": {"type": "integer", "minimum": 1, "description": "Rows per chart for preview (default 20) and run (default 5)"},
+                "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Dashboard filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
+                "values": {"type": "object", "description": "Variable values for preview and run, e.g. {\"mandant\": \"Nordfrost\"}"},
                 "charts": {"type": "array", "items": spec},
                 "spec": spec
             },
@@ -253,18 +265,44 @@ fn trusted(dashboard: &Value, config: &McpConfig) -> bool {
     };
     let redactor = Redactor::new(&config.redaction, &[]);
     let index = redact::SchemaIndex::new(&[], &redactor, &[]);
+    let variables = variables_of(dashboard);
+    let empty = Map::new();
+    let sql_of = |dataset: &Value| -> String {
+        if dataset["mode"] == "expert" {
+            builder::substitute(
+                dataset["sql"].as_str().unwrap_or(""),
+                &variables,
+                &empty,
+                connection.kind,
+            )
+        } else {
+            builder::builder_sql(&dataset["simple"], connection.kind, &variables, &empty)
+        }
+    };
     dashboard["datasets"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|dataset| dataset["mode"] == "expert")
-        .filter_map(|dataset| dataset["sql"].as_str())
+        .map(sql_of)
+        .chain(
+            variables
+                .iter()
+                .filter_map(|v| v["optionsSql"].as_str().map(str::to_string)),
+        )
         .map(|sql| {
             sql.trim()
                 .trim_end_matches(|c: char| c == ';' || c.is_whitespace())
+                .to_string()
         })
         .filter(|sql| !sql.is_empty())
-        .all(|sql| server::check_read_sql(sql, connection, &index).is_ok())
+        .all(|sql| server::check_read_sql(&sql, connection, &index).is_ok())
+}
+
+fn variables_of(dashboard: &Value) -> Vec<Value> {
+    dashboard["variables"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
 }
 
 pub fn list_dashboards() -> Vec<Value> {
@@ -307,6 +345,7 @@ pub fn mcp_dashboard_save(dashboard: Value) -> Result<String, String> {
         "createdAt": created,
         "datasets": dashboard["datasets"],
         "widgets": dashboard["widgets"],
+        "variables": dashboard["variables"].as_array().cloned().unwrap_or_default(),
     }))
 }
 
@@ -697,7 +736,10 @@ fn flatten(dashboard: &Value, widget: &Value) -> Map<String, Value> {
             }
         }
         Some(dataset) => {
-            out.insert("builder".into(), dataset["simple"].clone());
+            out.insert(
+                "builder".into(),
+                builder::describe_builder(&dataset["simple"]),
+            );
         }
         None => {}
     }
@@ -788,6 +830,7 @@ impl Server {
             }
             "create" => self.create(config, args).await,
             "preview" => return self.preview(config, args).await,
+            "run" => return self.run_all(config, args).await,
             "update" | "delete" | "add_charts" | "update_chart" | "remove_chart" => {
                 self.modify(config, args, action).await
             }
@@ -834,7 +877,12 @@ impl Server {
             "createdAt": chrono::Utc::now().timestamp_millis(),
             "datasets": [],
             "widgets": [],
+            "variables": [],
         });
+        dashboard["variables"] = json!(
+            self.prepare_variables(config, connection, args.get("variables"))
+                .await?
+        );
         let reports = self
             .add_all(config, connection, &mut dashboard, args.get("charts"), true)
             .await?;
@@ -874,6 +922,7 @@ impl Server {
             return Err(format!("Maximal {MAX_CHARTS} Charts pro Dashboard."));
         }
         let mut reports = Vec::new();
+        let variables = variables_of(dashboard);
         for (index, spec) in specs.iter().enumerate() {
             let label = spec
                 .get("title")
@@ -884,7 +933,7 @@ impl Server {
             let spec = spec_object(spec).map_err(|e| format!("Chart {label}: {e}"))?;
             let others = dashboard["widgets"].as_array().cloned().unwrap_or_default();
             let built = self
-                .build(config, connection, &spec, None, &others)
+                .build(config, connection, &spec, None, &others, &variables)
                 .await
                 .map_err(|e| format!("Chart {label}: {e}"))?;
             if let Some(dataset) = built.dataset {
@@ -903,6 +952,7 @@ impl Server {
         spec: &Map<String, Value>,
         existing: Option<(&Value, Option<&Value>)>,
         others: &[Value],
+        variables: &[Value],
     ) -> Result<Built, String> {
         let base_widget = existing.map(|(widget, _)| widget);
         let base_dataset = existing.and_then(|(_, dataset)| dataset);
@@ -940,7 +990,49 @@ impl Server {
         let data_change = existing.is_none() || DATA_KEYS.iter().any(|key| spec.contains_key(*key));
         let mut notes = Vec::new();
         let mut preview = String::new();
-        let (dataset, shape) = if data_change {
+        let builder_spec = spec.get("builder").filter(|value| !value.is_null());
+        let (dataset, shape) = if let (true, Some(builder_spec)) = (data_change, builder_spec) {
+            if spec.contains_key("sql") {
+                return Err("Entweder sql oder builder angeben, nicht beides.".into());
+            }
+            let simple = builder::parse_builder(builder_spec)?;
+            let id = base_dataset
+                .and_then(|d| d["id"].as_str())
+                .map(str::to_string)
+                .unwrap_or_else(new_id);
+            let dataset = json!({
+                "id": id,
+                "name": if title.is_empty() { kind.name.to_string() } else { title.clone() },
+                "mode": "simple",
+                "simple": simple,
+                "sql": "",
+                "mapping": {"dimension": null, "dimension2": null, "metrics": [], "dateColumn": null},
+            });
+            check_variables(&builder::dataset_variables(&dataset), variables)?;
+            let shape = shape_of(&dataset);
+            check_shape(kind, &shape, &period)?;
+            let sql =
+                builder::builder_sql(&dataset["simple"], connection.kind, variables, &Map::new());
+            let mut mapping = Mapping {
+                dimension: shape.dimension.clone(),
+                dimension2: shape.dimension2.clone(),
+                metrics: shape.metrics.clone(),
+                date_column: None,
+            };
+            let (_, rows) = self
+                .check_sql(
+                    config,
+                    connection,
+                    kind,
+                    &sql,
+                    &mut mapping,
+                    &mut notes,
+                    variables,
+                )
+                .await?;
+            preview = rows;
+            (Some(dataset), shape)
+        } else if data_change {
             let base = base_dataset.filter(|d| d["mode"] == "expert");
             let field = |key: &str| -> Result<Option<String>, String> {
                 if spec.contains_key(key) {
@@ -956,7 +1048,7 @@ impl Server {
                 None => base.and_then(|d| text(d, "sql")).map(str::to_string),
             }
             .ok_or(if base_dataset.is_some() && base.is_none() {
-                "Chart nutzt den Baukasten der App. Zum Umstellen auf SQL sql mitgeben."
+                "Chart nutzt den Baukasten der App. builder (Format siehe get) oder sql mitgeben."
             } else {
                 "sql fehlt."
             })?;
@@ -979,8 +1071,17 @@ impl Server {
             if !mapping.needs_inference(kind) {
                 check_shape(kind, &mapping.shape(), &period)?;
             }
+            check_variables(&builder::tokens(&sql), variables)?;
             let (sql, rows) = self
-                .check_sql(config, connection, kind, &sql, &mut mapping, &mut notes)
+                .check_sql(
+                    config,
+                    connection,
+                    kind,
+                    &sql,
+                    &mut mapping,
+                    &mut notes,
+                    variables,
+                )
                 .await?;
             check_shape(kind, &mapping.shape(), &period)?;
             preview = rows;
@@ -1080,6 +1181,7 @@ impl Server {
         sql: &str,
         mapping: &mut Mapping,
         notes: &mut Vec<String>,
+        variables: &[Value],
     ) -> Result<(String, String), String> {
         let sql = sql
             .trim()
@@ -1094,8 +1196,9 @@ impl Server {
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
         let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
-        server::check_read_sql(&sql, connection, &index)?;
-        let result = self.run_sql(config, connection, &sql).await?;
+        let run = builder::substitute(&sql, variables, &Map::new(), connection.kind);
+        server::check_read_sql(&run, connection, &index)?;
+        let result = self.run_sql(config, connection, &run).await?;
         mapping.resolve(&result.columns, notes)?;
         mapping.infer(kind, &result, notes);
         check_numeric(&result, &mapping.metrics)?;
@@ -1157,8 +1260,22 @@ impl Server {
                     dashboard["refreshSec"] = json!(seconds);
                     changed.push(format!("refreshSec={seconds}"));
                 }
+                if args.get("variables").is_some() {
+                    let next = self
+                        .prepare_variables(config, connection, args.get("variables"))
+                        .await?;
+                    for widget in dashboard["widgets"].as_array().into_iter().flatten() {
+                        if let Some(dataset) = dataset_of(&dashboard, widget) {
+                            check_variables(&builder::dataset_variables(dataset), &next).map_err(
+                                |e| format!("Chart '{}': {e}", widget_title(&dashboard, widget)),
+                            )?;
+                        }
+                    }
+                    changed.push(format!("variables={}", next.len()));
+                    dashboard["variables"] = json!(next);
+                }
                 if changed.is_empty() {
-                    return Err("update braucht name und/oder refreshSec.".into());
+                    return Err("update braucht name, refreshSec und/oder variables.".into());
                 }
                 format!("ok, Dashboard '{name}' geändert: {}", changed.join(", "))
             }
@@ -1209,6 +1326,7 @@ impl Server {
                         &spec,
                         Some((&widget, base.as_ref())),
                         &others,
+                        &variables_of(&dashboard),
                     )
                     .await?;
                 if let Some(next) = built.dataset {
@@ -1249,23 +1367,39 @@ impl Server {
                 find_dashboard(config, server::arg_str(args, "dashboard"))?;
             let index = find_widget(&dashboard, server::arg_str(args, "chart"))?;
             let widget = &dashboard["widgets"][index];
-            let dataset = dataset_of(&dashboard, widget)
-                .filter(|d| d["mode"] == "expert")
-                .ok_or("Chart nutzt den Baukasten der App, Vorschau nur für SQL-Charts.")?;
-            let sql = dataset["sql"].as_str().unwrap_or("").to_string();
-            let mut mapping = Mapping::from(&dataset["mapping"]);
+            let dataset = dataset_of(&dashboard, widget).ok_or("Chart hat keinen Datensatz.")?;
+            let (sql, mut mapping) = dataset_query(
+                dataset,
+                connection.kind,
+                &variables_of(&dashboard),
+                &values_of(args),
+            );
             return self
                 .run_preview(config, connection, &sql, &mut mapping, limit)
                 .await;
         }
         let connection = sql_connection(config, server::arg_str(args, "connection"))?;
         let spec = spec_object(args.get("spec").unwrap_or(&Value::Null))?;
-        let sql = optional_text(&spec, "sql")?.ok_or("spec.sql fehlt.")?;
-        let mut mapping = Mapping {
-            dimension: optional_text(&spec, "dimension")?,
-            dimension2: optional_text(&spec, "dimension2")?,
-            metrics: strings(spec.get("metrics").unwrap_or(&Value::Null)),
-            date_column: optional_text(&spec, "dateColumn")?,
+        let variables = builder::parse_variables(args.get("variables").unwrap_or(&Value::Null))?;
+        let (sql, mut mapping) = match spec.get("builder").filter(|v| !v.is_null()) {
+            Some(raw) => {
+                let dataset = json!({"mode": "simple", "simple": builder::parse_builder(raw)?});
+                dataset_query(&dataset, connection.kind, &variables, &values_of(args))
+            }
+            None => (
+                builder::substitute(
+                    &optional_text(&spec, "sql")?.ok_or("spec.sql oder spec.builder fehlt.")?,
+                    &variables,
+                    &values_of(args),
+                    connection.kind,
+                ),
+                Mapping {
+                    dimension: optional_text(&spec, "dimension")?,
+                    dimension2: optional_text(&spec, "dimension2")?,
+                    metrics: strings(spec.get("metrics").unwrap_or(&Value::Null)),
+                    date_column: optional_text(&spec, "dateColumn")?,
+                },
+            ),
         };
         let mut problems = Vec::new();
         if let Some(name) = optional_text(&spec, "type")? {
@@ -1282,6 +1416,121 @@ impl Server {
             text.push_str(&format!("\nPassung: {}", problems.join(" ")));
         }
         Ok(text)
+    }
+
+    async fn prepare_variables(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        raw: Option<&Value>,
+    ) -> Result<Vec<Value>, String> {
+        let variables = builder::parse_variables(raw.unwrap_or(&Value::Null))?;
+        for variable in &variables {
+            let Some(sql) = variable["optionsSql"].as_str() else {
+                continue;
+            };
+            let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+            let columns = self.columns_for(config, connection).await?;
+            let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+            let label = variable["name"].as_str().unwrap_or("");
+            server::check_read_sql(sql, connection, &index)
+                .map_err(|e| format!("variable '{label}' optionsSql: {e}"))?;
+            self.run_sql(config, connection, sql)
+                .await
+                .map_err(|e| format!("variable '{label}' optionsSql: {e}"))?;
+        }
+        Ok(variables)
+    }
+
+    async fn run_all(&mut self, config: &McpConfig, args: &Value) -> Result<String, String> {
+        let (dashboard, connection) = find_dashboard(config, server::arg_str(args, "dashboard"))?;
+        let limit = args
+            .get("limit")
+            .and_then(Value::as_u64)
+            .map_or(5, |n| n as usize)
+            .clamp(1, config.max_rows.max(1));
+        let only = match text(args, "chart") {
+            Some(target) => Some(find_widget(&dashboard, target)?),
+            None => None,
+        };
+        let variables = variables_of(&dashboard);
+        let values = values_of(args);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+        let columns = self.columns_for(config, connection).await?;
+        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let widgets = dashboard["widgets"].as_array().cloned().unwrap_or_default();
+        let mut out = Vec::new();
+        if !variables.is_empty() {
+            let shown: Vec<String> = variables
+                .iter()
+                .map(|v| {
+                    let name = v["name"].as_str().unwrap_or("");
+                    format!(
+                        "{name}='{}'",
+                        builder::variable_value(&variables, &values, name).unwrap_or_default()
+                    )
+                })
+                .collect();
+            out.push(format!("Variablen: {}", shown.join(", ")));
+        }
+        let (mut ok, mut failed) = (0, 0);
+        for (position, widget) in widgets.iter().enumerate() {
+            if only.is_some_and(|i| i != position) {
+                continue;
+            }
+            let title = widget_title(&dashboard, widget);
+            let chart = widget["chart"].as_str().unwrap_or("");
+            let Some(dataset) = dataset_of(&dashboard, widget) else {
+                failed += 1;
+                out.push(format!("✗ '{title}' ({chart}): kein Datensatz"));
+                continue;
+            };
+            let (sql, mut mapping) = dataset_query(dataset, connection.kind, &variables, &values);
+            let shape_problem = kind(chart)
+                .ok()
+                .and_then(|k| check_shape(k, &shape_of(dataset), "all").err());
+            let result = match server::check_read_sql(sql.trim(), connection, &index) {
+                Ok(()) => self.run_sql(config, connection, sql.trim()).await,
+                Err(e) => Err(e),
+            };
+            match result {
+                Ok(result) => {
+                    let mut notes = Vec::new();
+                    let mapping_problem = mapping
+                        .resolve(&result.columns, &mut notes)
+                        .and_then(|()| check_numeric(&result, &mapping.metrics))
+                        .err();
+                    let problems: Vec<String> =
+                        shape_problem.into_iter().chain(mapping_problem).collect();
+                    if problems.is_empty() {
+                        ok += 1;
+                    } else {
+                        failed += 1;
+                    }
+                    out.push(format!(
+                        "{} '{title}' ({chart}, id {}): {} Zeilen{}\n{}",
+                        if problems.is_empty() { "✓" } else { "✗" },
+                        widget["id"].as_str().unwrap_or(""),
+                        result.rows.len(),
+                        if problems.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" · {}", problems.join("; "))
+                        },
+                        indent(&server::format_result(&result, config, &redactor, limit))
+                    ));
+                }
+                Err(error) => {
+                    failed += 1;
+                    out.push(format!(
+                        "✗ '{title}' ({chart}, id {}): {error}",
+                        widget["id"].as_str().unwrap_or("")
+                    ));
+                }
+            }
+        }
+        out.insert(0, format!("{ok} ok, {failed} mit Problemen"));
+        Ok(server::cap(out.join("\n"), config.max_chars))
     }
 
     async fn run_preview(
@@ -1480,6 +1729,51 @@ fn check_numeric(result: &QueryResult, metrics: &[String]) -> Result<(), String>
     Ok(())
 }
 
+fn values_of(args: &Value) -> Map<String, Value> {
+    args["values"].as_object().cloned().unwrap_or_default()
+}
+
+fn dataset_query(
+    dataset: &Value,
+    kind: crate::db::DatabaseKind,
+    variables: &[Value],
+    values: &Map<String, Value>,
+) -> (String, Mapping) {
+    if dataset["mode"] == "expert" {
+        return (
+            builder::substitute(
+                dataset["sql"].as_str().unwrap_or(""),
+                variables,
+                values,
+                kind,
+            ),
+            Mapping::from(&dataset["mapping"]),
+        );
+    }
+    let shape = shape_of(dataset);
+    (
+        builder::builder_sql(&dataset["simple"], kind, variables, values),
+        Mapping {
+            dimension: shape.dimension,
+            dimension2: shape.dimension2,
+            metrics: shape.metrics,
+            date_column: None,
+        },
+    )
+}
+
+fn check_variables(used: &[String], variables: &[Value]) -> Result<(), String> {
+    match used
+        .iter()
+        .find(|name| !variables.iter().any(|v| v["name"] == name.as_str()))
+    {
+        Some(name) => Err(format!(
+            "Variable {{{{{name}}}}} ist nicht definiert. Erst mit variables anlegen (create/update)."
+        )),
+        None => Ok(()),
+    }
+}
+
 fn push(dashboard: &mut Value, key: &str, value: Value) {
     if let Some(list) = dashboard[key].as_array_mut() {
         list.push(value);
@@ -1572,6 +1866,7 @@ fn describe(dashboard: &Value, connection: &McpConnection) -> String {
         "name": dashboard["name"],
         "connection": connection.name,
         "refreshSec": dashboard["refreshSec"],
+        "variables": variables_of(dashboard),
         "charts": charts,
     });
     serde_json::to_string_pretty(&out).unwrap_or_default()
@@ -1581,6 +1876,8 @@ fn chart_types() -> String {
     let mut lines = vec![
         "Mapping names columns of the chart's SQL result. dimension = category or x-axis (ORDER BY it for time series), dimension2 = second category, metrics = numeric columns, dateColumn = date column that the period filter (7d, 30d, 90d, quarter, year) applies to.".to_string(),
         "Options (booleans unless noted): showValue headline number, showDelta trend badge, showPeriod period picker, colorOffset 0-7 start color, showLegend, stacked, curve monotone|linear, showGrid, labels values on chart, showPercent, sortBy none|asc|desc (by first metric), metricKeys subset of metrics to show.".to_string(),
+        "Builder (spec.builder instead of sql, editable in the app): {table, schema?, joins?: [{table, as?, on: \"artikel_id = id AND mandant = mandant\" (left side = parent table, right side = joined table), kind: left|inner, from?: alias of an earlier join for chains}], fields?: [{name, expr, type?: number|text|date, aggregate?}], dimension?: field or {field, bucket: none|day|week|month|quarter|year}, dimension2?, metrics: [\"count\" | \"sum(menge)\" | \"count_distinct(artikel.id)\" | \"<field name>\" | {agg, field, label}], filters?: [{field, op: eq|neq|gt|gte|lt|lte|contains|startsWith|endsWith|in|notIn|isNull|isNotNull, value}], dateColumn?, sort?: dimension|metric_desc|metric_asc, limit?}. Fields are referenced as column (base table), alias.column (joined table, alias defaults to the table name) or the name of a calculated field. In fields.expr write SQL of the connection with [column] / [alias.column] placeholders, e.g. sum([menge]) / nullif(sum([artikel.palettenfaktor]), 0); expressions with sum/avg/count/... are aggregates and become metrics as they are. Result columns are dim, dim2, m0, m1, ... A bare field name in metrics means the raw value (agg none), useful for table charts.".to_string(),
+        "Variables (create/update variables): [{name, label, type: select|text|number|date, default, options | optionsSql}]. They appear as filter controls above the dashboard. Use {{name}} in sql (replaced by a typed literal, empty = NULL, so write ({{mandant}} IS NULL OR mandant = {{mandant}})) and as builder filter value {\"field\": \"mandant\", \"op\": \"eq\", \"value\": \"{{mandant}}\"} (skipped while empty) or inside fields.expr. preview/run take values: {name: value}.".to_string(),
         "Grid: 12 columns, row height ~44px. type\tdimension\tmetrics\tdefault w x h\toptions\thint".to_string(),
     ];
     for kind in KINDS {
