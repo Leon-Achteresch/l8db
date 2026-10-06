@@ -12,15 +12,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
-import { isQueryTabDirty, useTableTabs } from "@/lib/table-tabs";
+import { isQueryTabDirty, type Tab, useTableTabs } from "@/lib/table-tabs";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
+
+const NO_TABS: Tab[] = [];
 
 export function WindowCloseGuard() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const allowClose = useRef(false);
-  const tabs = useTableTabs((state) => state.tabs);
+  const tabs = useTableTabs((state) => (open ? state.tabs : NO_TABS));
   const dirty = tabs.filter((tab) => tab.kind === "query" && isQueryTabDirty(tab));
   const transactions = useTransactionStore((state) => state.transactions);
   const tasks = useTasksStore((state) => state.tasks);

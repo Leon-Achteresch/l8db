@@ -189,7 +189,6 @@ export function QueryView({ tabId }: QueryViewProps) {
             connected={Boolean(connection)}
             hasSql={Boolean(sql.trim())}
             showScript={isSql}
-            statementCount={script.scriptSplit.statements.length}
             onOpenScript={script.handleOpenScriptDialog}
             shortcutLabel={shortcutLabel}
           />
@@ -278,7 +277,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               bookmarks={bookmarks}
               registry={schema.registry}
               statusVisible={workspace.statusVisible}
-              statementCount={script.scriptSplit.statements.length}
+              dialect={connection?.kind}
               dialectLabel={schema.dialectLabel}
               editorSync={editorSync}
               onSave={() => void file.handleFileSave(false)}
