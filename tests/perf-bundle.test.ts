@@ -28,7 +28,9 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
     };
     for (const name of [entry!, ...layouts]) await visit(name);
     expect([...visited].some((name) => name.startsWith("monaco-"))).toBe(false);
-    expect(bytes).toBeLessThan(2_000_000);
+    expect([...visited].some((name) => name.startsWith("ai-view-"))).toBe(false);
+    expect(bytes).toBeLessThan(1_800_000);
+    expect(visited.size).toBeLessThan(130);
     console.log(`workspace imports: ${(bytes / 1_000_000).toFixed(2)} MB, ${visited.size} chunks`);
   },
 );
