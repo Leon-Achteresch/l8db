@@ -29,6 +29,7 @@ import { formatRelative, runStatusLabel } from "@/lib/automation/format";
 import { useAutomationStore } from "@/lib/automation/store";
 import type { TaskSummary } from "@/lib/db/automation";
 import { cn } from "@/lib/utils";
+import { AiFlash } from "./ai-flash";
 import { StatusIcon } from "./status-icon";
 import { useTaskActions } from "./use-task-actions";
 
@@ -191,6 +192,7 @@ export function TaskListItem({
         onCheckedChange={(enabled) => void actions.setEnabled([task.id], enabled)}
         aria-label={task.enabled ? `„${task.name}“ pausieren` : `„${task.name}“ aktivieren`}
       />
+      <AiFlash id={`task:${task.id}`} reveal />
     </div>
   );
 

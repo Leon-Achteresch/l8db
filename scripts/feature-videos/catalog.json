@@ -38,5 +38,18 @@
     "modes": ["easy", "normal"],
     "actionId": "settings",
     "actionTarget": "dashboard"
+  },
+  {
+    "id": "mcp-open",
+    "revision": "1",
+    "title": "Deine KI zeigt es dir live",
+    "summary": "Über den MCP öffnet die KI Tabellen, setzt Filter und speichert Ansichten – sichtbar hervorgehoben und nur, wenn du darum bittest.",
+    "sourceCommit": "a3ca606e",
+    "introducedIn": "0.11.0",
+    "priority": 92,
+    "platforms": ["macos", "windows", "linux"],
+    "requiredCapabilities": [],
+    "modes": ["easy", "normal"],
+    "actionId": "settings"
   }
 ]
