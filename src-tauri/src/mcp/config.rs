@@ -101,6 +101,8 @@ pub struct McpConfig {
     pub redaction: Redaction,
     #[serde(default)]
     pub connections: Vec<McpConnection>,
+    #[serde(default)]
+    pub workflows: bool,
 }
 
 fn yes() -> bool {
@@ -215,6 +217,7 @@ impl Default for McpConfig {
             query_timeout: default_query_timeout(),
             redaction: default_redaction(),
             connections: Vec::new(),
+            workflows: false,
         }
     }
 }

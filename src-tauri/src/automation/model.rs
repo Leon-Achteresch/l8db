@@ -1262,6 +1262,20 @@ pub struct BackgroundStatus {
     pub detail: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiActivity {
+    #[serde(default)]
+    pub seq: u64,
+    #[serde(default)]
+    pub at: String,
+    pub source: String,
+    pub action: String,
+    pub task_id: String,
+    #[serde(default)]
+    pub step_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionCheck {

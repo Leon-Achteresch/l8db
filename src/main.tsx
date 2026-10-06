@@ -82,6 +82,13 @@ Promise.all([
         void import("@/lib/automation/sync")
           .then(({ initAutomationSync }) => initAutomationSync())
           .catch(() => undefined);
+        void import("@/lib/automation/ai-activity")
+          .then(({ initAiActivity }) => initAiActivity())
+          .catch(() => undefined);
+        if (isMainWindow)
+          void import("@/lib/mcp-open")
+            .then(({ initMcpOpen }) => initMcpOpen())
+            .catch(() => undefined);
       });
     void extensionHost
       .start()

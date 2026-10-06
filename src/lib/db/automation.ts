@@ -660,6 +660,15 @@ export interface RunTaskInput {
   useOriginalDefinition?: boolean;
 }
 
+export interface AiActivity {
+  seq: number;
+  at: string;
+  source: "ai" | "mcp";
+  action: string;
+  taskId: string;
+  stepIds: string[];
+}
+
 export type AutomationEvent =
   | { event: "run_started"; run: RunSummary }
   | { event: "run_step"; runId: string; taskId: string; step: StepRun }
@@ -719,6 +728,8 @@ export const uninstallAutomationBackground = () =>
   invoke<BackgroundStatus>("automation_uninstall_background");
 export const automationCliCommand = (taskId: string) =>
   invoke<string>("automation_cli_command", { taskId });
+export const listAiActivity = (after: number) =>
+  invoke<AiActivity[]>("automation_ai_activity", { after });
 export const onAutomationEvent = async (handler: (event: AutomationEvent) => void) => {
   const { listen } = await import("@tauri-apps/api/event");
   return listen<AutomationEvent>("automation-event", ({ payload }) => handler(payload));

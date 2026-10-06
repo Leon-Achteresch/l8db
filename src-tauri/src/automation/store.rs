@@ -8,10 +8,10 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Transact
 use sha2::{Digest, Sha256};
 
 use crate::automation::model::{
-    Action, AlertState, AutomationConnection, AutomationSettings, ChannelRef, Flow, ImportReport,
-    LogLevel, LogLine, Retention, RunDetail, RunFilter, RunOutput, RunStatus, RunSummary, Step,
-    StepRun, Task, TaskExportFile, TaskState, TaskStats, TaskSummary, TriggerKind, VariableKind,
-    EXPORT_FORMAT,
+    Action, AiActivity, AlertState, AutomationConnection, AutomationSettings, ChannelRef, Flow,
+    ImportReport, LogLevel, LogLine, Retention, RunDetail, RunFilter, RunOutput, RunStatus,
+    RunSummary, Step, StepRun, Task, TaskExportFile, TaskState, TaskStats, TaskSummary,
+    TriggerKind, VariableKind, EXPORT_FORMAT,
 };
 use crate::automation::runtime::{new_id, now, rfc3339, StartError};
 
@@ -111,6 +111,8 @@ const MAX_LOG_CHARS: usize = 4_000;
 const TRUNCATED_SEQ: u32 = u32::MAX;
 const SETTINGS_KEY: &str = "settings";
 const CONNECTIONS_HASH_KEY: &str = "connections_hash";
+const ACTIVITY_KEY: &str = "ai_activity";
+const MAX_ACTIVITY: usize = 50;
 const RUN_COLUMNS: &str = "id, task_id, task_name, trigger, trigger_detail, status, started_at, finished_at, duration_ms, error, environment, rerun_of, parent_run_id, steps_total, steps_done, (SELECT COUNT(*) FROM run_outputs o WHERE o.run_id = runs.id)";
 
 pub struct Store {
@@ -1315,6 +1317,36 @@ impl Store {
         })
         .await
     }
+
+    pub async fn record_activity(&self, mut entry: AiActivity) -> Result<(), String> {
+        self.write(move |conn| {
+            let mut list = read_activity(conn)?;
+            entry.seq = list.last().map_or(1, |last| last.seq + 1);
+            entry.at = now();
+            list.push(entry);
+            let skip = list.len().saturating_sub(MAX_ACTIVITY);
+            let json = serde_json::to_string(&list[skip..]).map_err(json_error)?;
+            write_setting(conn, ACTIVITY_KEY, &json)
+        })
+        .await
+    }
+
+    pub async fn activity(&self, after: u64) -> Result<Vec<AiActivity>, String> {
+        self.call(move |conn| {
+            Ok(read_activity(conn)?
+                .into_iter()
+                .filter(|entry| entry.seq > after)
+                .collect())
+        })
+        .await
+    }
+}
+
+fn read_activity(conn: &Connection) -> Result<Vec<AiActivity>, String> {
+    Ok(read_setting(conn, ACTIVITY_KEY)?
+        .map(|json| serde_json::from_str(&json).map_err(json_error))
+        .transpose()?
+        .unwrap_or_default())
 }
 
 #[cfg(test)]

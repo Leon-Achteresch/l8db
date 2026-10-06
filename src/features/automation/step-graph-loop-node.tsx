@@ -1,6 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { AiFlash } from "./ai-flash";
 import { StepGraphCard } from "./step-graph-card";
 import { StepGraphHandles } from "./step-graph-handles";
 import { LOOP_HEADER, type StepFlowNode, statusTone } from "./step-graph-types";
@@ -29,6 +30,7 @@ export function StepGraphLoopNode({
         <StepGraphCard data={data} className="h-full rounded-2xl" />
       </div>
       <StepGraphHandles step={data.step} />
+      <AiFlash id={`step:${data.step.id}`} />
     </div>
   );
 }
