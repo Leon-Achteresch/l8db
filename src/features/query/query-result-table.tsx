@@ -97,11 +97,14 @@ export const QueryResultTable = memo(function QueryResultTable({
   const columns = useMemo(() => result?.columns ?? [], [result]);
   const rows = useMemo(() => result?.rows ?? [], [result]);
   const { markedRows, toggleRowMarker } = useRowMarkers(rows);
-  const originalIndices = useMemo(() => new Map(rows.map((row, index) => [row, index])), [rows]);
   const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
     () => applyResultView(rows, columns, sorts, deferredFilters),
     [rows, columns, sorts, deferredFilters],
+  );
+  const originalIndices = useMemo(
+    () => (visibleRows === rows ? null : new Map(rows.map((row, index) => [row, index]))),
+    [rows, visibleRows],
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnWidths = useMemo(
@@ -263,7 +266,7 @@ export const QueryResultTable = memo(function QueryResultTable({
               const rowIdx = virtualRow.index;
               const row = visibleRows[rowIdx];
               const isMarked = markedRows.has(row);
-              const originalIndex = originalIndices.get(row) ?? rowIdx;
+              const originalIndex = originalIndices?.get(row) ?? rowIdx;
               return (
                 <QueryResultRow
                   key={rowIdx}

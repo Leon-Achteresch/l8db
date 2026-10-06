@@ -22,7 +22,6 @@ interface RunControlsProps {
   connected: boolean;
   hasSql: boolean;
   showScript: boolean;
-  statementCount: number;
   onOpenScript: () => void;
   shortcutLabel: (id: string) => string;
 }
@@ -35,7 +34,6 @@ export function RunControls({
   connected,
   hasSql,
   showScript,
-  statementCount,
   onOpenScript,
   shortcutLabel,
 }: RunControlsProps) {
@@ -95,7 +93,7 @@ export function RunControls({
             {showScript && (
               <DropdownMenuItem
                 onClick={onOpenScript}
-                disabled={isRunning || !connected || statementCount === 0}
+                disabled={isRunning || !connected || !hasSql}
               >
                 Skript mit Einzelergebnissen
               </DropdownMenuItem>
