@@ -2,6 +2,7 @@ import { Database } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DatabaseKind } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { thesvgSvgForSlug } from "./provider-logo/icons";
 import { KIND_SLUG, PROVIDER_SLUG } from "./provider-logo/slugs";
 import { ThesvgIcon } from "./provider-logo/thesvg-icon";
 
@@ -20,9 +21,9 @@ export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps)
   useEffect(() => {
     if (!slug) return;
     let current = true;
-    void import("./provider-logo/icons")
-      .then(({ thesvgSvgForSlug }) => {
-        if (current) setLoaded({ slug, svg: thesvgSvgForSlug(slug) });
+    void thesvgSvgForSlug(slug)
+      .then((svg) => {
+        if (current) setLoaded({ slug, svg });
       })
       .catch(() => undefined);
     return () => {

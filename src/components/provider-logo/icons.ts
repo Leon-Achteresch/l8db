@@ -1,118 +1,63 @@
-import apacheCassandra from "thesvg/apache-cassandra";
-import apacheDoris from "thesvg/apache-doris";
-import apacheHive from "thesvg/apache-hive";
-import appwrite from "thesvg/appwrite";
-import athena from "thesvg/aws-amazon-athena";
-import documentdb from "thesvg/aws-amazon-documentdb";
-import dynamodb from "thesvg/aws-amazon-dynamodb";
-import redshift from "thesvg/aws-amazon-redshift";
-import s3 from "thesvg/aws-amazon-simple-storage-service";
-import cosmosdb from "thesvg/azure-azure-cosmos-db";
-import backblaze from "thesvg/backblaze";
-import clickhouse from "thesvg/clickhouse";
-import cloudflare from "thesvg/cloudflare";
-import cockroach from "thesvg/cockroach-labs";
-import convex from "thesvg/convex";
-import cratedb from "thesvg/cratedb";
-import databricks from "thesvg/databricks";
-import digitalocean from "thesvg/digitalocean";
-import duckdb from "thesvg/duckdb";
-import elasticsearch from "thesvg/elasticsearch";
-import ferretdb from "thesvg/ferretdb";
-import firebase from "thesvg/firebase";
-import firebird from "thesvg/firebird";
-import bigquery from "thesvg/google-bigquery";
-import googleCloudStorage from "thesvg/google-cloud-storage";
-import ibm from "thesvg/ibm";
-import influxdb from "thesvg/influxdb";
-import mariadb from "thesvg/mariadb";
-import access from "thesvg/microsoft-access";
-import mssql from "thesvg/microsoft-sql-server";
-import minio from "thesvg/minio";
-import mongodb from "thesvg/mongodb";
-import mysql from "thesvg/mysql";
-import neon from "thesvg/neon";
-import opensearch from "thesvg/opensearch";
-import oracle from "thesvg/oracle";
-import planetscale from "thesvg/planetscale";
-import pocketbase from "thesvg/pocketbase";
-import postgresql from "thesvg/postgresql";
-import redis from "thesvg/redis";
-import sap from "thesvg/sap";
-import scylladb from "thesvg/scylladb";
-import singlestore from "thesvg/singlestore";
-import snowflake from "thesvg/snowflake";
-import sqlite from "thesvg/sqlite";
-import supabase from "thesvg/supabase";
-import teradata from "thesvg/teradata";
-import tidb from "thesvg/tidb";
-import timescale from "thesvg/timescale";
-import trino from "thesvg/trino";
-import turso from "thesvg/turso";
-import valkey from "thesvg/valkey";
-import vitess from "thesvg/vitess";
-import yugabyte from "thesvg/yugabytedb";
-
 type IconModule = { svg: string };
 
-const ICONS: Record<string, IconModule> = {
-  "apache-cassandra": apacheCassandra,
-  appwrite,
-  convex,
-  firebase,
-  pocketbase,
-  "apache-doris": apacheDoris,
-  "apache-hive": apacheHive,
-  "aws-amazon-athena": athena,
-  "aws-amazon-simple-storage-service": s3,
-  backblaze,
-  digitalocean,
-  "google-cloud-storage": googleCloudStorage,
-  minio,
-  "aws-amazon-documentdb": documentdb,
-  "aws-amazon-dynamodb": dynamodb,
-  "aws-amazon-redshift": redshift,
-  "azure-azure-cosmos-db": cosmosdb,
-  clickhouse,
-  cloudflare,
-  "cockroach-labs": cockroach,
-  cratedb,
-  databricks,
-  duckdb,
-  elasticsearch,
-  ferretdb,
-  firebird,
-  "google-bigquery": bigquery,
-  ibm,
-  influxdb,
-  mariadb,
-  "microsoft-access": access,
-  "microsoft-sql-server": mssql,
-  mongodb,
-  mysql,
-  neon,
-  opensearch,
-  oracle,
-  planetscale,
-  postgresql,
-  redis,
-  sap,
-  scylladb,
-  singlestore,
-  snowflake,
-  sqlite,
-  supabase,
-  teradata,
-  tidb,
-  timescale,
-  trino,
-  turso,
-  valkey,
-  vitess,
-  yugabytedb: yugabyte,
+const ICONS: Record<string, () => Promise<{ default: IconModule }>> = {
+  "apache-cassandra": () => import("thesvg/apache-cassandra"),
+  appwrite: () => import("thesvg/appwrite"),
+  convex: () => import("thesvg/convex"),
+  firebase: () => import("thesvg/firebase"),
+  pocketbase: () => import("thesvg/pocketbase"),
+  "apache-doris": () => import("thesvg/apache-doris"),
+  "apache-hive": () => import("thesvg/apache-hive"),
+  "aws-amazon-athena": () => import("thesvg/aws-amazon-athena"),
+  "aws-amazon-simple-storage-service": () => import("thesvg/aws-amazon-simple-storage-service"),
+  backblaze: () => import("thesvg/backblaze"),
+  digitalocean: () => import("thesvg/digitalocean"),
+  "google-cloud-storage": () => import("thesvg/google-cloud-storage"),
+  minio: () => import("thesvg/minio"),
+  "aws-amazon-documentdb": () => import("thesvg/aws-amazon-documentdb"),
+  "aws-amazon-dynamodb": () => import("thesvg/aws-amazon-dynamodb"),
+  "aws-amazon-redshift": () => import("thesvg/aws-amazon-redshift"),
+  "azure-azure-cosmos-db": () => import("thesvg/azure-azure-cosmos-db"),
+  clickhouse: () => import("thesvg/clickhouse"),
+  cloudflare: () => import("thesvg/cloudflare"),
+  "cockroach-labs": () => import("thesvg/cockroach-labs"),
+  cratedb: () => import("thesvg/cratedb"),
+  databricks: () => import("thesvg/databricks"),
+  duckdb: () => import("thesvg/duckdb"),
+  elasticsearch: () => import("thesvg/elasticsearch"),
+  ferretdb: () => import("thesvg/ferretdb"),
+  firebird: () => import("thesvg/firebird"),
+  "google-bigquery": () => import("thesvg/google-bigquery"),
+  ibm: () => import("thesvg/ibm"),
+  influxdb: () => import("thesvg/influxdb"),
+  mariadb: () => import("thesvg/mariadb"),
+  "microsoft-access": () => import("thesvg/microsoft-access"),
+  "microsoft-sql-server": () => import("thesvg/microsoft-sql-server"),
+  mongodb: () => import("thesvg/mongodb"),
+  mysql: () => import("thesvg/mysql"),
+  neon: () => import("thesvg/neon"),
+  opensearch: () => import("thesvg/opensearch"),
+  oracle: () => import("thesvg/oracle"),
+  planetscale: () => import("thesvg/planetscale"),
+  postgresql: () => import("thesvg/postgresql"),
+  redis: () => import("thesvg/redis"),
+  sap: () => import("thesvg/sap"),
+  scylladb: () => import("thesvg/scylladb"),
+  singlestore: () => import("thesvg/singlestore"),
+  snowflake: () => import("thesvg/snowflake"),
+  sqlite: () => import("thesvg/sqlite"),
+  supabase: () => import("thesvg/supabase"),
+  teradata: () => import("thesvg/teradata"),
+  tidb: () => import("thesvg/tidb"),
+  timescale: () => import("thesvg/timescale"),
+  trino: () => import("thesvg/trino"),
+  turso: () => import("thesvg/turso"),
+  valkey: () => import("thesvg/valkey"),
+  vitess: () => import("thesvg/vitess"),
+  yugabytedb: () => import("thesvg/yugabytedb"),
 };
 
-export function thesvgSvgForSlug(slug: string | null | undefined): string | null {
-  if (!slug) return null;
-  return ICONS[slug]?.svg ?? null;
+export async function thesvgSvgForSlug(slug: string | null | undefined): Promise<string | null> {
+  if (!slug || !Object.hasOwn(ICONS, slug)) return null;
+  return (await ICONS[slug]()).default.svg;
 }
