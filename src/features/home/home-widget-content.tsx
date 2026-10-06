@@ -1,5 +1,5 @@
+import { lazy, Suspense } from "react";
 import type { HomeWidget } from "@/lib/home-layout";
-import { ChartWidget } from "./widgets/chart-widget";
 import { ErDiagramWidget } from "./widgets/er-diagram-widget";
 import { MetricsWidget } from "./widgets/metrics-widget";
 import { NoteWidget } from "./widgets/note-widget";
@@ -8,6 +8,10 @@ import { QueryWidget } from "./widgets/query-widget";
 import { RecentWidget } from "./widgets/recent-widget";
 import { StorageWidget } from "./widgets/storage-widget";
 import { TablesWidget } from "./widgets/tables-widget";
+
+const ChartWidget = lazy(() =>
+  import("./widgets/chart-widget").then(({ ChartWidget }) => ({ default: ChartWidget })),
+);
 
 export function HomeWidgetContent({
   widget,
@@ -32,7 +36,11 @@ export function HomeWidgetContent({
     case "performance":
       return <PerformanceWidget connectionId={connectionId} />;
     case "chart":
-      return <ChartWidget widget={widget} />;
+      return (
+        <Suspense fallback={null}>
+          <ChartWidget widget={widget} />
+        </Suspense>
+      );
     case "query":
       return <QueryWidget widget={widget} onChange={onChange} />;
     case "note":
