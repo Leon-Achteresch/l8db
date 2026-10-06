@@ -186,7 +186,7 @@ fn tool_definition_matches_kinds() {
             .len(),
         KINDS.len()
     );
-    assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 10);
+    assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 12);
     let help = chart_types();
     for kind in KINDS {
         assert!(
@@ -525,14 +525,16 @@ fn keeps_app_edits_shared_datasets_and_builder_charts() {
     assert!(lab
         .err(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"type": "gauge"}}))
         .contains("nur ohne dimension"));
-    assert!(lab
-        .err(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"metrics": ["n"]}}))
-        .contains("Baukasten"));
+    let error = lab.err(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"metrics": ["n"]}}));
+    assert!(error.contains("nicht numerisch"), "{error}");
+    lab.ok(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"metrics": ["avg(amount)"]}}));
+    let simple = dataset_for(&lab.only(), "Treemap")["simple"].clone();
+    assert_eq!(simple["dimension"]["column"], "status");
+    assert_eq!(simple["metrics"][0]["agg"], "avg");
     let got = lab.ok(json!({"action": "get", "dashboard": "app-made"}));
     assert!(got.contains("\"builder\""), "{got}");
-    assert!(lab
-        .err(json!({"action": "preview", "dashboard": "From app", "chart": "Treemap"}))
-        .contains("Baukasten"));
+    let preview = lab.ok(json!({"action": "preview", "dashboard": "From app", "chart": "Treemap"}));
+    assert!(preview.contains("Mapping: ok"), "{preview}");
 
     lab.ok(json!({"action": "remove_chart", "dashboard": "From app", "chart": "One"}));
     let dashboard = lab.only();
@@ -688,7 +690,7 @@ fn previews_specs_and_existing_charts() {
         .contains("read-only"));
     assert!(lab
         .err(json!({"action": "preview", "connection": "Shop", "spec": {"type": "donut"}}))
-        .contains("spec.sql fehlt"));
+        .contains("spec.sql oder spec.builder fehlt"));
 }
 
 #[test]
@@ -898,4 +900,223 @@ fn accepts_loose_llm_arguments_and_infers_mappings() {
     lab.ok(json!({"action": "add_charts", "dashboard": "Loose", "charts": {"type": "kpi", "title": "Single", "sql": "SELECT COUNT(*) AS n FROM orders"}}));
     lab.ok(json!({"action": "update_chart", "dashboard": "Loose", "chart": "Single", "spec": "{\"title\": \"Renamed\"}"}));
     assert_eq!(widget(&lab.only(), "Renamed")["chart"], "kpi");
+}
+
+fn add_regions(lab: &Lab) {
+    let db = rusqlite::Connection::open(lab.dir.join("shop.db")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE regions(code TEXT, name TEXT, tier TEXT);
+         INSERT INTO regions VALUES ('EU', 'Europa', 'A'), ('US', 'Amerika', 'B'), ('APAC', 'Asien', 'B');",
+    )
+    .unwrap();
+}
+
+fn regional_chart() -> Value {
+    json!({
+        "type": "column",
+        "title": "Umsatz je Region",
+        "builder": {
+            "table": "orders",
+            "joins": [{"table": "regions", "as": "r", "on": "region = code", "kind": "inner"}],
+            "fields": [{"name": "Schnitt", "expr": "sum([amount]) / nullif(count(*), 0)"}],
+            "dimension": "r.name",
+            "metrics": ["sum(amount)", "Schnitt"],
+            "filters": [{"field": "region", "op": "eq", "value": "{{region}}"}],
+            "sort": "metric_desc"
+        }
+    })
+}
+
+#[test]
+fn builds_editable_builder_charts_with_joins_fields_and_variables() {
+    let mut lab = lab();
+    add_regions(&lab);
+    let text = lab.ok(json!({
+        "action": "create",
+        "connection": "Shop",
+        "name": "Regionen",
+        "variables": [{"name": "region", "label": "Region", "type": "select", "optionsSql": "SELECT DISTINCT region FROM orders"}],
+        "charts": [regional_chart()]
+    }));
+    assert!(text.contains("Europa"), "{text}");
+    let dashboard = lab.only();
+    assert_eq!(dashboard["variables"][0]["name"], "region");
+    let dataset = dataset_for(&dashboard, "Umsatz je Region");
+    assert_eq!(dataset["mode"], "simple");
+    let simple = &dataset["simple"];
+    let join_id = simple["joins"][0]["id"].as_str().unwrap();
+    assert_eq!(join_id, ".regions.region.code");
+    assert_eq!(simple["joins"][0]["kind"], "inner");
+    assert_eq!(simple["joins"][0]["manual"], true);
+    assert_eq!(
+        simple["dimension"]["column"],
+        format!("join:{join_id}:name")
+    );
+    assert_eq!(simple["calculated"][0]["aggregate"], true);
+    assert_eq!(
+        simple["calculated"][0]["expr"],
+        "sum([[amount]]) / nullif(count(*), 0)"
+    );
+    assert_eq!(
+        simple["metrics"][1]["column"],
+        format!("calc:{}", simple["calculated"][0]["id"].as_str().unwrap())
+    );
+    assert_eq!(simple["filters"][0]["value"], "{{region}}");
+
+    let got = lab.ok(json!({"action": "get", "dashboard": "Regionen"}));
+    assert!(
+        got.contains("\"field\": \"r.name\"") || got.contains("\"field\": \"regions.name\""),
+        "{got}"
+    );
+    assert!(got.contains("sum([amount])"), "{got}");
+    assert!(got.contains("\"variables\""), "{got}");
+
+    let all = lab.ok(json!({"action": "run", "dashboard": "Regionen"}));
+    assert!(all.starts_with("1 ok, 0 mit Problemen"), "{all}");
+    assert!(all.contains("Amerika") && all.contains("Europa"), "{all}");
+    let eu = lab.ok(json!({"action": "run", "dashboard": "Regionen", "values": {"region": "EU"}}));
+    assert!(eu.contains("Europa") && !eu.contains("Amerika"), "{eu}");
+    assert!(eu.contains("region='EU'"), "{eu}");
+
+    let preview = lab.ok(json!({"action": "preview", "dashboard": "Regionen", "chart": "Umsatz je Region", "values": {"region": "US"}}));
+    assert!(
+        preview.contains("Amerika") && !preview.contains("Europa"),
+        "{preview}"
+    );
+
+    assert_eq!(list_dashboards()[0]["trusted"], true);
+}
+
+#[test]
+fn rejects_unknown_variables_and_bad_builder_specs() {
+    let mut lab = lab();
+    add_regions(&lab);
+    let missing = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [regional_chart()]}));
+    assert!(
+        missing.contains("{{region}} ist nicht definiert"),
+        "{missing}"
+    );
+    let sql = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [{"type": "kpi", "sql": "SELECT COUNT(*) AS n FROM orders WHERE region = {{land}}"}]}));
+    assert!(sql.contains("{{land}}"), "{sql}");
+    let bad_join = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [{"type": "kpi", "builder": {"table": "orders", "joins": [{"table": "regions", "on": "region"}]}}]}));
+    assert!(bad_join.contains("spalte = spalte"), "{bad_join}");
+    let bad_var = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "variables": [{"name": "1x"}]}));
+    assert!(bad_var.contains("ungültig"), "{bad_var}");
+    let write = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "variables": [{"name": "r", "type": "select", "optionsSql": "DELETE FROM orders"}]}));
+    assert!(write.contains("optionsSql"), "{write}");
+
+    lab.ok(json!({"action": "create", "connection": "Shop", "name": "Regionen", "variables": [{"name": "region", "type": "text"}], "charts": [regional_chart()]}));
+    let removed = lab.err(json!({"action": "update", "dashboard": "Regionen", "variables": []}));
+    assert!(removed.contains("Umsatz je Region"), "{removed}");
+    lab.ok(json!({"action": "update", "dashboard": "Regionen", "variables": [{"name": "region", "type": "text", "default": "APAC"}]}));
+    let run = lab.ok(json!({"action": "run", "dashboard": "Regionen"}));
+    assert!(run.contains("Asien") && !run.contains("Europa"), "{run}");
+}
+
+#[test]
+fn builder_sql_and_variables_quote_per_dialect() {
+    let variables = vec![
+        json!({"name": "m", "type": "text", "defaultValue": "a'b\\c"}),
+        json!({"name": "n", "type": "number", "defaultValue": "1; DROP"}),
+        json!({"name": "d", "type": "date", "defaultValue": "2026-10-06"}),
+    ];
+    let empty = Map::new();
+    assert_eq!(
+        builder::substitute(
+            "{{m}} {{n}} {{d}} {{x}}",
+            &variables,
+            &empty,
+            DatabaseKind::Clickhouse
+        ),
+        "'a''b\\\\c' NULL '2026-10-06' {{x}}"
+    );
+    assert_eq!(
+        builder::substitute("{{ d }}", &variables, &empty, DatabaseKind::Oracle),
+        "DATE '2026-10-06'"
+    );
+    assert_eq!(
+        builder::substitute(
+            "SELECT '{{d}}', 'it''s {{d}}', 'x\\'{{d}}', \"{{d}}\", {{d}}, {x}",
+            &variables,
+            &empty,
+            DatabaseKind::Postgres
+        ),
+        "SELECT '{{d}}', 'it''s {{d}}', 'x\\'{{d}}', \"{{d}}\", '2026-10-06', {x}"
+    );
+    let simple = builder::parse_builder(&json!({
+        "table": "wms.bestand",
+        "joins": [{"table": "artikel", "on": [["artikel_id", "id"], ["mandant", "mandant"]]}],
+        "dimension": {"field": "eingelagert", "bucket": "month"},
+        "metrics": ["count"],
+        "limit": 10
+    }))
+    .unwrap();
+    assert_eq!(
+        builder::builder_sql(&simple, DatabaseKind::Mssql, &[], &empty),
+        "SELECT TOP 10 CAST(DATEADD(month, DATEDIFF(month, 0, t1.[eingelagert]), 0) AS date) AS [dim], COUNT(*) AS [m0]\nFROM [wms].[bestand] AS t1\nLEFT JOIN [wms].[artikel] AS t2 ON t2.[id] = t1.[artikel_id] AND t2.[mandant] = t1.[mandant]\nGROUP BY CAST(DATEADD(month, DATEDIFF(month, 0, t1.[eingelagert]), 0) AS date)\nORDER BY [dim] ASC"
+    );
+}
+
+fn add_items(lab: &Lab) {
+    let db = rusqlite::Connection::open(lab.dir.join("shop.db")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE order_items(item_id INTEGER, order_id INTEGER, sku TEXT, qty INTEGER);
+         INSERT INTO order_items VALUES (1, 1, 'A', 2), (2, 1, 'B', 1), (3, 1, 'C', 4), (4, 2, 'A', 1);",
+    )
+    .unwrap();
+}
+
+#[test]
+fn suggests_and_measures_joins_like_the_studio() {
+    let mut lab = lab();
+    add_regions(&lab);
+    add_items(&lab);
+    let text = lab.ok(json!({"action": "joins", "connection": "Shop", "table": "orders"}));
+    let line = text
+        .lines()
+        .find(|l| l.contains("order_items"))
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(line.contains("\"on\":\"id = order_id\""), "{line}");
+    assert!(line.contains("40 % Treffer"), "{line}");
+    assert!(line.contains("2.0 Zeilen je Treffer"), "{line}");
+    let only = lab.ok(
+        json!({"action": "joins", "connection": "Shop", "table": "orders", "tables": ["regions"]}),
+    );
+    assert!(only.starts_with("Keine Verknüpfung"), "{only}");
+    assert!(lab
+        .err(json!({"action": "joins", "connection": "Shop", "table": "nope"}))
+        .contains("nicht gefunden"));
+
+    let created = lab.ok(json!({
+        "action": "create",
+        "connection": "Shop",
+        "name": "Joins",
+        "charts": [
+            {"type": "column", "title": "Regionen", "builder": {"table": "orders", "joins": [{"table": "regions", "on": "region = code"}], "dimension": "regions.name", "metrics": ["sum(amount)"]}},
+            {"type": "kpi", "title": "Menge", "builder": {"table": "orders", "joins": [{"table": "order_items", "as": "i", "on": "id = order_id"}], "metrics": ["sum(i.qty)"]}}
+        ]
+    }));
+    assert!(
+        created.contains("Join orders → regions (region = code): 100 % Treffer"),
+        "{created}"
+    );
+    assert!(
+        created.contains("Join orders → order_items (id = order_id): 40 % Treffer"),
+        "{created}"
+    );
+    assert!(
+        created.contains("kind=inner") && created.contains("Summen werden vervielfacht"),
+        "{created}"
+    );
+
+    let patched = lab.ok(json!({"action": "update_chart", "dashboard": "Joins", "chart": "Regionen", "spec": {"builder": {"joins": [{"table": "regions", "on": "region = code", "kind": "inner"}], "dimension2": "status"}}}));
+    assert!(patched.contains("100 % Treffer"), "{patched}");
+    let simple = dataset_for(&lab.only(), "Regionen")["simple"].clone();
+    assert_eq!(simple["joins"][0]["kind"], "inner");
+    assert_eq!(simple["metrics"][0]["agg"], "sum");
+    assert_eq!(simple["dimension2"], "status");
+    assert!(simple["dimension"]["column"]
+        .as_str()
+        .unwrap()
+        .ends_with(":name"));
 }

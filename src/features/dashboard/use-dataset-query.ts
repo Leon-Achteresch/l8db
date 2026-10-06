@@ -2,6 +2,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import {
+  calcRef,
   type Dataset,
   datasetSql,
   JOIN_PREFIX,
@@ -14,6 +15,7 @@ import { executeQuery, listTableColumnsDetailed } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useErSchemaQuery, useForeignKeysQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { useDashboardScope } from "./dashboard-scope";
 
 export function useDebounced<T>(value: T, delay = 600): T {
   const [debounced, setDebounced] = useState(value);
@@ -26,7 +28,8 @@ export function useDebounced<T>(value: T, delay = 600): T {
 
 export function useDatasetSql(dataset: Dataset | null, period: Period): string {
   const connection = useActiveConnection();
-  return dataset ? datasetSql(dataset, connection?.kind ?? null, period) : "";
+  const scope = useDashboardScope();
+  return dataset ? datasetSql(dataset, connection?.kind ?? null, period, scope) : "";
 }
 
 export function useSqlQuery(sql: string, refetchInterval?: number) {
@@ -76,7 +79,11 @@ export interface DatasetColumn {
   ref: string;
   label: string;
   type: string;
+  source?: string;
+  column?: string;
 }
+
+const CALC_TYPES = { number: "numeric", text: "text", date: "date" } as const;
 
 export function useDatasetColumns(simple: SimpleDataset) {
   const forward = useForeignKeysQuery(simple.schema, simple.table);
@@ -87,6 +94,10 @@ export function useDatasetColumns(simple: SimpleDataset) {
     const extra = (simple.joins ?? [])
       .filter((j) => j.id && !found.some((o) => o.join.id === j.id))
       .map((j) => ({ join: { ...j, id: j.id ?? "" }, label: j.table }));
+    for (const option of found) {
+      const chosen = (simple.joins ?? []).find((j) => j.id === option.join.id);
+      if (chosen) option.join = { ...option.join, ...chosen, id: option.join.id };
+    }
     return [...found, ...extra];
   }, [forward.data, er.data, simple.schema, simple.table, simple.joins]);
   const legacy = simple.join;
@@ -103,12 +114,20 @@ export function useDatasetColumns(simple: SimpleDataset) {
   const [base, ...rest] = results.map((r) => r.data);
   const legacyCols = legacy ? rest.shift() : undefined;
   const columns: DatasetColumn[] = [
-    ...(base ?? []).map((c) => ({ ref: c.name, label: c.name, type: c.data_type })),
+    ...(base ?? []).map((c) => ({
+      ref: c.name,
+      label: c.name,
+      type: c.data_type,
+      source: "",
+      column: c.name,
+    })),
     ...(legacy && legacyCols
       ? legacyCols.map((c) => ({
           ref: `${JOIN_PREFIX}${c.name}`,
           label: `${legacy.table}.${c.name}`,
           type: c.data_type,
+          source: "legacy",
+          column: c.name,
         }))
       : []),
     ...options.flatMap((o, i) =>
@@ -116,8 +135,16 @@ export function useDatasetColumns(simple: SimpleDataset) {
         ref: joinRef(o.join.id, c.name),
         label: `${o.label}.${c.name}`,
         type: c.data_type,
+        source: o.join.id,
+        column: c.name,
       })),
     ),
+    ...(simple.calculated ?? []).map((field) => ({
+      ref: calcRef(field.id),
+      label: field.label || "Berechnetes Feld",
+      type: CALC_TYPES[field.type ?? "number"],
+      source: "calc",
+    })),
   ];
   const joins = useMemo(() => options.map((o) => o.join), [options]);
   return { columns, joins, loading };
