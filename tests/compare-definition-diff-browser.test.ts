@@ -118,9 +118,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       const waitForHeader = async () => {
         await page.waitForFunction(
           () =>
-            /Änderungen/.test(
-              document.querySelector("span.truncate.text-xs")?.textContent ?? "",
-            ),
+            /Änderungen/.test(document.querySelector("span.truncate.text-xs")?.textContent ?? ""),
           undefined,
           { timeout: 15000 },
         );
@@ -146,7 +144,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       });
       await page.getByRole("button", { name: "Vergleichsoptionen" }).click();
       await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).click();
-      await hidden.first().waitFor();
+      await hidden.first().waitFor({ state: "attached" });
       expect(await col5.count()).toBe(0);
       await page.getByRole("button", { name: "Vergleichsoptionen" }).click();
       await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).click();
