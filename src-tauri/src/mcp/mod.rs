@@ -2,6 +2,7 @@ pub mod benchmark;
 pub mod clients;
 pub mod config;
 pub mod dashboard;
+mod dashboard_builder;
 pub mod health;
 pub mod nosql;
 pub mod open;
