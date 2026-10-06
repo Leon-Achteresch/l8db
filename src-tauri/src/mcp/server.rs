@@ -889,7 +889,7 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
         return raw.clone();
     };
     if let Some(password) = password {
-        let _ = url.set_password(Some(password));
+        let _ = db::set_url_password(&mut url, password);
     }
     if connection.writes_blocked() && connection.kind == DatabaseKind::Postgres {
         let mut params: Vec<String> = url
@@ -1108,6 +1108,35 @@ mod tests {
         sqlite.kind = DatabaseKind::Sqlite;
         sqlite.connection_string = "sqlite:/tmp/x.db".into();
         assert_eq!(with_password(&sqlite, Some("x")), "sqlite:/tmp/x.db");
+    }
+
+    #[tokio::test]
+    async fn clickhouse_password_with_url_characters_authenticates() {
+        let password = "Pw&x%41+y z@:/#?";
+        let server = db::http_mock::start(move |request| {
+            if request.header("x-clickhouse-user") == Some("analyst")
+                && request.header("x-clickhouse-key") == Some(password)
+            {
+                (200, b"1\n".to_vec())
+            } else {
+                (
+                    403,
+                    b"Code: 516. DB::Exception: Authentication failed (AUTHENTICATION_FAILED)"
+                        .to_vec(),
+                )
+            }
+        });
+        let mut clickhouse = connection(true);
+        clickhouse.kind = DatabaseKind::Clickhouse;
+        clickhouse.connection_string = server.base.replace("http://", "clickhouse://analyst@");
+        let adapter = db::create_adapter_from_string(
+            DatabaseKind::Clickhouse,
+            &with_password(&clickhouse, Some(password)),
+            None,
+            db::pool::create_pool_state(),
+        )
+        .unwrap();
+        adapter.test_connection().await.unwrap();
     }
 
     #[test]
