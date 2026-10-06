@@ -5054,9 +5054,10 @@ pub async fn run_params_query(
         .map_err(map_pg_err)?;
     let rows: Vec<serde_json::Value> = data
         .iter()
+        .take(super::execution::row_limit())
         .map(|row| bind_row(&columns, row.get::<_, super::exact_number::ExactJson>(0).0))
         .collect();
-    let count = rows.len() as u64;
+    let count = data.len() as u64;
 
     Ok(QueryResult {
         columns,
