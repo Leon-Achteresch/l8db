@@ -106,12 +106,13 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "query",
-            "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows.",
+            "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows. Long cells are cut at the configured cell limit; set cellChars to read long values such as view or function definitions in full.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
                 "database": database_arg(),
                 "sql": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1}
+                "limit": {"type": "integer", "minimum": 1},
+                "cellChars": {"type": "integer", "minimum": 1, "description": "Max characters per cell for this query, up to the response limit"}
             }, "required": ["connection", "sql"]}
         },
         super::dashboard::tool_definition(),
@@ -423,6 +424,10 @@ impl Server {
             adapter.execute_query(sql).await
         })
         .await?;
+        let config = &McpConfig {
+            max_cell_chars: cell_chars(args, config),
+            ..config.clone()
+        };
         Ok(format_result(&result, config, &redactor, limit))
     }
 
@@ -941,6 +946,13 @@ where
     .await
 }
 
+fn cell_chars(args: &Value, config: &McpConfig) -> usize {
+    args.get("cellChars")
+        .and_then(Value::as_u64)
+        .map(|value| (value as usize).clamp(1, config.max_chars.max(config.max_cell_chars)))
+        .unwrap_or(config.max_cell_chars)
+}
+
 fn cell_text(value: &Value, max_chars: usize) -> String {
     let text = match value {
         Value::Null => return "NULL".into(),
@@ -1205,6 +1217,12 @@ mod tests {
         assert_eq!(
             lines[3],
             "(2 rows, 1 more not shown; raise limit or add WHERE, 2 cells redacted)"
+        );
+        assert_eq!(cell_chars(&json!({}), &config), 5);
+        assert_eq!(cell_chars(&json!({"cellChars": 1_000}), &config), 1_000);
+        assert_eq!(
+            cell_chars(&json!({"cellChars": 10_000_000}), &config),
+            config.max_chars
         );
     }
 
