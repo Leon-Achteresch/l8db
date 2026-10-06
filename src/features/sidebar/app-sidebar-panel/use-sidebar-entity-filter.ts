@@ -11,6 +11,16 @@ export interface SidebarEntityMatch {
   matchingColumns?: string[];
 }
 
+export function matchingColumnsWindow(filtered: SidebarEntityMatch[]) {
+  if (!filtered.some((item) => Boolean(item.matchingColumns?.length))) return undefined;
+  const columns = (index: number) => filtered[index].matchingColumns?.length ?? 0;
+  return {
+    estimateSize: (index: number) => (columns(index) ? 35 + 25 * columns(index) : 32),
+    getItemKey: (index: number) =>
+      `${filtered[index].schema}.${filtered[index].name}:${columns(index)}`,
+  };
+}
+
 export function useSidebarEntityFilter(
   items: { schema: string; name: string }[] | undefined,
   type: "table" | "view",

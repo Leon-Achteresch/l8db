@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { SidebarMenu } from "@/components/ui/sidebar";
+import { SidebarMeasuredWindow } from "@/features/sidebar/sidebar-measured-window";
 
 const OVERSCAN = 26;
 const EDGE_MARGIN = 2;
@@ -8,19 +9,22 @@ const ESTIMATED_PITCH = 36;
 
 export function SidebarWindow({
   count,
-  disabled,
+  measured,
   className,
   children,
 }: {
   count: number;
-  disabled?: boolean;
+  measured?: {
+    estimateSize: (index: number) => number;
+    getItemKey: (index: number) => string;
+  };
   className?: string;
   children: (index: number) => ReactNode;
 }) {
   const listRef = useRef<HTMLUListElement>(null);
   const pitchRef = useRef(ESTIMATED_PITCH);
   const frameRef = useRef(0);
-  const windowed = !disabled && count > MIN_COUNT;
+  const windowed = !measured && count > MIN_COUNT;
   const [range, setRange] = useState({
     start: 0,
     end: Math.min(count, MIN_COUNT),
@@ -89,6 +93,18 @@ export function SidebarWindow({
       observer.disconnect();
     };
   }, [windowed, count, update]);
+
+  if (measured)
+    return (
+      <SidebarMeasuredWindow
+        count={count}
+        estimateSize={measured.estimateSize}
+        getItemKey={measured.getItemKey}
+        className={className}
+      >
+        {children}
+      </SidebarMeasuredWindow>
+    );
 
   const start = windowed ? Math.min(range.start, count) : 0;
   const end = windowed ? Math.min(range.end, count) : count;
