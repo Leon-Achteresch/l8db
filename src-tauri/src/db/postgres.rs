@@ -606,6 +606,7 @@ pub(crate) struct SimpleResult {
     rows: Vec<serde_json::Value>,
     rows_affected: Option<u64>,
     collecting: bool,
+    limit: Option<usize>,
 }
 
 impl SimpleResult {
@@ -616,8 +617,12 @@ impl SimpleResult {
         }
     }
 
+    fn full(&self) -> bool {
+        self.limit.is_some_and(|limit| self.rows.len() >= limit)
+    }
+
     fn row(&mut self, values: Vec<Option<String>>) {
-        if !self.collecting {
+        if !self.collecting || self.full() {
             return;
         }
         let Some(columns) = &self.columns else {
@@ -652,6 +657,9 @@ impl SimpleResult {
                 if self.columns.is_none() {
                     self.describe(row.columns().iter().map(|c| c.name().to_string()).collect());
                 }
+                if self.full() {
+                    return;
+                }
                 self.row(
                     (0..row.len())
                         .map(|i| row.try_get(i).ok().flatten().map(str::to_string))
@@ -681,7 +689,10 @@ pub(crate) async fn run_simple_query(
     let start = std::time::Instant::now();
     let messages = client.simple_query_raw(sql).await.map_err(map_pg_err)?;
     futures_util::pin_mut!(messages);
-    let mut result = SimpleResult::default();
+    let mut result = SimpleResult {
+        limit: Some(super::execution::row_limit()),
+        ..SimpleResult::default()
+    };
     while let Some(message) = messages.try_next().await.map_err(map_pg_err)? {
         result.push(message);
     }
@@ -5309,6 +5320,19 @@ mod tests {
             ragged.rows,
             vec![serde_json::json!({"x": "1", "x1": null, "y": null})]
         );
+
+        let mut capped = SimpleResult {
+            limit: Some(2),
+            ..SimpleResult::default()
+        };
+        capped.describe(names(&["a"]));
+        for value in ["1", "2", "3"] {
+            capped.row(values(&[Some(value)]));
+        }
+        capped.complete(3);
+        let capped = capped.finish(start);
+        assert_eq!(capped.rows.len(), 2);
+        assert_eq!(capped.rows_affected, Some(3));
 
         let mut dml = SimpleResult::default();
         dml.complete(5);

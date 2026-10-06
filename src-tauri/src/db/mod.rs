@@ -2647,6 +2647,9 @@ mod clickhouse_browser_tests;
 mod load_perf_tests;
 
 #[cfg(test)]
+mod row_path_perf_tests;
+
+#[cfg(test)]
 mod live_plan_tests;
 
 #[cfg(test)]

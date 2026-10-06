@@ -145,11 +145,22 @@ fn query_all(
     conn: &Connection,
     sql: &str,
 ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+    query_limited(conn, sql, usize::MAX)
+}
+
+fn query_limited(
+    conn: &Connection,
+    sql: &str,
+    limit: usize,
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
     let mut stmt = conn.prepare(sql).map_err(map_err)?;
     let mut result = stmt.query([]).map_err(map_err)?;
     let mut columns: Vec<String> = Vec::new();
     let mut rows = Vec::new();
-    while let Some(row) = result.next().map_err(map_err)? {
+    while rows.len() < limit {
+        let Some(row) = result.next().map_err(map_err)? else {
+            break;
+        };
         if columns.is_empty() {
             columns = row.as_ref().column_names();
         }
@@ -238,7 +249,7 @@ impl DuckdbAdapter {
     }
 }
 
-fn run_sql(c: &Connection, sql: &str) -> Result<QueryResult, String> {
+fn run_sql(c: &Connection, sql: &str, limit: usize) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
     if matches!(
@@ -253,7 +264,7 @@ fn run_sql(c: &Connection, sql: &str) -> Result<QueryResult, String> {
             | "SUMMARIZE"
             | "CALL"
     ) {
-        let (columns, rows) = query_all(c, sql)?;
+        let (columns, rows) = query_limited(c, sql, limit)?;
         return Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
             columns,
@@ -283,7 +294,7 @@ impl DuckdbTx {
             let guard = conn
                 .lock()
                 .map_err(|_| "DuckDB-Verbindung ist blockiert".to_string())?;
-            run_sql(&guard, &sql)
+            run_sql(&guard, &sql, usize::MAX)
         })
         .await
         .map_err(|e| format!("DuckDB-Task fehlgeschlagen: {e}"))?
@@ -468,7 +479,8 @@ impl DatabaseAdapter for DuckdbAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let sql = sql.trim().to_string();
-        self.run(move |c| run_sql(c, &sql)).await
+        let limit = super::execution::row_limit();
+        self.run(move |c| run_sql(c, &sql, limit)).await
     }
 
     async fn begin_transaction(&self) -> Result<Box<dyn super::TxSession>, String> {
