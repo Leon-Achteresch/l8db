@@ -1,6 +1,6 @@
 import { type useMatchRoute, useRouter } from "@tanstack/react-router";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
-import { type Tab, useTableTabs } from "@/lib/table-tabs";
+import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 
 type MatchRoute = ReturnType<typeof useMatchRoute>;
@@ -121,6 +121,9 @@ export function useActiveWorkspaceTab(pending?: boolean): Tab | undefined {
       });
     return useTableTabs.getState().tabs.find((tab) => tabMatchesRoute(matchRoute, tab, pending));
   };
-  useTableTabs(find);
+  useTableTabs(() => {
+    const tab = find();
+    return tab ? tabKey(tab) : undefined;
+  });
   return useRouterSelect(find);
 }
