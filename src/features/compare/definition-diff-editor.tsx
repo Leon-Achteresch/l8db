@@ -41,6 +41,7 @@ interface DefinitionDiffEditorProps {
   onStats?: (stats: DiffStats) => void;
   onModifiedChange?: (value: string) => void;
   readOnly?: boolean;
+  minimap?: boolean;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -51,6 +52,7 @@ export function DefinitionDiffEditor({
   onStats,
   onModifiedChange,
   readOnly = false,
+  minimap = false,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,9 +63,9 @@ export function DefinitionDiffEditor({
 
   const modifiedCallback = useRef(onModifiedChange);
   modifiedCallback.current = onModifiedChange;
-  const syncing = useRef(false);
   statsRef.current = onStats;
   const readOnlyRef = useRef(readOnly);
+  const minimapRef = useRef(minimap);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -77,7 +79,7 @@ export function DefinitionDiffEditor({
       automaticLayout: true,
       renderSideBySide: true,
       renderOverviewRuler: true,
-      minimap: { enabled: false },
+      minimap: { enabled: minimapRef.current, renderCharacters: false },
       scrollBeyondLastLine: false,
       fontSize: 13,
       lineHeight: 22,
@@ -91,9 +93,6 @@ export function DefinitionDiffEditor({
         horizontalScrollbarSize: 8,
       },
     });
-    const originalModel = monaco.editor.createModel("", "sql");
-    const modifiedModel = monaco.editor.createModel("", "sql");
-    editor.setModel({ original: originalModel, modified: modifiedModel });
     diffRef.current = editor;
 
     const subscription = editor.onDidUpdateDiff(() => {
@@ -101,27 +100,37 @@ export function DefinitionDiffEditor({
       statsRef.current?.(diffStats(editor.getLineChanges() ?? []));
     });
 
-    const modifiedSubscription = modifiedModel.onDidChangeContent(() => {
-      if (!syncing.current) modifiedCallback.current?.(modifiedModel.getValue());
-    });
-
     return () => {
-      modifiedSubscription.dispose();
       subscription.dispose();
+      const models = editor.getModel();
       editor.dispose();
-      originalModel.dispose();
-      modifiedModel.dispose();
+      models?.original.dispose();
+      models?.modified.dispose();
       diffRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    const models = diffRef.current?.getModel();
-    if (!models) return;
-    syncing.current = true;
-    if (models.original.getValue() !== original) models.original.setValue(original);
-    if (models.modified.getValue() !== modified) models.modified.setValue(modified);
-    syncing.current = false;
+    const editor = diffRef.current;
+    if (!editor) return;
+    const previous = editor.getModel();
+    if (
+      previous &&
+      previous.original.getValue() === original &&
+      previous.modified.getValue() === modified
+    )
+      return;
+    const modifiedModel = monaco.editor.createModel(modified, "sql");
+    editor.setModel({
+      original: monaco.editor.createModel(original, "sql"),
+      modified: modifiedModel,
+    });
+    previous?.original.dispose();
+    previous?.modified.dispose();
+    const listener = modifiedModel.onDidChangeContent(() => {
+      modifiedCallback.current?.(modifiedModel.getValue());
+    });
+    return () => listener.dispose();
   }, [original, modified]);
 
   useEffect(() => {
