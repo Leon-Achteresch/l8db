@@ -86,17 +86,18 @@ fn map_err(e: rusqlite::Error) -> String {
     format!("SQLite: {e}")
 }
 
-fn query_all(
-    conn: &Connection,
-    sql: &str,
-) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
-    let mut stmt = conn.prepare(sql).map_err(map_err)?;
+type Rows = (Vec<String>, Vec<Vec<serde_json::Value>>);
+
+fn collect(stmt: &mut rusqlite::Statement<'_>, limit: usize) -> Result<Rows, String> {
     let columns =
         super::unique_column_names(stmt.column_names().iter().map(|c| c.to_string()).collect());
     let count = columns.len();
     let mut rows = Vec::new();
     let mut result = stmt.query([]).map_err(map_err)?;
-    while let Some(row) = result.next().map_err(map_err)? {
+    while rows.len() < limit {
+        let Some(row) = result.next().map_err(map_err)? else {
+            break;
+        };
         let mut values = Vec::with_capacity(count);
         for i in 0..count {
             values.push(value_to_json(row.get_ref(i).map_err(map_err)?));
@@ -104,6 +105,10 @@ fn query_all(
         rows.push(values);
     }
     Ok((columns, rows))
+}
+
+fn query_all(conn: &Connection, sql: &str) -> Result<Rows, String> {
+    collect(&mut conn.prepare(sql).map_err(map_err)?, usize::MAX)
 }
 
 fn strings(conn: &Connection, sql: &str) -> Result<Vec<String>, String> {
@@ -212,15 +217,14 @@ impl SqliteAdapter {
     }
 }
 
-fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
+fn run_query(c: &Connection, sql: &str, limit: usize) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     match c.prepare(sql) {
-        Ok(stmt) if stmt.column_count() > 0 => {
-            drop(stmt);
-            let (columns, rows) = query_all(c, sql)?;
+        Ok(mut stmt) if stmt.column_count() > 0 => {
+            let (columns, rows) = collect(&mut stmt, limit)?;
             Ok(QueryResult {
-                columns: columns.clone(),
                 rows: rows_to_objects(&columns, rows),
+                columns,
                 rows_affected: None,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 truncated: false,
@@ -323,7 +327,7 @@ struct SqliteTx {
 impl TxSession for SqliteTx {
     async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
         let sql = sql.trim().to_string();
-        run_blocking(self.conn.clone(), move |c| run_query(c, &sql)).await
+        run_blocking(self.conn.clone(), move |c| run_query(c, &sql, usize::MAX)).await
     }
     async fn commit(&mut self) -> Result<(), String> {
         run_blocking(self.conn.clone(), |c| {
@@ -490,7 +494,8 @@ impl DatabaseAdapter for SqliteAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let sql = sql.trim().to_string();
-        self.run(move |c| run_query(c, &sql)).await
+        let limit = super::execution::row_limit();
+        self.run(move |c| run_query(c, &sql, limit)).await
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
