@@ -108,7 +108,11 @@ impl Server {
             connection.name
         );
         if let Some(filter) = args.get("filter").and_then(Value::as_str) {
-            let filter = filter.trim().trim_start_matches("WHERE ").trim();
+            let filter = filter.trim();
+            let filter = filter
+                .get(..6)
+                .filter(|head| head.eq_ignore_ascii_case("where "))
+                .map_or(filter, |_| filter[6..].trim());
             validate_table_filter(filter)?;
             request["filter"] = json!(filter);
             done += &if filter.is_empty() {

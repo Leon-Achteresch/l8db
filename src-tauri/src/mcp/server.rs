@@ -1291,7 +1291,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 8);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 9);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();
