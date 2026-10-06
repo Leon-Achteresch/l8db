@@ -16,14 +16,20 @@ export function useResultExport(result: QueryResult | null) {
   const openCsvExport = useCallback(() => setCsvExportOpen(true), []);
   const { active: masks } = useActiveMasks(result?.columns ?? []);
 
+  const exportOpen = csvExportOpen || xlsxExportOpen || dataExportFormat !== null;
+  const [exportSource, setExportSource] = useState<QueryResult | null>(null);
+  if (exportSource !== result && (exportOpen || exportSource)) {
+    setExportSource(exportOpen ? result : null);
+  }
+
   const exportRows = useMemo(() => {
-    if (!result) return [] as Record<string, unknown>[];
-    return result.rows.map((row) => {
+    if (!exportSource) return [] as Record<string, unknown>[];
+    return exportSource.rows.map((row) => {
       const obj: Record<string, unknown> = {};
-      for (const c of result.columns) obj[c] = row[c] ?? null;
+      for (const c of exportSource.columns) obj[c] = row[c] ?? null;
       return obj;
     });
-  }, [result]);
+  }, [exportSource]);
 
   const handleExportJson = async () => {
     if (!result || result.columns.length === 0) return;
