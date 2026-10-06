@@ -262,7 +262,9 @@
 
 .l8-toast-close {
   position: absolute;
-  top: 0.5rem;
+  top: 0;
+  bottom: 0;
+  margin-block: auto;
   right: 0.5rem;
   display: flex;
   align-items: center;
