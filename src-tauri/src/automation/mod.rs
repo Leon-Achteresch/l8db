@@ -20,12 +20,14 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
 use model::{
-    AlertState, AutomationConnection, AutomationSettings, BackgroundStatus, ChannelRef,
+    AiActivity, AlertState, AutomationConnection, AutomationSettings, BackgroundStatus, ChannelRef,
     ConnectionCheck, ImportReport, RunDetail, RunFilter, RunSummary, Schedule, Severity, Task,
     TaskSummary, TriggerKind, ValidationIssue,
 };
 use runtime::{rfc3339, AutomationEvent, RunRequest, Services};
 use store::Store;
+
+pub static APP_SERVICES: OnceLock<Services> = OnceLock::new();
 
 #[derive(Default)]
 pub struct AutomationState {
@@ -79,6 +81,7 @@ pub fn init(app: &AppHandle) {
     match services_from_app(app) {
         Ok(services) => {
             if state.services.set(services.clone()).is_ok() {
+                let _ = APP_SERVICES.set(services.clone());
                 scheduler::spawn(services);
             }
         }
@@ -572,6 +575,14 @@ pub async fn automation_uninstall_background() -> Result<BackgroundStatus, Strin
     tokio::task::spawn_blocking(os_scheduler::uninstall)
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn automation_ai_activity(
+    state: tauri::State<'_, AutomationState>,
+    after: u64,
+) -> Result<Vec<AiActivity>, String> {
+    services(&state)?.store.activity(after).await
 }
 
 #[tauri::command]

@@ -24,6 +24,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { AiFlash } from "@/features/automation/ai-flash";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import { tabLabel } from "@/lib/tab-navigation";
@@ -144,6 +145,7 @@ export function TableTabsSortableTab({
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
+          <AiFlash id={`tab:${tabKey(tab)}`} neon />
           {isActive && (
             <span
               aria-hidden="true"

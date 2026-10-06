@@ -4,8 +4,10 @@ pub mod config;
 pub mod dashboard;
 pub mod health;
 pub mod nosql;
+pub mod open;
 pub mod redact;
 pub mod server;
+pub mod workflow;
 
 pub fn serve() {
     server::serve();

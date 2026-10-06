@@ -1,6 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { AiFlash } from "./ai-flash";
 import { StepGraphCard } from "./step-graph-card";
 import { StepGraphHandles } from "./step-graph-handles";
 import { STEP_HEIGHT, STEP_WIDTH, type StepFlowNode, statusTone } from "./step-graph-types";
@@ -23,6 +24,7 @@ export function StepGraphStepNode({ data }: NodeProps<Extract<StepFlowNode, { ty
     >
       <StepGraphCard data={data} />
       <StepGraphHandles step={data.step} />
+      <AiFlash id={`step:${data.step.id}`} />
     </div>
   );
 }

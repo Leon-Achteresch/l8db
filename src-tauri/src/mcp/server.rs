@@ -39,7 +39,8 @@ pub(crate) struct Server {
 }
 
 pub fn serve() {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .expect("tokio runtime");
@@ -116,6 +117,8 @@ pub fn tool_definitions() -> Value {
         super::dashboard::tool_definition(),
         super::benchmark::tool_definition(),
         super::health::tool_definition(),
+        super::workflow::tool_definition(),
+        super::open::tool_definition(),
         {
             "name": "execute",
             "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
@@ -127,6 +130,19 @@ pub fn tool_definitions() -> Value {
             }, "required": ["connection", "sql", "confirm"]}
         }
     ])
+}
+
+fn listed_tools(config: &McpConfig) -> Vec<Value> {
+    if !config.enabled {
+        return Vec::new();
+    }
+    tool_definitions()
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|tool| config.workflows || tool["name"] != "workflow")
+        .collect()
 }
 
 impl Server {
@@ -149,11 +165,10 @@ impl Server {
                 "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "l8db", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types. The benchmark tool measures read-only statements repeatedly and returns latency percentiles. The health tool runs a read-only rule catalog on PostgreSQL connections and returns findings with suggested fix SQL."
+                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types. The benchmark tool measures read-only statements repeatedly and returns latency percentiles. The health tool runs a read-only rule catalog on PostgreSQL connections and returns findings with suggested fix SQL. If the workflow tool is listed, it builds, changes and runs l8db automation workflows; call action=step_types before building steps. The open tool shows a table, filter or SQL live in the l8db window; use it only when the user asks to open, show, filter or save something in l8db."
             })),
             "ping" => Ok(json!({})),
-            "tools/list" if !config::load().enabled => Ok(json!({"tools": []})),
-            "tools/list" => Ok(json!({"tools": tool_definitions()})),
+            "tools/list" => Ok(json!({"tools": listed_tools(&config::load())})),
             "tools/call" => Ok(self.call(&params).await),
             "resources/list" => Ok(json!({"resources": []})),
             "prompts/list" => Ok(json!({"prompts": []})),
@@ -191,6 +206,12 @@ impl Server {
         let outcome = match name {
             "connections" => Ok(list_connections(config)),
             "dashboard" => self.dashboard(config, &args).await,
+            "workflow" if !config.workflows => Err(
+                "Workflow-Steuerung ist für den MCP gesperrt. In l8db unter MCP › Übersicht freigeben."
+                    .into(),
+            ),
+            "workflow" => super::workflow::call(&args, "mcp").await,
+            "open" => self.open(config, &args).await,
             "search" | "describe" | "query" | "execute" | "benchmark" | "health" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
                 match find_connection(config, target)
@@ -210,7 +231,9 @@ impl Server {
                             }
                             "query" => self.query(config, connection, &args).await,
                             "benchmark" => self.benchmark(config, connection, &args).await,
-                            "health" => super::health::call(connection, &self.pool, &args).await,
+                            "health" => {
+                                super::health::call(connection, &self.pool, &args).await
+                            }
                             _ => self.execute(config, connection, &args).await,
                         };
                         if matches!(name, "query" | "execute" | "benchmark") {
@@ -285,7 +308,10 @@ impl Server {
         Ok(columns)
     }
 
-    fn visible_columns(columns: &[ColumnInfo], connection: &McpConnection) -> Vec<ColumnInfo> {
+    pub(super) fn visible_columns(
+        columns: &[ColumnInfo],
+        connection: &McpConnection,
+    ) -> Vec<ColumnInfo> {
         columns
             .iter()
             .filter(|column| {
@@ -681,7 +707,7 @@ pub(super) fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
     args.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-fn qualified(schema: &str, table: &str) -> String {
+pub(super) fn qualified(schema: &str, table: &str) -> String {
     if schema.is_empty() {
         table.to_string()
     } else {
