@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { connectionUser, siblingConnections } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
@@ -14,6 +14,14 @@ export function useSidebarScope(
   const activeSchema = useActiveSchema();
   const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
+  const activeId = activeConnection?.id;
+  const remembered = useDbSelectionStore((state) =>
+    activeId ? state.schemaByConnection[activeId] : undefined,
+  );
+  useEffect(() => {
+    if (activeId && !remembered && schemas?.includes(activeSchema))
+      setSchema(activeId, activeSchema);
+  }, [activeId, remembered, schemas, activeSchema, setSchema]);
   const siblings = useMemo(
     () => siblingConnections(connections, activeConnection),
     [connections, activeConnection],
