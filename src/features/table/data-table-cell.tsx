@@ -22,7 +22,7 @@ type DataTableCellProps = Pick<
   | "editingCell"
   | "isSaving"
   | "canPickFk"
-  | "onSaveRow"
+  | "canSave"
   | "canEditCell"
   | "focusCell"
   | "handleCellEdit"
@@ -55,7 +55,7 @@ export const DataTableCell = memo(function DataTableCell({
   editingCell,
   isSaving,
   canPickFk,
-  onSaveRow,
+  canSave,
   canEditCell,
   focusCell,
   handleCellEdit,
@@ -85,7 +85,7 @@ export const DataTableCell = memo(function DataTableCell({
   const rowIndex = row.index;
   const rowCtid = row.original.__ctid__ as string | undefined;
   const columnId = column.id;
-  const editable = !!onSaveRow && (!canEditCell || canEditCell(row.original, columnId));
+  const editable = canSave && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
   const dataType = column.columnDef.meta?.dataType;
   const badge = useMemo(
@@ -234,7 +234,7 @@ export const DataTableCell = memo(function DataTableCell({
         preview.text
       )}
       {isActive && cellIndex > 0 && (
-        <div className="absolute top-1/2 right-1 -translate-y-1/2 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
+        <div className="absolute top-1/2 right-1 -translate-y-1/2 flex items-center gap-0.5 bg-background pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
           <button
             type="button"
             onClick={(e) => {

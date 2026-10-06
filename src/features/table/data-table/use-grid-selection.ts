@@ -1,8 +1,9 @@
-import { type Dispatch, type SetStateAction, useCallback, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { copyText } from "@/lib/clipboard";
 import {
   cellKey,
+  cellsByRow,
   cellsToTsv,
   type GridCellRef,
   mergeSelectionCells,
@@ -11,6 +12,8 @@ import {
 } from "@/lib/grid-selection";
 import type { TableRow } from "../data-table-types";
 import { INDEX_COLUMN } from "./constants";
+
+const NO_CELLS = new Map<number, Set<string>>();
 
 export function useGridSelection(
   activeCell: GridCellRef | null,
@@ -40,18 +43,21 @@ export function useGridSelection(
     [selectedRange, extraCells],
   );
   const selectedCount = selectedCells.length;
-  const selectedKeys = useMemo(
-    () => new Set(selectedCells.map((cell) => cellKey(cell.rowIndex, cell.columnId))),
-    [selectedCells],
+  const selectedByRow = useMemo(
+    () => (selectedCount > 1 ? cellsByRow(selectedCells) : NO_CELLS),
+    [selectedCount, selectedCells],
   );
   const selectionStats = useMemo(
     () => (selectedCount > 1 ? summarizeCells(data, selectedCells) : null),
     [selectedCount, data, selectedCells],
   );
 
+  const committedRef = useRef({ selectedRange, extraCells });
+  committedRef.current = { selectedRange, extraCells };
   const focusCell = useCallback(
     (cell: GridCellRef | null, extend = false, additive = false) => {
       if (additive && cell && cell.columnId !== INDEX_COLUMN) {
+        const { selectedRange, extraCells } = committedRef.current;
         const key = cellKey(cell.rowIndex, cell.columnId);
         const committed = mergeSelectionCells(selectedRange, extraCells);
         const wasSelected = committed.some(
@@ -70,7 +76,7 @@ export function useGridSelection(
       setActiveCell(cell);
       if (!extend) setSelectionAnchor(cell);
     },
-    [selectedRange, extraCells],
+    [setActiveCell],
   );
 
   const copySelection = useCallback(() => {
@@ -86,7 +92,7 @@ export function useGridSelection(
     setSelectionAnchor,
     setExtraCells,
     selectedCount,
-    selectedKeys,
+    selectedByRow,
     selectionStats,
     focusCell,
     copySelection,

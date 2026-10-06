@@ -74,7 +74,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     isSaving,
     keepColumn,
     markedRows,
-    matchKeys,
+    matchesByRow,
     menuRow,
     order,
     outgoingFkByColumn,
@@ -87,8 +87,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     scrollRef,
     search,
     searchColumns,
-    selectedCount,
-    selectedKeys,
+    selectedByRow,
     selectionStats,
     setActiveCell,
     setAutoRefreshMs,
@@ -234,7 +233,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                     hasRowActions={hasRowActions}
                     isSaving={isSaving}
                     markedRows={markedRows}
-                    matchKeys={matchKeys}
+                    matchesByRow={matchesByRow}
                     menuRow={menuRow}
                     outgoingFkByColumn={outgoingFkByColumn}
                     paddingBottom={paddingBottom}
@@ -242,8 +241,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                     rowVirtualizer={rowVirtualizer}
                     rows={rows}
                     scrollRef={scrollRef}
-                    selectedCount={selectedCount}
-                    selectedKeys={selectedKeys}
+                    selectedByRow={selectedByRow}
                     setActiveCell={setActiveCell}
                     setDraft={setDraft}
                     setEditingCell={setEditingCell}
