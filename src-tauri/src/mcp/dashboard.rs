@@ -143,11 +143,11 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "run", "chart_types"]},
+                "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "run", "joins", "chart_types"]},
                 "connection": {"type": "string", "description": "Connection name or id (create, list filter, preview without dashboard)"},
                 "dashboard": {"type": "string", "description": "Dashboard id or name"},
                 "name": {"type": "string"},
@@ -155,6 +155,8 @@ pub fn tool_definition() -> Value {
                 "chart": {"type": "string", "description": "Chart id or title"},
                 "limit": {"type": "integer", "minimum": 1, "description": "Rows per chart for preview (default 20) and run (default 5)"},
                 "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Dashboard filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
+                "table": {"type": "string", "description": "joins: table to find join partners for (schema.table)"},
+                "tables": {"type": "array", "items": {"type": "string"}, "description": "joins: only consider these tables"},
                 "values": {"type": "object", "description": "Variable values for preview and run, e.g. {\"mandant\": \"Nordfrost\"}"},
                 "charts": {"type": "array", "items": spec},
                 "spec": spec
@@ -831,6 +833,7 @@ impl Server {
             "create" => self.create(config, args).await,
             "preview" => return self.preview(config, args).await,
             "run" => return self.run_all(config, args).await,
+            "joins" => return self.joins(config, args).await,
             "update" | "delete" | "add_charts" | "update_chart" | "remove_chart" => {
                 self.modify(config, args, action).await
             }
@@ -990,9 +993,34 @@ impl Server {
         let data_change = existing.is_none() || DATA_KEYS.iter().any(|key| spec.contains_key(*key));
         let mut notes = Vec::new();
         let mut preview = String::new();
-        let builder_spec = spec.get("builder").filter(|value| !value.is_null());
-        let (dataset, shape) = if let (true, Some(builder_spec)) = (data_change, builder_spec) {
-            if spec.contains_key("sql") {
+        let builder_base = base_dataset.filter(|d| {
+            d["mode"] == "simple" && d["simple"]["table"].as_str().is_some_and(|t| !t.is_empty())
+        });
+        let merged = match builder_base {
+            Some(base) if !spec.contains_key("sql") && data_change => {
+                let mut merged = builder::describe_builder(&base["simple"]);
+                if let (Some(target), Some(patch)) = (
+                    merged.as_object_mut(),
+                    spec.get("builder").and_then(Value::as_object),
+                ) {
+                    for (key, value) in patch {
+                        target.insert(key.clone(), value.clone());
+                    }
+                }
+                for key in ["dimension", "dimension2", "metrics", "dateColumn"] {
+                    if let Some(value) = spec.get(key) {
+                        merged[key] = value.clone();
+                    }
+                }
+                Some(merged)
+            }
+            _ => spec
+                .get("builder")
+                .filter(|value| !value.is_null())
+                .cloned(),
+        };
+        let (dataset, shape) = if let (true, Some(builder_spec)) = (data_change, merged.as_ref()) {
+            if spec.contains_key("sql") && spec.contains_key("builder") {
                 return Err("Entweder sql oder builder angeben, nicht beides.".into());
             }
             let simple = builder::parse_builder(builder_spec)?;
@@ -1031,6 +1059,12 @@ impl Server {
                 )
                 .await?;
             preview = rows;
+            for line in self
+                .join_report(config, connection, &dataset["simple"])
+                .await
+            {
+                notes.push(line);
+            }
             (Some(dataset), shape)
         } else if data_change {
             let base = base_dataset.filter(|d| d["mode"] == "expert");
@@ -1440,6 +1474,130 @@ impl Server {
                 .map_err(|e| format!("variable '{label}' optionsSql: {e}"))?;
         }
         Ok(variables)
+    }
+
+    async fn join_stats(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        sql: &str,
+    ) -> Result<builder::JoinStats, String> {
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+        let columns = self.columns_for(config, connection).await?;
+        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        server::check_read_sql(sql, connection, &index)?;
+        let result = self.run_sql(config, connection, sql).await?;
+        result
+            .rows
+            .first()
+            .and_then(|row| builder::read_join_stats(&result.columns, row))
+            .ok_or_else(|| "Tabelle ist leer.".to_string())
+    }
+
+    async fn join_report(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        simple: &Value,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        for check in builder::join_checks(simple, connection.kind) {
+            match self.join_stats(config, connection, &check.sql).await {
+                Ok(stats) => out.push(format!("Join {}: {}", check.label, stats.summary())),
+                Err(e) => out.push(format!(
+                    "Join {}: Trefferquote nicht messbar ({e})",
+                    check.label
+                )),
+            }
+        }
+        out
+    }
+
+    async fn joins(&mut self, config: &McpConfig, args: &Value) -> Result<String, String> {
+        let connection = sql_connection(config, server::arg_str(args, "connection"))?;
+        let target = text(args, "table")
+            .ok_or("table fehlt (Tabelle, zu der Verknüpfungen gesucht werden).")?;
+        let limit = args
+            .get("limit")
+            .and_then(Value::as_u64)
+            .map_or(6, |n| n as usize)
+            .clamp(1, 15);
+        let all = self.columns_for(config, connection).await?;
+        let visible = Server::visible_columns(&all, connection);
+        let mut tables: Vec<(String, String, Vec<String>)> = Vec::new();
+        for column in &visible {
+            match tables
+                .iter_mut()
+                .find(|(schema, table, _)| *schema == column.schema && *table == column.table)
+            {
+                Some((_, _, list)) => list.push(column.name.clone()),
+                None => tables.push((
+                    column.schema.clone(),
+                    column.table.clone(),
+                    vec![column.name.clone()],
+                )),
+            }
+        }
+        let matches = |schema: &str, table: &str, name: &str| {
+            name.eq_ignore_ascii_case(table)
+                || name.eq_ignore_ascii_case(&format!("{schema}.{table}"))
+        };
+        let base = tables
+            .iter()
+            .find(|(schema, table, _)| matches(schema, table, target))
+            .cloned()
+            .ok_or_else(|| format!("Tabelle '{target}' nicht gefunden. search zeigt die Namen."))?;
+        let wanted: Vec<String> = args["tables"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let candidates: Vec<(String, String, Vec<String>)> = tables
+            .iter()
+            .filter(|(schema, table, _)| {
+                wanted.is_empty() || wanted.iter().any(|name| matches(schema, table, name))
+            })
+            .cloned()
+            .collect();
+        let suggestions = builder::suggest_joins((&base.0, &base.1, &base.2), &candidates, limit);
+        if suggestions.is_empty() {
+            return Ok(format!(
+                "Keine Verknüpfung für {}.{} anhand der Spaltennamen gefunden. Joins lassen sich trotzdem frei angeben: {{\"table\": \"...\", \"on\": \"spalte = spalte\"}}.",
+                base.0, base.1
+            ));
+        }
+        let mut out = vec![format!(
+            "Vorschläge für {}.{} (gemessen an {} Zeilen, bester zuerst). In builder.joins übernehmen:",
+            base.0, base.1, 500
+        )];
+        for suggestion in suggestions {
+            let sql = builder::join_stats_sql(
+                connection.kind,
+                (&base.0, &base.1),
+                (&suggestion.schema, &suggestion.table),
+                &[(suggestion.from.clone(), suggestion.to.clone())],
+            );
+            let measured = match self.join_stats(config, connection, &sql).await {
+                Ok(stats) => stats.summary(),
+                Err(e) => format!("nicht messbar ({e})"),
+            };
+            let qualified = if suggestion.schema.is_empty() {
+                suggestion.table.clone()
+            } else {
+                format!("{}.{}", suggestion.schema, suggestion.table)
+            };
+            out.push(format!(
+                "- {} · {} · {}",
+                json!({"table": qualified, "on": format!("{} = {}", suggestion.from, suggestion.to)}),
+                if suggestion.by_name { "Name passt" } else { "gleiche Spalte" },
+                measured
+            ));
+        }
+        Ok(server::cap(out.join("\n"), config.max_chars))
     }
 
     async fn run_all(&mut self, config: &McpConfig, args: &Value) -> Result<String, String> {
@@ -1876,7 +2034,7 @@ fn chart_types() -> String {
     let mut lines = vec![
         "Mapping names columns of the chart's SQL result. dimension = category or x-axis (ORDER BY it for time series), dimension2 = second category, metrics = numeric columns, dateColumn = date column that the period filter (7d, 30d, 90d, quarter, year) applies to.".to_string(),
         "Options (booleans unless noted): showValue headline number, showDelta trend badge, showPeriod period picker, colorOffset 0-7 start color, showLegend, stacked, curve monotone|linear, showGrid, labels values on chart, showPercent, sortBy none|asc|desc (by first metric), metricKeys subset of metrics to show.".to_string(),
-        "Builder (spec.builder instead of sql, editable in the app): {table, schema?, joins?: [{table, as?, on: \"artikel_id = id AND mandant = mandant\" (left side = parent table, right side = joined table), kind: left|inner, from?: alias of an earlier join for chains}], fields?: [{name, expr, type?: number|text|date, aggregate?}], dimension?: field or {field, bucket: none|day|week|month|quarter|year}, dimension2?, metrics: [\"count\" | \"sum(menge)\" | \"count_distinct(artikel.id)\" | \"<field name>\" | {agg, field, label}], filters?: [{field, op: eq|neq|gt|gte|lt|lte|contains|startsWith|endsWith|in|notIn|isNull|isNotNull, value}], dateColumn?, sort?: dimension|metric_desc|metric_asc, limit?}. Fields are referenced as column (base table), alias.column (joined table, alias defaults to the table name) or the name of a calculated field. In fields.expr write SQL of the connection with [column] / [alias.column] placeholders, e.g. sum([menge]) / nullif(sum([artikel.palettenfaktor]), 0); expressions with sum/avg/count/... are aggregates and become metrics as they are. Result columns are dim, dim2, m0, m1, ... A bare field name in metrics means the raw value (agg none), useful for table charts.".to_string(),
+        "Builder (spec.builder instead of sql, editable in the app): {table, schema?, joins?: [{table, as?, on: \"artikel_id = id AND mandant = mandant\" (left side = parent table, right side = joined table), kind: left|inner, from?: alias of an earlier join for chains}], fields?: [{name, expr, type?: number|text|date, aggregate?}], dimension?: field or {field, bucket: none|day|week|month|quarter|year}, dimension2?, metrics: [\"count\" | \"sum(menge)\" | \"count_distinct(artikel.id)\" | \"<field name>\" | {agg, field, label}], filters?: [{field, op: eq|neq|gt|gte|lt|lte|contains|startsWith|endsWith|in|notIn|isNull|isNotNull, value}], dateColumn?, sort?: dimension|metric_desc|metric_asc, limit?}. Fields are referenced as column (base table), alias.column (joined table, alias defaults to the table name) or the name of a calculated field. In fields.expr write SQL of the connection with [column] / [alias.column] placeholders, e.g. sum([menge]) / nullif(sum([artikel.palettenfaktor]), 0); expressions with sum/avg/count/... are aggregates and become metrics as they are. Result columns are dim, dim2, m0, m1, ... A bare field name in metrics means the raw value (agg none), useful for table charts. Unsure how tables relate? action=joins suggests join columns with measured match rate; every saved join reports its match rate and warns when it multiplies rows. update_chart merges spec.builder into the existing builder, so send only the keys you change (e.g. joins, filters, fields).".to_string(),
         "Variables (create/update variables): [{name, label, type: select|text|number|date, default, options | optionsSql}]. They appear as filter controls above the dashboard. Use {{name}} in sql (replaced by a typed literal, empty = NULL, so write ({{mandant}} IS NULL OR mandant = {{mandant}})) and as builder filter value {\"field\": \"mandant\", \"op\": \"eq\", \"value\": \"{{mandant}}\"} (skipped while empty) or inside fields.expr. preview/run take values: {name: value}.".to_string(),
         "Grid: 12 columns, row height ~44px. type\tdimension\tmetrics\tdefault w x h\toptions\thint".to_string(),
     ];

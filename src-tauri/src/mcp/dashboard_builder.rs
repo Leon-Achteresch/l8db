@@ -1339,3 +1339,326 @@ pub(super) fn dataset_variables(dataset: &Value) -> Vec<String> {
     }
     names
 }
+
+const SAMPLE_SIZE: usize = 500;
+const GENERIC_COLUMNS: &[&str] = &[
+    "id",
+    "name",
+    "bezeichnung",
+    "beschreibung",
+    "description",
+    "created",
+    "created_at",
+    "updated",
+    "updated_at",
+    "modified",
+    "status",
+    "type",
+    "typ",
+    "version",
+    "datum",
+    "date",
+    "menge",
+    "quantity",
+    "value",
+    "wert",
+];
+const KEY_SUFFIXES: &[&str] = &["uuid", "code", "key", "num", "nr", "no", "id"];
+
+pub(super) struct JoinCheck {
+    pub label: String,
+    pub sql: String,
+}
+
+pub(super) struct JoinStats {
+    pub sample: f64,
+    pub matched: f64,
+    pub fanout: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct JoinSuggestion {
+    pub schema: String,
+    pub table: String,
+    pub from: String,
+    pub to: String,
+    pub score: u8,
+    pub by_name: bool,
+}
+
+fn sample_sql(table: &str, columns: &str, kind: DatabaseKind) -> String {
+    match kind {
+        DatabaseKind::Mssql => format!("SELECT TOP {SAMPLE_SIZE} {columns} FROM {table}"),
+        DatabaseKind::Oracle => {
+            format!("SELECT {columns} FROM {table} FETCH FIRST {SAMPLE_SIZE} ROWS ONLY")
+        }
+        _ => format!("SELECT {columns} FROM {table} LIMIT {SAMPLE_SIZE}"),
+    }
+}
+
+pub(super) fn join_stats_sql(
+    kind: DatabaseKind,
+    parent: (&str, &str),
+    child: (&str, &str),
+    pairs: &[(String, String)],
+) -> String {
+    let q = |name: &str| style_quote(kind, name);
+    let table = |(schema, name): (&str, &str)| {
+        if schema.is_empty() {
+            q(name)
+        } else {
+            format!("{}.{}", q(schema), q(name))
+        }
+    };
+    let as_ = if kind == DatabaseKind::Oracle {
+        " "
+    } else {
+        " AS "
+    };
+    let unique = |side: fn(&(String, String)) -> &String| {
+        let mut out: Vec<String> = Vec::new();
+        for pair in pairs {
+            let name = q(side(pair));
+            if !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        out.join(", ")
+    };
+    let on = pairs
+        .iter()
+        .map(|(from, to)| format!("r.{} = l.{}", q(to), q(from)))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    [
+        format!(
+            "SELECT COUNT(*){as_}{}, SUM(COALESCE(r.{}, 0)){as_}{},",
+            q("l8_rows"),
+            q("l8_hit"),
+            q("l8_hits")
+        ),
+        format!(
+            "(SELECT COUNT(*) FROM ({}){as_}s){as_}{}",
+            sample_sql(&table(parent), &format!("1{as_}x"), kind),
+            q("l8_sample")
+        ),
+        format!(
+            "FROM ({}){as_}l",
+            sample_sql(&table(parent), &unique(|p| &p.0), kind)
+        ),
+        format!(
+            "LEFT JOIN (SELECT 1{as_}{}, {} FROM {}){as_}r ON {on}",
+            q("l8_hit"),
+            unique(|p| &p.1),
+            table(child)
+        ),
+    ]
+    .join("\n")
+}
+
+pub(super) fn join_checks(simple: &Value, kind: DatabaseKind) -> Vec<JoinCheck> {
+    let joins = joins_of(simple);
+    let base = (
+        simple["schema"].as_str().unwrap_or(""),
+        simple["table"].as_str().unwrap_or(""),
+    );
+    joins
+        .iter()
+        .filter_map(|join| {
+            let parent = match join["parent"].as_str().filter(|p| !p.is_empty()) {
+                Some(id) => {
+                    let found = joins.iter().find(|j| j["id"].as_str() == Some(id))?;
+                    (
+                        found["schema"].as_str().unwrap_or(""),
+                        found["table"].as_str().unwrap_or(""),
+                    )
+                }
+                None => base,
+            };
+            let child = (
+                join["schema"].as_str().unwrap_or(""),
+                join["table"].as_str().unwrap_or(""),
+            );
+            let mut pairs = vec![(
+                join["fromColumn"].as_str()?.to_string(),
+                join["toColumn"].as_str()?.to_string(),
+            )];
+            for extra in join["extra"].as_array().into_iter().flatten() {
+                if let (Some(from), Some(to)) = (extra["from"].as_str(), extra["to"].as_str()) {
+                    pairs.push((from.to_string(), to.to_string()));
+                }
+            }
+            let on = pairs
+                .iter()
+                .map(|(from, to)| format!("{from} = {to}"))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            Some(JoinCheck {
+                label: format!("{} → {} ({on})", parent.1, child.1),
+                sql: join_stats_sql(kind, parent, child, &pairs),
+            })
+        })
+        .collect()
+}
+
+pub(super) fn read_join_stats(columns: &[String], row: &Value) -> Option<JoinStats> {
+    let get = |name: &str| -> Option<f64> {
+        let value = match row {
+            Value::Object(map) => map.get(name)?,
+            Value::Array(list) => list.get(columns.iter().position(|c| c == name)?)?,
+            _ => return None,
+        };
+        value
+            .as_f64()
+            .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+            .or(value.is_null().then_some(0.0))
+    };
+    let rows = get("l8_rows")?;
+    let hits = get("l8_hits")?;
+    let sample = get("l8_sample")?;
+    if sample <= 0.0 {
+        return None;
+    }
+    let matched = (sample - (rows - hits).max(0.0)).max(0.0);
+    Some(JoinStats {
+        sample,
+        matched,
+        fanout: if matched > 0.0 { hits / matched } else { 0.0 },
+    })
+}
+
+impl JoinStats {
+    pub fn rate(&self) -> f64 {
+        self.matched / self.sample * 100.0
+    }
+
+    pub fn summary(&self) -> String {
+        let mut out = format!(
+            "{:.0} % Treffer (Stichprobe {:.0} Zeilen)",
+            self.rate(),
+            self.sample
+        );
+        if self.matched == 0.0 {
+            out.push_str(", ⚠ kein einziger Treffer, Spalten prüfen");
+        } else if self.rate() < 50.0 {
+            out.push_str(", ⚠ wenige Treffer, kind=inner würde den Rest verwerfen");
+        }
+        if self.fanout > 1.05 {
+            out.push_str(&format!(
+                ", ⚠ {:.1} Zeilen je Treffer: Summen werden vervielfacht",
+                self.fanout
+            ));
+        }
+        out
+    }
+}
+
+fn stem(name: &str) -> String {
+    let lower = name.to_lowercase();
+    let trimmed = ["tbl_", "t_", "dim_", "fact_", "fct_", "v_", "vw_"]
+        .iter()
+        .find_map(|p| lower.strip_prefix(p))
+        .unwrap_or(&lower)
+        .to_string();
+    for suffix in ["en", "es", "e", "s", "n"] {
+        if let Some(rest) = trimmed.strip_suffix(suffix) {
+            return rest.to_string();
+        }
+    }
+    trimmed
+}
+
+fn key_stem(column: &str) -> Option<String> {
+    let lower = column.to_lowercase();
+    let raw = KEY_SUFFIXES
+        .iter()
+        .find_map(|suffix| {
+            lower
+                .strip_suffix(suffix)
+                .filter(|rest| !rest.is_empty())
+                .map(|rest| rest.trim_end_matches('_').to_string())
+        })
+        .filter(|rest| !rest.is_empty())
+        .or_else(|| lower.strip_prefix("id_").map(str::to_string))?;
+    let out = stem(&raw);
+    (out.chars().count() >= 3).then_some(out)
+}
+
+fn related(key: &str, table_stem: &str) -> bool {
+    key == table_stem || table_stem.ends_with(key) || key.ends_with(table_stem)
+}
+
+fn primary_key<'a>(columns: &'a [String], table: &str) -> Option<&'a String> {
+    let own = stem(table);
+    columns
+        .iter()
+        .find(|c| c.eq_ignore_ascii_case("id"))
+        .or_else(|| {
+            columns
+                .iter()
+                .find(|c| key_stem(c).as_deref() == Some(own.as_str()))
+        })
+}
+
+pub(super) fn suggest_joins(
+    base: (&str, &str, &[String]),
+    candidates: &[(String, String, Vec<String>)],
+    limit: usize,
+) -> Vec<JoinSuggestion> {
+    let (base_schema, base_table, base_columns) = base;
+    let mut out: Vec<JoinSuggestion> = Vec::new();
+    let mut push = |s: JoinSuggestion| match out
+        .iter_mut()
+        .find(|o| o.schema == s.schema && o.table == s.table && o.from == s.from && o.to == s.to)
+    {
+        Some(twin) => twin.score = twin.score.max(s.score),
+        None => out.push(s),
+    };
+    let base_stem = stem(base_table);
+    let base_key = primary_key(base_columns, base_table);
+    for (schema, table, columns) in candidates {
+        if schema == base_schema && table == base_table {
+            continue;
+        }
+        let other_stem = stem(table);
+        let other_key = primary_key(columns, table);
+        let make = |from: &str, to: &str, score: u8, by_name: bool| JoinSuggestion {
+            schema: schema.clone(),
+            table: table.clone(),
+            from: from.to_string(),
+            to: to.to_string(),
+            score,
+            by_name,
+        };
+        for column in base_columns {
+            let ks = key_stem(column);
+            if let (Some(ks), Some(key)) = (&ks, other_key) {
+                if related(ks, &other_stem) {
+                    push(make(column, key, 90, true));
+                }
+            }
+            if let Some(same) = columns.iter().find(|c| c.eq_ignore_ascii_case(column)) {
+                let lower = column.to_lowercase();
+                if !GENERIC_COLUMNS.contains(&lower.as_str()) {
+                    let keyish = KEY_SUFFIXES.iter().any(|s| lower.ends_with(s));
+                    let score = match (keyish, ks.as_deref() == Some(other_stem.as_str())) {
+                        (true, true) => 85,
+                        (true, false) => 70,
+                        _ => 40,
+                    };
+                    push(make(column, same, score, false));
+                }
+            }
+        }
+        if let Some(base_key) = base_key {
+            for column in columns {
+                if key_stem(column).is_some_and(|ks| related(&ks, &base_stem)) {
+                    push(make(base_key, column, 80, true));
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.score.cmp(&a.score));
+    out.truncate(limit);
+    out
+}
