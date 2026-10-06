@@ -6,6 +6,7 @@ import {
   ChevronRightIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import { memo } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import type { autoRefreshPauseReason } from "@/lib/auto-refresh";
@@ -33,7 +34,7 @@ type Props = {
   onPageChange: ((page: number) => void) | undefined;
 };
 
-export function DataTableFooter({
+export const DataTableFooter = memo(function DataTableFooter({
   rowCount,
   page,
   pageSize,
@@ -173,4 +174,4 @@ export function DataTableFooter({
       </div>
     </div>
   );
-}
+});

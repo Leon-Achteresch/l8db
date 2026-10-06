@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { rankCommands } from "@/lib/command-score";
-import { gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
+import { runGridSearch, stepMatchIndex } from "@/lib/grid-search";
+import { cellsByRow } from "@/lib/grid-selection";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import type { TableRow } from "../data-table-types";
 
@@ -22,11 +23,7 @@ export function useGridSearch(data: TableRow[], searchColumns: string[]) {
   );
   const matches = searchResult.matches;
   const searchError = searchResult.error;
-  const matchKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const match of matches) keys.add(gridMatchKey(match.rowIndex, match.columnId));
-    return keys;
-  }, [matches]);
+  const matchesByRow = useMemo(() => cellsByRow(matches), [matches]);
   const activeMatch = matches[matchIndex] ?? null;
 
   const columnMatches = useMemo(() => {
@@ -71,7 +68,7 @@ export function useGridSearch(data: TableRow[], searchColumns: string[]) {
     searchInputRef,
     matches,
     searchError,
-    matchKeys,
+    matchesByRow,
     activeMatch,
     columnMatches,
     navCount,
