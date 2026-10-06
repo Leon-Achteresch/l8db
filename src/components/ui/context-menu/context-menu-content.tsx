@@ -1,6 +1,7 @@
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { ContextMenuLazyContext } from "./context-menu-lazy";
 
 export function ContextMenuContent({
   className,
@@ -8,6 +9,8 @@ export function ContextMenuContent({
 }: React.ComponentProps<typeof ContextMenuPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
 }) {
+  const lazy = React.useContext(ContextMenuLazyContext);
+  if (lazy && !lazy.live) return null;
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
