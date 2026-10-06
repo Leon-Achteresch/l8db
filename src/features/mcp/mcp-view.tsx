@@ -18,6 +18,7 @@ import { McpLimitsSection } from "@/features/mcp/mcp-limits-section";
 import { McpRedactionSection } from "@/features/mcp/mcp-redaction-section";
 import { McpSmartGuide } from "@/features/mcp/mcp-smart-guide";
 import { McpStatsGrid } from "@/features/mcp/mcp-stats-grid";
+import { McpWorkflowsSection } from "@/features/mcp/mcp-workflows-section";
 import {
   listMcpClients,
   type McpAuditEntry,
@@ -239,6 +240,10 @@ export function McpView() {
                     />
                   </>
                 )}
+                <McpWorkflowsSection
+                  enabled={config.workflows}
+                  onToggle={(workflows) => update((current) => ({ ...current, workflows }))}
+                />
               </div>
             )}
 

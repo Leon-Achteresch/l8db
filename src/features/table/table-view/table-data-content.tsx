@@ -1,6 +1,7 @@
 import { FilterXIcon, RefreshCwIcon } from "lucide-react";
 import { useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
+import { AiFlash } from "@/features/automation/ai-flash";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
@@ -98,7 +99,8 @@ export function TableDataContent({
   const gridReady = useDeferredValue(!isLoading, false);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {stateKey && <AiFlash id={`table:${stateKey}`} neon />}
       <TableViewsPanel
         schema={schema}
         table={table}

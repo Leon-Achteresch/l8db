@@ -9,6 +9,7 @@ import {
   ShieldX,
   SquarePen,
   Terminal,
+  Workflow,
   Wrench,
 } from "lucide-react";
 import { parseAiDiff } from "@/lib/ai/diff";
@@ -32,12 +33,14 @@ const TOOL_NAMES: Record<string, string> = {
   benchmark: "Benchmark",
   knowledge: "KI-Wissen",
   import_file: "Dateiimport",
+  workflow: "Workflow",
 };
 
 function toolIcon(name: string) {
   if (name === "visualize") return ChartColumn;
   if (name === "knowledge") return BookOpen;
   if (name === "import_file") return FileUp;
+  if (name === "workflow") return Workflow;
   if (/search|find|grep/i.test(name)) return Search;
   if (/query|sql|execute|benchmark/i.test(name)) return Database;
   if (/list|describe|read|get|schema|show/i.test(name)) return Eye;

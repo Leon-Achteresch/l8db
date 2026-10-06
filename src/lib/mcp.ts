@@ -38,6 +38,7 @@ export interface McpConfig {
   queryTimeout: number;
   redaction: Redaction;
   connections: McpConnection[];
+  workflows: boolean;
 }
 
 export interface McpClient {

@@ -1055,6 +1055,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       {composer}
     </>
   );
+  const alertMini =
+    minimized &&
+    "group-not-data-active/mini:mx-4 group-not-data-active/mini:mt-2 group-not-data-active/mini:rounded-2xl group-not-data-active/mini:border group-not-data-active/mini:border-destructive/25 group-not-data-active/mini:bg-background/90 group-not-data-active/mini:shadow-lg group-not-data-active/mini:shadow-black/10 group-not-data-active/mini:backdrop-blur-md";
   const main = (
     <>
       {!fullPage && (
@@ -1138,7 +1141,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       {state.persistenceError && (
         <p
           role="alert"
-          className="shrink-0 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          className={cn(
+            "shrink-0 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive",
+            alertMini,
+          )}
         >
           {state.persistenceError}
         </p>
@@ -1146,7 +1152,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       {error && (
         <div
           role="alert"
-          className="flex shrink-0 items-start gap-2 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          className={cn(
+            "flex shrink-0 items-start gap-2 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive",
+            alertMini,
+          )}
         >
           <p className="max-h-28 flex-1 overflow-auto whitespace-pre-wrap break-words">{error}</p>
           <button

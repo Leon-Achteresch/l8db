@@ -325,7 +325,7 @@ describe("GitHub automation configuration", () => {
     expect(workflow.permissions).toEqual({
       contents: "read",
       issues: "write",
-      "pull-requests": "read",
+      "pull-requests": "write",
     });
     expect(workflow.jobs.labels.steps[0].with.ref).toMatch(/^\$\{\{ github\.sha \}\}$/);
     expect(workflow.jobs.labels.steps[0].with["persist-credentials"]).toBe(false);

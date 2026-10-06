@@ -11,6 +11,7 @@ import { STEP_CATALOG, STEP_GROUP_TONE } from "@/lib/automation/step-catalog";
 import type { FlatStep } from "@/lib/automation/step-tree";
 import type { Flow, Step } from "@/lib/db/automation";
 import { cn } from "@/lib/utils";
+import { AiFlash } from "./ai-flash";
 
 interface Props {
   entry: FlatStep;
@@ -194,6 +195,7 @@ export function StepListItem({
             )}
           </span>
         </button>
+        <AiFlash id={`step:${step.id}`} reveal />
       </div>
       {children}
     </li>

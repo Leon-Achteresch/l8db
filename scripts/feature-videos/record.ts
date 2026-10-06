@@ -6,6 +6,7 @@ import { chromium, type Locator, type Page } from "playwright";
 import { ASSET_BASE, clipTag } from "../../src/lib/feature-videos/model";
 import { seedApp } from "../../tests/fixtures/perf-app";
 import { seedDashboardVideo } from "./dashboard-scenario";
+import { chat, seedMcpOpenVideo } from "./mcp-open-scenario";
 
 const output = resolve(process.env.FEATURE_VIDEO_OUTPUT ?? "test-artifacts/feature-videos");
 const catalog = JSON.parse(await readFile(new URL("catalog.json", import.meta.url), "utf8"));
@@ -70,6 +71,7 @@ try {
       );
     });
     if (item.id === "dashboard-workspace") await seedDashboardVideo(page);
+    if (item.id === "mcp-open") await seedMcpOpenVideo(page);
     await page.route("https://api.github.com/**", (route) =>
       route.fulfill({ status: 404, body: "{}" }),
     );
@@ -107,10 +109,15 @@ try {
       );
     }
     const tab = item.id === "easy-mode" ? "general" : "extensions";
-    await page.goto(
-      `http://localhost:${server.port}${item.id === "dashboard-workspace" ? "/dashboard" : `/settings?tab=${tab}`}`,
-    );
-    if (item.id === "dashboard-workspace")
+    const start =
+      item.id === "dashboard-workspace"
+        ? "/dashboard"
+        : item.id === "mcp-open"
+          ? "/"
+          : `/settings?tab=${tab}`;
+    await page.goto(`http://localhost:${server.port}${start}`);
+    if (item.id === "mcp-open") await page.getByText("Shop · Beispieldaten").first().waitFor();
+    else if (item.id === "dashboard-workspace")
       await page.getByRole("button", { name: "Chart bearbeiten", exact: true }).waitFor();
     else await page.getByRole("heading", { name: "Einstellungen", exact: true }).waitFor();
     await page.waitForFunction(() => document.fonts.status === "loaded");
@@ -270,14 +277,58 @@ try {
       await page.getByRole("dialog").waitFor({ state: "hidden" });
       await caption(page, "Dein Chart ist im Dashboard. Jetzt selbst ausprobieren.", 42);
       await page.waitForTimeout(2600);
+    } else if (item.id === "mcp-open") {
+      const send = (request: Record<string, unknown>) =>
+        page.evaluate(
+          (request) =>
+            (window as unknown as { __mcpOpen: (request: unknown) => void }).__mcpOpen({
+              connectionId: "mcp-video",
+              schema: "public",
+              table: "orders",
+              ...request,
+            }),
+          request,
+        );
+      await caption(page, "Deine KI arbeitet live in l8db – über den MCP.");
+      await page.waitForTimeout(1200);
+      await chat(page, "user", "Zeig mir in l8db die offenen Bestellungen über 500 €.");
+      await page.waitForTimeout(1600);
+      await caption(page, "Neon zeigt: Das hat gerade die KI gemacht.");
+      await focus(page.getByRole("button", { name: "Neue Abfrage öffnen" }).first(), 2.4, {
+        x: 380,
+        y: 200,
+      });
+      await page.waitForTimeout(900);
+      await chat(page, "ai", "Ich öffne public.orders …");
+      await send({});
+      await page.locator('[data-tab-key*="orders"]').waitFor();
+      await page.waitForTimeout(2600);
+      await resetCamera();
+      await chat(page, "ai", "Filter: status = 'offen' AND total > 500");
+      await send({ filter: "status = 'offen' AND total > 500" });
+      await page.getByText("status = 'offen' AND total > 500").first().waitFor();
+      await caption(page, "Den Filter setzt sie direkt in der Tabelle.");
+      await page.waitForTimeout(3000);
+      await chat(page, "user", "Speicher das als Ansicht.");
+      await page.waitForTimeout(1200);
+      await send({ filter: "status = 'offen' AND total > 500", saveAs: "Offen > 500 €" });
+      const chip = page.getByText("Offen > 500 €", { exact: true }).first();
+      await chip.waitFor();
+      await chat(page, "ai", "Gespeichert als Ansicht „Offen > 500 €“.");
+      await caption(page, "Auf Wunsch wird daraus eine gespeicherte Ansicht.");
+      await focus(chip, 2.8, { x: 420, y: 220 }, true);
+      await page.waitForTimeout(2800);
+      await resetCamera();
+      await caption(page, "Nur wenn du darum bittest – sonst bleibt alles, wie es ist.");
+      await page.waitForTimeout(2600);
     }
     if (errors.length) throw new Error(`App-Fehler während Aufnahme: ${errors.join("; ")}`);
     const recordedDuration = (performance.now() - recordingStart) / 1000 - trimStart;
-    const duration = Math.min(item.id === "dashboard-workspace" ? 29.5 : 25, recordedDuration);
-    const videoFilter =
-      item.id === "dashboard-workspace"
-        ? `trim=duration=${recordedDuration.toFixed(3)},setpts=${duration / recordedDuration}*(PTS-STARTPTS),scale=1280:720`
-        : "scale=1280:720";
+    const speedUp = item.id === "dashboard-workspace" || item.id === "mcp-open";
+    const duration = Math.min(speedUp ? 29.5 : 25, recordedDuration);
+    const videoFilter = speedUp
+      ? `trim=duration=${recordedDuration.toFixed(3)},setpts=${duration / recordedDuration}*(PTS-STARTPTS),scale=1280:720`
+      : "scale=1280:720";
     const video = page.video();
     await context.close();
     const raw = await video?.path();
