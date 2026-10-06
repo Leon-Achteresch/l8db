@@ -4,6 +4,7 @@ import {
   ExtensionError,
   type ExtensionManifest,
   type Json,
+  type JsonPanelOptions,
   type PanelSnapshot,
   type Permission,
   type StatusBarSnapshot,
@@ -98,8 +99,35 @@ export class PanelRegistry {
       title: panel.title,
       html,
       open: true,
-      updatedAt: Date.now(),
+      updatedAt: Math.max(Date.now(), (this.states.get(`${owner}:${panelId}`)?.updatedAt ?? 0) + 1),
     });
+  }
+  openJson(owner: string, panelId: string, options: JsonPanelOptions) {
+    if (
+      !options ||
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      typeof options.text !== "string" ||
+      options.text.length > 4 * 1024 * 1024 ||
+      (options.filename !== undefined &&
+        (typeof options.filename !== "string" || options.filename.length > 256)) ||
+      (options.description !== undefined &&
+        (typeof options.description !== "string" || options.description.length > 4096))
+    )
+      throw new ExtensionError("ProtocolError", "Invalid JSON panel options");
+    try {
+      JSON.parse(options.text);
+    } catch {
+      throw new ExtensionError("ProtocolError", "Invalid JSON document");
+    }
+    this.open(owner, panelId, "");
+    const state = this.states.get(`${owner}:${panelId}`);
+    if (!state) throw new ExtensionError("PanelNotFoundError", panelId);
+    state.json = {
+      text: options.text,
+      filename: options.filename,
+      description: options.description,
+    };
   }
   close(owner: string, panelId: string) {
     const key = `${owner}:${panelId}`;

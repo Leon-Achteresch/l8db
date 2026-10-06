@@ -564,3 +564,13 @@ fn approval_mode_skips_only_selected_tool_prompts() {
     assert!(acp_mcp(&json!({"rawInput": {"serverName": "github"}})));
     assert!(!acp_mcp(&json!({"title": "Bash", "kind": "execute"})));
 }
+
+#[test]
+fn search_paths_include_user_install_dirs() {
+    let paths = crate::ai::search_paths();
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    assert!(paths.contains(&home.join(".local/bin")));
+    assert!(paths.contains(&home.join(".npm-global/bin")));
+    let unique: std::collections::HashSet<_> = paths.iter().collect();
+    assert_eq!(unique.len(), paths.len());
+}

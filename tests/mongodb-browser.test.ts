@@ -174,7 +174,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
         0,
       );
       await page.getByRole("menuitem", { name: "Im Editor öffnen", exact: true }).click();
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("257 Zeilen", { exact: false }).first().waitFor();
       await page.getByText('{"value":0}', { exact: true }).first().waitFor();
       await page.getByText('{"value":0}', { exact: true }).first().click();

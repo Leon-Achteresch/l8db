@@ -49,6 +49,98 @@ fn validate_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn login_shell_path() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        Vec::new()
+    }
+    #[cfg(not(windows))]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+        let Ok(mut child) = crate::process::std_command(&shell)
+            .args(["-lic", "printf %s \"$PATH\""])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        else {
+            return Vec::new();
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                _ => {
+                    let _ = child.kill();
+                    return Vec::new();
+                }
+            }
+        }
+        child
+            .wait_with_output()
+            .ok()
+            .map(|output| {
+                std::env::split_paths(&String::from_utf8_lossy(&output.stdout).trim().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+pub fn search_paths() -> Vec<PathBuf> {
+    static PATHS: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+    PATHS
+        .get_or_init(|| {
+            let home = std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            let mut paths: Vec<PathBuf> = std::env::var_os("PATH")
+                .map(|path| std::env::split_paths(&path).collect())
+                .unwrap_or_default();
+            paths.extend(login_shell_path());
+            paths.extend([
+                home.join(".local/bin"),
+                home.join(".bun/bin"),
+                home.join(".claude/local"),
+                home.join(".npm-global/bin"),
+                home.join(".volta/bin"),
+                home.join(".cargo/bin"),
+                home.join(".deno/bin"),
+                home.join(".yarn/bin"),
+                home.join(".local/share/pnpm"),
+                home.join("Library/pnpm"),
+                home.join("bin"),
+                PathBuf::from("/opt/homebrew/bin"),
+                PathBuf::from("/usr/local/bin"),
+                PathBuf::from("/home/linuxbrew/.linuxbrew/bin"),
+            ]);
+            for variable in [
+                "APPDATA",
+                "LOCALAPPDATA",
+                "PNPM_HOME",
+                "VOLTA_HOME",
+                "NVM_BIN",
+            ] {
+                if let Some(base) = std::env::var_os(variable).map(PathBuf::from) {
+                    paths.push(match variable {
+                        "APPDATA" => base.join("npm"),
+                        "LOCALAPPDATA" => base.join("pnpm"),
+                        "VOLTA_HOME" => base.join("bin"),
+                        _ => base,
+                    });
+                }
+            }
+            let mut seen = std::collections::HashSet::new();
+            paths.retain(|path| seen.insert(path.clone()));
+            paths
+        })
+        .clone()
+}
+
 pub fn command(profile: &Profile) -> Result<tokio::process::Command, String> {
     let default = match profile.provider.as_str() {
         "codex" => "codex",
@@ -63,20 +155,8 @@ pub fn command(profile: &Profile) -> Result<tokio::process::Command, String> {
     } else {
         profile.binary.trim()
     };
-    let mut command = tokio::process::Command::new(program);
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let mut paths: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).collect())
-        .unwrap_or_default();
-    paths.extend([
-        home.join(".local/bin"),
-        home.join(".bun/bin"),
-        PathBuf::from("/opt/homebrew/bin"),
-        PathBuf::from("/usr/local/bin"),
-    ]);
-    if let Ok(path) = std::env::join_paths(paths) {
+    let mut command = crate::process::command(program);
+    if let Ok(path) = std::env::join_paths(search_paths()) {
         command.env("PATH", path);
     }
     if !profile.home.trim().is_empty() {

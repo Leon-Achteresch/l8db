@@ -58,6 +58,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
                       right: { ...left, connectionId: "target", database: "l8db_target" },
                       draft: null,
                       onlyDifferences: false,
+                      showDraft: true,
                     },
                   },
                 ],

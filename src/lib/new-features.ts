@@ -25,10 +25,13 @@ export const NEW_FEATURES = {
   "automation.history": "0.10.0",
   "automation.alerts": "0.10.0",
   "automation.background": "0.10.0",
+  "mcp.workflows": "0.10.0",
+  "health.advisor": "0.10.0",
   "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",
   "er-diagram.clusters": "0.8.0",
+  "er-diagram.text-export": "0.10.0",
   "versioning.overview": "0.8.0",
   "versioning.branches.swimlanes": "0.8.0",
   "versioning.releases.generate": "0.8.0",
@@ -44,6 +47,7 @@ export const NEW_FEATURES = {
   "table.pagination.keyboard": "0.7.0",
   "table.filter.rules": "0.10.0",
   "table.cell.json-editor": "0.10.0",
+  "table.extensions.table-json-viewer": "0.10.0",
   "query.select-row-limit": "0.7.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
@@ -52,6 +56,8 @@ export const NEW_FEATURES = {
   "settings.about.open-source-licenses": "0.8.0",
   "connections.baas": "0.7.0",
   "connections.open-window": "0.8.0",
+  "connections.editor.command-tunnel": "0.10.0",
+  "connections.editor.cloud-auth": "0.10.0",
   "baas.supabase": "0.7.0",
   "baas.supabase.project-key-import": "0.7.0",
   "baas.supabase.database": "0.7.0",
@@ -97,6 +103,7 @@ export const NEW_FEATURES = {
   "settings.general.sidebar-object-nav": "0.10.0",
   "query.transaction.changes": "0.7.0",
   "compare.scroll-sync": "0.7.0",
+  "compare.draft-toggle": "0.11.0",
   "split.pane-tables": "0.8.0",
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",
@@ -112,6 +119,10 @@ type FeatureStorage = Pick<Storage, "getItem" | "setItem">;
 
 export function featureStorageKey(id: NewFeatureId): string {
   return `${STORAGE_PREFIX}:${NEW_FEATURES[id]}:${id}`;
+}
+
+function currentFeatureIds(version: string): NewFeatureId[] {
+  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter((id) => NEW_FEATURES[id] === version);
 }
 
 export function hasNewFeatures(
@@ -170,6 +181,17 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
       }
       publish(new Set([...snapshot, id]));
     },
+    markAllSeen: () => {
+      const ids = currentFeatureIds(version);
+      for (const id of ids) {
+        try {
+          storage?.setItem(featureStorageKey(id), "1");
+        } catch {
+          break;
+        }
+      }
+      publish(new Set(ids));
+    },
     refresh: () => publish(readSeen()),
   };
 }
@@ -207,6 +229,10 @@ export function markNewFeatureSeen(id: NewFeatureId): void {
   store.markSeen(id);
 }
 
+export function markAllNewFeaturesSeen(): void {
+  store.markAllSeen();
+}
+
 export function newFeatureJustSeen(): boolean {
   return store.changedWithin(250);
 }
@@ -217,4 +243,9 @@ export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
 
 export function useHasNewFeatures(scope: string | undefined): boolean {
   return hasNewFeatures(scope, useSeenNewFeatures());
+}
+
+export function useHasAnyNewFeatures(): boolean {
+  const seen = useSeenNewFeatures();
+  return currentFeatureIds(appVersion).some((id) => !seen.has(id));
 }

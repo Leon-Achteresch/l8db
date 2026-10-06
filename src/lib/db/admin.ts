@@ -25,6 +25,12 @@ export async function openProxyTunnel(
   return invoke("open_proxy_tunnel", { request });
 }
 
+export async function openCommandTunnel(
+  request: import("@/lib/ssh").CommandTunnelRequest,
+): Promise<import("@/lib/ssh").SshTunnelInfo> {
+  return invoke("open_command_tunnel", { request });
+}
+
 export async function listSshConfigHosts(): Promise<import("@/lib/ssh").SshConfigHost[]> {
   return invoke("list_ssh_config_hosts");
 }

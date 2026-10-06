@@ -1331,6 +1331,29 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
     Some((host.to_string(), port))
 }
 
+async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    let statement = prepare(sql);
+    if is_query(&statement) {
+        let (columns, rows) = adapter.run(move |c| run_query(c, &statement)).await?;
+        return Ok(QueryResult {
+            rows: rows_to_objects(&columns, rows),
+            columns,
+            rows_affected: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
+        });
+    }
+    let affected = adapter.exec(statement).await?;
+    Ok(QueryResult {
+        columns: vec![],
+        rows: vec![],
+        rows_affected: Some(affected),
+        execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
+    })
+}
+
 #[async_trait]
 impl DatabaseAdapter for OracleAdapter {
     async fn test_connection(&self) -> Result<(), String> {
@@ -1488,25 +1511,14 @@ impl DatabaseAdapter for OracleAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let statement = prepare(sql);
-        if is_query(&statement) {
-            let (columns, rows) = self.run(move |c| run_query(c, &statement)).await?;
-            return Ok(QueryResult {
-                rows: rows_to_objects(&columns, rows),
-                columns,
-                rows_affected: None,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                truncated: false,
-            });
+        let mut statements = sql::split_statements(sql);
+        let last = statements.pop().unwrap_or_else(|| sql.to_string());
+        for statement in statements {
+            execute_one(self, &statement).await?;
         }
-        let affected = self.exec(statement).await?;
-        Ok(QueryResult {
-            columns: vec![],
-            rows: vec![],
-            rows_affected: Some(affected),
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
-        })
+        let mut result = execute_one(self, &last).await?;
+        result.execution_time_ms = start.elapsed().as_millis() as u64;
+        Ok(result)
     }
 
     async fn execute_query_with_params(

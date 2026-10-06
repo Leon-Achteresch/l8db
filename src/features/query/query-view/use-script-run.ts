@@ -4,7 +4,7 @@ import { type RefObject, useCallback, useMemo, useState } from "react";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
-import { invalidateTableReads } from "@/lib/query-client";
+import { invalidateAfterSql } from "@/lib/query-client";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
@@ -60,26 +60,33 @@ export function useScriptRun({
     [sql, connection?.kind],
   );
 
+  const pickScriptMode = useCallback(
+    (text: string): ScriptRunMode => {
+      if (!connection) return "autocommit";
+      if (getQueryTransaction(connection.id, database)) return "existing-transaction";
+      const hasDml = splitSqlStatements(text, connection.kind).statements.some((statement) =>
+        isTransactionalStatement(statement.text, connection.kind),
+      );
+      if (
+        hasDml &&
+        caps.transactions &&
+        useSettingsStore.getState().transactionsEnabled &&
+        !scriptPolicyIssue(text, connection.kind, true)
+      )
+        return "new-transaction";
+      return "autocommit";
+    },
+    [connection, database, caps.transactions],
+  );
+
   const handleOpenScriptDialog = useCallback(() => {
     if (!connection) return;
-    const existingTx = getQueryTransaction(connection.id, database);
-    const hasDml = scriptSplit.statements.some((statement) =>
-      isTransactionalStatement(statement.text, connection.kind),
-    );
-    if (existingTx) setScriptMode("existing-transaction");
-    else if (
-      hasDml &&
-      caps.transactions &&
-      useSettingsStore.getState().transactionsEnabled &&
-      !scriptPolicyIssue(sql, connection.kind, true)
-    )
-      setScriptMode("new-transaction");
-    else setScriptMode("autocommit");
+    setScriptMode(pickScriptMode(sql));
     setScriptDialogOpen(true);
-  }, [connection, database, caps.transactions, scriptSplit, sql]);
+  }, [connection, sql, pickScriptMode]);
 
   const runScript = useCallback(
-    async (mode: ScriptRunMode, stopOnError = true) => {
+    async (mode: ScriptRunMode, stopOnError = true, text = sql) => {
       if (!connection || runningRef.current) return;
       runningRef.current = true;
       setIsRunning(true);
@@ -89,37 +96,39 @@ export function useScriptRun({
       setStatementRange(null);
       setError(null);
       setEditorFocus(false);
+      const base = Math.max(0, sql.indexOf(text));
+      const shift = (items: ScriptRunEntry[]) =>
+        base ? items.map((e) => ({ ...e, start: e.start + base, end: e.end + base })) : items;
       try {
         const outcome = await runSqlScript({
           connection,
           database,
-          sql,
+          sql: text,
           mode,
           stopOnError,
           selectRowLimit: DEFAULT_SELECT_ROW_LIMIT,
           onJob: setActiveJobId,
-          onProgress: setScriptEntries,
+          onProgress: (items) => setScriptEntries(shift(items)),
         });
-        setScriptEntries(outcome.entries);
+        const entries = shift(outcome.entries);
+        setScriptEntries(entries);
         setResultState(
-          outcome.error
-            ? null
-            : withCreateNotice(outcome.lastResult, outcome.entries.at(-1)?.sql ?? sql),
+          outcome.error ? null : withCreateNotice(outcome.lastResult, entries.at(-1)?.sql ?? text),
         );
         setError(outcome.error);
-        const failed = outcome.entries.find((entry) => entry.status === "error");
+        const failed = entries.find((entry) => entry.status === "error");
         setErrorSource(
           failed ? { text: sql.slice(failed.start, failed.end), base: failed.start } : null,
         );
         if (failed) {
           setStatementRange({ start: failed.start, end: failed.end });
           setScriptActiveIndex(failed.index);
-        } else setScriptActiveIndex(outcome.entries.length - 1);
+        } else setScriptActiveIndex(entries.length - 1);
       } catch (failure) {
         setError(String(failure));
         setErrorSource(null);
       } finally {
-        if (connection) await invalidateTableReads(queryClient, connection.id, database);
+        if (connection) await invalidateAfterSql(queryClient, connection.id, database, text);
         await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
@@ -170,6 +179,11 @@ export function useScriptRun({
     ],
   );
 
+  const runScriptFor = useCallback(
+    (text: string) => runScript(pickScriptMode(text), true, text),
+    [runScript, pickScriptMode],
+  );
+
   return {
     scriptSplit,
     scriptDialogOpen,
@@ -177,6 +191,7 @@ export function useScriptRun({
     scriptMode,
     handleOpenScriptDialog,
     runScript,
+    runScriptFor,
     handleSelectScriptEntry,
   };
 }

@@ -13,6 +13,7 @@ import {
   NotebookPenIcon,
   PlugIcon,
   RefreshCwIcon,
+  StethoscopeIcon,
   TriangleAlertIcon,
   TypeIcon,
   WorkflowIcon,
@@ -29,6 +30,7 @@ export type ToolId =
   | "monitor"
   | "sessions"
   | "invalid-objects"
+  | "health"
   | "replication"
   | "query-builder"
   | "import"
@@ -132,6 +134,15 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
       import("@/features/invalid-objects/invalid-objects-view").then((m) => ({
         default: m.InvalidObjectsView,
       })),
+    ),
+  },
+  health: {
+    path: "/health",
+    label: "Health",
+    Icon: StethoscopeIcon,
+    iconColor: "text-rose-500",
+    Component: lazy(() =>
+      import("@/features/health/health-view").then((m) => ({ default: m.HealthView })),
     ),
   },
   replication: {

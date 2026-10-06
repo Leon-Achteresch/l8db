@@ -297,7 +297,6 @@ export function useTableViewModel({
     sorting,
     setSorting,
     revealColumn,
-    setRevealColumn,
     page,
     setPage,
     addRowSignal,

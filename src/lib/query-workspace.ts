@@ -29,7 +29,7 @@ export const QUERY_WORKSPACE_DEFAULTS: QueryWorkspaceOptions = {
   editorShare: 55,
   navigatorVisible: false,
   navigatorShare: 22,
-  runTarget: "selection-or-all",
+  runTarget: "selection-or-statement",
   statusVisible: true,
   folding: true,
   stickyScroll: false,
@@ -96,6 +96,13 @@ export const useQueryWorkspace = create<
     }),
     {
       name: "l8db.query-workspace",
+      version: 1,
+      migrate: (persisted, version) => {
+        const state = sanitizeWorkspace(persisted);
+        if (version < 1 && state.runTarget === "selection-or-all")
+          state.runTarget = "selection-or-statement";
+        return state;
+      },
       partialize: (state) => sanitizeWorkspace(state),
       merge: (persisted, current) => ({ ...current, ...sanitizeWorkspace(persisted) }),
     },

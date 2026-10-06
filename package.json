@@ -66,18 +66,18 @@
     "@sentry/browser": "^11.1.0",
     "@tanstack/react-hotkeys": "^0.12.1",
     "@tanstack/react-pacer": "^0.23.0",
-    "@tanstack/react-query": "^5.103.2",
+    "@tanstack/react-query": "^5.104.0",
     "@tanstack/react-router": "^1.170.38",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.13",
-    "@tauri-apps/api": "^2.12.0",
+    "@tauri-apps/api": "^2.12.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.3",
     "@tauri-apps/plugin-dialog": "^2.8.0",
     "@tauri-apps/plugin-fs": "^2.5.2",
     "@tauri-apps/plugin-log": "^2.10.0",
     "@tauri-apps/plugin-opener": "^2.5.5",
     "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.11.0",
+    "@tauri-apps/plugin-updater": "^2.13.1",
     "@xyflow/react": "^12.11.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -99,7 +99,7 @@
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
     "react": "19.3.0",
-    "react-day-picker": "^10.0.1",
+    "react-day-picker": "^10.0.2",
     "react-dom": "19.3.0",
     "react-error-boundary": "^6.1.6",
     "react-grid-layout": "^2.2.4",
@@ -139,7 +139,9 @@
   "overrides": {
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "dompurify": "^3.4.16"
+    "dompurify": "^3.4.16",
+    "proxy-addr": "^2.0.8",
+    "source-map-js": "^1.2.2"
   },
   "packageManager": "bun@1.3.10"
 }

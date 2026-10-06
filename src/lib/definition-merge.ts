@@ -100,3 +100,28 @@ export function draftLineOrigins(
     fromSource === fromTarget[line] ? null : fromSource ? "source" : "target",
   );
 }
+
+export interface LineRange {
+  start: number;
+  end: number;
+}
+
+export function unchangedLineRanges(
+  hunks: DefinitionHunk[],
+  side: "source" | "draft",
+  lineCount: number,
+  context = 1,
+): LineRange[] {
+  const ranges: LineRange[] = [];
+  let cursor = 0;
+  const bounds = hunks.map((hunk) =>
+    side === "source" ? [hunk.sourceStart, hunk.sourceEnd] : [hunk.draftStart, hunk.draftEnd],
+  );
+  for (const [start, end] of [...bounds, [lineCount, lineCount]]) {
+    const from = cursor + context;
+    const to = start - context;
+    if (to > from) ranges.push({ start: from + 1, end: to });
+    cursor = end;
+  }
+  return ranges;
+}

@@ -87,6 +87,17 @@ export function QueryView({ tabId }: QueryViewProps) {
   const sessionViews = useSessionViews(connection?.id, database);
   const output = useServerOutput(connection, database, caps);
 
+  const script = useScriptRun({
+    sql,
+    connection,
+    database,
+    caps,
+    exec,
+    editorApiRef,
+    setEditorFocus,
+    collectOutput: output.collectOutput,
+  });
+
   const { runSql, bind } = useRunSql({
     tabId,
     sql,
@@ -98,6 +109,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     markQueryTabExecuted,
     setEditorFocus,
     collectOutput: output.collectOutput,
+    runMultiStatement: script.runScriptFor,
   });
 
   const actions = useRunActions({
@@ -120,17 +132,6 @@ export function QueryView({ tabId }: QueryViewProps) {
     handleFileSave: file.handleFileSave,
     toggleHistory: () => startTransition(() => setHistoryOpen((open) => !open)),
     openCsvExport: exportState.openCsvExport,
-  });
-
-  const script = useScriptRun({
-    sql,
-    connection,
-    database,
-    caps,
-    exec,
-    editorApiRef,
-    setEditorFocus,
-    collectOutput: output.collectOutput,
   });
 
   const explain = useExplainPlan({

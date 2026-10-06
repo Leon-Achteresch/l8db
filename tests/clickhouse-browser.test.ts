@@ -94,14 +94,14 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
 
       await sidebarTable("kv_memory").click({ button: "right" });
       await page.getByRole("menuitem", { name: "Im Editor öffnen", exact: true }).click();
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("100 Zeilen", { exact: true }).first().waitFor();
       await page.locator(".monaco-editor .view-lines").first().click();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.insertText(
         "SELECT big, huge, code FROM bigdata.events_big WHERE kind = 'click' AND id = 7",
       );
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("7000000000000000000070", { exact: true }).first().waitFor();
       await page.getByText("-7000000000000", { exact: true }).first().waitFor();
       await page.screenshot({ path: "/tmp/l8db-clickhouse-query.png" });

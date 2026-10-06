@@ -396,6 +396,8 @@ export function flattenRows(value: unknown, expanded: Set<string>): JsonRow[] {
 export function tableShape(
   value: unknown,
 ): { columns: string[]; rows: Record<string, unknown>[] } | null {
+  if (jsonKind(value) === "object")
+    return { columns: Object.keys(value as object), rows: [value as Record<string, unknown>] };
   if (!Array.isArray(value) || value.length === 0) return null;
   if (!value.every((item) => jsonKind(item) === "object")) return null;
   const columns: string[] = [];

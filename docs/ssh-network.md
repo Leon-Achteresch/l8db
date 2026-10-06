@@ -17,6 +17,10 @@ All network indirection uses the same model: the backend opens a local listener 
 
 `proxy` (`socks5` or `http`, optional user) is used to reach the first SSH hop. Without SSH, the backend forwards the local port through the proxy to the database host and port taken from the connection string (`open_proxy_tunnel`); opening the forwarder probes the proxy once so bad credentials or unreachable targets fail immediately. SOCKS5 sends host names to the proxy (remote DNS).
 
+## Command tunnels
+
+"Tunnel-Befehl" runs a user-supplied command instead of SSH or a proxy (not combinable with either), e.g. `kubectl port-forward svc/postgres {localPort}:5432`, `aws ssm start-session … localPortNumber={localPort}` or `cloudflared access tcp --hostname db.example.com --url localhost:{localPort}` (presets in the editor). The backend (`db/ssh/command.rs`, `open_command_tunnel`) picks a free local port (or the fixed port from the editor; `{localPort}` may then be omitted), substitutes `{localPort}` and starts the command via the login shell (`$SHELL -lc`, PATH extended with the same tool directories as `pg_dump` lookup) in its own process group. It waits until `127.0.0.1:<port>` accepts TCP (timeout per connection, default 20 s). An early exit or the timeout fails with the command's stderr; a later exit marks the tunnel broken and emits `ssh-tunnel-failed`. The process group is killed when the tunnel is closed or replaced and on app exit. The connection then uses `tunnelPort` like any other tunnel. The command is stored in the connection (not the keychain), so do not put secrets into it.
+
 ## Secrets
 
 Secrets never enter localStorage. Keychain accounts per connection: `<id>` (database), `<id>:ssh` (password/passphrase), `<id>:ssh-jumps` (JSON array, one entry per jump host), `<id>:proxy` (proxy password). Exports contain hosts, users, key paths and agent sockets but no secrets.
@@ -48,6 +52,6 @@ Without `sslrootcert` the OS trust store is used. With `sslrootcert` only that C
 ## Limitations
 
 - SSH host certificates are rejected (host keys only), as before.
-- MCP server connections do not support SSH or proxies.
+- MCP server connections do not support SSH, proxies or command tunnels.
 - The proxy forwarder needs a plain host and port in the connection string; URLs whose endpoint is resolved by the driver (e.g. DNS SRV records) cannot be forwarded.
 - Windows agent support (named pipe, Pageant) uses russh's Windows agent API but is not covered by the Docker lab.

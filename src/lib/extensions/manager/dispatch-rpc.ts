@@ -29,13 +29,15 @@ export async function dispatchRpc(
     throw new ExtensionError("ExtensionDisabledError", id);
   if (!Array.isArray(args)) throw new ExtensionError("ProtocolError", "Invalid RPC arguments");
   const limit =
-    method === "connections.save"
-      ? 2000000
-      : method === "panels.open"
-        ? 300000
-        : method === "views.setTree"
-          ? 280000
-          : 65536;
+    method === "panels.openJson"
+      ? 26 * 1024 * 1024
+      : method === "connections.save"
+        ? 2000000
+        : method === "panels.open"
+          ? 300000
+          : method === "views.setTree"
+            ? 280000
+            : 65536;
   if (JSON.stringify(args).length > limit)
     throw new ExtensionError("ProtocolError", "Invalid RPC arguments");
   const text = (index: number, max = 4096) => {

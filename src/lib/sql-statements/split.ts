@@ -23,6 +23,28 @@ const MSSQL_BATCH_OBJECTS = ["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
 const END_SUFFIXES = ["IF", "LOOP", "WHILE", "REPEAT"];
 const ORACLE_CREATE_MODIFIERS = ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
 const ORACLE_PLSQL_OBJECTS = ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER"];
+const SQLPLUS_COMMANDS = new Set([
+  "SET",
+  "PROMPT",
+  "SPOOL",
+  "WHENEVER",
+  "DEFINE",
+  "UNDEFINE",
+  "REM",
+  "REMARK",
+  "SHOW",
+  "EXIT",
+  "QUIT",
+  "PAUSE",
+  "ACCEPT",
+  "COLUMN",
+  "TTITLE",
+  "BTITLE",
+  "BREAK",
+  "CLEAR",
+  "TIMING",
+]);
+const SQL_SET_TARGETS = ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"];
 
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
@@ -61,6 +83,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
   let plsqlPending = 0;
   let plsqlHeader = false;
   let plsqlClosed = false;
+  let plsqlBody = false;
   let batch = false;
   let blockDepth = 0;
   let delimiter = ";";
@@ -84,6 +107,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
     plsqlPending = 0;
     plsqlHeader = false;
     plsqlClosed = false;
+    plsqlBody = false;
     batch = false;
     blockDepth = 0;
     leadingWords.length = 0;
@@ -183,9 +207,26 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
           (isWordChar(sql[index]) || sql[index] === "$" || sql[index] === "#")
         )
           index += 1;
-        hasCode = true;
-        if (sql[start - 1] === "$") continue;
+        if (sql[start - 1] === "$") {
+          hasCode = true;
+          continue;
+        }
         const word = sql.slice(start, index).toUpperCase();
+        if (!hasCode && SQLPLUS_COMMANDS.has(word)) {
+          const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
+          let next = index;
+          while (next < length && isSpace(sql[next])) next += 1;
+          const target = sql.slice(next, readWord(next)).toUpperCase();
+          if (
+            !sql.slice(lineStart, start).trim() &&
+            !(word === "SET" && SQL_SET_TARGETS.includes(target))
+          ) {
+            segmentStart = -1;
+            index = lineEndFrom(index);
+            continue;
+          }
+        }
+        hasCode = true;
         if (!plsql) {
           if (leadingWords.length < 6) leadingWords.push(word);
           const first = leadingWords[0];
@@ -200,7 +241,10 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
               object !== undefined &&
               (ORACLE_PLSQL_OBJECTS.includes(object) ||
                 (object === "TYPE" && leadingWords[objectIndex + 1] === "BODY")));
-          if (plsql) plsqlDepth = 1;
+          if (plsql) {
+            plsqlDepth = 1;
+            plsqlBody = first === "BEGIN";
+          }
           continue;
         }
         if ((word === "PROCEDURE" || word === "FUNCTION") && plsqlDepth === 1) plsqlHeader = true;
@@ -212,7 +256,8 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
           else if (plsqlPending > 0) {
             plsqlDepth += 1;
             plsqlPending -= 1;
-          }
+          } else if (plsqlBody) plsqlDepth += 1;
+          else plsqlBody = true;
         } else if (word === "CASE") plsqlDepth += 1;
         else if (word === "END") {
           let next = index;
@@ -404,7 +449,13 @@ export function statementAtOffset(
   for (const statement of statements) {
     if (position >= statement.start && position <= statement.end) return statement;
   }
+  const last = statements.at(-1);
+  if (last && position > last.end && !sql.slice(last.end, position).trim()) return last;
   return null;
+}
+
+export function runsOneStatementPerCall(dialect?: string): boolean {
+  return dialect === "oracle";
 }
 
 export function sqlToRun(sql: string, selectedSql: string): string {

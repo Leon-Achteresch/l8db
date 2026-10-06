@@ -477,8 +477,8 @@ impl MssqlAdapter {
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige SQL-Server-URL".to_string())?;
+        let resolved = super::cloud_auth::resolve(connection_string.trim())?;
+        let url = url::Url::parse(&resolved).map_err(|_| "Ungültige SQL-Server-URL".to_string())?;
         if !matches!(url.scheme(), "mssql" | "sqlserver") {
             return Err("Eine mssql:// URL ist erforderlich".to_string());
         }
@@ -499,6 +499,7 @@ impl MssqlAdapter {
             config.database(db);
         }
         let mut ssl = SslMode::Prefer;
+        let mut access_token = None;
         let mut trust = false;
         let mut trusted = false;
         let mut ca = None;
@@ -531,11 +532,16 @@ impl MssqlAdapter {
                 }
                 "application_name" | "app" => config.application_name(value.into_owned()),
                 "instance" => config.instance_name(value.into_owned()),
+                super::cloud_auth::ACCESS_TOKEN_PARAM => access_token = Some(value.into_owned()),
                 _ => {}
             }
         }
         if trusted {
             config.authentication(windows_auth(&user, &password)?);
+        }
+        if let Some(token) = access_token {
+            config.authentication(AuthMethod::aad_token(token));
+            ssl = ssl.max(SslMode::Require);
         }
         config.encryption(match ssl {
             SslMode::Disable => EncryptionLevel::NotSupported,

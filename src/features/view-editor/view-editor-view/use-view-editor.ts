@@ -17,6 +17,7 @@ import {
   useViewDefinitionQuery,
 } from "@/lib/queries";
 import { buildViewDdl } from "@/lib/query-builder";
+import { invalidateConnectionQueries } from "@/lib/query-client";
 import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -69,11 +70,12 @@ export function useViewEditor(schema: string, view: string) {
     activeTab === "definition",
   );
 
-  const [draft, setDraft, clearSavedDraft] = useObjectDraft(
+  const [savedDraft, setDraft, clearSavedDraft, draftBase] = useObjectDraft(
     `view-editor:${schema}.${view}`,
     `${schema}.${view}`,
     definition ?? "",
   );
+  const draft = draftBase || !definition ? savedDraft : null;
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [compileStatus, setCompileStatus] = useState<"idle" | "ok" | "error">("idle");
@@ -139,11 +141,14 @@ export function useViewEditor(schema: string, view: string) {
     };
   }, [openTab, navigate]);
 
-  const handleChange = useCallback((value: string) => {
-    setDraft(value);
-    setCompileStatus("idle");
-    setCompileError(null);
-  }, []);
+  const handleChange = useCallback(
+    (value: string) => {
+      setDraft(value);
+      setCompileStatus("idle");
+      setCompileError(null);
+    },
+    [setDraft],
+  );
 
   const handleCopy = async () => {
     await copyText(currentValue);
@@ -196,11 +201,10 @@ export function useViewEditor(schema: string, view: string) {
         database ?? undefined,
       );
       toast.success("View-Definition aktualisiert.");
-      clearSavedDraft(currentValue);
       setCompileStatus("idle");
       setCompileError(null);
-      await queryClient.invalidateQueries({ queryKey: ["view-definition"] });
-      await queryClient.invalidateQueries({ queryKey: ["rows"] });
+      await invalidateConnectionQueries(queryClient, connection.id);
+      clearSavedDraft(currentValue);
     } catch (e) {
       toast.error(String(e));
     } finally {

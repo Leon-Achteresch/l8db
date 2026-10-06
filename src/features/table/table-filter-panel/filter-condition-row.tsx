@@ -22,7 +22,6 @@ export function FilterConditionRow({
   columns,
   updateCondition,
   removeCondition,
-  onColumnSelect,
   apply,
 }: {
   condition: Condition;
@@ -33,7 +32,6 @@ export function FilterConditionRow({
   columns: string[];
   updateCondition: (id: string, patch: Partial<Condition>) => void;
   removeCondition: (id: string) => void;
-  onColumnSelect?: (column: string) => void;
   apply: () => void;
 }) {
   return (
@@ -59,10 +57,9 @@ export function FilterConditionRow({
 
       <Select
         value={condition.column}
-        onValueChange={(value) => {
-          updateCondition(condition.id, { column: value, dataType: undefined });
-          onColumnSelect?.(value);
-        }}
+        onValueChange={(value) =>
+          updateCondition(condition.id, { column: value, dataType: undefined })
+        }
       >
         <SelectTrigger size="sm" className="w-full min-w-0 sm:min-w-40 sm:flex-1">
           <SelectValue placeholder="Spalte wählen…" />

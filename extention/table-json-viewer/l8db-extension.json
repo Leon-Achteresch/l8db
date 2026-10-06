@@ -1,0 +1,26 @@
+{
+  "id": "leon-achteresch.table-json-viewer",
+  "name": "TableJSONViewer",
+  "version": "0.1.0",
+  "description": "Setzt gefilterte Tabellenzeilen über Ebene, Position, Name und Inhalt zu JSON zusammen und öffnet den l8db-JSON-Viewer.",
+  "publisher": "leon-achteresch",
+  "engines": { "l8db": ">=0.9.1 <2.0.0", "api": "^1.1.0" },
+  "main": "dist/extension.js",
+  "activationEvents": ["onCommand:tablejson.show", "onCommand:tablejson.configure"],
+  "permissions": ["database:read", "filesystem:extension-storage"],
+  "contributes": {
+    "commands": [
+      { "id": "tablejson.show", "title": "TableJSONViewer", "icon": "braces" },
+      {
+        "id": "tablejson.configure",
+        "title": "TableJSONViewer: Spalten zuordnen",
+        "icon": "settings-2"
+      }
+    ],
+    "panels": [{ "id": "tablejson.document", "title": "TableJSONViewer" }],
+    "menus": [
+      { "command": "tablejson.show", "location": "table/toolbar" },
+      { "command": "tablejson.configure", "location": "table/toolbar" }
+    ]
+  }
+}

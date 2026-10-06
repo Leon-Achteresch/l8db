@@ -87,7 +87,7 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "search",
-            "description": "Find tables and columns whose name contains term. Returns schema.table(column type, ...). Empty term lists table names only.",
+            "description": "Find tables and columns whose name contains term. Returns schema.table(column type, ...); write table names in SQL exactly like that. Empty term lists table names only. connection may be omitted when only one connection is available.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string", "description": "Connection name or id"},
                 "database": database_arg(),
@@ -115,6 +115,7 @@ pub fn tool_definitions() -> Value {
         },
         super::dashboard::tool_definition(),
         super::benchmark::tool_definition(),
+        super::health::tool_definition(),
         {
             "name": "execute",
             "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
@@ -148,7 +149,7 @@ impl Server {
                 "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "l8db", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types. The benchmark tool measures read-only statements repeatedly and returns latency percentiles."
+                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types. The benchmark tool measures read-only statements repeatedly and returns latency percentiles. The health tool runs a read-only rule catalog on PostgreSQL connections and returns findings with suggested fix SQL."
             })),
             "ping" => Ok(json!({})),
             "tools/list" if !config::load().enabled => Ok(json!({"tools": []})),
@@ -174,7 +175,12 @@ impl Server {
 
     pub(crate) async fn call_with_config(&mut self, params: &Value, config: &McpConfig) -> Value {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-        let args = params.get("arguments").cloned().unwrap_or(json!({}));
+        let tools = tool_definitions();
+        let tools = tools.as_array().map(Vec::as_slice).unwrap_or_default();
+        let args = match params.get("arguments") {
+            None | Some(Value::Null) => json!({}),
+            Some(args) => normalize_args(tools, name, args.clone()),
+        };
         if !config.enabled {
             return tool_text(
                 "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.".into(),
@@ -185,7 +191,7 @@ impl Server {
         let outcome = match name {
             "connections" => Ok(list_connections(config)),
             "dashboard" => self.dashboard(config, &args).await,
-            "search" | "describe" | "query" | "execute" | "benchmark" => {
+            "search" | "describe" | "query" | "execute" | "benchmark" | "health" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
                 match find_connection(config, target)
                     .and_then(|connection| with_database(connection, &args))
@@ -204,6 +210,7 @@ impl Server {
                             }
                             "query" => self.query(config, connection, &args).await,
                             "benchmark" => self.benchmark(config, connection, &args).await,
+                            "health" => super::health::call(connection, &self.pool, &args).await,
                             _ => self.execute(config, connection, &args).await,
                         };
                         if matches!(name, "query" | "execute" | "benchmark") {
@@ -217,7 +224,14 @@ impl Server {
                     }
                 }
             }
-            _ => Err(format!("Unbekanntes Tool: {name}")),
+            _ => Err(format!(
+                "Unbekanntes Tool '{name}'. Verfügbar: {}",
+                tools
+                    .iter()
+                    .filter_map(|tool| tool["name"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
         };
         match outcome {
             Ok(text) => tool_text(text, false),
@@ -245,6 +259,12 @@ impl Server {
         }
         let adapter = adapter(connection, &self.pool)?;
         let columns = run(config, connection.kind, async {
+            if matches!(
+                connection.kind,
+                DatabaseKind::Mysql | DatabaseKind::Clickhouse
+            ) {
+                return database_columns(adapter.as_ref()).await;
+            }
             if connection.kind != DatabaseKind::Mongodb || adapter.list_schemas().await.is_ok() {
                 return adapter.list_columns(None, None, None).await;
             }
@@ -445,6 +465,26 @@ impl Server {
     }
 }
 
+async fn database_columns(adapter: &dyn db::DatabaseAdapter) -> Result<Vec<ColumnInfo>, String> {
+    use futures_util::{StreamExt, TryStreamExt};
+    let mut columns = adapter.list_columns(None, None, None).await?;
+    let mut seen: std::collections::HashSet<String> =
+        columns.iter().map(|column| column.schema.clone()).collect();
+    let databases: Vec<String> = adapter
+        .list_schemas()
+        .await?
+        .into_iter()
+        .filter(|database| seen.insert(database.clone()))
+        .collect();
+    let more: Vec<Vec<ColumnInfo>> = futures_util::stream::iter(databases)
+        .map(|database| async move { adapter.list_columns(Some(&database), None, None).await })
+        .buffered(8)
+        .try_collect()
+        .await?;
+    columns.extend(more.into_iter().flatten());
+    Ok(columns)
+}
+
 pub(super) fn check_write_sql(
     sql: &str,
     connection: &McpConnection,
@@ -464,7 +504,18 @@ pub(super) fn check_write_sql(
             connection.name
         ));
     }
-    redact::check_references(sql, index)
+    redact::check_references(sql, index, row_values(connection.kind))
+}
+
+fn row_values(kind: DatabaseKind) -> bool {
+    !matches!(
+        kind,
+        DatabaseKind::Clickhouse
+            | DatabaseKind::Mysql
+            | DatabaseKind::Mssql
+            | DatabaseKind::Sqlite
+            | DatabaseKind::SqliteHttp
+    )
 }
 
 pub(super) fn check_read_sql(
@@ -476,7 +527,7 @@ pub(super) fn check_read_sql(
         Some(true) if connection.kind == DatabaseKind::S3 => {
             return redact::check_s3_select(sql, index)
         }
-        Some(true) => return redact::check_references(sql, index),
+        Some(true) => return redact::check_references(sql, index, row_values(connection.kind)),
         Some(false) => {
             return Err(format!(
                 "query ist read-only, dieser Request schreibt.{}",
@@ -493,19 +544,22 @@ pub(super) fn check_read_sql(
         return Err("Nur ein Statement pro Aufruf.".into());
     }
     if let Some(word) = redact::write_word(sql) {
+        let leading = redact::sql_words(sql).first() == Some(&word);
         return Err(format!(
             "query ist read-only, '{word}' ist nicht erlaubt.{}",
-            if connection.writes_blocked() {
-                ""
+            if !leading {
+                format!(" Heißt eine Spalte so, mit Tabellenalias qualifizieren (z. B. t.{word}).")
+            } else if connection.writes_blocked() {
+                String::new()
             } else {
-                " Für Schreibzugriffe execute nutzen."
+                " Für Schreibzugriffe execute nutzen.".into()
             }
         ));
     }
     if let Some(word) = redact::dangerous_word(sql) {
         return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
     }
-    redact::check_references(sql, index)
+    redact::check_references(sql, index, row_values(connection.kind))
 }
 
 fn http_read_only(kind: DatabaseKind, sql: &str) -> Option<bool> {
@@ -515,6 +569,112 @@ fn http_read_only(kind: DatabaseKind, sql: &str) -> Option<bool> {
         DatabaseKind::S3 => Some(true),
         _ => None,
     }
+}
+
+pub(crate) fn normalize_args(tools: &[Value], name: &str, args: Value) -> Value {
+    match tools.iter().find(|tool| tool["name"] == name) {
+        Some(tool) => coerce(&tool["inputSchema"], args),
+        None => args,
+    }
+}
+
+fn coerce(schema: &Value, value: Value) -> Value {
+    let types: Vec<&str> = match &schema["type"] {
+        Value::String(kind) => vec![kind.as_str()],
+        Value::Array(list) => list.iter().filter_map(Value::as_str).collect(),
+        _ => return value,
+    };
+    let accepts = |kind: &str| types.contains(&kind);
+    let value = match value {
+        Value::String(text) if accepts("null") && text.trim().eq_ignore_ascii_case("null") => {
+            Value::Null
+        }
+        Value::String(text) if !accepts("string") => serde_json::from_str::<Value>(text.trim())
+            .ok()
+            .filter(|parsed| !parsed.is_string())
+            .unwrap_or(Value::String(text)),
+        scalar @ (Value::Number(_) | Value::Bool(_)) if types == ["string"] => {
+            Value::String(scalar.to_string())
+        }
+        Value::Array(mut list) if list.len() == 1 && !accepts("array") && accepts("string") => {
+            list.remove(0)
+        }
+        other => other,
+    };
+    match value {
+        Value::Object(map) if accepts("object") => {
+            let properties = schema["properties"].as_object();
+            let present: Vec<String> = map.keys().cloned().collect();
+            Value::Object(
+                map.into_iter()
+                    .map(|(key, item)| {
+                        let key = match properties {
+                            Some(known) if !known.contains_key(&key) => {
+                                let camel = camel_case(&key);
+                                if known.contains_key(&camel) && !present.contains(&camel) {
+                                    camel
+                                } else {
+                                    key
+                                }
+                            }
+                            _ => key,
+                        };
+                        let item = coerce(&schema["properties"][&key], item);
+                        (key, item)
+                    })
+                    .collect(),
+            )
+        }
+        Value::Array(list) if accepts("array") => Value::Array(
+            list.into_iter()
+                .map(|item| coerce(&schema["items"], item))
+                .collect(),
+        ),
+        Value::Number(number)
+            if types == ["integer"] && number.as_i64().is_none() && number.as_u64().is_none() =>
+        {
+            match number.as_f64() {
+                Some(float) if float.fract() == 0.0 => json!(float as i64),
+                _ => Value::Number(number),
+            }
+        }
+        single if accepts("array") && fits(&schema["items"], &single) => {
+            Value::Array(vec![coerce(&schema["items"], single)])
+        }
+        other => other,
+    }
+}
+
+fn fits(schema: &Value, value: &Value) -> bool {
+    let kind = match value {
+        Value::Null => return false,
+        Value::String(_) => "string",
+        Value::Object(_) => "object",
+        Value::Array(_) => "array",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+    };
+    match &schema["type"] {
+        Value::String(expected) => expected == kind,
+        Value::Array(list) => list.iter().any(|expected| expected == kind),
+        _ => true,
+    }
+}
+
+fn camel_case(key: &str) -> String {
+    let mut out = String::with_capacity(key.len());
+    let mut upper = false;
+    for c in key.chars() {
+        match c {
+            '_' | '-' => upper = !out.is_empty(),
+            c if upper => {
+                out.extend(c.to_uppercase());
+                upper = false;
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 pub(super) fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
@@ -651,14 +811,32 @@ pub(super) fn find_connection<'a>(
     target: &str,
 ) -> Result<&'a McpConnection, String> {
     let wanted = target.trim().to_lowercase();
+    let mut available = exposed(config);
     if wanted.is_empty() {
-        return Err("connection fehlt".into());
+        if let (Some(only), None) = (available.next(), available.next()) {
+            return Ok(only);
+        }
+    } else if let Some(found) = exposed(config).find(|connection| {
+        connection.id == target.trim() || connection.name.to_lowercase() == wanted
+    }) {
+        return Ok(found);
     }
-    exposed(config)
-        .find(|connection| connection.id == target || connection.name.to_lowercase() == wanted)
-        .ok_or_else(|| {
-            format!("Verbindung '{target}' ist nicht freigegeben. connections aufrufen.")
-        })
+    let names: Vec<&str> = exposed(config)
+        .map(|connection| connection.name.as_str())
+        .collect();
+    let problem = if wanted.is_empty() {
+        "connection fehlt.".to_string()
+    } else {
+        format!("Verbindung '{target}' ist nicht freigegeben.")
+    };
+    Err(if names.is_empty() {
+        format!("{problem} Keine Verbindung freigegeben, in l8db unter MCP freigeben.")
+    } else {
+        format!(
+            "{problem} connection muss einer dieser Namen sein: {}",
+            names.join(", ")
+        )
+    })
 }
 
 pub fn with_password(connection: &McpConnection, password: Option<&str>) -> String {
@@ -1087,7 +1265,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 7);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 8);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();
@@ -1238,5 +1416,76 @@ mod tests {
         assert!(check_read_sql("SELECT s._2 FROM s3://b/users.csv s", &s3, &index).is_err());
         assert!(check_read_sql("SELECT s.password FROM s3://b/users.csv s", &s3, &index).is_err());
         assert!(check_read_sql("SELECT * FROM s3://b/users.csv", &s3, &index).is_ok());
+    }
+
+    #[test]
+    fn normalizes_loosely_typed_tool_arguments() {
+        let tools = tool_definitions();
+        let tools = tools.as_array().unwrap();
+        let query = normalize_args(
+            tools,
+            "query",
+            json!({"connection": 7, "sql": ["SELECT 1"], "limit": "20"}),
+        );
+        assert_eq!(
+            query,
+            json!({"connection": "7", "sql": "SELECT 1", "limit": 20})
+        );
+        assert_eq!(
+            normalize_args(tools, "execute", json!({"confirm": "true", "sql": "x"}))["confirm"],
+            json!(true)
+        );
+        assert_eq!(
+            normalize_args(tools, "query", json!("{\"sql\": \"SELECT 1\"}")),
+            json!({"sql": "SELECT 1"})
+        );
+        let dashboard = normalize_args(
+            tools,
+            "dashboard",
+            json!({
+                "action": "create",
+                "refresh_sec": "60",
+                "charts": "[{\"type\": \"kpi\", \"metrics\": \"total\", \"w\": \"4\", \"date_column\": \"day\", \"options\": \"{\\\"showValue\\\": true}\"}]",
+                "spec": {"x": 2.0, "dimension": ["day"]}
+            }),
+        );
+        assert_eq!(dashboard["refreshSec"], json!(60));
+        assert_eq!(
+            dashboard["charts"],
+            json!([{"type": "kpi", "metrics": ["total"], "w": 4, "dateColumn": "day", "options": {"showValue": true}}])
+        );
+        assert_eq!(dashboard["spec"], json!({"x": 2, "dimension": "day"}));
+        let cleared = normalize_args(tools, "dashboard", json!({"spec": {"dimension2": "null"}}));
+        assert_eq!(cleared["spec"]["dimension2"], Value::Null);
+        let single = normalize_args(tools, "dashboard", json!({"charts": {"type": "kpi"}}));
+        assert_eq!(single["charts"], json!([{"type": "kpi"}]));
+        let bad = normalize_args(tools, "dashboard", json!({"charts": "all", "x": "keep"}));
+        assert_eq!(bad, json!({"charts": "all", "x": "keep"}));
+        assert_eq!(
+            normalize_args(tools, "unknown", json!({"a": "1"})),
+            json!({"a": "1"})
+        );
+    }
+
+    #[test]
+    fn missing_connection_defaults_to_the_only_one_and_lists_names() {
+        let mut config = McpConfig::default();
+        assert!(find_connection(&config, "")
+            .unwrap_err()
+            .contains("Keine Verbindung"));
+        config.connections.push(connection(true));
+        assert_eq!(find_connection(&config, " ").unwrap().id, "c1");
+        assert_eq!(find_connection(&config, " c1 ").unwrap().id, "c1");
+        let mut other = connection(true);
+        other.id = "c2".into();
+        other.name = "Staging".into();
+        config.connections.push(other);
+        let error = find_connection(&config, "").unwrap_err();
+        assert!(error.contains("Prod, Staging"), "{error}");
+        let error = find_connection(&config, "nope").unwrap_err();
+        assert!(
+            error.contains("'nope'") && error.contains("Prod, Staging"),
+            "{error}"
+        );
     }
 }

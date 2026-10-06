@@ -38,6 +38,14 @@ export function useNetworkDraft(seed: SavedConnection | undefined, connectionId?
   const [proxyPort, setProxyPort] = useState(String(seed?.proxy?.port ?? 1080));
   const [proxyUser, setProxyUser] = useState(seed?.proxy?.username ?? "");
   const [proxyPassword, setProxyPassword] = useState("");
+  const [commandEnabled, setCommandEnabled] = useState(Boolean(seed?.commandTunnel?.command));
+  const [commandTemplate, setCommandTemplate] = useState(seed?.commandTunnel?.command ?? "");
+  const [commandLocalPort, setCommandLocalPort] = useState(
+    seed?.commandTunnel?.localPort ? String(seed.commandTunnel.localPort) : "",
+  );
+  const [commandTimeout, setCommandTimeout] = useState(
+    String(seed?.commandTunnel?.timeoutSecs ?? 20),
+  );
 
   useEffect(() => {
     if (!connectionId) return;
@@ -90,6 +98,14 @@ export function useNetworkDraft(seed: SavedConnection | undefined, connectionId?
     setProxyUser,
     proxyPassword,
     setProxyPassword,
+    commandEnabled,
+    setCommandEnabled,
+    commandTemplate,
+    setCommandTemplate,
+    commandLocalPort,
+    setCommandLocalPort,
+    commandTimeout,
+    setCommandTimeout,
   };
 }
 

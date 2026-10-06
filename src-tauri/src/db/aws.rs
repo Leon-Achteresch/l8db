@@ -544,13 +544,13 @@ pub fn parse_process_output(stdout: &str) -> Result<(Credentials, Option<i64>), 
 async fn credential_process(command: &str) -> Result<(Credentials, Option<i64>), String> {
     #[cfg(windows)]
     let mut process = {
-        let mut p = tokio::process::Command::new("cmd");
-        p.arg("/C").arg(command).creation_flags(0x0800_0000);
+        let mut p = crate::process::command("cmd");
+        p.arg("/C").arg(command);
         p
     };
     #[cfg(not(windows))]
     let mut process = {
-        let mut p = tokio::process::Command::new("sh");
+        let mut p = crate::process::command("sh");
         p.arg("-c").arg(command);
         p
     };

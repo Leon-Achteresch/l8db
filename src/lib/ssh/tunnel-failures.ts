@@ -23,7 +23,7 @@ export function reportTunnelFailure(failure: TunnelFailure): void {
       entry.id === failure.id ? { ...entry, tunnelPort: null } : entry,
     ),
   }));
-  toast.error(`SSH-Tunnel „${label}“ getrennt: ${failure.error}`, { duration: Infinity });
+  toast.error(`Tunnel „${label}“ getrennt: ${failure.error}`, { duration: Infinity });
 }
 
 export function watchTunnelFailures(): void {

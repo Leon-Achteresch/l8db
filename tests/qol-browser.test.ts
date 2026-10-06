@@ -102,7 +102,7 @@ test.skipIf(!process.env.L8DB_QOL_BROWSER)(
         );
       });
       await page.goto(`http://localhost:${server.port}/query/qol-ui`);
-      await page.getByRole("button", { name: "Ausführen", exact: true }).first().click();
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).first().click();
       await page.getByRole("heading", { name: "Destruktive Abfrage ausführen?" }).waitFor();
       expect(
         await page.evaluate(
