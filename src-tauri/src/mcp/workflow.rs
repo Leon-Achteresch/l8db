@@ -505,7 +505,7 @@ async fn save_plan(
     mut task: Task,
     title: &'static str,
 ) -> Result<Plan, String> {
-    task.needs_review = false;
+    task.needs_review = previous.as_ref().is_some_and(|task| task.needs_review);
     let all = store.all_tasks().await?;
     let errors = |task: &Task| -> Vec<ValidationIssue> {
         engine::validate(task, &all)

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAiFlashStore } from "@/lib/automation/ai-activity";
 import { useConnectionsStore } from "@/lib/connections/store";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { capabilitiesFor } from "@/lib/providers";
 import { activateConnectionWithToast } from "@/lib/ssh/activation";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -40,7 +41,8 @@ export async function applyMcpOpen(request: McpOpenRequest): Promise<void> {
     tab = { kind: "table", schema, table, entityType: "table" };
     const database =
       useDbSelectionStore.getState().databaseByConnection[connection.id] ??
-      databaseFromConnectionString(connection.connectionString);
+      databaseFromConnectionString(connection.connectionString) ??
+      (capabilitiesFor(connection.kind).query_language === "redis" ? "0" : null);
     const stateKey = tableViewStateKey(connection.id, database, schema, table);
     if (stateKey && request.filter !== undefined) {
       useTableViewStateStore.getState().patch(stateKey, {
