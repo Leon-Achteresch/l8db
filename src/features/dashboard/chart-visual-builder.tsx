@@ -14,6 +14,7 @@ import {
   BUCKET_LABEL,
   createId,
   type Dataset,
+  filterVariable,
   isDateType,
   type SimpleDataset,
   syncJoins,
@@ -31,20 +32,30 @@ import {
   updateChartMetric,
 } from "./chart-visual-builder-model";
 import { ChartVisualMetric } from "./chart-visual-metric";
+import { useDashboardScope } from "./dashboard-scope";
 import { ColumnSelect } from "./dataset-column-select";
 import { type DatasetColumn, useDatasetColumns } from "./use-dataset-query";
 
 export function ChartVisualBuilder({
   dataset,
   onChange,
+  showLibrary = true,
+  selected: controlledSelected,
+  onSelectedChange,
 }: {
   dataset: Dataset;
   onChange: (patch: Partial<Dataset>) => void;
+  showLibrary?: boolean;
+  selected?: string | null;
+  onSelectedChange?: (ref: string | null) => void;
 }) {
   const feature = useNewFeatureVisibility<HTMLDivElement>("dashboard.visual-builder");
   const simple = dataset.simple;
+  const { variables } = useDashboardScope();
   const { columns, joins, loading } = useDatasetColumns(simple);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [ownSelected, setOwnSelected] = useState<string | null>(null);
+  const selected = controlledSelected === undefined ? ownSelected : controlledSelected;
+  const setSelected = onSelectedChange ?? setOwnSelected;
   const [announcement, setAnnouncement] = useState("");
   const [filterDraft, setFilterDraft] = useState<{
     field: ChartFilterField;
@@ -87,8 +98,14 @@ export function ChartVisualBuilder({
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(170px,0.65fr)_minmax(0,1fr)]">
-        <div className="lg:sticky lg:top-0">
+      <div
+        className={
+          showLibrary
+            ? "grid items-start gap-4 lg:grid-cols-[minmax(170px,0.65fr)_minmax(0,1fr)]"
+            : "grid gap-4"
+        }
+      >
+        <div className={showLibrary ? "lg:sticky lg:top-0" : "hidden"}>
           <ChartFieldLibrary
             columns={columns}
             loading={loading}
@@ -107,7 +124,11 @@ export function ChartVisualBuilder({
             </p>
           )}
         </div>
-        <div className="min-w-0 space-y-3">
+        <div
+          className={
+            showLibrary ? "min-w-0 space-y-3" : "grid min-w-0 items-start gap-3 xl:grid-cols-2"
+          }
+        >
           <ChartFieldZone
             title="Kennzahlen"
             hint="Was möchtest du messen? Zahlen werden summiert, Textwerte gezählt."
@@ -230,9 +251,16 @@ export function ChartVisualBuilder({
                     <span className="font-medium">{fieldOf(filter.column).label}</span>{" "}
                     <span className="break-all text-muted-foreground">
                       {filterOperatorLabel(filter.operator, true)}{" "}
-                      {["in", "notIn"].includes(filter.operator)
-                        ? parseFilterList(filter.value).join(", ")
-                        : filter.value}
+                      {filterVariable(filter.value) ? (
+                        <span className="rounded bg-primary/10 px-1 py-0.5 font-medium text-primary">
+                          {variables.find((v) => v.name === filterVariable(filter.value))?.label ??
+                            filter.value}
+                        </span>
+                      ) : ["in", "notIn"].includes(filter.operator) ? (
+                        parseFilterList(filter.value).join(", ")
+                      ) : (
+                        filter.value
+                      )}
                     </span>
                   </button>
                   <IconButton
@@ -266,29 +294,35 @@ export function ChartVisualBuilder({
             )}
           </ChartFieldZone>
           {filterDraft && (
-            <ChartFilterEditor
-              key={filterDraft.filterId ?? filterDraft.field.ref}
-              field={filterDraft.field}
-              simple={syncJoins(simple, joins, [filterDraft.field.ref])}
-              filter={simple.filters.find((filter) => filter.id === filterDraft.filterId)}
-              onCancel={() => setFilterDraft(null)}
-              onApply={(filters) => {
-                const old = simple.filters.find((filter) => filter.id === filterDraft.filterId);
-                patchSimple({
-                  filters: [
-                    ...simple.filters.filter((filter) =>
-                      old
-                        ? filter.id !== old.id && (!old.rangeId || filter.rangeId !== old.rangeId)
-                        : true,
-                    ),
-                    ...filters,
-                  ],
-                });
-                setFilterDraft(null);
-              }}
-            />
+            <div className="xl:col-span-2">
+              <ChartFilterEditor
+                key={filterDraft.filterId ?? filterDraft.field.ref}
+                field={filterDraft.field}
+                simple={syncJoins(simple, joins, [filterDraft.field.ref])}
+                filter={simple.filters.find((filter) => filter.id === filterDraft.filterId)}
+                onCancel={() => setFilterDraft(null)}
+                onApply={(filters) => {
+                  const old = simple.filters.find((filter) => filter.id === filterDraft.filterId);
+                  patchSimple({
+                    filters: [
+                      ...simple.filters.filter((filter) =>
+                        old
+                          ? filter.id !== old.id && (!old.rangeId || filter.rangeId !== old.rangeId)
+                          : true,
+                      ),
+                      ...filters,
+                    ],
+                  });
+                  setFilterDraft(null);
+                }}
+              />
+            </div>
           )}
-          <details className="rounded-xl border p-3">
+          <details
+            className={
+              showLibrary ? "rounded-xl border p-3" : "rounded-xl border p-3 xl:col-span-2"
+            }
+          >
             <summary className="cursor-pointer text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring">
               Zeitraum und Reihenfolge
             </summary>

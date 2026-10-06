@@ -116,14 +116,13 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
       await page.goto(`${BASE}/dashboard`);
       await page.getByRole("button", { name: "Dashboard erstellen", exact: true }).click();
       await page.getByRole("button", { name: "Ersten Chart erstellen", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Dein neuer Chart" });
-      await dialog.getByLabel("Datenquelle", { exact: true }).click();
-      await page.getByRole("option", { name: /^public\.orders/ }).click();
+      await page.getByRole("button", { name: "public.orders", exact: true }).click();
       const field = (name: string) =>
-        dialog
-          .getByRole("complementary", { name: "Verfügbare Datenfelder" })
-          .getByRole("button", { name: new RegExp(`^${name} `) });
-      const zone = (name: string) => dialog.getByRole("region", { name, exact: true });
+        page
+          .locator("[data-node]")
+          .first()
+          .getByRole("button", { name: new RegExp(`^${name}( |$)`) });
+      const zone = (name: string) => page.getByRole("region", { name, exact: true });
       const drop = async (name: string, target: string) => {
         await zone(target).scrollIntoViewIfNeeded();
         await field(name).dragTo(zone(target));
@@ -131,11 +130,11 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
       await drop("amount", "Kennzahlen");
       await drop("created_at", "Aufteilung");
       await drop("channel", "Zweite Aufteilung");
-      await dialog.locator(".chart-surface").first().waitFor();
+      await page.locator(".chart-surface").first().waitFor();
       await drop("amount", "Filter");
-      await dialog.getByLabel("Filter von", { exact: true }).fill("100");
-      await dialog.getByLabel("Filter bis", { exact: true }).fill("1000");
-      await dialog.getByRole("button", { name: "Filter anwenden" }).click();
+      await page.getByLabel("Filter von", { exact: true }).fill("100");
+      await page.getByLabel("Filter bis", { exact: true }).fill("1000");
+      await page.getByRole("button", { name: "Filter anwenden" }).click();
       await zone("Kennzahlen").getByLabel("Berechnung", { exact: true }).click();
       await page.getByRole("option", { name: "Durchschnitt", exact: true }).click();
       await page.waitForFunction(() => !document.querySelector('[data-slot="skeleton"]'));
@@ -148,17 +147,18 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
       expect(filtered.at(-1)?.rows).toBeGreaterThan(0);
       expect(filtered.at(-1)?.sql).toContain("date_trunc('month'");
       expect(filtered.at(-1)?.sql).toContain('"channel"');
-      await dialog.getByRole("button", { name: "Weitere Aktionen" }).click();
+      await page.getByRole("button", { name: "Weitere Aktionen" }).click();
       await page.getByRole("menuitem", { name: "In Sammlung speichern" }).click();
-      await dialog.getByRole("button", { name: "Zum Dashboard hinzufügen", exact: true }).click();
-      await dialog.waitFor({ state: "hidden" });
+      const add = page.getByRole("button", { name: "Zum Dashboard hinzufügen", exact: true });
+      await add.click();
+      await add.waitFor({ state: "hidden" });
       await page.getByRole("button", { name: "Gespeicherte Charts", exact: true }).click();
       const drawer = page.getByRole("dialog", { name: "Gespeicherte Charts", exact: true });
       await drawer.getByRole("button", { name: "Ins Dashboard laden", exact: true }).click();
-      const editor = page.getByRole("dialog", { name: "Chart bearbeiten" });
-      await editor.locator(".chart-surface").first().waitFor();
-      await editor.getByRole("button", { name: "Speichern", exact: true }).click();
-      await editor.waitFor({ state: "hidden" });
+      await page.locator(".chart-surface").first().waitFor();
+      const save = page.getByRole("button", { name: "Speichern & schließen", exact: true });
+      await save.click();
+      await save.waitFor({ state: "hidden" });
       await page.locator(".react-grid-item .chart-surface").nth(1).waitFor();
       expect(await page.locator(".react-grid-item").count()).toBe(2);
       await page.waitForTimeout(500);

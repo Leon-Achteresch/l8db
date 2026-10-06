@@ -1,7 +1,31 @@
 import type { ForeignKeyInfo } from "@/lib/db";
-import type { DatasetJoin, SimpleDataset } from "./model";
+import type { CalculatedField, DatasetJoin, SimpleDataset } from "./model";
 
 export const JOIN_PREFIX = "join:";
+export const CALC_PREFIX = "calc:";
+const FIELD_TOKEN = /\[\[([^\]]+)\]\]/g;
+
+export function calcRef(id: string): string {
+  return `${CALC_PREFIX}${id}`;
+}
+
+export function calcOf(ref: string, ds: SimpleDataset): CalculatedField | null {
+  if (!ref.startsWith(CALC_PREFIX)) return null;
+  const id = ref.slice(CALC_PREFIX.length);
+  return ds.calculated?.find((field) => field.id === id) ?? null;
+}
+
+export function fieldToken(ref: string): string {
+  return `[[${ref}]]`;
+}
+
+export function exprRefs(expr: string): string[] {
+  return [...expr.matchAll(FIELD_TOKEN)].map((match) => match[1]);
+}
+
+export function replaceFieldTokens(expr: string, render: (ref: string) => string): string {
+  return expr.replace(FIELD_TOKEN, (_, ref: string) => render(ref));
+}
 
 const LEGACY_JOIN = "legacy";
 
@@ -47,6 +71,7 @@ function datasetRefs(ds: SimpleDataset): string[] {
     ds.dateColumn,
     ...ds.metrics.map((m) => m.column),
     ...ds.filters.map((f) => f.column),
+    ...(ds.calculated ?? []).flatMap((field) => exprRefs(field.expr)),
   ].filter((ref): ref is string => Boolean(ref));
 }
 
@@ -63,6 +88,7 @@ export function syncJoins(
     if (join.parent) add(join.parent, depth + 1);
     needed.push(join);
   };
+  for (const join of ds.joins ?? []) if (join.manual && join.id) add(join.id);
   for (const ref of [...datasetRefs(ds), ...extraRefs]) {
     const id = refJoinId(ref);
     if (id) add(id);
@@ -146,6 +172,8 @@ export function joinOptions(
 }
 
 export function refLabel(ref: string, ds: SimpleDataset): string {
+  const calc = calcOf(ref, ds);
+  if (calc) return calc.label || "Berechnetes Feld";
   const { join, column } = parseRef(ref, ds);
   return join ? `${join.table}.${column}` : column;
 }
