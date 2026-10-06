@@ -178,7 +178,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         `perf editor result: ${runMs} ms bis Grid (${RESULT_ROWS} Zeilen x 24 Spalten), ${run.mainThread.toFixed(0)} ms Main-Thread, längster Task ${run.longest.toFixed(0)} ms, Heap +${run.heap.toFixed(1)} MB`,
       );
 
-      await page.locator(".monaco-editor .view-lines").click();
+      await page.locator(".monaco-editor .view-line").nth(3).click();
+      await page.keyboard.press("End");
+      await page.getByText(/^Ze \d+, Sp (?!1$)\d+$/).waitFor();
       await page.waitForTimeout(800);
       const typeBurst = async () => {
         for (let index = 0; index < BURST; index++) {
