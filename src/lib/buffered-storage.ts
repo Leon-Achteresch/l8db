@@ -1,4 +1,19 @@
-import type { PersistStorage, StorageValue } from "zustand/middleware";
+import { createJSONStorage, type PersistStorage, type StorageValue } from "zustand/middleware";
+
+export function createChangedOnlyJsonStorage<S>(
+  getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => window.localStorage,
+): PersistStorage<S> | undefined {
+  return createJSONStorage<S>(() => {
+    const storage = getStorage();
+    return {
+      getItem: (key) => storage.getItem(key),
+      setItem: (key, value) => {
+        if (storage.getItem(key) !== value) storage.setItem(key, value);
+      },
+      removeItem: (key) => storage.removeItem(key),
+    };
+  });
+}
 
 export function createBufferedJsonStorage<S>(
   getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem">,
@@ -11,7 +26,8 @@ export function createBufferedJsonStorage<S>(
     clearTimeout(timer);
     timer = undefined;
     for (const [key, value] of pending) {
-      getStorage().setItem(key, JSON.stringify(value));
+      const json = JSON.stringify(value);
+      if (getStorage().getItem(key) !== json) getStorage().setItem(key, json);
       pending.delete(key);
     }
   };

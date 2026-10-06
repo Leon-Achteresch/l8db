@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createBufferedJsonStorage } from "../src/lib/buffered-storage";
+import {
+  createBufferedJsonStorage,
+  createChangedOnlyJsonStorage,
+} from "../src/lib/buffered-storage";
 
 function fixture(delay = 10000) {
   const values = new Map<string, string>();
@@ -67,4 +70,39 @@ describe("buffered tab persistence", () => {
     expect(writes).toHaveLength(2);
     expect(storage.getItem("tabs")?.state.sql).toBe("SELECT 2");
   });
+
+  test("skips writes whose serialized state is already stored", () => {
+    const { storage, writes } = fixture();
+    storage.setItem("tabs", { state: { sql: "SELECT 1" }, version: 1 });
+    storage.flush();
+    for (let i = 0; i < 5; i++) {
+      storage.setItem("tabs", { state: { sql: "SELECT 1" }, version: 1 });
+      storage.flush();
+    }
+    expect(writes).toHaveLength(1);
+    storage.setItem("tabs", { state: { sql: "SELECT 2" }, version: 1 });
+    storage.flush();
+    expect(writes).toHaveLength(2);
+    storage.dispose();
+  });
+});
+
+test("changed-only storage writes only when the persisted state changes", () => {
+  const values = new Map<string, string>();
+  const writes: string[] = [];
+  const storage = createChangedOnlyJsonStorage<{ panes: string[] }>(() => ({
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, value);
+    },
+    removeItem: (key) => {
+      values.delete(key);
+    },
+  }));
+  for (let i = 0; i < 5; i++) storage?.setItem("split", { state: { panes: ["a"] }, version: 0 });
+  expect(writes).toEqual(["split"]);
+  storage?.setItem("split", { state: { panes: ["a", "b"] }, version: 0 });
+  expect(writes).toEqual(["split", "split"]);
+  expect(storage?.getItem("split")).toEqual({ state: { panes: ["a", "b"] }, version: 0 });
 });

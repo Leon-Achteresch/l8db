@@ -1,8 +1,8 @@
 import { createContext } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-
 import { scanBindParams } from "@/lib/bind-params";
+import { createChangedOnlyJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { isReadOnlyStatement } from "@/lib/perf-test";
@@ -163,6 +163,7 @@ export const useMasterDetail = create<MasterDetailState>()(
     }),
     {
       name: "l8db.master-detail",
+      storage: createChangedOnlyJsonStorage(),
       partialize: (state) => ({
         scripts: state.scripts,
         savedScripts: state.savedScripts,
