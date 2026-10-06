@@ -11,7 +11,10 @@ const RATE = Number(process.env.L8DB_PERF_CPU_RATE ?? 4);
 const PACKAGES = Number(process.env.L8DB_SIDEBAR_PACKAGES ?? 1500);
 const ROUNDS = Number(process.env.L8DB_SIDEBAR_ROUNDS ?? 6);
 const ACTIVE_BUDGET_MS = Number(process.env.L8DB_SIDEBAR_ACTIVE_MS ?? 32);
-const STYLE_BUDGET = Number(process.env.L8DB_SIDEBAR_STYLE_RECALCS ?? 50);
+const PAINT_BUDGET_MS = Number(process.env.L8DB_SIDEBAR_PAINT_MS ?? 80);
+const FRAME_BUDGET_MS = Number(process.env.L8DB_SIDEBAR_FRAME_MS ?? 34);
+const STYLE_BUDGET = Number(process.env.L8DB_SIDEBAR_STYLE_RECALCS ?? 32);
+const ROW_BUDGET = 40;
 
 type Switch = {
   activeMs: number;
@@ -24,6 +27,8 @@ type Switch = {
   layouts: number;
   styleRecalcs: number;
   scriptMs: number;
+  rows: number;
+  covered: number;
 };
 
 test.skipIf(!ENABLED)(
@@ -192,10 +197,24 @@ test.skipIf(!ENABLED)(
         if (!box) throw new Error("Packages-Tab nicht sichtbar");
         await page.evaluate(() => {
           const state = window as unknown as {
-            __probe: { start: number; active: number; painted: number; commits: number };
+            __probe: {
+              start: number;
+              active: number;
+              painted: number;
+              commits: number;
+              rows: number;
+              covered: number;
+            };
             __commits: number;
           };
-          state.__probe = { start: 0, active: 0, painted: 0, commits: state.__commits };
+          state.__probe = {
+            start: 0,
+            active: 0,
+            painted: 0,
+            commits: state.__commits,
+            rows: 0,
+            covered: 0,
+          };
           const probe = state.__probe;
           document.addEventListener(
             "pointerdown",
@@ -208,12 +227,19 @@ test.skipIf(!ENABLED)(
           const poll = (now: number) => {
             if (probe.start) {
               if (!probe.active && tab?.getAttribute("data-state") === "active") probe.active = now;
-              if (
-                [...document.querySelectorAll('[data-sidebar="menu-button"]')].some(
-                  (element) => element.textContent === "PKG_0000",
-                )
-              )
+              const first = [...document.querySelectorAll('[data-sidebar="menu-button"]')].find(
+                (element) => element.textContent === "PKG_0000",
+              );
+              const list = first?.closest("ul");
+              const scroller = first?.closest("[data-slot=sidebar-content]");
+              if (list?.lastElementChild && scroller) {
                 probe.painted = now;
+                probe.rows = list.children.length;
+                probe.covered = Number(
+                  list.lastElementChild.getBoundingClientRect().bottom >=
+                    scroller.getBoundingClientRect().bottom,
+                );
+              }
             }
             if (!probe.painted) requestAnimationFrame(poll);
           };
@@ -229,12 +255,19 @@ test.skipIf(!ENABLED)(
         const after = await metrics();
         const result = await page.evaluate(() => {
           const state = window as unknown as {
-            __probe: { start: number; active: number; painted: number; commits: number };
+            __probe: {
+              start: number;
+              active: number;
+              painted: number;
+              commits: number;
+              rows: number;
+              covered: number;
+            };
             __commits: number;
             __frames: number[];
             __tasks: Array<{ at: number; duration: number }>;
           };
-          const { start, active, painted, commits } = state.__probe;
+          const { start, active, painted, commits, rows, covered } = state.__probe;
           const end = start + 1500;
           const frames = state.__frames.filter((at) => at >= start && at <= end);
           const gaps = frames.slice(1).map((at, index) => at - frames[index]);
@@ -250,6 +283,8 @@ test.skipIf(!ENABLED)(
               0,
             ),
             worstFrameMs: Math.max(0, ...gaps),
+            rows,
+            covered,
           };
         });
         await tablesTab.click();
@@ -266,7 +301,7 @@ test.skipIf(!ENABLED)(
       for (let round = 0; round < ROUNDS; round++) runs.push(await measure());
       const report = (label: string, run: Switch) =>
         console.log(
-          `sidebar-packages ${WEBKIT ? "webkit" : `${RATE}×`} ${label}: aktiv ${run.activeMs.toFixed(0)} ms, Liste ${run.paintMs.toFixed(0)} ms, Commits ${run.commits}, längster Task ${run.worstTaskMs.toFixed(0)} ms (${run.longTasks} Long Tasks), ${run.droppedFrames} verlorene Frames (schlimmster ${run.worstFrameMs.toFixed(0)} ms), Layouts ${run.layouts}, Style-Recalcs ${run.styleRecalcs}, Script ${run.scriptMs.toFixed(0)} ms`,
+          `sidebar-packages ${WEBKIT ? "webkit" : `${RATE}×`} ${label}: aktiv ${run.activeMs.toFixed(0)} ms, Liste ${run.paintMs.toFixed(0)} ms, Commits ${run.commits}, längster Task ${run.worstTaskMs.toFixed(0)} ms (${run.longTasks} Long Tasks), ${run.droppedFrames} verlorene Frames (schlimmster ${run.worstFrameMs.toFixed(0)} ms), Layouts ${run.layouts}, Style-Recalcs ${run.styleRecalcs}, Script ${run.scriptMs.toFixed(0)} ms, ${run.rows} Zeilen`,
         );
       for (const [index, run] of runs.entries()) report(`#${index + 1}`, run);
       const warm = runs.slice(1);
@@ -278,7 +313,30 @@ test.skipIf(!ENABLED)(
       ) as Switch;
       report("Median", median);
       expect(median.activeMs).toBeLessThanOrEqual(ACTIVE_BUDGET_MS);
+      expect(median.paintMs).toBeLessThanOrEqual(PAINT_BUDGET_MS);
+      expect(median.worstFrameMs).toBeLessThanOrEqual(FRAME_BUDGET_MS);
       if (!WEBKIT) expect(median.styleRecalcs).toBeLessThanOrEqual(STYLE_BUDGET);
+      for (const run of runs) {
+        expect(run.rows).toBeLessThanOrEqual(ROW_BUDGET);
+        expect(run.covered).toBe(1);
+      }
+
+      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+      await packagesTab.click();
+      const row = (name: string) =>
+        page.locator('[data-sidebar="menu-button"]').filter({ hasText: new RegExp(`^${name}$`) });
+      await row("PKG_0000").click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Spec öffnen" }).waitFor({ timeout: 2000 });
+      expect(await row("PKG_0000").getAttribute("data-state")).toBe("open");
+      await page.keyboard.press("Escape");
+      await page.getByRole("menu").waitFor({ state: "detached", timeout: 2000 });
+      await row("PKG_0000").click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Spec öffnen" }).waitFor({ timeout: 2000 });
+      await page.keyboard.press("Escape");
+      await page.getByRole("menu").waitFor({ state: "detached", timeout: 2000 });
+      await row("PKG_0001").click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Package löschen" }).click({ timeout: 2000 });
+      await page.getByRole("alertdialog").getByText('Package "PKG_0001" löschen?').waitFor();
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
