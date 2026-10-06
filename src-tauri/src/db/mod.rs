@@ -26,7 +26,7 @@ pub mod export_formats;
 mod filter_expr;
 mod http_api;
 #[cfg(test)]
-mod http_mock;
+pub(crate) mod http_mock;
 pub mod import;
 pub mod import_source;
 pub(crate) mod influxdb;
@@ -1827,6 +1827,23 @@ pub(crate) fn where_clause(filter: Option<&str>, allow_raw: bool) -> Result<Stri
         }
         None => Ok(String::new()),
     }
+}
+
+const URI_COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'!')
+    .remove(b'~')
+    .remove(b'*')
+    .remove(b'\'')
+    .remove(b'(')
+    .remove(b')');
+
+pub fn set_url_password(url: &mut url::Url, password: &str) -> Result<(), ()> {
+    url.set_password(Some(
+        &percent_encoding::utf8_percent_encode(password, URI_COMPONENT).to_string(),
+    ))
 }
 
 pub fn create_adapter(
