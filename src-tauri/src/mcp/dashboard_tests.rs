@@ -186,7 +186,7 @@ fn tool_definition_matches_kinds() {
             .len(),
         KINDS.len()
     );
-    assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 11);
+    assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 12);
     let help = chart_types();
     for kind in KINDS {
         assert!(
@@ -525,9 +525,12 @@ fn keeps_app_edits_shared_datasets_and_builder_charts() {
     assert!(lab
         .err(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"type": "gauge"}}))
         .contains("nur ohne dimension"));
-    assert!(lab
-        .err(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"metrics": ["n"]}}))
-        .contains("Baukasten"));
+    let error = lab.err(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"metrics": ["n"]}}));
+    assert!(error.contains("nicht numerisch"), "{error}");
+    lab.ok(json!({"action": "update_chart", "dashboard": "From app", "chart": "Treemap", "spec": {"metrics": ["avg(amount)"]}}));
+    let simple = dataset_for(&lab.only(), "Treemap")["simple"].clone();
+    assert_eq!(simple["dimension"]["column"], "status");
+    assert_eq!(simple["metrics"][0]["agg"], "avg");
     let got = lab.ok(json!({"action": "get", "dashboard": "app-made"}));
     assert!(got.contains("\"builder\""), "{got}");
     let preview = lab.ok(json!({"action": "preview", "dashboard": "From app", "chart": "Treemap"}));
@@ -1052,4 +1055,68 @@ fn builder_sql_and_variables_quote_per_dialect() {
         builder::builder_sql(&simple, DatabaseKind::Mssql, &[], &empty),
         "SELECT TOP 10 CAST(DATEADD(month, DATEDIFF(month, 0, t1.[eingelagert]), 0) AS date) AS [dim], COUNT(*) AS [m0]\nFROM [wms].[bestand] AS t1\nLEFT JOIN [wms].[artikel] AS t2 ON t2.[id] = t1.[artikel_id] AND t2.[mandant] = t1.[mandant]\nGROUP BY CAST(DATEADD(month, DATEDIFF(month, 0, t1.[eingelagert]), 0) AS date)\nORDER BY [dim] ASC"
     );
+}
+
+fn add_items(lab: &Lab) {
+    let db = rusqlite::Connection::open(lab.dir.join("shop.db")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE order_items(item_id INTEGER, order_id INTEGER, sku TEXT, qty INTEGER);
+         INSERT INTO order_items VALUES (1, 1, 'A', 2), (2, 1, 'B', 1), (3, 1, 'C', 4), (4, 2, 'A', 1);",
+    )
+    .unwrap();
+}
+
+#[test]
+fn suggests_and_measures_joins_like_the_studio() {
+    let mut lab = lab();
+    add_regions(&lab);
+    add_items(&lab);
+    let text = lab.ok(json!({"action": "joins", "connection": "Shop", "table": "orders"}));
+    let line = text
+        .lines()
+        .find(|l| l.contains("order_items"))
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(line.contains("\"on\":\"id = order_id\""), "{line}");
+    assert!(line.contains("40 % Treffer"), "{line}");
+    assert!(line.contains("2.0 Zeilen je Treffer"), "{line}");
+    let only = lab.ok(
+        json!({"action": "joins", "connection": "Shop", "table": "orders", "tables": ["regions"]}),
+    );
+    assert!(only.starts_with("Keine Verknüpfung"), "{only}");
+    assert!(lab
+        .err(json!({"action": "joins", "connection": "Shop", "table": "nope"}))
+        .contains("nicht gefunden"));
+
+    let created = lab.ok(json!({
+        "action": "create",
+        "connection": "Shop",
+        "name": "Joins",
+        "charts": [
+            {"type": "column", "title": "Regionen", "builder": {"table": "orders", "joins": [{"table": "regions", "on": "region = code"}], "dimension": "regions.name", "metrics": ["sum(amount)"]}},
+            {"type": "kpi", "title": "Menge", "builder": {"table": "orders", "joins": [{"table": "order_items", "as": "i", "on": "id = order_id"}], "metrics": ["sum(i.qty)"]}}
+        ]
+    }));
+    assert!(
+        created.contains("Join orders → regions (region = code): 100 % Treffer"),
+        "{created}"
+    );
+    assert!(
+        created.contains("Join orders → order_items (id = order_id): 40 % Treffer"),
+        "{created}"
+    );
+    assert!(
+        created.contains("kind=inner") && created.contains("Summen werden vervielfacht"),
+        "{created}"
+    );
+
+    let patched = lab.ok(json!({"action": "update_chart", "dashboard": "Joins", "chart": "Regionen", "spec": {"builder": {"joins": [{"table": "regions", "on": "region = code", "kind": "inner"}], "dimension2": "status"}}}));
+    assert!(patched.contains("100 % Treffer"), "{patched}");
+    let simple = dataset_for(&lab.only(), "Regionen")["simple"].clone();
+    assert_eq!(simple["joins"][0]["kind"], "inner");
+    assert_eq!(simple["metrics"][0]["agg"], "sum");
+    assert_eq!(simple["dimension2"], "status");
+    assert!(simple["dimension"]["column"]
+        .as_str()
+        .unwrap()
+        .ends_with(":name"));
 }
