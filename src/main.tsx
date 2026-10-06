@@ -38,6 +38,11 @@ router.subscribe("onResolved", () => {
 const queryClient = createAppQueryClient();
 const extensionHost = createExtensionHost();
 
+for (const match of router.matchRoutes(router.state.location))
+  void router
+    .loadRouteChunk(router.routesById[match.routeId as keyof typeof router.routesById])
+    ?.catch(() => undefined);
+
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 root.render(<StartupView />);
 
