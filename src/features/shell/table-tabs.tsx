@@ -4,7 +4,7 @@ import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from 
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
@@ -19,12 +19,16 @@ import { onHotkeyAction } from "@/lib/hotkeys";
 import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
-import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const allTabs = useTableTabs((state) => state.tabs);
+  const shownTabs = useRef<Tab[]>([]);
+  const allTabs = useTableTabs((state) => {
+    if (!sameTabBarTabs(shownTabs.current, state.tabs)) shownTabs.current = state.tabs;
+    return shownTabs.current;
+  });
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
@@ -50,7 +54,9 @@ export function TableTabs() {
   };
 
   const isTabActive = (tab: Tab) =>
-    split ? panes[focusedPane] === tabKey(tab) : tab === activeWorkspaceTab;
+    split
+      ? panes[focusedPane] === tabKey(tab)
+      : activeWorkspaceTab !== undefined && tabKey(tab) === tabKey(activeWorkspaceTab);
 
   const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(

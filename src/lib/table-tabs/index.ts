@@ -8,6 +8,7 @@ export {
   queryNeedsCloseConfirmation,
   queryTabBookmarkSlots,
   queryTabBookmarks,
+  sameTabBarTabs,
 } from "./query-tabs";
 export * from "./store";
 export { remoteTab, remoteTableTab, tabKey } from "./tab-keys";

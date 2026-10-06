@@ -32,8 +32,17 @@ const MAX_SUGGESTIONS = 300;
 
 function textBefore(model: monaco.editor.ITextModel, position: monaco.Position) {
   const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+  let startLineNumber = position.lineNumber;
+  while (
+    startLineNumber > 1 &&
+    !model
+      .getLineContent(startLineNumber - 1)
+      .trimEnd()
+      .endsWith(";")
+  )
+    startLineNumber -= 1;
   const text = model.getValueInRange({
-    startLineNumber: 1,
+    startLineNumber,
     startColumn: 1,
     endLineNumber: position.lineNumber,
     endColumn: position.column,

@@ -6,6 +6,29 @@ export function isQueryTabDirty(tab: QueryTab): boolean {
   return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
 }
 
+const SQL_ONLY_KEYS = new Set(["sql", "lastExecutedSql"]);
+
+function sameExceptSql(a: QueryTab, b: QueryTab): boolean {
+  if (isQueryTabDirty(a) !== isQueryTabDirty(b)) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (SQL_ONLY_KEYS.has(key)) continue;
+    if (!Object.is(a[key as keyof QueryTab], b[key as keyof QueryTab])) return false;
+  }
+  return true;
+}
+
+export function sameTabBarTabs(a: Tab[], b: Tab[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((tab, index) => {
+    const other = b[index];
+    return (
+      tab === other || (tab.kind === "query" && other.kind === "query" && sameExceptSql(tab, other))
+    );
+  });
+}
+
 function onlyReadsData(sql: string): boolean {
   const { statements } = splitSqlStatements(sql);
   return statements.length > 0 && statements.every((s) => isReadOnlyStatement(s.text));
