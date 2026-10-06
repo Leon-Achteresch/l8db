@@ -11,6 +11,7 @@ export {
   filterOperatorLabel,
   filterOperatorsForKind,
   filterSupportsOr,
+  isDateFilterType,
   OPERATORS,
   operatorNeedsList,
   operatorNeedsValue,

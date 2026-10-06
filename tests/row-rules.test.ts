@@ -38,3 +38,9 @@ describe("rowRuleColor", () => {
     expect(rowRuleColor({ a: 1 }, [rule("x", [cond("a", "eq", "")])])).toBeUndefined();
   });
 });
+
+test("row rules compare date values by day", () => {
+  const rules = [rule("red", [cond("at", "eq", "2024-01-15")])];
+  expect(rowRuleColor({ at: "2024-01-15 18:30:00" }, rules)).toBe("red");
+  expect(rowRuleColor({ at: "2024-01-16T00:00:00Z" }, rules)).toBeUndefined();
+});

@@ -168,6 +168,7 @@ export function useTableHeader({
                   onFilterValueChange={setFilterValue}
                   compiledFilter={filterColumn === header.id ? compiledFilter : ""}
                   filterOperators={filterOperators}
+                  dateFilter={typeInfoByColumn.get(header.id)?.label === "date"}
                   filterPrefix={filterPrefix}
                   onApplyFilter={
                     !filterableColumns || filterableColumns.includes(header.id)

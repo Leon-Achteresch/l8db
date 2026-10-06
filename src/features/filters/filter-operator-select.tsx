@@ -14,6 +14,15 @@ import {
   filterOperatorsForKind,
 } from "@/lib/sql-filter";
 
+const DATE_LABELS: Record<string, string> = {
+  eq: "ist am",
+  neq: "ist nicht am",
+  gt: "ist nach",
+  gte: "ist ab",
+  lt: "ist vor",
+  lte: "ist bis",
+};
+
 interface FilterOperatorSelectProps {
   operator: string;
   value: string;
@@ -22,6 +31,7 @@ interface FilterOperatorSelectProps {
   size?: "sm" | "default";
   kind?: FilterKind;
   operators?: { key: string; label: string }[];
+  date?: boolean;
 }
 
 export function FilterOperatorSelect({
@@ -32,6 +42,7 @@ export function FilterOperatorSelect({
   size,
   kind: explicitKind,
   operators: customOperators,
+  date,
 }: FilterOperatorSelectProps) {
   const activeKind = useActiveConnection()?.kind;
   const kind = explicitKind === undefined ? activeKind : explicitKind;
@@ -58,7 +69,9 @@ export function FilterOperatorSelect({
         )}
         {operators.map((op) => (
           <SelectItem key={op.key} value={op.key}>
-            {translated ? op.label : filterOperatorLabel(op.key, false, kind)}
+            {translated
+              ? (date && DATE_LABELS[op.key]) || op.label
+              : filterOperatorLabel(op.key, false, kind)}
           </SelectItem>
         ))}
       </SelectContent>
