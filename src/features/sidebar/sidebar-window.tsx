@@ -23,7 +23,7 @@ export function SidebarWindow({
   const windowed = !disabled && count > MIN_COUNT;
   const [range, setRange] = useState({
     start: 0,
-    end: Math.min(count, MIN_COUNT),
+    end: Math.min(count, MIN_COUNT, Math.ceil(window.innerHeight / 24)),
     pitch: ESTIMATED_PITCH,
   });
 

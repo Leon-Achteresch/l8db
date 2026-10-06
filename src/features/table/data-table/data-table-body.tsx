@@ -122,7 +122,7 @@ export function DataTableBody({
   const [rules] = useTableViewState(stateKey, "rowRules", []);
 
   return (
-    <ContextMenu onOpenChange={(open) => !open && setMenuRow(null)}>
+    <ContextMenu eager onOpenChange={(open) => !open && setMenuRow(null)}>
       <ContextMenuTrigger asChild highlight={false}>
         <tbody
           ref={tbodyRef}
