@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createChangedOnlyJsonStorage } from "@/lib/buffered-storage";
 
 import { useConnectionsStore } from "@/lib/connections";
 import {
@@ -268,6 +269,7 @@ export const useSplitView = create<SplitState>()(
     }),
     {
       name: "l8db.split-view",
+      storage: createChangedOnlyJsonStorage(),
       partialize: (state) => ({
         byConnection: state.byConnection,
         paneConnections: state.paneConnections,
