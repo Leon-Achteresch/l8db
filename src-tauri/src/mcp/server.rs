@@ -516,7 +516,7 @@ pub(super) fn check_write_sql(
     connection: &McpConnection,
     index: &redact::SchemaIndex,
 ) -> Result<(), String> {
-    if redact::statement_count(sql) > 1 {
+    if statement_count(connection.kind, sql) > 1 {
         return Err("Nur ein Statement pro Aufruf.".into());
     }
     if let Some(word) = redact::dangerous_word(sql) {
@@ -531,6 +531,13 @@ pub(super) fn check_write_sql(
         ));
     }
     redact::check_references(sql, index, row_values(connection.kind))
+}
+
+fn statement_count(kind: DatabaseKind, sql: &str) -> usize {
+    match kind {
+        DatabaseKind::Oracle => db::oracle::statement_count(sql),
+        _ => redact::statement_count(sql),
+    }
 }
 
 fn row_values(kind: DatabaseKind) -> bool {
@@ -566,7 +573,7 @@ pub(super) fn check_read_sql(
         }
         None => {}
     }
-    if redact::statement_count(sql) > 1 {
+    if statement_count(connection.kind, sql) > 1 {
         return Err("Nur ein Statement pro Aufruf.".into());
     }
     if let Some(word) = redact::write_word(sql) {
@@ -1442,6 +1449,30 @@ mod tests {
         assert!(check_read_sql("SELECT s._2 FROM s3://b/users.csv s", &s3, &index).is_err());
         assert!(check_read_sql("SELECT s.password FROM s3://b/users.csv s", &s3, &index).is_err());
         assert!(check_read_sql("SELECT * FROM s3://b/users.csv", &s3, &index).is_ok());
+    }
+
+    #[test]
+    fn oracle_plsql_blocks_count_as_one_statement() {
+        let index = redact::SchemaIndex::new(
+            &[],
+            &Redactor::new(&McpConfig::default().redaction, &[]),
+            &[],
+        );
+        let oracle = McpConnection {
+            kind: DatabaseKind::Oracle,
+            allow_ddl: true,
+            ..connection(false)
+        };
+        for sql in [
+            "begin\n  insert into t values (1);\n  update t set x = 2;\nend;",
+            "declare v number;\nbegin v := f_insert(1); end;",
+            "create or replace procedure p as\nbegin\n  delete from t where id = 1;\n  commit;\nend;",
+            "create or replace function f(n number) return number is\nbegin\n  insert into t values (n);\n  return n;\nend;\n/",
+        ] {
+            assert_eq!(check_write_sql(sql, &oracle, &index), Ok(()), "{sql}");
+        }
+        assert!(check_write_sql("begin null; end;\nbegin null; end;", &oracle, &index).is_err());
+        assert!(check_write_sql("delete from t; delete from u", &oracle, &index).is_err());
     }
 
     #[test]
