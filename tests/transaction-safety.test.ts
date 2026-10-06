@@ -281,6 +281,18 @@ describe("transaction control inside a managed transaction", () => {
     expect(commands.map((entry) => entry.command)).toEqual(["execute_query"]);
   });
 
+  test("Oracle block with COMMIT runs directly without a managed transaction", async () => {
+    await executeSqlWithTransactions({
+      connection: { ...connection, kind: "oracle" },
+      database: null,
+      sql: "DECLARE v NUMBER; BEGIN DELETE FROM t; INSERT INTO t VALUES (1); COMMIT; END;",
+      transactionsCapable: true,
+      onJob: () => {},
+    });
+    expect(commands.map((entry) => entry.command)).toEqual(["execute_query"]);
+    expect(useTransactionStore.getState().transactions).toEqual([]);
+  });
+
   test("script policy keeps T-SQL TRY blocks and rejects nested commits", () => {
     expect(
       scriptPolicyIssue("BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2 END CATCH", "mssql", true),
