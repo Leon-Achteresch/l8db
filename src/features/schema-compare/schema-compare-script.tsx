@@ -12,6 +12,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import type { SyncScript } from "@/lib/schema-compare/script";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { useTableTabs } from "@/lib/table-tabs";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { SchemaCompareRunDialog } from "./schema-compare-run-dialog";
 
 interface SchemaCompareScriptProps {
@@ -78,7 +79,7 @@ export function SchemaCompareScript({ result, script, text, plan }: SchemaCompar
             disabled={empty}
             onClick={() =>
               void copyText(text).then(
-                () => toast.success("Sync-Skript kopiert"),
+                () => showCopiedMessage("Sync-Skript kopiert"),
                 () => toast.error("Kopieren fehlgeschlagen"),
               )
             }

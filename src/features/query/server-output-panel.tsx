@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { copyText } from "@/lib/clipboard";
 import { type ServerOutputEntry, useServerOutputStore } from "@/lib/server-output";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface ServerOutputPanelProps {
   connectionId: string;
@@ -53,7 +54,7 @@ export function ServerOutputPanel({
     if (rows.length === 0) return;
     try {
       await copyText(asText(rows));
-      toast.success("Server-Ausgabe kopiert");
+      showCopiedMessage("Server-Ausgabe kopiert");
     } catch {
       toast.error("Kopieren fehlgeschlagen");
     }

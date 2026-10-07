@@ -18,11 +18,10 @@ import {
 import { isProduction } from "@/lib/environments";
 import { useSettingsStore } from "@/lib/settings";
 import { useConnectionSwitch } from "@/lib/ssh";
-import { isTaskActive, useTasksStore } from "@/lib/tasks";
+import { isQueryTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import { getAppVersion } from "@/lib/updater";
 
 const AWAY_MS = 30 * 60_000;
-const QUERY_TASKS = new Set(["SQL-Abfrage", "SQL-Skript"]);
 
 export function useIslandMoments() {
   const navigate = useNavigate();
@@ -76,7 +75,7 @@ export function useIslandMoments() {
           if (!running.has(task.id) || isTaskActive(task)) continue;
           const done = taskMoment(task);
           if (done) showIslandMoment(done);
-          if (task.status !== "success" || !QUERY_TASKS.has(task.title)) continue;
+          if (task.status !== "success" || !isQueryTask(task)) continue;
           const milestone = countQuery();
           if (milestone) showIslandMoment(milestoneMoment(milestone));
         }

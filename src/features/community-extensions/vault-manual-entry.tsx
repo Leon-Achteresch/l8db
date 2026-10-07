@@ -1,6 +1,5 @@
 import { CopyIcon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { copyText } from "@/lib/clipboard";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import type { VAULT_PROVIDERS } from "./password-manager";
 import { VaultField } from "./vault-field";
 
@@ -110,7 +110,7 @@ export function VaultManualEntry({ provider }: { provider: (typeof VAULT_PROVIDE
             size="icon-xs"
             variant="ghost"
             aria-label="Adresse kopieren"
-            onClick={() => void copyText(address).then(() => toast.success("Adresse kopiert"))}
+            onClick={() => void copyText(address).then(() => showCopiedMessage("Adresse kopiert"))}
           >
             <CopyIcon />
           </Button>

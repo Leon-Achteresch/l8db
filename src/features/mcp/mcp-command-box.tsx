@@ -2,6 +2,7 @@ import { Check, Copy, Terminal } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface McpCommandBoxProps {
   command: string;
@@ -14,7 +15,7 @@ export function McpCommandBox({ command }: McpCommandBoxProps) {
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);
-      toast.success("Befehl in Zwischenablage kopiert.");
+      showCopiedMessage("Befehl in Zwischenablage kopiert.");
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("Kopieren fehlgeschlagen.");

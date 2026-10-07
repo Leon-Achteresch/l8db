@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface TableDataErrorProps {
   title: string;
@@ -36,7 +37,7 @@ export function TableDataError({ title, error, actions, onRetry }: TableDataErro
             variant="ghost"
             onClick={() =>
               void copyText(String(error))
-                .then(() => toast.success("Fehlerdetails kopiert"))
+                .then(() => showCopiedMessage("Fehlerdetails kopiert"))
                 .catch((failure) => toast.error(String(failure)))
             }
           >

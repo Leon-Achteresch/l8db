@@ -76,12 +76,27 @@ describe("Island-Momente", () => {
   });
 
   test("meldet nur spürbar lange Aufgaben", () => {
-    const base = { id: "t", title: "SQL-Abfrage", startedAt: 1_000, cancellable: false };
+    const base = { id: "t", title: "CSV-Export", startedAt: 1_000, cancellable: false };
     expect(taskMoment({ ...base, status: "success", finishedAt: 1_200 })).toBeNull();
     const done = taskMoment({ ...base, status: "success", finishedAt: 3_400 });
     expect(done?.glyph.kind).toBe("check");
     expect(done?.detail).toBe("2,4 s");
     expect(taskMoment({ ...base, status: "error", finishedAt: 3_400 })?.glyph.kind).toBe("cross");
+  });
+
+  test("überlässt SQL-Abfragen und Skripte dem Footer", () => {
+    for (const title of ["SQL-Abfrage", "SQL-Skript"])
+      for (const status of ["success", "error", "cancelled"] as const)
+        expect(
+          taskMoment({
+            id: "q",
+            title,
+            startedAt: 0,
+            finishedAt: 5_000,
+            cancellable: false,
+            status,
+          }),
+        ).toBeNull();
   });
 
   test("kommentiert Produktion nur freitags und nachts", () => {
