@@ -5,6 +5,8 @@ import "monaco-editor/features/diffEditorBreadcrumbs/register";
 
 import { diffChangeLines, nextDiffLine } from "@/features/compare/diff-navigation";
 import { monaco } from "@/lib/monaco";
+import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
+import { useDefinitionDraftActions } from "./use-definition-draft-actions";
 import "./definition-diff-editor.css";
 
 function themeFor(resolved: string | undefined): string {
@@ -43,6 +45,10 @@ interface DefinitionDiffEditorProps {
   onModifiedChange?: (value: string) => void;
   readOnly?: boolean;
   minimap?: boolean;
+  draft?: string;
+  onDraftChange?: (value: string) => void;
+  onSideSelect?: (side: "left" | "right") => void;
+  scrollSync?: ScrollSyncGroup;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -54,6 +60,10 @@ export function DefinitionDiffEditor({
   onModifiedChange,
   readOnly = false,
   minimap = false,
+  draft,
+  onDraftChange,
+  onSideSelect,
+  scrollSync,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -151,6 +161,14 @@ export function DefinitionDiffEditor({
       },
     });
   }, [onlyDifferences]);
+
+  useEffect(() => {
+    const editor = diffRef.current;
+    if (!editor || !scrollSync) return;
+    return joinScrollSyncGroup(scrollSync, editor.getModifiedEditor());
+  }, [scrollSync]);
+
+  useDefinitionDraftActions(diffRef, original, modified, draft, onDraftChange, onSideSelect);
 
   useEffect(() => {
     if (diffRef.current) monaco.editor.setTheme(themeFor(resolvedTheme));

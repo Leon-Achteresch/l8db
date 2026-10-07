@@ -31,7 +31,6 @@ import {
   type DiffStats,
 } from "@/features/compare/definition-diff-editor";
 import { type MergeDraftApi, MergeDraftEditor } from "@/features/compare/merge-draft-editor";
-import { MergeReferenceEditor } from "@/features/compare/merge-reference-editor";
 import {
   type CompareSideSelection,
   compareLoadErrorMessage,
@@ -345,88 +344,90 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
         </div>
       ) : (
         <div className="relative min-h-0 flex-1">
-          {!props.showDraft ? (
-            <DefinitionDiffEditor
-              ref={diffRef}
-              original={leftState.definition}
-              modified={rightState.definition}
-              onlyDifferences={onlyDifferences}
-              onStats={setDiffStats}
-              readOnly
-              minimap
-            />
-          ) : (
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex min-h-0 flex-1">
-                <div className="min-w-0 flex-1">
-                  <MergeReferenceEditor
-                    label="Quelle"
-                    source={leftState.definition}
-                    draft={draft}
-                    onlyDifferences={onlyDifferences}
-                    selected={transferSide === "left"}
-                    onSelect={() => setTransferSide("left")}
-                    onDraftChange={changeDraft}
-                    scrollSync={scrollSync}
-                  />
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
+              {props.showDraft && (
+                <div className="grid shrink-0 grid-cols-2 border-b text-xs">
+                  {(["left", "right"] as const).map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      aria-label={`${side === "left" ? "Quelle" : "Ziel"} auswählen`}
+                      aria-pressed={transferSide === side}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-muted ${transferSide === side ? "font-medium text-primary" : "text-muted-foreground"}`}
+                      onClick={() => setTransferSide(side)}
+                    >
+                      <span
+                        className={`size-2 shrink-0 rounded-full ${transferSide === side ? "bg-primary" : "border border-muted-foreground"}`}
+                      />
+                      {side === "left" ? "Quelle" : "Ziel"}
+                    </button>
+                  ))}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <MergeReferenceEditor
-                    label="Ziel"
-                    source={rightState.definition}
-                    draft={draft}
-                    onlyDifferences={onlyDifferences}
-                    selected={transferSide === "right"}
-                    onSelect={() => setTransferSide("right")}
-                    onDraftChange={changeDraft}
-                    scrollSync={scrollSync}
-                  />
-                </div>
-              </div>
-              <div className="relative flex h-9 shrink-0 items-center justify-center">
-                <div className="absolute inset-x-0 top-1/2 border-t" />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
-                  aria-label={`${transferLabel} in Entwurf übernehmen`}
-                  disabled={
-                    transferState.loading ||
-                    Boolean(transferState.error) ||
-                    transferState.definition === draft
-                  }
-                  onClick={() => changeDraft(transferState.definition)}
-                >
-                  <ArrowDownIcon className="size-3.5" />
-                  {transferLabel} in Entwurf
-                </Button>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
-                  Gemeinsamer Entwurf
-                </div>
-                <div className="relative min-h-0 flex-1">
-                  <MergeDraftEditor
-                    ref={draftRef}
-                    value={draft}
-                    origins={origins}
-                    onChange={changeDraft}
-                    scrollSync={scrollSync}
-                  />
-                  <div className="pointer-events-none absolute top-2 right-4 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
-                    <span className="flex items-center gap-1.5">
-                      <span className="merge-origin-source size-2.5 rounded-sm" />
-                      aus Quelle
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="merge-origin-target size-2.5 rounded-sm" />
-                      aus Ziel
-                    </span>
-                  </div>
-                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <DefinitionDiffEditor
+                  ref={diffRef}
+                  original={leftState.definition}
+                  modified={rightState.definition}
+                  onlyDifferences={onlyDifferences}
+                  onStats={setDiffStats}
+                  readOnly
+                  minimap
+                  draft={props.showDraft ? draft : undefined}
+                  onDraftChange={changeDraft}
+                  onSideSelect={setTransferSide}
+                  scrollSync={props.showDraft ? scrollSync : undefined}
+                />
               </div>
             </div>
-          )}
+            {props.showDraft && (
+              <>
+                <div className="relative flex h-9 shrink-0 items-center justify-center">
+                  <div className="absolute inset-x-0 top-1/2 border-t" />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
+                    aria-label={`${transferLabel} in Entwurf übernehmen`}
+                    disabled={
+                      transferState.loading ||
+                      Boolean(transferState.error) ||
+                      transferState.definition === draft
+                    }
+                    onClick={() => changeDraft(transferState.definition)}
+                  >
+                    <ArrowDownIcon className="size-3.5" />
+                    {transferLabel} in Entwurf
+                  </Button>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
+                    Gemeinsamer Entwurf
+                  </div>
+                  <div className="relative min-h-0 flex-1">
+                    <MergeDraftEditor
+                      ref={draftRef}
+                      value={draft}
+                      origins={origins}
+                      onChange={changeDraft}
+                      scrollSync={scrollSync}
+                    />
+                    <div className="pointer-events-none absolute top-2 left-4 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
+                      <span className="flex items-center gap-1.5">
+                        <span className="merge-origin-source size-2.5 rounded-sm" />
+                        aus Quelle
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="merge-origin-target size-2.5 rounded-sm" />
+                        aus Ziel
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           {(leftState.loading || rightState.loading) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">
               <LoaderIcon className="size-4 animate-spin" />
