@@ -4,6 +4,7 @@ import "monaco-editor/features/diffEditor/register";
 import "monaco-editor/features/diffEditorBreadcrumbs/register";
 
 import { diffChangeLines, nextDiffLine } from "@/features/compare/diff-navigation";
+import { attachDiffOverviewNavigation } from "@/features/compare/diff-overview-navigation";
 import { monaco } from "@/lib/monaco";
 import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
 import { useDefinitionDraftActions } from "./use-definition-draft-actions";
@@ -110,6 +111,11 @@ export function DefinitionDiffEditor({
     });
     diffRef.current = editor;
 
+    const detachOverview = attachDiffOverviewNavigation(container, editor, (side) => {
+      activeSideRef.current = side;
+      activateRef.current?.();
+    });
+
     const originalFocus = editor.getOriginalEditor().onDidFocusEditorWidget(() => {
       activeSideRef.current = "original";
       activateRef.current?.();
@@ -123,6 +129,7 @@ export function DefinitionDiffEditor({
     });
 
     return () => {
+      detachOverview();
       originalFocus.dispose();
       modifiedFocus.dispose();
       subscription.dispose();

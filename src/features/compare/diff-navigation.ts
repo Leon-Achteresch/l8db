@@ -26,3 +26,33 @@ export function nextDiffLine(
   }
   return lines[lines.length - 1];
 }
+
+interface DiffOverviewMarker {
+  line: number;
+  top: number;
+  height: number;
+}
+
+export function diffOverviewLine(
+  markers: readonly DiffOverviewMarker[],
+  offset: number,
+  rulerHeight: number,
+  scrollHeight: number,
+): number | null {
+  if (rulerHeight <= 0 || scrollHeight <= 0) return null;
+  const ratio = rulerHeight / scrollHeight;
+  let nearest: number | null = null;
+  let distance = Number.POSITIVE_INFINITY;
+  for (const marker of markers) {
+    const top = Math.floor(marker.top * ratio);
+    const bottom = Math.floor((marker.top + marker.height) * ratio);
+    const halfHeight = Math.max(bottom - Math.floor((top + bottom) / 2), 2);
+    const center = Math.max(halfHeight, Math.min(rulerHeight - halfHeight, (top + bottom) / 2));
+    const delta = Math.abs(offset - center);
+    if (delta <= halfHeight + 1 && delta < distance) {
+      nearest = marker.line;
+      distance = delta;
+    }
+  }
+  return nearest;
+}
