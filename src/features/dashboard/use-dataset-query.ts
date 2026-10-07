@@ -44,6 +44,7 @@ export function useSqlQuery(sql: string, refetchInterval?: number) {
         effectiveConnectionString(connection),
         sql,
         database ?? undefined,
+        { track: false, pooled: true },
       );
     },
     enabled: Boolean(connection && sql.trim()),

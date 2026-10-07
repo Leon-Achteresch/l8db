@@ -1,5 +1,5 @@
 import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatedNumber } from "@/components/animated-number";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { IconButton } from "@/components/icon-button";
@@ -54,10 +54,11 @@ export function WidgetCardInner({
   onRemove: () => void;
   onEdit?: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [viewPeriod, setViewPeriod] = useState(widget.period);
   useEffect(() => setViewPeriod(widget.period), [widget.period]);
   const rawShape = useMemo(() => (dataset ? datasetShape(dataset) : null), [dataset]);
-  const options = useMemo(() => widgetOptions(widget), [widget]);
+  const options = useMemo(() => widgetOptions({ options: widget.options }), [widget.options]);
   const sql = useDatasetSql(dataset, locked ? viewPeriod : widget.period);
   const query = useSqlQuery(sql, refreshSec * 1000);
   const rawRows = query.data?.rows ?? EMPTY_ROWS;
@@ -78,7 +79,10 @@ export function WidgetCardInner({
   const delta =
     shape && options.showDelta && options.sortBy === "none" ? deltaFor(rows, shape, isTime) : null;
   const Renderer = CHART_RENDERERS[widget.chart];
-  const chartReady = useChartSlot(Boolean(shape) && !problem && query.isSuccess && rows.length > 0);
+  const chartReady = useChartSlot(
+    Boolean(shape) && !problem && query.isSuccess && rows.length > 0,
+    rootRef,
+  );
   const legend = useMemo(
     () =>
       shape && !problem && options.showLegend ? legendFor(widget.chart, rows, shape, options) : [],
@@ -89,7 +93,10 @@ export function WidgetCardInner({
   const legendRows = Math.ceil(legend.length / legendColumns);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card p-5 shadow-xs">
+    <div
+      ref={rootRef}
+      className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card p-5 shadow-xs"
+    >
       <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1 text-sm text-muted-foreground">

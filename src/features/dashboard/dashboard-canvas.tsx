@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import {
@@ -26,6 +26,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
   onAdd?: () => void;
   onOpenCharts?: () => void;
 }) {
+  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const widgets = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.widgets ?? EMPTY_WIDGETS,
   );
@@ -51,42 +52,58 @@ export const DashboardCanvas = memo(function DashboardCanvas({
     onChange((d) => ({
       widgets: d.widgets.map((w) => {
         const item = next.find((l) => l.i === w.id);
-        return item ? { ...w, x: item.x, y: item.y, w: item.w, h: item.h } : w;
+        return item && (item.x !== w.x || item.y !== w.y || item.w !== w.w || item.h !== w.h)
+          ? { ...w, x: item.x, y: item.y, w: item.w, h: item.h }
+          : w;
       }),
     }));
 
   return (
-    <div ref={containerRef} className="relative min-h-full px-4 pb-6 sm:px-6">
-      {mounted && widgets.length > 0 && (
-        <GridLayout
-          width={width}
-          layout={layout}
-          gridConfig={{
-            cols: GRID_COLS,
-            rowHeight: rowHeightFor(width),
-            margin: [GRID_GAP, GRID_GAP],
-            containerPadding: [0, 0],
-          }}
-          dragConfig={{ enabled: !dashboard.locked, handle: ".widget-drag-handle", bounded: false }}
-          resizeConfig={{ enabled: !dashboard.locked, handles: ["se"] }}
-          onDragStop={applyLayout}
-          onResizeStop={applyLayout}
-          className="min-h-[60vh] [&_.react-grid-item]:will-change-transform [&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
-        >
-          {widgets.map((w) => (
-            <div key={w.id} className="[&_.react-resizable-handle]:z-10">
-              <WidgetCard
-                dashboardId={dashboardId}
-                widgetId={w.id}
-                onEdit={onEdit ? () => onEdit(w.id) : undefined}
-              />
-            </div>
-          ))}
-        </GridLayout>
-      )}
-      {dashboard.widgets.length === 0 && (
-        <DashboardEmptyCanvas onAdd={onAdd} onOpenCharts={onOpenCharts} />
-      )}
+    <div
+      ref={setScrollRoot}
+      className="relative min-h-0 flex-1 overflow-y-auto"
+      onMouseDownCapture={(event) => {
+        if ((event.target as Element).closest(".widget-drag-handle, .react-resizable-handle"))
+          event.preventDefault();
+      }}
+    >
+      <div ref={containerRef} className="relative min-h-full px-4 pb-6 sm:px-6">
+        {mounted && scrollRoot && widgets.length > 0 && (
+          <GridLayout
+            width={width}
+            layout={layout}
+            gridConfig={{
+              cols: GRID_COLS,
+              rowHeight: rowHeightFor(width),
+              margin: [GRID_GAP, GRID_GAP],
+              containerPadding: [0, 0],
+            }}
+            dragConfig={{
+              enabled: !dashboard.locked,
+              handle: ".widget-drag-handle",
+              bounded: false,
+            }}
+            resizeConfig={{ enabled: !dashboard.locked, handles: ["se"] }}
+            onDragStop={applyLayout}
+            onResizeStop={applyLayout}
+            className="min-h-[60vh] [&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
+          >
+            {widgets.map((w) => (
+              <div key={w.id} className="[&_.react-resizable-handle]:z-10">
+                <WidgetCard
+                  dashboardId={dashboardId}
+                  widgetId={w.id}
+                  scrollRoot={scrollRoot}
+                  onEdit={onEdit}
+                />
+              </div>
+            ))}
+          </GridLayout>
+        )}
+        {dashboard.widgets.length === 0 && (
+          <DashboardEmptyCanvas onAdd={onAdd} onOpenCharts={onOpenCharts} />
+        )}
+      </div>
     </div>
   );
 });

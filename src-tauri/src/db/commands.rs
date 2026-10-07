@@ -607,6 +607,7 @@ pub async fn execute_query(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
     session: Option<String>,
+    pooled: Option<bool>,
 ) -> Result<QueryResult, String> {
     super::execution::run_query(options, kind.capabilities().query_cancel, async {
         let adapter = create_adapter_from_string(
@@ -615,10 +616,13 @@ pub async fn execute_query(
             database.as_deref(),
             pool_state.inner().clone(),
         )?;
-        capped_query(super::execution::with_session(
-            session,
-            adapter.execute_query(&sql),
-        ))
+        capped_query(super::execution::with_session(session, async {
+            if pooled == Some(true) {
+                adapter.execute_pooled_query(&sql).await
+            } else {
+                adapter.execute_query(&sql).await
+            }
+        }))
         .await
     })
     .await

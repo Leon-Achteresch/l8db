@@ -26,6 +26,12 @@ const SCHEMA_COPY_PLACEHOLDER: &str = "\u{1}";
 
 pub(crate) const READ_ONLY_BEGIN: &str = "BEGIN TRANSACTION READ ONLY; SELECT 1";
 
+type IdleClients = std::sync::Mutex<Vec<(tokio_postgres::Client, std::time::SystemTime)>>;
+
+const IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+const MAX_IDLE: usize = 8;
+
 const EMPTY_SEARCH_PATH: &str = "SET LOCAL search_path = ''";
 
 const PG_CRON_MISSING: &str =
@@ -349,6 +355,17 @@ pub(crate) fn ends_transaction(sql: &str) -> bool {
                 [first, second, ..] => first == "prepare" && second == "transaction",
                 _ => false,
             })
+    })
+}
+
+fn single_read_statement(sql: &str) -> bool {
+    [false, true].into_iter().all(|backslash_quotes| {
+        let heads = statement_heads(sql, backslash_quotes);
+        let mut statements = heads.iter().filter(|words| !words.is_empty());
+        let first = statements.next().and_then(|words| words.first());
+        statements.next().is_none()
+            && first
+                .is_some_and(|word| matches!(word.as_str(), "select" | "with" | "values" | "table"))
     })
 }
 
@@ -1704,6 +1721,57 @@ impl DatabaseAdapter for PostgresAdapter {
             let _ = conn.simple_query("ROLLBACK").await;
         }
         outcome
+    }
+
+    async fn execute_pooled_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if self.session.is_some() || self.read_only || !single_read_statement(sql) {
+            return self.execute_query(sql).await;
+        }
+        let idle = self
+            .pool_state
+            .shared(&format!("{}#dashboard", self.pool_key), || async {
+                Ok::<IdleClients, String>(Default::default())
+            })
+            .await?;
+        let reused = {
+            let mut clients = idle.lock().unwrap_or_else(|e| e.into_inner());
+            clients.retain(|(client, since)| {
+                !client.is_closed() && since.elapsed().is_ok_and(|age| age < IDLE_TTL)
+            });
+            clients.pop().map(|(client, _)| client)
+        };
+        let fresh = reused.is_none();
+        let conn = match reused {
+            Some(conn) => conn,
+            None => super::execution::connect_postgres(&self.config, &self.ssl).await?,
+        };
+        let (begin, outcome) = tokio::join!(
+            conn.simple_query(READ_ONLY_BEGIN),
+            self.controlled(&conn, run_simple_query(&conn, sql)),
+        );
+        if begin.is_err() && conn.is_closed() && !fresh {
+            return self.execute_query(sql).await;
+        }
+        if begin.is_ok() && !conn.is_closed() && !super::execution::interrupted() {
+            let _ = futures_util::FutureExt::now_or_never(conn.simple_query("ROLLBACK"));
+            let mut clients = idle.lock().unwrap_or_else(|e| e.into_inner());
+            if clients.len() < MAX_IDLE {
+                clients.push((conn, std::time::SystemTime::now()));
+                let idle = std::sync::Arc::downgrade(&idle);
+                tokio::spawn(async move {
+                    tokio::time::sleep(IDLE_TTL).await;
+                    if let Some(idle) = idle.upgrade() {
+                        idle.lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .retain(|(_, since)| since.elapsed().is_ok_and(|age| age < IDLE_TTL));
+                    }
+                });
+            }
+        }
+        match outcome {
+            Err(error) if error.contains("SQLSTATE 25006") => self.execute_query(sql).await,
+            outcome => outcome,
+        }
     }
 
     async fn execute_query_with_params(
@@ -5117,7 +5185,8 @@ mod tests {
     use super::{
         bind_row, bind_wrapped_sql, capped_count, ends_transaction, escape_string_literal,
         infer_view_foreign_keys, like_pattern, read_only_batch_guard, requalify_outside_literals,
-        routine_ddl_in_pg_temp, session_guards, source_snippet, PostgresAdapter, SimpleResult,
+        routine_ddl_in_pg_temp, session_guards, single_read_statement, source_snippet,
+        PostgresAdapter, SimpleResult,
     };
     use crate::db::RowCount;
 
@@ -5240,6 +5309,31 @@ mod tests {
         }
         assert!(read_only_batch_guard("SELECT 1; COMMIT").is_err());
         assert!(read_only_batch_guard("SELECT 'COMMIT'; SELECT 2").is_ok());
+    }
+
+    #[test]
+    fn only_single_read_statements_use_pooled_connections() {
+        for sql in [
+            "SELECT 1",
+            "  -- c\n with t as (select 1) select * from t;",
+            "VALUES (1)",
+            "TABLE x",
+            "SELECT 'a; SET x = 1'",
+        ] {
+            assert!(single_read_statement(sql), "{sql}");
+        }
+        for sql in [
+            "SET search_path = x",
+            "SELECT 1; SET search_path = x",
+            "BEGIN; SELECT 1",
+            "EXPLAIN SELECT 1",
+            "",
+        ] {
+            assert!(!single_read_statement(sql), "{sql}");
+        }
+        for sql in LEXER_HIDDEN_COMMITS {
+            assert!(!single_read_statement(sql), "{sql}");
+        }
     }
 
     const LEXER_HIDDEN_COMMITS: [&str; 12] = [
@@ -6696,6 +6790,77 @@ mod tests {
         }
         reader.set_server_output(false).await.unwrap();
         lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_batch").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn pooled_dashboard_queries_reuse_a_clean_connection() {
+        use crate::db::execution::{self, ExecutionOptions};
+        let adapter = lab_adapter();
+        lab_execute(
+            &adapter,
+            "DROP TABLE IF EXISTS l8db_pooled; CREATE TABLE l8db_pooled (id int)",
+        )
+        .await;
+        let first = adapter
+            .execute_pooled_query("SELECT pg_backend_pid() AS pid")
+            .await
+            .unwrap();
+        assert_eq!(first.rows_affected, Some(1));
+        adapter
+            .execute_pooled_query("SELECT set_config('search_path', 'pg_catalog', false)")
+            .await
+            .unwrap();
+        assert!(adapter
+            .execute_pooled_query("SELECT * FROM l8db_missing_table")
+            .await
+            .is_err());
+        let reused = adapter
+            .execute_pooled_query(
+                "SELECT pg_backend_pid() AS pid, current_setting('search_path') AS path",
+            )
+            .await
+            .unwrap();
+        assert_eq!(reused.rows[0]["pid"], first.rows[0]["pid"]);
+        assert_ne!(reused.rows[0]["path"], "pg_catalog");
+        let cancel = async {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert!(execution::cancel("pg-pooled-cancel").unwrap());
+        };
+        let query = execution::run(
+            Some(ExecutionOptions {
+                job_id: Some("pg-pooled-cancel".into()),
+                ..Default::default()
+            }),
+            true,
+            adapter.execute_pooled_query("SELECT pg_sleep(10)"),
+        );
+        let (result, _) = tokio::join!(query, cancel);
+        assert!(result.unwrap_err().contains("vom Server abgebrochen"));
+        let after = adapter
+            .execute_pooled_query("SELECT pg_backend_pid() AS pid")
+            .await
+            .unwrap();
+        assert_ne!(after.rows[0]["pid"], first.rows[0]["pid"]);
+        let written = adapter
+            .execute_pooled_query(
+                "WITH w AS (INSERT INTO l8db_pooled VALUES (1) RETURNING id) SELECT id FROM w",
+            )
+            .await
+            .unwrap();
+        assert_eq!(written.rows[0]["id"], "1");
+        assert!(lab_read_only_adapter()
+            .execute_pooled_query(
+                "WITH w AS (INSERT INTO l8db_pooled VALUES (2) RETURNING id) SELECT id FROM w",
+            )
+            .await
+            .is_err());
+        let count = adapter
+            .execute_pooled_query("SELECT count(*) AS c FROM l8db_pooled")
+            .await
+            .unwrap();
+        assert_eq!(count.rows[0]["c"], "1");
+        lab_execute(&adapter, "DROP TABLE l8db_pooled").await;
     }
 
     #[tokio::test]

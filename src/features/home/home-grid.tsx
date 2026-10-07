@@ -13,6 +13,7 @@ import {
   useHomeLayoutStore,
 } from "@/lib/home-layout";
 import { useSettingsStore } from "@/lib/settings";
+import { cn } from "@/lib/utils";
 import { HomeWidgetContent } from "./home-widget-content";
 import { HomeWidgetFrame } from "./home-widget-frame";
 
@@ -79,7 +80,10 @@ export function HomeGrid({ connectionId, editing }: { connectionId: string; edit
           resizeConfig={{ enabled: editing && !stacked, handles: ["se"] }}
           onDragStop={applyLayout}
           onResizeStop={applyLayout}
-          className="[&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
+          className={cn(
+            "[&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!",
+            editing && "[&_.react-grid-item]:select-none",
+          )}
         >
           {ordered.map((widget) => (
             <div
