@@ -1,9 +1,11 @@
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
+import { CommandMatchText } from "./command-match-text";
 import type { CommandItem } from "./types";
 
 export function CommandPaletteOption({
   item,
+  query,
   index,
   isActive,
   uid,
@@ -13,6 +15,7 @@ export function CommandPaletteOption({
   onSelect,
 }: {
   item: CommandItem;
+  query: string;
   index: number;
   isActive: boolean;
   uid: string;
@@ -58,11 +61,13 @@ export function CommandPaletteOption({
       ) : hasIcons ? (
         <span className="relative z-10 h-4 w-4" />
       ) : null}
-      <span className="relative z-10 flex-1 truncate">{item.label}</span>
+      <span className="relative z-10 flex-1 truncate">
+        <CommandMatchText text={item.label} query={query} />
+      </span>
       {item.badge ? <span className="relative z-10 shrink-0">{item.badge}</span> : null}
       {item.hint ? (
         <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {item.hint}
+          <CommandMatchText text={item.hint} query={query} />
         </kbd>
       ) : null}
     </button>

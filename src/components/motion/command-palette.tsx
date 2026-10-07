@@ -7,7 +7,9 @@ import { Search } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { NewBadge } from "@/components/new-badge";
 import { EASE_OUT } from "@/lib/ease";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
 import { useRankedCommands } from "@/lib/hooks/use-ranked-commands";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
@@ -28,6 +30,7 @@ export function CommandPalette({
   open: controlledOpen,
   onOpenChange,
   maxVisible,
+  featureId,
   queryItem,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -84,6 +87,7 @@ export function CommandPalette({
   }, [open]);
 
   const { query: rankedQuery, list: ranked } = useRankedCommands(items, query, maxVisible);
+  const searchFeature = useNewFeatureVisibility<HTMLDivElement>(featureId);
   const filtered = useMemo(
     () => (queryItem && rankedQuery.trim() ? [...ranked, queryItem(rankedQuery.trim())] : ranked),
     [queryItem, rankedQuery, ranked],
@@ -212,7 +216,10 @@ export function CommandPalette({
                 onKeyDown={onKeyDown}
                 className="pointer-events-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl will-change-transform"
               >
-                <div className="flex items-center gap-3 border-b border-border px-4">
+                <div
+                  ref={rankedQuery.trim() && ranked.length > 0 ? searchFeature.ref : undefined}
+                  className="flex items-center gap-3 border-b border-border px-4"
+                >
                   <Search className="h-4 w-4 text-muted-foreground" />
                   <input
                     ref={inputRef}
@@ -235,6 +242,7 @@ export function CommandPalette({
                       canTouch && "text-base",
                     )}
                   />
+                  {searchFeature.isNew ? <NewBadge /> : null}
                   <kbd className="hidden rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline-block">
                     ESC
                   </kbd>
@@ -267,6 +275,7 @@ export function CommandPalette({
                             <CommandPaletteOption
                               key={it.id}
                               item={it}
+                              query={rankedQuery}
                               index={idx}
                               isActive={isActive}
                               uid={uid}
