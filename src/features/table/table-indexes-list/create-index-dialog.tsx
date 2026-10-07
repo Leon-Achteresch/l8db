@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/features/shell/workbench-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -22,7 +22,7 @@ interface CreateIndexDialogProps {
   onSuccess: () => void;
 }
 
-export function CreateIndexDialog({
+function CreateIndexDialogContent({
   open,
   onOpenChange,
   schema,
@@ -66,7 +66,7 @@ export function CreateIndexDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={running} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-sm">Neuer Index</DialogTitle>
@@ -103,3 +103,8 @@ export function CreateIndexDialog({
     </Dialog>
   );
 }
+
+export const CreateIndexDialog = asWorkbenchTab(
+  CreateIndexDialogContent,
+  (props) => `Index-Editor · ${props.schema}.${props.table}`,
+);

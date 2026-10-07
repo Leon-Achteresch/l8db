@@ -7,9 +7,9 @@ import { emitHotkeyAction } from "@/lib/hotkeys";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
 import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
+import { takeQuerySnippet } from "@/lib/pending-query-snippets";
 import type { BookmarkSlots } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
-
 import { createEditorApi } from "./query-editor-pane/create-editor-api";
 import { createEditorKeydown } from "./query-editor-pane/create-editor-keydown";
 import {
@@ -260,6 +260,13 @@ export function QueryEditorPane({
   }, [value]);
 
   useViewStatePersistence(editorRef, stateKey);
+
+  useEffect(() => {
+    if (!stateKey || !editorRef.current) return;
+    const body = takeQuerySnippet(stateKey);
+    if (body !== undefined)
+      createEditorApi(editorRef, toggleBookmarkAtCursor, gotoBookmarkLine).insertSnippet(body);
+  }, [stateKey, gotoBookmarkLine, toggleBookmarkAtCursor]);
 
   useEffect(() => {
     const editor = editorRef.current;

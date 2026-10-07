@@ -3,7 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronsUpDownIcon, LayersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import { SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Label } from "@/components/ui/label";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { ConnectionPicker } from "@/features/connections/connection-picker";
 import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listSchemas, previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
@@ -29,7 +29,11 @@ interface CopyToSchemaDialogProps {
   onClose: () => void;
 }
 
-export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps) {
+function CopyToSchemaContent({
+  target,
+  onOpenChange,
+}: CopyToSchemaDialogProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const onClose = () => onOpenChange(false);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const connections = useConnectionsStore((state) => state.connections);
@@ -180,5 +184,19 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
         </div>
       </div>
     </DdlPreviewDialog>
+  );
+}
+
+const CopyToSchemaTab = asWorkbenchTab(CopyToSchemaContent, "DDL-Vorschau · Kopie erstellen");
+
+export function CopyToSchemaDialog(props: CopyToSchemaDialogProps) {
+  return (
+    <CopyToSchemaTab
+      {...props}
+      open={props.target !== null}
+      onOpenChange={(open) => {
+        if (!open) props.onClose();
+      }}
+    />
   );
 }

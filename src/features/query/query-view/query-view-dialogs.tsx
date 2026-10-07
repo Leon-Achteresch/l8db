@@ -1,5 +1,5 @@
+import { useNavigate } from "@tanstack/react-router";
 import type { RefObject } from "react";
-
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { DataExportDialog } from "@/features/export/data-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
@@ -13,6 +13,7 @@ import { ScriptRunDialog } from "@/features/query/script-run-dialog";
 import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import type { QueryResult } from "@/lib/db";
+import { queueQuerySnippet } from "@/lib/pending-query-snippets";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -69,6 +70,7 @@ export function QueryViewDialogs({
   analysis,
   explain,
 }: QueryViewDialogsProps) {
+  const navigate = useNavigate();
   const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
   return (
     <>
@@ -84,7 +86,8 @@ export function QueryViewDialogs({
         initialBody={selectedSql}
         onInsert={(snippet) => {
           snippetDialog.onOpenChange(false);
-          editorApiRef.current?.insertSnippet(snippet.body);
+          queueQuerySnippet(tabId, snippet.body);
+          void navigate({ to: "/query/$id", params: { id: tabId } });
         }}
       />
 

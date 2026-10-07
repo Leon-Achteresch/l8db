@@ -1,14 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,6 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/features/shell/workbench-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import { type CreatePolicyRequest, createPolicy } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -25,7 +25,7 @@ import { effectiveConnectionString } from "@/lib/ssh";
 
 const POLICY_COMMANDS = ["ALL", "SELECT", "INSERT", "UPDATE", "DELETE"];
 
-export function CreatePolicyDialog({
+function CreatePolicyDialogContent({
   schema,
   table,
   open,
@@ -83,7 +83,7 @@ export function CreatePolicyDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={saving} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">
@@ -157,3 +157,8 @@ export function CreatePolicyDialog({
     </Dialog>
   );
 }
+
+export const CreatePolicyDialog = asWorkbenchTab(
+  CreatePolicyDialogContent,
+  (props) => `Policy-Editor · ${props.schema}.${props.table}`,
+);

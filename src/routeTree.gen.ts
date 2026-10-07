@@ -45,6 +45,7 @@ import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._worksp
 import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
 import { Route as AppWorkspaceTransferRouteImport } from './routes/_app._workspace.transfer'
 import { Route as AppWorkspaceVersioningRouteImport } from './routes/_app._workspace.versioning'
+import { Route as AppWorkspaceWorkbenchRouteImport } from './routes/_app._workspace.workbench'
 import { Route as AppWorkspaceBucketsBucketRouteImport } from './routes/_app._workspace.buckets.$bucket'
 import { Route as AppWorkspaceExtensionsNameRouteImport } from './routes/_app._workspace.extensions.$name'
 import { Route as AppWorkspaceQueryIndexRouteImport } from './routes/_app._workspace.query.index'
@@ -241,6 +242,11 @@ const AppWorkspaceVersioningRoute = AppWorkspaceVersioningRouteImport.update({
   path: '/versioning',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
+const AppWorkspaceWorkbenchRoute = AppWorkspaceWorkbenchRouteImport.update({
+  id: '/workbench',
+  path: '/workbench',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
 const AppWorkspaceBucketsBucketRoute =
   AppWorkspaceBucketsBucketRouteImport.update({
     id: '/buckets/$bucket',
@@ -357,6 +363,7 @@ export interface FileRoutesByFullPath {
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/transfer': typeof AppWorkspaceTransferRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
+  '/workbench': typeof AppWorkspaceWorkbenchRoute
   '/buckets/$bucket': typeof AppWorkspaceBucketsBucketRoute
   '/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
   '/query/$id': typeof AppWorkspaceQueryIdRoute
@@ -405,6 +412,7 @@ export interface FileRoutesByTo {
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/transfer': typeof AppWorkspaceTransferRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
+  '/workbench': typeof AppWorkspaceWorkbenchRoute
   '/buckets/$bucket': typeof AppWorkspaceBucketsBucketRoute
   '/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
   '/query/$id': typeof AppWorkspaceQueryIdRoute
@@ -457,6 +465,7 @@ export interface FileRoutesById {
   '/_app/_workspace/sessions': typeof AppWorkspaceSessionsRoute
   '/_app/_workspace/transfer': typeof AppWorkspaceTransferRoute
   '/_app/_workspace/versioning': typeof AppWorkspaceVersioningRoute
+  '/_app/_workspace/workbench': typeof AppWorkspaceWorkbenchRoute
   '/_app/_workspace/': typeof AppWorkspaceIndexRoute
   '/_app/_workspace/buckets/$bucket': typeof AppWorkspaceBucketsBucketRoute
   '/_app/_workspace/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
@@ -509,6 +518,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/transfer'
     | '/versioning'
+    | '/workbench'
     | '/buckets/$bucket'
     | '/extensions/$name'
     | '/query/$id'
@@ -557,6 +567,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/transfer'
     | '/versioning'
+    | '/workbench'
     | '/buckets/$bucket'
     | '/extensions/$name'
     | '/query/$id'
@@ -608,6 +619,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/sessions'
     | '/_app/_workspace/transfer'
     | '/_app/_workspace/versioning'
+    | '/_app/_workspace/workbench'
     | '/_app/_workspace/'
     | '/_app/_workspace/buckets/$bucket'
     | '/_app/_workspace/extensions/$name'
@@ -893,6 +905,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceVersioningRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/workbench': {
+      id: '/_app/_workspace/workbench'
+      path: '/workbench'
+      fullPath: '/workbench'
+      preLoaderRoute: typeof AppWorkspaceWorkbenchRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/buckets/$bucket': {
       id: '/_app/_workspace/buckets/$bucket'
       path: '/buckets/$bucket'
@@ -1040,6 +1059,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceSessionsRoute: typeof AppWorkspaceSessionsRoute
   AppWorkspaceTransferRoute: typeof AppWorkspaceTransferRoute
   AppWorkspaceVersioningRoute: typeof AppWorkspaceVersioningRoute
+  AppWorkspaceWorkbenchRoute: typeof AppWorkspaceWorkbenchRoute
   AppWorkspaceIndexRoute: typeof AppWorkspaceIndexRoute
   AppWorkspaceBucketsBucketRoute: typeof AppWorkspaceBucketsBucketRoute
   AppWorkspaceExtensionsNameRoute: typeof AppWorkspaceExtensionsNameRoute
@@ -1076,6 +1096,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceSessionsRoute: AppWorkspaceSessionsRoute,
   AppWorkspaceTransferRoute: AppWorkspaceTransferRoute,
   AppWorkspaceVersioningRoute: AppWorkspaceVersioningRoute,
+  AppWorkspaceWorkbenchRoute: AppWorkspaceWorkbenchRoute,
   AppWorkspaceIndexRoute: AppWorkspaceIndexRoute,
   AppWorkspaceBucketsBucketRoute: AppWorkspaceBucketsBucketRoute,
   AppWorkspaceExtensionsNameRoute: AppWorkspaceExtensionsNameRoute,

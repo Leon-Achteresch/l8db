@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -135,10 +134,11 @@ export function SchemaCompareView() {
                 size="sm"
                 variant="ghost"
                 className="h-7 text-xs"
-                onClick={() => setSetupOpen(true)}
+                aria-expanded={setupOpen}
+                onClick={() => setSetupOpen((open) => !open)}
               >
                 <Settings2Icon className="size-3.5" />
-                Einstellungen
+                {setupOpen ? "Zum Vergleich" : "Einrichtung"}
               </Button>
               <Button
                 size="sm"
@@ -155,9 +155,9 @@ export function SchemaCompareView() {
         </div>
       </div>
 
-      {!result ? (
+      {!result || setupOpen ? (
         <div className="min-h-0 flex-1 overflow-auto">
-          <SchemaCompareSetup />
+          <SchemaCompareSetup onStarted={() => setSetupOpen(false)} />
         </div>
       ) : (
         <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
@@ -288,15 +288,6 @@ export function SchemaCompareView() {
           )}
         </div>
       )}
-
-      <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
-        <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>Schema-Vergleich einrichten</DialogTitle>
-          </DialogHeader>
-          <SchemaCompareSetup onStarted={() => setSetupOpen(false)} />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

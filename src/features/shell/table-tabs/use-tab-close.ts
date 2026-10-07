@@ -5,6 +5,7 @@ import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
 
 const tabHistory: string[] = [];
 
@@ -55,9 +56,13 @@ export function useTabClose({ tabs, activeTab, isTabActive, navigate }: UseTabCl
       (entry) => entry !== key && tabs.some((t) => tabKey(t) === entry),
     );
     const next = tabs.find((t) => tabKey(t) === recent) ?? tabs[index + 1] ?? tabs[index - 1];
-    void Promise.resolve(next ? navigateToTab(navigate, next) : navigate({ to: "/" })).finally(() =>
-      closeTab(key),
-    );
+    const returnTo =
+      tab.kind === "tool" && tab.tool === "workbench"
+        ? useWorkbenchTabs.getState().entries.find((entry) => entry.id === tab.id)?.returnTo
+        : undefined;
+    void Promise.resolve(
+      next ? navigateToTab(navigate, next) : navigate({ to: returnTo ?? "/" }),
+    ).finally(() => closeTab(key));
   };
 
   useEffect(() => {
@@ -106,6 +111,10 @@ export function useTabClose({ tabs, activeTab, isTabActive, navigate }: UseTabCl
   };
 
   const requestClose = (pending: NonNullable<typeof pendingClose>, closingTabs: Tab[]) => {
+    if (closingTabs.some(workbenchTabBusy)) {
+      toast.info("Die Aktion läuft noch. Warte, bis sie abgeschlossen ist.");
+      return;
+    }
     if (closingTabs.some((tab) => tab.kind === "query" && queryNeedsCloseConfirmation(tab))) {
       setPendingKeys(closingTabs.map(tabKey));
       setPendingClose(pending);
