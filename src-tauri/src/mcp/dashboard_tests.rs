@@ -29,6 +29,7 @@ fn connection(id: &str, name: &str, kind: DatabaseKind, url: &str, exposed: bool
         exposed,
         read_only: true,
         allow_ddl: false,
+        allow_scripts: false,
         redact_columns: vec![],
         mask_rules: vec![],
         environment: None,

@@ -65,6 +65,7 @@ pub fn scoped_config(request: &RunRequest, mut config: McpConfig) -> Result<McpC
                 || plan
                 || policy.is_some_and(|entry| entry.read_only),
             allow_ddl: request.allow_ddl && !plan && policy.is_none_or(|entry| entry.allow_ddl),
+            allow_scripts: false,
             redact_columns: policy
                 .map(|entry| entry.redact_columns.clone())
                 .unwrap_or_default(),

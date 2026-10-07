@@ -7,6 +7,7 @@ pub mod health;
 pub mod nosql;
 pub mod open;
 pub mod redact;
+mod script;
 pub mod server;
 pub mod workflow;
 

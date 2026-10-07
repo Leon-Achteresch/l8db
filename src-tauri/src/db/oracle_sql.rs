@@ -216,7 +216,30 @@ fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Opti
     )
 }
 
+fn exec_line_end(sql: &str, token: &Range<usize>) -> Option<usize> {
+    let word = &sql[token.clone()];
+    let line_start = sql[..token.start].rfind('\n').map_or(0, |n| n + 1);
+    if !(word.eq_ignore_ascii_case("EXEC") || word.eq_ignore_ascii_case("EXECUTE"))
+        || !sql[line_start..token.start].trim().is_empty()
+    {
+        return None;
+    }
+    let line_end = |from: usize| sql[from..].find('\n').map_or(sql.len(), |n| from + n);
+    let mut end = line_end(token.end);
+    while end < sql.len() && sql[..end].trim_end().ends_with('-') {
+        end = line_end(end + 1);
+    }
+    Some(end)
+}
+
 pub(super) fn split_statements(sql: &str) -> Vec<String> {
+    split_items(sql)
+        .into_iter()
+        .filter_map(|(sqlplus, statement)| (!sqlplus).then_some(statement))
+        .collect()
+}
+
+pub(super) fn split_items(sql: &str) -> Vec<(bool, String)> {
     let mut tokens = tokens(sql);
     let mut out = Vec::new();
     let mut start = 0;
@@ -238,7 +261,21 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
         let text = &sql[token.clone()];
         let next = tokens.get(index + 1).map(|r| &sql[r.clone()]);
         if index == start && !unit.active {
+            if let Some(end) = exec_line_end(sql, &token) {
+                let call = sql[token.end..end]
+                    .lines()
+                    .map(|line| line.trim_end().trim_end_matches('-'))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let call = call.trim().trim_end_matches(';').trim();
+                out.push((false, format!("BEGIN {call}; END;")));
+                skip_to = end;
+                start = index + 1;
+                index += 1;
+                continue;
+            }
             if let Some(end) = sqlplus_line_end(sql, &token, next) {
+                out.push((true, sql[token.start..end].trim().to_string()));
                 skip_to = end;
                 start = index + 1;
                 index += 1;
@@ -259,7 +296,7 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
             let end = if slash { token.start } else { token.end };
             let statement = sql[tokens[start].start..end].trim();
             if !prepare(statement).is_empty() {
-                out.push(statement.to_string());
+                out.push((false, statement.to_string()));
             }
             start = index + 1;
             unit = PlsqlUnit::default();
@@ -269,7 +306,7 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
     if let Some(first) = tokens.get(start) {
         let statement = sql[first.start..].trim();
         if !prepare(statement).is_empty() {
-            out.push(statement.to_string());
+            out.push((false, statement.to_string()));
         }
     }
     out
@@ -770,6 +807,20 @@ mod tests {
         assert_eq!(
             split_statements("UPDATE t\nSET x = 1;"),
             vec!["UPDATE t\nSET x = 1;"]
+        );
+    }
+
+    #[test]
+    fn keeps_sqlplus_lines_as_items_and_expands_exec() {
+        assert_eq!(
+            split_items("PROMPT hi\nEXEC p(1)\nEXEC q(1, -\n  2)\nexecute pkg.run('a;b');\nSELECT 1 FROM dual;"),
+            vec![
+                (true, "PROMPT hi".to_string()),
+                (false, "BEGIN p(1); END;".to_string()),
+                (false, "BEGIN q(1, \n  2); END;".to_string()),
+                (false, "BEGIN pkg.run('a;b'); END;".to_string()),
+                (false, "SELECT 1 FROM dual;".to_string()),
+            ]
         );
     }
 

@@ -567,9 +567,10 @@ pub fn dangerous_word(sql: &str) -> Option<String> {
     for (i, token) in tokens.iter().enumerate() {
         if let Token::Word(word) = token {
             let always = DANGEROUS_ALWAYS.contains(&word.as_str())
-                || DANGEROUS_PREFIXES
-                    .iter()
-                    .any(|prefix| word.starts_with(prefix));
+                || (word != "dbms_output"
+                    && DANGEROUS_PREFIXES
+                        .iter()
+                        .any(|prefix| word.starts_with(prefix)));
             let as_function = tokens.get(i + 1) == Some(&Token::Open)
                 && DANGEROUS_FUNCTIONS.contains(&word.as_str());
             if always || as_function {
@@ -1184,6 +1185,8 @@ mod tests {
         );
         assert_eq!(dangerous_word("select url, file, sleep_ms from logs"), None);
         assert_eq!(dangerous_word("select * from users"), None);
+        assert_eq!(dangerous_word("begin dbms_output.put_line(1); end;"), None);
+        assert!(dangerous_word("begin dbms_lock.sleep(5); end;").is_some());
         assert!(is_ddl("create table x(a int)"));
         assert!(!is_ddl("update x set a = 1"));
         assert_eq!(statement_count("select 1; select 2"), 2);

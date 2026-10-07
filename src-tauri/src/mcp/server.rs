@@ -120,6 +120,7 @@ pub fn tool_definitions() -> Value {
         super::health::tool_definition(),
         super::workflow::tool_definition(),
         super::open::tool_definition(),
+        super::script::tool_definition(),
         {
             "name": "execute",
             "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
@@ -143,6 +144,9 @@ fn listed_tools(config: &McpConfig) -> Vec<Value> {
         .unwrap_or_default()
         .into_iter()
         .filter(|tool| config.workflows || tool["name"] != "workflow")
+        .filter(|tool| {
+            tool["name"] != "script" || exposed(config).any(|connection| connection.allow_scripts)
+        })
         .collect()
 }
 
@@ -213,7 +217,7 @@ impl Server {
             ),
             "workflow" => super::workflow::call(&args, "mcp").await,
             "open" => self.open(config, &args).await,
-            "search" | "describe" | "query" | "execute" | "benchmark" | "health" => {
+            "search" | "describe" | "query" | "execute" | "script" | "benchmark" | "health" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
                 match find_connection(config, target)
                     .and_then(|connection| with_database(connection, &args))
@@ -231,13 +235,14 @@ impl Server {
                                     .await
                             }
                             "query" => self.query(config, connection, &args).await,
+                            "script" => self.script(config, connection, &args).await,
                             "benchmark" => self.benchmark(config, connection, &args).await,
                             "health" => {
                                 super::health::call(connection, &self.pool, &args).await
                             }
                             _ => self.execute(config, connection, &args).await,
                         };
-                        if matches!(name, "query" | "execute" | "benchmark") {
+                        if matches!(name, "query" | "execute" | "script" | "benchmark") {
                             let statement = match arg_str(&args, "sql") {
                                 "" => arg_str(&args, "file"),
                                 sql => sql,
@@ -522,7 +527,7 @@ pub(super) fn check_write_sql(
     index: &redact::SchemaIndex,
 ) -> Result<(), String> {
     if statement_count(connection.kind, sql) > 1 {
-        return Err("Nur ein Statement pro Aufruf.".into());
+        return Err(single_statement(connection));
     }
     if let Some(word) = redact::dangerous_word(sql) {
         return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
@@ -536,6 +541,14 @@ pub(super) fn check_write_sql(
         ));
     }
     redact::check_references(sql, index, row_values(connection.kind))
+}
+
+fn single_statement(connection: &McpConnection) -> String {
+    if connection.allow_scripts {
+        "Nur ein Statement pro Aufruf. Für mehrere Statements script nutzen.".into()
+    } else {
+        "Nur ein Statement pro Aufruf.".into()
+    }
 }
 
 fn statement_count(kind: DatabaseKind, sql: &str) -> usize {
@@ -579,7 +592,7 @@ pub(super) fn check_read_sql(
         None => {}
     }
     if statement_count(connection.kind, sql) > 1 {
-        return Err("Nur ein Statement pro Aufruf.".into());
+        return Err(single_statement(connection));
     }
     if let Some(word) = redact::write_word(sql) {
         let leading = redact::sql_words(sql).first() == Some(&word);
@@ -755,7 +768,7 @@ fn list_connections(config: &McpConfig) -> String {
     let lines: Vec<String> = exposed(config)
         .map(|connection| {
             format!(
-                "{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}{}",
                 connection.name,
                 serde_json::to_value(connection.kind)
                     .ok()
@@ -766,6 +779,11 @@ fn list_connections(config: &McpConfig) -> String {
                     "read-only"
                 } else {
                     "read-write"
+                },
+                if connection.allow_scripts {
+                    "+script"
+                } else {
+                    ""
                 }
             )
         })
@@ -776,7 +794,7 @@ fn list_connections(config: &McpConfig) -> String {
     format!("name\tkind\tenvironment\taccess\n{}", lines.join("\n"))
 }
 
-fn cache_key(connection: &McpConnection) -> String {
+pub(super) fn cache_key(connection: &McpConnection) -> String {
     format!(
         "{}#{}",
         connection.id,
@@ -1083,6 +1101,7 @@ mod tests {
             exposed: true,
             read_only,
             allow_ddl: false,
+            allow_scripts: false,
             redact_columns: vec![],
             mask_rules: vec![],
             environment: None,
@@ -1508,6 +1527,7 @@ mod tests {
         let oracle = McpConnection {
             kind: DatabaseKind::Oracle,
             allow_ddl: true,
+            allow_scripts: false,
             ..connection(false)
         };
         for sql in [

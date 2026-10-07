@@ -41,6 +41,8 @@ pub struct McpConnection {
     #[serde(default)]
     pub allow_ddl: bool,
     #[serde(default)]
+    pub allow_scripts: bool,
+    #[serde(default)]
     pub redact_columns: Vec<String>,
     #[serde(default)]
     pub mask_rules: Vec<RedactRule>,
