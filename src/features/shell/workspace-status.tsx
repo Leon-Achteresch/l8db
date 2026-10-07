@@ -1,12 +1,13 @@
 import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
+import { useWorkspaceStatusStore } from "@/lib/workspace-status";
 import { version } from "../../../package.json";
 import { DraftRecoveryDialog } from "./draft-recovery-dialog";
 import { WorkspaceBranchStatus } from "./workspace-branch-status";
@@ -22,6 +23,10 @@ export function WorkspaceStatus() {
   const fetching = useIsFetching({
     predicate: (query) => Boolean(connection) && query.queryKey[1] === connection?.id,
   });
+  useEffect(() => {
+    useWorkspaceStatusStore.setState({ visible: true });
+    return () => useWorkspaceStatusStore.setState({ visible: false });
+  }, []);
   return (
     <footer className="@container/footer flex h-7 shrink-0 items-center justify-between gap-3 border-t bg-card/60 px-4 text-[10px] text-muted-foreground">
       <div className="flex min-w-0 items-center gap-3">

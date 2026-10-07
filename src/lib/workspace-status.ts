@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { create } from "zustand";
 
 export const WORKSPACE_MESSAGE_DURATION = 3_000;
@@ -8,8 +9,12 @@ export interface WorkspaceMessage {
   tone: "success" | "error" | "neutral";
 }
 
-export const useWorkspaceStatusStore = create<{ message: WorkspaceMessage | null }>(() => ({
+export const useWorkspaceStatusStore = create<{
+  message: WorkspaceMessage | null;
+  visible: boolean;
+}>(() => ({
   message: null,
+  visible: false,
 }));
 
 let sequence = 0;
@@ -32,7 +37,8 @@ export function showWorkspaceMessage(
 }
 
 export function showCopiedMessage(title = "In die Zwischenablage kopiert"): void {
-  showWorkspaceMessage(title);
+  if (useWorkspaceStatusStore.getState().visible) showWorkspaceMessage(title);
+  else toast.success(title);
 }
 
 export function formatQueryElapsed(startedAt: number, now = Date.now()): string {
