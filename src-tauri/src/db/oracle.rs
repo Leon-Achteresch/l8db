@@ -707,6 +707,29 @@ pub(crate) fn statement_count(sql: &str) -> usize {
     sql::split_statements(sql).len()
 }
 
+pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
+    sql::split_items(sql)
+}
+
+pub(crate) fn read_output(c: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = c
+        .statement("BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;")
+        .build()
+        .map_err(map_err)?;
+    let mut lines = Vec::new();
+    while lines.len() < 2000 {
+        stmt.execute(&[&OracleType::Varchar2(32767), &OracleType::Int64])
+            .map_err(map_err)?;
+        let status: i64 = stmt.bind_value(2).map_err(map_err)?;
+        if status != 0 {
+            break;
+        }
+        let line: Option<String> = stmt.bind_value(1).map_err(map_err)?;
+        lines.push(line.unwrap_or_default());
+    }
+    Ok(lines)
+}
+
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
     if matches!(
         kind,
@@ -1630,29 +1653,15 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
-        self.run(move |c| {
-            let mut stmt = c
-                .statement("BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;")
-                .build()
-                .map_err(map_err)?;
-            let mut lines = Vec::new();
-            while lines.len() < 2000 {
-                stmt.execute(&[&OracleType::Varchar2(32767), &OracleType::Int64])
-                    .map_err(map_err)?;
-                let status: i64 = stmt.bind_value(2).map_err(map_err)?;
-                if status != 0 {
-                    break;
-                }
-                let line: Option<String> = stmt.bind_value(1).map_err(map_err)?;
-                lines.push(ServerMessage {
-                    level: "OUTPUT".to_string(),
-                    message: line.unwrap_or_default(),
-                    detail: None,
-                });
-            }
-            Ok(lines)
-        })
-        .await
+        let lines = self.run(|c| read_output(c)).await?;
+        Ok(lines
+            .into_iter()
+            .map(|message| ServerMessage {
+                level: "OUTPUT".to_string(),
+                message,
+                detail: None,
+            })
+            .collect())
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {

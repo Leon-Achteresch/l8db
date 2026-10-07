@@ -26,6 +26,7 @@ export const NEW_FEATURES = {
   "automation.alerts": "0.10.0",
   "automation.background": "0.10.0",
   "mcp.workflows": "0.10.0",
+  "mcp.scripts": "0.14.0",
   "health.advisor": "0.10.0",
   "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",

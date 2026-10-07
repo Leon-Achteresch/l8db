@@ -478,6 +478,9 @@ pub trait TxSession: Send {
     async fn execute(&mut self, sql: &str) -> Result<QueryResult, String>;
     async fn commit(&mut self) -> Result<(), String>;
     async fn rollback(&mut self) -> Result<(), String>;
+    async fn server_output(&mut self) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
 }
 
 #[async_trait]
