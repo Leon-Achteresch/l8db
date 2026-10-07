@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { diffChangeLines, nextDiffLine } from "../src/features/compare/diff-navigation";
+import {
+  diffChangeLines,
+  diffOverviewLine,
+  nextDiffLine,
+} from "../src/features/compare/diff-navigation";
 
 describe("Diff-Navigation ab der Cursorposition", () => {
   const lines = [3, 10, 20];
@@ -64,5 +68,42 @@ describe("Diff-Navigation ab der Cursorposition", () => {
     expect(nextDiffLine(original, 12, -1, 30)).toBe(10);
     expect(nextDiffLine(modified, 12, -1, 30)).toBe(3);
     expect(nextDiffLine(modified, 12, 1, 30)).toBe(13);
+  });
+});
+
+describe("Cursor aus der Diff-Übersicht", () => {
+  test("findet die angeklickte Änderung anhand ihrer Scrollposition", () => {
+    const markers = [
+      { line: 10, top: 200, height: 22 },
+      { line: 50, top: 1200, height: 88 },
+    ];
+    expect(diffOverviewLine(markers, 21, 200, 2000)).toBe(10);
+    expect(diffOverviewLine(markers, 124, 200, 2000)).toBe(50);
+    expect(nextDiffLine([10, 50, 90], diffOverviewLine(markers, 124, 200, 2000) ?? 1, 1, 100)).toBe(
+      90,
+    );
+    expect(
+      nextDiffLine([10, 50, 90], diffOverviewLine(markers, 124, 200, 2000) ?? 1, -1, 100),
+    ).toBe(10);
+  });
+
+  test("berücksichtigt Mindesthöhe, benachbarte Markierungen und den Rand", () => {
+    const markers = [
+      { line: 1, top: 0, height: 22 },
+      { line: 10, top: 220, height: 22 },
+      { line: 11, top: 242, height: 22 },
+      { line: 100, top: 1978, height: 22 },
+    ];
+    expect(diffOverviewLine(markers, 0, 200, 2000)).toBe(1);
+    expect(diffOverviewLine(markers, 22, 200, 2000)).toBe(10);
+    expect(diffOverviewLine(markers, 25, 200, 2000)).toBe(11);
+    expect(diffOverviewLine(markers, 200, 200, 2000)).toBe(100);
+  });
+
+  test("lässt Klicks auf unveränderte Bereiche und leere Übersichten unverändert", () => {
+    expect(diffOverviewLine([{ line: 20, top: 400, height: 22 }], 100, 200, 2000)).toBeNull();
+    expect(diffOverviewLine([], 100, 200, 2000)).toBeNull();
+    expect(diffOverviewLine([{ line: 1, top: 0, height: 22 }], 0, 0, 2000)).toBeNull();
+    expect(diffOverviewLine([{ line: 1, top: 0, height: 22 }], 0, 200, 0)).toBeNull();
   });
 });
