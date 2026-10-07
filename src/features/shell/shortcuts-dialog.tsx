@@ -2,6 +2,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { SearchIcon, Settings2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
   DialogContent,
@@ -9,10 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "@/features/shell/workbench-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import {
   filterHotkeyCommands,
@@ -30,7 +31,7 @@ interface ShortcutsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
+function ShortcutsDialogContent({ open, onOpenChange }: ShortcutsDialogProps) {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const [term, setTerm] = useState("");
   const connection = useActiveConnection();
@@ -129,3 +130,5 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
     </Dialog>
   );
 }
+
+export const ShortcutsDialog = asWorkbenchTab(ShortcutsDialogContent, "Tastenkürzel");

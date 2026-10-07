@@ -21,6 +21,7 @@ import {
 import { type LazyExoticComponent, lazy } from "react";
 
 export type ToolId =
+  | "workbench"
   | "versioning"
   | "compare"
   | "schema-compare"
@@ -49,6 +50,15 @@ type ToolEntry = {
 };
 
 export const TOOL_TABS: Record<ToolId, ToolEntry> = {
+  workbench: {
+    path: "/workbench",
+    label: "Arbeitsbereich",
+    Icon: FileTextIcon,
+    iconColor: "text-muted-foreground",
+    Component: lazy(() =>
+      import("@/features/shell/workbench-view").then((m) => ({ default: m.WorkbenchView })),
+    ),
+  },
   versioning: {
     path: "/versioning",
     label: "Versionierung",

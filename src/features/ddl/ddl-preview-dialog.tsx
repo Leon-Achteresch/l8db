@@ -2,6 +2,9 @@ import { CopyIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
   DialogContent,
@@ -9,9 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/features/shell/workbench-dialog";
 import { copyText } from "@/lib/clipboard";
 
 interface DdlPreviewDialogProps {
@@ -30,7 +31,7 @@ interface DdlPreviewDialogProps {
   children?: ReactNode;
 }
 
-export function DdlPreviewDialog({
+function DdlPreviewDialogContent({
   open,
   onOpenChange,
   title,
@@ -56,7 +57,7 @@ export function DdlPreviewDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={isPending} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -110,3 +111,9 @@ export function DdlPreviewDialog({
     </Dialog>
   );
 }
+
+export const DdlPreviewDialog = asWorkbenchTab(
+  DdlPreviewDialogContent,
+  "DDL-Vorschau",
+  (props) => !props.destructive,
+);

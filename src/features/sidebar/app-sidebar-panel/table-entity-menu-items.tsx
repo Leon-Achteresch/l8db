@@ -4,6 +4,7 @@ import {
   DatabaseIcon,
   FileCodeIcon,
   NetworkIcon,
+  PencilIcon,
   SquareTerminalIcon,
   TrashIcon,
   WrenchIcon,
@@ -20,6 +21,7 @@ interface TableEntityMenuItemsProps {
   caps: ReturnType<typeof useActiveCapabilities>;
   isFavorite: boolean;
   onToggleFavorite: () => void;
+  onRename: () => void;
   onOpenInEditor: () => void;
   onScriptTable: () => void;
   onCopy: () => void;
@@ -35,6 +37,7 @@ export function TableEntityMenuItems({
   caps,
   isFavorite,
   onToggleFavorite,
+  onRename,
   onOpenInEditor,
   onScriptTable,
   onCopy,
@@ -45,6 +48,12 @@ export function TableEntityMenuItems({
 }: TableEntityMenuItemsProps) {
   return (
     <>
+      {caps.object_admin && (
+        <ContextMenuItem onSelect={onRename}>
+          <PencilIcon />
+          Umbenennen…
+        </ContextMenuItem>
+      )}
       <ContextMenuItem onSelect={onToggleFavorite}>
         <MorphIcon icon={isFavorite ? StarOff : Star} />
         {isFavorite ? "Favorit lösen" : "Anheften"}

@@ -1,5 +1,6 @@
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Star, StarOff } from "lucide";
-import { CopyIcon } from "lucide-react";
+import { CopyIcon, PencilIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { memo, useMemo, useState } from "react";
 import {
@@ -9,6 +10,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
+import { ObjectRenameInput } from "@/features/object-admin/object-rename-input";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
@@ -30,6 +32,9 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
   filtered: SidebarEntityMatch[];
   type: "table" | "view";
 }) {
+  const navigate = useNavigate();
+  const router = useRouter();
+  const [renameTarget, setRenameTarget] = useState<{ schema: string; name: string } | null>(null);
   const [copyTarget, setCopyTarget] = useState<{
     schema: string;
     name: string;
@@ -82,13 +87,48 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                 name={item.name}
                 first={index === 0 && type === "table"}
                 invalid={type === "view" && isViewInvalid(invalidSet, item.schema, item.name)}
+                onKeyDown={(event) => {
+                  if (event.key === "F2" && caps.object_admin) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setRenameTarget(item);
+                  }
+                }}
                 onOpenView={() => openView(item.schema, item.name)}
               />
             );
 
             return (
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
-                {type === "table" ? (
+                {renameTarget?.schema === item.schema && renameTarget.name === item.name ? (
+                  <ObjectRenameInput
+                    schema={item.schema}
+                    name={item.name}
+                    objectType={type}
+                    onClose={() => setRenameTarget(null)}
+                    onRenamed={(next) => {
+                      const params = router.state.matches.at(-1)?.params as
+                        | { schema?: string; table?: string; view?: string }
+                        | undefined;
+                      if (
+                        params?.schema !== item.schema ||
+                        (params.table ?? params.view) !== item.name
+                      )
+                        return;
+                      if (type === "table")
+                        void navigate({
+                          to: "/tables/$schema/$table",
+                          params: { schema: item.schema, table: next },
+                          search: { type: "table" },
+                        });
+                      else
+                        void navigate({
+                          to: "/view-editor/$schema/$view",
+                          params: { schema: item.schema, view: next },
+                        });
+                    }}
+                  />
+                ) : type === "table" ? (
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
@@ -97,6 +137,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                         name={item.name}
                         caps={caps}
                         isFavorite={isFavorite(item.schema, item.name)}
+                        onRename={() => setRenameTarget(item)}
                         onToggleFavorite={() => toggleFavoriteObject(item.schema, item.name)}
                         onOpenInEditor={() => handleOpenInEditor(item.schema, item.name)}
                         onScriptTable={() => handleScriptTable(item.schema, item.name)}
@@ -120,6 +161,12 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
+                      {caps.object_admin && (
+                        <ContextMenuItem onSelect={() => setRenameTarget(item)}>
+                          <PencilIcon />
+                          Umbenennen…
+                        </ContextMenuItem>
+                      )}
                       <CompareObjectMenuItem
                         schema={item.schema}
                         name={item.name}

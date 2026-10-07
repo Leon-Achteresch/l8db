@@ -61,7 +61,12 @@ export const useTableTabs = create<TabsState>()(
         return persistedState;
       },
       partialize: (state) => ({
-        tabsByConnection: state.tabsByConnection,
+        tabsByConnection: Object.fromEntries(
+          Object.entries(state.tabsByConnection).map(([key, tabs]) => [
+            key,
+            tabs.filter((tab) => !(tab.kind === "tool" && tab.tool === "workbench")),
+          ]),
+        ),
         recentlyClosed: state.recentlyClosed,
       }),
       merge: (persistedState, currentState) => {
