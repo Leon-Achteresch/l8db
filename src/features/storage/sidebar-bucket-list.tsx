@@ -1,13 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArchiveIcon, CopyIcon, FolderOpenIcon, PlusIcon, TrashIcon } from "lucide-react";
+import { ArchiveIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { CopyAsMenu } from "@/components/copy-as-menu";
 import { IconButton } from "@/components/icon-button";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -18,9 +20,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
-import { copyText } from "@/lib/clipboard";
+import { copyWithToast } from "@/lib/clipboard";
 import { s3ListBuckets } from "@/lib/db";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useTableTabs } from "@/lib/table-tabs";
 import { CreateBucketDialog } from "./create-bucket-dialog";
@@ -90,7 +93,12 @@ export function SidebarBucketList() {
           {items.map((bucket) => (
             <SidebarMenuItem key={bucket.name}>
               <ContextMenu>
-                <ContextMenuTrigger asChild>
+                <ContextMenuTrigger
+                  asChild
+                  onKeyDown={menuKeyHandler({
+                    copyName: () => void copyWithToast(bucket.name, "Name"),
+                  })}
+                >
                   <SidebarMenuButton
                     isActive={pathname === `/buckets/${encodeURIComponent(bucket.name)}`}
                     onClick={() => open(bucket.name)}
@@ -107,14 +115,17 @@ export function SidebarBucketList() {
                 </ContextMenuTrigger>
                 <ContextMenuContent>
                   <ContextMenuItem onSelect={() => open(bucket.name)}>
-                    <FolderOpenIcon /> Öffnen
+                    Öffnen
+                    <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.open)}</ContextMenuShortcut>
                   </ContextMenuItem>
-                  <ContextMenuItem onSelect={() => void copyText(bucket.name)}>
-                    <CopyIcon /> Namen kopieren
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={() => void copyText(`s3://${bucket.name}/`)}>
-                    <CopyIcon /> S3-URI kopieren
-                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <CopyAsMenu name={bucket.name} shortcuts>
+                    <ContextMenuItem
+                      onSelect={() => void copyWithToast(`s3://${bucket.name}/`, "S3-URI")}
+                    >
+                      S3-URI
+                    </ContextMenuItem>
+                  </CopyAsMenu>
                   {!readOnly && (
                     <>
                       <ContextMenuSeparator />
@@ -122,7 +133,7 @@ export function SidebarBucketList() {
                         variant="destructive"
                         onSelect={() => setDeleteTarget(bucket.name)}
                       >
-                        <TrashIcon /> Bucket löschen…
+                        Bucket löschen…
                       </ContextMenuItem>
                     </>
                   )}

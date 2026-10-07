@@ -1,3 +1,4 @@
+import { useSearch } from "@tanstack/react-router";
 import { FileUpIcon } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +15,7 @@ export function ImportView() {
   const schema = useActiveSchema();
   const scope = JSON.stringify([connection?.id, database, schema]);
   const csvEnabled = supports(connection, "csv_import");
+  const { tab } = useSearch({ strict: false }) as { tab?: "csv" };
 
   if (!connection) {
     return (
@@ -25,7 +27,11 @@ export function ImportView() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <Tabs defaultValue="sql" className="flex min-h-0 flex-1 flex-col gap-0">
+      <Tabs
+        key={tab}
+        defaultValue={tab === "csv" && csvEnabled ? "csv" : "sql"}
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
         <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
           <FileUpIcon className="size-4 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">Importieren</span>

@@ -1,8 +1,6 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { ClipboardCopyIcon, EyeIcon, Maximize2Icon, PinOffIcon, RotateCcwIcon } from "lucide-react";
-
 import {
   ContextMenuItem,
   ContextMenuLabel,
@@ -99,7 +97,6 @@ export function DataTableColumnSettings({
             onShowAll();
           }}
         >
-          <EyeIcon />
           Alle einblenden
         </ContextMenuItem>
       )}
@@ -110,7 +107,6 @@ export function DataTableColumnSettings({
             onUnpinAll();
           }}
         >
-          <PinOffIcon />
           Fixierungen aufheben
         </ContextMenuItem>
       )}
@@ -129,21 +125,12 @@ export function DataTableColumnSettings({
         />
       )}
       <ContextMenuSeparator />
-      <ContextMenuItem onSelect={onFitHeaderWidths}>
-        <Maximize2Icon />
-        An Spaltentitel anpassen
-      </ContextMenuItem>
-      <ContextMenuItem onSelect={onCopyColumnNames}>
-        <ClipboardCopyIcon />
-        Spaltennamen kopieren
-      </ContextMenuItem>
+      <ContextMenuItem onSelect={onFitHeaderWidths}>An Spaltentitel anpassen</ContextMenuItem>
+      <ContextMenuItem onSelect={onCopyColumnNames}>Spaltennamen kopieren</ContextMenuItem>
       {isCustomized && (
         <>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={onReset}>
-            <RotateCcwIcon />
-            Zurücksetzen
-          </ContextMenuItem>
+          <ContextMenuItem onSelect={onReset}>Zurücksetzen</ContextMenuItem>
         </>
       )}
     </>

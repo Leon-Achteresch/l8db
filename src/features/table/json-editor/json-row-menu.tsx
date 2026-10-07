@@ -1,23 +1,4 @@
-import {
-  ArrowDownAZIcon,
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ChevronsDownUpIcon,
-  ChevronsUpDownIcon,
-  ClipboardCopyIcon,
-  CopyPlusIcon,
-  CornerDownRightIcon,
-  DatabaseZapIcon,
-  EllipsisIcon,
-  PackageIcon,
-  PackageOpenIcon,
-  PencilIcon,
-  PlusIcon,
-  RouteIcon,
-  ShapesIcon,
-  TextCursorInputIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { EllipsisIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,50 +61,39 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
         <DropdownMenuSeparator />
         {!readOnly && !container && (
           <DropdownMenuItem onSelect={() => actions.startEdit(path, "value")}>
-            <PencilIcon />
             Wert bearbeiten
             <DropdownMenuShortcut>↵</DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
         {!readOnly && inObject && (
           <DropdownMenuItem onSelect={() => actions.startEdit(path, "key")}>
-            <TextCursorInputIcon />
             Schlüssel umbenennen
             <DropdownMenuShortcut>F2</DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <ClipboardCopyIcon />
-            Kopieren
-          </DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger>Kopieren als</DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-64">
             <DropdownMenuItem onSelect={() => actions.copy(path, "value")}>
-              <ClipboardCopyIcon />
               Wert
               <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
             </DropdownMenuItem>
             {inObject && (
               <DropdownMenuItem onSelect={() => actions.copy(path, "key")}>
-                <TextCursorInputIcon />
                 Schlüssel
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onSelect={() => actions.copy(path, "jsonpath")}>
-              <RouteIcon />
               JSONPath
               <DropdownMenuShortcut>⇧⌘C</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => actions.copy(path, "js")}>
-              <RouteIcon />
               JavaScript-Zugriff
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => actions.copy(path, "pg")}>
-              <DatabaseZapIcon />
               SQL-Ausdruck (-&gt; / -&gt;&gt;)
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => actions.copy(path, "pgpath")}>
-              <DatabaseZapIcon />
               SQL-Pfad (#&gt;)
             </DropdownMenuItem>
           </DropdownMenuSubContent>
@@ -131,11 +101,9 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
         {container && (
           <>
             <DropdownMenuItem onSelect={() => actions.expandDeep(path, true)}>
-              <ChevronsUpDownIcon />
               Alles darunter aufklappen
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => actions.expandDeep(path, false)}>
-              <ChevronsDownUpIcon />
               Alles darunter zuklappen
             </DropdownMenuItem>
           </>
@@ -145,7 +113,6 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
             <DropdownMenuSeparator />
             {container && (
               <DropdownMenuItem onSelect={() => actions.addChild(path)}>
-                <PlusIcon />
                 {row.kind === "array" ? "Element anhängen" : "Schlüssel hinzufügen"}
                 <DropdownMenuShortcut>⌘↵</DropdownMenuShortcut>
               </DropdownMenuItem>
@@ -153,31 +120,24 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
             {!isRoot && (
               <>
                 <DropdownMenuItem onSelect={() => actions.insertAfter(path)}>
-                  <CornerDownRightIcon />
                   Danach einfügen
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => actions.duplicate(path)}>
-                  <CopyPlusIcon />
                   Duplizieren
                   <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => actions.move(path, -1)}>
-                  <ArrowUpIcon />
                   Nach oben
                   <DropdownMenuShortcut>⌥↑</DropdownMenuShortcut>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => actions.move(path, 1)}>
-                  <ArrowDownIcon />
                   Nach unten
                   <DropdownMenuShortcut>⌥↓</DropdownMenuShortcut>
                 </DropdownMenuItem>
               </>
             )}
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <ShapesIcon />
-                Typ ändern
-              </DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger>Typ ändern</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {KINDS.map((kind) => (
                   <DropdownMenuItem
@@ -193,19 +153,16 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
             </DropdownMenuSub>
             {row.kind === "object" && (
               <DropdownMenuItem onSelect={() => actions.sortKeys(path)}>
-                <ArrowDownAZIcon />
                 Schlüssel sortieren
               </DropdownMenuItem>
             )}
             {embedded && (
               <DropdownMenuItem onSelect={() => actions.unpack(path)}>
-                <PackageOpenIcon />
                 Eingebettetes JSON entpacken
               </DropdownMenuItem>
             )}
             {container && !isRoot && (
               <DropdownMenuItem onSelect={() => actions.pack(path)}>
-                <PackageIcon />
                 Als JSON-Text einpacken
               </DropdownMenuItem>
             )}
@@ -213,7 +170,6 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onSelect={() => actions.remove(path)}>
-                  <Trash2Icon />
                   Löschen
                   <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
                 </DropdownMenuItem>

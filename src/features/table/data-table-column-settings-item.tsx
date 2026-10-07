@@ -27,9 +27,9 @@ export function DataTableColumnSettingsItem({
     <div
       ref={ref}
       className={cn(
-        "flex items-center gap-1.5 rounded-sm px-1 py-1",
-        isDragging && "z-20 bg-accent opacity-80",
-        !isDragging && "hover:bg-accent/70",
+        "flex items-center gap-1.5 rounded-[5px] px-1.5 py-0.5",
+        isDragging && "z-20 bg-foreground/8 opacity-80",
+        !isDragging && "hover:bg-foreground/6",
       )}
     >
       <button

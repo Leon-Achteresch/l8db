@@ -1,27 +1,21 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { Star, StarOff } from "lucide";
-import { CopyIcon, PencilIcon } from "lucide-react";
-import { MorphIcon } from "morphicons/react";
 import { memo, useMemo, useState } from "react";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
+import { ObjectDropDialog } from "@/features/object-admin/object-drop-dialog";
 import { ObjectRenameInput } from "@/features/object-admin/object-rename-input";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
-import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import { CopyTableDialog } from "@/features/table-copy/copy-table-dialog";
+import { copyNameActions } from "@/lib/clipboard";
 import type { SchemaCopyObjectType } from "@/lib/db";
+import { menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isViewInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { EntityConfirmDialog } from "./entity-confirm-dialog";
 import { EntityMatchingColumns } from "./entity-matching-columns";
+import { EntityMenuItems } from "./entity-menu-items";
 import { SidebarEntityButton } from "./sidebar-entity-button";
-import { TableEntityMenuItems } from "./table-entity-menu-items";
 import { useSidebarEntityActions } from "./use-sidebar-entity-actions";
 import { matchingColumnsWindow, type SidebarEntityMatch } from "./use-sidebar-entity-filter";
 
@@ -43,24 +37,19 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
   const [tableCopySource, setTableCopySource] = useState<{ schema: string; name: string } | null>(
     null,
   );
-  const {
-    confirmAction,
-    setConfirmAction,
-    actionLoading,
-    caps,
-    activeDatabase,
-    handleConfirmAction,
-    handleOpenInEditor,
-    handleScriptTable,
-    toggleFavoriteObject,
-    isFavorite,
-    handleFocusInErDiagram,
-    handleAlterTable,
-    openView,
-  } = useSidebarEntityActions(type);
+  const [dropTarget, setDropTarget] = useState<{ schema: string; name: string } | null>(null);
+  const actions = useSidebarEntityActions(type);
+  const { confirmAction, setConfirmAction, actionLoading, caps, activeDatabase, openView } =
+    actions;
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const measured = useMemo(() => matchingColumnsWindow(filtered), [filtered]);
+  const isOpen = (item: { schema: string; name: string }) => {
+    const params = router.state.matches.at(-1)?.params as
+      | { schema?: string; table?: string; view?: string }
+      | undefined;
+    return params?.schema === item.schema && (params.table ?? params.view) === item.name;
+  };
 
   return (
     <>
@@ -72,7 +61,19 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
         isRedis={caps.query_language === "redis"}
         activeDatabase={activeDatabase}
         onClose={() => setConfirmAction(null)}
-        onConfirm={handleConfirmAction}
+        onConfirm={actions.handleConfirmAction}
+      />
+      <ObjectDropDialog
+        open={dropTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDropTarget(null);
+        }}
+        schema={dropTarget?.schema ?? ""}
+        name={dropTarget?.name ?? ""}
+        objectType="view"
+        onDropped={() => {
+          if (dropTarget && isOpen(dropTarget)) void navigate({ to: "/" });
+        }}
       />
       {filtered.length === 0 ? (
         <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
@@ -80,23 +81,15 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
         <SidebarWindow count={filtered.length} measured={measured}>
           {(index) => {
             const item = filtered[index];
-            const menuButton = (
-              <SidebarEntityButton
-                entity={type}
-                schema={item.schema}
-                name={item.name}
-                first={index === 0 && type === "table"}
-                invalid={type === "view" && isViewInvalid(invalidSet, item.schema, item.name)}
-                onKeyDown={(event) => {
-                  if (event.key === "F2" && caps.object_admin) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setRenameTarget(item);
-                  }
-                }}
-                onOpenView={() => openView(item.schema, item.name)}
-              />
-            );
+            const rename = caps.object_admin ? () => setRenameTarget(item) : undefined;
+            const drop =
+              type === "view"
+                ? caps.object_admin
+                  ? () => setDropTarget(item)
+                  : undefined
+                : caps.query_language === "redis"
+                  ? undefined
+                  : () => setConfirmAction({ kind: "drop", schema: item.schema, name: item.name });
 
             return (
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
@@ -107,14 +100,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                     objectType={type}
                     onClose={() => setRenameTarget(null)}
                     onRenamed={(next) => {
-                      const params = router.state.matches.at(-1)?.params as
-                        | { schema?: string; table?: string; view?: string }
-                        | undefined;
-                      if (
-                        params?.schema !== item.schema ||
-                        (params.table ?? params.view) !== item.name
-                      )
-                        return;
+                      if (!isOpen(item)) return;
                       if (type === "table")
                         void navigate({
                           to: "/tables/$schema/$table",
@@ -128,70 +114,45 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                         });
                     }}
                   />
-                ) : type === "table" ? (
+                ) : (
                   <ContextMenu>
-                    <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <TableEntityMenuItems
+                    <ContextMenuTrigger asChild>
+                      <SidebarEntityButton
+                        entity={type}
                         schema={item.schema}
                         name={item.name}
-                        caps={caps}
-                        isFavorite={isFavorite(item.schema, item.name)}
-                        onRename={() => setRenameTarget(item)}
-                        onToggleFavorite={() => toggleFavoriteObject(item.schema, item.name)}
-                        onOpenInEditor={() => handleOpenInEditor(item.schema, item.name)}
-                        onScriptTable={() => handleScriptTable(item.schema, item.name)}
-                        onCopy={() =>
-                          setCopyTarget({
-                            schema: item.schema,
-                            name: item.name,
-                            objectType: "table",
-                          })
+                        first={index === 0 && type === "table"}
+                        invalid={
+                          type === "view" && isViewInvalid(invalidSet, item.schema, item.name)
+                        }
+                        onKeyDown={menuKeyHandler({
+                          openInNewTab: () => actions.openInNewTab(item.schema, item.name),
+                          newQuery: () => actions.handleOpenInEditor(item.schema, item.name),
+                          ...copyNameActions(
+                            item.name,
+                            actions.qualifiedName(item.schema, item.name),
+                          ),
+                          rename,
+                          drop,
+                        })}
+                        onOpenView={() => openView(item.schema, item.name)}
+                      />
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <EntityMenuItems
+                        type={type}
+                        schema={item.schema}
+                        name={item.name}
+                        actions={actions}
+                        onRename={rename}
+                        onDrop={drop}
+                        onCopyToSchema={() =>
+                          setCopyTarget({ schema: item.schema, name: item.name, objectType: type })
                         }
                         onCopyToConnection={() =>
                           setTableCopySource({ schema: item.schema, name: item.name })
                         }
-                        onAlterTable={() => handleAlterTable(item.schema, item.name)}
-                        onFocusInErDiagram={() => handleFocusInErDiagram(item.schema, item.name)}
-                        onConfirm={setConfirmAction}
                       />
-                    </ContextMenuContent>
-                  </ContextMenu>
-                ) : (
-                  <ContextMenu>
-                    <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
-                    <ContextMenuContent>
-                      {caps.object_admin && (
-                        <ContextMenuItem onSelect={() => setRenameTarget(item)}>
-                          <PencilIcon />
-                          Umbenennen…
-                        </ContextMenuItem>
-                      )}
-                      <CompareObjectMenuItem
-                        schema={item.schema}
-                        name={item.name}
-                        objectType="view"
-                      />
-                      <ContextMenuItem
-                        onSelect={() => toggleFavoriteObject(item.schema, item.name)}
-                      >
-                        <MorphIcon icon={isFavorite(item.schema, item.name) ? StarOff : Star} />
-                        {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
-                      </ContextMenuItem>
-                      {caps.schema_object_copy && (
-                        <ContextMenuItem
-                          onSelect={() =>
-                            setCopyTarget({
-                              schema: item.schema,
-                              name: item.name,
-                              objectType: "view",
-                            })
-                          }
-                        >
-                          <CopyIcon />
-                          In anderem Schema erstellen
-                        </ContextMenuItem>
-                      )}
                     </ContextMenuContent>
                   </ContextMenu>
                 )}

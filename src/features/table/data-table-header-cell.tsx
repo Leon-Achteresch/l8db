@@ -1,19 +1,8 @@
 import { useDraggable } from "@dnd-kit/react";
 import { flexRender, type Header, type OnChangeFn, type SortingState } from "@tanstack/react-table";
-import { Pin, PinOff } from "lucide";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ClipboardCopyIcon,
-  EyeOffIcon,
-  FilterIcon,
-  GripVerticalIcon,
-  PlayIcon,
-  RotateCcwIcon,
-  XIcon,
-} from "lucide-react";
-import { MorphIcon } from "morphicons/react";
+import { FilterIcon, GripVerticalIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import { useRef } from "react";
+import { CopyAsMenu } from "@/components/copy-as-menu";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -216,52 +205,43 @@ export function DataTableHeaderCell({
           onFilterValueChange("");
         }}
       >
-        <ContextMenuLabel className="font-mono text-[11px]">{header.id}</ContextMenuLabel>
+        <ContextMenuLabel className="font-mono">{header.id}</ContextMenuLabel>
         <ContextMenuSeparator />
         <ContextMenuItem
-          onClick={() => onSortingChange([{ id: header.id, desc: false }])}
+          onSelect={() => onSortingChange([{ id: header.id, desc: false }])}
           disabled={isFetching || !header.column.getCanSort()}
         >
-          <ArrowUpIcon />
           Aufsteigend sortieren
         </ContextMenuItem>
         <ContextMenuItem
-          onClick={() => onSortingChange([{ id: header.id, desc: true }])}
+          onSelect={() => onSortingChange([{ id: header.id, desc: true }])}
           disabled={isFetching || !header.column.getCanSort()}
         >
-          <ArrowDownIcon />
           Absteigend sortieren
         </ContextMenuItem>
         {sorting.length > 0 && (
-          <ContextMenuItem onClick={() => onSortingChange([])}>
-            <XIcon />
+          <ContextMenuItem onSelect={() => onSortingChange([])}>
             Sortierung entfernen
           </ContextMenuItem>
         )}
         {onApplyFilter && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onSelect={() => {
-                openFilterOnClose.current = true;
-              }}
-            >
-              <FilterIcon />
-              Filter setzen…
-            </ContextMenuItem>
-          </>
+          <ContextMenuItem
+            onSelect={() => {
+              openFilterOnClose.current = true;
+            }}
+          >
+            Filter setzen…
+          </ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={onCopyColumn}>
-          <ClipboardCopyIcon />
-          Spalte kopieren
-        </ContextMenuItem>
-        <ContextMenuItem onClick={onTogglePin}>
-          <MorphIcon icon={isPinned ? PinOff : Pin} />
+        <CopyAsMenu name={header.id}>
+          <ContextMenuItem onSelect={onCopyColumn}>Werte</ContextMenuItem>
+        </CopyAsMenu>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onTogglePin}>
           {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}
         </ContextMenuItem>
-        <ContextMenuItem disabled={!canHide} onClick={onHideColumn}>
-          <EyeOffIcon />
+        <ContextMenuItem disabled={!canHide} onSelect={onHideColumn}>
           Spalte ausblenden
         </ContextMenuItem>
       </ContextMenuContent>
