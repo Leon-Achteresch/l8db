@@ -108,10 +108,8 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
           ?.textContent?.replace(/\s/g, " ")
           .includes("Entwurf bleibt"),
       );
-      await page
-        .getByRole("button", { name: "Änderung aus dem Ziel in den Entwurf übernehmen" })
-        .first()
-        .click();
+      await page.getByRole("button", { name: "Ziel auswählen" }).click();
+      await page.getByRole("button", { name: "Ziel in Entwurf übernehmen" }).click();
       await page.waitForFunction(() =>
         document.querySelector(".merge-draft-editor .view-lines")?.textContent?.includes("COLUMNS"),
       );

@@ -34,7 +34,7 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
       model,
       theme: "l8db-light",
       automaticLayout: true,
-      minimap: { enabled: false },
+      minimap: { enabled: true, renderCharacters: false },
       scrollBeyondLastLine: false,
       fontSize: 13,
       lineHeight: 22,
