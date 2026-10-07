@@ -17,33 +17,21 @@ import type { Store } from "./types";
 export function EditorDisplaySection({ store, compact }: { store: Store; compact: boolean }) {
   return (
     <Section title="Darstellung" description="Gutter, Hilfslinien und Scroll-Verhalten.">
-      <Row
-        title="Zeilennummern"
-        description="Nummerierung am linken Rand des Editors anzeigen."
-        compact={compact}
-      >
+      <Row settingId="line-numbers" compact={compact}>
         <Switch
           checked={store.editorLineNumbers}
           onCheckedChange={store.setEditorLineNumbers}
           aria-label="Zeilennummern"
         />
       </Row>
-      <Row
-        title="Automatischer Zeilenumbruch"
-        description="Lange SQL-Zeilen im Editor automatisch umbrechen."
-        compact={compact}
-      >
+      <Row settingId="word-wrap" compact={compact}>
         <Switch
           checked={store.editorWordWrap}
           onCheckedChange={store.setEditorWordWrap}
           aria-label="Zeilenumbruch"
         />
       </Row>
-      <Row
-        title="Umbruch-Einrückung"
-        description="Einrückung umbrochener Fortsetzungszeilen."
-        compact={compact}
-      >
+      <Row settingId="editor-wrapping-indent" compact={compact}>
         <Select
           value={store.editorWrappingIndent}
           onValueChange={(value) => store.setEditorWrappingIndent(value as EditorWrappingIndent)}
@@ -60,22 +48,14 @@ export function EditorDisplaySection({ store, compact }: { store: Store; compact
           </SelectContent>
         </Select>
       </Row>
-      <Row
-        title="Code-Minimap"
-        description="Verkleinerte Übersicht des gesamten SQL-Skripts am rechten Rand."
-        compact={compact}
-      >
+      <Row settingId="minimap" compact={compact}>
         <Switch
           checked={store.editorMinimap}
           onCheckedChange={store.setEditorMinimap}
           aria-label="Minimap"
         />
       </Row>
-      <Row
-        title="Minimap-Maßstab"
-        description="Darstellungsgröße der Minimap-Vorschau."
-        compact={compact}
-      >
+      <Row settingId="minimap-scale" compact={compact}>
         <SegmentedControl
           value={String(store.editorMinimapScale)}
           onChange={(value) => store.setEditorMinimapScale(Number.parseInt(value, 10))}
@@ -87,44 +67,28 @@ export function EditorDisplaySection({ store, compact }: { store: Store; compact
           ]}
         />
       </Row>
-      <Row
-        title="Klammer-Färbung"
-        description="Verschachtelte Klammern in unterschiedlichen Farben darstellen."
-        compact={compact}
-      >
+      <Row settingId="editor-bracket-pair-colorization" compact={compact}>
         <Switch
           checked={store.editorBracketPairColorization}
           onCheckedChange={store.setEditorBracketPairColorization}
           aria-label="Klammer-Färbung"
         />
       </Row>
-      <Row
-        title="Klammer-Hilfslinien"
-        description="Vertikale Führungslinien für Klammerpaare anzeigen."
-        compact={compact}
-      >
+      <Row settingId="editor-guides-bracket-pairs" compact={compact}>
         <Switch
           checked={store.editorGuidesBracketPairs}
           onCheckedChange={store.setEditorGuidesBracketPairs}
           aria-label="Klammer-Hilfslinien"
         />
       </Row>
-      <Row
-        title="Einrückungs-Hilfslinien"
-        description="Vertikale Linien für Einrückungsebenen anzeigen."
-        compact={compact}
-      >
+      <Row settingId="editor-guides-indentation" compact={compact}>
         <Switch
           checked={store.editorGuidesIndentation}
           onCheckedChange={store.setEditorGuidesIndentation}
           aria-label="Einrückungs-Hilfslinien"
         />
       </Row>
-      <Row
-        title="Leerzeichen"
-        description="Unsichtbare Zeichen (Punkte, Pfeile) einblenden."
-        compact={compact}
-      >
+      <Row settingId="editor-render-whitespace" compact={compact}>
         <Select
           value={store.editorRenderWhitespace}
           onValueChange={(value) => store.setEditorRenderWhitespace(value as EditorWhitespace)}
@@ -142,11 +106,7 @@ export function EditorDisplaySection({ store, compact }: { store: Store; compact
         </Select>
       </Row>
       <RulersInput store={store} compact={compact} />
-      <Row
-        title="Sanftes Scrollen"
-        description="Animiertes statt sprunghaftes Scrollen im Editor."
-        compact={compact}
-      >
+      <Row settingId="editor-smooth-scrolling" compact={compact}>
         <Switch
           checked={store.editorSmoothScrolling}
           onCheckedChange={store.setEditorSmoothScrolling}

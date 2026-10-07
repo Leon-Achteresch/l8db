@@ -1,20 +1,26 @@
 import type { ReactNode } from "react";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { SETTINGS_BY_ID } from "@/lib/settings-catalog";
 
 export function Row({
-  title,
-  description,
+  settingId,
+  title: fallbackTitle,
+  description: fallbackDescription,
   compact,
   children,
 }: {
-  title: string;
-  description: string;
+  settingId?: string;
+  title?: string;
+  description?: string;
   compact: boolean;
   children: ReactNode;
 }) {
+  const setting = settingId ? SETTINGS_BY_ID.get(settingId) : undefined;
+  const title = setting?.title ?? fallbackTitle ?? "";
+  const description = setting?.description ?? fallbackDescription ?? "";
   if (!compact) {
     return (
-      <SettingsRow title={title} description={description}>
+      <SettingsRow settingId={settingId} title={title} description={description}>
         {children}
       </SettingsRow>
     );

@@ -89,20 +89,14 @@ export function UpdateSection() {
           <span>{status.kind === "checking" ? "Prüfe …" : "Nach Updates suchen"}</span>
         </Button>
       </SettingsRow>
-      <SettingsRow
-        title="Automatisch nach Updates suchen"
-        description="Beim Start und danach alle 6 Stunden im Hintergrund nach neuen Versionen suchen."
-      >
+      <SettingsRow settingId="updates">
         <Switch
           checked={autoUpdateCheck}
           onCheckedChange={setAutoUpdateCheck}
           aria-label="Automatisch nach Updates suchen"
         />
       </SettingsRow>
-      <SettingsRow
-        title="Updates automatisch installieren"
-        description="Gefundene Updates ohne Rückfrage installieren und neu starten."
-      >
+      <SettingsRow settingId="auto-update-install">
         <Switch
           checked={autoUpdateInstall}
           disabled={!autoUpdateCheck}
@@ -110,23 +104,20 @@ export function UpdateSection() {
           aria-label="Updates automatisch installieren"
         />
       </SettingsRow>
-      <SettingsRow
-        title="Neue Features als Video"
-        description="Wichtige Neuerungen unten rechts automatisch stumm zeigen. Jederzeit schließbar."
-      >
+      <SettingsRow settingId="feature-videos">
         <Switch
           checked={autoFeatureVideos}
           onCheckedChange={setAutoFeatureVideos}
           aria-label="Neue Features automatisch zeigen"
         />
       </SettingsRow>
-      <SettingsRow title="Release Notes" description="Änderungen aller veröffentlichten Versionen.">
+      <SettingsRow settingId="release-notes">
         <Button variant="outline" asChild>
           <Link to="/release-notes">Anzeigen</Link>
         </Button>
       </SettingsRow>
       {status.kind === "current" ? (
-        <SettingsRow title="Updates" description="Du nutzt die aktuelle Version.">
+        <SettingsRow settingId="update-status">
           <span className="text-xs text-muted-foreground">Aktuell</span>
         </SettingsRow>
       ) : null}

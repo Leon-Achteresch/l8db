@@ -13,6 +13,7 @@ import {
   NotebookPenIcon,
   PlugIcon,
   RefreshCwIcon,
+  SettingsIcon,
   StethoscopeIcon,
   TriangleAlertIcon,
   TypeIcon,
@@ -21,6 +22,7 @@ import {
 import { type LazyExoticComponent, lazy } from "react";
 
 export type ToolId =
+  | "settings"
   | "workbench"
   | "versioning"
   | "compare"
@@ -50,6 +52,15 @@ type ToolEntry = {
 };
 
 export const TOOL_TABS: Record<ToolId, ToolEntry> = {
+  settings: {
+    path: "/settings",
+    label: "Einstellungen",
+    Icon: SettingsIcon,
+    iconColor: "text-muted-foreground",
+    Component: lazy(() =>
+      import("@/features/settings/settings-view").then((m) => ({ default: m.SettingsView })),
+    ),
+  },
   workbench: {
     path: "/workbench",
     label: "Arbeitsbereich",

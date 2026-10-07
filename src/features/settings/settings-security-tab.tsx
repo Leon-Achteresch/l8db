@@ -31,10 +31,7 @@ export function SettingsSecurityTab() {
       </div>
 
       <div className="space-y-3">
-        <SettingsRow
-          title="Neue SSH-Host-Keys akzeptieren"
-          description="Unbekannte Server-Schlüssel beim ersten Verbindungsaufbau automatisch speichern (TOFU)."
-        >
+        <SettingsRow settingId="ssh-tofu">
           <Switch
             checked={sshTrustNewHosts}
             onCheckedChange={setSshTrustNewHosts}
@@ -42,10 +39,7 @@ export function SettingsSecurityTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Produktion standardmäßig schreibgeschützt öffnen"
-          description="Verbindungen mit Umgebung Produktion sind schreibgeschützt, bis im Banner der Schreibmodus für 15 Minuten aktiviert wird."
-        >
+        <SettingsRow settingId="production-read-only">
           <Switch
             checked={productionReadOnly}
             onCheckedChange={setProductionReadOnly}
@@ -53,10 +47,7 @@ export function SettingsSecurityTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Commits auf Produktion bestätigen"
-          description="Jeder Commit auf Produktion braucht eine Bestätigung. Löschungen und destruktive Anweisungen verlangen immer die Eingabe des Verbindungsnamens."
-        >
+        <SettingsRow settingId="production-commit">
           <Switch
             checked={productionConfirmCommit}
             onCheckedChange={setProductionConfirmCommit}
@@ -64,10 +55,7 @@ export function SettingsSecurityTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Offene Produktions-Transaktionen automatisch zurückrollen"
-          description="Beim Ablauf oder Beenden des Schreibmodus werden offene Transaktionen der Verbindung zurückgerollt."
-        >
+        <SettingsRow settingId="production-auto-rollback">
           <Switch
             checked={productionAutoRollback}
             onCheckedChange={setProductionAutoRollback}
@@ -75,10 +63,7 @@ export function SettingsSecurityTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Verbindungs-Timeout"
-          description="Maximale Wartezeit beim Verbindungsaufbau zur Datenbank (3 bis 60 Sekunden)."
-        >
+        <SettingsRow settingId="conn-timeout">
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -99,10 +84,7 @@ export function SettingsSecurityTab() {
           </div>
         </SettingsRow>
 
-        <SettingsRow
-          title="Standard-SSL-Modus"
-          description="Standardmäßige TLS/SSL-Anforderung für neue Datenbankverbindungen."
-        >
+        <SettingsRow settingId="ssl-mode">
           <SegmentedControl
             value={sslDefaultMode}
             onChange={(val) => setSslDefaultMode(val as SslDefaultMode)}
@@ -116,7 +98,11 @@ export function SettingsSecurityTab() {
           />
         </SettingsRow>
 
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+        <div
+          data-setting-id="keychain"
+          tabIndex={-1}
+          className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4"
+        >
           <div className="flex items-start gap-3">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <ShieldCheck className="size-4" />
