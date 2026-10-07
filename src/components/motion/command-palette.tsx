@@ -8,6 +8,11 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NewBadge } from "@/components/new-badge";
+import {
+  paletteSearchItems,
+  parsePaletteQuery,
+  withRecentCommands,
+} from "@/lib/command-palette-search";
 import { EASE_OUT } from "@/lib/ease";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
@@ -22,6 +27,8 @@ import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
+const NO_RECENT_COMMANDS: string[] = [];
+
 export function CommandPalette({
   items,
   shortcut = "k",
@@ -32,6 +39,10 @@ export function CommandPalette({
   maxVisible,
   featureId,
   queryItem,
+  initialQuery = "",
+  commandFeatureId,
+  recentCommandIds = NO_RECENT_COMMANDS,
+  onSelectItem,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const controlled = controlledOpen !== undefined;
@@ -44,7 +55,7 @@ export function CommandPalette({
     [controlled, onOpenChange],
   );
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   // Portal target only exists client-side; render nothing during SSR/hydration.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -86,11 +97,20 @@ export function CommandPalette({
     };
   }, [open]);
 
-  const { query: rankedQuery, list: ranked } = useRankedCommands(items, query, maxVisible);
+  const { commandsOnly, search } = parsePaletteQuery(query, Boolean(commandFeatureId));
+  const searchItems = useMemo(
+    () => withRecentCommands(paletteSearchItems(items, commandsOnly), recentCommandIds, search),
+    [items, commandsOnly, recentCommandIds, search],
+  );
+  const { query: rankedQuery, list: ranked } = useRankedCommands(searchItems, search, maxVisible);
   const searchFeature = useNewFeatureVisibility<HTMLDivElement>(featureId);
+  const commandFeature = useNewFeatureVisibility<HTMLDivElement>(commandFeatureId);
   const filtered = useMemo(
-    () => (queryItem && rankedQuery.trim() ? [...ranked, queryItem(rankedQuery.trim())] : ranked),
-    [queryItem, rankedQuery, ranked],
+    () =>
+      queryItem && !commandsOnly && rankedQuery.trim()
+        ? [...ranked, queryItem(rankedQuery.trim())]
+        : paletteSearchItems(ranked, commandsOnly),
+    [queryItem, commandsOnly, rankedQuery, ranked],
   );
 
   // Reserve the icon column only when at least one item brings an icon, so
@@ -114,12 +134,16 @@ export function CommandPalette({
   // array, so they cannot drift apart.
   const rows = useMemo(() => grouped.flatMap(([, list]) => list), [grouped]);
 
-  const { activeIndex: active, moveTo, moveActive } = useRowCursor(rows, rankedQuery);
+  const {
+    activeIndex: active,
+    moveTo,
+    moveActive,
+  } = useRowCursor(rows, `${commandsOnly}:${rankedQuery}`);
 
   // Clearing the query would drop the cursor on its own, but only if it had
   // changed; `moveTo(null)` covers reopening on an already-empty query.
   useOnOpen(open, () => {
-    setQuery("");
+    setQuery(initialQuery);
     moveTo(null);
   });
 
@@ -129,7 +153,19 @@ export function CommandPalette({
     return () => cancelAnimationFrame(frame);
   }, [open]);
 
+  useEffect(() => {
+    if (open) setQuery(initialQuery);
+  }, [initialQuery, open]);
+
+  const selectItem = (item: CommandItem) => {
+    if (rankedQuery !== search) return;
+    onSelectItem?.(item);
+    setOpen(false);
+    item.onSelect();
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== inputRef.current || e.nativeEvent.isComposing) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       moveActive(1);
@@ -140,8 +176,7 @@ export function CommandPalette({
       e.preventDefault();
       const it = rows[active];
       if (it) {
-        it.onSelect();
-        setOpen(false);
+        selectItem(it);
       }
     }
   };
@@ -217,7 +252,13 @@ export function CommandPalette({
                 className="pointer-events-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl will-change-transform"
               >
                 <div
-                  ref={rankedQuery.trim() && ranked.length > 0 ? searchFeature.ref : undefined}
+                  ref={
+                    commandsOnly
+                      ? commandFeature.ref
+                      : rankedQuery.trim() && ranked.length > 0
+                        ? searchFeature.ref
+                        : undefined
+                  }
                   className="flex items-center gap-3 border-b border-border px-4"
                 >
                   <Search className="h-4 w-4 text-muted-foreground" />
@@ -225,7 +266,7 @@ export function CommandPalette({
                     ref={inputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={placeholder}
+                    placeholder={commandsOnly ? "Befehl suchen…" : placeholder}
                     role="combobox"
                     // The field only exists while the palette is open.
                     aria-expanded="true"
@@ -242,7 +283,9 @@ export function CommandPalette({
                       canTouch && "text-base",
                     )}
                   />
-                  {searchFeature.isNew ? <NewBadge /> : null}
+                  {(commandsOnly ? commandFeature.isNew : searchFeature.isNew) ? (
+                    <NewBadge />
+                  ) : null}
                   <kbd className="hidden rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline-block">
                     ESC
                   </kbd>
@@ -282,10 +325,7 @@ export function CommandPalette({
                               reduce={reduce}
                               hasIcons={hasIcons}
                               onHover={() => moveTo(it.id)}
-                              onSelect={() => {
-                                it.onSelect();
-                                setOpen(false);
-                              }}
+                              onSelect={() => selectItem(it)}
                             />
                           );
                         })}
@@ -293,6 +333,23 @@ export function CommandPalette({
                     ))
                   )}
                 </div>
+                {commandFeatureId ? (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+                    <span>↑ ↓ Auswählen</span>
+                    <span>↵ {commandsOnly ? "Ausführen" : "Öffnen"}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery(commandsOnly ? search : `> ${query}`);
+                        inputRef.current?.focus();
+                      }}
+                      className="ml-auto rounded px-1 py-0.5 hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      {commandsOnly ? "Alle durchsuchen" : "> Befehle"}
+                      {!commandsOnly && commandFeature.isNew ? <NewBadge /> : null}
+                    </button>
+                  </div>
+                ) : null}
               </motion.div>
             </div>
           )}

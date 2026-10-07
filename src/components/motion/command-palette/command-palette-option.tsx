@@ -65,6 +65,11 @@ export function CommandPaletteOption({
         <CommandMatchText text={item.label} query={query} />
       </span>
       {item.badge ? <span className="relative z-10 shrink-0">{item.badge}</span> : null}
+      {item.context ? (
+        <span className="relative z-10 shrink-0 text-[10px] text-muted-foreground">
+          {item.context}
+        </span>
+      ) : null}
       {item.hint ? (
         <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
           <CommandMatchText text={item.hint} query={query} />
