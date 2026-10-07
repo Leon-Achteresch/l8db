@@ -1,6 +1,6 @@
 pkgbase = l8db-bin
 	pkgdesc = Fast, native desktop client for PostgreSQL and other databases
-	pkgver = 0.12.0
+	pkgver = 0.13.0
 	pkgrel = 1
 	url = https://github.com/Leon-Achteresch/l8db
 	arch = x86_64
@@ -13,15 +13,15 @@ pkgbase = l8db-bin
 	optdepends = gnome-keyring: Secret-Service-Backend fuer gespeicherte Datenbank-Credentials
 	optdepends = kwallet: alternatives Secret-Service-Backend
 	optdepends = xdg-utils: Links und Ordner im Dateimanager oeffnen
-	provides = l8db=0.12.0
+	provides = l8db=0.13.0
 	conflicts = l8db
-	noextract = l8db-bin-0.12.0.deb
+	noextract = l8db-bin-0.13.0.deb
 	options = !strip
 	options = !emptydirs
 	options = !debug
-	source = l8db-bin-0.12.0.deb::https://github.com/Leon-Achteresch/l8db/releases/download/v0.12.0/l8db_0.12.0_amd64.deb
-	source = LICENSE-0.12.0::https://raw.githubusercontent.com/Leon-Achteresch/l8db/v0.12.0/LICENSE
-	sha256sums = f5691019f5b9fbc8765dd032dbe328476bcd5b452238657afbe94bc0d7bea796
+	source = l8db-bin-0.13.0.deb::https://github.com/Leon-Achteresch/l8db/releases/download/v0.13.0/l8db_0.13.0_amd64.deb
+	source = LICENSE-0.13.0::https://raw.githubusercontent.com/Leon-Achteresch/l8db/v0.13.0/LICENSE
+	sha256sums = d364991463d9c12564407812098212c24574753e58f1e23be397e7e588d0a2e3
 	sha256sums = cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
 
 pkgname = l8db-bin
