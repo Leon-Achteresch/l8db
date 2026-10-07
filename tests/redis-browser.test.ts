@@ -249,8 +249,8 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.keyboard.press("Escape");
       await page.getByText("browser:hash", { exact: true }).first().waitFor();
       await page.locator('[data-tour="sidebar-table"]').first().click({ button: "right" });
-      expect(await page.getByRole("menuitem", { name: "Drop Table", exact: true }).count()).toBe(0);
-      await page.getByRole("menuitem", { name: "Im Editor öffnen", exact: true }).click();
+      expect(await page.getByRole("menuitem", { name: /^Tabelle löschen/ }).count()).toBe(0);
+      await page.getByRole("menuitem", { name: /^Neue Abfrage für / }).click();
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("SCAN 0 MATCH * COUNT 100", { exact: true }).first().waitFor();
       expect(await page.getByRole("dialog").count()).toBe(0);
@@ -268,7 +268,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.locator('[data-tour="sidebar-table"]').first().click();
       await page.getByText("other:database", { exact: true }).first().waitFor();
       await page.locator('[data-tour="sidebar-table"]').first().click({ button: "right" });
-      await page.getByRole("menuitem", { name: "Alle Keys löschen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Alle Keys löschen…", exact: true }).click();
       await page
         .getByRole("alertdialog")
         .getByText(/FLUSHDB/)

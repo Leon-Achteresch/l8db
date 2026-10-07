@@ -19,6 +19,12 @@ monaco.editor.defineTheme("l8db-light", {
     "editorStickyScroll.shadow": "#00000014",
     "editorStickyScrollHover.background": "#eceef1",
     "editorLink.activeForeground": "#2563eb",
+    "menu.background": "#fdfeff",
+    "menu.foreground": "#1b1e24",
+    "menu.selectionBackground": "#1178c4",
+    "menu.selectionForeground": "#ffffff",
+    "menu.separatorBackground": "#11182714",
+    "menu.border": "#11182724",
   },
 });
 
@@ -39,5 +45,11 @@ monaco.editor.defineTheme("l8db-dark", {
     "editorStickyScroll.shadow": "#00000066",
     "editorStickyScrollHover.background": "#262a3a",
     "editorLink.activeForeground": "#60a5fa",
+    "menu.background": "#1b232a",
+    "menu.foreground": "#e8eaee",
+    "menu.selectionBackground": "#2b85cf",
+    "menu.selectionForeground": "#ffffff",
+    "menu.separatorBackground": "#ffffff14",
+    "menu.border": "#000000b3",
   },
 });

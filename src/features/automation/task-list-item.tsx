@@ -1,11 +1,4 @@
-import {
-  CopyIcon,
-  DownloadIcon,
-  EllipsisIcon,
-  PlayIcon,
-  SquareTerminalIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { EllipsisIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -28,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatRelative, runStatusLabel } from "@/lib/automation/format";
 import { useAutomationStore } from "@/lib/automation/store";
 import type { TaskSummary } from "@/lib/db/automation";
+import { formatMenuShortcut } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { AiFlash } from "./ai-flash";
 import { StatusIcon } from "./status-icon";
@@ -82,21 +76,11 @@ export function TaskListItem({
   const menuItems = (Item: typeof ContextMenuItem | typeof DropdownMenuItem) => (
     <>
       <Item onSelect={() => void actions.run(summary)} disabled={Boolean(summary.runningRunId)}>
-        <PlayIcon />
         Ausführen
       </Item>
-      <Item onSelect={() => void actions.duplicate(summary)}>
-        <CopyIcon />
-        Duplizieren
-      </Item>
-      <Item onSelect={() => void actions.copyCommand(summary)}>
-        <SquareTerminalIcon />
-        Als Befehl kopieren
-      </Item>
-      <Item onSelect={() => void actions.exportTasks(targets())}>
-        <DownloadIcon />
-        Exportieren
-      </Item>
+      <Item onSelect={() => void actions.duplicate(summary)}>Duplizieren</Item>
+      <Item onSelect={() => void actions.copyCommand(summary)}>Als Befehl kopieren</Item>
+      <Item onSelect={() => void actions.exportTasks(targets())}>Exportieren…</Item>
     </>
   );
 
@@ -181,8 +165,7 @@ export function TaskListItem({
           {menuItems(DropdownMenuItem)}
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => actions.remove(targets())}>
-            <Trash2Icon />
-            Löschen
+            Löschen…
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -212,13 +195,12 @@ export function TaskListItem({
       ) : (
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
       )}
-      <ContextMenuContent className="w-52">
+      <ContextMenuContent>
         {menuItems(ContextMenuItem)}
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={() => actions.remove(targets())}>
-          <Trash2Icon />
-          Löschen
-          <ContextMenuShortcut>Entf</ContextMenuShortcut>
+          Löschen…
+          <ContextMenuShortcut>{formatMenuShortcut("Backspace")}</ContextMenuShortcut>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
