@@ -1,6 +1,7 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { ClipboardCopy, Download, FileCode2 } from "lucide-react";
+import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import {
@@ -15,6 +16,7 @@ import { copyText } from "@/lib/clipboard";
 import type { ERSchema } from "@/lib/db";
 import { toDbml, toMermaid } from "@/lib/er-text-export";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { onHotkeyAction } from "@/lib/hotkeys";
 
 const FORMATS = [
   { id: "mermaid", label: "Mermaid", extension: "mmd", render: toMermaid },
@@ -36,20 +38,34 @@ export function TextExportMenu({ schema }: { schema: ERSchema }) {
     }
   };
 
-  const store = async (format: Format) => {
-    try {
-      const filePath = await save({
-        title: `ER-Diagramm als ${format.label} speichern`,
-        defaultPath: `er-diagramm.${format.extension}`,
-        filters: [{ name: format.label, extensions: [format.extension] }],
-      });
-      if (!filePath) return;
-      await writeTextFile(filePath, format.render(schema));
-      toast.success(`${format.label} gespeichert`);
-    } catch (error) {
-      toast.error(`Speichern fehlgeschlagen: ${String(error)}`);
-    }
-  };
+  const store = useCallback(
+    async (format: Format) => {
+      try {
+        const filePath = await save({
+          title: `ER-Diagramm als ${format.label} speichern`,
+          defaultPath: `er-diagramm.${format.extension}`,
+          filters: [{ name: format.label, extensions: [format.extension] }],
+        });
+        if (!filePath) return;
+        await writeTextFile(filePath, format.render(schema));
+        toast.success(`${format.label} gespeichert`);
+      } catch (error) {
+        toast.error(`Speichern fehlgeschlagen: ${String(error)}`);
+      }
+    },
+    [schema],
+  );
+
+  useEffect(() => {
+    const stop = FORMATS.map((format) =>
+      onHotkeyAction(`er.export.${format.id}`, () => {
+        if (!empty) void store(format);
+      }),
+    );
+    return () => {
+      for (const dispose of stop) dispose();
+    };
+  }, [empty, store]);
 
   return (
     <DropdownMenu>

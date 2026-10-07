@@ -15,9 +15,11 @@ import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
 import {
+  buildDiagramExportItems,
   buildHotkeyItems,
   buildNotebookItems,
   buildObjectItems,
+  buildSettingsItems,
 } from "@/features/shell/app-header-search/command-items";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
@@ -57,6 +59,12 @@ export function AppHeaderSearch() {
   const dynamicIsland = useSettingsStore((state) => state.dynamicIsland);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [initialQuery, setInitialQuery] = useState("");
+  const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
+  const openSearch = useCallback((commandsOnly = false) => {
+    setInitialQuery(commandsOnly ? "> " : "");
+    setOpen(true);
+  }, []);
   const pathname = useRouterState({ select: (state) => (open ? state.location.pathname : "") });
   const connections = useConnectionsStore((state) => state.connections);
   const recentNotebooks = useNotebookStore((state) => state.recent);
@@ -92,12 +100,15 @@ export function AppHeaderSearch() {
     [
       {
         hotkey: paletteHotkey,
-        callback: () => setOpen((previous) => !previous),
+        callback: () => {
+          if (open) setOpen(false);
+          else openSearch();
+        },
         options: { ignoreInputs: false },
       },
       {
         hotkey: quickOpenHotkey,
-        callback: () => setOpen(true),
+        callback: () => openSearch(),
         options: { ignoreInputs: false },
       },
       {
@@ -116,12 +127,12 @@ export function AppHeaderSearch() {
 
   useHotkey(
     (commandById("palette.open")?.aliases?.[0] ?? "Mod+Shift+P") as never,
-    () => setOpen((previous) => !previous),
+    () => openSearch(true),
     { ignoreInputs: false, preventDefault: true, stopPropagation: true },
   );
 
   useEffect(() => onHotkeyAction("objects.search", () => setObjectSearchOpen(true)), []);
-  useEffect(() => onHotkeyAction("app.focusSearch", () => setOpen(true)), []);
+  useEffect(() => onHotkeyAction("app.focusSearch", () => openSearch()), [openSearch]);
   useEffect(() => onHotkeyAction("shortcuts.open", () => setShortcutsOpen(true)), []);
 
   const onSelectConnection = useCallback(
@@ -138,6 +149,7 @@ export function AppHeaderSearch() {
     return extensionHost.commands.paletteCommands().map((command) => ({
       id: `extension:${command.id}`,
       label: command.title,
+      kind: "command",
       group: "Extensions",
       icon: Puzzle,
       keywords: [command.id, command.owner],
@@ -167,10 +179,12 @@ export function AppHeaderSearch() {
   );
 
   const items = useMemo<CommandItem[]>(() => {
+    void hotkeyOverrideVersion;
     if (!open) return NO_ITEMS;
     const connectionItems = connections.map((connection) => ({
       id: `connection:${connection.id}`,
       label: connection.name,
+      kind: "connection" as const,
       group: "Verbindungen",
       icon: Database,
       keywords: [connection.kind],
@@ -186,7 +200,9 @@ export function AppHeaderSearch() {
     const connectionManagerItem: CommandItem = {
       id: "connections:manage",
       label: "Verbindungen verwalten",
-      group: "Verbindungen",
+      kind: "command",
+      group: "Befehle",
+      context: "Verbindungen",
       icon: Plug,
       keywords: ["connection", "manager", "verbindung", "hinzufügen", "neu", "bearbeiten"],
       onSelect: () => {
@@ -200,7 +216,8 @@ export function AppHeaderSearch() {
             {
               id: "objects:deep-search",
               label: "Spalten und Quelltext durchsuchen",
-              group: "Objekte",
+              kind: "command",
+              group: "Befehle",
               icon: TextSearch,
               keywords: ["spalte", "column", "quelltext", "source", "suche"],
               onSelect: () => {
@@ -213,6 +230,7 @@ export function AppHeaderSearch() {
     const tourItem: CommandItem = {
       id: "tour:start",
       label: "Produkttour von vorn",
+      kind: "command",
       group: "Hilfe",
       icon: Sparkles,
       keywords: ["tour", "hilfe", "onboarding", "guide"],
@@ -224,6 +242,7 @@ export function AppHeaderSearch() {
     const shortcutsItem: CommandItem = {
       id: "help:shortcuts",
       label: "Tastenkürzel anzeigen",
+      kind: "command",
       group: "Hilfe",
       icon: Keyboard,
       hint: formatHotkeyDisplay(shortcutsHotkey),
@@ -243,6 +262,8 @@ export function AppHeaderSearch() {
       setShortcutsOpen,
       easyMode,
     );
+    const diagramExportItems = buildDiagramExportItems(pathname, activeConnection !== null);
+    const settingsItems = buildSettingsItems(setOpen, navigate);
     return [
       ...connectionItems,
       connectionManagerItem,
@@ -251,8 +272,10 @@ export function AppHeaderSearch() {
       ...notebookItems,
       ...extensionItems,
       ...hotkeyItems,
+      ...diagramExportItems,
       tourItem,
       shortcutsItem,
+      ...settingsItems,
     ];
   }, [
     activeConnection?.id,
@@ -281,7 +304,7 @@ export function AppHeaderSearch() {
           buttonRef={searchButtonRef}
           shortcut={formatHotkeyDisplay(paletteHotkey)}
           badge={searchNew ? <NewBadge /> : undefined}
-          onOpen={() => setOpen(true)}
+          onOpen={() => openSearch()}
         />
       ) : (
         <button
@@ -290,7 +313,7 @@ export function AppHeaderSearch() {
           data-tour="header-search"
           data-toast-origin
           aria-label="Suchen"
-          onClick={() => setOpen(true)}
+          onClick={() => openSearch()}
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
           className={cn(
             "inline-flex h-7 w-full max-w-[460px] items-center gap-2 rounded-full",
@@ -314,11 +337,21 @@ export function AppHeaderSearch() {
         items={items}
         open={open}
         onOpenChange={setOpen}
-        placeholder="Objekte und Verbindungen…"
+        placeholder="Suchen… · > für Befehle"
         emptyMessage="Keine Treffer"
         maxVisible={MAX_VISIBLE_RESULTS}
         featureId="search.fuzzy"
         queryItem={askAiItem}
+        initialQuery={initialQuery}
+        commandFeatureId="search.commands"
+        recentCommandIds={recentCommandIds}
+        onSelectItem={(item) => {
+          if (item.kind === "command") {
+            setRecentCommandIds((ids) =>
+              [item.id, ...ids.filter((id) => id !== item.id)].slice(0, 6),
+            );
+          }
+        }}
       />
       {objectSearchMounted.current && (
         <Suspense fallback={null}>

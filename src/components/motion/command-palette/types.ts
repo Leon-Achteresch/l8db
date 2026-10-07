@@ -6,6 +6,8 @@ export type CommandItem = {
   id: string;
   label: string;
   group?: string;
+  kind?: "command" | "setting" | "object" | "connection";
+  context?: string;
   hint?: string;
   keywords?: string[];
   icon?: LucideIcon;
@@ -24,4 +26,8 @@ export interface CommandPaletteProps {
   maxVisible?: number;
   featureId?: NewFeatureId;
   queryItem?: (query: string) => CommandItem;
+  initialQuery?: string;
+  commandFeatureId?: NewFeatureId;
+  recentCommandIds?: string[];
+  onSelectItem?: (item: CommandItem) => void;
 }

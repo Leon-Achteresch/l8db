@@ -149,6 +149,19 @@ export function useQueryViewHotkeys({
     [handleFileSave],
   );
   useEffect(() => onHotkeyAction("grid.export", openCsvExport), [openCsvExport]);
+  useEffect(() => {
+    const stop = [
+      onHotkeyAction("query.format", () => editorApiRef.current?.format()),
+      onHotkeyAction("query.comment", () => editorApiRef.current?.toggleComment()),
+      onHotkeyAction("query.bookmark", () => editorApiRef.current?.toggleBookmark()),
+      onHotkeyAction("query.nextBookmark", () => editorApiRef.current?.gotoBookmark("next")),
+      onHotkeyAction("query.prevBookmark", () => editorApiRef.current?.gotoBookmark("previous")),
+      onHotkeyAction("query.history", toggleHistory),
+    ];
+    return () => {
+      for (const dispose of stop) dispose();
+    };
+  }, [editorApiRef, toggleHistory]);
 
   return shortcutLabel;
 }
