@@ -76,6 +76,7 @@ export function CsvImportPanel() {
       </p>
       <p className="text-xs text-muted-foreground">
         Ziel: {connection?.name} · {database} · {schema}
+        {targetTable ? ` · ${targetTable}` : ""}
       </p>
       {task && isTaskActive(task) && (
         <div className="flex items-center gap-3" role="status">
