@@ -25,8 +25,9 @@ export function WindowCloseGuard() {
   const tabs = useTableTabs((state) => (open ? state.tabs : NO_TABS));
   const dirty = tabs.filter((tab) => tab.kind === "query" && isQueryTabDirty(tab));
   const transactions = useTransactionStore((state) => state.transactions);
-  const tasks = useTasksStore((state) => state.tasks);
-  const activeTasks = tasks.filter(isTaskActive);
+  const activeTasks = useTasksStore((state) =>
+    open ? state.tasks.filter(isTaskActive).length : 0,
+  );
   useEffect(() => {
     if (!isTauri()) return;
     let disposed = false;
@@ -81,7 +82,7 @@ export function WindowCloseGuard() {
         <div className="space-y-2 text-sm">
           <p>
             {dirty.length} ungespeicherte Dateien der aktiven Verbindung · {transactions.length}{" "}
-            offene Transaktionen · {activeTasks.length} laufende Aufgaben
+            offene Transaktionen · {activeTasks} laufende Aufgaben
           </p>
           <p className="text-muted-foreground">
             Prüfen Sie auch Dateientwürfe anderer Verbindungen. Beim Schließen gehen offene

@@ -41,6 +41,7 @@ const NECK_FRAMES = [
 ];
 const NECK_EASE: Easing[] = ["linear", EASE_IN_OUT, "linear", EASE_OUT, "linear"];
 const RISE = { duration: 0.18, ease: EASE_OUT };
+const BURST_MS = 1000;
 const PIECES: [Anchor, Anchor][] = [
   ["mid", "mid"],
   ["mid", "start"],
@@ -99,6 +100,7 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
   const [drop, setDrop] = useState<Drop | null>(null);
   const current = useRef<Drop | null>(null);
   const sequence = useRef(0);
+  const lastEnter = useRef(Number.NEGATIVE_INFINITY);
 
   useEffect(() => {
     const container = root.current;
@@ -116,7 +118,10 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
       if (toast.dataset.front !== "true" || toast.dataset.yPosition !== "top") return settle(toast);
       const previous = current.current?.toast;
       if (previous && previous !== toast) settle(previous);
-      const geometry = reduce ? null : measure(toast);
+      const now = performance.now();
+      const burst = now - lastEnter.current < BURST_MS;
+      lastEnter.current = now;
+      const geometry = reduce || burst ? null : measure(toast);
       if (!geometry) {
         start(null);
         return settle(toast);
@@ -129,7 +134,11 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
     const leave = (toast: HTMLElement) => {
       if (toast.dataset.yPosition !== "top") return;
       if (current.current && current.current.toast !== toast) return;
-      if (!toast.hasAttribute("data-dropped")) {
+      if (
+        !toast.hasAttribute("data-dropped") ||
+        performance.now() - lastEnter.current < BURST_MS ||
+        container.querySelector(`${TOAST}:not([data-removed="true"])`)
+      ) {
         settle(toast);
         start(null);
         return;
@@ -181,6 +190,7 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
   return (
     <div
       key={drop.key}
+      data-toast-drop={leaving ? "leave" : "enter"}
       aria-hidden="true"
       className="pointer-events-none fixed z-[999999998] overflow-hidden"
       style={drop.box}
