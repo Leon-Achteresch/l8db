@@ -169,7 +169,7 @@ export function normalizeUiDensity(value: unknown): UiDensity {
   return value === "compact" || value === "spacious" ? value : "normal";
 }
 
-const DEFAULT_SETTINGS = {
+export const DEFAULT_SETTINGS = {
   easyMode: false,
   hiddenTableDetailTabs: [] as TableDetailTab[],
   rowLimit: 100,

@@ -1,4 +1,13 @@
-import { Blocks, CodeXml, Database, Info, Keyboard, ShieldCheck, Sliders } from "lucide-react";
+import {
+  Blocks,
+  CodeXml,
+  Database,
+  Info,
+  Keyboard,
+  Monitor,
+  ShieldCheck,
+  Sliders,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { NewBadge } from "@/components/new-badge";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -18,6 +27,7 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     label: "Allgemein",
     icon: Sliders,
   },
+  { id: "appearance", label: "Darstellung", icon: Monitor },
   {
     id: "editor",
     label: "SQL-Editor",
@@ -71,6 +81,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
             key={tab.id}
             type="button"
             onClick={() => onSelectTab(tab.id)}
+            aria-current={isActive ? "page" : undefined}
             className={cn(
               "group relative flex w-full items-center gap-2.5 rounded-md px-2.5 py-[calc(0.375rem+var(--ui-density-step)/2)] text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
               isActive

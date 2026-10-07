@@ -21,11 +21,7 @@ export function EditorKeymapSection({ store, compact }: { store: Store; compact:
       title="Tastenbelegung"
       description="Vim-Modus mit Statuszeile (NORMAL/INSERT/VISUAL) und Befehlszeile: :w speichert, :q schließt den Tab, :wq beides."
     >
-      <Row
-        title="Tastaturmodus"
-        description="Vim wird erst beim Aktivieren nachgeladen und gilt für alle SQL-Editoren."
-        compact={compact}
-      >
+      <Row settingId="editor-keymap" compact={compact}>
         <Select
           value={store.editorKeymap}
           onValueChange={(value) => store.setEditorKeymap(value as EditorKeymap)}

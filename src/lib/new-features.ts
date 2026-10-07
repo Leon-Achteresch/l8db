@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "settings.general.workspace-tab": "0.9.1",
   "workspace.inline-tabs": "0.9.1",
   "sidebar.rename-inline": "0.9.1",
   "search.fuzzy": "0.10.0",

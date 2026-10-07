@@ -208,7 +208,7 @@ export function buildSettingsItems(
     keywords: [setting.description, ...setting.keywords],
     onSelect: () => {
       setOpen(false);
-      void navigate({ to: "/settings", search: { tab: setting.tabId } });
+      void navigate({ to: "/settings", search: { tab: setting.tabId, setting: setting.id } });
     },
   }));
 }
