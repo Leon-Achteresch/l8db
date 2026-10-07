@@ -147,23 +147,24 @@ export function DashboardEditor({
     useChartTabsStore.getState().open({ dashboardId: dashboard.id, widget, dataset, isNew: true });
   }, [dashboard.datasets, dashboard.widgets, dashboard.id]);
 
+  const dashboardId = dashboard.id;
   const startEdit = useCallback(
     (widgetId: string) => {
-      const current =
-        useDashboardsStore.getState().dashboards.find((d) => d.id === dashboard.id) ?? dashboard;
-      const widget = current.widgets.find((w) => w.id === widgetId);
-      if (!widget) return;
+      const current = useDashboardsStore.getState().dashboards.find((d) => d.id === dashboardId);
+      const widget = current?.widgets.find((w) => w.id === widgetId);
+      if (!current || !widget) return;
       const dataset =
         current.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
       useChartTabsStore.getState().open({
-        dashboardId: dashboard.id,
+        dashboardId,
         widget: structuredClone(widget),
         dataset: structuredClone(dataset),
         isNew: false,
       });
     },
-    [dashboard],
+    [dashboardId],
   );
+  const openCharts = useCallback(() => setDrawer("charts"), []);
 
   const saveDraft = (tab: ChartTab, next: ChartDraft, close: boolean) => {
     const persisted = persistDraft(tab.isNew, next);
@@ -474,14 +475,12 @@ export function DashboardEditor({
             />
           </Suspense>
         ) : (
-          <div className="relative min-h-0 flex-1 overflow-y-auto">
-            <DashboardCanvas
-              dashboardId={dashboard.id}
-              onEdit={editing ? startEdit : undefined}
-              onAdd={editing ? startNewChart : undefined}
-              onOpenCharts={editing ? () => setDrawer("charts") : undefined}
-            />
-          </div>
+          <DashboardCanvas
+            dashboardId={dashboard.id}
+            onEdit={editing ? startEdit : undefined}
+            onAdd={editing ? startNewChart : undefined}
+            onOpenCharts={editing ? openCharts : undefined}
+          />
         )}
       </div>
     </DashboardScopeContext.Provider>

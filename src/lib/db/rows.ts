@@ -124,6 +124,7 @@ export async function executeQuery(
     sql,
     options,
     ...(options?.session ? { session: options.session } : {}),
+    ...(options?.pooled ? { pooled: true } : {}),
   });
 }
 

@@ -75,6 +75,12 @@ pub fn cancellation_token() -> CancellationToken {
         .unwrap_or_default()
 }
 
+pub fn interrupted() -> bool {
+    CONTEXT
+        .try_with(|ctx| ctx.interrupted.load(Ordering::Acquire))
+        .unwrap_or(false)
+}
+
 pub fn session_id() -> Option<String> {
     SESSION.try_with(Clone::clone).ok().flatten()
 }
@@ -276,11 +282,7 @@ impl PgSession {
     }
 
     pub fn finish<T>(&self, result: Result<T, String>) -> Result<T, String> {
-        if self.interrupted.load(Ordering::Acquire)
-            || CONTEXT
-                .try_with(|ctx| ctx.interrupted.load(Ordering::Acquire))
-                .unwrap_or(false)
-        {
+        if self.interrupted.load(Ordering::Acquire) || interrupted() {
             self.interrupted.store(true, Ordering::Release);
             if result.is_ok() {
                 return Err("Abfrage abgeschlossen, während ihr Abbruch angefordert wurde. Die Sitzung wird nicht weiterverwendet; offene Transaktion zurückrollen.".into());

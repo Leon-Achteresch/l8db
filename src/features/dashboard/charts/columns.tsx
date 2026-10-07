@@ -1,44 +1,115 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { fmtCompact, fmtNumber } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { CartesianAxes } from "./cartesian-axes";
 import { ChartTooltip } from "./chart-tooltip";
 import { type ChartProps, color, series } from "./chart-utils";
-import { labelStep, niceTicks, scale, stackValues, valueDomain } from "./svg-geometry";
+import {
+  labelStep,
+  niceTicks,
+  roundedRectPath,
+  scale,
+  stackValues,
+  valueDomain,
+} from "./svg-geometry";
 
 export function Columns({ rows, shape, options }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const data = series(rows, shape);
   const single = shape.metrics.length === 1;
   const horizontal = options.horizontal;
-  const stacks = stackValues(
-    data,
-    shape.metrics.map((m) => m.key),
-    options.stacked,
-  );
-  const domain = valueDomain(stacks);
-  const ticks = niceTicks(domain[0], domain[1]);
-  const box = { left: horizontal ? 100 : 40, top: 12, right: width - 8, bottom: height - 20 };
-  const n = data.length;
-  const catStart = horizontal ? box.top : box.left;
-  const band = ((horizontal ? box.bottom : box.right) - catStart) / Math.max(n, 1);
-  const inner = band * 0.75;
-  const thick = options.stacked ? inner : inner / Math.max(shape.metrics.length, 1);
-  const value = horizontal
-    ? scale(domain, [box.left, box.right])
-    : scale(domain, [box.bottom, box.top]);
-  const center = (j: number) => catStart + j * band + band / 2;
-  const names = data.map((row) => String(row.name));
-  const step = labelStep(band, Math.max(0, ...names.map((name) => name.length)));
-  const valueLabels = ticks.map((t) => ({ pos: value(t), text: fmtCompact(t) }));
-  const categoryLabels = names.flatMap((name, j) =>
-    horizontal
-      ? [{ pos: center(j), text: name.length > 14 ? `${name.slice(0, 13)}…` : name }]
-      : j % step === 0
-        ? [{ pos: center(j), text: name }]
-        : [],
-  );
+  const chart = useMemo(() => {
+    const data = series(rows, shape);
+    const stacks = stackValues(
+      data,
+      shape.metrics.map((m) => m.key),
+      options.stacked,
+    );
+    const domain = valueDomain(stacks);
+    const ticks = niceTicks(domain[0], domain[1]);
+    const box = { left: horizontal ? 100 : 40, top: 12, right: width - 8, bottom: height - 20 };
+    const n = data.length;
+    const catStart = horizontal ? box.top : box.left;
+    const band = ((horizontal ? box.bottom : box.right) - catStart) / Math.max(n, 1);
+    const inner = band * 0.75;
+    const thick = options.stacked ? inner : inner / Math.max(shape.metrics.length, 1);
+    const value = horizontal
+      ? scale(domain, [box.left, box.right])
+      : scale(domain, [box.bottom, box.top]);
+    const center = (j: number) => catStart + j * band + band / 2;
+    const names = data.map((row) => String(row.name));
+    const step = labelStep(band, Math.max(0, ...names.map((name) => name.length)));
+    const valueLabels = ticks.map((t) => ({ pos: value(t), text: fmtCompact(t) }));
+    const categoryLabels = names.flatMap((name, j) =>
+      horizontal
+        ? [{ pos: center(j), text: name.length > 14 ? `${name.slice(0, 13)}…` : name }]
+        : j % step === 0
+          ? [{ pos: center(j), text: name }]
+          : [],
+    );
+    const bars = stacks.flatMap((stack, i) =>
+      stack.map(([low, high], j) => {
+        const c0 = catStart + j * band + (band - inner) / 2 + (options.stacked ? 0 : i * thick);
+        const v0 = value(low);
+        const v1 = value(high);
+        const length = Math.abs(v1 - v0);
+        const size = Math.max(thick - 1, 1);
+        return {
+          key: `${shape.metrics[i].key}-${String(data[j].name)}`,
+          fill: color((single ? j : i) + options.colorOffset),
+          c0,
+          size,
+          v0,
+          v1,
+          length,
+          radius:
+            options.stacked && i < shape.metrics.length - 1 ? 0 : Math.min(6, size / 2, length / 2),
+          value: high - low,
+        };
+      }),
+    );
+    const paths = new Map<string, string>();
+    for (const bar of bars) {
+      const at = Math.min(bar.v0, bar.v1);
+      paths.set(
+        bar.fill,
+        (paths.get(bar.fill) ?? "") +
+          (horizontal
+            ? roundedRectPath(at, bar.c0, bar.length, bar.size, bar.radius)
+            : roundedRectPath(bar.c0, at, bar.size, bar.length, bar.radius)),
+      );
+    }
+    const marks = (
+      <>
+        <CartesianAxes
+          box={box}
+          gridY={options.showGrid && !horizontal ? ticks.map(value) : []}
+          gridX={options.showGrid && horizontal ? ticks.map(value) : []}
+          xLabels={horizontal ? valueLabels : categoryLabels}
+          yLabels={horizontal ? categoryLabels : valueLabels}
+        />
+        {[...paths].map(([fill, d]) => (
+          <path key={fill} d={d} fill={fill} />
+        ))}
+        {options.labels &&
+          bars.map((bar) => (
+            <text
+              key={bar.key}
+              x={horizontal ? Math.max(bar.v0, bar.v1) + 4 : bar.c0 + bar.size / 2}
+              y={horizontal ? bar.c0 + bar.size / 2 : Math.min(bar.v0, bar.v1) - 4}
+              textAnchor={horizontal ? "start" : "middle"}
+              dominantBaseline={horizontal ? "middle" : "auto"}
+              fontSize={10}
+              fill="var(--muted-foreground)"
+            >
+              {fmtCompact(bar.value)}
+            </text>
+          ))}
+      </>
+    );
+    return { data, box, n, catStart, band, center, marks };
+  }, [rows, shape, options, horizontal, single, width, height]);
+  const { data, box, n, catStart, band, center } = chart;
   const hovered = hover !== null ? data[hover] : undefined;
 
   return (
@@ -67,52 +138,7 @@ export function Columns({ rows, shape, options }: ChartProps) {
               fill="var(--muted)"
             />
           )}
-          <CartesianAxes
-            box={box}
-            gridY={options.showGrid && !horizontal ? ticks.map(value) : []}
-            gridX={options.showGrid && horizontal ? ticks.map(value) : []}
-            xLabels={horizontal ? valueLabels : categoryLabels}
-            yLabels={horizontal ? categoryLabels : valueLabels}
-          />
-          {stacks.map((stack, i) =>
-            stack.map(([low, high], j) => {
-              const c0 =
-                catStart + j * band + (band - inner) / 2 + (options.stacked ? 0 : i * thick);
-              const v0 = value(low);
-              const v1 = value(high);
-              const length = Math.abs(v1 - v0);
-              const size = Math.max(thick - 1, 1);
-              const radius =
-                options.stacked && i < shape.metrics.length - 1
-                  ? 0
-                  : Math.min(6, size / 2, length / 2);
-              const fill = color((single ? j : i) + options.colorOffset);
-              return (
-                <g key={`${shape.metrics[i].key}-${String(data[j].name)}`}>
-                  <rect
-                    x={horizontal ? Math.min(v0, v1) : c0}
-                    y={horizontal ? c0 : Math.min(v0, v1)}
-                    width={horizontal ? length : size}
-                    height={horizontal ? size : length}
-                    rx={radius}
-                    fill={fill}
-                  />
-                  {options.labels && (
-                    <text
-                      x={horizontal ? Math.max(v0, v1) + 4 : c0 + size / 2}
-                      y={horizontal ? c0 + size / 2 : Math.min(v0, v1) - 4}
-                      textAnchor={horizontal ? "start" : "middle"}
-                      dominantBaseline={horizontal ? "middle" : "auto"}
-                      fontSize={10}
-                      fill="var(--muted-foreground)"
-                    >
-                      {fmtCompact(high - low)}
-                    </text>
-                  )}
-                </g>
-              );
-            }),
-          )}
+          {chart.marks}
         </svg>
       )}
       {hover !== null && hovered && (

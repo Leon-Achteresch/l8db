@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ComponentType, memo } from "react";
 import type { ChartKind } from "@/lib/dashboards";
 import { AreaStacked } from "./area-stacked";
 import { Bars } from "./bars";
@@ -18,21 +18,21 @@ import { Rings } from "./rings";
 import { Score } from "./score";
 import { TreemapChart } from "./treemap-chart";
 
-export const CHART_RENDERERS: Record<ChartKind, (props: ChartProps) => ReactNode> = {
-  kpi: Kpi,
-  area: AreaStacked,
-  line: Lines,
-  column: Columns,
-  bars: Bars,
-  funnel: Funnel,
-  donut: Donut,
-  rings: Rings,
-  radar: RadarNet,
-  scatter: Bubbles,
-  sankey: Flow,
-  score: Score,
-  gauge: GaugeChart,
-  treemap: TreemapChart,
-  heatmap: Heatmap,
-  table: DataTable,
+export const CHART_RENDERERS: Record<ChartKind, ComponentType<ChartProps>> = {
+  kpi: memo(Kpi),
+  area: memo(AreaStacked),
+  line: memo(Lines),
+  column: memo(Columns),
+  bars: memo(Bars),
+  funnel: memo(Funnel),
+  donut: memo(Donut),
+  rings: memo(Rings),
+  radar: memo(RadarNet),
+  scatter: memo(Bubbles),
+  sankey: memo(Flow),
+  score: memo(Score),
+  gauge: memo(GaugeChart),
+  treemap: memo(TreemapChart),
+  heatmap: memo(Heatmap),
+  table: memo(DataTable),
 };

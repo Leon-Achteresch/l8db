@@ -544,6 +544,9 @@ pub trait DatabaseAdapter: Send + Sync {
         Err(unsupported("Direkte Zeilenänderung"))
     }
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
+    async fn execute_pooled_query(&self, sql: &str) -> Result<QueryResult, String> {
+        self.execute_query(sql).await
+    }
     async fn execute_query_with_params(
         &self,
         sql: &str,
@@ -1486,6 +1489,8 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
             msg.push_str("\nSQLSTATE 57014");
         } else if code == &tokio_postgres::error::SqlState::UNSAFE_NEW_ENUM_VALUE_USAGE {
             msg.push_str("\nSQLSTATE 55P04");
+        } else if code == &tokio_postgres::error::SqlState::READ_ONLY_SQL_TRANSACTION {
+            msg.push_str("\nSQLSTATE 25006");
         }
         msg
     } else {

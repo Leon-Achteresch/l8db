@@ -13,6 +13,7 @@ export interface QueryExecutionOptions {
   confirmed?: boolean;
   track?: boolean;
   session?: string;
+  pooled?: boolean;
 }
 
 const SQL_COMMANDS = new Set([

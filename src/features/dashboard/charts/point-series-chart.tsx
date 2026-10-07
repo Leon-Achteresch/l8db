@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { fmtCompact, fmtNumber } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { CartesianAxes } from "./cartesian-axes";
@@ -20,23 +20,90 @@ export function PointSeriesChart({ rows, shape, options, area }: ChartProps & { 
   const uid = useId();
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const data = series(rows, shape);
-  const stacks = stackValues(
-    data,
-    shape.metrics.map((m) => m.key),
-    area && options.stacked,
-  );
-  const domain = valueDomain(stacks);
-  const box = { left: 40, top: 12, right: width - 8, bottom: height - 20 };
-  const y = scale(domain, [box.bottom, box.top]);
-  const n = data.length;
-  const span = box.right - box.left;
-  const x = (i: number) => (n < 2 ? box.left + span / 2 : box.left + (i * span) / (n - 1));
-  const ticks = niceTicks(domain[0], domain[1]);
-  const step = labelStep(
-    n < 2 ? span : span / (n - 1),
-    Math.max(0, ...data.map((r) => String(r.name).length)),
-  );
+  const chart = useMemo(() => {
+    const data = series(rows, shape);
+    const stacks = stackValues(
+      data,
+      shape.metrics.map((m) => m.key),
+      area && options.stacked,
+    );
+    const domain = valueDomain(stacks);
+    const box = { left: 40, top: 12, right: width - 8, bottom: height - 20 };
+    const y = scale(domain, [box.bottom, box.top]);
+    const n = data.length;
+    const span = box.right - box.left;
+    const x = (i: number) => (n < 2 ? box.left + span / 2 : box.left + (i * span) / (n - 1));
+    const ticks = niceTicks(domain[0], domain[1]);
+    const step = labelStep(
+      n < 2 ? span : span / (n - 1),
+      Math.max(0, ...data.map((r) => String(r.name).length)),
+    );
+    const tops = stacks.map((stack) => stack.map(([, high], j): Point => [x(j), y(high)]));
+    const axes = (
+      <>
+        {area && (
+          <defs>
+            {shape.metrics.map((m, i) => (
+              <linearGradient key={m.key} id={`fill-${uid}-${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color(i + options.colorOffset)} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={color(i + options.colorOffset)} stopOpacity={0.08} />
+              </linearGradient>
+            ))}
+          </defs>
+        )}
+        <CartesianAxes
+          box={box}
+          gridY={options.showGrid ? ticks.map(y) : []}
+          yLabels={ticks.map((t) => ({ pos: y(t), text: fmtCompact(t) }))}
+          xLabels={data.flatMap((row, i) =>
+            i % step === 0 ? [{ pos: x(i), text: String(row.name) }] : [],
+          )}
+        />
+      </>
+    );
+    const marks = stacks.map((stack, i) => {
+      const stroke = color(i + options.colorOffset);
+      const top = tops[i];
+      const line = curvePath(top, options.curve);
+      return (
+        <g key={shape.metrics[i].key}>
+          {area && (
+            <path
+              d={`${line}${curvePath(
+                stack.map(([low], j): Point => [x(j), y(low)]).reverse(),
+                options.curve,
+                false,
+              )}Z`}
+              fill={`url(#fill-${uid}-${i})`}
+            />
+          )}
+          <path d={line} fill="none" stroke={stroke} strokeWidth={area ? 2 : 2.5} />
+          {!area &&
+            n <= MAX_DOTS &&
+            top.map(([px, py], j) => (
+              <circle key={String(data[j].name)} cx={px} cy={py} r={3} fill={stroke} />
+            ))}
+          {!area &&
+            n <= MAX_DOTS &&
+            options.labels &&
+            top.map(([px, py], j) => (
+              <text
+                key={`l${String(data[j].name)}`}
+                x={px}
+                y={py - 8}
+                textAnchor="middle"
+                fontSize={10}
+                fill="var(--muted-foreground)"
+              >
+                {fmtCompact(stack[j][1] - stack[j][0])}
+              </text>
+            ))}
+        </g>
+      );
+    });
+    return { data, box, n, span, x, tops, axes, marks };
+  }, [rows, shape, options, area, width, height, uid]);
+  const { data, box, n, span, x, tops } = chart;
   const hovered = hover !== null ? data[hover] : undefined;
 
   return (
@@ -56,81 +123,25 @@ export function PointSeriesChart({ rows, shape, options, area }: ChartProps & { 
           }}
           onMouseLeave={() => setHover(null)}
         >
-          {area && (
-            <defs>
-              {shape.metrics.map((m, i) => (
-                <linearGradient key={m.key} id={`fill-${uid}-${i}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color(i + options.colorOffset)} stopOpacity={0.35} />
-                  <stop
-                    offset="100%"
-                    stopColor={color(i + options.colorOffset)}
-                    stopOpacity={0.08}
-                  />
-                </linearGradient>
-              ))}
-            </defs>
-          )}
-          <CartesianAxes
-            box={box}
-            gridY={options.showGrid ? ticks.map(y) : []}
-            yLabels={ticks.map((t) => ({ pos: y(t), text: fmtCompact(t) }))}
-            xLabels={data.flatMap((row, i) =>
-              i % step === 0 ? [{ pos: x(i), text: String(row.name) }] : [],
-            )}
-          />
+          {chart.axes}
           {hover !== null && (
             <line x1={x(hover)} x2={x(hover)} y1={box.top} y2={box.bottom} stroke="var(--border)" />
           )}
-          {stacks.map((stack, i) => {
-            const stroke = color(i + options.colorOffset);
-            const top = stack.map(([, high], j): Point => [x(j), y(high)]);
-            const line = curvePath(top, options.curve);
-            return (
-              <g key={shape.metrics[i].key}>
-                {area && (
-                  <path
-                    d={`${line}${curvePath(
-                      stack.map(([low], j): Point => [x(j), y(low)]).reverse(),
-                      options.curve,
-                      false,
-                    )}Z`}
-                    fill={`url(#fill-${uid}-${i})`}
-                  />
-                )}
-                <path d={line} fill="none" stroke={stroke} strokeWidth={area ? 2 : 2.5} />
-                {!area &&
-                  n <= MAX_DOTS &&
-                  top.map(([px, py], j) => (
-                    <circle key={String(data[j].name)} cx={px} cy={py} r={3} fill={stroke} />
-                  ))}
-                {!area &&
-                  n <= MAX_DOTS &&
-                  options.labels &&
-                  top.map(([px, py], j) => (
-                    <text
-                      key={`l${String(data[j].name)}`}
-                      x={px}
-                      y={py - 8}
-                      textAnchor="middle"
-                      fontSize={10}
-                      fill="var(--muted-foreground)"
-                    >
-                      {fmtCompact(stack[j][1] - stack[j][0])}
-                    </text>
-                  ))}
-                {hover !== null && top[hover] && (
-                  <circle
-                    cx={top[hover][0]}
-                    cy={top[hover][1]}
-                    r={4}
-                    fill={stroke}
-                    stroke="var(--card)"
-                    strokeWidth={2}
-                  />
-                )}
-              </g>
-            );
-          })}
+          {chart.marks}
+          {hover !== null &&
+            tops.map((top, i) =>
+              top[hover] ? (
+                <circle
+                  key={shape.metrics[i].key}
+                  cx={top[hover][0]}
+                  cy={top[hover][1]}
+                  r={4}
+                  fill={color(i + options.colorOffset)}
+                  stroke="var(--card)"
+                  strokeWidth={2}
+                />
+              ) : null,
+            )}
         </svg>
       )}
       {hover !== null && hovered && (
