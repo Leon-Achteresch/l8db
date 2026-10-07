@@ -3,6 +3,7 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import "monaco-editor/features/diffEditor/register";
 import "monaco-editor/features/diffEditorBreadcrumbs/register";
 
+import { diffChangeLines, nextDiffLine } from "@/features/compare/diff-navigation";
 import { monaco } from "@/lib/monaco";
 import "./definition-diff-editor.css";
 
@@ -57,7 +58,7 @@ export function DefinitionDiffEditor({
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const diffRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
-  const indexRef = useRef(-1);
+  const activeSideRef = useRef<"original" | "modified">("modified");
   const statsRef = useRef<((stats: DiffStats) => void) | undefined>(onStats);
   const { resolvedTheme } = useTheme();
 
@@ -95,12 +96,19 @@ export function DefinitionDiffEditor({
     });
     diffRef.current = editor;
 
+    const originalFocus = editor.getOriginalEditor().onDidFocusEditorText(() => {
+      activeSideRef.current = "original";
+    });
+    const modifiedFocus = editor.getModifiedEditor().onDidFocusEditorText(() => {
+      activeSideRef.current = "modified";
+    });
     const subscription = editor.onDidUpdateDiff(() => {
-      indexRef.current = -1;
       statsRef.current?.(diffStats(editor.getLineChanges() ?? []));
     });
 
     return () => {
+      originalFocus.dispose();
+      modifiedFocus.dispose();
       subscription.dispose();
       const models = editor.getModel();
       editor.dispose();
@@ -153,11 +161,15 @@ export function DefinitionDiffEditor({
       const editor = diffRef.current;
       const changes = editor?.getLineChanges();
       if (!editor || !changes || changes.length === 0) return;
-      const next = (indexRef.current + direction + changes.length * 2) % changes.length;
-      indexRef.current = next;
-      const change = changes[next];
-      const line = change.modifiedStartLineNumber || change.originalStartLineNumber || 1;
-      const target = editor.getModifiedEditor();
+      const side = activeSideRef.current;
+      const target = side === "original" ? editor.getOriginalEditor() : editor.getModifiedEditor();
+      const line = nextDiffLine(
+        diffChangeLines(changes, side),
+        target.getPosition()?.lineNumber ?? 1,
+        direction,
+        target.getModel()?.getLineCount() ?? 1,
+      );
+      if (line === null) return;
       target.revealLineInCenter(line);
       target.setPosition({ lineNumber: line, column: 1 });
       target.focus();

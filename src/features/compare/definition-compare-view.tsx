@@ -92,7 +92,6 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const [scrollSync] = useState(createScrollSyncGroup);
   scrollSync.enabled = props.syncScroll;
   const syncScrollFeature = useNewFeatureVisibility<HTMLButtonElement>("compare.scroll-sync");
-  const changeIndex = useRef(-1);
   const draft = props.draft ?? rightState.definition;
   const transferState = transferSide === "left" ? leftState : rightState;
   const transferLabel = transferSide === "left" ? "Quelle" : "Ziel";
@@ -123,14 +122,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
       diffRef.current?.goToChange(direction);
       return;
     }
-    if (changeLines.length === 0) return;
-    changeIndex.current =
-      changeIndex.current < 0
-        ? direction === 1
-          ? 0
-          : changeLines.length - 1
-        : (changeIndex.current + direction + changeLines.length) % changeLines.length;
-    draftRef.current?.goToLine(changeLines[changeIndex.current]);
+    draftRef.current?.goToChange(changeLines, direction);
   };
 
   const loadDefinition = useCallback(
