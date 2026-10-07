@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import type { NewFeatureId } from "@/lib/new-features";
 
 export type CommandItem = {
   id: string;
@@ -21,5 +22,6 @@ export interface CommandPaletteProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   maxVisible?: number;
+  featureId?: NewFeatureId;
   queryItem?: (query: string) => CommandItem;
 }

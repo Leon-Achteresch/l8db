@@ -149,6 +149,7 @@ export function AppHeaderSearch() {
   }, [extensionHost, extensionVersion]);
 
   const askNew = useHasNewFeatures("ai.ask");
+  const searchNew = useHasNewFeatures("search");
   const askAiItem = useCallback(
     (query: string): CommandItem => ({
       id: "ai:ask",
@@ -279,6 +280,7 @@ export function AppHeaderSearch() {
         <DynamicIsland
           buttonRef={searchButtonRef}
           shortcut={formatHotkeyDisplay(paletteHotkey)}
+          badge={searchNew ? <NewBadge /> : undefined}
           onOpen={() => setOpen(true)}
         />
       ) : (
@@ -302,6 +304,7 @@ export function AppHeaderSearch() {
           <span className="min-w-0 flex-1 truncate text-left @max-[8rem]/header-search:hidden">
             Suchen
           </span>
+          {searchNew ? <NewBadge /> : null}
           <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
             {formatHotkeyDisplay(paletteHotkey)}
           </kbd>
@@ -314,6 +317,7 @@ export function AppHeaderSearch() {
         placeholder="Objekte und Verbindungen…"
         emptyMessage="Keine Treffer"
         maxVisible={MAX_VISIBLE_RESULTS}
+        featureId="search.fuzzy"
         queryItem={askAiItem}
       />
       {objectSearchMounted.current && (

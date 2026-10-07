@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
+  type ReactNode,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -25,10 +26,11 @@ const PERCENT = new Intl.NumberFormat("de-DE", { style: "percent" });
 interface Props {
   buttonRef: RefObject<HTMLButtonElement | null>;
   shortcut: string;
+  badge?: ReactNode;
   onOpen: () => void;
 }
 
-export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
+export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
   useIslandMoments();
   const view = useIslandView();
   const reduce = useReducedMotion();
@@ -120,6 +122,7 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
             <span className="min-w-0 truncate font-medium @max-[8rem]/header-search:hidden">
               {view.title}
             </span>
+            {view.idle ? badge : null}
             {view.detail ? (
               <span className="min-w-0 truncate text-current/55 @max-[14rem]/header-search:hidden">
                 {view.detail}
