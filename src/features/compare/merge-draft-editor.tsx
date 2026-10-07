@@ -1,12 +1,13 @@
 import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import { nextDiffLine } from "@/features/compare/diff-navigation";
 import type { DraftLineOrigin } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
 import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
 import "./merge-reference-editor.css";
 
 export interface MergeDraftApi {
-  goToLine: (line: number) => void;
+  goToChange: (lines: readonly number[], direction: 1 | -1) => void;
 }
 
 interface Props {
@@ -92,10 +93,16 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
   }, [resolvedTheme]);
 
   useImperativeHandle(ref, () => ({
-    goToLine(line) {
+    goToChange(lines, direction) {
       const instance = editor.current;
       if (!instance) return;
-      const position = Math.min(Math.max(line, 1), instance.getModel()?.getLineCount() ?? 1);
+      const position = nextDiffLine(
+        lines,
+        instance.getPosition()?.lineNumber ?? 1,
+        direction,
+        instance.getModel()?.getLineCount() ?? 1,
+      );
+      if (position === null) return;
       instance.revealLineInCenter(position);
       instance.setPosition({ lineNumber: position, column: 1 });
       instance.focus();
