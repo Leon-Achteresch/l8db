@@ -6,6 +6,10 @@
   background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
 }
 
+.merge-origin-manual {
+  background: color-mix(in oklab, var(--primary) 15%, transparent);
+}
+
 :is(.merge-reference-editor, .definition-diff-editor) .cgmr.merge-hunk-apply {
   border-radius: 5px;
   background: var(--primary);

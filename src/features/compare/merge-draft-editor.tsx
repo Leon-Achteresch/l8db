@@ -14,16 +14,19 @@ interface Props {
   value: string;
   origins: (DraftLineOrigin | null)[];
   onChange: (value: string) => void;
+  onActivate?: () => void;
   ref?: Ref<MergeDraftApi>;
   scrollSync?: ScrollSyncGroup;
 }
 
-export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: Props) {
+export function MergeDraftEditor({ value, origins, onChange, onActivate, ref, scrollSync }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const callback = useRef(onChange);
   const syncing = useRef(false);
+  const activateRef = useRef(onActivate);
+  activateRef.current = onActivate;
   const { resolvedTheme } = useTheme();
   callback.current = onChange;
 
@@ -51,13 +54,15 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
     const subscription = model.onDidChangeContent(() => {
       if (!syncing.current) callback.current(model.getValue());
     });
-    const leaveScrollSync = scrollSync && joinScrollSyncGroup(scrollSync, instance);
+    const focus = instance.onDidFocusEditorWidget(() => activateRef.current?.());
+    const leaveScrollSync = scrollSync && joinScrollSyncGroup(scrollSync, instance, "result");
     editor.current = instance;
     decorations.current = instance.createDecorationsCollection();
     return () => {
       leaveScrollSync?.();
       decorations.current = null;
       subscription.dispose();
+      focus.dispose();
       instance.dispose();
       model.dispose();
       editor.current = null;

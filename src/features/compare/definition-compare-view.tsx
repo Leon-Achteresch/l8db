@@ -39,7 +39,7 @@ import {
 import { useConnectionsStore } from "@/lib/connections";
 import { definitionHunks, draftLineOrigins } from "@/lib/definition-merge";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { createScrollSyncGroup } from "@/lib/monaco/scroll-sync";
+import { createScrollSyncGroup, syncScrollGroup } from "@/lib/monaco/scroll-sync";
 
 interface SideState {
   definition: string;
@@ -86,6 +86,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const [transferSide, setTransferSide] = useState<"left" | "right">("left");
   const draftRef = useRef<MergeDraftApi>(null);
   const diffRef = useRef<DefinitionDiffApi>(null);
+  const activeEditor = useRef<"comparison" | "draft">("comparison");
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null);
   const draftFeature = useNewFeatureVisibility<HTMLButtonElement>("compare.draft-toggle");
   const [scrollSync] = useState(createScrollSyncGroup);
@@ -102,6 +103,20 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
     () => definitionHunks(rightState.definition, draft),
     [rightState.definition, draft],
   );
+  const scrollMappings = useMemo(
+    () =>
+      targetHunks.map((hunk) => ({
+        sourceStart: hunk.sourceStart,
+        sourceEnd: hunk.sourceEnd,
+        targetStart: hunk.draftStart,
+        targetEnd: hunk.draftEnd,
+      })),
+    [targetHunks],
+  );
+  useEffect(() => {
+    scrollSync.mappings = scrollMappings;
+    if (props.syncScroll && props.showDraft) syncScrollGroup(scrollSync);
+  }, [scrollSync, scrollMappings, props.syncScroll, props.showDraft]);
   const origins = useMemo(
     () => draftLineOrigins(sourceHunks, targetHunks, draft.split("\n").length),
     [sourceHunks, targetHunks, draft],
@@ -117,7 +132,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
     props.onDraftChange(value, leftState.definition, rightState.definition);
   const changeCount = props.showDraft ? changeLines.length : (diffStats?.changes ?? 0);
   const goToChange = (direction: 1 | -1) => {
-    if (!props.showDraft) {
+    if (!props.showDraft || activeEditor.current === "comparison") {
       diffRef.current?.goToChange(direction);
       return;
     }
@@ -278,7 +293,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               <IconMenuSeparator />
               <IconMenuItem
                 icon={<InfoIcon />}
-                label="Änderungen aus Quelle oder Ziel in den mittleren Entwurf übernehmen. Den Entwurf anschließend für jede Seite getrennt prüfen und speichern."
+                label="Änderungen aus Quelle oder Ziel ins Merge-Ergebnis übernehmen oder dort bearbeiten. Das Ergebnis anschließend für jede Seite getrennt prüfen und speichern."
                 onSelect={(event) => event.preventDefault()}
               />
             </IconMenuContent>
@@ -377,6 +392,9 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                   draft={props.showDraft ? draft : undefined}
                   onDraftChange={changeDraft}
                   onSideSelect={setTransferSide}
+                  onActivate={() => {
+                    activeEditor.current = "comparison";
+                  }}
                   scrollSync={props.showDraft ? scrollSync : undefined}
                 />
               </div>
@@ -403,7 +421,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col">
                   <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
-                    Gemeinsamer Entwurf
+                    Merge-Ergebnis
                   </div>
                   <div className="relative min-h-0 flex-1">
                     <MergeDraftEditor
@@ -411,6 +429,9 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                       value={draft}
                       origins={origins}
                       onChange={changeDraft}
+                      onActivate={() => {
+                        activeEditor.current = "draft";
+                      }}
                       scrollSync={scrollSync}
                     />
                     <div className="pointer-events-none absolute top-2 left-4 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
@@ -421,6 +442,10 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                       <span className="flex items-center gap-1.5">
                         <span className="merge-origin-target size-2.5 rounded-sm" />
                         aus Ziel
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="merge-origin-manual size-2.5 rounded-sm" />
+                        eigene Änderungen
                       </span>
                     </div>
                   </div>

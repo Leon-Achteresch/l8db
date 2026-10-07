@@ -48,6 +48,7 @@ interface DefinitionDiffEditorProps {
   draft?: string;
   onDraftChange?: (value: string) => void;
   onSideSelect?: (side: "left" | "right") => void;
+  onActivate?: () => void;
   scrollSync?: ScrollSyncGroup;
   ref?: Ref<DefinitionDiffApi>;
 }
@@ -63,6 +64,7 @@ export function DefinitionDiffEditor({
   draft,
   onDraftChange,
   onSideSelect,
+  onActivate,
   scrollSync,
   ref,
 }: DefinitionDiffEditorProps) {
@@ -77,6 +79,8 @@ export function DefinitionDiffEditor({
   statsRef.current = onStats;
   const readOnlyRef = useRef(readOnly);
   const minimapRef = useRef(minimap);
+  const activateRef = useRef(onActivate);
+  activateRef.current = onActivate;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -106,11 +110,13 @@ export function DefinitionDiffEditor({
     });
     diffRef.current = editor;
 
-    const originalFocus = editor.getOriginalEditor().onDidFocusEditorText(() => {
+    const originalFocus = editor.getOriginalEditor().onDidFocusEditorWidget(() => {
       activeSideRef.current = "original";
+      activateRef.current?.();
     });
-    const modifiedFocus = editor.getModifiedEditor().onDidFocusEditorText(() => {
+    const modifiedFocus = editor.getModifiedEditor().onDidFocusEditorWidget(() => {
       activeSideRef.current = "modified";
+      activateRef.current?.();
     });
     const subscription = editor.onDidUpdateDiff(() => {
       statsRef.current?.(diffStats(editor.getLineChanges() ?? []));
@@ -165,7 +171,15 @@ export function DefinitionDiffEditor({
   useEffect(() => {
     const editor = diffRef.current;
     if (!editor || !scrollSync) return;
-    return joinScrollSyncGroup(scrollSync, editor.getModifiedEditor());
+    const modified = editor.getModifiedEditor();
+    const leave = joinScrollSyncGroup(scrollSync, modified);
+    const focus = editor.getOriginalEditor().onDidFocusEditorWidget(() => {
+      scrollSync.lastScrolled = modified;
+    });
+    return () => {
+      focus.dispose();
+      leave();
+    };
   }, [scrollSync]);
 
   useDefinitionDraftActions(diffRef, original, modified, draft, onDraftChange, onSideSelect);
