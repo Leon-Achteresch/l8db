@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/features/shell/workbench-dialog";
 import { copyText } from "@/lib/clipboard";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface DdlPreviewDialogProps {
   open: boolean;
@@ -50,7 +51,7 @@ function DdlPreviewDialogContent({
     if (!ddl) return;
     try {
       await copyText(ddl);
-      toast.success("SQL kopiert.");
+      showCopiedMessage("SQL kopiert.");
     } catch {
       toast.error("SQL konnte nicht kopiert werden.");
     }

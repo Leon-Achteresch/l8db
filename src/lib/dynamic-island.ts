@@ -1,7 +1,7 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { CircleSlash, type LucideIcon } from "lucide-react";
 import { create } from "zustand";
-import type { AppTask } from "@/lib/tasks";
+import { type AppTask, isQueryTask } from "@/lib/tasks";
 
 export type IslandTone = "neutral" | "success" | "error" | "warning" | "celebrate";
 
@@ -245,6 +245,7 @@ export function formatIslandDuration(ms: number): string {
 }
 
 export function taskMoment(task: AppTask): IslandMoment | null {
+  if (isQueryTask(task)) return null;
   const elapsed = (task.finishedAt ?? Date.now()) - task.startedAt;
   if (elapsed < ISLAND_TASK_DELAY || task.status === "interrupted") return null;
   const key = `done:${task.id}`;

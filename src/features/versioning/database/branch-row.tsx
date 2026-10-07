@@ -41,6 +41,7 @@ import {
 } from "@/lib/branching/model";
 import { branchingRun, branchingSnapshot } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import type { BranchPreset } from "./branch-create-dialog";
 import { BranchSettingsDialog } from "./branch-settings-dialog";
 import { NameConfirmDialog } from "./name-confirm-dialog";
@@ -106,7 +107,7 @@ export function BranchRow({
       return;
     }
     await navigator.clipboard.writeText(url);
-    toast.success("Verbindungs-URL ohne Passwort kopiert.");
+    showCopiedMessage("Verbindungs-URL ohne Passwort kopiert.");
   };
   const snapshot = () =>
     void workspace.job(

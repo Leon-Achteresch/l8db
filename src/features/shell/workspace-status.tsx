@@ -9,6 +9,8 @@ import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { version } from "../../../package.json";
 import { DraftRecoveryDialog } from "./draft-recovery-dialog";
+import { WorkspaceBranchStatus } from "./workspace-branch-status";
+import { WorkspaceQueryStatus } from "./workspace-query-status";
 
 export function WorkspaceStatus() {
   const connection = useActiveConnection();
@@ -21,9 +23,12 @@ export function WorkspaceStatus() {
     predicate: (query) => Boolean(connection) && query.queryKey[1] === connection?.id,
   });
   return (
-    <footer className="flex h-7 shrink-0 items-center justify-between gap-3 border-t bg-card/60 px-4 text-[10px] text-muted-foreground">
+    <footer className="@container/footer flex h-7 shrink-0 items-center justify-between gap-3 border-t bg-card/60 px-4 text-[10px] text-muted-foreground">
       <div className="flex min-w-0 items-center gap-3">
-        <Link to="/connections" className="flex min-w-0 items-center gap-1.5 hover:text-foreground">
+        <Link
+          to="/connections"
+          className="flex min-w-0 items-center gap-1.5 hover:text-foreground @max-[500px]/footer:hidden"
+        >
           <Database className="size-3 shrink-0" />
           {connection ? (
             <ConnectionColorBadge />
@@ -32,10 +37,12 @@ export function WorkspaceStatus() {
           )}
         </Link>
         {connection && !caps.object_storage && (
-          <span className="truncate font-mono">
+          <span className="truncate font-mono @max-[600px]/footer:hidden">
             {database} / {schema}
           </span>
         )}
+        <WorkspaceBranchStatus />
+        <WorkspaceQueryStatus />
         <ExtensionStatusBarItems side="left" />
       </div>
       <div className="flex shrink-0 items-center gap-3">
@@ -43,7 +50,7 @@ export function WorkspaceStatus() {
         <button
           type="button"
           onClick={() => setRecoveryOpen(true)}
-          className="rounded px-1 hover:text-foreground focus-visible:outline-2"
+          className="rounded px-1 hover:text-foreground focus-visible:outline-2 @max-[500px]/footer:hidden"
         >
           Entwürfe
         </button>
@@ -57,7 +64,7 @@ export function WorkspaceStatus() {
         </button>
         {Boolean(fetching) && <span role="status">Daten werden geladen…</span>}
         {connection && (
-          <span className="hidden items-center gap-1 sm:flex">
+          <span className="hidden items-center gap-1 sm:flex @max-[700px]/footer:hidden">
             <LockKeyhole className="size-3" />
             {connection.ssh?.host ? "SSH · " : ""}
             {caps.object_storage

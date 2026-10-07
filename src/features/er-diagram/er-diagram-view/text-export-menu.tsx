@@ -17,6 +17,7 @@ import type { ERSchema } from "@/lib/db";
 import { toDbml, toMermaid } from "@/lib/er-text-export";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { onHotkeyAction } from "@/lib/hotkeys";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 const FORMATS = [
   { id: "mermaid", label: "Mermaid", extension: "mmd", render: toMermaid },
@@ -32,7 +33,7 @@ export function TextExportMenu({ schema }: { schema: ERSchema }) {
   const copy = async (format: Format) => {
     try {
       await copyText(format.render(schema));
-      toast.success(`${format.label} in die Zwischenablage kopiert`);
+      showCopiedMessage(`${format.label} in die Zwischenablage kopiert`);
     } catch (error) {
       toast.error(`Kopieren fehlgeschlagen: ${String(error)}`);
     }

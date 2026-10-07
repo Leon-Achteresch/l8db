@@ -1,7 +1,6 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
 import type { Row } from "@tanstack/react-table";
 import { type RefObject, useCallback } from "react";
-import { toast } from "sonner";
 import { copyText } from "@/lib/clipboard";
 import type { GridCellRef } from "@/lib/grid-selection";
 import { useResolvedHotkey } from "@/lib/hotkeys";
@@ -74,8 +73,7 @@ export function useGridHotkeys({
     const val = row?.getValue(columnId);
     if (val !== undefined) {
       const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-      void copyText(stringVal);
-      toast.success("Wert in die Zwischenablage kopiert!");
+      void copyText(stringVal, "Wert in die Zwischenablage kopiert!");
     }
   }, [activeCell, copySelection, rows]);
 

@@ -36,6 +36,7 @@ import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { temporaryViewMode } from "@/lib/session-views";
 import { cn } from "@/lib/utils";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { QueryCellInspector } from "./query-cell-inspector";
 import { useMaskedQueryResult } from "./query-result-masking";
 import { QueryResultTable } from "./query-result-table";
@@ -119,7 +120,7 @@ export function QueryResultWorkbench({
   const handleCopy = async (format: CopyFormat) => {
     try {
       await copyText(serializeRows(result?.columns ?? [], filtered?.rows ?? [], format));
-      toast.success("Suchergebnisse kopiert");
+      showCopiedMessage("Suchergebnisse kopiert");
     } catch {
       toast.error("Ergebnisse konnten nicht kopiert werden");
     }

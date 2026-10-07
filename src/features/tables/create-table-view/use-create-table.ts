@@ -17,6 +17,7 @@ import {
 } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function useCreateTable() {
   const connection = useActiveConnection();
@@ -159,7 +160,7 @@ export function useCreateTable() {
     if (!ddl) return;
     try {
       await copyText(ddl);
-      toast.success("SQL kopiert.");
+      showCopiedMessage("SQL kopiert.");
     } catch {
       toast.error("SQL konnte nicht kopiert werden.");
     }

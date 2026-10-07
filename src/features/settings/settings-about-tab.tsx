@@ -12,6 +12,7 @@ import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { copyText } from "@/lib/clipboard";
 import { useSettingsStore } from "@/lib/settings";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
@@ -28,7 +29,7 @@ export function SettingsAboutTab() {
     try {
       await copyText(info);
       setCopied(true);
-      toast.success("Diagnose-Informationen in die Zwischenablage kopiert");
+      showCopiedMessage("Diagnose-Informationen in die Zwischenablage kopiert");
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("Kopieren fehlgeschlagen");

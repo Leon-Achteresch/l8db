@@ -4,6 +4,8 @@ import { version as appVersion } from "../../package.json";
 export const NEW_FEATURES = {
   "settings.general.workspace-tab": "0.9.1",
   "workspace.inline-tabs": "0.9.1",
+  "workspace.status.branch": "0.9.1",
+  "workspace.status.query": "0.9.1",
   "sidebar.rename-inline": "0.9.1",
   "sidebar.object-menu": "0.14.0",
   "search.fuzzy": "0.10.0",

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/sheet";
 import { ValueViewerPanel } from "@/features/table/value-viewers/value-viewer-panel";
 import { copyText } from "@/lib/clipboard";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function QueryCellInspector({
   cell,
@@ -57,7 +58,7 @@ export function QueryCellInspector({
           onClick={async () => {
             try {
               await copyText(value);
-              toast.success("Zellwert kopiert");
+              showCopiedMessage("Zellwert kopiert");
             } catch {
               toast.error("Zellwert konnte nicht kopiert werden");
             }

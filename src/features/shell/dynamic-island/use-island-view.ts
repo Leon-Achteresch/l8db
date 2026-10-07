@@ -5,7 +5,7 @@ import { ISLAND_TASK_DELAY, type IslandView, useIslandStore } from "@/lib/dynami
 import { connectionEnvironment, environmentInfo } from "@/lib/environments";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { useConnectionSwitch } from "@/lib/ssh";
-import { isTaskActive, useTasksStore } from "@/lib/tasks";
+import { isQueryTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
 import { getInstallPercent, subscribeUpdatePrompt } from "@/lib/updater";
 
@@ -37,7 +37,7 @@ export function useIslandView(): IslandView {
   );
   const task = useTasksStore(
     useShallow((state) => {
-      const active = state.tasks.filter(isTaskActive);
+      const active = state.tasks.filter((entry) => isTaskActive(entry) && !isQueryTask(entry));
       const last = active.at(-1);
       return {
         id: last?.id,

@@ -108,6 +108,10 @@ export function useVersioning() {
         Boolean(error || statusError),
       );
   }, [status, releases, targets, dirty, error, statusError]);
+  useEffect(() => {
+    useVersioningPanel.setState({ branch: status?.repo === repo ? status.branch : null });
+    return () => useVersioningPanel.setState({ branch: null });
+  }, [status, repo]);
   const run = async (action: () => Promise<void>, success?: string) => {
     setBusy(true);
     setError(null);

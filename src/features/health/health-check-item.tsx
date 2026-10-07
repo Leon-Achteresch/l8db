@@ -7,13 +7,13 @@ import {
   SquareTerminalIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import type { HealthCheckResult } from "@/lib/db";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { CATEGORY_LABEL, SEVERITY_CLASS, SEVERITY_LABEL } from "./health-meta";
 
 interface Props {
@@ -28,7 +28,7 @@ export function HealthCheckItem({ check }: Props) {
 
   const copy = async (sql: string) => {
     await copyText(sql);
-    toast.success("SQL kopiert");
+    showCopiedMessage("SQL kopiert");
   };
 
   const openInEditor = (sql: string) => {
