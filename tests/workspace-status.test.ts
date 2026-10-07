@@ -10,6 +10,8 @@ import {
 } from "@/lib/workspace-status";
 
 const writeText = mock(async (_text: string) => {});
+const copyToast = mock((_title: string) => 1);
+mock.module("sonner", () => ({ toast: { success: copyToast } }));
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({
   writeText,
   readText: async () => "",
@@ -19,10 +21,17 @@ const { copyText } = await import("@/lib/clipboard");
 beforeEach(() => {
   writeText.mockReset();
   writeText.mockImplementation(async () => {});
-  useWorkspaceStatusStore.setState({ message: null });
+  copyToast.mockClear();
+  useWorkspaceStatusStore.setState({ message: null, visible: true });
 });
 
 describe("Footer-Status", () => {
+  test("bestätigt Kopieren auch in Ansichten ohne Footer", () => {
+    useWorkspaceStatusStore.setState({ visible: false });
+    showCopiedMessage("Name kopiert");
+    expect(copyToast).toHaveBeenCalledWith("Name kopiert");
+    expect(useWorkspaceStatusStore.getState().message).toBeNull();
+  });
   test("bestätigt Kopieren erst nach erfolgreichem Schreiben, ohne den Inhalt anzuzeigen", async () => {
     let complete: (() => void) | undefined;
     writeText.mockImplementation(
