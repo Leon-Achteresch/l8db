@@ -39,7 +39,7 @@ export function AppLayout() {
       </PanelErrorBoundary>
       <SidebarInset
         className={cn(
-          "overflow-hidden rounded-tl-lg border-t border-l",
+          "overflow-hidden rounded-tl-xl border-t border-l shadow-lg shadow-black/10 dark:shadow-black/40",
           aiSplit && "!rounded-xl !border !shadow-none",
         )}
       >

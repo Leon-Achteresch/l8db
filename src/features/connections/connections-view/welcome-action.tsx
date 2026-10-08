@@ -1,4 +1,4 @@
-import { ArrowRight, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function WelcomeAction({
@@ -25,40 +25,25 @@ export function WelcomeAction({
       data-tour={dataTour}
       onClick={onClick}
       className={cn(
-        "welcome-action group flex w-full items-center gap-3 rounded-lg border border-transparent px-4 py-3 text-left transition-colors duration-150 disabled:cursor-wait disabled:opacity-60",
-        primary
-          ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-          : "hover:border-border hover:bg-muted/60",
+        "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-150 hover:bg-muted/70 disabled:cursor-wait disabled:opacity-60",
+        primary && "bg-primary/7 hover:bg-primary/12",
       )}
     >
       <Icon
         aria-hidden="true"
-        className={cn(
-          "size-4 shrink-0",
-          primary ? "text-primary-foreground" : "text-muted-foreground",
-        )}
+        className={cn("size-4 shrink-0 text-muted-foreground", primary && "text-primary")}
       />
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{label}</span>
+        <span className={cn("block text-sm font-medium", primary && "text-primary")}>{label}</span>
         {description && (
-          <span
-            className={cn(
-              "mt-0.5 block text-xs leading-relaxed",
-              primary ? "text-primary-foreground/85" : "text-muted-foreground",
-            )}
-          >
+          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
             {description}
           </span>
         )}
       </span>
-      <ArrowRight
+      <ArrowUpRight
         aria-hidden="true"
-        className={cn(
-          "size-3.5 shrink-0",
-          primary
-            ? "text-primary-foreground"
-            : "text-muted-foreground/60 group-hover:text-foreground",
-        )}
+        className="size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground"
       />
     </button>
   );

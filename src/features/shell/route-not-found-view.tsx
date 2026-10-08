@@ -1,13 +1,18 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, House, SearchX } from "lucide-react";
 import { motion } from "motion/react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export function RouteNotFoundView() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   return (
-    <div className="relative grid min-h-0 w-full flex-1 place-items-center overflow-y-auto bg-background p-6">
+    <div className="connection-empty relative grid min-h-0 w-full flex-1 place-items-center overflow-y-auto p-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[36rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl"
+      />
       <motion.div
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -17,18 +22,22 @@ export function RouteNotFoundView() {
         <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-muted text-muted-foreground">
           <SearchX className="size-5" />
         </div>
-        <h1 className="mt-5 text-xl font-semibold tracking-tight">Ansicht nicht gefunden</h1>
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <Badge variant="secondary">404</Badge>
+          <span className="font-mono text-[11px] text-muted-foreground">NOT_FOUND</span>
+        </div>
+        <h1 className="mt-2 text-xl font-semibold tracking-tight">Seite nicht gefunden</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Diese Ansicht ist nicht mehr verfügbar
+          Diese Route existiert nicht
           {pathname ? (
             <>
               {" "}
-              : <span className="font-mono text-xs break-all">{pathname}</span>
+              – <span className="font-mono text-xs break-all">{pathname}</span>
             </>
           ) : (
-            ""
+            "."
           )}
-          . Öffne deinen Arbeitsplatz oder gehe zur vorherigen Ansicht zurück.
+          . Möglicherweise wurde ein Tab oder Lesezeichen ungültig.
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           <Button asChild>
