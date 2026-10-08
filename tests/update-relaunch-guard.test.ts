@@ -25,6 +25,8 @@ mock.module("@tauri-apps/api/core", () => ({
       return backendTransactions;
     }
     if (command === "list_providers") return [];
+    if (command === "check_update")
+      return { rid: 1, currentVersion: "0.0.1", version: "9.9.9", rawJson: {} };
     return null;
   },
   isTauri: () => false,
@@ -50,7 +52,11 @@ function fakeUpdate() {
 }
 
 mock.module("@tauri-apps/plugin-updater", () => ({
-  check: async () => fakeUpdate(),
+  Update: class {
+    constructor() {
+      Object.assign(this, fakeUpdate());
+    }
+  },
 }));
 mock.module("@tauri-apps/plugin-process", () => ({
   relaunch: async () => {

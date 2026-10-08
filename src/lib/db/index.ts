@@ -34,5 +34,6 @@ export * from "./supabase";
 export * from "./transactions";
 export * from "./transfer";
 export * from "./types";
+export * from "./updates";
 export * from "./versioning";
 export * from "./windows";

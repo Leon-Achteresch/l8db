@@ -59,6 +59,15 @@ describe("new feature discovery", () => {
     expect(createNewFeatureStore(storage, "0.7.1").getSnapshot().size).toBe(0);
   });
 
+  test("canary builds show the features of their upcoming release", () => {
+    const storage = memoryStorage();
+    expect(hasNewFeatures("settings.data", new Set(), "0.7.0-canary.3")).toBe(true);
+    createNewFeatureStore(storage, "0.7.0-canary.3").markSeen("settings.data.transfer");
+    expect(
+      createNewFeatureStore(storage, "0.7.0").getSnapshot().has("settings.data.transfer"),
+    ).toBe(true);
+  });
+
   test("marking all seen hides every current release badge at once", () => {
     const storage = memoryStorage();
     const store = createNewFeatureStore(storage, "0.7.0");

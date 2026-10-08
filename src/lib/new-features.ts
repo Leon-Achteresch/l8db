@@ -67,6 +67,7 @@ export const NEW_FEATURES = {
   "settings.about.crash-reports": "0.7.0",
   "settings.about.usage-metrics": "0.7.0",
   "settings.about.open-source-licenses": "0.8.0",
+  "settings.about.update-channel": "0.14.0",
   "connections.baas": "0.7.0",
   "connections.welcome": "0.14.0",
   "connections.open-window": "0.8.0",
@@ -135,8 +136,14 @@ export function featureStorageKey(id: NewFeatureId): string {
   return `${STORAGE_PREFIX}:${NEW_FEATURES[id]}:${id}`;
 }
 
+function releaseOf(version: string): string {
+  return version.replace(/-.*$/, "");
+}
+
 function currentFeatureIds(version: string): NewFeatureId[] {
-  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter((id) => NEW_FEATURES[id] === version);
+  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter(
+    (id) => NEW_FEATURES[id] === releaseOf(version),
+  );
 }
 
 export function hasNewFeatures(
@@ -147,18 +154,21 @@ export function hasNewFeatures(
   if (!scope) return false;
   return (Object.entries(NEW_FEATURES) as [NewFeatureId, string][]).some(
     ([id, introducedIn]) =>
-      introducedIn === version && !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)),
+      introducedIn === releaseOf(version) &&
+      !seen.has(id) &&
+      (id === scope || id.startsWith(`${scope}.`)),
   );
 }
 
 export function createNewFeatureStore(storage: FeatureStorage | null, version = appVersion) {
+  const release = releaseOf(version);
   const listeners = new Set<() => void>();
 
   const readSeen = () => {
     const result = new Set<NewFeatureId>();
     if (!storage) return result;
     for (const [id, introducedIn] of Object.entries(NEW_FEATURES) as [NewFeatureId, string][]) {
-      if (introducedIn !== version) continue;
+      if (introducedIn !== release) continue;
       try {
         if (storage.getItem(featureStorageKey(id)) === "1") result.add(id);
       } catch {
@@ -186,7 +196,7 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
       return () => listeners.delete(listener);
     },
     markSeen: (id: NewFeatureId) => {
-      if (NEW_FEATURES[id] !== version || snapshot.has(id)) return;
+      if (NEW_FEATURES[id] !== release || snapshot.has(id)) return;
       try {
         storage?.setItem(featureStorageKey(id), "1");
       } catch {

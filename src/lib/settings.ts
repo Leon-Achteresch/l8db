@@ -12,6 +12,7 @@ export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
 export type SidebarObjectNav = "tabs" | "select";
+export type UpdateChannel = "stable" | "canary";
 
 export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
@@ -43,6 +44,7 @@ export interface SettingsState {
   usageMetrics: boolean;
   setUsageMetrics: (value: boolean) => void;
   autoUpdateInstall: boolean;
+  updateChannel: UpdateChannel;
   skippedUpdateVersion: string | null;
   tourFinished: boolean;
   onboardingDone: boolean;
@@ -100,6 +102,7 @@ export interface SettingsState {
   setTransactionsPerTable: (v: boolean) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
+  setUpdateChannel: (v: UpdateChannel) => void;
   setSkippedUpdateVersion: (v: string | null) => void;
   setTourFinished: (v: boolean) => void;
   setOnboardingDone: (v: boolean) => void;
@@ -183,6 +186,7 @@ export const DEFAULT_SETTINGS = {
   crashReports: false,
   usageMetrics: false,
   autoUpdateInstall: false,
+  updateChannel: "stable" as UpdateChannel,
   skippedUpdateVersion: null,
   tourFinished: false,
   onboardingDone: false,
@@ -259,6 +263,7 @@ export const useSettingsStore = create<SettingsState>()(
           autoUpdateInstall: autoUpdateCheck ? state.autoUpdateInstall : false,
         })),
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
+      setUpdateChannel: (updateChannel) => set({ updateChannel }),
       setCrashReports: (crashReports) => set({ crashReports }),
       setUsageMetrics: (usageMetrics) => set({ usageMetrics }),
       setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
@@ -361,6 +366,7 @@ export const useSettingsStore = create<SettingsState>()(
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
+          updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
         };
       },
     },

@@ -341,6 +341,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: ["bug", "fehler", "melden", "report", "github", "issue", "email", "mail", "support"],
   },
   {
+    id: "update-channel",
+    tabId: "about",
+    title: "Update-Kanal",
+    description:
+      "Stable erhält nur geprüfte Versionen. Canary erhält neue Versionen früher, ohne Gewähr.",
+    keywords: ["canary", "stable", "beta", "vorabversion", "kanal", "channel", "updates"],
+    key: "updateChannel",
+  },
+  {
     id: "updates",
     tabId: "about",
     title: "Automatisch nach Updates suchen",

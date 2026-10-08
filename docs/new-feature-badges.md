@@ -1,6 +1,6 @@
 # NEW Badges
 
-Neue Funktionen werden in `src/lib/new-features.ts` mit einer stabilen Kennung und ihrer Einführungsversion registriert. Eine Kennung beschreibt zugleich den Navigationsweg, zum Beispiel `settings.data.transfer`. Das Badge erscheint nur, wenn die Einführungsversion exakt der aktuellen App Version aus `package.json` entspricht und die Funktion noch ungesehen ist. Eine spätere Version zeigt alte Badges nicht erneut.
+Neue Funktionen werden in `src/lib/new-features.ts` mit einer stabilen Kennung und ihrer Einführungsversion registriert. Eine Kennung beschreibt zugleich den Navigationsweg, zum Beispiel `settings.data.transfer`. Das Badge erscheint nur, wenn die Einführungsversion exakt der aktuellen App Version aus `package.json` entspricht und die Funktion noch ungesehen ist. Canary-Builds (`X.Y.Z-canary.N`) zählen als `X.Y.Z`; eingetragen wird deshalb immer die kommende stabile Version. Eine spätere Version zeigt alte Badges nicht erneut.
 
 Für eine neue Einstellung:
 

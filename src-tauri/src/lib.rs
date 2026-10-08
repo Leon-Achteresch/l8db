@@ -16,6 +16,7 @@ mod mcp;
 mod pocketbase;
 mod process;
 mod supabase;
+mod updates;
 mod versioning;
 mod windows;
 
@@ -303,6 +304,7 @@ pub fn run() {
             extension_process::extension_process_stop,
             file_open::take_pending_open_files,
             file_open::resolve_open_files,
+            updates::check_update,
             windows::open_app_window,
             windows::set_dock_recents,
             windows::set_window_connection,

@@ -2,13 +2,14 @@ import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
-import { useSettingsStore } from "@/lib/settings";
-import { checkForUpdates, getAppVersion, presentUpdate } from "@/lib/updater";
+import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
+import { checkForUpdates, getAppVersion, presentUpdate, setPendingUpdate } from "@/lib/updater";
 
 type Status =
   | { kind: "idle" }
@@ -28,6 +29,8 @@ export function UpdateSection() {
     useSettingsStore();
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
   const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
+  const updateChannel = useSettingsStore((s) => s.updateChannel);
+  const setUpdateChannel = useSettingsStore((s) => s.setUpdateChannel);
   const autoFeatureVideos = useSettingsStore((s) => s.autoFeatureVideos);
   const setAutoFeatureVideos = useSettingsStore((s) => s.setAutoFeatureVideos);
   const isSkipped = Boolean(pending && skippedUpdateVersion === pending.version);
@@ -67,6 +70,12 @@ export function UpdateSection() {
     }
   }
 
+  function onChannelChange(channel: UpdateChannel) {
+    setUpdateChannel(channel);
+    setPendingUpdate(null);
+    void onCheck();
+  }
+
   function onShowSkipped() {
     if (!pending) return;
     setSkippedUpdateVersion(null);
@@ -88,6 +97,17 @@ export function UpdateSection() {
           <RefreshCw className={status.kind === "checking" ? "size-4 animate-spin" : "size-4"} />
           <span>{status.kind === "checking" ? "Prüfe …" : "Nach Updates suchen"}</span>
         </Button>
+      </SettingsRow>
+      <SettingsRow settingId="update-channel" featureId="settings.about.update-channel">
+        <SegmentedControl
+          value={updateChannel}
+          onChange={onChannelChange}
+          label="Update-Kanal"
+          options={[
+            { value: "stable", label: "Stable" },
+            { value: "canary", label: "Canary" },
+          ]}
+        />
       </SettingsRow>
       <SettingsRow settingId="updates">
         <Switch

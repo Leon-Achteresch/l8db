@@ -1,6 +1,8 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Update } from "@tauri-apps/plugin-updater";
+import { checkUpdate } from "@/lib/db/updates";
+import { useSettingsStore } from "@/lib/settings";
 
 export const UPDATE_CHECK_TIMEOUT_MS = 20_000;
 
@@ -71,7 +73,8 @@ export async function getAppVersion(): Promise<string | null> {
 }
 
 export async function checkForUpdates(timeoutMs = UPDATE_CHECK_TIMEOUT_MS): Promise<Update | null> {
-  const update = await check({ timeout: timeoutMs });
+  const metadata = await checkUpdate(useSettingsStore.getState().updateChannel, timeoutMs);
+  const update = metadata ? new Update(metadata) : null;
   if (update) setPendingUpdate(update);
   return update;
 }

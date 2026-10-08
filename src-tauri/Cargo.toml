@@ -47,6 +47,8 @@ tokio = { version = "1", features = ["time", "macros", "rt", "rt-multi-thread", 
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 tauri-plugin-updater = "2"
+semver = "1"
+time = { version = "0.3", features = ["formatting"] }
 tauri-plugin-process = "2"
 mysql_async = { version = "0.37", default-features = false, features = ["minimal", "native-tls-tls"] }
 rusqlite = { version = "0.40", default-features = false, features = ["bundled", "backup"] }
