@@ -32,6 +32,7 @@ export interface TableViewState {
   filterSql: string;
   rowRules: RowRule[];
   columnSizing: ColumnSizingState;
+  contentColumnSizing: ColumnSizingState;
   scroll: { top: number; left: number; identity: string };
 }
 

@@ -18,6 +18,7 @@ interface Props {
   children?: ReactNode;
   featureId?: NewFeatureId;
   resetDisabled?: boolean;
+  stacked?: boolean;
 }
 
 export function SettingsRow({
@@ -27,6 +28,7 @@ export function SettingsRow({
   children,
   featureId,
   resetDisabled,
+  stacked = false,
 }: Props) {
   const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>(featureId);
   const { modified, reset } = useModifiedSettings();
@@ -44,7 +46,8 @@ export function SettingsRow({
       layout
       transition={{ layout: SPRING_LAYOUT }}
       className={cn(
-        "group relative grid scroll-mt-4 items-center gap-x-8 gap-y-3 border-b border-border/60 pb-[calc(1rem+var(--ui-density-step))] outline-none focus-visible:ring-2 focus-visible:ring-ring/50 @min-[38rem]:grid-cols-[minmax(0,1fr)_auto]",
+        "group relative grid scroll-mt-4 items-center gap-x-8 gap-y-3 border-b border-border/60 pb-[calc(1rem+var(--ui-density-step))] outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        !stacked && "@min-[38rem]:grid-cols-[minmax(0,1fr)_auto]",
         changed &&
           "pl-3 before:absolute before:left-0 before:top-0 before:bottom-4 before:w-0.5 before:rounded-full before:bg-primary",
       )}
@@ -80,7 +83,9 @@ export function SettingsRow({
         ) : null}
       </div>
       {children ? (
-        <div className="flex min-w-0 shrink-0 flex-wrap justify-end">{children}</div>
+        <div className={cn("flex min-w-0 flex-wrap", stacked ? "w-full" : "shrink-0 justify-end")}>
+          {children}
+        </div>
       ) : null}
     </motion.div>
   );

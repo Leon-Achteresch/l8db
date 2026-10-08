@@ -16,6 +16,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { headerDragPlugins } from "@/features/table/data-table/constants";
+import { useSettingsStore } from "@/lib/settings";
 import { operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +71,8 @@ export function DataTableHeaderCell({
   const pinnedOffset =
     header.column.getIsPinned() === "left" ? header.column.getStart("left") : null;
   const openFilterOnClose = useRef(false);
+  const tableStyle = useSettingsStore((state) => state.tableStyle);
+  const classic = tableStyle === "classic";
 
   return (
     <ContextMenu>
@@ -80,7 +83,9 @@ export function DataTableHeaderCell({
               ref={ref}
               data-column-id={header.id}
               className={cn(
-                "relative sticky top-0 z-20 border-b border-r border-border bg-muted px-3 py-2 text-left align-middle",
+                "group/th relative sticky top-0 z-20 border-b border-r border-border bg-muted text-left",
+                classic ? "px-3 py-2 align-middle" : "px-2 py-1.5",
+                tableStyle === "profile" ? "align-top" : "align-middle",
                 pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",
               )}
               style={{ width: header.getSize(), left: pinnedOffset ?? undefined }}
@@ -90,7 +95,12 @@ export function DataTableHeaderCell({
                   type="button"
                   ref={handleRef}
                   aria-label={`${header.id} verschieben`}
-                  className="shrink-0 -ml-1 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing"
+                  className={cn(
+                    "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing",
+                    classic
+                      ? "-ml-1"
+                      : "absolute top-1.5 left-0 z-10 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100",
+                  )}
                 >
                   <GripVerticalIcon className="size-3.5" />
                 </button>

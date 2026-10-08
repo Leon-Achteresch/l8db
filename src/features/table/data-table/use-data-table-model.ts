@@ -15,6 +15,7 @@ import { useDraftRow } from "./use-draft-row";
 import { useForeignKeyMaps } from "./use-foreign-key-maps";
 import { useGridActiveCell } from "./use-grid-active-cell";
 import { useGridSearch } from "./use-grid-search";
+import { useGridStyle } from "./use-grid-style";
 import { useRowVirtualizer } from "./use-row-virtualizer";
 import { useVisibleColumns } from "./use-visible-columns";
 export function useDataTableModel({
@@ -94,6 +95,7 @@ export function useDataTableModel({
     currentTable,
     sortableColumns,
   });
+  const gridStyle = useGridStyle(columnNames, data, columnDetails, typeInfoByColumn);
   const { columnOrder, columnVisibility, searchColumns, columnPinning, pinnedSet } =
     useColumnLayoutState(order, hidden, pinned);
   const search = useGridSearch(data, searchColumns);
@@ -103,6 +105,8 @@ export function useDataTableModel({
     order,
     fkByColumn,
     typeInfoByColumn,
+    data,
+    gridStyle,
   );
   const table = useReactTable({
     data,
@@ -181,6 +185,7 @@ export function useDataTableModel({
     customCellColumns,
     columns,
     typeInfoByColumn,
+    gridStyle,
     columnOrder,
     columnVisibility,
     searchColumns,

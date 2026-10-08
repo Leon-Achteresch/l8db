@@ -6,6 +6,7 @@ import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
 import { useGridVirtualizer } from "@/lib/hooks/use-transition-virtualizer";
 import { IS_CHROMIUM } from "@/lib/platform";
 import { useSettingsStore } from "@/lib/settings";
+import { tableRowHeight } from "@/lib/table-style";
 import type { TableRow } from "../data-table-types";
 
 const FIRST_PAINT_ROWS = 8;
@@ -19,8 +20,8 @@ export function useRowVirtualizer(
 ) {
   const uiScale = useSettingsStore((state) => state.uiScale);
   const uiDensity = useSettingsStore((state) => state.uiDensity);
-  const estimatedRowHeight =
-    ((uiDensity === "compact" ? 24 : uiDensity === "spacious" ? 40 : 32) * uiScale) / 100 + 1;
+  const tableStyle = useSettingsStore((state) => state.tableStyle);
+  const estimatedRowHeight = tableRowHeight(tableStyle, uiDensity, uiScale);
   const direction = useRef<"forward" | "backward" | null>(null);
   const rangeExtractor = useCallback(
     (range: Range) => {
