@@ -3,12 +3,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { CircleCheck, CircleHelp, CircleX, LoaderCircle } from "lucide";
-import { ListPlus, Plus, Settings2, SquarePen, X } from "lucide-react";
+import { Download, ListPlus, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
+import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
@@ -58,7 +60,6 @@ import { AiSettings } from "./ai-settings";
 import { AiSuggestions } from "./ai-suggestions";
 import { AiTranscript } from "./ai-transcript";
 import { AiUsage } from "./ai-usage";
-import { AISidebar } from "./beui/agents/ai-sidebar";
 import { ChatApp } from "./beui/agents/chat-app";
 import { PromptInput } from "./beui/agents/prompt-input";
 
@@ -599,106 +600,91 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setPrompt(`${prompt.slice(0, prompt.length - mentionMatch[1].length - 1)}@${connection.name} `);
     input.current?.focus();
   };
-  const historyList = (
-    <>
-      <AISidebar
-        ariaLabel="Gesprächsverlauf"
-        items={sessions
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-          .map((entry) => ({ id: entry.id, label: entry.title, kind: "file" as const }))}
-        activeId={state.sessionId}
-        renderIcon={(item) => {
-          const live = runId && liveSession.current?.id === item.id;
-          const failed = state.sessions.find((session) => session.id === item.id)?.failed;
-          const [icon, label, tone] = live
-            ? approvals.length
-              ? [CircleHelp, "Wartet auf Eingabe", "text-amber-500"]
-              : [LoaderCircle, "Arbeitet", "animate-spin text-primary"]
-            : failed
-              ? [CircleX, "Fehlgeschlagen", "text-destructive"]
-              : [CircleCheck, "Fertig", "text-emerald-500"];
-          return (
-            <span title={label} className="grid">
-              <MorphIcon icon={icon} className={`size-4 ${tone}`} />
+  const pickSession = (id: string) => {
+    if (runId) return;
+    const entry = state.sessions.find((session) => session.id === id);
+    if (!entry) return;
+    resetContext();
+    if (entry.profileId !== profile.id) state.selectProfile(entry.profileId);
+    state.selectSession(entry.id);
+    setCwd(entry.cwd);
+    setPanelTab("chat");
+    setMentioned(
+      entry.connectionIds.filter(
+        (id) => id !== activeId && connections.some((connection) => connection.id === id),
+      ),
+    );
+    setView("chat");
+  };
+  const history = {
+    label: "Gesprächsverlauf",
+    items: sessions
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((entry) => {
+        const live = runId && liveSession.current?.id === entry.id;
+        const [icon, label, tone] = live
+          ? approvals.length
+            ? [CircleHelp, "Wartet auf Eingabe", "text-amber-500"]
+            : [LoaderCircle, "Arbeitet", "animate-spin text-primary"]
+          : entry.failed
+            ? [CircleX, "Fehlgeschlagen", "text-destructive"]
+            : [CircleCheck, "Fertig", "text-emerald-500"];
+        return {
+          id: entry.id,
+          label: entry.title,
+          icon: (
+            <span title={label} className="grid shrink-0">
+              <MorphIcon icon={icon} className={`size-3.5 ${tone}`} />
             </span>
-          );
-        }}
-        onActiveChange={(id) => {
-          if (runId) return;
-          const entry = state.sessions.find((session) => session.id === id);
-          if (!entry) return;
-          resetContext();
-          if (entry.profileId !== profile.id) state.selectProfile(entry.profileId);
-          state.selectSession(entry.id);
-          setCwd(entry.cwd);
-          setPanelTab("chat");
-          setMentioned(
-            entry.connectionIds.filter(
-              (id) => id !== activeId && connections.some((connection) => connection.id === id),
-            ),
-          );
-          setView("chat");
-        }}
-        onRename={(item, title) => {
-          const entry = state.sessions.find((session) => session.id === item.id);
-          if (entry && !runId && title.trim())
-            state.saveSession({
-              ...entry,
-              title: title.trim().slice(0, 70),
-              updatedAt: Date.now(),
-            });
-        }}
-        renderMenu={(item, controls) => (
-          <div className="space-y-1">
-            <button
-              type="button"
-              disabled={Boolean(runId)}
-              className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
-              onClick={controls.rename}
-            >
-              Umbenennen
-            </button>
-            <button
-              type="button"
-              className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
-              onClick={() => {
-                exportSession(item.id);
-                controls.close();
-              }}
-            >
-              Als Markdown exportieren
-            </button>
-            <button
-              type="button"
-              disabled={Boolean(runId)}
-              aria-label={`${item.label} löschen`}
-              className="block min-h-8 w-full rounded-md px-2 text-left text-xs text-destructive hover:bg-muted"
-              onClick={() => {
-                const entry = state.sessions.find((session) => session.id === item.id);
-                if (entry)
-                  state.saveSession({
-                    ...entry,
-                    deleted: true,
-                    messages: [],
-                    usage: undefined,
-                    usageModel: undefined,
-                    usageRequestedModel: undefined,
-                    updatedAt: Date.now(),
-                  });
-                controls.close();
-              }}
-            >
-              Löschen
-            </button>
-          </div>
-        )}
-        className="text-xs"
-      />
-      {!sessions.length && (
-        <p className="px-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
-      )}
-    </>
-  );
+          ),
+        };
+      }),
+    activeId: state.sessionId,
+    busy: Boolean(runId),
+    empty: (
+      <p className="px-2 py-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
+    ),
+    onPick: pickSession,
+    onRename: (id: string, title: string) => {
+      const entry = state.sessions.find((session) => session.id === id);
+      if (entry && !runId)
+        state.saveSession({ ...entry, title: title.slice(0, 70), updatedAt: Date.now() });
+    },
+    menu: (item: { id: string; label: string }, rename: () => void) => (
+      <>
+        <DropdownMenuItem disabled={Boolean(runId)} onSelect={rename}>
+          <Pencil className="size-3.5" />
+          Umbenennen
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => exportSession(item.id)}>
+          <Download className="size-3.5" />
+          Als Markdown exportieren
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={Boolean(runId)}
+          aria-label={`${item.label} löschen`}
+          onSelect={() => {
+            const entry = state.sessions.find((session) => session.id === item.id);
+            if (entry)
+              state.saveSession({
+                ...entry,
+                deleted: true,
+                messages: [],
+                usage: undefined,
+                usageModel: undefined,
+                usageRequestedModel: undefined,
+                updatedAt: Date.now(),
+              });
+          }}
+        >
+          <Trash2 className="size-3.5" />
+          Löschen
+        </DropdownMenuItem>
+      </>
+    ),
+  };
   const onboarding = (
     <AiOnboarding
       onDone={(id) => {
@@ -1132,8 +1118,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           </div>
         </div>
       ) : view === "history" ? (
-        <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
-          {historyList}
+        <div ref={historyFeature.ref} className="min-h-0 flex-1 px-1 pb-1">
+          <SidebarNav {...history} />
         </div>
       ) : (
         chat
@@ -1186,27 +1172,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             onboarding
           ) : fullPage ? (
             <>
-              <nav
-                aria-label="Gespräche"
-                className="flex w-60 shrink-0 flex-col border-r bg-sidebar/50"
-              >
-                <div className="flex h-12 shrink-0 items-center gap-0.5 border-b pr-2 pl-4">
-                  <h2 className="mr-auto text-[13px] font-semibold">Gespräche</h2>
-                  <IconButton
-                    size="icon"
-                    variant="ghost"
-                    aria-label="Neues Gespräch"
-                    disabled={busy}
-                    onClick={newChat}
-                  >
-                    <SquarePen className="size-4" />
-                  </IconButton>
-                  {settingsButton}
-                </div>
-                <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto px-2 py-2">
-                  {historyList}
-                </div>
-              </nav>
+              <div ref={historyFeature.ref} className="flex border-r bg-sidebar/50">
+                <SidebarNav
+                  {...history}
+                  title="Gespräche"
+                  collapsible
+                  onNew={newChat}
+                  headerActions={settingsButton}
+                />
+              </div>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">{main}</div>
               {shelf && view === "chat" && (
                 <div className="flex w-[25rem] shrink-0 flex-col border-l bg-muted/25">

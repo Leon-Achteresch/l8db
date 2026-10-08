@@ -12,6 +12,7 @@ import {
   Workflow,
   Wrench,
 } from "lucide-react";
+import { TaskRows } from "@/components/primitives/task-rows";
 import { parseAiDiff } from "@/lib/ai/diff";
 import { parseAiTable } from "@/lib/ai/result";
 import type { AiRichBlock } from "@/lib/ai/rich";
@@ -20,7 +21,6 @@ import { AiToolDetail } from "./ai-tool-detail";
 import { AiWorkRow } from "./ai-work-row";
 import { FileDiff } from "./beui/agents/file-diff";
 import { ImageGeneration } from "./beui/agents/image-generation";
-import { TodoList } from "./beui/agents/todo-list";
 
 const TOOL_NAMES: Record<string, string> = {
   query: "Datenabfrage",
@@ -48,6 +48,13 @@ function toolIcon(name: string) {
   if (/write|edit|patch|apply|create/i.test(name)) return SquarePen;
   return Wrench;
 }
+
+const PLAN_STATUS = {
+  pending: "pending",
+  "in-progress": "running",
+  completed: "done",
+  cancelled: "cancelled",
+} as const;
 
 export function AiRichContent({
   blocks,
@@ -118,13 +125,15 @@ export function AiRichContent({
           ) : null;
         if (block.type === "plan")
           return (
-            <TodoList
+            <TaskRows
               key={block.id}
-              items={block.items}
               title="Plan des Agents"
-              defaultOpen={false}
-              collapseOnComplete
-              className="py-1 text-xs"
+              rows={block.items.map((item) => ({
+                id: item.id,
+                label: item.title,
+                status: PLAN_STATUS[item.status],
+              }))}
+              className="my-1.5"
             />
           );
         if (block.type === "diff")
