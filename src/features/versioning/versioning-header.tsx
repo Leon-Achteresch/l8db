@@ -18,10 +18,12 @@ export function VersioningHeader({
   workspace,
   area,
   className,
+  compact = false,
 }: {
   workspace: VersioningWorkspace;
   area: "database" | "git";
   className?: string;
+  compact?: boolean;
 }) {
   const { repo, status, busy, run, refresh } = workspace;
   const navigate = useNavigate();
@@ -42,7 +44,10 @@ export function VersioningHeader({
   return (
     <header className={cn("flex h-12 shrink-0 items-center gap-1 px-4", className)}>
       <GitPullRequestIcon className="mr-1 size-4 text-primary" strokeWidth={1.7} />
-      <h1 className="flex-1 truncate text-xs font-semibold">Versionierung</h1>
+      <h1 className={cn("flex-1 truncate text-xs font-semibold", compact && "sr-only")}>
+        Versionierung
+      </h1>
+      {compact && <span className="flex-1" />}
       {area === "git" && status && <VersioningRepositoryPopover workspace={workspace} />}
       <button
         ref={tabFeature.ref}
