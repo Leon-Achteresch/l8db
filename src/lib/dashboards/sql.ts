@@ -2,7 +2,15 @@ import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier, type SqlIdentifierStyle } from "@/lib/export";
 import { compileConditionExpression } from "@/lib/sql-filter";
 import { aliasOf, calcOf, datasetJoins, parseRef, replaceFieldTokens } from "./joins";
-import type { Agg, Dataset, DatasetMetric, Period, SimpleDataset, TimeBucket } from "./model";
+import type {
+  Agg,
+  CompareMode,
+  Dataset,
+  DatasetMetric,
+  Period,
+  SimpleDataset,
+  TimeBucket,
+} from "./model";
 import {
   EMPTY_SCOPE,
   filterVariable,
@@ -128,29 +136,98 @@ function summarizes(metric: DatasetMetric, ds: SimpleDataset): boolean {
   return metric.agg !== "none" || aggregatedCalc(metric, ds);
 }
 
-export function periodStart(period: Period, now = new Date()): string | null {
-  const d = new Date(now);
+function isoDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(date.getDate(), last));
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function periodStartDate(period: Period, now: Date): Date | null {
   switch (period) {
     case "all":
       return null;
     case "7d":
-      d.setDate(d.getDate() - 7);
-      break;
+      return addDays(now, -7);
     case "30d":
-      d.setDate(d.getDate() - 30);
-      break;
+      return addDays(now, -30);
     case "90d":
-      d.setDate(d.getDate() - 90);
-      break;
+      return addDays(now, -90);
+    case "12m":
+      return new Date(now.getFullYear(), now.getMonth() - 11, 1);
     case "quarter":
-      d.setMonth(Math.floor(d.getMonth() / 3) * 3, 1);
-      break;
+      return new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
     case "year":
-      d.setMonth(0, 1);
-      break;
+      return new Date(now.getFullYear(), 0, 1);
   }
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function periodStart(period: Period, now = new Date()): string | null {
+  const start = periodStartDate(period, now);
+  return start ? isoDate(start) : null;
+}
+
+export function periodProgress(period: Period, now = new Date()): number | null {
+  if (period !== "quarter" && period !== "year") return null;
+  const start = periodStartDate(period, now) as Date;
+  const end = addMonths(start, period === "year" ? 12 : 3);
+  return (now.getTime() - start.getTime()) / (end.getTime() - start.getTime());
+}
+
+export interface DateRange {
+  start: string | null;
+  end: string | null;
+}
+
+export function periodRange(period: Period, now = new Date()): DateRange {
+  return { start: periodStart(period, now), end: null };
+}
+
+function shiftBack(date: Date, period: Exclude<Period, "all">, compare: CompareMode): Date {
+  if (compare === "year") return addMonths(date, -12);
+  switch (period) {
+    case "7d":
+      return addDays(date, -8);
+    case "30d":
+      return addDays(date, -31);
+    case "90d":
+      return addDays(date, -91);
+    case "quarter":
+      return addMonths(date, -3);
+    default:
+      return addMonths(date, -12);
+  }
+}
+
+export function comparisonRange(
+  period: Period,
+  compare: CompareMode,
+  now = new Date(),
+): DateRange | null {
+  const start = periodStartDate(period, now);
+  if (!start || period === "all" || compare === "none") return null;
+  return {
+    start: isoDate(shiftBack(start, period, compare)),
+    end: isoDate(shiftBack(addDays(now, 1), period, compare)),
+  };
+}
+
+function rangeConditions(column: string, range: DateRange, kind: DatabaseKind | null): string[] {
+  return [
+    ...(range.start ? [`${column} >= ${dateLiteral(range.start, kind)}`] : []),
+    ...(range.end ? [`${column} < ${dateLiteral(range.end, kind)}`] : []),
+  ];
 }
 
 export function dateLiteral(iso: string, kind: DatabaseKind | null): string {
@@ -168,6 +245,7 @@ export function buildSimpleSql(
   kind: DatabaseKind | null,
   period: Period = "all",
   scope: VariableScope = EMPTY_SCOPE,
+  range: DateRange = periodRange(period),
 ): string {
   if (!ds.table) return "";
   const style = identifierStyleForKind(kind);
@@ -225,9 +303,7 @@ export function buildSimpleSql(
       );
     })
     .filter((part): part is string => part !== null);
-  const start = periodStart(period);
-  if (ds.dateColumn && start)
-    where.push(`${refExpr(ds.dateColumn, ds, style)} >= ${dateLiteral(start, kind)}`);
+  if (ds.dateColumn) where.push(...rangeConditions(refExpr(ds.dateColumn, ds, style), range, kind));
   if (where.length) lines.push(`WHERE ${where.join(" AND ")}`);
   if (grouped) lines.push(`GROUP BY ${groups.join(", ")}`);
   const orderTarget =
@@ -250,13 +326,13 @@ export function buildExpertSql(
   kind: DatabaseKind | null,
   period: Period,
   scope: VariableScope = EMPTY_SCOPE,
+  range: DateRange = periodRange(period),
 ): string {
   const sql = substituteVariables(ds.sql.trim().replace(/;+\s*$/, ""), scope, kind);
-  const start = periodStart(period);
-  if (!sql || !ds.mapping.dateColumn || !start) return sql;
+  if (!sql || !ds.mapping.dateColumn || (!range.start && !range.end)) return sql;
   const style = identifierStyleForKind(kind);
-  const col = quoteIdentifier(ds.mapping.dateColumn, style);
-  return `SELECT * FROM (\n${sql}\n) ${kind === "oracle" ? "" : "AS "}q WHERE q.${col} >= ${dateLiteral(start, kind)}`;
+  const col = `q.${quoteIdentifier(ds.mapping.dateColumn, style)}`;
+  return `SELECT * FROM (\n${sql}\n) ${kind === "oracle" ? "" : "AS "}q WHERE ${rangeConditions(col, range, kind).join(" AND ")}`;
 }
 
 export function datasetSql(
@@ -264,8 +340,45 @@ export function datasetSql(
   kind: DatabaseKind | null,
   period: Period,
   scope: VariableScope = EMPTY_SCOPE,
+  range: DateRange = periodRange(period),
 ): string {
   return ds.mode === "simple"
-    ? buildSimpleSql(ds.simple, kind, period, scope)
-    : buildExpertSql(ds, kind, period, scope);
+    ? buildSimpleSql(ds.simple, kind, period, scope, range)
+    : buildExpertSql(ds, kind, period, scope, range);
+}
+
+const ADDITIVE: Agg[] = ["count", "sum"];
+
+export function datasetMetricAggs(ds: Dataset): Agg[] {
+  if (ds.mode === "expert") return ds.mapping.metrics.map(() => "sum");
+  return ds.simple.metrics
+    .filter((m) => m.agg === "count" || m.column)
+    .map((m) => (aggregatedCalc(m, ds.simple) ? "avg" : m.agg));
+}
+
+export function needsTotals(ds: Dataset, rowCount: number): boolean {
+  if (ds.mode !== "simple" || !ds.simple.dimension) return false;
+  const aggs = datasetMetricAggs(ds);
+  return (
+    aggs.some(
+      (agg) => agg !== "none" && !ADDITIVE.includes(agg) && agg !== "min" && agg !== "max",
+    ) || rowCount >= Math.max(1, Math.floor(ds.simple.limit || 50))
+  );
+}
+
+export function datasetTotalsSql(
+  ds: Dataset,
+  kind: DatabaseKind | null,
+  period: Period,
+  scope: VariableScope = EMPTY_SCOPE,
+  range: DateRange = periodRange(period),
+): string {
+  if (ds.mode !== "simple") return "";
+  return buildSimpleSql(
+    { ...ds.simple, dimension: null, dimension2: null, sort: "dimension", limit: 1 },
+    kind,
+    period,
+    scope,
+    range,
+  );
 }

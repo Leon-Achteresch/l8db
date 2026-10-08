@@ -1,0 +1,37 @@
+:root {
+  --dash-color-1: #2a78d6;
+  --dash-color-2: #eb6834;
+  --dash-color-3: #1baf7a;
+  --dash-color-4: #eda100;
+  --dash-color-5: #e87ba4;
+  --dash-color-6: #008300;
+  --dash-color-7: #4a3aa7;
+  --dash-color-8: #e34948;
+  --dash-accent: oklch(0.56 0.15 var(--db-hue));
+  --dash-compare: oklch(0.72 0.012 var(--db-hue));
+  --dash-compare-mark: color-mix(in oklab, var(--foreground) 60%, transparent);
+  --dash-grid: oklch(0.93 0.006 var(--db-hue));
+  --dash-axis: oklch(0.85 0.008 var(--db-hue));
+  --dash-track: oklch(0.95 0.008 var(--db-hue));
+  --dash-up: #11803a;
+  --dash-down: #c4302b;
+}
+
+.dark {
+  --dash-color-1: #3987e5;
+  --dash-color-2: #d95926;
+  --dash-color-3: #199e70;
+  --dash-color-4: #c98500;
+  --dash-color-5: #d55181;
+  --dash-color-6: #008300;
+  --dash-color-7: #9085e9;
+  --dash-color-8: #e66767;
+  --dash-accent: oklch(0.66 0.15 var(--db-hue));
+  --dash-compare: oklch(0.52 0.016 var(--db-hue));
+  --dash-compare-mark: color-mix(in oklab, var(--foreground) 70%, transparent);
+  --dash-grid: oklch(1 0 0 / 7%);
+  --dash-axis: oklch(1 0 0 / 16%);
+  --dash-track: oklch(1 0 0 / 7%);
+  --dash-up: #3fb950;
+  --dash-down: #f47067;
+}

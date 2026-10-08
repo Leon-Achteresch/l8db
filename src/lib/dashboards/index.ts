@@ -1,5 +1,6 @@
 export * from "./chart-tabs";
 export * from "./charts";
+export * from "./format";
 export * from "./join-suggestions";
 export * from "./joins";
 export * from "./model";

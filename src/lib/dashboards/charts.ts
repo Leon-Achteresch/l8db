@@ -1,6 +1,14 @@
 import type { ChartDef, ChartKind, WidgetOptions } from "./model";
 
-const COMMON: (keyof WidgetOptions)[] = ["showValue", "showDelta", "showPeriod", "colorOffset"];
+const BASE: (keyof WidgetOptions)[] = [
+  "showValue",
+  "showDelta",
+  "showPeriod",
+  "colorOffset",
+  "unit",
+  "decimals",
+];
+const COMMON: (keyof WidgetOptions)[] = [...BASE, "compare", "headline", "invertDelta"];
 
 export const CHARTS: Record<ChartKind, ChartDef> = {
   kpi: {
@@ -37,7 +45,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 6],
     w: 6,
     h: 7,
-    options: [...COMMON, "showLegend", "stacked", "showGrid", "labels", "sortBy"],
+    options: [...COMMON, "showLegend", "stacked", "showGrid", "labels", "sortBy", "horizontal"],
   },
   bars: {
     label: "Pipeline",
@@ -109,7 +117,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [2, 2],
     w: 4,
     h: 7,
-    options: [...COMMON, "showLegend"],
+    options: [...BASE, "showLegend"],
   },
   gauge: {
     label: "Tacho",
@@ -118,7 +126,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [2, 2],
     w: 3,
     h: 5,
-    options: [...COMMON],
+    options: [...BASE],
   },
   treemap: {
     label: "Treemap",
@@ -145,7 +153,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [0, 6],
     w: 6,
     h: 7,
-    options: ["showValue", "showPeriod"],
+    options: ["showValue", "showPeriod", "compare", "invertDelta", "unit", "decimals"],
   },
 };
 
@@ -163,6 +171,11 @@ export const OPTION_LABEL: Record<keyof WidgetOptions, string> = {
   showPercent: "Prozentwerte anzeigen",
   labels: "Werte direkt am Chart",
   sortBy: "Sortierung",
+  compare: "Vergleich",
+  headline: "Kopfzahl",
+  invertDelta: "Rückgang ist gut",
+  unit: "Einheit",
+  decimals: "Nachkommastellen",
 };
 
 export function chartNeeds(kind: ChartKind): string {

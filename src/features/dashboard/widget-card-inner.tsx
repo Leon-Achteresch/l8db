@@ -1,13 +1,5 @@
-import {
-  CalendarIcon,
-  GripVerticalIcon,
-  SettingsIcon,
-  Trash2Icon,
-  TrendingDownIcon,
-  TrendingUpIcon,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatedNumber } from "@/components/animated-number";
+import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -20,31 +12,19 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryErrorMessage } from "@/lib/connection-url";
 import {
-  applyOptions,
+  autoSubtitle,
   CHARTS,
-  chartFits,
-  colorSeries,
   type Dataset,
-  datasetShape,
   PERIOD_LABEL,
   type Period,
   type Widget,
-  widgetOptions,
 } from "@/lib/dashboards";
-import { cn } from "@/lib/utils";
-import {
-  CHART_RENDERERS,
-  ChartHeadline,
-  deltaFor,
-  headlineValue,
-  LegendCards,
-  legendFor,
-} from "./charts";
+import { CHART_RENDERERS, ChartHeadline, ChartLegend } from "./charts";
 import { useDashboardPeriod } from "./dashboard-period";
 import { useChartSlot } from "./use-chart-slot";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
+import { useWidgetData } from "./use-widget-data";
 
-const EMPTY_ROWS: Record<string, unknown>[] = [];
 export function WidgetCardInner({
   widget,
   dataset,
@@ -65,147 +45,116 @@ export function WidgetCardInner({
   const rootRef = useRef<HTMLDivElement>(null);
   const [viewPeriod, setViewPeriod] = useState(widget.period);
   useEffect(() => setViewPeriod(widget.period), [widget.period]);
-  const rawShape = useMemo(() => (dataset ? datasetShape(dataset) : null), [dataset]);
-  const options = useMemo(() => widgetOptions({ options: widget.options }), [widget.options]);
   const sharedPeriod = useDashboardPeriod();
-  const sql = useDatasetSql(dataset, sharedPeriod ?? (locked ? viewPeriod : widget.period));
+  const period = sharedPeriod ?? (locked ? viewPeriod : widget.period);
+  const sql = useDatasetSql(dataset, period);
   const query = useSqlQuery(sql, refreshSec * 1000);
-  const rawRows = query.data?.rows ?? EMPTY_ROWS;
-  const applied = useMemo(
-    () => (rawShape ? applyOptions(rawShape, rawRows, options) : null),
-    [rawShape, rawRows, options],
+  const { options, shape, rows, problem, compare, summary, legend, summaryPending } = useWidgetData(
+    { widget, dataset, period, query, refreshMs: refreshSec * 1000 },
   );
-  const colored = useMemo(
-    () => (applied ? colorSeries(widget.chart, applied.shape, applied.rows) : null),
-    [applied, widget.chart],
-  );
-  const shape = colored?.shape ?? null;
-  const rows = colored?.rows ?? EMPTY_ROWS;
-  const problem = shape ? chartFits(widget.chart, shape) : "Kein Datensatz zugewiesen";
-  const isTime =
-    (dataset?.mode === "simple" && dataset.simple.dimension?.bucket !== "none") ||
-    /^\d{4}-\d{2}/.test(String(rows[0]?.[shape?.dimension ?? ""] ?? ""));
-  const delta =
-    shape && options.showDelta && options.sortBy === "none" ? deltaFor(rows, shape, isTime) : null;
   const Renderer = CHART_RENDERERS[widget.chart];
   const chartReady = useChartSlot(
     Boolean(shape) && !problem && query.isSuccess && rows.length > 0,
     rootRef,
   );
-  const legend = useMemo(
-    () =>
-      shape && !problem && options.showLegend ? legendFor(widget.chart, rows, shape, options) : [],
-    [shape, problem, options, widget.chart, rows],
-  );
   const title = widget.title || dataset?.name || CHARTS[widget.chart].label;
-  const legendColumns = widget.chart === "score" || widget.w < 5 ? 2 : widget.w >= 6 ? 4 : 3;
-  const legendRows = Math.ceil(legend.length / legendColumns);
+  const periodPicker = Boolean(shape?.hasDate && options.showPeriod && !sharedPeriod);
+  const subtitle =
+    widget.subtitle ??
+    autoSubtitle(
+      dataset?.mode === "simple" ? (dataset.simple.dimension?.bucket ?? null) : null,
+      shape?.hasDate && !periodPicker && !sharedPeriod ? period : null,
+      options.unit,
+    );
+  const figure =
+    options.showValue &&
+    !problem &&
+    !query.isError &&
+    (query.isPending || summaryPending || summary?.value != null || Boolean(summary?.text));
 
   return (
     <div
       ref={rootRef}
       className="flex h-full flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xs"
     >
-      <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 text-sm font-medium text-foreground">
-            {!locked && (
-              <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
-            )}
-            <span className="truncate" title={title}>
-              {title}
-            </span>
-          </div>
-          {options.showValue && (
-            <div className="mt-1 flex items-baseline gap-2">
-              {query.isPending && sql ? (
-                <Skeleton className="h-7 w-20" />
-              ) : (
-                <span className="text-2xl font-semibold tracking-tight tabular-nums">
-                  {shape && !problem ? (
-                    <ChartHeadline headline={headlineValue(widget.chart, rows, shape)} />
-                  ) : (
-                    "—"
-                  )}
-                </span>
+      <div className="mb-3 flex shrink-0 flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 text-sm font-medium text-foreground">
+              {!locked && (
+                <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
               )}
-              {delta !== null && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
-                    delta >= 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-rose-600 dark:text-rose-400",
-                  )}
-                >
-                  {delta >= 0 ? (
-                    <TrendingUpIcon className="size-3.5" />
-                  ) : (
-                    <TrendingDownIcon className="size-3.5" />
-                  )}
-                  <AnimatedNumber
-                    value={delta}
-                    format={{
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                      signDisplay: "exceptZero",
-                    }}
-                    suffix="%"
-                  />
-                </span>
-              )}
+              <span className="truncate" title={title}>
+                {title}
+              </span>
             </div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {shape?.hasDate && options.showPeriod && !sharedPeriod && (
-            <Select
-              value={locked ? viewPeriod : widget.period}
-              onValueChange={(period) =>
-                locked ? setViewPeriod(period as Period) : onChange({ period: period as Period })
-              }
-            >
-              <SelectTrigger
-                size="sm"
-                className="h-7 gap-1.5 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
+            {subtitle && (
+              <div className="mt-0.5 truncate text-xs text-muted-foreground" title={subtitle}>
+                {subtitle}
+              </div>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {periodPicker && (
+              <Select
+                value={locked ? viewPeriod : widget.period}
+                onValueChange={(next) =>
+                  locked ? setViewPeriod(next as Period) : onChange({ period: next as Period })
+                }
               >
-                <CalendarIcon className="size-3.5" />
-                <span className={widget.w < 4 ? "sr-only" : undefined}>
-                  <SelectValue />
-                </span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {PERIOD_LABEL[p]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {!locked && onEdit && (
-            <IconButton
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Chart bearbeiten"
-              onClick={onEdit}
-            >
-              <SettingsIcon />
-            </IconButton>
-          )}
-          {!locked && (
-            <IconButton
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Chart löschen"
-              onClick={() => {
-                if (window.confirm(`Chart „${title}“ löschen?`)) onRemove();
-              }}
-            >
-              <Trash2Icon />
-            </IconButton>
-          )}
+                <SelectTrigger
+                  size="sm"
+                  className="h-7 gap-1.5 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
+                >
+                  <CalendarIcon className="size-3.5" />
+                  <span className={widget.w < 4 ? "sr-only" : undefined}>
+                    <SelectValue />
+                  </span>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PERIOD_LABEL[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {!locked && onEdit && (
+              <IconButton
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Chart bearbeiten"
+                onClick={onEdit}
+              >
+                <SettingsIcon />
+              </IconButton>
+            )}
+            {!locked && (
+              <IconButton
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Chart löschen"
+                onClick={() => {
+                  if (window.confirm(`Chart „${title}“ löschen?`)) onRemove();
+                }}
+              >
+                <Trash2Icon />
+              </IconButton>
+            )}
+          </div>
         </div>
+        {(figure || legend.length > 0) && (
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+            {figure &&
+              (query.isPending || summaryPending || !summary ? (
+                <Skeleton className="h-8 w-28" />
+              ) : (
+                <ChartHeadline summary={summary} options={options} />
+              ))}
+            <ChartLegend items={legend} className={figure ? "ml-auto justify-end" : undefined} />
+          </div>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {problem || !shape ? (
@@ -227,17 +176,18 @@ export function WidgetCardInner({
             label="Der Chart"
             source="dashboard-widget"
             compact
-            resetKeys={[rows, shape, options, widget.chart]}
+            resetKeys={[rows, shape, options, widget.chart, compare]}
           >
-            <Renderer rows={rows} shape={shape} options={options} />
+            <Renderer
+              rows={rows}
+              shape={shape}
+              options={options}
+              compare={compare}
+              period={shape.hasDate ? period : undefined}
+            />
           </PanelErrorBoundary>
         )}
       </div>
-      {legendRows > 0 && widget.h >= 5 + legendRows && (
-        <div className="mt-4 shrink-0">
-          <LegendCards items={legend} columns={legendColumns} />
-        </div>
-      )}
     </div>
   );
 }

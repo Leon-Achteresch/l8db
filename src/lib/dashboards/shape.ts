@@ -69,14 +69,21 @@ export function chartFits(kind: ChartKind, shape: DatasetShape): string | null {
 
 export const ROW_COUNT_FIELD = "__l8db_row_count__";
 
+export function seriesGroups(shape: DatasetShape, rows: Record<string, unknown>[]): string[] {
+  return shape.dimension2
+    ? [...new Set(rows.map((r) => toLabel(r[shape.dimension2 as string])))]
+    : [];
+}
+
 export function colorSeries(
   kind: ChartKind,
   shape: DatasetShape,
   rows: Record<string, unknown>[],
+  fixedGroups?: string[],
 ): { shape: DatasetShape; rows: Record<string, unknown>[] } {
   if (!shape.dimension2 || !["column", "line", "area", "radar"].includes(kind))
     return { shape, rows };
-  const groups = [...new Set(rows.map((r) => toLabel(r[shape.dimension2 as string])))];
+  const groups = fixedGroups ?? seriesGroups(shape, rows);
   const metrics = groups.flatMap((group, index) =>
     shape.metrics.map((metric, m) => ({
       key: `series_${index}_${m}`,
@@ -89,6 +96,7 @@ export function colorSeries(
     const key = JSON.stringify(dim);
     const target = result.get(key) ?? { [shape.dimension ?? "dim"]: dim };
     const group = groups.indexOf(toLabel(row[shape.dimension2]));
+    if (group < 0) continue;
     shape.metrics.forEach((m, i) => {
       const k = `series_${group}_${i}`;
       target[k] = toNumber(target[k]) + toNumber(row[m.key]);
@@ -133,15 +141,4 @@ export function toLabel(value: unknown): string {
     return iso ? iso[1] : value;
   }
   return String(value);
-}
-
-const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-const full = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
-
-export function fmtCompact(value: number): string {
-  return compact.format(value);
-}
-
-export function fmtNumber(value: number): string {
-  return full.format(value);
 }

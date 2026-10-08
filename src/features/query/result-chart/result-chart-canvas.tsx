@@ -1,6 +1,19 @@
 import { type Ref, useMemo } from "react";
-import { CHART_RENDERERS, headlineFor, LegendCards, legendFor } from "@/features/dashboard/charts";
-import { type ChartKind, chartFits, colorSeries, DEFAULT_OPTIONS } from "@/lib/dashboards";
+import {
+  CHART_RENDERERS,
+  ChartHeadline,
+  ChartLegend,
+  legendFor,
+  summarize,
+  timeKind,
+} from "@/features/dashboard/charts";
+import {
+  type ChartKind,
+  chartFits,
+  colorSeries,
+  DEFAULT_OPTIONS,
+  stepLabel,
+} from "@/lib/dashboards";
 import type { ResultChartData } from "@/lib/result-chart";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +39,22 @@ export function ResultChartCanvas({
     () => (problem ? [] : legendFor(chart, colored.rows, colored.shape, OPTIONS)),
     [problem, chart, colored],
   );
+  const summary = useMemo(
+    () =>
+      problem || !HEADLINE.includes(chart)
+        ? null
+        : summarize({
+            kind: chart,
+            shape: colored.shape,
+            options: OPTIONS,
+            current: { rows: colored.rows },
+            previous: null,
+            previousLabel: null,
+            stepLabel: stepLabel(timeKind(colored.rows, colored.shape)),
+            aggOf: () => "sum",
+          }),
+    [problem, chart, colored],
+  );
   const Renderer = CHART_RENDERERS[chart];
   if (problem)
     return (
@@ -41,19 +70,15 @@ export function ResultChartCanvas({
     );
   return (
     <div ref={ref} className={cn("flex h-full min-h-0 flex-col gap-3 bg-card p-4", className)}>
-      {HEADLINE.includes(chart) && (
-        <div className="shrink-0 text-3xl font-semibold tracking-tight tabular-nums">
-          {headlineFor(chart, colored.rows, colored.shape)}
-        </div>
+      {summary && (summary.value !== null || summary.text) && (
+        <ChartHeadline summary={summary} options={OPTIONS} className="shrink-0" />
+      )}
+      {showLegend && legend.length > 0 && legend.length <= 24 && (
+        <ChartLegend items={legend} className="max-h-16 shrink-0 overflow-auto" />
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Renderer rows={colored.rows} shape={colored.shape} options={OPTIONS} />
       </div>
-      {showLegend && legend.length > 0 && legend.length <= 24 && (
-        <div className="max-h-28 shrink-0 overflow-auto">
-          <LegendCards items={legend} columns={4} />
-        </div>
-      )}
     </div>
   );
 }

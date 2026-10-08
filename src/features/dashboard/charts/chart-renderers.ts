@@ -17,6 +17,7 @@ import { RadarNet } from "./radar-net";
 import { Rings } from "./rings";
 import { Score } from "./score";
 import { TreemapChart } from "./treemap-chart";
+import "./chart-theme.css";
 
 export const CHART_RENDERERS: Record<ChartKind, ComponentType<ChartProps>> = {
   kpi: memo(Kpi),
