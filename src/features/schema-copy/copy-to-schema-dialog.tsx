@@ -51,6 +51,7 @@ function CopyToSchemaContent({
   }, [target, connection?.id]);
 
   const targetConnection = connections.find((entry) => entry.id === targetConnectionId) ?? null;
+  const sameConnection = targetConnectionId === connection?.id;
   const { data: schemas } = useQuery({
     queryKey: ["schemas-target", targetConnectionId, database],
     queryFn: async () => {
@@ -66,20 +67,28 @@ function CopyToSchemaContent({
         current.id === connection?.id ? (database ?? undefined) : undefined,
       );
     },
-    select: (list) => visibleSchemas(targetConnection, list),
+    select: (list) =>
+      visibleSchemas(targetConnection, list).filter(
+        (entry) => !(sameConnection && entry === target?.schema),
+      ),
     enabled: Boolean(targetConnection && target),
   });
 
   useEffect(() => {
     if (schemas?.length && !schemas.includes(targetSchema)) setTargetSchema(schemas[0]);
   }, [schemas, targetSchema]);
-  const schema = targetSchema.trim();
-  const enabled = Boolean(connection && target && schema);
+  const schema = schemas?.includes(targetSchema) ? targetSchema.trim() : "";
+  const enabled = Boolean(connection && target && targetConnection && schema);
 
   const ddlQuery = useQuery({
-    queryKey: ["schema-copy-preview", connection?.id, database, target, schema],
-    queryFn: () =>
-      previewSchemaObjectCopy(
+    queryKey: ["schema-copy-preview", connection?.id, database, target, targetConnectionId, schema],
+    queryFn: () => {
+      const destination = sameConnection
+        ? undefined
+        : useConnectionsStore
+            .getState()
+            .connections.find((entry) => entry.id === targetConnectionId);
+      return previewSchemaObjectCopy(
         connection!.kind,
         effectiveConnectionString(connection!),
         target!.schema,
@@ -87,7 +96,9 @@ function CopyToSchemaContent({
         target!.objectType,
         target!.name,
         database ?? undefined,
-      ),
+        destination ? { connectionString: effectiveConnectionString(destination) } : undefined,
+      );
+    },
     enabled,
     retry: false,
   });

@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-fn tokens(sql: &str) -> Vec<Range<usize>> {
+pub(super) fn tokens(sql: &str) -> Vec<Range<usize>> {
     tokens_from(sql, 0)
 }
 
