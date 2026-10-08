@@ -1,149 +1,171 @@
-import { motion } from "motion/react";
-import { useEffect } from "react";
-import { EASE_OUT } from "@/lib/ease";
-
-const CURTAIN = [0.65, 0, 0.35, 1] as const;
-const INTRO_MS = 5400;
-const WORDMARK = ["l", "8", "d", "b"];
-const PARTICLES = Array.from({ length: 40 }, (_, i) => ({
-  left: (i * 37 + 11) % 100,
-  top: (i * 61 + 7) % 100,
-  size: 1 + (i % 3),
-  delay: 0.6 + (i % 13) * 0.22,
-  duration: 3.5 + (i % 5) * 0.7,
-}));
+import {
+  ArrowRight,
+  Database,
+  LockKeyhole,
+  SlidersHorizontal,
+  Table2,
+  Terminal,
+} from "lucide-react";
+import { type KeyboardEvent, useEffect, useRef } from "react";
+import { AppLogo } from "@/components/app-logo";
+import { Button } from "@/components/ui/button";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useSettingsStore } from "@/lib/settings";
 
 interface OnboardingIntroProps {
   onComplete: () => void;
 }
 
 export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
+  const startRef = useRef<HTMLButtonElement>(null);
+  const customizeRef = useRef<HTMLButtonElement>(null);
+  const setDone = useSettingsStore((state) => state.setOnboardingDone);
+  const quickStart = useNewFeatureVisibility<HTMLButtonElement>(
+    "connections.onboarding.quick-start",
+  );
+
   useEffect(() => {
-    const timer = window.setTimeout(onComplete, INTRO_MS);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      onComplete();
-    };
-    window.addEventListener("keydown", onKey);
+    const previous = document.activeElement;
+    startRef.current?.focus();
     return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("keydown", onKey);
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, [onComplete]);
+  }, []);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setDone(true);
+    }
+    if (event.key !== "Tab") return;
+    if (event.shiftKey && document.activeElement === startRef.current) {
+      event.preventDefault();
+      customizeRef.current?.focus();
+    } else if (!event.shiftKey && document.activeElement === customizeRef.current) {
+      event.preventDefault();
+      startRef.current?.focus();
+    }
+  }
 
   return (
-    <motion.div
-      className="absolute inset-0 z-10 cursor-pointer overflow-hidden bg-black text-white select-none"
-      onClick={onComplete}
-      exit={{ opacity: 0, scale: 1.4, filter: "blur(24px)" }}
-      transition={{ duration: 0.9, ease: [0.7, 0, 0.84, 0] }}
-    >
-      <div className="absolute inset-x-0 bottom-0 h-1/2 [perspective:520px]">
-        <motion.div
-          className="absolute -inset-x-1/2 inset-y-0 origin-bottom [transform:rotateX(74deg)] bg-[linear-gradient(to_right,rgb(56_189_248/0.28)_1px,transparent_1px),linear-gradient(to_bottom,rgb(56_189_248/0.28)_1px,transparent_1px)] bg-[size:56px_56px] [mask-image:linear-gradient(to_top,black_10%,transparent_85%)]"
-          initial={{ opacity: 0, backgroundPositionY: "0px" }}
-          animate={{ opacity: 1, backgroundPositionY: "560px" }}
-          transition={{
-            opacity: { duration: 2.2, delay: 0.6 },
-            backgroundPositionY: { duration: 5, ease: "linear", repeat: Number.POSITIVE_INFINITY },
-          }}
-        />
+    <div className="onboarding-welcome absolute inset-0 overflow-y-auto bg-background">
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-6 py-8 sm:px-10 lg:px-14">
+        <header className="flex items-center gap-2.5">
+          <AppLogo alt="" className="size-8" />
+          <span className="text-base font-semibold tracking-tight">l8db</span>
+          <span className="ml-3 border-l pl-3 text-xs text-muted-foreground">
+            Dein Datenbank-Client
+          </span>
+        </header>
+        <div className="grid flex-1 items-center gap-12 py-12 md:grid-cols-[1.1fr_1fr] md:gap-16">
+          <section>
+            <p className="eyebrow mb-5">Willkommen an deinem Arbeitsplatz</p>
+            <h1 className="max-w-lg text-4xl font-semibold leading-[1.08] tracking-[-0.05em] sm:text-5xl lg:text-6xl">
+              Deine Daten.
+              <br />
+              Dein Arbeitsplatz.
+            </h1>
+            <p className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
+              Öffne eine Datenbank, finde die richtige Tabelle und bring deine nächste Abfrage auf
+              den Punkt.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Button
+                ref={(element) => {
+                  startRef.current = element;
+                  return quickStart.ref(element);
+                }}
+                size="lg"
+                className="h-11 gap-3 px-5"
+                onClick={() => setDone(true)}
+                onKeyDown={handleKeyDown}
+              >
+                Direkt loslegen
+                <ArrowRight className="size-4" />
+              </Button>
+              <Button
+                ref={customizeRef}
+                variant="ghost"
+                className="h-11 px-3"
+                onClick={onComplete}
+                onKeyDown={handleKeyDown}
+              >
+                <SlidersHorizontal className="size-4" />
+                Erst einrichten
+              </Button>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Design, Treiber und Erweiterungen kannst du jederzeit anpassen.
+            </p>
+            <div className="mt-10 space-y-4 border-t pt-6">
+              <div className="flex items-center gap-3 text-sm">
+                <Database aria-hidden="true" className="size-4 text-primary" />
+                <span>SQL, NoSQL und lokale Dateien an einem Ort</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Table2 aria-hidden="true" className="size-4 text-primary" />
+                <span>Daten durchsuchen, bearbeiten und exportieren</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Terminal aria-hidden="true" className="size-4 text-primary" />
+                <span>Abfragen schreiben oder mit KI entwickeln</span>
+              </div>
+            </div>
+          </section>
+          <div
+            aria-hidden="true"
+            className="welcome-preview hidden overflow-hidden rounded-xl border bg-card shadow-xl shadow-black/5 md:block"
+          >
+            <div className="flex items-center gap-2 border-b bg-muted/35 px-5 py-4 text-xs">
+              <Database className="size-4 text-primary" />
+              <span className="font-medium">Mein Arbeitsplatz</span>
+              <span className="ml-auto rounded border px-2 py-0.5 text-[10px] text-muted-foreground">
+                SQL
+              </span>
+            </div>
+            <div className="flex items-center gap-2 border-b px-5 py-3 text-xs text-muted-foreground">
+              <Terminal className="size-3.5" />
+              Neue Abfrage
+            </div>
+            <div className="space-y-2 border-b px-5 py-7 font-mono text-[12px] leading-relaxed">
+              <p>
+                <span className="mr-4 text-muted-foreground/50">1</span>
+                <span className="text-primary">SELECT</span> name, status
+              </p>
+              <p>
+                <span className="mr-4 text-muted-foreground/50">2</span>
+                <span className="text-primary">FROM</span> projects
+              </p>
+              <p>
+                <span className="mr-4 text-muted-foreground/50">3</span>
+                <span className="text-primary">WHERE</span> status ={" "}
+                <span className="text-emerald-700 dark:text-emerald-400">'active'</span>
+                {";"}
+              </p>
+            </div>
+            <div className="grid grid-cols-[1fr_6rem] border-b bg-muted/35 px-5 py-2.5 text-[11px] font-medium text-muted-foreground">
+              <span>name</span>
+              <span>status</span>
+            </div>
+            {["Website", "Analytics", "Mobile App"].map((name) => (
+              <div
+                key={name}
+                className="grid grid-cols-[1fr_6rem] border-b border-border/60 px-5 py-3 text-xs"
+              >
+                <span>{name}</span>
+                <span className="text-muted-foreground">active</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 px-5 py-3 text-[10px] text-muted-foreground">
+              <Table2 className="size-3" />3 Zeilen<span className="ml-auto">Beispielvorschau</span>
+            </div>
+          </div>
+        </div>
+        <footer className="flex flex-wrap items-center gap-2 border-t pt-5 text-xs text-muted-foreground">
+          <LockKeyhole aria-hidden="true" className="size-3.5" />
+          Passwörter im System-Schlüsselbund. Diagnosedaten nur mit deiner Zustimmung.
+        </footer>
       </div>
-
-      <motion.div
-        className="absolute inset-0 m-auto size-[80vmax] rounded-full bg-[radial-gradient(circle,rgb(99_102_241/0.5),rgb(14_165_233/0.16)_32%,transparent_62%)]"
-        initial={{ opacity: 0, scale: 0.3 }}
-        animate={{ opacity: [0, 1, 0.75], scale: [0.3, 1.15, 1] }}
-        transition={{ duration: 3.4, delay: 1, ease: EASE_OUT }}
-      />
-
-      {PARTICLES.map((p) => (
-        <motion.span
-          key={`${p.left}-${p.top}`}
-          className="absolute rounded-full bg-sky-200"
-          style={{ left: `${p.left}%`, top: `${p.top}%`, width: p.size, height: p.size }}
-          initial={{ opacity: 0, y: 0 }}
-          animate={{ opacity: [0, 0.9, 0], y: -60 }}
-          transition={{
-            duration: p.duration,
-            delay: p.delay,
-            ease: "easeOut",
-            repeat: Number.POSITIVE_INFINITY,
-          }}
-        />
-      ))}
-
-      <motion.div
-        className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-white to-transparent"
-        initial={{ scaleX: 0, opacity: 0 }}
-        animate={{ scaleX: [0, 1, 1], opacity: [0, 1, 0] }}
-        transition={{ duration: 2.2, delay: 0.7, times: [0, 0.45, 1], ease: EASE_OUT }}
-      />
-      <motion.div
-        className="absolute inset-x-0 top-1/2 h-28 -mt-14 bg-sky-400/40 blur-3xl"
-        initial={{ scaleX: 0, opacity: 0 }}
-        animate={{ scaleX: [0, 1.2, 1], opacity: [0, 0.9, 0] }}
-        transition={{ duration: 2.6, delay: 0.8, times: [0, 0.4, 1], ease: EASE_OUT }}
-      />
-
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-7">
-        <motion.img
-          src="/logo.png"
-          alt=""
-          draggable={false}
-          className="size-28 rounded-[22%] shadow-[0_0_90px_rgb(99_102_241/0.65)]"
-          initial={{ opacity: 0, scale: 1.9, filter: "blur(28px)" }}
-          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-          transition={{ duration: 1.7, delay: 1.4, ease: EASE_OUT }}
-        />
-        <h1 className="flex font-mono text-7xl font-semibold tracking-tight">
-          {WORDMARK.map((char, i) => (
-            <motion.span
-              key={char}
-              initial={{ opacity: 0, y: 48, filter: "blur(14px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              transition={{ duration: 1, delay: 2.3 + i * 0.1, ease: EASE_OUT }}
-            >
-              {char}
-            </motion.span>
-          ))}
-        </h1>
-        <motion.p
-          className="text-xs font-medium uppercase text-white/60"
-          initial={{ opacity: 0, letterSpacing: "1.4em" }}
-          animate={{ opacity: 1, letterSpacing: "0.5em" }}
-          transition={{ duration: 2, delay: 3.1, ease: EASE_OUT }}
-        >
-          Alle Datenbanken. Ein Client.
-        </motion.p>
-      </div>
-
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_45%,black_100%)]" />
-
-      <motion.div
-        className="absolute inset-x-0 top-0 z-10 bg-black"
-        initial={{ height: "50%" }}
-        animate={{ height: "0%" }}
-        transition={{ duration: 1.5, delay: 0.25, ease: CURTAIN }}
-      />
-      <motion.div
-        className="absolute inset-x-0 bottom-0 z-10 bg-black"
-        initial={{ height: "50%" }}
-        animate={{ height: "0%" }}
-        transition={{ duration: 1.5, delay: 0.25, ease: CURTAIN }}
-      />
-
-      <motion.button
-        type="button"
-        onClick={onComplete}
-        className="absolute right-6 bottom-5 z-20 text-[10px] uppercase tracking-[0.35em] text-white/40 transition-colors hover:text-white"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.2, duration: 0.8 }}
-      >
-        Überspringen
-      </motion.button>
-    </motion.div>
+    </div>
   );
 }

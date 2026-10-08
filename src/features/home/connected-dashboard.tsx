@@ -64,7 +64,6 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             </p>
           </div>
           <div className="flex items-center gap-2" data-tour="dashboard-actions">
-            <DisconnectButton />
             <Button
               ref={customize.ref}
               variant="outline"
@@ -87,11 +86,11 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             </Button>
             <Button size="sm" onClick={newQuery}>
               <Plus className="size-3.5" />
-              {caps.query_language === "sql" ? "SQL-Abfrage" : "Abfrage"}
+              {caps.query_language === "sql" ? "Neue SQL-Abfrage" : "Neue Abfrage"}
             </Button>
           </div>
         </header>
-        <div className="mb-6 flex items-center gap-3">
+        <div className="mb-6 flex flex-wrap items-center gap-3">
           <AnimatedBadge
             size="sm"
             status={tables.isError ? "danger" : tables.isPending ? "loading" : "success"}
@@ -106,6 +105,9 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             {connection.ssh?.host ? "SSH-Tunnel · " : ""}TLS{" "}
             {connection.sslMode === "disable" ? "deaktiviert" : connection.sslMode}
           </span>
+          <div className="ml-auto">
+            <DisconnectButton variant="ghost" size="xs" />
+          </div>
         </div>
         {editing && (
           <section

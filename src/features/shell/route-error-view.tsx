@@ -49,15 +49,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
   }
 
   return (
-    <div className="connection-empty relative grid min-h-0 w-full flex-1 place-items-center overflow-y-auto p-6">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[36rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-32 left-1/4 h-56 w-96 rounded-full bg-destructive/10 blur-3xl"
-      />
+    <div className="relative grid min-h-0 w-full flex-1 place-items-center overflow-y-auto bg-background p-6">
       <motion.div
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -73,9 +65,6 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
               <Badge variant={chunkFailure ? "secondary" : "destructive"}>
                 {chunkFailure ? "Modul-Ladefehler" : "Unerwarteter Fehler"}
               </Badge>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {chunkFailure ? "CHUNK_504" : "ROUTE_ERROR"}
-              </span>
             </div>
             <h1 className="mt-1.5 text-xl font-semibold tracking-tight">
               {chunkFailure ? "Ansicht konnte nicht geladen werden" : "Etwas ist schiefgelaufen"}
@@ -85,13 +74,9 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
 
         <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
           {chunkFailure
-            ? "Ein Code-Modul (z. B. Tabelle oder Virtualisierung) wurde beim Laden ungültig – typischerweise ein veralteter Dev-Cache nach „Outdated Optimize Dep“. Ein Neuladen behebt das in der Regel sofort."
+            ? "Ein Teil der App konnte nicht geladen werden. Lade die Ansicht neu, um weiterzuarbeiten. Deine gespeicherten Verbindungen bleiben erhalten."
             : "Diese Ansicht ist abgestürzt. Du kannst es erneut versuchen oder zur Startseite zurückkehren – deine Verbindungen und Tabs bleiben erhalten."}
         </p>
-
-        <div className="mt-4 rounded-xl border bg-muted/50 px-3.5 py-3 font-mono text-xs leading-relaxed break-words text-muted-foreground">
-          {message || "Unbekannter Fehler"}
-        </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Button onClick={retry} className="gap-1.5">
@@ -128,6 +113,9 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
           </button>
           {detailsOpen && (
             <div className="mt-3 space-y-3">
+              <p className="break-words font-mono text-xs leading-relaxed text-muted-foreground">
+                {message || "Unbekannter Fehler"}
+              </p>
               <pre className="max-h-48 overflow-auto rounded-lg border bg-background p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
                 {stack ?? message}
               </pre>

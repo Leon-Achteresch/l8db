@@ -1,6 +1,16 @@
 import { useNavigate } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
-import { BookOpen, FolderOpen, History, Keyboard, Link2, Plus, Route, Upload } from "lucide-react";
+import {
+  BookOpen,
+  FolderOpen,
+  History,
+  Keyboard,
+  Link2,
+  LockKeyhole,
+  Plus,
+  Route,
+  Upload,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppLogo } from "@/components/app-logo";
@@ -65,12 +75,13 @@ export function ConnectionsEmptyState({
       className="@container min-h-0 flex-1 overflow-y-auto"
     >
       <div className="mx-auto w-full max-w-5xl px-2 pt-8 pb-12 sm:px-6 sm:pt-14 lg:px-10 lg:pt-20">
-        <header className="mb-12 flex items-center gap-4">
-          <AppLogo alt="" className="size-14 shadow-sm" />
+        <header className="mb-9 flex items-start gap-4">
+          <AppLogo alt="" className="mt-1 size-11" />
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">l8db</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Datenbanken verbinden, abfragen und verwalten.
+            <p className="eyebrow mb-2">Dein Arbeitsplatz</p>
+            <h1 className="text-3xl font-semibold tracking-tight">Was möchtest du öffnen?</h1>
+            <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
+              Verbinde eine Datenbank oder arbeite direkt mit einer lokalen Datei.
             </p>
           </div>
         </header>
@@ -78,20 +89,21 @@ export function ConnectionsEmptyState({
           <div className="min-w-0 space-y-10">
             <section aria-labelledby="welcome-start">
               <h2 id="welcome-start" className="mb-3 text-sm font-semibold">
-                Starten
+                Loslegen
               </h2>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <WelcomeAction
                   icon={Plus}
-                  label="Neue Verbindung…"
-                  description="Mit deiner Datenbank verbinden"
+                  label="Datenbank verbinden"
+                  description="Wähle deine Datenbank und füge die Verbindungsdaten ein."
                   primary
                   dataTour="connection-add"
                   onClick={() => openEditor("new")}
                 />
                 <WelcomeAction
                   icon={Link2}
-                  label="Verbindungs-URL einfügen…"
+                  label="Verbindungs-URL einfügen"
+                  description="Du hast schon eine URL? Übernimm sie aus der Zwischenablage."
                   onClick={() =>
                     void pasteText()
                       .catch(() => "")
@@ -100,18 +112,22 @@ export function ConnectionsEmptyState({
                 />
                 <WelcomeAction
                   icon={FolderOpen}
-                  label={openingFile ? "Datei wird geöffnet…" : "Datei öffnen…"}
+                  label={openingFile ? "Datei wird geöffnet…" : "Lokale Datei öffnen"}
                   description="SQLite, DuckDB, CSV, Parquet, SQL"
                   disabled={openingFile}
                   onClick={() => void openFile()}
                 />
                 <WelcomeAction
                   icon={Upload}
-                  label="Profile importieren…"
+                  label="Bestehende Verbindungen importieren"
                   description="Aus anderen Datenbank-Tools"
                   onClick={() => setImportOpen(true)}
                 />
               </div>
+              <p className="mt-4 flex items-start gap-2 px-1 text-xs leading-relaxed text-muted-foreground">
+                <LockKeyhole aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+                Deine Passwörter werden im System-Schlüsselbund gespeichert.
+              </p>
             </section>
             <section aria-labelledby="welcome-recent">
               <h2 id="welcome-recent" className="mb-3 text-sm font-semibold">
@@ -136,15 +152,49 @@ export function ConnectionsEmptyState({
                     className="mt-0.5 size-4 shrink-0 text-muted-foreground/70"
                   />
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Dein Arbeitsplatz beginnt hier. Öffne eine Datenbank oder eine Datei, um
-                    loszulegen.
+                    Deine zuletzt geöffneten Notebooks findest du hier, sobald du eines öffnest.
                   </p>
                 </div>
               )}
             </section>
           </div>
-          <aside aria-label="Tastenkürzel und Hilfe" className="min-w-0 space-y-10">
-            <WelcomeShortcuts />
+          <aside
+            aria-label="Tastenkürzel und Hilfe"
+            className="min-w-0 space-y-8 rounded-xl border bg-card p-5 sm:p-6"
+          >
+            <section aria-labelledby="welcome-workflow">
+              <h2 id="welcome-workflow" className="text-sm font-semibold">
+                Von Verbindung zu Ergebnis
+              </h2>
+              <ol className="mt-5 space-y-5">
+                {[
+                  {
+                    title: "Datenbank öffnen",
+                    description: "Verbinde einen Server oder öffne eine Datei.",
+                  },
+                  {
+                    title: "Daten entdecken",
+                    description: "Durchsuche Tabellen und prüfe ihre Struktur.",
+                  },
+                  {
+                    title: "Antworten finden",
+                    description: "Führe eine Abfrage aus und exportiere das Ergebnis.",
+                  },
+                ].map((item, index) => (
+                  <li key={item.title} className="flex items-start gap-3">
+                    <span className="grid size-6 shrink-0 place-items-center rounded-full border bg-background text-[11px] font-medium text-muted-foreground">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <p className="text-xs font-medium">{item.title}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {item.description}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
             <section aria-labelledby="welcome-help">
               <h2 id="welcome-help" className="mb-3 text-sm font-semibold">
                 Hilfe
@@ -167,6 +217,14 @@ export function ConnectionsEmptyState({
                 />
               </div>
             </section>
+            <details className="border-t pt-5">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                Tastenkürzel anzeigen
+              </summary>
+              <div className="mt-5">
+                <WelcomeShortcuts />
+              </div>
+            </details>
           </aside>
         </div>
       </div>
