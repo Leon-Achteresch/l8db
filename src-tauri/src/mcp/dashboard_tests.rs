@@ -134,7 +134,8 @@ impl Lab {
             "charts": [{
                 "type": "kpi",
                 "title": "Revenue",
-                "sql": "SELECT SUM(amount) AS revenue FROM orders",
+                "sql": "SELECT substr(created_at, 1, 7) AS month, SUM(amount) AS revenue FROM orders GROUP BY 1 ORDER BY 1",
+                "dimension": "month",
                 "metrics": ["revenue"]
             }]
         }));
@@ -188,12 +189,12 @@ fn tool_definition_matches_kinds() {
         KINDS.len()
     );
     assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 13);
-    assert!(definition["description"]
-        .as_str()
-        .unwrap()
-        .contains("arrange"));
+    let description = definition["description"].as_str().unwrap();
+    assert!(description.contains("arrange"));
+    assert!(description.contains("never a bare number"));
     let help = chart_types();
     assert!(help.contains("\nDesign (professional dashboards):\n- Layout"));
+    assert_eq!(help.matches("never a bare number").count(), 2);
     assert!(help.contains("invertDelta for metrics where lower is better"));
     for kind in KINDS {
         assert!(
@@ -216,7 +217,7 @@ fn creates_dashboard_with_many_chart_types() {
         "name": "Operations",
         "refreshSec": 60,
         "charts": [
-            {"type": "kpi", "title": "Orders", "sql": "SELECT COUNT(*) AS order_count FROM orders", "metrics": ["order_count"]},
+            {"type": "kpi", "title": "Orders", "sql": "SELECT created_at AS day, COUNT(*) AS order_count FROM orders GROUP BY 1 ORDER BY 1", "metrics": ["order_count"], "dateColumn": "day"},
             {"type": "kpi", "title": "Revenue trend", "sql": "SELECT substr(created_at, 1, 7) AS month, SUM(amount) AS revenue FROM orders GROUP BY 1 ORDER BY 1", "dimension": "month", "metrics": ["revenue"], "options": {"curve": "linear", "colorOffset": 2}},
             {"type": "line", "title": "Daily", "sql": "SELECT created_at AS day, SUM(amount) AS revenue, COUNT(*) AS order_count FROM orders GROUP BY 1 ORDER BY 1;", "dimension": "day", "metrics": ["revenue", "order_count"], "dateColumn": "day", "period": "90d", "options": {"showGrid": false, "labels": true}},
             {"type": "donut", "title": "Status", "sql": "SELECT status, COUNT(*) AS n FROM orders GROUP BY status", "dimension": "status", "metrics": ["n"], "options": {"showPercent": true, "sortBy": "desc"}},
@@ -229,7 +230,10 @@ fn creates_dashboard_with_many_chart_types() {
     }));
     assert!(text.contains("9 Charts"), "{text}");
     assert!(text.contains("Sichtbar in l8db"));
-    assert!(text.contains("  order_count\n  5\n  (1 rows)"), "{text}");
+    assert!(
+        text.contains("  day\torder_count\n  2026-01-05\t1\n"),
+        "{text}"
+    );
     let dashboard = lab.only();
     assert_eq!(dashboard["connectionId"], "shop");
     assert_eq!(dashboard["refreshSec"], 60);
@@ -384,7 +388,7 @@ fn rejects_invalid_charts_without_touching_the_file() {
     for (spec, expected) in cases {
         let error = lab.err(
             json!({"action": "add_charts", "dashboard": "Sales", "charts": [
-                {"type": "kpi", "title": "Fine", "sql": "SELECT 1 AS one", "metrics": ["one"]},
+                {"type": "kpi", "title": "Fine", "sql": "SELECT created_at, 1 AS one FROM orders", "metrics": ["one"], "dateColumn": "created_at"},
                 spec.clone()
             ]}),
         );
@@ -691,7 +695,10 @@ fn previews_specs_and_existing_charts() {
         "{text}"
     );
     let text = lab.ok(json!({"action": "preview", "dashboard": "Sales", "chart": "Revenue"}));
-    assert!(text.starts_with("revenue\n1055.75"), "{text}");
+    assert!(
+        text.starts_with("month\trevenue\n2026-01\t200.5\n2026-02\t345.25\n2026-03\t510"),
+        "{text}"
+    );
     assert!(lab
         .err(json!({"action": "preview", "connection": "Shop", "spec": {"sql": "UPDATE orders SET amount = 0"}}))
         .contains("read-only"));
@@ -872,7 +879,7 @@ fn accepts_loose_llm_arguments_and_infers_mappings() {
     let charts = json!([
         {"chart": "pie", "title": "Status", "query": "SELECT status, COUNT(*) AS orders FROM orders GROUP BY status"},
         {"type": "bar", "title": "Regions", "sql": "SELECT region, SUM(amount) AS revenue FROM orders GROUP BY region", "x": "region", "y": "revenue", "w": "6"},
-        {"type": "number", "title": "Total", "sql": "SELECT SUM(amount) AS total FROM orders"},
+        {"type": "number", "title": "Total", "sql": "SELECT created_at, SUM(amount) AS total FROM orders GROUP BY created_at", "date": "created_at"},
         {"type": "line_chart", "title": "Trend", "sql": "SELECT created_at AS day, COUNT(*) AS orders, SUM(amount) AS revenue FROM orders GROUP BY day ORDER BY day", "date_column": "day", "options": "{\"showLegend\": true}"},
         {"type": "heatmap", "title": "Matrix", "sql": "SELECT region, status, COUNT(*) AS n FROM orders GROUP BY region, status"}
     ]);
@@ -899,12 +906,13 @@ fn accepts_loose_llm_arguments_and_infers_mappings() {
     assert_eq!(mapping("Regions")["metrics"], json!(["revenue"]));
     assert_eq!(mapping("Total")["metrics"], json!(["total"]));
     assert_eq!(mapping("Total")["dimension"], Value::Null);
+    assert_eq!(mapping("Total")["dateColumn"], "created_at");
     assert_eq!(mapping("Trend")["dimension"], "day");
     assert_eq!(mapping("Trend")["dateColumn"], "day");
     assert_eq!(mapping("Trend")["metrics"], json!(["orders", "revenue"]));
     assert_eq!(mapping("Matrix")["dimension2"], "status");
     assert_eq!(mapping("Matrix")["metrics"], json!(["n"]));
-    lab.ok(json!({"action": "add_charts", "dashboard": "Loose", "charts": {"type": "kpi", "title": "Single", "sql": "SELECT COUNT(*) AS n FROM orders"}}));
+    lab.ok(json!({"action": "add_charts", "dashboard": "Loose", "charts": {"type": "kpi", "title": "Single", "sql": "SELECT created_at, COUNT(*) AS n FROM orders GROUP BY created_at", "dateColumn": "created_at"}}));
     lab.ok(json!({"action": "update_chart", "dashboard": "Loose", "chart": "Single", "spec": "{\"title\": \"Renamed\"}"}));
     assert_eq!(widget(&lab.only(), "Renamed")["chart"], "kpi");
 }
@@ -1003,9 +1011,9 @@ fn rejects_unknown_variables_and_bad_builder_specs() {
         missing.contains("{{region}} ist nicht definiert"),
         "{missing}"
     );
-    let sql = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [{"type": "kpi", "sql": "SELECT COUNT(*) AS n FROM orders WHERE region = {{land}}"}]}));
+    let sql = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [{"type": "kpi", "sql": "SELECT created_at, COUNT(*) AS n FROM orders WHERE region = {{land}} GROUP BY created_at", "dateColumn": "created_at"}]}));
     assert!(sql.contains("{{land}}"), "{sql}");
-    let bad_join = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [{"type": "kpi", "builder": {"table": "orders", "joins": [{"table": "regions", "on": "region"}]}}]}));
+    let bad_join = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "charts": [{"type": "kpi", "builder": {"table": "orders", "joins": [{"table": "regions", "on": "region"}], "dateColumn": "created_at"}}]}));
     assert!(bad_join.contains("spalte = spalte"), "{bad_join}");
     let bad_var = lab.err(json!({"action": "create", "connection": "Shop", "name": "X", "variables": [{"name": "1x"}]}));
     assert!(bad_var.contains("ungültig"), "{bad_var}");
@@ -1100,7 +1108,7 @@ fn suggests_and_measures_joins_like_the_studio() {
         "name": "Joins",
         "charts": [
             {"type": "column", "title": "Regionen", "builder": {"table": "orders", "joins": [{"table": "regions", "on": "region = code"}], "dimension": "regions.name", "metrics": ["sum(amount)"]}},
-            {"type": "kpi", "title": "Menge", "builder": {"table": "orders", "joins": [{"table": "order_items", "as": "i", "on": "id = order_id"}], "metrics": ["sum(i.qty)"]}}
+            {"type": "kpi", "title": "Menge", "builder": {"table": "orders", "joins": [{"table": "order_items", "as": "i", "on": "id = order_id"}], "metrics": ["sum(i.qty)"], "dateColumn": "created_at"}}
         ]
     }));
     assert!(
@@ -1162,7 +1170,7 @@ fn validates_comparison_and_number_options() {
         }
         "bars" => "SELECT region, SUM(amount) AS total FROM orders GROUP BY region",
         "table" => "SELECT id FROM orders",
-        _ => "SELECT SUM(amount) AS total FROM orders",
+        _ => "SELECT created_at, SUM(amount) AS total FROM orders GROUP BY created_at",
     };
     for (kind, options, expected) in [
         (
@@ -1230,7 +1238,10 @@ fn validates_comparison_and_number_options() {
             "Option 'horizontal' gibt es bei 'bars' nicht",
         ),
     ] {
-        let spec = json!({"type": kind, "sql": sql_for(kind), "options": options});
+        let mut spec = json!({"type": kind, "sql": sql_for(kind), "options": options});
+        if kind == "kpi" {
+            spec["dateColumn"] = json!("created_at");
+        }
         let error =
             lab.err(json!({"action": "add_charts", "dashboard": "Sales", "charts": [spec]}));
         assert!(
@@ -1391,11 +1402,11 @@ fn arrange_action_lays_out_a_typical_dashboard() {
     let mut lab = lab();
     lab.ok(json!({"action": "create", "connection": "Shop", "name": "Board", "charts": [
         {"type": "table", "title": "Liste", "sql": "SELECT id, amount FROM orders", "x": 0, "y": 30, "w": 12},
-        {"type": "kpi", "title": "Umsatz", "sql": "SELECT SUM(amount) AS \"Umsatz\" FROM orders", "x": 0, "y": 0},
+        {"type": "kpi", "title": "Umsatz", "sql": "SELECT created_at, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY created_at", "dateColumn": "created_at", "x": 0, "y": 0},
         {"type": "area", "title": "Verlauf", "sql": "SELECT created_at AS tag, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "tag", "metrics": ["Umsatz"], "x": 0, "y": 10},
-        {"type": "kpi", "title": "Bestellungen", "sql": "SELECT COUNT(*) AS \"Bestellungen\" FROM orders", "x": 3, "y": 0},
+        {"type": "kpi", "title": "Bestellungen", "sql": "SELECT created_at, COUNT(*) AS \"Bestellungen\" FROM orders GROUP BY created_at", "dateColumn": "created_at", "x": 3, "y": 0},
         {"type": "donut", "title": "Status", "sql": "SELECT status, COUNT(*) AS \"Anzahl\" FROM orders GROUP BY status", "x": 6, "y": 10},
-        {"type": "kpi", "title": "Schnitt", "sql": "SELECT AVG(amount) AS \"Schnitt\" FROM orders", "x": 6, "y": 0},
+        {"type": "kpi", "title": "Schnitt", "sql": "SELECT substr(created_at, 1, 7) AS \"Monat\", AVG(amount) AS \"Schnitt\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Monat", "x": 6, "y": 0},
         {"type": "bars", "title": "Regionen", "sql": "SELECT region, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY region", "x": 0, "y": 20}
     ]}));
     let text = lab.ok(json!({"action": "arrange", "dashboard": "Board"}));
@@ -1450,9 +1461,11 @@ fn reports_design_notes_without_failing() {
     lab.create_sales();
     let text = lab.ok(json!({"action": "add_charts", "dashboard": "Sales", "charts": [
         {"type": "donut", "title": "Viele", "sql": "SELECT status || id AS kat, amount AS sum_amount FROM orders UNION ALL SELECT region || id, target FROM orders", "dimension": "kat", "metrics": ["sum_amount"]},
-        {"type": "kpi", "title": "Vergleich", "sql": "SELECT COUNT(*) AS \"Bestellungen\" FROM orders", "options": {"compare": "previous"}},
+        {"type": "kpi", "title": "Vergleich", "sql": "SELECT substr(created_at, 1, 7) AS \"Monat\", COUNT(*) AS \"Bestellungen\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Monat", "options": {"compare": "previous"}},
         {"type": "column", "title": "Baukasten", "builder": {"table": "orders", "dimension": "status", "metrics": ["sum(amount)"]}},
-        {"type": "line", "title": "Sauber", "sql": "SELECT created_at AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Tag", "metrics": ["Umsatz"], "dateColumn": "Tag", "period": "30d", "options": {"compare": "year"}}
+        {"type": "line", "title": "Sauber", "sql": "SELECT created_at AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Tag", "metrics": ["Umsatz"], "dateColumn": "Tag", "period": "30d", "options": {"compare": "year"}},
+        {"type": "kpi", "title": "Summenzeile", "sql": "SELECT MAX(created_at) AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders", "metrics": ["Umsatz"], "dateColumn": "Tag"},
+        {"type": "kpi", "title": "Pro Tag", "sql": "SELECT created_at AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1", "metrics": ["Umsatz"], "dateColumn": "Tag"}
     ]}));
     let report = |title: &str| {
         text.split("\n- chart ")
@@ -1476,7 +1489,7 @@ fn reports_design_notes_without_failing() {
         compare.contains("compare wirkt nur mit dateColumn und period ≠ all."),
         "{compare}"
     );
-    assert!(compare.contains("kpi ohne dimension"), "{compare}");
+    assert!(!compare.contains("kpi ohne dimension"), "{compare}");
     assert!(!compare.contains("technisch"), "{compare}");
     assert!(!report("Baukasten").contains("technisch"), "{text}");
     let clean = report("Sauber");
@@ -1486,7 +1499,84 @@ fn reports_design_notes_without_failing() {
             && !clean.contains("Kategorien"),
         "{clean}"
     );
-    assert_eq!(lab.only()["widgets"].as_array().unwrap().len(), 5);
+    assert!(
+        report("Summenzeile").contains(
+            "kpi ohne dimension: Die Sparkline braucht Zeilen pro Datum (z. B. GROUP BY Tag über die dateColumn) statt einer einzelnen Summenzeile – oder eine Zeit-dimension."
+        ),
+        "{text}"
+    );
+    assert!(!report("Pro Tag").contains("kpi ohne dimension"), "{text}");
+    assert_eq!(lab.only()["widgets"].as_array().unwrap().len(), 7);
+}
+
+#[test]
+fn kpi_needs_a_time_dimension_or_date_column() {
+    let rule = "'kpi' zeigt immer Sparkline und Trend: setze dimension auf eine Zeitspalte (Tag/Woche/Monat, ORDER BY; im builder {field, bucket}) oder dateColumn. Eine Einzelzahl allein ist nicht erlaubt.";
+    let mut lab = lab();
+    lab.create_sales();
+    let before = lab.only();
+    for spec in [
+        json!({"type": "kpi", "title": "Zahl", "sql": "SELECT COUNT(*) AS n FROM orders", "metrics": ["n"]}),
+        json!({"type": "kpi", "title": "Zahl", "sql": "SELECT COUNT(*) AS n FROM orders"}),
+        json!({"type": "kpi", "title": "Zahl", "builder": {"table": "orders", "metrics": ["count"]}}),
+        json!({"type": "kpi", "title": "Zahl", "builder": {"table": "orders", "dimension": "status", "metrics": ["count"]}}),
+        json!({"type": "kpi", "title": "Zahl", "builder": {"table": "orders", "dimension": {"field": "created_at", "bucket": "none"}, "metrics": ["count"]}}),
+    ] {
+        let error = lab
+            .err(json!({"action": "add_charts", "dashboard": "Sales", "charts": [spec.clone()]}));
+        assert!(error.contains(rule), "{spec}: {error}");
+    }
+    let error = lab.err(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Revenue", "spec": {"dimension": null}}));
+    assert!(error.contains(rule), "{error}");
+    let preview = lab.ok(json!({"action": "preview", "connection": "Shop", "spec": {"type": "kpi", "sql": "SELECT COUNT(*) AS n FROM orders", "metrics": ["n"]}}));
+    assert!(preview.contains(&format!("Passung: {rule}")), "{preview}");
+    assert_eq!(lab.only(), before);
+
+    let text = lab.ok(json!({"action": "add_charts", "dashboard": "Sales", "charts": [
+        {"type": "kpi", "title": "Bestellungen", "sql": "SELECT created_at AS \"Tag\", COUNT(*) AS \"Bestellungen\" FROM orders GROUP BY 1", "dateColumn": "Tag", "period": "30d"},
+        {"type": "kpi", "title": "Umsatz", "sql": "SELECT substr(created_at, 1, 7) AS \"Monat\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Monat"},
+        {"type": "kpi", "title": "Menge", "builder": {"table": "orders", "metrics": ["sum(amount)"], "dateColumn": "created_at"}, "period": "90d"},
+        {"type": "kpi", "title": "Monatlich", "builder": {"table": "orders", "dimension": {"field": "created_at", "bucket": "month"}, "metrics": ["count"]}}
+    ]}));
+    assert!(!text.contains("kpi ohne dimension"), "{text}");
+    let board = lab.only();
+    let mapping = |title: &str| dataset_for(&board, title)["mapping"].clone();
+    assert_eq!(mapping("Bestellungen")["dateColumn"], "Tag");
+    assert_eq!(mapping("Bestellungen")["dimension"], Value::Null);
+    assert_eq!(mapping("Bestellungen")["metrics"], json!(["Bestellungen"]));
+    assert_eq!(mapping("Umsatz")["dimension"], "Monat");
+    assert_eq!(mapping("Umsatz")["dateColumn"], Value::Null);
+    let menge = &dataset_for(&board, "Menge")["simple"];
+    assert_eq!(menge["dateColumn"], "created_at");
+    assert_eq!(menge["dimension"], Value::Null);
+    assert_eq!(widget(&board, "Menge")["period"], "90d");
+    assert_eq!(
+        dataset_for(&board, "Monatlich")["simple"]["dimension"]["bucket"],
+        "month"
+    );
+    let run = lab.ok(json!({"action": "run", "dashboard": "Sales"}));
+    assert!(run.starts_with("5 ok, 0 mit Problemen"), "{run}");
+    let preview = lab.ok(json!({"action": "preview", "connection": "Shop", "spec": {"type": "kpi", "builder": {"table": "orders", "metrics": ["count"], "dateColumn": "created_at"}, "period": "30d"}}));
+    assert!(!preview.contains("Passung"), "{preview}");
+
+    mcp_dashboard_save(json!({
+        "id": "legacy",
+        "connectionId": "shop",
+        "name": "Alt",
+        "datasets": [{"id": "d", "name": "Zahl", "mode": "expert", "simple": empty_simple(), "sql": "SELECT COUNT(*) AS n FROM orders", "mapping": {"dimension": null, "dimension2": null, "metrics": ["n"], "dateColumn": null}}],
+        "widgets": [{"id": "w", "chart": "kpi", "datasetId": "d", "title": "Zahl", "period": "all", "x": 0, "y": 0, "w": 3, "h": 4}]
+    }))
+    .unwrap();
+    let run = lab.ok(json!({"action": "run", "dashboard": "Alt"}));
+    assert!(
+        run.starts_with("0 ok, 1 mit Problemen") && run.contains(rule),
+        "{run}"
+    );
+    let error = lab.err(json!({"action": "update_chart", "dashboard": "Alt", "chart": "Zahl", "spec": {"title": "Neu"}}));
+    assert!(error.contains(rule), "{error}");
+    lab.ok(json!({"action": "update_chart", "dashboard": "Alt", "chart": "Zahl", "spec": {"sql": "SELECT created_at, COUNT(*) AS n FROM orders GROUP BY created_at", "dateColumn": "created_at"}}));
+    let run = lab.ok(json!({"action": "run", "dashboard": "Alt"}));
+    assert!(run.starts_with("1 ok, 0 mit Problemen"), "{run}");
 }
 
 #[test]
@@ -1496,6 +1586,7 @@ fn design_notes_flag_crowded_and_technical_charts() {
         dimension2: None,
         metrics: metrics.iter().map(|m| m.to_string()).collect(),
         date,
+        timed: dimension,
     };
     let none = Map::new();
     let notes = |name: &str, rows: usize| {
@@ -1536,6 +1627,24 @@ fn design_notes_flag_crowded_and_technical_charts() {
         .into_iter()
         .collect();
     assert!(design_notes(kind("line").unwrap(), None, true, &dated, "all", &off).is_empty());
+    let kpi = |rows: usize, expert: bool, dimension: bool| {
+        design_notes(
+            kind("kpi").unwrap(),
+            Some(rows),
+            expert,
+            &shape(&["Umsatz"], dimension, true),
+            "all",
+            &none,
+        )
+    };
+    for rows in [0, 1] {
+        let notes = kpi(rows, true, false);
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(notes[0].starts_with("kpi ohne dimension: Die Sparkline braucht Zeilen pro Datum"));
+    }
+    assert!(kpi(2, true, false).is_empty());
+    assert!(kpi(1, false, false).is_empty());
+    assert!(kpi(1, true, true).is_empty());
     for name in [
         "m0",
         "m12",
