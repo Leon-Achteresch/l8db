@@ -167,14 +167,17 @@ impl ClickhouseAdapter {
             _ = cancel.cancelled() => false,
             _ = tokio::time::sleep(super::execution::query_duration()) => true,
         };
-        self.kill(&query_id).await?;
-        Err(if timed_out {
+        let reason = if timed_out {
             format!(
-                "Query-Timeout nach {} Sekunden: Abfrage vom Server abgebrochen.",
+                "Query-Timeout nach {} Sekunden: ",
                 super::execution::query_duration().as_secs()
             )
         } else {
-            "Abfrage vom Server abgebrochen.".into()
+            String::new()
+        };
+        Err(match self.kill(&query_id).await {
+            Ok(()) => format!("{reason}Abfrage vom Server abgebrochen."),
+            Err(error) => format!("{reason}{error}"),
         })
     }
 
