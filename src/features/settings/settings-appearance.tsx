@@ -3,6 +3,7 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { TableStylePicker } from "@/features/settings/table-style-picker";
 import { islandName, previewIsland } from "@/lib/dynamic-island";
 import { UI_SCALE_MAX, UI_SCALE_MIN, UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 
@@ -15,6 +16,8 @@ export function SettingsAppearance() {
     dynamicIsland,
     fitColumnsToHeader,
     monochromeCells,
+    tableStyle,
+    setTableStyle,
     setSidebarExtraCompact,
     setNavInHeader,
     setDynamicIsland,
@@ -105,6 +108,9 @@ export function SettingsAppearance() {
           />
         </div>
       </SettingsRow>
+      <SettingsRow settingId="table-style" featureId="settings.appearance.table-style" stacked>
+        <TableStylePicker value={tableStyle} onChange={setTableStyle} />
+      </SettingsRow>
       <SettingsRow settingId="fit-columns-to-header">
         <Switch
           aria-label="An Spaltentitel anpassen"
@@ -130,7 +136,8 @@ export function SettingsAppearance() {
             !navInHeader &&
             dynamicIsland &&
             fitColumnsToHeader &&
-            monochromeCells
+            monochromeCells &&
+            tableStyle === "classic"
           }
           onClick={resetAppearance}
         >

@@ -1,7 +1,8 @@
 import type { DetailedColumnInfo } from "@/lib/db";
+import type { GridColumnKind } from "@/lib/grid-cell-format";
 import type { TableRow } from "../data-table-types";
 
-export type ColumnTypeKind = "text" | "number" | "boolean" | "date" | "json" | "key" | "uuid";
+export type ColumnTypeKind = GridColumnKind;
 
 export function unwrapDataType(dataType: string): string {
   let lower = dataType.toLowerCase().trim();
@@ -75,42 +76,49 @@ export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: Detail
   switch (type) {
     case "key":
       return {
+        kind: "key" as const,
         label: "id",
         align: "text-left" as const,
         iconName: "Key",
       };
     case "uuid":
       return {
+        kind: "uuid" as const,
         label: "uuid",
         align: "text-left" as const,
         iconName: "Fingerprint",
       };
     case "number":
       return {
+        kind: "number" as const,
         label: "num",
         align: "text-left" as const,
         iconName: "Hash",
       };
     case "boolean":
       return {
+        kind: "boolean" as const,
         label: "bool",
         align: "text-left" as const,
         iconName: "Binary",
       };
     case "date":
       return {
+        kind: "date" as const,
         label: "date",
         align: "text-left" as const,
         iconName: "Calendar",
       };
     case "json":
       return {
+        kind: "json" as const,
         label: "json",
         align: "text-left" as const,
         iconName: "Braces",
       };
     case "text":
       return {
+        kind: "text" as const,
         label: "text",
         align: "text-left" as const,
         iconName: "Type",

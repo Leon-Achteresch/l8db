@@ -155,7 +155,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "appearance",
     title: "An Spaltentitel anpassen",
     description:
-      "Tabellenspalten automatisch so breit darstellen, dass der Spaltentitel vollständig sichtbar ist.",
+      "Tabellenspalten im klassischen Tabellenstil automatisch so breit darstellen, dass der Spaltentitel vollständig sichtbar ist.",
     keywords: [],
     key: "fitColumnsToHeader",
   },
@@ -167,6 +167,26 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "Zellwerte schwarz bzw. im Darkmode weiß anzeigen statt nach Datentyp einzufärben.",
     keywords: [],
     key: "monochromeCells",
+  },
+  {
+    id: "table-style",
+    tabId: "appearance",
+    title: "Tabellenstil",
+    description:
+      "Wie Tabellen dargestellt werden: klassisch, kompakt mit Spaltenbreite nach Inhalt, semantisch nach Datentyp oder mit Spaltenprofil im Kopf.",
+    keywords: [
+      "tabelle",
+      "grid",
+      "stil",
+      "design",
+      "kompakt",
+      "semantisch",
+      "profil",
+      "spalten",
+      "übersicht",
+      "dichte",
+    ],
+    key: "tableStyle",
   },
   {
     id: "reset-appearance",

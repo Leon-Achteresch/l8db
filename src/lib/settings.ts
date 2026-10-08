@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type SqlKeywordCase = "upper" | "lower" | "preserve";
@@ -92,6 +93,7 @@ export interface SettingsState {
   dynamicIsland: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
+  tableStyle: TableStyle;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -151,6 +153,7 @@ export interface SettingsState {
   setDynamicIsland: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
+  setTableStyle: (value: TableStyle) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -234,6 +237,7 @@ export const DEFAULT_SETTINGS = {
   dynamicIsland: true,
   fitColumnsToHeader: true,
   monochromeCells: true,
+  tableStyle: "classic" as TableStyle,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -320,6 +324,7 @@ export const useSettingsStore = create<SettingsState>()(
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
+      setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       resetAppearance: () =>
         set({
           uiScale: 100,
@@ -329,6 +334,7 @@ export const useSettingsStore = create<SettingsState>()(
           dynamicIsland: true,
           fitColumnsToHeader: true,
           monochromeCells: true,
+          tableStyle: "classic",
         }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -365,6 +371,7 @@ export const useSettingsStore = create<SettingsState>()(
           dynamicIsland: saved?.dynamicIsland !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
+          tableStyle: normalizeTableStyle(saved?.tableStyle),
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
         };
