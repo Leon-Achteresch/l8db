@@ -32,6 +32,14 @@ test("release version updates the Cargo lockfile without changing dependencies",
     const locked = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8");
     expect(locked).toContain('name = "l8db"\nversion = "0.3.42"');
     expect(locked).toContain(dependency);
+    run("set", "0.3.43-canary.4");
+    expect(JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"))).toMatchObject(
+      {
+        version: "0.3.43-canary.4",
+        bundle: { windows: { wix: { version: "0.3.43.4" } } },
+      },
+    );
+    run("set", "0.3.42");
     writeFileSync(join(root, "src-tauri/Cargo.lock"), locked.replace('"0.3.42"', '"0.3.0"'));
     expect(() => run("check")).toThrow();
   } finally {

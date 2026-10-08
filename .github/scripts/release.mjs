@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { generateManifest, verifyArtifacts } from "./release-artifacts.mjs";
 import {
   api,
+  CANARY_PATTERN,
   compareVersions,
   gh,
   git,
@@ -31,23 +32,27 @@ export function releaseNotes(version, changelog) {
 
 function currentVersion() {
   const version = JSON.parse(readFileSync("package.json", "utf8")).version;
-  assert(VERSION_PATTERN.test(version), "Invalid release version");
+  assert(VERSION_PATTERN.test(version) || CANARY_PATTERN.test(version), "Invalid release version");
   return version;
+}
+
+function channel(version) {
+  return CANARY_PATTERN.test(version) ? "canary" : "stable";
 }
 
 function assertDraft(release, version, sha) {
   assert.equal(release.tag_name, `v${version}`, "Release tag mismatch");
   assert.equal(release.target_commitish, sha, "Release source commit mismatch");
   assert(
-    release.draft && !release.immutable && !release.prerelease,
-    "Release must be an editable stable draft",
+    release.draft && !release.immutable && release.prerelease === CANARY_PATTERN.test(version),
+    `Release must be an editable ${channel(version)} draft`,
   );
 }
 
 function draft() {
   const version = currentVersion();
   const sha = git("rev-parse", "HEAD");
-  let release = releases().find((item) => item.tag_name === `v${version}`);
+  let release = releases(channel(version)).find((item) => item.tag_name === `v${version}`);
   if (release?.draft && release.target_commitish !== sha) {
     gh("api", "-X", "DELETE", `repos/${REPOSITORY}/releases/${release.id}`);
     release = undefined;
@@ -69,6 +74,8 @@ function draft() {
         `body=@${file}`,
         "-F",
         "draft=true",
+        "-F",
+        `prerelease=${CANARY_PATTERN.test(version)}`,
       ),
     );
   }
@@ -81,7 +88,8 @@ function draft() {
 async function publish() {
   const version = currentVersion();
   const sha = git("rev-parse", "HEAD");
-  const all = releases();
+  const canary = CANARY_PATTERN.test(version);
+  const all = releases(channel(version));
   const release = all.find((item) => item.tag_name === `v${version}`);
   if (release && !release.draft) {
     assert.equal(release.target_commitish, sha, "Published release belongs to another commit");
@@ -90,7 +98,7 @@ async function publish() {
   }
   assert(release, "Missing draft release");
   assertDraft(release, version, sha);
-  const latest = newestRelease(all);
+  const latest = canary ? undefined : newestRelease(all);
   assert(
     !latest || compareVersions(version, latest.tag_name.slice(1)) > 0,
     "Refusing to replace latest with an older release",
@@ -167,8 +175,16 @@ async function publish() {
     "--clobber",
   );
   assertDraft(api(`repos/${REPOSITORY}/releases/${release.id}`), version, sha);
-  gh("release", "edit", `v${version}`, "--repo", REPOSITORY, "--draft=false", "--latest");
-  console.log(`Published verified release v${version}`);
+  gh(
+    "release",
+    "edit",
+    `v${version}`,
+    "--repo",
+    REPOSITORY,
+    "--draft=false",
+    canary ? "--latest=false" : "--latest",
+  );
+  console.log(`Published verified ${channel(version)} release v${version}`);
 }
 
 function followup() {
@@ -198,7 +214,7 @@ function followup() {
 
 function upload() {
   const version = currentVersion();
-  const release = releases().find((item) => item.tag_name === `v${version}`);
+  const release = releases(channel(version)).find((item) => item.tag_name === `v${version}`);
   assertDraft(release, version, git("rev-parse", "HEAD"));
   const directory = "release-assets";
   const files = readdirSync(directory).map((name) => join(directory, name));

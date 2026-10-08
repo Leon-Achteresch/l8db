@@ -4,16 +4,17 @@ import { createHash } from "node:crypto";
 import { closeSync, createReadStream, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { readSignature, verifySignedFile } from "./release-signatures.mjs";
-import { REPOSITORY, VERSION_PATTERN } from "./release-utils.mjs";
+import { CANARY_PATTERN, REPOSITORY, VERSION_PATTERN } from "./release-utils.mjs";
 
 export function artifactNames(version) {
-  assert(VERSION_PATTERN.test(version), "Invalid release version");
+  assert(VERSION_PATTERN.test(version) || CANARY_PATTERN.test(version), "Invalid release version");
+  const [core, canary] = version.split("-canary.");
   return {
     mac: `l8db_${version}_universal.app.tar.gz`,
     dmg: `l8db_${version}_universal.dmg`,
     appimage: `l8db_${version}_amd64.AppImage`,
     deb: `l8db_${version}_amd64.deb`,
-    rpm: `l8db-${version}-1.x86_64.rpm`,
+    rpm: canary ? `l8db-${core}-0.canary.${canary}.x86_64.rpm` : `l8db-${version}-1.x86_64.rpm`,
     nsis: `l8db_${version}_x64-setup.exe`,
     msi: `l8db_${version}_x64_en-US.msi`,
   };

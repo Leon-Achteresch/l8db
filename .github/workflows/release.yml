@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, canary]
     paths-ignore:
       - packaging/**
       - packaging/README.md
@@ -17,12 +17,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-main
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   prepare:
-    if: github.repository == 'Leon-Achteresch/l8db' && github.ref == 'refs/heads/main'
+    if: github.repository == 'Leon-Achteresch/l8db' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/canary')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -279,7 +279,15 @@ jobs:
           APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
           APPLE_TEAM_ID: "${{ runner.os == 'macOS' && 'R4LQCWA594' || '' }}"
-        run: bun run tauri bundle --ci --target "$RELEASE_TARGET"
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = Linux ] && [[ "$RELEASE_VERSION" == *-canary.* ]]; then
+            rpm_config="$(printf '{"version":"%s","bundle":{"linux":{"rpm":{"release":"0.canary.%s"}}}}' "${RELEASE_VERSION%-canary.*}" "${RELEASE_VERSION##*-canary.}")"
+            bun run tauri bundle --ci --target "$RELEASE_TARGET" --bundles appimage,deb
+            bun run tauri bundle --ci --target "$RELEASE_TARGET" --bundles rpm --config "$rpm_config"
+          else
+            bun run tauri bundle --ci --target "$RELEASE_TARGET"
+          fi
       - name: Prüfe macOS-Signatur und Notarisierung
         if: runner.os == 'macOS'
         run: |
