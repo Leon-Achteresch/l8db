@@ -2,11 +2,11 @@ import {
   applyOptions,
   CHARTS,
   type ChartKind,
-  chartFits,
   type Dataset,
   datasetShape,
   refLabel,
   type Widget,
+  widgetFits,
   widgetOptions,
 } from "@/lib/dashboards";
 import { retainChartMetricSelection } from "./chart-metric-selection";
@@ -39,12 +39,12 @@ export function preferredChart(dataset: Dataset): ChartKind {
     dataset.simple.dimension.bucket !== "none";
   const preferred: ChartKind = !shape.dimension ? "kpi" : dated ? "line" : "column";
   const all = Object.keys(CHARTS) as ChartKind[];
-  return [preferred, ...all].find((k) => !chartFits(k, shape)) ?? preferred;
+  return [preferred, ...all].find((k) => !widgetFits(k, shape)) ?? preferred;
 }
 
 function fitChart(current: ChartKind, prev: Dataset, next: Dataset): ChartKind {
   const auto = current === preferredChart(prev);
-  return auto || chartFits(current, datasetShape(next)) ? preferredChart(next) : current;
+  return auto || widgetFits(current, datasetShape(next)) ? preferredChart(next) : current;
 }
 
 export function patchDraftDataset(draft: ChartDraft, patch: Partial<Dataset>): ChartDraft {
@@ -70,6 +70,6 @@ export function canFinishDraft(draft: ChartDraft): boolean {
   const shape = datasetShape(draft.dataset);
   return (
     draftReady(draft.dataset) &&
-    !chartFits(draft.widget.chart, applyOptions(shape, [], widgetOptions(draft.widget)).shape)
+    !widgetFits(draft.widget.chart, applyOptions(shape, [], widgetOptions(draft.widget)).shape)
   );
 }

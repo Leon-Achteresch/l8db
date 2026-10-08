@@ -20,16 +20,21 @@ export function ChartBuilderPreview({
   query: UseQueryResult<QueryResult>;
   updating: boolean;
 }) {
-  const { options, shape, rows, problem, compare, summary, legend, summaryPending } = useWidgetData(
-    { widget, dataset, period: widget.period, query, debounceMs: 500 },
-  );
+  const {
+    options,
+    shape,
+    rows,
+    problem,
+    chartPending,
+    chartError,
+    compare,
+    summary,
+    legend,
+    bucket,
+    summaryPending,
+  } = useWidgetData({ widget, dataset, period: widget.period, query, debounceMs: 500 });
   const subtitle =
-    widget.subtitle ??
-    autoSubtitle(
-      dataset.mode === "simple" ? (dataset.simple.dimension?.bucket ?? null) : null,
-      shape?.hasDate ? widget.period : null,
-      options.unit,
-    );
+    widget.subtitle ?? autoSubtitle(bucket, shape?.hasDate ? widget.period : null, options.unit);
   const Renderer = CHART_RENDERERS[widget.chart];
   const noSource = dataset.mode === "simple" ? !dataset.simple.table : !dataset.sql.trim();
   const loading = query.isFetching || updating;
@@ -85,15 +90,15 @@ export function ChartBuilderPreview({
                 Wähle eine Datenquelle. Deine Vorschau entsteht aus den Feldern, die du zuweist.
               </p>
             </div>
-          ) : query.isError ? (
+          ) : query.isError || chartError ? (
             <p role="alert" className="text-xs leading-relaxed text-destructive">
-              {queryErrorMessage(query.error)}
+              {queryErrorMessage(query.error ?? chartError)}
             </p>
           ) : problem || !shape ? (
             <div className="grid h-full place-items-center px-5 text-center text-xs leading-relaxed text-muted-foreground">
               {problem}
             </div>
-          ) : query.isPending || updating ? (
+          ) : query.isPending || chartPending || updating ? (
             <Skeleton className="h-full min-h-48 w-full rounded-lg" />
           ) : rows.length === 0 ? (
             <div className="grid h-full place-items-center text-xs text-muted-foreground">

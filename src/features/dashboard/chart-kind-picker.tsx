@@ -1,7 +1,13 @@
 import { CheckIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
-import { CHARTS, type ChartKind, chartFits, chartNeeds, type DatasetShape } from "@/lib/dashboards";
+import {
+  CHARTS,
+  type ChartKind,
+  chartNeeds,
+  type DatasetShape,
+  widgetFits,
+} from "@/lib/dashboards";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 import { ChartKindPreview } from "./chart-kind-preview";
@@ -70,7 +76,7 @@ const HINTS: Record<ChartKind, string> = {
 };
 
 function fitProblem(kind: ChartKind, shape: DatasetShape): string | null {
-  const problem = chartFits(kind, shape);
+  const problem = widgetFits(kind, shape);
   if (!problem) return null;
   if (CHARTS[kind].dim === "two" && (!shape.dimension || !shape.dimension2))
     return kind === "heatmap"
@@ -96,7 +102,7 @@ export function ChartKindPicker({
   const feature = useNewFeatureVisibility<HTMLDivElement>("dashboard.chart-gallery");
   const [group, setGroup] = useState("all");
   const available = Object.keys(CHARTS).filter(
-    (kind) => !chartFits(kind as ChartKind, shape),
+    (kind) => !widgetFits(kind as ChartKind, shape),
   ).length;
   const visibleGroups = GROUPS.filter((item) => group === "all" || item.id === group);
 

@@ -382,3 +382,52 @@ export function datasetTotalsSql(
     range,
   );
 }
+
+export type TrendBucket = "day" | "week" | "month";
+
+export function trendBucket(period: Period): TrendBucket {
+  if (period === "7d" || period === "30d") return "day";
+  return period === "90d" || period === "quarter" ? "week" : "month";
+}
+
+export function currentBucketStart(bucket: TrendBucket, now = new Date()): string {
+  if (bucket === "month") return isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  return isoDate(bucket === "week" ? addDays(now, -((now.getDay() + 6) % 7)) : now);
+}
+
+const TREND_LIMIT = 400;
+
+export function datasetTrendSql(
+  ds: Dataset,
+  kind: DatabaseKind | null,
+  period: Period,
+  scope: VariableScope = EMPTY_SCOPE,
+  range: DateRange = periodRange(period),
+): string {
+  const bucket = trendBucket(period);
+  if (ds.mode === "simple") {
+    const s = ds.simple;
+    if (!s.dateColumn) return "";
+    return buildSimpleSql(
+      {
+        ...s,
+        dimension: { column: s.dateColumn, bucket },
+        dimension2: null,
+        sort: "dimension",
+        limit: TREND_LIMIT,
+      },
+      kind,
+      period,
+      scope,
+      range,
+    );
+  }
+  const date = ds.mapping.dateColumn;
+  const base = buildExpertSql(ds, kind, period, scope, range);
+  if (!base || !date || !ds.mapping.metrics.length) return "";
+  const style = identifierStyleForKind(kind);
+  const q = (name: string) => quoteIdentifier(name, style);
+  const dim = bucketExpr(`t.${q(date)}`, bucket, kind);
+  const metrics = ds.mapping.metrics.map((m) => `SUM(t.${q(m)}) AS ${q(m)}`);
+  return `SELECT ${dim} AS ${q(DIM_KEY)}, ${metrics.join(", ")} FROM (\n${base}\n) ${kind === "oracle" ? "" : "AS "}t GROUP BY ${dim} ORDER BY 1`;
+}

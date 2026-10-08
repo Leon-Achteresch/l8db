@@ -4,15 +4,22 @@ import {
   alignComparison,
   buildComparison,
   summarize,
+  trendStep,
 } from "../src/features/dashboard/charts/chart-summary";
 import {
   comparisonRange,
+  currentBucketStart,
   type DatasetShape,
   DEFAULT_OPTIONS,
+  datasetShape,
+  datasetTrendSql,
+  emptyDataset,
   fmtCompact,
   fmtDim,
   periodProgress,
   periodRange,
+  trendBucket,
+  widgetFits,
 } from "../src/lib/dashboards";
 
 const NOW = new Date(2026, 9, 8);
@@ -104,4 +111,43 @@ test("german number and date labels", () => {
   expect(fmtCompact(48_200)).toBe("48,2 Tsd.");
   expect(fmtDim("2025-11", "month", true)).toBe("Nov ’25");
   expect(fmtDim("2026-03-04", "day")).toBe("4. Mär");
+});
+
+test("a kpi never stands alone: it needs a date column or a time dimension", () => {
+  const ds = { ...emptyDataset("x"), simple: { ...emptyDataset("x").simple, table: "orders" } };
+  expect(widgetFits("kpi", datasetShape(ds))).toContain("Datumsspalte");
+  const dated = { ...ds, simple: { ...ds.simple, dateColumn: "created_at" } };
+  expect(widgetFits("kpi", datasetShape(dated))).toBeNull();
+  const sql = datasetTrendSql(dated, "postgres", "30d");
+  expect(sql).toContain(`date_trunc('day', "created_at") AS "dim"`);
+  expect(sql).toContain("GROUP BY date_trunc");
+  expect(sql).toContain('ORDER BY "dim" ASC');
+  expect(datasetTrendSql(ds, "postgres", "30d")).toBe("");
+  const expert = {
+    ...ds,
+    mode: "expert" as const,
+    sql: "select day, n from t",
+    mapping: { dimension: null, dimension2: null, metrics: ["n"], dateColumn: "day" },
+  };
+  expect(datasetTrendSql(expert, "postgres", "12m")).toStartWith(
+    `SELECT date_trunc('month', t."day") AS "dim", SUM(t."n") AS "n" FROM (\nSELECT * FROM (`,
+  );
+  expect(trendBucket("90d")).toBe("week");
+  expect(currentBucketStart("week", NOW)).toBe("2026-10-05");
+  expect(currentBucketStart("month", NOW)).toBe("2026-10-01");
+});
+
+test("trend percent skips the running bucket", () => {
+  const rows = [
+    { dim: "2026-08-01", m0: 80 },
+    { dim: "2026-09-01", m0: 100 },
+    { dim: "2026-10-01", m0: 10 },
+  ];
+  const step = trendStep(rows, SHAPE, DEFAULT_OPTIONS, "month", "2026-10-01");
+  expect(step?.delta).toBeCloseTo(25);
+  expect(step?.deltaLabel).toBe("Sep ggü. Vormonat");
+  expect(step?.good).toBe(true);
+  const weeks = trendStep(rows, SHAPE, DEFAULT_OPTIONS, "week", "2026-10-01");
+  expect(weeks?.deltaLabel).toBe("Woche ab 1. Sep ggü. Vorwoche");
+  expect(trendStep(rows.slice(1), SHAPE, DEFAULT_OPTIONS, "month", "2026-10-01")).toBeNull();
 });
