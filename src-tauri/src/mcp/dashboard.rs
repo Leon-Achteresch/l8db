@@ -71,7 +71,7 @@ struct Kind {
 }
 
 const KINDS: &[Kind] = &[
-    Kind { name: "kpi", dim: "optional", metrics: (1, 1), size: (3, 4), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta curve", hint: "Big number with sparkline. With a time dimension (ordered) it shows the latest value (headline auto) and compares with the previous period when dateColumn and period are set. Without dimension: first row's metric, no sparkline." },
+    Kind { name: "kpi", dim: "optional", metrics: (1, 1), size: (3, 4), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta curve", hint: "Big number with sparkline and trend %, never a bare number, so it needs a time dimension or a dateColumn. Time dimension (day/week/month, ORDER BY it): latest value (headline auto), trend vs. the previous bucket or comparison period. No dimension + dateColumn: period total, sparkline grouped by dateColumn per day/week/month (return rows per date, not one sum row), trend vs. the comparison period." },
     Kind { name: "area", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked curve showGrid", hint: "Filled areas over the dimension (usually time). dimension2 splits into series." },
     Kind { name: "line", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend curve showGrid labels", hint: "One line per metric over the dimension. dimension2 splits into series." },
     Kind { name: "column", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked showGrid labels sortBy horizontal", hint: "Vertical columns per category (horizontal: bars to the right). Several metrics or dimension2 give grouped/stacked columns." },
@@ -156,7 +156,7 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out all charts into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top, then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out all charts into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top (a kpi always shows sparkline and trend, never a bare number: give it a time dimension for the latest value, or no dimension plus dateColumn for the period total), then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -488,13 +488,16 @@ struct Shape {
     dimension2: Option<String>,
     metrics: Vec<String>,
     date: bool,
+    timed: bool,
 }
 
 fn shape_of(dataset: &Value) -> Shape {
     if dataset["mode"] == "expert" {
         let mapping = &dataset["mapping"];
+        let dimension = text(mapping, "dimension").map(str::to_string);
         return Shape {
-            dimension: text(mapping, "dimension").map(str::to_string),
+            timed: dimension.is_some(),
+            dimension,
             dimension2: text(mapping, "dimension2").map(str::to_string),
             metrics: strings(&mapping["metrics"]),
             date: text(mapping, "dateColumn").is_some(),
@@ -509,10 +512,13 @@ fn shape_of(dataset: &Value) -> Shape {
                 .count()
         })
         .unwrap_or(0);
+    let dimension = simple["dimension"]["column"]
+        .as_str()
+        .map(|_| "dim".to_string());
     Shape {
-        dimension: simple["dimension"]["column"]
-            .as_str()
-            .map(|_| "dim".to_string()),
+        timed: dimension.is_some()
+            && text(&simple["dimension"], "bucket").is_some_and(|bucket| bucket != "none"),
+        dimension,
         dimension2: text(simple, "dimension2").map(|_| "dim2".to_string()),
         metrics: (0..count).map(|i| format!("m{i}")).collect(),
         date: text(simple, "dateColumn").is_some(),
@@ -553,6 +559,12 @@ fn check_shape(kind: &Kind, shape: &Shape, period: &str) -> Result<(), String> {
             return Err(format!("'{name}' funktioniert nur ohne dimension."))
         }
         _ => {}
+    }
+    if name == "kpi" && !shape.timed && !shape.date {
+        return Err(
+            "'kpi' zeigt immer Sparkline und Trend: setze dimension auf eine Zeitspalte (Tag/Woche/Monat, ORDER BY; im builder {field, bucket}) oder dateColumn. Eine Einzelzahl allein ist nicht erlaubt."
+                .into(),
+        );
     }
     if shape.dimension2.is_some() && !SERIES_KINDS.contains(&name) {
         return Err(format!(
@@ -796,9 +808,14 @@ fn design_notes(
     {
         notes.push("compare wirkt nur mit dateColumn und period ≠ all.".into());
     }
-    if name == "kpi" && shape.dimension.is_none() {
+    if expert
+        && name == "kpi"
+        && shape.dimension.is_none()
+        && shape.date
+        && rows.is_some_and(|n| n < 2)
+    {
         notes.push(
-            "kpi ohne dimension zeigt nur eine Zahl – eine Zeit-dimension (Tag/Woche/Monat) ergänzt Sparkline und Trend."
+            "kpi ohne dimension: Die Sparkline braucht Zeilen pro Datum (z. B. GROUP BY Tag über die dateColumn) statt einer einzelnen Summenzeile – oder eine Zeit-dimension."
                 .into(),
         );
     }
@@ -1630,10 +1647,12 @@ impl Server {
         let connection = sql_connection(config, server::arg_str(args, "connection"))?;
         let spec = spec_object(args.get("spec").unwrap_or(&Value::Null))?;
         let variables = builder::parse_variables(args.get("variables").unwrap_or(&Value::Null))?;
-        let (sql, mut mapping) = match spec.get("builder").filter(|v| !v.is_null()) {
+        let (sql, mut mapping, built) = match spec.get("builder").filter(|v| !v.is_null()) {
             Some(raw) => {
                 let dataset = json!({"mode": "simple", "simple": builder::parse_builder(raw)?});
-                dataset_query(&dataset, connection.kind, &variables, &values_of(args))
+                let (sql, mapping) =
+                    dataset_query(&dataset, connection.kind, &variables, &values_of(args));
+                (sql, mapping, Some(shape_of(&dataset)))
             }
             None => (
                 builder::substitute(
@@ -1648,13 +1667,15 @@ impl Server {
                     metrics: strings(spec.get("metrics").unwrap_or(&Value::Null)),
                     date_column: optional_text(&spec, "dateColumn")?,
                 },
+                None,
             ),
         };
         let mut problems = Vec::new();
         if let Some(name) = optional_text(&spec, "type")? {
             let kind = kind(&name)?;
             let period = optional_text(&spec, "period")?.unwrap_or_else(|| "all".into());
-            if let Err(e) = check_shape(kind, &mapping.shape(), &period) {
+            let shape = built.unwrap_or_else(|| mapping.shape());
+            if let Err(e) = check_shape(kind, &shape, &period) {
                 problems.push(e);
             }
         }
@@ -1966,6 +1987,7 @@ impl Mapping {
             dimension2: self.dimension2.clone(),
             metrics: self.metrics.clone(),
             date: self.date_column.is_some(),
+            timed: self.dimension.is_some(),
         }
     }
 
@@ -2252,7 +2274,7 @@ fn chart_types() -> String {
         "Builder (spec.builder instead of sql, editable in the app): {table, schema?, joins?: [{table, as?, on: \"artikel_id = id AND mandant = mandant\" (left side = parent table, right side = joined table), kind: left|inner, from?: alias of an earlier join for chains}], fields?: [{name, expr, type?: number|text|date, aggregate?}], dimension?: field or {field, bucket: none|day|week|month|quarter|year}, dimension2?, metrics: [\"count\" | \"sum(menge)\" | \"count_distinct(artikel.id)\" | \"<field name>\" | {agg, field, label}], filters?: [{field, op: eq|neq|gt|gte|lt|lte|contains|startsWith|endsWith|in|notIn|isNull|isNotNull, value}], dateColumn?, sort?: dimension|metric_desc|metric_asc, limit?}. Fields are referenced as column (base table), alias.column (joined table, alias defaults to the table name) or the name of a calculated field. In fields.expr write SQL of the connection with [column] / [alias.column] placeholders, e.g. sum([menge]) / nullif(sum([artikel.palettenfaktor]), 0); expressions with sum/avg/count/... are aggregates and become metrics as they are. Result columns are dim, dim2, m0, m1, ... A bare field name in metrics means the raw value (agg none), useful for table charts. Unsure how tables relate? action=joins suggests join columns with measured match rate; every saved join reports its match rate and warns when it multiplies rows. update_chart merges spec.builder into the existing builder, so send only the keys you change (e.g. joins, filters, fields).".to_string(),
         "Variables (create/update variables): [{name, label, type: select|text|number|date, default, options | optionsSql}]. They appear as filter controls above the dashboard. Use {{name}} in sql (replaced by a typed literal, empty = NULL, so write ({{mandant}} IS NULL OR mandant = {{mandant}})) and as builder filter value {\"field\": \"mandant\", \"op\": \"eq\", \"value\": \"{{mandant}}\"} (skipped while empty) or inside fields.expr. preview/run take values: {name: value}.".to_string(),
         "Design (professional dashboards):".to_string(),
-        "- Layout: 2-4 kpi tiles on top (kpi with a time dimension bucketed by day/week/month plus dateColumn, so they get a sparkline and a comparison), then one wide trend (area/line, w 8) next to a part-of-whole or ranking (donut with <= 6 categories or bars, w 4), then details (column, bars, table). Call action=arrange after adding charts, then action=run to check plausibility.".to_string(),
+        "- Layout: 2-4 kpi tiles on top, then one wide trend (area/line, w 8) next to a part-of-whole or ranking (donut with <= 6 categories or bars, w 4), then details (column, bars, table). A kpi always shows a sparkline and a trend %, never a bare number, so it needs a time dimension or a dateColumn: time dimension bucketed by day/week/month (ORDER BY it) → big number is the latest value; no dimension + dateColumn → big number is the period total, the sparkline groups by dateColumn (return rows per date, not one sum row). Add a period for the comparison. Call action=arrange after adding charts, then action=run to check plausibility.".to_string(),
         "- Labels: column aliases become legend and axis labels, so alias metrics with readable names in the user's language (SUM(amount) AS \"Umsatz\"). Give every chart a title and a subtitle that says what is measured (\"Summe pro Monat\", \"Anzahl Bestellungen\").".to_string(),
         "- Units: set options.unit (\"€\", \"%\", \"ms\", \"Stk.\") and decimals where it helps; never encode units in titles only. Set invertDelta for metrics where lower is better (costs, latency, cancellations).".to_string(),
         "- Comparison: set dateColumn and a period (7d, 30d, 90d, quarter, year, 12m) so charts compare against the previous period (options.compare previous|year|none, default previous). options.headline picks the big number (auto|total|last|average|max|min): average for averages, last for current state values (stock level, latency).".to_string(),
