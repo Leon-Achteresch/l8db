@@ -1,7 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
+export const NEXT_FEATURE_VERSION = "0.14.0";
+
 export const NEW_FEATURES = {
+  "connections.onboarding.quick-start": NEXT_FEATURE_VERSION,
   "settings.general.workspace-tab": "0.9.1",
   "workspace.inline-tabs": "0.9.1",
   "workspace.status.branch": "0.9.1",
@@ -44,6 +47,7 @@ export const NEW_FEATURES = {
   "dashboard.studio.formulas": "0.13.0",
   "dashboard.studio.compare": "0.14.0",
   "dashboard.filters": "0.13.0",
+  "dashboard.design.css": NEXT_FEATURE_VERSION,
   "er-diagram.clusters": "0.8.0",
   "er-diagram.text-export": "0.10.0",
   "versioning.overview": "0.8.0",
