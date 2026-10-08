@@ -1,6 +1,6 @@
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
-import type { ExtensionInfo, FunctionInfo, QueryResult } from "./types";
+import type { ExtensionInfo, FunctionInfo, PackageMemberInfo, QueryResult } from "./types";
 
 export async function beginTransaction(
   kind: DatabaseKind,
@@ -84,6 +84,15 @@ export async function listFunctions(
   options?: QueryExecutionOptions,
 ): Promise<FunctionInfo[]> {
   return invoke("list_functions", { kind, connectionString, database, schema, options });
+}
+
+export async function listPackageMembers(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<PackageMemberInfo[]> {
+  return invoke("list_package_members", { kind, connectionString, database, schema });
 }
 
 export async function getFunctionDefinition(

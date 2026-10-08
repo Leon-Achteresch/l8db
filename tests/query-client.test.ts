@@ -53,6 +53,7 @@ describe("query cache performance and isolation", () => {
   test("refresh includes search and detailed metadata only for the selected connection", () => {
     for (const root of [
       "all-objects",
+      "package-members",
       "columns-detailed",
       "column-search",
       "source-search",

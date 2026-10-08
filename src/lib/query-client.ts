@@ -12,6 +12,7 @@ export const METADATA_QUERY_ROOTS = [
   "columns-detailed",
   "view-definition",
   "functions",
+  "package-members",
   "procedures",
   "function-definition",
   "extensions",

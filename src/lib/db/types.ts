@@ -39,6 +39,12 @@ export interface FunctionInfo {
   oid: string;
 }
 
+export interface PackageMemberInfo {
+  schema: string;
+  package: string;
+  name: string;
+}
+
 export interface ExtensionInfo {
   name: string;
   version: string | null;

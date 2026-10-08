@@ -14,8 +14,8 @@ use super::{
     ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
     ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
-    ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo,
-    SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
+    ObjectGrantInfo, PackageMemberInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize,
+    SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -1824,6 +1824,26 @@ impl DatabaseAdapter for OracleAdapter {
                 identity_args: String::new(),
                 return_type: s(r, 2),
                 language: "PL/SQL".to_string(),
+            })
+            .collect())
+    }
+
+    async fn list_package_members(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<PackageMemberInfo>, String> {
+        let sql = format!(
+            "SELECT DISTINCT owner, object_name, procedure_name FROM all_procedures WHERE {} AND object_type = 'PACKAGE' AND procedure_name IS NOT NULL ORDER BY object_name, procedure_name",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| PackageMemberInfo {
+                schema: s(r, 0),
+                package: s(r, 1),
+                name: s(r, 2),
             })
             .collect())
     }
@@ -3861,6 +3881,18 @@ mod tests {
             .find(|f| f.name == "L8_LIVE_PKG")
             .expect("pkg listed");
         assert_eq!(pkg.return_type, "PACKAGE");
+        for selected_schema in [Some(schema.as_str()), None] {
+            let members = a
+                .list_package_members(selected_schema)
+                .await
+                .expect("list_package_members");
+            let names: Vec<_> = members
+                .iter()
+                .filter(|member| member.schema == schema && member.package == "L8_LIVE_PKG")
+                .map(|member| member.name.as_str())
+                .collect();
+            assert_eq!(names, vec!["F", "P"]);
+        }
         assert!(!a
             .list_functions(None)
             .await
