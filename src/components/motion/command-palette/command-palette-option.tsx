@@ -1,3 +1,5 @@
+import { NewBadge } from "@/components/new-badge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 import { CommandMatchText } from "./command-match-text";
 import type { CommandItem } from "./types";
@@ -23,8 +25,10 @@ export function CommandPaletteOption({
   onSelect: () => void;
 }) {
   const Icon = item.icon;
+  const feature = useNewFeatureVisibility<HTMLButtonElement>(item.featureId);
   return (
     <button
+      ref={feature.ref}
       type="button"
       id={`${uid}-opt-${index}`}
       role="option"
@@ -49,6 +53,7 @@ export function CommandPaletteOption({
         <CommandMatchText text={item.label} query={query} />
       </span>
       {item.badge ? <span className="relative z-10 shrink-0">{item.badge}</span> : null}
+      {feature.isNew ? <NewBadge className="relative z-10" /> : null}
       {item.context ? (
         <span className="relative z-10 shrink-0 text-[10px] text-muted-foreground">
           {item.context}

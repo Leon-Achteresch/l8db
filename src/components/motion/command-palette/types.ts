@@ -13,6 +13,7 @@ export type CommandItem = {
   keywords?: string[];
   icon?: LucideIcon;
   badge?: ReactNode;
+  featureId?: NewFeatureId;
   onSelect: () => void;
 };
 

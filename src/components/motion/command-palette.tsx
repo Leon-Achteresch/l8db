@@ -18,6 +18,7 @@ import { useRankedCommands } from "@/lib/hooks/use-ranked-commands";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
 import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
 import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
+import { markNewFeatureSeen } from "@/lib/new-features";
 import type { PaletteHistory } from "@/lib/palette-history";
 import { useActivePortalContainer } from "@/lib/portal-container";
 import { PresenceGate } from "@/lib/presence-gate";
@@ -242,6 +243,7 @@ export function CommandPalette({
 
   const selectItem = (item: CommandItem) => {
     if (rankedQuery !== search) return;
+    if (item.featureId) markNewFeatureSeen(item.featureId);
     onSelectItem?.(item);
     setOpen(false);
     item.onSelect();

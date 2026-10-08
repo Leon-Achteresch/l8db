@@ -13,6 +13,7 @@ export const NEW_FEATURES = {
   "sidebar.object-menu": "0.14.0",
   "search.fuzzy": "0.10.0",
   "search.commands": "0.9.1",
+  "search.commands.new-compare": "0.14.0",
   "ai.workspace": "0.8.0",
   "ai.chat": "0.8.0",
   "ai.chat.approval": "0.8.0",
