@@ -389,9 +389,18 @@ fn blocks(messages: &[Value], provider: &str) -> Vec<Value> {
         let mut content = Vec::new();
         if role == "tool" {
             if provider == "anthropic" {
-                content.push(json!({"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]}));
+                let mut block = json!({"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]});
+                if message["isError"] == true {
+                    block["is_error"] = json!(true);
+                }
+                content.push(block);
             } else {
-                content.push(json!({"functionResponse": {"id": message["tool_call_id"], "name": message["name"], "response": {"result": message["content"]}}}));
+                let field = if message["isError"] == true {
+                    "error"
+                } else {
+                    "result"
+                };
+                content.push(json!({"functionResponse": {"id": message["tool_call_id"], "name": message["name"], "response": {field: message["content"]}}}));
             }
         } else {
             if provider == "anthropic" && message["nativeContent"].is_array() {
@@ -485,6 +494,7 @@ pub(super) fn payload(
                 if message["role"] == "tool" {
                     if let Some(object) = message.as_object_mut() {
                         object.remove("name");
+                        object.remove("isError");
                     }
                 }
             }
@@ -612,10 +622,12 @@ pub async fn run(
         .iter()
         .map(|message| json!({"role": message.role, "content": message.text}))
         .collect();
-    let mut tools = super::context::tool_definitions();
-    tools.extend(external.tools.clone());
+    let mut catalog =
+        super::tools::Catalog::new(config, !request.attachments.is_empty(), &external.tools);
+    let mut failures = super::tools::Failures::default();
     for round in 1..=12 {
-        let (url, body) = payload(profile, instructions, &messages, &tools)?;
+        let published = super::tools::published(catalog.tools());
+        let (url, body) = payload(profile, instructions, &messages, catalog.tools())?;
         let response = auth(client.post(url).json(&body), profile, key.as_deref())
             .send()
             .await
@@ -697,12 +709,33 @@ pub async fn run(
                 &call.arguments
             })
             .map_err(|_| "Provider lieferte ungültige Tool-Argumente")?;
-            let result = if call.name.starts_with("ext_") {
+            let arguments =
+                crate::mcp::server::normalize_args(catalog.tools(), &call.name, arguments);
+            let key = super::tools::Failures::key(&call.name, &arguments);
+            let refusal = if failures.blocked(&key) {
+                Some("This exact call already failed twice. Change the arguments or use a different tool; do not repeat it unchanged.")
+            } else if !published.contains(&call.name) {
+                Some("This tool was not available in this round. Load it with discover_tools first, then call it in the next round.")
+            } else {
+                None
+            };
+            let result = if let Some(text) = refusal {
+                let result = json!({"content": [{"type": "text", "text": text}], "isError": true});
+                run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": "error"}));
+                result
+            } else if call.name == "discover_tools" {
+                let result = catalog.discover(&arguments);
+                run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": if result["isError"] == true { "error" } else { "completed" }}));
+                result
+            } else if call.name.starts_with("ext_") {
                 external.call(&call.name, arguments, run).await
             } else {
                 super::context::call(server, config, run, &call.name, arguments).await
             };
-            messages.push(json!({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": result.to_string()}));
+            if refusal.is_none() {
+                failures.record(key, &result);
+            }
+            messages.push(json!({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": super::tools::model_output(&result, config.max_chars), "isError": result["isError"] == true}));
         }
     }
     Err("Maximal 12 Tool-Runden erreicht. Mit einer neuen Nachricht fortsetzen.".into())

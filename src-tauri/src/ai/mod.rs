@@ -9,6 +9,7 @@ mod integrations;
 pub mod knowledge;
 mod rpc;
 mod runtime;
+mod tools;
 mod types;
 
 pub use runtime::AiState;
@@ -362,11 +363,7 @@ pub async fn ai_run(
         return Err("Arbeitsordner ist kein Verzeichnis".into());
     }
     let config = context::scoped_config(&request, crate::mcp::config::load())?;
-    let instructions = format!(
-        "{}{}",
-        context::instructions(&request),
-        skill_context(&request)?
-    );
+    let instructions = context::instructions_with_skills(&request, &skill_context(&request)?);
     let key = format!("{}:{}", window.label(), request.run_id);
     let (cancel, mut cancelled) = tokio::sync::watch::channel(false);
     {
