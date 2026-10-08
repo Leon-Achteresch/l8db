@@ -46,11 +46,11 @@ export function DashboardDesignPanel({
     [],
   );
 
-  const changeCss = (css: string) => {
+  const change = (next: DashboardDesign) => {
     operationRef.current++;
     try {
-      validateDashboardDesign({ ...design, css });
-      onChange({ ...design, css });
+      validateDashboardDesign(next);
+      onChange(next);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "CSS konnte nicht geladen werden.");
     }
@@ -118,7 +118,7 @@ export function DashboardDesignPanel({
             id="dashboard-css-enabled"
             checked={design.enabled}
             disabled={busy}
-            onCheckedChange={(enabled) => onChange({ ...design, enabled })}
+            onCheckedChange={(enabled) => change({ ...design, enabled })}
           />
         </div>
         <p className="text-xs text-muted-foreground">
@@ -133,7 +133,7 @@ export function DashboardDesignPanel({
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => onChange({ enabled: true, css: preset.css })}
+              onClick={() => change({ enabled: true, css: preset.css })}
             >
               {preset.name}
             </Button>
@@ -195,7 +195,7 @@ export function DashboardDesignPanel({
             size="icon-sm"
             aria-label="Design zurücksetzen"
             disabled={busy}
-            onClick={() => onChange({ css: "", enabled: true })}
+            onClick={() => change({ css: "", enabled: true })}
           >
             <RotateCcwIcon />
           </IconButton>
@@ -213,7 +213,7 @@ export function DashboardDesignPanel({
           placeholder={
             ".dashboard-widget {\n  border-radius: 24px;\n  box-shadow: 0 8px 30px #0002;\n}\n\n:root {\n  --dash-color-1: #8b5cf6;\n}"
           }
-          onChange={(event) => changeCss(event.target.value)}
+          onChange={(event) => change({ ...design, css: event.target.value })}
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
               event.preventDefault();

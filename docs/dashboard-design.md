@@ -137,3 +137,14 @@ real desktop WebViews, Firefox, constrained profiles and live database families
 were not exercised. Browser database request counts use the fixture's mocked
 Tauri transport; the Rust lifecycle check verifies design updates still work with
 an inaccessible database URL. No live AI provider was called.
+
+The final functional browser audit passed in Chromium and WebKit (42 assertions
+across both engines). It verifies imported CSS, draft discard, export, persisted
+reload, root variables, nested and responsive selectors, pseudo-elements,
+registered `@font-face` definitions, running `@keyframes` animations, typography,
+scope isolation, hidden-dashboard recovery and the AI/MCP handoff. A deliberately
+delayed file read also verifies that choosing a newer preset cancels the stale
+import; typing, reset and the enabled switch use the same cancellation mechanism.
+This audit establishes the requested design capabilities within the documented
+WebView and resource constraints. The separate large-stylesheet WebKit latency
+failure above remains open.
