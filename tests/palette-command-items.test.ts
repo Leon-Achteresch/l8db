@@ -45,7 +45,7 @@ test("Einstellungsbefehle öffnen die passende Kategorie", () => {
   );
   expect(item?.kind).toBe("setting");
   item?.onSelect();
-  expect(calls).toEqual([{ to: "/settings", search: { tab: "data" } }]);
+  expect(calls).toEqual([{ to: "/settings", search: { tab: "data", setting: "row-limit" } }]);
 });
 
 test("Diagrammexporte sind nur im verbundenen ER-Diagramm verfügbar", () => {
