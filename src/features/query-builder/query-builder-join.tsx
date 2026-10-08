@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import {
   Select,
   SelectContent,
@@ -7,19 +5,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { QueryBuilderSection } from "@/features/query-builder/query-builder-section";
 import type { ForeignKeyInfo } from "@/lib/db";
-import { type JoinType, joinKey, joinLabel } from "@/lib/query-builder";
+import {
+  BASE_ALIAS,
+  type BuilderJoin,
+  JOIN_ALIAS,
+  type JoinType,
+  joinKey,
+  joinLabel,
+} from "@/lib/query-builder";
 
 const NO_JOIN = "__none__";
 
 interface QueryBuilderJoinProps {
   relations: ForeignKeyInfo[];
   selectedKey: string | null;
+  join: BuilderJoin | null;
   joinType: JoinType;
   loading?: boolean;
   onSelect: (key: string | null) => void;
   onJoinTypeChange: (type: JoinType) => void;
-  children?: ReactNode;
 }
 
 export function relationKey(relation: ForeignKeyInfo): string {
@@ -45,29 +51,44 @@ export function relationLabel(relation: ForeignKeyInfo): string {
 export function QueryBuilderJoin({
   relations,
   selectedKey,
+  join,
   joinType,
   loading,
   onSelect,
   onJoinTypeChange,
-  children,
 }: QueryBuilderJoinProps) {
   return (
-    <div className="rounded-md border">
-      <div className="border-b px-3 py-2 text-sm font-medium">Fremdschlüssel-Join</div>
-      <div className="space-y-3 p-3">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Beziehungen werden geladen…</p>
-        ) : relations.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Für diese Tabelle sind keine ausgehenden Fremdschlüssel vorhanden.
-          </p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
+    <QueryBuilderSection title="Joins" count={join ? 1 : 0}>
+      {loading ? (
+        <p className="text-xs text-muted-foreground">Lädt…</p>
+      ) : relations.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Keine ausgehenden Fremdschlüssel</p>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Select value={joinType} onValueChange={(value) => onJoinTypeChange(value as JoinType)}>
+              <SelectTrigger
+                size="sm"
+                className="h-7 w-20 shrink-0 font-mono text-xs"
+                aria-label="Join-Typ"
+                disabled={selectedKey === null}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="INNER">inner</SelectItem>
+                <SelectItem value="LEFT">left</SelectItem>
+              </SelectContent>
+            </Select>
             <Select
               value={selectedKey ?? NO_JOIN}
               onValueChange={(value) => onSelect(value === NO_JOIN ? null : value)}
             >
-              <SelectTrigger className="w-[26rem]">
+              <SelectTrigger
+                size="sm"
+                className="h-7 min-w-0 flex-1 font-mono text-xs"
+                aria-label="Beziehung"
+              >
                 <SelectValue placeholder="Beziehung" />
               </SelectTrigger>
               <SelectContent searchable>
@@ -79,19 +100,15 @@ export function QueryBuilderJoin({
                 ))}
               </SelectContent>
             </Select>
-            <Select value={joinType} onValueChange={(value) => onJoinTypeChange(value as JoinType)}>
-              <SelectTrigger className="w-40" disabled={selectedKey === null}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="INNER">INNER JOIN</SelectItem>
-                <SelectItem value="LEFT">LEFT JOIN</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-        )}
-        {children}
-      </div>
-    </div>
+          {join && (
+            <p className="truncate pl-1 font-mono text-xs text-muted-foreground">
+              <span className="text-primary">on</span> {JOIN_ALIAS}.{join.toColumn} = {BASE_ALIAS}.
+              {join.fromColumn}
+            </p>
+          )}
+        </div>
+      )}
+    </QueryBuilderSection>
   );
 }

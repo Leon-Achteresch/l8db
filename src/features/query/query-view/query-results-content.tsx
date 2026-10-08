@@ -16,6 +16,9 @@ interface QueryResultsContentProps {
   statusText: string | null;
   actions: ReactNode;
   onRevealError: (marker: SqlMarker) => void;
+  onReplaceSql?: (start: number, end: number, text: string) => void;
+  sql?: string;
+  names?: { columns: string[]; tables: string[] };
   chart?: ResultChartBinding;
 }
 
@@ -25,6 +28,9 @@ export function QueryResultsContent({
   statusText,
   actions,
   onRevealError,
+  onReplaceSql,
+  sql,
+  names,
   chart,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError } = exec;
@@ -55,7 +61,11 @@ export function QueryResultsContent({
             error={error}
             kind={kind}
             source={exec.editorError}
+            sql={sql}
+            columns={names?.columns}
+            tables={names?.tables}
             onReveal={onRevealError}
+            onReplace={onReplaceSql}
           />
         ) : (
           <QueryResultWorkbench

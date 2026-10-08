@@ -1,20 +1,12 @@
 import { useSearch } from "@tanstack/react-router";
-import { FileUpIcon } from "lucide-react";
-
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
-import { supports } from "@/lib/providers";
-
-import { CsvImportPanel } from "./csv-import-panel";
-import { SqlImportPanel } from "./sql-import-panel";
+import { ImportWorkbench } from "./import-workbench";
 
 export function ImportView() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
-  const scope = JSON.stringify([connection?.id, database, schema]);
-  const csvEnabled = supports(connection, "csv_import");
   const { tab } = useSearch({ strict: false }) as { tab?: "csv" };
 
   if (!connection) {
@@ -25,37 +17,5 @@ export function ImportView() {
     );
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <Tabs
-        key={tab}
-        defaultValue={tab === "csv" && csvEnabled ? "csv" : "sql"}
-        className="flex min-h-0 flex-1 flex-col gap-0"
-      >
-        <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
-          <FileUpIcon className="size-4 text-muted-foreground" />
-          <span className="text-xs font-medium text-muted-foreground">Importieren</span>
-          <TabsList className="h-7">
-            <TabsTrigger value="sql" className="text-xs">
-              SQL
-            </TabsTrigger>
-            {csvEnabled && (
-              <TabsTrigger value="csv" className="text-xs">
-                Dateien
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </div>
-
-        <TabsContent value="sql" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <SqlImportPanel key={scope} />
-        </TabsContent>
-        {csvEnabled && (
-          <TabsContent value="csv" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <CsvImportPanel key={scope} />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
-  );
+  return <ImportWorkbench key={JSON.stringify([connection.id, database, schema, tab])} tab={tab} />;
 }
