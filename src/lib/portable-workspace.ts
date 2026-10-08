@@ -109,6 +109,7 @@ const settingRanges: Record<string, [number, number]> = {
 const protectedSettings = new Set([
   "crashReports",
   "usageMetrics",
+  "localUsageStats",
   "autoUpdateCheck",
   "autoUpdateInstall",
   "skippedUpdateVersion",

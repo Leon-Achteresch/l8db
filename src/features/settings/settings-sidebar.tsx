@@ -1,5 +1,6 @@
 import {
   Blocks,
+  ChartNoAxesCombined,
   CodeXml,
   Database,
   Info,
@@ -52,6 +53,11 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     id: "hotkeys",
     label: "Tastenkürzel",
     icon: Keyboard,
+  },
+  {
+    id: "statistics",
+    label: "Nutzungsstatistik",
+    icon: ChartNoAxesCombined,
   },
   {
     id: "about",
