@@ -30,6 +30,20 @@ export function releaseNotes(version, changelog) {
     .trim();
 }
 
+export function releaseBody(version, notes, stable) {
+  if (!CANARY_PATTERN.test(version)) return notes;
+  const current = stable
+    ? ` The current stable version is [${stable}](https://github.com/${REPOSITORY}/releases/tag/${stable}).`
+    : "";
+  return [
+    "> [!WARNING]",
+    `> Canary pre-release for testing, without any guarantee.${current}`,
+    "> Only apps with the update channel set to Canary (Einstellungen → Über & Updates → Update-Kanal) receive canary builds.",
+    "",
+    notes,
+  ].join("\n");
+}
+
 function currentVersion() {
   const version = JSON.parse(readFileSync("package.json", "utf8")).version;
   assert(VERSION_PATTERN.test(version) || CANARY_PATTERN.test(version), "Invalid release version");
@@ -59,7 +73,14 @@ function draft() {
   }
   if (!release) {
     const file = join(process.env.RUNNER_TEMP, "release-notes.md");
-    writeFileSync(file, releaseNotes(version, readFileSync("CHANGELOG.md", "utf8")));
+    writeFileSync(
+      file,
+      releaseBody(
+        version,
+        releaseNotes(version, readFileSync("CHANGELOG.md", "utf8")),
+        newestRelease(releases())?.tag_name,
+      ),
+    );
     release = JSON.parse(
       gh(
         "api",

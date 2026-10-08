@@ -2,11 +2,13 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| 0.1.x   | :white_check_mark: |
+| Version                                  | Supported          |
+|------------------------------------------|--------------------|
+| Latest stable release                    | :white_check_mark: |
+| Older releases, `-canary.N` pre-releases | :x:                |
 
-Only the latest release receives security fixes.
+Only the latest stable release receives security fixes. Canary pre-releases are
+test builds without any guarantee; fixes reach them with the next canary.
 
 ## Reporting a Vulnerability
 

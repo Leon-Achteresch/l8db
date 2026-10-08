@@ -155,7 +155,7 @@ src-tauri/src/
 - Production configuration: [.github/PRODUCTION.md](.github/PRODUCTION.md).
 
 - `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).
-- Releases: every push to `main` auto-publishes installers for macOS (Universal DMG), Windows (MSI/NSIS), and Linux (deb/AppImage) plus `latest.json` for the in-app auto-updater — version (`<major>.<minor>.<commit-count>`) and changelog are generated from Conventional Commits. Full runbook: [`.github/RELEASING.md`](.github/RELEASING.md).
+- Releases: every push to `main` publishes the stable release marked "Latest"; every push to `canary` publishes a `vX.Y.Z-canary.N` pre-release without any guarantee. Both ship installers for macOS (Universal DMG), Windows (MSI/NSIS) and Linux (deb/rpm/AppImage) plus `latest.json` for the in-app auto-updater, which follows the update channel chosen in the app (Stable by default). Versions and changelogs are generated from Conventional Commits. Full runbook: [`.github/RELEASING.md`](.github/RELEASING.md).
 - OS package managers (Homebrew, winget, AUR, Flatpak): templates in [`packaging/`](packaging/), guide in [`packaging/README.md`](packaging/README.md).
 - `SECURITY.md` describes supported versions and how to report vulnerabilities.
 

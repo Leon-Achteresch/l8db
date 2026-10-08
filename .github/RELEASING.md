@@ -26,7 +26,7 @@ Die folgenden Schritte gelten für beide Kanäle.
 
 - **Version:** `X.Y.Z` ist die nächste stabile Version aus den Commits seit dem letzten stabilen Tag. `N` ist die höchste veröffentlichte Nummer dieser Zielversion plus 1 und beginnt bei einer neuen Zielversion wieder bei 1, etwa `0.14.0-canary.3` → `0.15.0-canary.1` nach dem ersten `feat`. Ohne `feat`, `fix` oder `perf` seit dem letzten Canary (oder dem letzten stabilen Release) wird nichts veröffentlicht.
 - **Sichtbarkeit:** Canaries sind GitHub-Pre-Releases und nie „Latest“. `releases/latest` und damit der Stable-Kanal sehen sie nicht. Es gibt keinen Packaging-PR und keine Feature-Videos.
-- **Release-Notes:** Änderungen seit dem vorherigen Canary derselben Zielversion, sonst seit dem letzten stabilen Release. Das mitgelieferte `CHANGELOG.md` enthält zusätzlich die früheren Canaries dieser Zielversion.
+- **Release-Notes:** Änderungen seit dem vorherigen Canary derselben Zielversion, sonst seit dem letzten stabilen Release. Das mitgelieferte `CHANGELOG.md` enthält zusätzlich die früheren Canaries dieser Zielversion. Die GitHub-Seite des Canary beginnt mit einem Warnhinweis, der die aktuelle stabile Version verlinkt; `latest.json` enthält nur die Notes. Das Pre-Release wird nie „Latest“, Paket-Repositories und Feature-Videos folgen nur stabilen Releases.
 - **Pakete:** Gebaut werden alle Formate wie bei Stable, damit der Updater für jede Installationsart ein passendes Paket findet. MSI erlaubt keine Text-Kennungen; `scripts/version.mjs` setzt deshalb `bundle.windows.wix.version` auf `X.Y.Z.N`. rpm wird separat mit Version `X.Y.Z` und Release `0.canary.N` gebaut (`l8db-X.Y.Z-0.canary.N.x86_64.rpm`). rpm würde `X.Y.Z-canary.N` sonst höher einstufen als `X.Y.Z`, und `rpm -U` könnte später nicht auf die stabile Version aktualisieren.
 - **Upgrade-Prüfung:** von der letzten stabilen Version auf das Canary.
 - **Warteschlangen:** Läufe auf `main` und `canary` haben getrennte Concurrency-Gruppen (`release-<branch>`). Ein wartender Canary-Lauf verdrängt so nie einen wartenden stabilen Lauf.
@@ -38,7 +38,7 @@ Ein dringender Fix für die stabile Version entsteht auf einem Branch `fix/*` vo
 
 ## Update-Kanal in der App
 
-Unter Einstellungen → Über & Updates wählt jeder Nutzer den Update-Kanal; Standard ist Stable, die Wahl bleibt gespeichert. Stable prüft den konfigurierten Endpunkt `releases/latest/download/latest.json`. Canary fragt über `check_update` (`src-tauri/src/updates.rs`) die GitHub-API ab und nimmt das höchste `vX.Y.Z` oder `vX.Y.Z-canary.N` mit `latest.json`. Ein neueres stabiles Release gewinnt also auch im Canary-Kanal. Der Wechsel zurück auf Stable stuft nicht herab: Die App bleibt auf dem installierten Canary, bis eine höhere stabile Version erscheint. Canary-Builds zeigen die NEU-Badges ihrer kommenden stabilen Version.
+Unter Einstellungen → Über & Updates wählt jeder Nutzer den Update-Kanal; Standard ist Stable, die Wahl bleibt gespeichert. Stable prüft den konfigurierten Endpunkt `releases/latest/download/latest.json`. Canary fragt über `check_update` (`src-tauri/src/updates.rs`) die GitHub-API ab und nimmt das höchste `vX.Y.Z` oder `vX.Y.Z-canary.N` mit `latest.json`. Ein neueres stabiles Release gewinnt also auch im Canary-Kanal. Der Wechsel zurück auf Stable stuft nicht herab: Die App bleibt auf dem installierten Canary, bis eine höhere stabile Version erscheint. Die Einstellungen zeigen das in diesem Fall an. Canary-Builds zeigen die NEU-Badges ihrer kommenden stabilen Version.
 
 ## Version und Changelog
 
