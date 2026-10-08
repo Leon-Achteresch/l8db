@@ -3,6 +3,7 @@ export * from "./charts";
 export * from "./join-suggestions";
 export * from "./joins";
 export * from "./model";
+export * from "./palette";
 export * from "./shape";
 export * from "./sql";
 export * from "./store";

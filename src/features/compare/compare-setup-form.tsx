@@ -97,11 +97,6 @@ export function CompareSetupForm(
         )}
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">Vergleich einrichten</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Quelle ist immer die aktuelle Verbindung
-            {props.sourceConnection ? ` (${props.sourceConnection.name})` : ""}. Zielverbindung
-            wählen – eindeutige Schemas und gleichnamige Objekte werden automatisch ausgewählt.
-          </p>
         </div>
       </div>
 
@@ -122,7 +117,10 @@ export function CompareSetupForm(
                     : "border-border text-muted-foreground hover:bg-muted/60",
                 )}
               >
-                <CompareObjectIcon type={type} className="size-4" />
+                <CompareObjectIcon
+                  type={type}
+                  className={cn("size-4", active ? "text-foreground" : "text-muted-foreground")}
+                />
                 {COMPARE_OBJECT_LABELS[type]}
               </button>
             );

@@ -51,6 +51,7 @@ interface DefinitionDiffEditorProps {
   onSideSelect?: (side: "left" | "right") => void;
   onActivate?: () => void;
   scrollSync?: ScrollSyncGroup;
+  sideBySide?: boolean;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -67,6 +68,7 @@ export function DefinitionDiffEditor({
   onSideSelect,
   onActivate,
   scrollSync,
+  sideBySide = true,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -174,6 +176,10 @@ export function DefinitionDiffEditor({
       },
     });
   }, [onlyDifferences]);
+
+  useEffect(() => {
+    diffRef.current?.updateOptions({ renderSideBySide: sideBySide });
+  }, [sideBySide]);
 
   useEffect(() => {
     const editor = diffRef.current;

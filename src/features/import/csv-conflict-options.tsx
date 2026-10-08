@@ -52,8 +52,9 @@ export function CsvConflictOptions({
   );
   const key = keys?.find((key) => key.name === value?.constraint);
   return (
-    <fieldset className="flex flex-col gap-2 text-xs">
-      <legend>Bei Konflikten</legend>
+    <fieldset className="flex flex-wrap items-center gap-2 text-xs">
+      <legend className="sr-only">Bei Konflikten</legend>
+      <span className="w-28 text-muted-foreground">Bei Konflikten</span>
       <Select
         value={`select:${String(mode)}`}
         onValueChange={(encodedValue) => {
@@ -63,7 +64,7 @@ export function CsvConflictOptions({
           onChange(mode === "abort" ? undefined : { constraint: "", update_columns: [] });
         }}
       >
-        <SelectTrigger aria-label="Konfliktstrategie" className="rounded border bg-background p-2">
+        <SelectTrigger aria-label="Konfliktstrategie" size="sm" className="w-72 text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -81,10 +82,7 @@ export function CsvConflictOptions({
               onChange({ constraint: selectedValue, update_columns: [] });
             }}
           >
-            <SelectTrigger
-              aria-label="Konfliktschlüssel"
-              className="rounded border bg-background p-2"
-            >
+            <SelectTrigger aria-label="Konfliktschlüssel" size="sm" className="w-72 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -97,7 +95,10 @@ export function CsvConflictOptions({
             </SelectContent>
           </Select>
           {constraints.error && (
-            <span className="text-destructive">{String(constraints.error)}</span>
+            <span className="basis-full pl-30 text-destructive">{String(constraints.error)}</span>
+          )}
+          {mode === "update" && (
+            <span className="w-28 basis-auto text-muted-foreground">Aktualisieren</span>
           )}
           {mode === "update" &&
             columns
@@ -112,7 +113,7 @@ export function CsvConflictOptions({
                 <label
                   key={column.name}
                   htmlFor={`${id}-${column.name}`}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono"
                 >
                   <Checkbox
                     id={`${id}-${column.name}`}
@@ -129,7 +130,7 @@ export function CsvConflictOptions({
                   {column.name}
                 </label>
               ))}
-          <p>
+          <p className="basis-full pl-30 text-muted-foreground">
             Vorschau:{" "}
             {value?.update_columns.length
               ? `Aktualisieren: ${value.update_columns.join(", ")}`

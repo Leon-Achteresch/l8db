@@ -85,7 +85,7 @@ export const PERIOD_LABEL: Record<Period, string> = {
   year: "Dieses Jahr",
 };
 
-export const PALETTE = [
+export const VIVID_PALETTE = [
   "#a3e635",
   "#3b82f6",
   "#c084fc",
@@ -95,6 +95,21 @@ export const PALETTE = [
   "#fb923c",
   "#94a3b8",
 ];
+
+const CONNECTION_TONES = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "#94a3b8",
+  "#64748b",
+  "#cbd5e1",
+];
+
+export const PALETTE = CONNECTION_TONES.map(
+  (tone, index) => `var(--dash-color-${index + 1}, ${tone})`,
+);
 
 export interface DatasetMetric {
   id: string;

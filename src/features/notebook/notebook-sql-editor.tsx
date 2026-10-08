@@ -10,10 +10,12 @@ export function NotebookSqlEditor({
   value,
   onChange,
   onRun,
+  onRunAll,
 }: {
   value: string;
   onChange: (value: string) => void;
   onRun: () => void;
+  onRunAll: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -21,6 +23,8 @@ export function NotebookSqlEditor({
   const onRunRef = useRef(onRun);
   onChangeRef.current = onChange;
   onRunRef.current = onRun;
+  const onRunAllRef = useRef(onRunAll);
+  onRunAllRef.current = onRunAll;
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === "dark" ? "l8db-dark" : "l8db-light";
   const initial = useRef({ value, theme });
@@ -64,6 +68,9 @@ export function NotebookSqlEditor({
     const size = editor.onDidContentSizeChange(resize);
     const change = editor.onDidChangeModelContent(() => onChangeRef.current(editor.getValue()));
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRunRef.current());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>
+      onRunAllRef.current(),
+    );
     const intellisense = attachSqlIntellisense(editor);
     return () => {
       size.dispose();
@@ -83,5 +90,5 @@ export function NotebookSqlEditor({
     monaco.editor.setTheme(theme);
   }, [theme]);
 
-  return <div ref={containerRef} className="w-full overflow-hidden rounded-md border" />;
+  return <div ref={containerRef} className="w-full overflow-hidden bg-muted/30" />;
 }

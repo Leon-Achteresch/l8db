@@ -1,4 +1,11 @@
-import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import {
+  CalendarIcon,
+  GripVerticalIcon,
+  SettingsIcon,
+  Trash2Icon,
+  TrendingDownIcon,
+  TrendingUpIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatedNumber } from "@/components/animated-number";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
@@ -33,6 +40,7 @@ import {
   LegendCards,
   legendFor,
 } from "./charts";
+import { useDashboardPeriod } from "./dashboard-period";
 import { useChartSlot } from "./use-chart-slot";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
 
@@ -59,7 +67,8 @@ export function WidgetCardInner({
   useEffect(() => setViewPeriod(widget.period), [widget.period]);
   const rawShape = useMemo(() => (dataset ? datasetShape(dataset) : null), [dataset]);
   const options = useMemo(() => widgetOptions({ options: widget.options }), [widget.options]);
-  const sql = useDatasetSql(dataset, locked ? viewPeriod : widget.period);
+  const sharedPeriod = useDashboardPeriod();
+  const sql = useDatasetSql(dataset, sharedPeriod ?? (locked ? viewPeriod : widget.period));
   const query = useSqlQuery(sql, refreshSec * 1000);
   const rawRows = query.data?.rows ?? EMPTY_ROWS;
   const applied = useMemo(
@@ -95,11 +104,11 @@ export function WidgetCardInner({
   return (
     <div
       ref={rootRef}
-      className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card p-5 shadow-xs"
+      className="flex h-full flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xs"
     >
-      <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-2">
+      <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1 text-sm font-medium text-foreground">
             {!locked && (
               <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
             )}
@@ -108,11 +117,11 @@ export function WidgetCardInner({
             </span>
           </div>
           {options.showValue && (
-            <div className="mt-1.5 flex items-center gap-2.5">
+            <div className="mt-1 flex items-baseline gap-2">
               {query.isPending && sql ? (
-                <Skeleton className="h-9 w-20" />
+                <Skeleton className="h-7 w-20" />
               ) : (
-                <span className="text-3xl font-semibold tracking-tight tabular-nums">
+                <span className="text-2xl font-semibold tracking-tight tabular-nums">
                   {shape && !problem ? (
                     <ChartHeadline headline={headlineValue(widget.chart, rows, shape)} />
                   ) : (
@@ -123,12 +132,17 @@ export function WidgetCardInner({
               {delta !== null && (
                 <span
                   className={cn(
-                    "rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums",
+                    "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
                     delta >= 0
-                      ? "bg-lime-400/20 text-lime-700 dark:bg-lime-400/15 dark:text-lime-300"
-                      : "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400",
                   )}
                 >
+                  {delta >= 0 ? (
+                    <TrendingUpIcon className="size-3.5" />
+                  ) : (
+                    <TrendingDownIcon className="size-3.5" />
+                  )}
                   <AnimatedNumber
                     value={delta}
                     format={{
@@ -144,7 +158,7 @@ export function WidgetCardInner({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {shape?.hasDate && options.showPeriod && (
+          {shape?.hasDate && options.showPeriod && !sharedPeriod && (
             <Select
               value={locked ? viewPeriod : widget.period}
               onValueChange={(period) =>
@@ -153,7 +167,7 @@ export function WidgetCardInner({
             >
               <SelectTrigger
                 size="sm"
-                className="h-8 gap-1.5 rounded-lg bg-muted/40 text-xs font-medium"
+                className="h-7 gap-1.5 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
               >
                 <CalendarIcon className="size-3.5" />
                 <span className={widget.w < 4 ? "sr-only" : undefined}>
@@ -203,7 +217,7 @@ export function WidgetCardInner({
             {queryErrorMessage(query.error)}
           </p>
         ) : query.isPending || (rows.length > 0 && !chartReady) ? (
-          <Skeleton className="h-full w-full rounded-xl" />
+          <Skeleton className="h-full w-full rounded-md" />
         ) : rows.length === 0 ? (
           <div className="grid h-full place-items-center text-xs text-muted-foreground">
             Keine Daten
