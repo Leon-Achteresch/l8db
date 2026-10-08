@@ -81,7 +81,7 @@ export function Columns({ rows, shape, options, compare }: ChartProps) {
           !stacked || i === count - 1 || stacks.slice(i + 1).every((s) => s[j][1] === s[j][0]);
         return {
           key: `${shape.metrics[i].key}-${j}`,
-          fill: seriesColor(i, count, options),
+          fill: seriesColor(i, shape, options),
           d: barPath(c0, size, from, to, top ? 4 : 0, horizontal),
           tip: to,
           mid: c0 + size / 2,
@@ -189,7 +189,7 @@ export function Columns({ rows, shape, options, compare }: ChartProps) {
             ...shape.metrics.map((m, i) => ({
               label: m.label,
               value: fmtValue(Number(hovered[m.key]) || 0, options),
-              color: seriesColor(i, count, options),
+              color: seriesColor(i, shape, options),
             })),
             ...(compare && ghostValue !== null && ghostValue !== undefined
               ? [

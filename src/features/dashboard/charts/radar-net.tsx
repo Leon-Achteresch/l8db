@@ -11,7 +11,6 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
   const data = series(rows, shape);
   const n = data.length;
   const names = dimensionLabels(data.map((row) => String(row.name)));
-  const count = shape.metrics.length;
   const cx = width / 2;
   const cy = height / 2;
   const radius = (Math.min(width, height) / 2) * 0.62;
@@ -69,7 +68,7 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
             );
           })}
           {shape.metrics.map((m, k) => {
-            const stroke = seriesColor(k, count, options);
+            const stroke = seriesColor(k, shape, options);
             const points = data.map((row, i) =>
               polar(cx, cy, ((Number(row[m.key]) || 0) / max) * radius, angle(i)),
             );
@@ -106,7 +105,7 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
           entries={shape.metrics.map((m, k) => ({
             label: m.label,
             value: fmtValue(Number(hovered[m.key]) || 0, options),
-            color: seriesColor(k, count, options),
+            color: seriesColor(k, shape, options),
           }))}
         />
       )}

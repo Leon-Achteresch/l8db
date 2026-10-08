@@ -808,17 +808,6 @@ fn design_notes(
     {
         notes.push("compare wirkt nur mit dateColumn und period ≠ all.".into());
     }
-    if expert
-        && name == "kpi"
-        && shape.dimension.is_none()
-        && shape.date
-        && rows.is_some_and(|n| n < 2)
-    {
-        notes.push(
-            "kpi ohne dimension: Die Sparkline braucht Zeilen pro Datum (z. B. GROUP BY Tag über die dateColumn) statt einer einzelnen Summenzeile – oder eine Zeit-dimension."
-                .into(),
-        );
-    }
     notes
 }
 
@@ -1437,6 +1426,8 @@ impl Server {
         mapping.resolve(&result.columns, notes)?;
         mapping.infer(kind, &result, notes);
         check_numeric(&result, &mapping.metrics)?;
+        check_trend(kind, &result, mapping)?;
+        notes.extend(crowding(kind, &result, mapping));
         if result.rows.is_empty() {
             notes.push("Ergebnis ist aktuell leer".into());
         } else if result.rows.len() > 500 {
@@ -1893,6 +1884,10 @@ impl Server {
                     let mapping_problem = mapping
                         .resolve(&result.columns, &mut notes)
                         .and_then(|()| check_numeric(&result, &mapping.metrics))
+                        .and_then(|()| match kind(chart) {
+                            Ok(k) => check_trend(k, &result, &mapping),
+                            Err(_) => Ok(()),
+                        })
                         .err();
                     let problems: Vec<String> =
                         shape_problem.into_iter().chain(mapping_problem).collect();
@@ -2122,6 +2117,52 @@ fn check_numeric(result: &QueryResult, metrics: &[String]) -> Result<(), String>
         }
     }
     Ok(())
+}
+
+fn distinct(result: &QueryResult, column: Option<&String>, chars: usize) -> usize {
+    column.map_or(0, |column| {
+        column_values(result, column)
+            .map(|value| match value {
+                Value::String(text) => text.chars().take(chars).collect(),
+                other => other.to_string(),
+            })
+            .collect::<std::collections::HashSet<String>>()
+            .len()
+    })
+}
+
+fn check_trend(kind: &Kind, result: &QueryResult, mapping: &Mapping) -> Result<(), String> {
+    let time = mapping.dimension.as_ref().or(mapping.date_column.as_ref());
+    if kind.name != "kpi" || time.is_none() || result.rows.is_empty() {
+        return Ok(());
+    }
+    if distinct(result, time, 10) >= 2 {
+        return Ok(());
+    }
+    Err(format!(
+        "'kpi' braucht einen Verlauf, das Ergebnis hat aber nur einen Zeitpunkt in '{}'. Liefere eine Zeile pro Tag/Woche/Monat (GROUP BY über die Zeitspalte) statt eines vorab berechneten Gesamt- oder Durchschnittswerts; die Kopfzahl rechnet l8db selbst (für Durchschnitte options.headline 'average').",
+        time.map(String::as_str).unwrap_or_default()
+    ))
+}
+
+fn crowding(kind: &Kind, result: &QueryResult, mapping: &Mapping) -> Vec<String> {
+    let series = distinct(result, mapping.dimension2.as_ref(), usize::MAX);
+    match kind.name {
+        "column" | "line" | "area" | "radar" if series > 8 => vec![format!(
+            "dimension2 hat {series} Werte: Die App zeigt die 7 größten als eigene Serie und fasst den Rest zu „Weitere“ zusammen. Besser in SQL auf die wichtigsten Gruppen begrenzen."
+        )],
+        "sankey" => {
+            let nodes = series.max(distinct(result, mapping.dimension.as_ref(), usize::MAX));
+            if nodes > 12 {
+                vec![format!(
+                    "{nodes} Knoten auf einer Seite: Fluss zeigt je Seite nur so viele, wie in die Kartenhöhe passen, der Rest wird zu „Weitere“. Besser auf die wichtigsten Quellen/Ziele begrenzen oder die Karte höher machen."
+                )]
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    }
 }
 
 fn values_of(args: &Value) -> Map<String, Value> {

@@ -75,10 +75,25 @@ export function widgetFits(kind: ChartKind, shape: DatasetShape): string | null 
 
 export const ROW_COUNT_FIELD = "__l8db_row_count__";
 
+export const MAX_SERIES = 8;
+export const OTHER_LABEL = "Weitere";
+
 export function seriesGroups(shape: DatasetShape, rows: Record<string, unknown>[]): string[] {
-  return shape.dimension2
-    ? [...new Set(rows.map((r) => toLabel(r[shape.dimension2 as string])))]
-    : [];
+  if (!shape.dimension2) return [];
+  const key = shape.metrics[0]?.key ?? "";
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const group = toLabel(row[shape.dimension2]);
+    totals.set(group, (totals.get(group) ?? 0) + Math.abs(toNumber(row[key])));
+  }
+  if (totals.size <= MAX_SERIES) return [...totals.keys()];
+  const top = new Set(
+    [...totals]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_SERIES - 1)
+      .map(([group]) => group),
+  );
+  return [...[...totals.keys()].filter((group) => top.has(group)), OTHER_LABEL];
 }
 
 export function colorSeries(
@@ -96,12 +111,14 @@ export function colorSeries(
       label: shape.metrics.length > 1 ? `${group} · ${metric.label}` : group,
     })),
   );
+  const other = groups.indexOf(OTHER_LABEL);
   const result = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
     const dim = shape.dimension ? row[shape.dimension] : "Gesamt";
     const key = JSON.stringify(dim);
     const target = result.get(key) ?? { [shape.dimension ?? "dim"]: dim };
-    const group = groups.indexOf(toLabel(row[shape.dimension2]));
+    const found = groups.indexOf(toLabel(row[shape.dimension2]));
+    const group = found < 0 ? other : found;
     if (group < 0) continue;
     shape.metrics.forEach((m, i) => {
       const k = `series_${group}_${i}`;

@@ -6,6 +6,7 @@ import {
   buildSimpleSql,
   chartFits,
   chartNeeds,
+  colorSeries,
   DEFAULT_OPTIONS,
   datasetShape,
   emptyDataset,
@@ -290,5 +291,36 @@ describe("widget options", () => {
     expect(chartFits("gauge", withDim)).toContain("ohne Aufteilung");
     expect(chartFits("gauge", { ...withDim, dimension: null })).toBeNull();
     expect(chartFits("table", { ...withDim, metrics: [] })).toBeNull();
+  });
+});
+
+describe("series split", () => {
+  test("keeps the seven largest groups and folds the rest into Weitere", () => {
+    const shape = {
+      dimension: "day",
+      dimension2: "group",
+      metrics: [{ key: "n", label: "Anzahl" }],
+      hasDate: false,
+    };
+    const rows = Array.from({ length: 20 }, (_, i) => ({ day: "Mo", group: `G${i}`, n: i + 1 }));
+    const colored = colorSeries("column", shape, rows);
+    expect(colored.shape.metrics.map((m) => m.label)).toEqual([
+      "G13",
+      "G14",
+      "G15",
+      "G16",
+      "G17",
+      "G18",
+      "G19",
+      "Weitere",
+    ]);
+    expect(colored.rows[0].series_7_0).toBe((13 * 14) / 2);
+    const previous = colorSeries(
+      "column",
+      shape,
+      [{ day: "Mo", group: "neu", n: 5 }],
+      [...colored.shape.metrics.map((m) => m.label)],
+    );
+    expect(previous.rows[0].series_7_0).toBe(5);
   });
 });

@@ -5,6 +5,7 @@ import {
   dimKind,
   fmtDim,
   fmtDimLong,
+  OTHER_LABEL,
   PALETTE,
   type Period,
   toLabel,
@@ -59,8 +60,13 @@ export function accent(options: WidgetOptions): string {
   return options.colorOffset ? color(options.colorOffset) : ACCENT;
 }
 
-export function seriesColor(index: number, count: number, options: WidgetOptions): string {
-  return count === 1 ? accent(options) : color(index + options.colorOffset);
+export const OTHER_COLOR = "var(--dash-other)";
+
+export function seriesColor(index: number, shape: DatasetShape, options: WidgetOptions): string {
+  if (shape.metrics.length === 1) return accent(options);
+  return shape.metrics[index]?.label === OTHER_LABEL
+    ? OTHER_COLOR
+    : color(index + options.colorOffset);
 }
 
 export function categories(rows: Row[], shape: DatasetShape, offset = 0, metricIndex = 0) {
