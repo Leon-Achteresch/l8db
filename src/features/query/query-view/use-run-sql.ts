@@ -17,6 +17,7 @@ import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { recordUserQueryOutcome } from "@/lib/telemetry";
 
 import { executeSqlWithTransactions } from "./execute-sql";
 import { rowCountOf, withCreateNotice } from "./result-text";
@@ -118,6 +119,7 @@ export function useRunSql({
       setError(null);
       const startedAt = performance.now();
       const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
+        recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
         recordHistory({
           connectionId: connection.id,
           database: database ?? null,

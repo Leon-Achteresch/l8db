@@ -8,6 +8,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   security: "Sicherheit & SSH",
   extensions: "Erweiterungen",
   hotkeys: "Tastenkürzel",
+  statistics: "Nutzungsstatistik",
   about: "Über & Updates",
 };
 

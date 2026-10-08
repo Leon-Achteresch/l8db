@@ -44,6 +44,8 @@ export interface SettingsState {
   setCrashReports: (value: boolean) => void;
   usageMetrics: boolean;
   setUsageMetrics: (value: boolean) => void;
+  localUsageStats: boolean;
+  setLocalUsageStats: (value: boolean) => void;
   autoUpdateInstall: boolean;
   updateChannel: UpdateChannel;
   skippedUpdateVersion: string | null;
@@ -188,6 +190,7 @@ export const DEFAULT_SETTINGS = {
   autoUpdateCheck: true,
   crashReports: false,
   usageMetrics: false,
+  localUsageStats: false,
   autoUpdateInstall: false,
   updateChannel: "stable" as UpdateChannel,
   skippedUpdateVersion: null,
@@ -270,6 +273,7 @@ export const useSettingsStore = create<SettingsState>()(
       setUpdateChannel: (updateChannel) => set({ updateChannel }),
       setCrashReports: (crashReports) => set({ crashReports }),
       setUsageMetrics: (usageMetrics) => set({ usageMetrics }),
+      setLocalUsageStats: (localUsageStats) => set({ localUsageStats }),
       setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
       setTourFinished: (tourFinished) => set({ tourFinished }),
       setOnboardingDone: (onboardingDone) => set({ onboardingDone }),
@@ -362,6 +366,7 @@ export const useSettingsStore = create<SettingsState>()(
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,
           usageMetrics: saved?.usageMetrics === true,
+          localUsageStats: saved?.localUsageStats === true,
           translateFilterOperators: saved?.translateFilterOperators !== false,
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),

@@ -348,9 +348,18 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "about",
     title: "Nutzungs- und Leistungsdaten senden",
     description:
-      "Startzeit, Dauer von Datenbankbefehlen je DB-Typ, geöffnete Bereiche und Sitzungen an Sentry (EU) senden. Nie SQL, Tabellennamen oder Verbindungsdaten.",
+      "Bereiche, Bedienwege, aktive Vordergrundzeit, Sitzungen, Startzeit sowie Erfolg, Fehler, Abbrüche und Dauer von Datenbankbefehlen je DB-Typ an Sentry (EU) senden. Nie SQL, Ergebnisdaten, Namen oder Verbindungsdaten.",
     keywords: ["metriken", "metrics", "nutzung", "leistung", "performance", "telemetrie", "sentry"],
     key: "usageMetrics",
+  },
+  {
+    id: "local-usage-statistics",
+    tabId: "statistics",
+    title: "Lokale Nutzungsstatistik erfassen",
+    description:
+      "Bereiche, Bedienwege, aktive Vordergrundzeit und Datenbankvorgänge dieser Installation für die letzten 32 Fenstersitzungen lokal erfassen. Ausschalten pausiert die Erfassung und behält bisherige Werte.",
+    keywords: ["statistik", "nutzung", "lokal", "sitzungen", "aktivität", "bedienwege", "leistung"],
+    key: "localUsageStats",
   },
   {
     id: "bug-report",

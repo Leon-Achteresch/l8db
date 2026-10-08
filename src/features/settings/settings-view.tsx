@@ -16,6 +16,7 @@ import { SettingsSearch } from "@/features/settings/settings-search";
 import { SettingsSearchResults } from "@/features/settings/settings-search-results";
 import { SettingsSecurityTab } from "@/features/settings/settings-security-tab";
 import { SETTINGS_TABS, SettingsSidebar } from "@/features/settings/settings-sidebar";
+import { SettingsUsageTab } from "@/features/settings/settings-usage-tab";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useModifiedSettings } from "@/lib/hooks/use-modified-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -160,6 +161,7 @@ export function SettingsView() {
                   {category === "security" ? <SettingsSecurityTab /> : null}
                   {category === "extensions" ? <SettingsExtensionsTab /> : null}
                   {category === "hotkeys" ? <SettingsHotkeysTab /> : null}
+                  {category === "statistics" ? <SettingsUsageTab /> : null}
                   {category === "about" ? <SettingsAboutTab /> : null}
                 </>
               )}

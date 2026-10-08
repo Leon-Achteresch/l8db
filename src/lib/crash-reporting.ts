@@ -30,11 +30,16 @@ export function reportCrash(error: unknown): void {
 }
 
 function apply(crashReports: boolean, usageMetrics: boolean): void {
+  setTelemetryClient(null, !usageMetrics);
   queue = queue
     .then(async () => {
       await invoke("set_crash_reporting", { enabled: crashReports }).catch(() => undefined);
-      setTelemetryClient(null);
       await sentry?.close();
+      if (
+        useSettingsStore.getState().crashReports !== crashReports ||
+        useSettingsStore.getState().usageMetrics !== usageMetrics
+      )
+        return;
       if (!crashReports && !usageMetrics) return;
       sentry ??= await import("@sentry/browser");
       sentry.init({
@@ -44,8 +49,9 @@ function apply(crashReports: boolean, usageMetrics: boolean): void {
         maxBreadcrumbs: 0,
         integrations: (defaults) =>
           defaults.filter((integration) => usageMetrics || integration.name !== "BrowserSession"),
-        beforeSend: (event) => (crashReports ? scrubEvent(event) : null),
-        beforeSendMetric: (metric) => (usageMetrics ? metric : null),
+        beforeSend: (event) =>
+          useSettingsStore.getState().crashReports ? scrubEvent(event) : null,
+        beforeSendMetric: (metric) => (useSettingsStore.getState().usageMetrics ? metric : null),
       });
       if (usageMetrics) setTelemetryClient(sentry);
     })

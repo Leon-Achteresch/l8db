@@ -3,7 +3,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
-import { recordDuration } from "@/lib/telemetry";
+import { recordDatabaseOperation, USAGE_COMMANDS, usageOutcome } from "@/lib/telemetry";
 import { cancelTableExport, type TableExportProgress, type TableExportRequest } from "./columns";
 import type { DatabaseKind } from "./providers";
 
@@ -22,12 +22,6 @@ const SQL_COMMANDS = new Set([
   "execute_in_transaction",
   "execute_in_transaction_with_params",
   "execute_script",
-]);
-const MEASURED_COMMANDS = new Set([
-  ...SQL_COMMANDS,
-  "fetch_table_rows",
-  "test_connection",
-  "test_connection_string",
 ]);
 const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,
@@ -194,6 +188,27 @@ async function productionGuard(command: string, args: Record<string, unknown>): 
 }
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!Object.hasOwn(USAGE_COMMANDS, command)) return invokeCommand<T>(command, args);
+  const started = performance.now();
+  let failure: unknown;
+  let failed = false;
+  try {
+    return await invokeCommand<T>(command, args);
+  } catch (error) {
+    failed = true;
+    failure = error;
+    throw error;
+  } finally {
+    recordDatabaseOperation(
+      command,
+      args?.kind,
+      failed ? usageOutcome(failure ?? "unknown") : "ok",
+      performance.now() - started,
+    );
+  }
+}
+
+async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (WRITE_COMMANDS.has(command)) {
     if (isReadOnlyActive(args?.connectionString)) throw new Error(READ_ONLY_MESSAGE);
     await readOnlyGuard(args ?? {});
@@ -264,15 +279,6 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       }).catch(() => undefined);
     }
   }
-  const started = performance.now();
-  const measure = (status: string) => {
-    if (!MEASURED_COMMANDS.has(command)) return;
-    recordDuration("db.command.duration", performance.now() - started, {
-      command,
-      kind: typeof args?.kind === "string" ? args.kind : "unknown",
-      status,
-    });
-  };
   try {
     if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
       throw new Error(READ_ONLY_MESSAGE);
@@ -282,12 +288,10 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     );
     unlisten?.();
     if (taskId) finishTask(taskId, result);
-    measure("ok");
     return result;
   } catch (error) {
     unlisten?.();
     if (taskId) finishTask(taskId, undefined, error);
-    measure("error");
     throw error;
   }
 }

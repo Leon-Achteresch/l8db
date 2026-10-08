@@ -28,6 +28,11 @@ describe("settings definitions", () => {
     expect(SEARCH_ITEMS.find((setting) => setting.id === "production-auto-rollback")?.tabId).toBe(
       "security",
     );
+    expect(SEARCH_ITEMS.find((setting) => setting.id === "local-usage-statistics")).toMatchObject({
+      tabId: "statistics",
+      tabLabel: "Nutzungsstatistik",
+      key: "localUsageStats",
+    });
   });
 
   test("default arrays compare by their contents, while changed values are detected", () => {
@@ -57,6 +62,19 @@ describe("settings definitions", () => {
     resetStoredSetting(updates, useSettingsStore.getState());
     expect(useSettingsStore.getState().autoUpdateCheck).toBe(true);
     expect(useSettingsStore.getState().autoUpdateInstall).toBe(false);
+  });
+
+  test("local statistics and shared developer metrics have independent consent", () => {
+    expect(useSettingsStore.getState().localUsageStats).toBe(false);
+    expect(useSettingsStore.getState().usageMetrics).toBe(false);
+    useSettingsStore.getState().setLocalUsageStats(true);
+    expect(useSettingsStore.getState().usageMetrics).toBe(false);
+    useSettingsStore.getState().setUsageMetrics(true);
+    const setting = SETTINGS_BY_ID.get("local-usage-statistics");
+    if (!setting) throw new Error("Missing local usage setting");
+    resetStoredSetting(setting, useSettingsStore.getState());
+    expect(useSettingsStore.getState().localUsageStats).toBe(false);
+    expect(useSettingsStore.getState().usageMetrics).toBe(true);
   });
 
   test("every stored preference resolves to an existing setter and restores its default", () => {
