@@ -1,0 +1,56 @@
+{
+  "passed": true,
+  "imageCount": 100,
+  "decodedThumbnails": 100,
+  "viewsTested": 20,
+  "filters": [
+    "view",
+    "layout",
+    "theme",
+    "search"
+  ],
+  "comparison": "passed",
+  "viewerAndNavigation": "passed",
+  "favoriteToggle": "passed",
+  "initialCards": 100,
+  "maximumGalleryElements": 1633,
+  "filterAndLayoutMs": {
+    "median": 1.5,
+    "p95": 2.7000000029802322,
+    "samples": [
+      1.7999999970197678,
+      1.3999999910593033,
+      1.4000000059604645,
+      1.6000000089406967,
+      1.5,
+      1.5,
+      1.8999999910593033,
+      1.3999999910593033,
+      2.4000000059604645,
+      2.7000000029802322,
+      2.2000000029802322,
+      2.7999999970197678,
+      1.7000000029802322,
+      1.5,
+      1.5,
+      1.5,
+      1.4000000059604645,
+      1.3999999910593033,
+      1.2999999970197678,
+      1.5
+    ]
+  },
+  "benchmarkScope": "100 static gallery designs; synchronous filtering and forced layout; no paint, keyboard, accessibility or app database latency measurements",
+  "databaseRequests": "not applicable: static gallery",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.8037.92 Safari/537.36",
+  "width": 1280,
+  "scrollWidth": 1280,
+  "platform": "Linux 6.12.111+deb13-amd64 x86_64\nv20.19.2\nmodel name\t: QEMU Virtual CPU version 2.5+\nMemTotal:       16382176 kB\n",
+  "limits": {
+    "filterMedianMs": 50,
+    "filterP95Ms": 100,
+    "maxCards": 100,
+    "maxGalleryElements": 2000
+  },
+  "performancePassed": true
+}

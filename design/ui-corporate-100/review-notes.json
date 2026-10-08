@@ -1,0 +1,446 @@
+{
+  "method": "Sichtprüfung von Originalen plus Übersichtsseiten; keine Interaktions- oder Kontrastmessung",
+  "individuallyInspected": [
+    "101",
+    "102",
+    "107",
+    "115",
+    "133",
+    "160"
+  ],
+  "findings": [
+    {
+      "ids": [
+        "101",
+        "102"
+      ],
+      "finding": "Aktuelle l8db-Shell und neutrale Grundflächen übernommen; primäre blaue Aktionen kräftiger als in der realen Referenz."
+    },
+    {
+      "ids": [
+        "107",
+        "133",
+        "160"
+      ],
+      "finding": "Konkrete Hex-Vorgaben ergeben entsättigte Stahl-/Slate-Aktionen. Hauptaufgabe, Auswahl und unterstützende Bereiche sind klar gegliedert."
+    },
+    {
+      "ids": [
+        "115"
+      ],
+      "finding": "Vorher/Nachher-Werte, drei offene Änderungen und SQL-Prüfung sind sichtbar; entsättigte Aktionen und klare Reihenfolge. Inhalte sind illustrative Rasterdaten."
+    }
+  ],
+  "scope": "Rasterkonzepte: exakte Tokens, Typografie, SQL, numerische Konsistenz und Interaktion vor Umsetzung überprüfen.",
+  "agentReviews": [
+    {
+      "range": "123-148",
+      "method": "Einzelne statische PNGs mit view_image visuell gesichtet; keine Kontrast-, Bedienungs- oder Laufzeitmessung.",
+      "referenceIds": [
+        "references/l8db-current-light.png",
+        "references/l8db-current-dark.png"
+      ],
+      "individuallyInspected": [
+        {
+          "id": "123",
+          "corporate": "Dunkle neutrale Original-Chrome, Sidebar und Typografie gut übernommen. Primärer Speicherbutton kräftiger blau als Referenz.",
+          "hierarchy": "Sechs Entity-Karten, Beziehungen und Details klar getrennt; keine störenden Überlagerungen sichtbar.",
+          "limits": "Einzelne feine Feldtexte und generierte Datenbankbeziehungen nicht semantisch verifiziert."
+        },
+        {
+          "id": "124",
+          "corporate": "Helle neutrale Flächen und bekannte l8db-Navigation erhalten; primäre Aktionen sichtbar gesättigter blau als Referenz.",
+          "hierarchy": "Builder, SQL und Ergebnistabelle bilden nachvollziehbare Arbeitsbereiche ohne sichtbare Überlagerung.",
+          "limits": "Dichte Ergebnisspalten klein gesetzt; generierte SQL- und Ergebnisinhalte nicht auf Ausführbarkeit geprüft."
+        },
+        {
+          "id": "128",
+          "corporate": "Dunkle CI-Palette und Originalheader erhalten, Aktionen in mittelkräftigem Blau.",
+          "hierarchy": "Objekttabelle dominiert, Detailfläche und SQL-Konsole klar zugeordnet; keine blockierende Überlagerung.",
+          "limits": "KPI-Flächen machen Ansicht konventioneller; Zahlen und Zeiten sind ausschließlich Mockup-Inhalte."
+        },
+        {
+          "id": "130",
+          "corporate": "Original-Dunkelmodus, zurückhaltende Aktionen und dezente Auswahlflächen übernommen.",
+          "hierarchy": "Abfrage, Export und Ziel horizontal lesbar, Zeitplan und Verlauf darunter; keine störende Überlagerung.",
+          "limits": "Lange Pfadvorlage wirkt gedrängt; tatsächliche Automatisierungsfunktion nicht überprüft."
+        },
+        {
+          "id": "133",
+          "corporate": "Entsättigte helle Steel-Buttons und dunkle Auswahlflächen stimmen sichtbar besser mit CI-Vorgabe überein.",
+          "hierarchy": "Ausgerichtete Staging-/Production-Tabellen und Änderungsdetails sind klar; Statusfarbe zusätzlich mit Text.",
+          "limits": "Sehr dichte Datentexte; erzeugte Beispieländerungen, Summen und fachliche Konsistenz nicht verifiziert."
+        },
+        {
+          "id": "134",
+          "corporate": "Primäre Aktionen zurückhaltend in Slate, helle Neutralflächen; SQL-Schlüsselwörter weiterhin etwas kräftiger blau.",
+          "hierarchy": "Objektunterschiede, Vergleichsdetails und Migrationsvorschau gut getrennt; keine blockierende Überlagerung.",
+          "limits": "Risikoanalyse ist nur generierter Beispieltext und keine fachlich validierte Bewertung."
+        },
+        {
+          "id": "140",
+          "corporate": "Dunkle Palette und helles entsättigtes Steel für primäre Aktionen, ursprüngliche schmale Icon-Navigation sichtbar.",
+          "hierarchy": "Serverliste und ausgewählte Details nachvollziehbar, Protokoll darunter; keine störende Überlagerung.",
+          "limits": "Kleine Protokollschrift; Servernamen, Verbindungsergebnisse und Dauerwerte nur illustrative Inhalte."
+        },
+        {
+          "id": "141",
+          "corporate": "Helle Originaloberfläche mit Slate-Aktion; SQL-Syntaxblau etwas kräftiger als entsättigtes Markenideal.",
+          "hierarchy": "Editor und Resultate erhalten großen Bereich, Zeilendetails rechts klar zugeordnet; keine Überlagerung.",
+          "limits": "Beispielwert 12 ms ist generierter Inhalt, keine Messung; Tabellen- und SQL-Semantik nicht geprüft."
+        },
+        {
+          "id": "147",
+          "corporate": "Original-Dunkelmodus mit Steel-Prüfbutton. Gelb und Grün als beschriftete Zustände, kein dominanter Neon-Akzent.",
+          "hierarchy": "Prüfungsliste und Warnungsdetail groß und klar, zusätzliche Problemflächen geordnet.",
+          "limits": "Illustrative Empfehlungen, Indexstatistiken und Zeitwerte fachlich nicht validiert; kleine Detailschriften."
+        },
+        {
+          "id": "148",
+          "corporate": "Helle CI-neutrale Flächen, Slate-Aktionen und zurückhaltender grau-blauer Chart.",
+          "hierarchy": "Übersicht, Tabellen, Details und Aktivität klar gegliedert; keine sichtbaren Überlagerungen.",
+          "limits": "Konventionelle Dashboard-Komposition; Beispielzahlen und Zeiten nicht gemessen, nicht jeder Text semantisch geprüft."
+        }
+      ],
+      "uninspectedIds": [
+        "125",
+        "126",
+        "127",
+        "129",
+        "131",
+        "132",
+        "135",
+        "136",
+        "137",
+        "138",
+        "139",
+        "142",
+        "143",
+        "144",
+        "145",
+        "146"
+      ],
+      "generalLimits": [
+        "Diese Beurteilung betrifft nur die zehn einzeln sichtgeprüften Bilder, keine pauschale visuelle Abnahme aller 26.",
+        "Generierte Labels, SQL, Kennzahlen, Status und technische Empfehlungen sind illustrative Inhalte und wurden nicht fachlich validiert.",
+        "Statische PNGs erlauben keine Aussagen über Interaktion, Keyboard-Navigation oder Barrierefreiheit.",
+        "Kräftigeres Aktionsblau tritt in einzelnen vor der verschärften Farbregel erzeugten Bildern auf; spätere geprüfte primäre Aktionen sind deutlich zurückhaltender."
+      ]
+    },
+    {
+      "range": "149-174",
+      "reviewMethod": "Individuelle visuelle Inspektion der angegebenen PNGs mit view_image; Vergleich mit beiden realen Corporate-Referenzen.",
+      "inspectedReferences": [
+        "references/l8db-current-light.png",
+        "references/l8db-current-dark.png"
+      ],
+      "individuallyInspectedIds": [
+        "150",
+        "157",
+        "158",
+        "165",
+        "167",
+        "172",
+        "174"
+      ],
+      "images": [
+        {
+          "id": "150",
+          "corporate": "Kompakter l8db-Header, linke Rail und Objektkontext klar erkennbar; kühle neutrale Flächen.",
+          "hierarchy": "Automatisierung folgt Abfrage, Export, Ziel und zeigt Laufhistorie am unteren Rand; keine sichtbaren Überlagerungen.",
+          "limits": [
+            "Primäre Buttons und aktive Schrittmarkierungen kräftiger blau als Referenz; vor Hex-Präzisierung erzeugt.",
+            "SQL-Syntaxfarben etwas gesättigter als übrige Oberfläche."
+          ]
+        },
+        {
+          "id": "157",
+          "corporate": "Dunkle blau-charcoal Flächen, schmale Outline-Icons und zurückhaltender blass-stahlblauer Hauptbutton passen gut zur Referenz.",
+          "hierarchy": "Spaltenzuordnung ist primär, Ziel und Optionen sind rechts gruppiert, Datenvorschau bleibt sichtbar; keine sichtbaren Überlagerungen.",
+          "limits": [
+            "Generierte Daten und Validierungszustände sind illustrative Beispiele, keine getestete Importlogik."
+          ]
+        },
+        {
+          "id": "158",
+          "corporate": "Helle kühle Flächen und entsättigte Stahlblau-Akzente; l8db-Chrome bleibt erkennbar.",
+          "hierarchy": "Bucketliste, Datei-Tabelle und Dateiinspektor sind klar getrennt; aktive Datei und Uploadstatus sichtbar.",
+          "limits": [
+            "Lange Objektpfade/-namen werden abgeschnitten; tatsächliches Overflow-Verhalten wurde nicht geprüft."
+          ]
+        },
+        {
+          "id": "165",
+          "corporate": "Dunkle Referenzbasis, schmale Linien und gedämpfte blauweiße Auswahlzustände gut erhalten.",
+          "hierarchy": "SQL, Laufzusammenfassung, Planbaum und Knotendetails sind sinnvoll gruppiert; Verbindungen im Baum lesbar.",
+          "limits": [
+            "SQL-Syntaxfarben kräftiger als Flächenakzente.",
+            "Planzeiten und Knotenzahlen sind generierte Beispielwerte; Konsistenz und Query-Plan-Semantik wurden nicht verifiziert."
+          ]
+        },
+        {
+          "id": "167",
+          "corporate": "Helle neutrale Oberfläche, gedämpfte blau-graue Aktionen und vertraute Rail/Objektnavigation.",
+          "hierarchy": "Prüfgruppen, priorisierte Befunde, abgeschlossene Prüfungen und Objektlinse ergeben klare Hierarchie.",
+          "limits": [
+            "Grün/amber Statussymbole und Balken sind größer als die streng geforderten kleinen Statusbereiche.",
+            "Keine echte Datenbank-Health-Prüfung oder gemessene Latenz."
+          ]
+        },
+        {
+          "id": "172",
+          "corporate": "Helle neutrale Flächen, zurückhaltende Stahlblau-Buttons; kompakter l8db-Header und Kontextnavigation erhalten.",
+          "hierarchy": "Chat-/SQL-Vorschlag dominiert, Datenquellen rechts und Ergebnisvorschau unten sind sichtbar; keine sichtbaren Überlagerungen.",
+          "limits": [
+            "Kräftigere blau/rote SQL-Syntaxfarben.",
+            "Vorschau zeigt Monate absteigend, obwohl SQL ORDER BY monat aufsteigend nahelegt; illustriertes Datenbeispiel vor Implementierung korrigieren.",
+            "Zwei Ausführungs-/Prüfaktionen sind sichtbar; Aufgabenstatus sollte in Umsetzung eindeutig zwischen Vorschau und Ausführung unterscheiden."
+          ]
+        },
+        {
+          "id": "174",
+          "corporate": "Kühle helle Flächen, gedämpfte Stahlblau-Aktionen, semantische Unterschiede mit Text und Symbolen.",
+          "hierarchy": "Quell-/Zielkontext oben, Objektliste, ausgerichteter Spaltenvergleich und SQL-Vorschau gut gruppiert; keine sichtbaren Überlagerungen.",
+          "limits": [
+            "Zusammenfassung nennt fünf Änderungen und führt zugleich eine unveränderte Position auf; generierte Zählwerte vor Umsetzung abstimmen.",
+            "SQL-Syntaxblau kräftiger als die Flächenpalette."
+          ]
+        }
+      ],
+      "overall": "Die nach Hex-Präzisierung einzeln gesichteten Vorschläge sind deutlich näher an der aktuellen Corporate-Palette. Keine Neonpalette oder grobe Layoutüberlagerung in den gesichteten Bildern. Die übrigen 19 Bilder wurden hier nicht einzeln visuell geprüft.",
+      "evidenceLimits": [
+        "Statische KI-generierte Designvorschläge; keine funktionierende Implementierung.",
+        "Keine numerische Kontrastmessung, keine Interaktions-, Tastatur-, Accessibility- oder Latenztests.",
+        "PNG-Signatur, Dimensionen, eindeutige SHA256-Hashes und vorhandene Originalpfade für alle 26 Dateien überprüft; dies ersetzt keine visuelle Prüfung aller Bilder."
+      ],
+      "integrity": {
+        "count": 26,
+        "dimensions": [
+          1586,
+          992
+        ],
+        "uniqueSha256": 26,
+        "generationErrors": 0
+      }
+    },
+    {
+      "range": "175-200",
+      "method": "Einzelne PNGs mit view_image gesichtet; statische visuelle Stichprobe ohne Kontrast-, Interaktions- oder Leistungsmessung.",
+      "inspectedIds": [
+        "178",
+        "183",
+        "184",
+        "191",
+        "194",
+        "199",
+        "200"
+      ],
+      "assessments": [
+        {
+          "id": "178",
+          "corporate": "Dunkle kühle l8db-Oberfläche, schlichtes Wordmark, Suchen-Pill, Feature-Rail und Objektkontext erhalten.",
+          "hierarchy": "Quellenauswahl und Objektliste gut getrennt; Upload-Fortschritt mit Abbrechen klar sichtbar; keine Überlagerung festgestellt.",
+          "limits": [
+            "Primärer Upload-Button kräftiger blau als die ab 183 verschärfte entsättigte Palette.",
+            "Parquet-Symbole nutzen ein kleines violettes Dateityp-Signal."
+          ]
+        },
+        {
+          "id": "183",
+          "corporate": "Helle neutrale Flächen und gedeckte Stahlblau-Aktionen; wiedererkennbare l8db-Chrome.",
+          "hierarchy": "Sechs Tabellenkarten mit Beziehungen, aktive users-Auswahl und Inspektor klar voneinander getrennt.",
+          "limits": [
+            "Diagramm-Beschriftungen und Typangaben sind klein; Lesbarkeit ist nur visuell bei Originalgröße eingeschätzt.",
+            "Beziehungen wurden nicht fachlich auf vollständige Kardinalitätskorrektheit geprüft."
+          ]
+        },
+        {
+          "id": "184",
+          "corporate": "Dunkle Referenzpalette und zurückhaltende Stahlblau-Aktionen; Navigation und Komponentensprache konsistent.",
+          "hierarchy": "Join-Diagramm, Filter, Gruppierung, SQL und Ergebnisgrid bilden erkennbare Bereiche ohne Überlagerung.",
+          "limits": [
+            "SQL-Syntaxfarben etwas kräftiger als die übrigen neutralen Akzente.",
+            "SQL wurde nicht ausgeführt und ist kein funktional validierter Query-Builder-Export."
+          ]
+        },
+        {
+          "id": "191",
+          "corporate": "Helle Referenz-Chrome, neutrale Panels, gedeckte Aktionsbuttons und Diagrammbalken.",
+          "hierarchy": "Notebook-Titel, ausgeführte erste Zelle, Tabelle/Diagramm und zweiter Entwurf gut sequenziert.",
+          "limits": [
+            "SQL-Schlüsselwörter fallen deutlich kräftiger blau aus als die gewünschten entsättigten Akzente.",
+            "Die zweite SQL-Zelle ist am unteren Rand teilweise angeschnitten und benötigt in einer Umsetzung Scrollen."
+          ]
+        },
+        {
+          "id": "194",
+          "corporate": "Dunkle kühle neutrale Oberflächen und blasse Stahlblau-Aktion; kleine semantische Risiko-/Diff-Farben.",
+          "hierarchy": "Quelle/Ziel, Änderungsliste, Vorher/Nachher-Werte, Auswirkung und Migration-SQL nachvollziehbar angeordnet.",
+          "limits": [
+            "Migration-SQL ist am unteren Bildrand unvollständig sichtbar.",
+            "Syntax- und Statusfarben wurden visuell, nicht farbmetrisch, beurteilt."
+          ]
+        },
+        {
+          "id": "199",
+          "corporate": "Dunkle l8db-Chrome und Stahlblau-Auswahl/Aktion konsistent.",
+          "hierarchy": "Darstellung, Dichte, Schriftgröße, Vorschau und zusätzliche Optionen klar gruppiert; Speichern sichtbar.",
+          "limits": [
+            "Der Akzentfarben-Picker schlägt zusätzliche Grün-/Orange-/Rot-Farben vor; dies geht über die strikt feste Corporate-Palette hinaus, obwohl Stahlblau ausgewählt ist.",
+            "Syntax in der Vorschau ist kräftiger blau/grün als die restliche Palette."
+          ]
+        },
+        {
+          "id": "200",
+          "corporate": "Helle neutrale Referenzpalette, bekannte l8db-Navigation und überwiegend gedeckte Stahlblau-Aktionen.",
+          "hierarchy": "Server-/Verbindungs-/Zugriffskontext über Tool-Tabelle, Tool-Details und Anfragehistorie; klare gemeinsame Regionen.",
+          "limits": [
+            "Einige Details und JSON-Felder sind klein; keine gemessene Kontrast- oder Textgrößenprüfung.",
+            "Die gezeigten Tools und Berechtigungen sind Mockup-Inhalt und wurden nicht mit dem realen Backend abgeglichen."
+          ]
+        }
+      ],
+      "overall": "Keine groben Überlagerungen oder starke flächige Markenabweichung in den sieben einzeln gesichteten Ansichten festgestellt. Die statischen Vorschläge benötigen vor Umsetzung Text-, Inhalts-, Farb- und Zustandsprüfung."
+    }
+  ],
+  "individualReviewCount": 29,
+  "allIndividuallyInspectedIds": [
+    "101",
+    "102",
+    "107",
+    "115",
+    "123",
+    "124",
+    "128",
+    "130",
+    "133",
+    "134",
+    "140",
+    "141",
+    "147",
+    "148",
+    "150",
+    "157",
+    "158",
+    "160",
+    "165",
+    "167",
+    "172",
+    "174",
+    "178",
+    "183",
+    "184",
+    "191",
+    "194",
+    "199",
+    "200"
+  ],
+  "overviewReview": {
+    "method": "Fünf HTML-Übersichtsseiten mit je 20 Bildvorschauen visuell geprüft.",
+    "imageCount": 100,
+    "ids": [
+      "101",
+      "102",
+      "103",
+      "104",
+      "105",
+      "106",
+      "107",
+      "108",
+      "109",
+      "110",
+      "111",
+      "112",
+      "113",
+      "114",
+      "115",
+      "116",
+      "117",
+      "118",
+      "119",
+      "120",
+      "121",
+      "122",
+      "123",
+      "124",
+      "125",
+      "126",
+      "127",
+      "128",
+      "129",
+      "130",
+      "131",
+      "132",
+      "133",
+      "134",
+      "135",
+      "136",
+      "137",
+      "138",
+      "139",
+      "140",
+      "141",
+      "142",
+      "143",
+      "144",
+      "145",
+      "146",
+      "147",
+      "148",
+      "149",
+      "150",
+      "151",
+      "152",
+      "153",
+      "154",
+      "155",
+      "156",
+      "157",
+      "158",
+      "159",
+      "160",
+      "161",
+      "162",
+      "163",
+      "164",
+      "165",
+      "166",
+      "167",
+      "168",
+      "169",
+      "170",
+      "171",
+      "172",
+      "173",
+      "174",
+      "175",
+      "176",
+      "177",
+      "178",
+      "179",
+      "180",
+      "181",
+      "182",
+      "183",
+      "184",
+      "185",
+      "186",
+      "187",
+      "188",
+      "189",
+      "190",
+      "191",
+      "192",
+      "193",
+      "194",
+      "195",
+      "196",
+      "197",
+      "198",
+      "199",
+      "200"
+    ],
+    "finding": "Alle 100 Bilder zeigen eigenständige, vollständig gerenderte l8db-Ansichten mit wiedererkennbarer Shell. Keine groben Bild- oder Layoutausfälle in den Übersichten. Detailbefunde aus Einzelprüfungen stehen oben.",
+    "limits": "Übersichtsprüfung beurteilt Komposition und flächige Stiltreue; sie ersetzt keine Prüfung jeder Beschriftung oder exakte Farb-/Kontrastmessungen."
+  }
+}
