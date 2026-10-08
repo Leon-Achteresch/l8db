@@ -109,6 +109,12 @@ export function UpdateSection() {
           ]}
         />
       </SettingsRow>
+      {updateChannel === "stable" && version?.includes("-canary.") ? (
+        <SettingsRow
+          title="Canary-Version installiert"
+          description={`l8db ${version} bleibt installiert, bis eine neuere stabile Version erscheint.`}
+        />
+      ) : null}
       <SettingsRow settingId="updates">
         <Switch
           checked={autoUpdateCheck}

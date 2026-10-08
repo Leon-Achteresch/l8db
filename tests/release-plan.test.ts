@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { releaseNotes } from "../.github/scripts/release.mjs";
+import { releaseBody, releaseNotes } from "../.github/scripts/release.mjs";
 import { canaryState, previousCanary, releaseState } from "../.github/scripts/release-plan.mjs";
 import {
   buildNeutral,
@@ -67,6 +67,16 @@ describe("release version planning and retries", () => {
       "## [0.9.0-canary.2] - 2026-10-03\n- Canary\n\n## [0.8.24] - 2026-10-01\n- Old\n";
     expect(releaseNotes("0.9.0-canary.2", canary)).toContain("Canary");
     expect(releaseNotes("0.9.0-canary.2", canary)).not.toContain("Old");
+  });
+  test("marks canary release pages and names the current stable version", () => {
+    expect(releaseBody("0.9.0", "## [0.9.0]", "v0.8.24")).toBe("## [0.9.0]");
+    const body = releaseBody("0.9.0-canary.2", "## [0.9.0-canary.2]", "v0.8.24");
+    expect(body.startsWith("> [!WARNING]\n> Canary pre-release")).toBe(true);
+    expect(body).toContain(
+      "[v0.8.24](https://github.com/Leon-Achteresch/l8db/releases/tag/v0.8.24)",
+    );
+    expect(body.endsWith("\n\n## [0.9.0-canary.2]")).toBe(true);
+    expect(releaseBody("0.9.0-canary.2", "notes", undefined)).not.toContain("stable version");
   });
 });
 
