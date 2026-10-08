@@ -15,7 +15,7 @@
 
 pkgname=l8db-bin
 _pkgname=l8db
-pkgver=0.12.0
+pkgver=0.13.0
 pkgrel=1
 pkgdesc="Fast, native desktop client for PostgreSQL and other databases"
 arch=('x86_64')
@@ -32,7 +32,7 @@ options=('!strip' '!emptydirs' '!debug')
 source=("${pkgname}-${pkgver}.deb::${url}/releases/download/v${pkgver}/${_pkgname}_${pkgver}_amd64.deb"
         "LICENSE-${pkgver}::https://raw.githubusercontent.com/Leon-Achteresch/l8db/v${pkgver}/LICENSE")
 noextract=("${pkgname}-${pkgver}.deb")
-sha256sums=('f5691019f5b9fbc8765dd032dbe328476bcd5b452238657afbe94bc0d7bea796'
+sha256sums=('d364991463d9c12564407812098212c24574753e58f1e23be397e7e588d0a2e3'
             'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30')
 
 package() {
