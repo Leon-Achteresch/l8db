@@ -3,7 +3,11 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { nextDiffLine } from "@/features/compare/diff-navigation";
 import type { DraftLineOrigin } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
-import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
+import {
+  joinScrollSyncGroup,
+  type ScrollSyncGroup,
+  withoutScrollSync,
+} from "@/lib/monaco/scroll-sync";
 import "./merge-reference-editor.css";
 
 export interface MergeDraftApi {
@@ -73,9 +77,9 @@ export function MergeDraftEditor({ value, origins, onChange, onActivate, ref, sc
     const model = editor.current?.getModel();
     if (!model || model.getValue() === value) return;
     syncing.current = true;
-    model.setValue(value);
+    withoutScrollSync(scrollSync, () => model.setValue(value));
     syncing.current = false;
-  }, [value]);
+  }, [value, scrollSync]);
 
   useEffect(() => {
     decorations.current?.set(
