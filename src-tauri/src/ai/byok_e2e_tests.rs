@@ -175,14 +175,18 @@ async fn sqlite_http_scenario(allowed: bool) {
         for (index, result) in results.iter().enumerate() {
             assert_eq!(result["tool_call_id"], format!("call_{index}"));
             assert!(result.get("name").is_none());
-            let content: Value = serde_json::from_str(result["content"].as_str().unwrap()).unwrap();
-            assert_eq!(content["isError"], index == 3 && !allowed, "{content}");
+            let content = result["content"].as_str().unwrap();
+            assert_eq!(
+                content.starts_with("[tool error]"),
+                index == 3 && !allowed,
+                "{content}"
+            );
             if index == 2 {
-                assert!(content.to_string().contains("apples"));
-                assert!(content.to_string().contains("pears"));
+                assert!(content.contains("apples"));
+                assert!(content.contains("pears"));
             }
             if index == 3 && !allowed {
-                assert!(content.to_string().contains("abgelehnt"));
+                assert!(content.contains("abgelehnt"));
             }
         }
         provider_stream(stream, vec![
