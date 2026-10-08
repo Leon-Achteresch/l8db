@@ -4,8 +4,8 @@
 
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { Search } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NewBadge } from "@/components/new-badge";
 import {
@@ -22,7 +22,7 @@ import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
 import { PresenceGate } from "@/lib/presence-gate";
 import { cn } from "@/lib/utils";
 import { CommandPaletteOption } from "./command-palette/command-palette-option";
-import { PANEL_SPRING } from "./command-palette/constants";
+import { LIST_HEIGHT_SPRING, PANEL_SPRING } from "./command-palette/constants";
 import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
@@ -64,6 +64,8 @@ export function CommandPalette({
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const listFrameRef = useRef<HTMLDivElement>(null);
+  const listHeight = useSpring(0, LIST_HEIGHT_SPRING);
 
   useHotkey(
     "Escape",
@@ -181,6 +183,25 @@ export function CommandPalette({
     }
   };
 
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const frame = listFrameRef.current;
+    if (!mounted || !open || !list || !frame) return;
+    let measured = false;
+    const observer = new ResizeObserver(() => {
+      const height = list.offsetHeight;
+      if (measured && !reduce) {
+        listHeight.set(height);
+        return;
+      }
+      measured = true;
+      listHeight.jump(height);
+      frame.style.height = `${height}px`;
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [mounted, open, reduce, listHeight]);
+
   useEffect(() => {
     if (!open) return;
     const el = listRef.current?.querySelector<HTMLButtonElement>(`[data-index="${active}"]`);
@@ -230,7 +251,6 @@ export function CommandPalette({
               className="pointer-events-none fixed inset-x-4 bottom-4 top-[18vh] z-[100] flex items-start justify-center"
             >
               <motion.div
-                layout
                 role="dialog"
                 aria-modal="true"
                 aria-label="Command palette"
@@ -290,49 +310,55 @@ export function CommandPalette({
                     ESC
                   </kbd>
                 </div>
-                <div
-                  ref={listRef}
-                  id={`${uid}-list`}
-                  role="listbox"
-                  aria-label="Commands"
-                  className="max-h-[60vh] overflow-y-auto overscroll-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                <motion.div
+                  ref={listFrameRef}
+                  style={{ height: listHeight }}
+                  className="overflow-hidden"
                 >
-                  {rows.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-muted-foreground">
-                      {emptyMessage}
-                    </div>
-                  ) : (
-                    grouped.map(([group, list]) => (
-                      <div key={group} className="mb-1 last:mb-0">
-                        <div
-                          aria-hidden
-                          className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-                        >
-                          {group}
-                        </div>
-                        {list.map((it) => {
-                          // `rows` holds these very objects, in render order.
-                          const idx = rows.indexOf(it);
-                          const isActive = idx === active;
-                          return (
-                            <CommandPaletteOption
-                              key={it.id}
-                              item={it}
-                              query={rankedQuery}
-                              index={idx}
-                              isActive={isActive}
-                              uid={uid}
-                              reduce={reduce}
-                              hasIcons={hasIcons}
-                              onHover={() => moveTo(it.id)}
-                              onSelect={() => selectItem(it)}
-                            />
-                          );
-                        })}
+                  <div
+                    ref={listRef}
+                    id={`${uid}-list`}
+                    role="listbox"
+                    aria-label="Commands"
+                    className="max-h-[60vh] overflow-y-auto overscroll-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    {rows.length === 0 ? (
+                      <div className="p-8 text-center text-sm text-muted-foreground">
+                        {emptyMessage}
                       </div>
-                    ))
-                  )}
-                </div>
+                    ) : (
+                      grouped.map(([group, list]) => (
+                        <div key={group} className="mb-1 last:mb-0">
+                          <div
+                            aria-hidden
+                            className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                          >
+                            {group}
+                          </div>
+                          {list.map((it) => {
+                            // `rows` holds these very objects, in render order.
+                            const idx = rows.indexOf(it);
+                            const isActive = idx === active;
+                            return (
+                              <CommandPaletteOption
+                                key={it.id}
+                                item={it}
+                                query={rankedQuery}
+                                index={idx}
+                                isActive={isActive}
+                                uid={uid}
+                                reduce={reduce}
+                                hasIcons={hasIcons}
+                                onHover={() => moveTo(it.id)}
+                                onSelect={() => selectItem(it)}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
                 {commandFeatureId ? (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
                     <span>↑ ↓ Auswählen</span>
