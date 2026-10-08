@@ -3,21 +3,25 @@ import { useMemo } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import {
   applyOptions,
-  chartFits,
   colorSeries,
   compareLabel,
   compareShortLabel,
   comparisonRange,
+  currentBucketStart,
   type Dataset,
+  DIM_KEY,
   datasetMetricAggs,
   datasetShape,
   datasetSql,
   datasetTotalsSql,
+  datasetTrendSql,
   needsTotals,
   type Period,
   seriesGroups,
   stepLabel,
+  trendBucket,
   type Widget,
+  widgetFits,
   widgetOptions,
 } from "@/lib/dashboards";
 import type { QueryResult } from "@/lib/db";
@@ -27,6 +31,7 @@ import {
   resolveHeadline,
   summarize,
   timeKind,
+  trendStep,
 } from "./charts/chart-summary";
 import type { Row } from "./charts/chart-utils";
 import { useDashboardScope } from "./dashboard-scope";
@@ -63,7 +68,7 @@ export function useWidgetData({
   }, [baseShape, rawRows, options, widget.chart]);
   const shape = current?.shape ?? null;
   const rows = current?.rows ?? EMPTY_ROWS;
-  const problem = shape ? chartFits(widget.chart, shape) : "Kein Datensatz zugewiesen";
+  const problem = shape ? widgetFits(widget.chart, shape) : "Kein Datensatz zugewiesen";
   const comparable = Boolean(dataset && baseShape?.hasDate && !NO_COMPARE.includes(widget.chart));
   const range = useMemo(
     () => (comparable ? comparisonRange(period, options.compare) : null),
@@ -87,6 +92,19 @@ export function useWidgetData({
     dataset && totals && range ? datasetTotalsSql(dataset, kind, period, scope, range) : "",
     debounceMs,
   );
+  const trend = Boolean(
+    dataset && !problem && widget.chart === "kpi" && baseShape?.hasDate && !baseShape.dimension,
+  );
+  const trendSql = useDebounced(
+    dataset && trend ? datasetTrendSql(dataset, kind, period, scope) : "",
+    debounceMs,
+  );
+  const previousTrendSql = useDebounced(
+    dataset && trend && range ? datasetTrendSql(dataset, kind, period, scope, range) : "",
+    debounceMs,
+  );
+  const trendQuery = useSqlQuery(trendSql, refreshMs);
+  const previousTrend = useSqlQuery(previousTrendSql, refreshMs);
   const previous = useSqlQuery(previousSql, refreshMs);
   const totalsQuery = useSqlQuery(totalsSql, refreshMs);
   const previousTotals = useSqlQuery(previousTotalsSql, refreshMs);
@@ -105,9 +123,12 @@ export function useWidgetData({
             seriesGroups(current.applied.shape, current.applied.rows),
           ).rows
         : null;
+    const chartShape = trend ? { ...shape, dimension: DIM_KEY } : shape;
+    const chartRows = trend ? (trendQuery.data?.rows ?? EMPTY_ROWS) : rows;
+    const ghost = trend ? (previousTrend.data?.rows ?? null) : before;
     const compare =
-      before && label
-        ? buildComparison(widget.chart, rows, before, shape, options, label, short)
+      ghost && label
+        ? buildComparison(widget.chart, chartRows, ghost, chartShape, options, label, short)
         : null;
     const aggs = datasetMetricAggs(dataset);
     const keys = datasetShape(dataset).metrics.map((m) => m.key);
@@ -123,8 +144,19 @@ export function useWidgetData({
       stepLabel: stepLabel(time),
       aggOf: (key) => aggs[keys.indexOf(key)] ?? "sum",
     });
+    const bucket = trendBucket(period);
+    const step =
+      trend && summary.delta === null
+        ? trendStep(chartRows, chartShape, options, bucket, currentBucketStart(bucket))
+        : null;
     const legend = options.showLegend ? legendFor(widget.chart, rows, shape, options, compare) : [];
-    return { compare, summary, legend };
+    return {
+      compare,
+      summary: step ? { ...summary, ...step } : summary,
+      legend,
+      chartRows,
+      chartShape,
+    };
   }, [
     shape,
     current,
@@ -139,16 +171,26 @@ export function useWidgetData({
     totalsQuery.data,
     previousTotals.data,
     time,
+    trend,
+    trendQuery.data,
+    previousTrend.data,
   ]);
 
   return {
     options,
-    shape,
-    rows,
+    shape: view?.chartShape ?? shape,
+    rows: view?.chartRows ?? rows,
     problem,
+    chartPending: trend && Boolean(trendSql) && trendQuery.isPending,
+    chartError: trend ? trendQuery.error : null,
     compare: view?.compare ?? null,
     summary: view?.summary ?? null,
     legend: view?.legend ?? [],
+    bucket: trend
+      ? trendBucket(period)
+      : dataset?.mode === "simple"
+        ? (dataset.simple.dimension?.bucket ?? null)
+        : null,
     summaryPending:
       (Boolean(totalsSql) && totalsQuery.isPending) ||
       (Boolean(previousTotalsSql) && previousTotals.isPending),

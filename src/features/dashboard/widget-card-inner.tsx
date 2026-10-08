@@ -49,9 +49,19 @@ export function WidgetCardInner({
   const period = sharedPeriod ?? (locked ? viewPeriod : widget.period);
   const sql = useDatasetSql(dataset, period);
   const query = useSqlQuery(sql, refreshSec * 1000);
-  const { options, shape, rows, problem, compare, summary, legend, summaryPending } = useWidgetData(
-    { widget, dataset, period, query, refreshMs: refreshSec * 1000 },
-  );
+  const {
+    options,
+    shape,
+    rows,
+    problem,
+    chartPending,
+    chartError,
+    compare,
+    summary,
+    legend,
+    bucket,
+    summaryPending,
+  } = useWidgetData({ widget, dataset, period, query, refreshMs: refreshSec * 1000 });
   const Renderer = CHART_RENDERERS[widget.chart];
   const chartReady = useChartSlot(
     Boolean(shape) && !problem && query.isSuccess && rows.length > 0,
@@ -62,7 +72,7 @@ export function WidgetCardInner({
   const subtitle =
     widget.subtitle ??
     autoSubtitle(
-      dataset?.mode === "simple" ? (dataset.simple.dimension?.bucket ?? null) : null,
+      bucket,
       shape?.hasDate && !periodPicker && !sharedPeriod ? period : null,
       options.unit,
     );
@@ -161,11 +171,11 @@ export function WidgetCardInner({
           <div className="grid h-full place-items-center text-center text-xs text-muted-foreground">
             {problem}
           </div>
-        ) : query.isError ? (
+        ) : query.isError || chartError ? (
           <p role="alert" className="text-xs text-destructive">
-            {queryErrorMessage(query.error)}
+            {queryErrorMessage(query.error ?? chartError)}
           </p>
-        ) : query.isPending || (rows.length > 0 && !chartReady) ? (
+        ) : query.isPending || chartPending || (rows.length > 0 && !chartReady) ? (
           <Skeleton className="h-full w-full rounded-md" />
         ) : rows.length === 0 ? (
           <div className="grid h-full place-items-center text-xs text-muted-foreground">

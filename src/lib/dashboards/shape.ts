@@ -67,6 +67,12 @@ export function chartFits(kind: ChartKind, shape: DatasetShape): string | null {
   return null;
 }
 
+export function widgetFits(kind: ChartKind, shape: DatasetShape): string | null {
+  if (kind === "kpi" && !shape.dimension && !shape.hasDate)
+    return "Braucht eine Datumsspalte oder eine Aufteilung nach Zeit für den Verlauf";
+  return chartFits(kind, shape);
+}
+
 export const ROW_COUNT_FIELD = "__l8db_row_count__";
 
 export function seriesGroups(shape: DatasetShape, rows: Record<string, unknown>[]): string[] {

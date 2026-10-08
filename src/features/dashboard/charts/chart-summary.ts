@@ -6,12 +6,22 @@ import {
   type DatasetShape,
   type DimKind,
   dimKind,
+  fmtDim,
   type HeadlineMode,
+  stepLabel,
+  type TrendBucket,
   toLabel,
   toNumber,
   type WidgetOptions,
 } from "@/lib/dashboards";
-import { type ChartComparison, color, goodness, type Row, seriesColor } from "./chart-utils";
+import {
+  type ChartComparison,
+  change,
+  color,
+  goodness,
+  type Row,
+  seriesColor,
+} from "./chart-utils";
 
 export interface Summary {
   value: number | null;
@@ -255,4 +265,29 @@ export function legendFor(
       line: true,
     });
   return items;
+}
+
+export function trendStep(
+  rows: Row[],
+  shape: DatasetShape,
+  options: WidgetOptions,
+  bucket: TrendBucket,
+  current: string,
+): Pick<Summary, "delta" | "deltaLabel" | "good"> | null {
+  const dim = shape.dimension;
+  const key = shape.metrics[0]?.key;
+  if (!dim || !key) return null;
+  const iso = (row: Row) => toLabel(row[dim]).replace(/^(\d{4}-\d{2})$/, "$1-01");
+  const done = rows.filter((row) => iso(row) < current);
+  if (done.length < 2) return null;
+  const last = done[done.length - 1];
+  const delta = change(toNumber(last[key]), toNumber(done[done.length - 2][key]));
+  if (delta === null) return null;
+  const kind = dimKind([iso(last)], bucket);
+  const name = fmtDim(iso(last), kind);
+  return {
+    delta,
+    deltaLabel: `${kind === "week" ? `Woche ab ${name}` : name} ${stepLabel(kind)}`,
+    good: goodness(delta, options.invertDelta),
+  };
 }
