@@ -64,7 +64,7 @@ export const WidgetCard = memo(function WidgetCard({
           }
         />
       ) : (
-        <div className="h-full truncate rounded-2xl border border-border/50 bg-card p-5 text-sm text-muted-foreground shadow-xs">
+        <div className="h-full truncate rounded-lg border bg-card p-4 text-sm text-muted-foreground shadow-xs">
           {widget.title || dataset?.name || CHARTS[widget.chart].label}
         </div>
       )}

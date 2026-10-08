@@ -20,9 +20,16 @@ export function BackupOptionSwitch({
 }: BackupOptionSwitchProps) {
   return (
     <div className="flex items-start gap-2">
-      <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
+      <Switch
+        id={id}
+        size="sm"
+        className="mt-0.5"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onChange}
+      />
       <div className="grid gap-0.5">
-        <Label htmlFor={id} className="text-xs">
+        <Label htmlFor={id} className="text-xs font-normal">
           {label}
         </Label>
         {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}

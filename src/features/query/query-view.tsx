@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { startTransition, useDeferredValue, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
@@ -84,6 +84,13 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const caps = useCapabilities(connection?.kind);
   const schema = useQueryRegistry(connection, database, caps);
+  const errorNames = useMemo(
+    () => ({
+      columns: schema.registry.columns.map((column) => column.name),
+      tables: schema.registry.tables.map((table) => table.name),
+    }),
+    [schema.registry.columns, schema.registry.tables],
+  );
   const sessionViews = useSessionViews(connection?.id, database);
   const output = useServerOutput(connection, database, caps);
 
@@ -291,11 +298,22 @@ export function QueryView({ tabId }: QueryViewProps) {
               statusText={statusText}
               actions={resultActions}
               chart={chart}
+              sql={sql}
+              names={errorNames}
               onRevealError={(marker) => {
                 const prefix = sql.slice(0, marker.start);
                 const line = prefix.split("\n").length;
                 const column = prefix.length - prefix.lastIndexOf("\n");
                 editorApiRef.current?.revealMatch(line, column, marker.end - marker.start);
+              }}
+              onReplaceSql={(start, end, text) => {
+                updateQuerySql(tabId, sql.slice(0, start) + text + sql.slice(end));
+                const prefix = sql.slice(0, start);
+                const line = prefix.split("\n").length;
+                const column = prefix.length - prefix.lastIndexOf("\n");
+                requestAnimationFrame(() =>
+                  editorApiRef.current?.revealMatch(line, column, text.length),
+                );
               }}
             />
           }

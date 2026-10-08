@@ -67,7 +67,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
           event.preventDefault();
       }}
     >
-      <div ref={containerRef} className="relative min-h-full px-4 pb-6 sm:px-6">
+      <div ref={containerRef} className="relative min-h-full px-4 pt-4 pb-6">
         {mounted && scrollRoot && widgets.length > 0 && (
           <GridLayout
             width={width}

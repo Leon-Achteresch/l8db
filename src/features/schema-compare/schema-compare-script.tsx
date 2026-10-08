@@ -1,9 +1,16 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { CopyIcon, FileDownIcon, PlayIcon, SquarePenIcon, TriangleAlertIcon } from "lucide-react";
+import {
+  ChevronUpIcon,
+  CopyIcon,
+  FileCodeIcon,
+  FileDownIcon,
+  PlayIcon,
+  SquareArrowOutUpRightIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SqlEditorPane } from "@/features/extensions/extension-view/sql-editor-pane";
 import { copyText } from "@/lib/clipboard";
@@ -12,6 +19,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import type { SyncScript } from "@/lib/schema-compare/script";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
 import { SchemaCompareRunDialog } from "./schema-compare-run-dialog";
 
@@ -20,13 +28,22 @@ interface SchemaCompareScriptProps {
   script: SyncScript;
   text: string;
   plan: { create: number; alter: number; drop: number };
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 function count(value: number, one: string, many: string): string {
   return `${value} ${value === 1 ? one : many}`;
 }
 
-export function SchemaCompareScript({ result, script, text, plan }: SchemaCompareScriptProps) {
+export function SchemaCompareScript({
+  result,
+  script,
+  text,
+  plan,
+  open,
+  onOpenChange,
+}: SchemaCompareScriptProps) {
   const target = result.target;
   const active = useActiveConnection();
   const activeDatabase = useActiveDatabase();
@@ -50,28 +67,51 @@ export function SchemaCompareScript({ result, script, text, plan }: SchemaCompar
   };
 
   const actions = [
-    plan.create > 0 && `${count(plan.create, "Objekt", "Objekte")} erstellen`,
-    plan.alter > 0 && `${count(plan.alter, "Objekt", "Objekte")} anpassen`,
-    plan.drop > 0 && `${count(plan.drop, "Objekt", "Objekte")} löschen`,
+    plan.create > 0 && `${plan.create} erstellen`,
+    plan.alter > 0 && `${plan.alter} anpassen`,
+    plan.drop > 0 && `${plan.drop} löschen`,
   ].filter(Boolean);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <p className="shrink-0 border-b bg-muted/30 px-3 py-2 text-xs">
-        Das Skript ändert <strong>{result.targetLabel}</strong> und übernimmt dafür den Stand aus{" "}
-        <strong>{result.sourceLabel}</strong>
-        {actions.length > 0 ? `: ${actions.join(", ")}.` : "."}
-      </p>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
-        <Badge variant="secondary" className="text-[10px]">
-          {script.statements.length} {script.statements.length === 1 ? "Anweisung" : "Anweisungen"}
-        </Badge>
+    <section aria-label="Synchronisationsskript" className="flex shrink-0 flex-col border-t">
+      <div className="flex h-11 shrink-0 items-center gap-2 px-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 px-2 text-xs font-medium"
+          aria-expanded={open}
+          onClick={() => onOpenChange(!open)}
+        >
+          <FileCodeIcon className="size-3.5" />
+          Synchronisationsskript
+          <ChevronUpIcon
+            className={cn(
+              "size-3 text-muted-foreground transition-transform",
+              !open && "rotate-180",
+            )}
+          />
+        </Button>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {count(script.statements.length, "Anweisung", "Anweisungen")}
+        </span>
         {dangerous > 0 && (
-          <Badge variant="destructive" className="text-[10px]">
+          <span
+            className="flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive tabular-nums"
+            title="Anweisungen, die Objekte oder Daten im Ziel unwiderruflich entfernen"
+          >
+            <TriangleAlertIcon className="size-3" />
             {dangerous} kritisch
-          </Badge>
+          </span>
         )}
-        <div className="ml-auto flex flex-wrap items-center gap-1">
+        {actions.length > 0 && (
+          <span
+            className="hidden truncate text-xs text-muted-foreground xl:inline"
+            title={`Ändert ${result.targetLabel} nach dem Stand von ${result.sourceLabel}`}
+          >
+            {actions.join(" · ")}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
             variant="ghost"
@@ -103,7 +143,16 @@ export function SchemaCompareScript({ result, script, text, plan }: SchemaCompar
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={empty}
+            onClick={() => setRunning(true)}
+          >
+            <PlayIcon className="size-3.5" />
+            In {result.targetSchema} ausführen…
+          </Button>
+          <Button
+            size="sm"
             className="h-7 text-xs"
             disabled={empty || !targetActive}
             title={
@@ -116,37 +165,32 @@ export function SchemaCompareScript({ result, script, text, plan }: SchemaCompar
               toast.success("Skript im SQL-Arbeitsplatz geöffnet (nicht ausgeführt)");
             }}
           >
-            <SquarePenIcon className="size-3.5" />
+            <SquareArrowOutUpRightIcon className="size-3.5" />
             Im SQL-Editor öffnen
-          </Button>
-          <Button
-            size="sm"
-            className="h-7 text-xs"
-            disabled={empty}
-            onClick={() => setRunning(true)}
-          >
-            <PlayIcon className="size-3.5" />
-            In {result.targetSchema} ausführen…
           </Button>
         </div>
       </div>
-      {script.warnings.length > 0 && (
-        <ul className="max-h-28 shrink-0 overflow-auto border-b bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
-          {script.warnings.map((warning) => (
-            <li key={warning} className="flex items-start gap-1.5">
-              <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
-              {warning}
-            </li>
-          ))}
-        </ul>
-      )}
-      {empty ? (
-        <div className="flex flex-1 items-center justify-center p-6 text-xs text-muted-foreground">
-          Keine Objekte ausgewählt. Unterschiede in der Liste anhaken, um ein Skript zu erzeugen.
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          <SqlEditorPane value={text} readOnly />
+      {open && (
+        <div className="flex h-72 min-h-0 flex-col border-t">
+          {script.warnings.length > 0 && (
+            <ul className="max-h-24 shrink-0 overflow-auto border-b bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+              {script.warnings.map((warning) => (
+                <li key={warning} className="flex items-start gap-1.5">
+                  <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          )}
+          {empty ? (
+            <div className="flex flex-1 items-center justify-center p-6 text-xs text-muted-foreground">
+              Keine Objekte ausgewählt.
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1">
+              <SqlEditorPane value={text} readOnly />
+            </div>
+          )}
         </div>
       )}
       <SchemaCompareRunDialog
@@ -155,6 +199,6 @@ export function SchemaCompareScript({ result, script, text, plan }: SchemaCompar
         result={result}
         statements={script.statements}
       />
-    </div>
+    </section>
   );
 }

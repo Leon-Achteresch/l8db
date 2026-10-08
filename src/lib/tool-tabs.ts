@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   ArchiveIcon,
+  ArrowRightLeftIcon,
   BlocksIcon,
   DownloadIcon,
   FilePlusIcon,
@@ -38,6 +39,7 @@ export type ToolId =
   | "query-builder"
   | "import"
   | "backup"
+  | "transfer"
   | "notebook"
   | "create-table"
   | "saved-plan"
@@ -195,6 +197,15 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     iconColor: "text-emerald-500",
     Component: lazy(() =>
       import("@/features/import/import-view").then((m) => ({ default: m.ImportView })),
+    ),
+  },
+  transfer: {
+    path: "/transfer",
+    label: "Daten übertragen",
+    Icon: ArrowRightLeftIcon,
+    iconColor: "text-sky-500",
+    Component: lazy(() =>
+      import("@/features/transfer/transfer-view").then((m) => ({ default: m.TransferView })),
     ),
   },
   backup: {

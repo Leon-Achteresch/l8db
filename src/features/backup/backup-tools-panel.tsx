@@ -1,4 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { RefreshCwIcon } from "lucide-react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBackupToolPaths } from "@/lib/backup-runner";
@@ -8,9 +10,10 @@ interface BackupToolsPanelProps {
   probe: BackupProbe | undefined;
   loading: boolean;
   onRefresh: () => void;
+  actions: HTMLElement | null;
 }
 
-export function BackupToolsPanel({ probe, loading, onRefresh }: BackupToolsPanelProps) {
+export function BackupToolsPanel({ probe, loading, onRefresh, actions }: BackupToolsPanelProps) {
   const paths = useBackupToolPaths((state) => state.paths);
   const setPath = useBackupToolPaths((state) => state.setPath);
 
@@ -30,19 +33,22 @@ export function BackupToolsPanel({ probe, loading, onRefresh }: BackupToolsPanel
   }
 
   return (
-    <div className="grid max-w-4xl gap-4">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" disabled={loading} onClick={onRefresh}>
-          {loading ? "Suche läuft…" : "Erneut suchen"}
-        </Button>
-        {probe.installHint && (
-          <span className="text-xs text-muted-foreground">
-            Installation: <code className="font-mono">{probe.installHint}</code>
-          </span>
+    <div className="mx-auto grid w-full max-w-3xl gap-3 px-6 py-5">
+      {actions &&
+        createPortal(
+          <Button variant="outline" size="sm" disabled={loading} onClick={onRefresh}>
+            <RefreshCwIcon />
+            {loading ? "Suche läuft…" : "Erneut suchen"}
+          </Button>,
+          actions,
         )}
-      </div>
+      {probe.installHint && (
+        <span className="text-xs text-muted-foreground">
+          Installation: <code className="font-mono">{probe.installHint}</code>
+        </span>
+      )}
       {probe.tools.map((tool) => (
-        <section key={tool.name} className="grid gap-2 rounded-md border p-3">
+        <section key={tool.name} className="grid gap-2 rounded-lg border p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-mono text-sm font-medium">{tool.name}</span>
             <span

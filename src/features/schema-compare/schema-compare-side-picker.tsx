@@ -99,10 +99,8 @@ export function SchemaCompareSidePicker({
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-xl border bg-muted/30 p-3">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </span>
+    <div className="flex min-w-0 flex-col gap-2">
+      <span className="text-xs font-medium text-muted-foreground">{title}</span>
       <div className="flex flex-col gap-1">
         <Label className="text-xs">Verbindung</Label>
         <Select value={value.connectionId ?? ""} onValueChange={pickConnection}>
