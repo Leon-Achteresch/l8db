@@ -75,6 +75,7 @@ pub struct Capabilities {
     pub bind_parameters: bool,
     pub server_output: bool,
     pub query_cancel: bool,
+    pub dashboard_parallelism: u8,
     pub used_by: bool,
     pub object_grants: bool,
     pub synonyms: bool,
@@ -144,6 +145,7 @@ const NONE: Capabilities = Capabilities {
     object_admin: false,
     server_output: false,
     query_cancel: false,
+    dashboard_parallelism: 0,
     ssl: true,
     ssh: true,
     backup: false,
@@ -283,6 +285,8 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                query_cancel: true,
+                dashboard_parallelism: 2,
                 csv_import: true,
                 table_copy: true,
                 query_stats: true,
