@@ -291,6 +291,7 @@ export function AppHeaderSearch() {
       ...deepSearchItem,
       ...objectItems,
       ...notebookItems,
+      ...compareItems,
       ...extensionItems,
       ...hotkeyItems,
       ...diagramExportItems,

@@ -3,6 +3,7 @@ import {
   Braces,
   Download,
   Eye,
+  GitCompare,
   Keyboard,
   NotebookPen,
   Package,
@@ -191,6 +192,41 @@ export function buildNotebookItems(
       keywords: [...keywords, entry.path],
       onSelect: go(async () => (await import("@/lib/notebook/actions")).openNotebook(entry.path)),
     })),
+  ];
+}
+
+export function buildCompareItems(
+  hasConnection: boolean,
+  setOpen: (open: boolean) => void,
+  navigate: ReturnType<typeof useNavigate>,
+): CommandItem[] {
+  if (!hasConnection) return [];
+  return [
+    {
+      id: "compare:new",
+      label: "Neuen Vergleich erstellen…",
+      kind: "command",
+      group: "Befehle",
+      context: "Vergleich",
+      icon: GitCompare,
+      featureId: "search.commands.new-compare",
+      keywords: [
+        "vergleich",
+        "vergleichen",
+        "compare",
+        "diff",
+        "neu",
+        "erstellen",
+        "quelle",
+        "ziel",
+      ],
+      onSelect: () => {
+        setOpen(false);
+        const id = crypto.randomUUID();
+        useTableTabs.getState().openToolTab("compare", id);
+        void navigate({ to: "/compare", search: { compareId: id, setup: true } });
+      },
+    },
   ];
 }
 
