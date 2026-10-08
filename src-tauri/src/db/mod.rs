@@ -1138,6 +1138,18 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = name;
         Err(unsupported("Schema-Kopie"))
     }
+    async fn preview_schema_object_copy_into(
+        &self,
+        target: &dyn DatabaseAdapter,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let _ = target;
+        self.preview_schema_object_copy(source_schema, target_schema, object_type, name)
+            .await
+    }
     async fn execute_schema_object_copy(
         &self,
         source_schema: &str,
@@ -1595,14 +1607,6 @@ where
         .map_err(|_| execution::timeout_message())?
 }
 
-pub(crate) fn create_table_sql(
-    req: &CreateTableRequest,
-    quote: fn(&str) -> String,
-    qualify_schema: bool,
-) -> String {
-    render_create_table(req, quote, qualify_schema, &[])
-}
-
 pub(crate) fn create_table_ddl(
     req: &CreateTableRequest,
     quote: fn(&str) -> String,
@@ -1701,18 +1705,27 @@ fn skip_until(chars: &[char], start: usize, close: &[char]) -> usize {
 }
 
 pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) -> String {
+    requalify_schema_folding(sql, from_schema, to_schema, str::to_string)
+}
+
+pub(crate) fn requalify_schema_folding(
+    sql: &str,
+    from_schema: &str,
+    to_schema: &str,
+    fold: fn(&str) -> String,
+) -> String {
     if from_schema.is_empty() || from_schema == to_schema {
         return sql.to_string();
     }
     let chars: Vec<char> = sql.chars().collect();
     let quoted_from: Vec<char> = format!("\"{from_schema}\".").chars().collect();
-    let bare_from: Vec<char> = format!("{from_schema}.").chars().collect();
     let target = format!("\"{to_schema}\".");
     let word_boundary = |i: usize| {
         !i.checked_sub(1)
             .and_then(|prev| chars.get(prev))
             .is_some_and(|&c| c.is_alphanumeric() || c == '_' || c == '$')
     };
+    let ident_char = |c: char| c.is_alphanumeric() || matches!(c, '_' | '$' | '#');
     let mut out = String::with_capacity(sql.len());
     let mut i = 0;
     while i < chars.len() {
@@ -1722,7 +1735,11 @@ pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) ->
             skip_until(&chars, i, &['\n'])
         } else if ch == '/' && next == Some('*') {
             skip_until(&chars, i + 2, &['*', '/'])
-        } else if matches!(ch, 'q' | 'Q') && next == Some('\'') && word_boundary(i) {
+        } else if matches!(ch, 'q' | 'Q')
+            && next == Some('\'')
+            && (word_boundary(i)
+                || (i > 0 && matches!(chars[i - 1], 'n' | 'N') && word_boundary(i - 1)))
+        {
             skip_q_quoted(&chars, i)
         } else if matches!(ch, 'e' | 'E') && next == Some('\'') && word_boundary(i) {
             skip_quoted(&chars, i + 1, '\'', true)
@@ -1737,10 +1754,17 @@ pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) ->
             continue;
         } else if ch == '"' {
             skip_quoted(&chars, i, '"', false)
-        } else if chars_start_with(&chars, i, &bare_from) && schema_qualifier_boundary(&chars, i) {
-            out.push_str(&target);
-            i += bare_from.len();
-            continue;
+        } else if (ch.is_alphabetic() || ch == '_') && schema_qualifier_boundary(&chars, i) {
+            let ident_end = (i..chars.len())
+                .find(|&j| !ident_char(chars[j]))
+                .unwrap_or(chars.len());
+            let ident: String = chars[i..ident_end].iter().collect();
+            if chars.get(ident_end) == Some(&'.') && fold(&ident) == from_schema {
+                out.push_str(&target);
+                i = ident_end + 1;
+                continue;
+            }
+            i + 1
         } else {
             i + 1
         };
