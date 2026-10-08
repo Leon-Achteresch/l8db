@@ -11,11 +11,16 @@ import {
   type Period,
   type SimpleDataset,
 } from "@/lib/dashboards";
-import { executeQuery, listTableColumnsDetailed } from "@/lib/db";
+import { cancelExecution, executeQuery, listTableColumnsDetailed } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { useCapabilities } from "@/lib/providers";
 import { useErSchemaQuery, useForeignKeysQuery } from "@/lib/queries";
+import { runUntilAbandoned } from "@/lib/queries/abandoned-jobs";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useDashboardScope } from "./dashboard-scope";
+import { withQuerySlot } from "./query-slots";
+
+const MEMORY_LIMIT = /MEMORY_LIMIT_EXCEEDED/;
 
 export function useDebounced<T>(value: T, delay = 600): T {
   const [debounced, setDebounced] = useState(value);
@@ -35,21 +40,35 @@ export function useDatasetSql(dataset: Dataset | null, period: Period): string {
 export function useSqlQuery(sql: string, refetchInterval?: number) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const parallel = useCapabilities(connection?.kind).dashboard_parallelism;
   return useQuery({
     queryKey: ["dashboard-data", connection?.id, database, sql],
-    queryFn: () => {
+    queryFn: (context) => {
       if (!connection) throw new Error("Keine Verbindung");
-      return executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        sql,
-        database ?? undefined,
-        { track: false, pooled: true },
+      const abort = new AbortController();
+      let started = false;
+      return runUntilAbandoned(
+        context,
+        (jobId) =>
+          withQuerySlot(connection.id, parallel, abort.signal, () => {
+            started = true;
+            return executeQuery(
+              connection.kind,
+              effectiveConnectionString(connection),
+              sql,
+              database ?? undefined,
+              { track: false, pooled: true, jobId },
+            );
+          }),
+        (jobId) => {
+          abort.abort();
+          if (started) void cancelExecution(jobId).catch(() => undefined);
+        },
       );
     },
     enabled: Boolean(connection && sql.trim()),
     staleTime: 30_000,
-    retry: false,
+    retry: (failures, error) => failures < 1 && MEMORY_LIMIT.test(String(error)),
     refetchInterval: refetchInterval || false,
   });
 }
