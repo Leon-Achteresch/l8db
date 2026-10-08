@@ -17,7 +17,7 @@ const MAX_Y: i64 = 1000;
 const MAX_CHARTS: usize = 60;
 const MAX_SQL_CHARS: usize = 20_000;
 const MAX_NAME_CHARS: usize = 120;
-const PERIODS: &[&str] = &["all", "7d", "30d", "90d", "quarter", "year"];
+const PERIODS: &[&str] = &["all", "7d", "30d", "90d", "quarter", "year", "12m"];
 const REFRESH_HINT: &str = "refreshSec muss 0 (aus) oder 10 bis 86400 sein";
 const SERIES_KINDS: &[&str] = &["column", "line", "area", "radar", "sankey", "heatmap"];
 const DATA_KEYS: &[&str] = &[
@@ -31,6 +31,7 @@ const DATA_KEYS: &[&str] = &[
 const SPEC_KEYS: &[&str] = &[
     "type",
     "title",
+    "subtitle",
     "sql",
     "builder",
     "dimension",
@@ -50,6 +51,7 @@ const SPEC_ALIASES: &[(&str, &str)] = &[
     ("kind", "type"),
     ("query", "sql"),
     ("name", "title"),
+    ("description", "subtitle"),
     ("metric", "metrics"),
     ("measures", "metrics"),
     ("values", "metrics"),
@@ -69,22 +71,22 @@ struct Kind {
 }
 
 const KINDS: &[Kind] = &[
-    Kind { name: "kpi", dim: "optional", metrics: (1, 1), size: (3, 4), options: "showValue showDelta showPeriod colorOffset curve", hint: "Big number. Without dimension: first row's metric. With a time dimension (ordered): sum plus sparkline and trend vs. previous row." },
-    Kind { name: "area", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset showLegend stacked curve showGrid", hint: "Filled areas over the dimension (usually time). dimension2 splits into series." },
-    Kind { name: "line", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset showLegend curve showGrid labels", hint: "One line per metric over the dimension. dimension2 splits into series." },
-    Kind { name: "column", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset showLegend stacked showGrid labels sortBy", hint: "Vertical columns per category. Several metrics or dimension2 give grouped/stacked columns." },
-    Kind { name: "bars", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset showLegend showPercent sortBy", hint: "Horizontal bars with share of total (ranking, pipeline)." },
-    Kind { name: "funnel", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset showLegend showPercent sortBy", hint: "Funnel stages in row order with conversion percent." },
-    Kind { name: "donut", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset showLegend showPercent sortBy", hint: "Shares of a whole as ring. Keep categories below ~8." },
-    Kind { name: "rings", dim: "required", metrics: (1, 1), size: (4, 9), options: "showValue showDelta showPeriod colorOffset showLegend sortBy", hint: "Concentric rings per category, relative to the largest." },
-    Kind { name: "radar", dim: "required", metrics: (1, 3), size: (4, 9), options: "showValue showDelta showPeriod colorOffset showLegend sortBy", hint: "Spider net, one axis per category, one polygon per metric or dimension2 value." },
-    Kind { name: "scatter", dim: "optional", metrics: (2, 3), size: (6, 8), options: "showValue showDelta showPeriod colorOffset showLegend showGrid", hint: "Bubbles: metrics are x, y and optional size; dimension colors groups." },
-    Kind { name: "sankey", dim: "two", metrics: (1, 1), size: (6, 9), options: "showValue showDelta showPeriod colorOffset", hint: "Flows from dimension (source) to dimension2 (target) weighted by the metric." },
-    Kind { name: "score", dim: "required", metrics: (2, 2), size: (4, 7), options: "showValue showDelta showPeriod colorOffset showLegend", hint: "Achieved vs. maximum points per category: metrics = [value, max]." },
-    Kind { name: "gauge", dim: "none", metrics: (2, 2), size: (3, 5), options: "showValue showDelta showPeriod colorOffset", hint: "Half-circle gauge: metrics = [value, target], summed over all rows." },
-    Kind { name: "treemap", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset showLegend labels sortBy", hint: "Rectangles sized by the metric per category." },
-    Kind { name: "heatmap", dim: "two", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset labels", hint: "Matrix dimension (rows) x dimension2 (columns), colored by the metric." },
-    Kind { name: "table", dim: "optional", metrics: (0, 6), size: (6, 7), options: "showValue showPeriod", hint: "Raw result rows as table; mapping is optional." },
+    Kind { name: "kpi", dim: "optional", metrics: (1, 1), size: (3, 4), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta curve", hint: "Big number with sparkline. With a time dimension (ordered) it shows the latest value (headline auto) and compares with the previous period when dateColumn and period are set. Without dimension: first row's metric, no sparkline." },
+    Kind { name: "area", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked curve showGrid", hint: "Filled areas over the dimension (usually time). dimension2 splits into series." },
+    Kind { name: "line", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend curve showGrid labels", hint: "One line per metric over the dimension. dimension2 splits into series." },
+    Kind { name: "column", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked showGrid labels sortBy horizontal", hint: "Vertical columns per category (horizontal: bars to the right). Several metrics or dimension2 give grouped/stacked columns." },
+    Kind { name: "bars", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy", hint: "Horizontal bars with share of total (ranking, pipeline). Keep it to 12 bars or fewer." },
+    Kind { name: "funnel", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy", hint: "Funnel stages in row order with conversion percent." },
+    Kind { name: "donut", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy", hint: "Shares of a whole as ring. Keep it to 6 categories or fewer." },
+    Kind { name: "rings", dim: "required", metrics: (1, 1), size: (4, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend sortBy", hint: "Concentric rings per category, relative to the largest." },
+    Kind { name: "radar", dim: "required", metrics: (1, 3), size: (4, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend sortBy", hint: "Spider net, one axis per category, one polygon per metric or dimension2 value." },
+    Kind { name: "scatter", dim: "optional", metrics: (2, 3), size: (6, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showGrid", hint: "Bubbles: metrics are x, y and optional size; dimension colors groups." },
+    Kind { name: "sankey", dim: "two", metrics: (1, 1), size: (6, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta", hint: "Flows from dimension (source) to dimension2 (target) weighted by the metric." },
+    Kind { name: "score", dim: "required", metrics: (2, 2), size: (4, 7), options: "showValue showDelta showPeriod colorOffset unit decimals showLegend", hint: "Achieved vs. maximum points per category: metrics = [value, max]." },
+    Kind { name: "gauge", dim: "none", metrics: (2, 2), size: (3, 5), options: "showValue showDelta showPeriod colorOffset unit decimals", hint: "Half-circle gauge: metrics = [value, target], summed over all rows; with period quarter or year a pace marker shows the expected progress." },
+    Kind { name: "treemap", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend labels sortBy", hint: "Rectangles sized by the metric per category." },
+    Kind { name: "heatmap", dim: "two", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta labels", hint: "Matrix dimension (rows) x dimension2 (columns), colored by the metric." },
+    Kind { name: "table", dim: "optional", metrics: (0, 6), size: (6, 7), options: "showValue showPeriod compare unit decimals invertDelta", hint: "Raw result rows as table; mapping is optional." },
 ];
 
 fn kind(name: &str) -> Result<&'static Kind, String> {
@@ -127,14 +129,25 @@ pub fn tool_definition() -> Value {
         "properties": {
             "type": {"type": "string", "enum": kinds},
             "title": {"type": "string"},
-            "sql": {"type": "string", "description": "One read-only SELECT. Column aliases are the names used by the mapping fields. Use {{variable}} for dashboard filters."},
+            "subtitle": nullable("Line under the title that says what is measured, e.g. 'Summe pro Monat' (max 120 chars, null removes it)"),
+            "sql": {"type": "string", "description": "One read-only SELECT. Column aliases are the names used by the mapping fields and become legend/axis labels, so alias readably (AS \"Umsatz\"). Use {{variable}} for dashboard filters."},
             "builder": {"type": "object", "description": "Instead of sql: visual dataset the user can keep editing in the l8db chart studio. See action=chart_types for the format (table, joins, fields, dimension, dimension2, metrics, filters, dateColumn, sort, limit)."},
             "dimension": nullable("Result column for categories / x-axis"),
             "dimension2": nullable("Second category column: series split (column, line, area, radar), target (sankey), columns (heatmap)"),
             "metrics": {"type": "array", "items": {"type": "string"}, "description": "Numeric result columns"},
             "dateColumn": nullable("Date result column; enables the period filter"),
             "period": {"type": "string", "enum": PERIODS},
-            "options": {"type": "object", "description": "Display options per type, see chart_types. null removes an option."},
+            "options": {
+                "type": "object",
+                "description": "Display options per type, see chart_types. null removes an option.",
+                "properties": {
+                    "compare": nullable("none|previous|year: comparison period (default previous, needs dateColumn and period != all)"),
+                    "headline": nullable("auto|total|last|average|max|min: value of the big number"),
+                    "unit": nullable("Unit after values, 1-8 chars, e.g. €, %, ms, Stk."),
+                    "decimals": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+                    "invertDelta": {"type": ["boolean", "null"], "description": "true when lower is better (costs, latency)"}
+                }
+            },
             "x": {"type": "integer", "minimum": 0},
             "y": {"type": "integer", "minimum": 0},
             "w": {"type": "integer", "minimum": 2, "maximum": GRID_COLS},
@@ -143,11 +156,11 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out all charts into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top, then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "run", "joins", "chart_types"]},
+                "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "run", "arrange", "joins", "chart_types"]},
                 "connection": {"type": "string", "description": "Connection name or id (create, list filter, preview without dashboard)"},
                 "dashboard": {"type": "string", "description": "Dashboard id or name"},
                 "name": {"type": "string"},
@@ -585,10 +598,15 @@ fn check_options(
         Some(Value::Object(map)) => map.clone(),
         Some(_) => return Err("options muss ein Objekt sein.".into()),
     };
-    for (key, value) in patch {
+    for (key, mut value) in patch {
         if value.is_null() {
             options.remove(&key);
             continue;
+        }
+        if key == "unit" {
+            if let Some(unit) = value.as_str() {
+                value = json!(unit.trim());
+            }
         }
         if !valid(&key) {
             return Err(format!(
@@ -601,6 +619,15 @@ fn check_options(
             "colorOffset" => value.as_i64().is_some_and(|n| (0..=7).contains(&n)),
             "curve" => matches!(value.as_str(), Some("monotone" | "linear")),
             "sortBy" => matches!(value.as_str(), Some("none" | "asc" | "desc")),
+            "compare" => matches!(value.as_str(), Some("none" | "previous" | "year")),
+            "headline" => matches!(
+                value.as_str(),
+                Some("auto" | "total" | "last" | "average" | "max" | "min")
+            ),
+            "unit" => value
+                .as_str()
+                .is_some_and(|unit| (1..=8).contains(&unit.chars().count())),
+            "decimals" => value.as_i64().is_some_and(|n| (0..=4).contains(&n)),
             "metricKeys" => value
                 .as_array()
                 .is_some_and(|list| !list.is_empty() && list.iter().all(|v| v.is_string())),
@@ -613,6 +640,10 @@ fn check_options(
                     "colorOffset" => "Ganzzahl 0 bis 7 (Startfarbe der Palette)",
                     "curve" => "'monotone' oder 'linear'",
                     "sortBy" => "'none', 'asc' oder 'desc'",
+                    "compare" => "'none', 'previous' oder 'year'",
+                    "headline" => "'auto', 'total', 'last', 'average', 'max' oder 'min'",
+                    "unit" => "Text mit 1 bis 8 Zeichen",
+                    "decimals" => "Ganzzahl 0 bis 4",
                     "metricKeys" => "nicht-leere Liste von metrics",
                     _ => "true oder false",
                 }
@@ -714,6 +745,133 @@ fn layout(
     Ok((x, y, w, h))
 }
 
+fn technical(name: &str) -> bool {
+    let numbered = name
+        .strip_prefix('m')
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()));
+    numbered
+        || name.contains('_')
+        || ["count", "sum", "avg", "min", "max"]
+            .iter()
+            .any(|word| name.eq_ignore_ascii_case(word))
+}
+
+fn design_notes(
+    kind: &Kind,
+    rows: Option<usize>,
+    expert: bool,
+    shape: &Shape,
+    period: &str,
+    options: &Map<String, Value>,
+) -> Vec<String> {
+    let mut notes = Vec::new();
+    let name = kind.name;
+    match rows {
+        Some(n) if n > 8 && matches!(name, "donut" | "funnel" | "rings") => notes.push(format!(
+            "{n} Kategorien sind für {name} zu viele – besser bars oder Top 6 plus „Sonstige“."
+        )),
+        Some(n) if n > 15 && name == "bars" => notes.push(format!(
+            "{n} Balken sind zu viele – besser Top 12 plus „Sonstige“."
+        )),
+        _ => {}
+    }
+    if expert {
+        let names: Vec<&str> = shape
+            .metrics
+            .iter()
+            .map(String::as_str)
+            .filter(|metric| technical(metric))
+            .collect();
+        if !names.is_empty() {
+            notes.push(format!(
+                "Spaltennamen {} wirken technisch – lesbare Aliase wie AS \"Umsatz\" werden zu Legende und Achsen.",
+                names.join(", ")
+            ));
+        }
+    }
+    if matches!(
+        options.get("compare").and_then(Value::as_str),
+        Some("previous" | "year")
+    ) && (!shape.date || period == "all")
+    {
+        notes.push("compare wirkt nur mit dateColumn und period ≠ all.".into());
+    }
+    if name == "kpi" && shape.dimension.is_none() {
+        notes.push(
+            "kpi ohne dimension zeigt nur eine Zahl – eine Zeit-dimension (Tag/Woche/Monat) ergänzt Sparkline und Trend."
+                .into(),
+        );
+    }
+    notes
+}
+
+fn arrange(widgets: &[Value]) -> Vec<Value> {
+    let mut sorted = widgets.to_vec();
+    sorted.sort_by_key(|widget| {
+        let (x, y, _, _) = rect(widget);
+        (y, x)
+    });
+    let chart = |widget: &Value| widget["chart"].as_str().unwrap_or("").to_string();
+    let (tiles, rest): (Vec<Value>, Vec<Value>) = sorted
+        .into_iter()
+        .partition(|widget| matches!(chart(widget).as_str(), "kpi" | "gauge"));
+    let narrow = |widget: &Value| {
+        matches!(
+            chart(widget).as_str(),
+            "donut" | "rings" | "radar" | "bars" | "score"
+        )
+    };
+    let mut rows: Vec<(Vec<Value>, Vec<i64>, i64)> = Vec::new();
+    let total = tiles.len();
+    let tile_rows = total.div_ceil(4);
+    let mut queue = tiles.into_iter();
+    for row in 0..tile_rows {
+        let count = total / tile_rows + usize::from(row < total % tile_rows);
+        let group: Vec<Value> = queue.by_ref().take(count).collect();
+        let widths = vec![GRID_COLS / count as i64; count];
+        rows.push((group, widths, 4));
+    }
+    let mut index = 0;
+    while index < rest.len() {
+        let left = rest.len() - index;
+        let widths: Vec<i64> = if left >= 3 && rest[index..index + 3].iter().all(narrow) {
+            vec![4, 4, 4]
+        } else if left >= 2 {
+            match (narrow(&rest[index]), narrow(&rest[index + 1])) {
+                (false, true) => vec![8, 4],
+                (true, false) => vec![4, 8],
+                _ => vec![6, 6],
+            }
+        } else {
+            vec![GRID_COLS]
+        };
+        let group = rest[index..index + widths.len()].to_vec();
+        let height = group
+            .iter()
+            .map(|widget| kind(&chart(widget)).map_or(7, |k| k.size.1))
+            .max()
+            .unwrap_or(7)
+            .clamp(7, 9);
+        index += widths.len();
+        rows.push((group, widths, height));
+    }
+    let mut out = Vec::new();
+    let mut y = 0;
+    for (group, widths, height) in rows {
+        let mut x = 0;
+        for (mut widget, w) in group.into_iter().zip(widths) {
+            widget["x"] = json!(x);
+            widget["y"] = json!(y);
+            widget["w"] = json!(w);
+            widget["h"] = json!(height);
+            x += w;
+            out.push(widget);
+        }
+        y += height;
+    }
+    out
+}
+
 fn empty_simple() -> Value {
     json!({
         "schema": "", "table": "", "join": null, "joins": [], "dimension": null,
@@ -729,6 +887,9 @@ fn flatten(dashboard: &Value, widget: &Value) -> Map<String, Value> {
     out.insert("id".into(), widget["id"].clone());
     out.insert("type".into(), widget["chart"].clone());
     out.insert("title".into(), json!(widget_title(dashboard, widget)));
+    if let Some(subtitle) = text(widget, "subtitle") {
+        out.insert("subtitle".into(), json!(subtitle));
+    }
     match dataset {
         Some(dataset) if dataset["mode"] == "expert" => {
             let mapping = &dataset["mapping"];
@@ -834,7 +995,7 @@ impl Server {
             "preview" => return self.preview(config, args).await,
             "run" => return self.run_all(config, args).await,
             "joins" => return self.joins(config, args).await,
-            "update" | "delete" | "add_charts" | "update_chart" | "remove_chart" => {
+            "update" | "delete" | "add_charts" | "update_chart" | "remove_chart" | "arrange" => {
                 self.modify(config, args, action).await
             }
             "" => Err("action fehlt. chart_types zeigt, was möglich ist.".into()),
@@ -977,6 +1138,18 @@ impl Server {
         if title.chars().count() > MAX_NAME_CHARS {
             return Err(format!("title ist länger als {MAX_NAME_CHARS} Zeichen."));
         }
+        let subtitle = match spec.get("subtitle") {
+            Some(_) => optional_text(spec, "subtitle")?,
+            None => base_widget
+                .and_then(|w| text(w, "subtitle"))
+                .map(str::to_string),
+        };
+        if subtitle
+            .as_ref()
+            .is_some_and(|s| s.chars().count() > MAX_NAME_CHARS)
+        {
+            return Err(format!("subtitle ist länger als {MAX_NAME_CHARS} Zeichen."));
+        }
         let period = match spec.get("period") {
             None => base_widget
                 .and_then(|w| text(w, "period"))
@@ -993,6 +1166,7 @@ impl Server {
         let data_change = existing.is_none() || DATA_KEYS.iter().any(|key| spec.contains_key(*key));
         let mut notes = Vec::new();
         let mut preview = String::new();
+        let mut rows = None;
         let builder_base = base_dataset.filter(|d| {
             d["mode"] == "simple" && d["simple"]["table"].as_str().is_some_and(|t| !t.is_empty())
         });
@@ -1047,7 +1221,7 @@ impl Server {
                 metrics: shape.metrics.clone(),
                 date_column: None,
             };
-            let (_, rows) = self
+            let (_, shown, count) = self
                 .check_sql(
                     config,
                     connection,
@@ -1058,7 +1232,8 @@ impl Server {
                     variables,
                 )
                 .await?;
-            preview = rows;
+            preview = shown;
+            rows = Some(count);
             for line in self
                 .join_report(config, connection, &dataset["simple"])
                 .await
@@ -1106,7 +1281,7 @@ impl Server {
                 check_shape(kind, &mapping.shape(), &period)?;
             }
             check_variables(&builder::tokens(&sql), variables)?;
-            let (sql, rows) = self
+            let (sql, shown, count) = self
                 .check_sql(
                     config,
                     connection,
@@ -1118,7 +1293,8 @@ impl Server {
                 )
                 .await?;
             check_shape(kind, &mapping.shape(), &period)?;
-            preview = rows;
+            preview = shown;
+            rows = Some(count);
             let id = base
                 .and_then(|d| d["id"].as_str())
                 .map(str::to_string)
@@ -1171,6 +1347,11 @@ impl Server {
             }
         }
         let (x, y, w, h) = layout(kind, &position, others, &mut notes)?;
+        let expert = dataset
+            .as_ref()
+            .or(base_dataset)
+            .is_some_and(|d| d["mode"] == "expert");
+        notes.extend(design_notes(kind, rows, expert, &shape, &period, &options));
         let dataset_id = dataset
             .as_ref()
             .map(|d| d["id"].clone())
@@ -1180,7 +1361,7 @@ impl Server {
             .and_then(|w| w["id"].as_str())
             .map(str::to_string)
             .unwrap_or_else(new_id);
-        let widget = json!({
+        let mut widget = json!({
             "id": id,
             "chart": kind.name,
             "datasetId": dataset_id,
@@ -1189,6 +1370,9 @@ impl Server {
             "options": options,
             "x": x, "y": y, "w": w, "h": h,
         });
+        if let Some(subtitle) = subtitle {
+            widget["subtitle"] = json!(subtitle);
+        }
         let mut report = format!(
             "\n- chart {id} '{}' {} at x={x} y={y} w={w} h={h}",
             title, kind.name
@@ -1216,7 +1400,7 @@ impl Server {
         mapping: &mut Mapping,
         notes: &mut Vec<String>,
         variables: &[Value],
-    ) -> Result<(String, String), String> {
+    ) -> Result<(String, String, usize), String> {
         let sql = sql
             .trim()
             .trim_end_matches(|c: char| c == ';' || c.is_whitespace())
@@ -1244,7 +1428,11 @@ impl Server {
                 result.rows.len()
             ));
         }
-        Ok((sql, server::format_result(&result, config, &redactor, 3)))
+        Ok((
+            sql,
+            server::format_result(&result, config, &redactor, 3),
+            result.rows.len(),
+        ))
     }
 
     async fn run_sql(
@@ -1375,6 +1563,33 @@ impl Server {
                 dashboard["widgets"][index] = built.widget;
                 prune(&mut dashboard);
                 format!("ok, Chart geändert.{}", built.report)
+            }
+            "arrange" => {
+                let widgets = dashboard["widgets"].as_array().cloned().unwrap_or_default();
+                if widgets.is_empty() {
+                    return Err(format!(
+                        "Dashboard '{name}' hat keine Charts. Erst add_charts."
+                    ));
+                }
+                let arranged = arrange(&widgets);
+                let lines: Vec<String> = arranged
+                    .iter()
+                    .map(|widget| {
+                        let (x, y, w, h) = rect(widget);
+                        format!(
+                            "\n- {} '{}' {} x={x} y={y} w={w} h={h}",
+                            widget["id"].as_str().unwrap_or(""),
+                            widget_title(&dashboard, widget),
+                            widget["chart"].as_str().unwrap_or("")
+                        )
+                    })
+                    .collect();
+                dashboard["widgets"] = json!(arranged);
+                format!(
+                    "ok, {} Charts in '{name}' neu angeordnet: Kacheln (kpi, gauge) oben, danach Zeilen aus breiten und schmalen Charts, Reihenfolge beibehalten. Feinschliff mit update_chart (x, y, w, h), Daten prüfen mit action=run.{}",
+                    lines.len(),
+                    lines.join("")
+                )
             }
             _ => {
                 let index = find_widget(&dashboard, server::arg_str(args, "chart"))?;
@@ -2032,10 +2247,17 @@ fn describe(dashboard: &Value, connection: &McpConnection) -> String {
 
 fn chart_types() -> String {
     let mut lines = vec![
-        "Mapping names columns of the chart's SQL result. dimension = category or x-axis (ORDER BY it for time series), dimension2 = second category, metrics = numeric columns, dateColumn = date column that the period filter (7d, 30d, 90d, quarter, year) applies to.".to_string(),
-        "Options (booleans unless noted): showValue headline number, showDelta trend badge, showPeriod period picker, colorOffset 0-7 start color, showLegend, stacked, curve monotone|linear, showGrid, labels values on chart, showPercent, sortBy none|asc|desc (by first metric), metricKeys subset of metrics to show.".to_string(),
+        "Mapping names columns of the chart's SQL result. dimension = category or x-axis (ORDER BY it for time series), dimension2 = second category, metrics = numeric columns, dateColumn = date column that the period filter (7d, 30d, 90d, quarter, year, 12m) applies to. subtitle = line under the title.".to_string(),
+        "Options (booleans unless noted): showValue headline number, showDelta trend badge, showPeriod period picker, colorOffset 0-7 start color, compare none|previous|year comparison period (default previous, needs dateColumn and period != all), headline auto|total|last|average|max|min value of the big number, unit text of 1-8 chars after values, decimals 0-4 (default auto), invertDelta lower is better (a falling value shows green), showLegend, stacked, curve monotone|linear, showGrid, labels values on chart, showPercent, sortBy none|asc|desc (by first metric), horizontal bars to the right (column), metricKeys subset of metrics to show.".to_string(),
         "Builder (spec.builder instead of sql, editable in the app): {table, schema?, joins?: [{table, as?, on: \"artikel_id = id AND mandant = mandant\" (left side = parent table, right side = joined table), kind: left|inner, from?: alias of an earlier join for chains}], fields?: [{name, expr, type?: number|text|date, aggregate?}], dimension?: field or {field, bucket: none|day|week|month|quarter|year}, dimension2?, metrics: [\"count\" | \"sum(menge)\" | \"count_distinct(artikel.id)\" | \"<field name>\" | {agg, field, label}], filters?: [{field, op: eq|neq|gt|gte|lt|lte|contains|startsWith|endsWith|in|notIn|isNull|isNotNull, value}], dateColumn?, sort?: dimension|metric_desc|metric_asc, limit?}. Fields are referenced as column (base table), alias.column (joined table, alias defaults to the table name) or the name of a calculated field. In fields.expr write SQL of the connection with [column] / [alias.column] placeholders, e.g. sum([menge]) / nullif(sum([artikel.palettenfaktor]), 0); expressions with sum/avg/count/... are aggregates and become metrics as they are. Result columns are dim, dim2, m0, m1, ... A bare field name in metrics means the raw value (agg none), useful for table charts. Unsure how tables relate? action=joins suggests join columns with measured match rate; every saved join reports its match rate and warns when it multiplies rows. update_chart merges spec.builder into the existing builder, so send only the keys you change (e.g. joins, filters, fields).".to_string(),
         "Variables (create/update variables): [{name, label, type: select|text|number|date, default, options | optionsSql}]. They appear as filter controls above the dashboard. Use {{name}} in sql (replaced by a typed literal, empty = NULL, so write ({{mandant}} IS NULL OR mandant = {{mandant}})) and as builder filter value {\"field\": \"mandant\", \"op\": \"eq\", \"value\": \"{{mandant}}\"} (skipped while empty) or inside fields.expr. preview/run take values: {name: value}.".to_string(),
+        "Design (professional dashboards):".to_string(),
+        "- Layout: 2-4 kpi tiles on top (kpi with a time dimension bucketed by day/week/month plus dateColumn, so they get a sparkline and a comparison), then one wide trend (area/line, w 8) next to a part-of-whole or ranking (donut with <= 6 categories or bars, w 4), then details (column, bars, table). Call action=arrange after adding charts, then action=run to check plausibility.".to_string(),
+        "- Labels: column aliases become legend and axis labels, so alias metrics with readable names in the user's language (SUM(amount) AS \"Umsatz\"). Give every chart a title and a subtitle that says what is measured (\"Summe pro Monat\", \"Anzahl Bestellungen\").".to_string(),
+        "- Units: set options.unit (\"€\", \"%\", \"ms\", \"Stk.\") and decimals where it helps; never encode units in titles only. Set invertDelta for metrics where lower is better (costs, latency, cancellations).".to_string(),
+        "- Comparison: set dateColumn and a period (7d, 30d, 90d, quarter, year, 12m) so charts compare against the previous period (options.compare previous|year|none, default previous). options.headline picks the big number (auto|total|last|average|max|min): average for averages, last for current state values (stock level, latency).".to_string(),
+        "- Categories: keep them few (donut/funnel <= 6, bars <= 12) and fold the rest into \"Sonstige\" in SQL. ORDER BY the date dimension for time series.".to_string(),
+        "- Colors: leave colorOffset alone; single-series charts use the connection accent, multi-series charts use a validated palette in fixed order.".to_string(),
         "Grid: 12 columns, row height ~44px. type\tdimension\tmetrics\tdefault w x h\toptions\thint".to_string(),
     ];
     for kind in KINDS {

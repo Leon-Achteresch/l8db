@@ -187,8 +187,14 @@ fn tool_definition_matches_kinds() {
             .len(),
         KINDS.len()
     );
-    assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 12);
+    assert_eq!(schema["action"]["enum"].as_array().unwrap().len(), 13);
+    assert!(definition["description"]
+        .as_str()
+        .unwrap()
+        .contains("arrange"));
     let help = chart_types();
+    assert!(help.contains("\nDesign (professional dashboards):\n- Layout"));
+    assert!(help.contains("invertDelta for metrics where lower is better"));
     for kind in KINDS {
         assert!(
             help.contains(&format!("\n{}\t{}", kind.name, kind.dim)),
@@ -1120,4 +1126,429 @@ fn suggests_and_measures_joins_like_the_studio() {
         .as_str()
         .unwrap()
         .ends_with(":name"));
+}
+
+#[test]
+fn validates_comparison_and_number_options() {
+    let mut lab = lab();
+    lab.create_sales();
+    lab.ok(json!({"action": "add_charts", "dashboard": "Sales", "charts": [
+        {"type": "kpi", "title": "Umsatz", "sql": "SELECT substr(created_at, 1, 7) AS monat, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "monat", "metrics": ["Umsatz"], "options": {"compare": "year", "headline": "last", "unit": " € ", "decimals": 2, "invertDelta": false}},
+        {"type": "column", "title": "Status", "sql": "SELECT status, COUNT(*) AS \"Anzahl\" FROM orders GROUP BY status", "options": {"horizontal": true, "compare": "none", "headline": "max", "unit": "Stk.", "decimals": "0", "invert_delta": true}},
+        {"type": "table", "title": "Liste", "sql": "SELECT id, amount FROM orders", "options": {"compare": "previous", "unit": "€", "decimals": 4, "invertDelta": true}},
+        {"type": "gauge", "title": "Ziel", "sql": "SELECT SUM(amount) AS value, MAX(target) AS goal FROM orders", "options": {"unit": "%", "decimals": 1}}
+    ]}));
+    let board = lab.only();
+    assert_eq!(
+        widget(&board, "Umsatz")["options"],
+        json!({"compare": "year", "headline": "last", "unit": "€", "decimals": 2, "invertDelta": false})
+    );
+    assert_eq!(
+        widget(&board, "Status")["options"],
+        json!({"horizontal": true, "compare": "none", "headline": "max", "unit": "Stk.", "decimals": 0, "invertDelta": true})
+    );
+    assert_eq!(widget(&board, "Liste")["options"]["decimals"], 4);
+    assert_eq!(widget(&board, "Ziel")["options"]["unit"], "%");
+    lab.ok(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Umsatz", "spec": {"options": {"unit": null, "decimals": "null", "headline": "average"}}}));
+    assert_eq!(
+        widget(&lab.only(), "Umsatz")["options"],
+        json!({"compare": "year", "headline": "average", "invertDelta": false})
+    );
+
+    let sql_for = |kind: &str| match kind {
+        "gauge" => "SELECT SUM(amount) AS value, MAX(target) AS goal FROM orders",
+        "score" => {
+            "SELECT region, SUM(amount) AS value, MAX(target) AS goal FROM orders GROUP BY region"
+        }
+        "bars" => "SELECT region, SUM(amount) AS total FROM orders GROUP BY region",
+        "table" => "SELECT id FROM orders",
+        _ => "SELECT SUM(amount) AS total FROM orders",
+    };
+    for (kind, options, expected) in [
+        (
+            "kpi",
+            json!({"compare": "last_week"}),
+            "Option 'compare': 'none', 'previous' oder 'year'",
+        ),
+        (
+            "kpi",
+            json!({"compare": true}),
+            "'none', 'previous' oder 'year'",
+        ),
+        (
+            "kpi",
+            json!({"headline": "median"}),
+            "Option 'headline': 'auto', 'total', 'last', 'average', 'max' oder 'min'",
+        ),
+        (
+            "kpi",
+            json!({"unit": ""}),
+            "Option 'unit': Text mit 1 bis 8 Zeichen",
+        ),
+        ("kpi", json!({"unit": "  "}), "Text mit 1 bis 8 Zeichen"),
+        (
+            "kpi",
+            json!({"unit": "Kilogramm"}),
+            "Text mit 1 bis 8 Zeichen",
+        ),
+        ("kpi", json!({"unit": 5}), "Text mit 1 bis 8 Zeichen"),
+        (
+            "kpi",
+            json!({"decimals": 5}),
+            "Option 'decimals': Ganzzahl 0 bis 4",
+        ),
+        ("kpi", json!({"decimals": -1}), "Ganzzahl 0 bis 4"),
+        ("kpi", json!({"decimals": 1.5}), "Ganzzahl 0 bis 4"),
+        (
+            "kpi",
+            json!({"invertDelta": "yes"}),
+            "Option 'invertDelta': true oder false",
+        ),
+        (
+            "gauge",
+            json!({"compare": "previous"}),
+            "Option 'compare' gibt es bei 'gauge' nicht",
+        ),
+        (
+            "gauge",
+            json!({"invertDelta": true}),
+            "Option 'invertDelta' gibt es bei 'gauge' nicht",
+        ),
+        (
+            "score",
+            json!({"headline": "total"}),
+            "Option 'headline' gibt es bei 'score' nicht",
+        ),
+        (
+            "table",
+            json!({"headline": "total"}),
+            "Option 'headline' gibt es bei 'table' nicht",
+        ),
+        (
+            "bars",
+            json!({"horizontal": true}),
+            "Option 'horizontal' gibt es bei 'bars' nicht",
+        ),
+    ] {
+        let spec = json!({"type": kind, "sql": sql_for(kind), "options": options});
+        let error =
+            lab.err(json!({"action": "add_charts", "dashboard": "Sales", "charts": [spec]}));
+        assert!(
+            error.contains(expected),
+            "{kind} {options}: expected '{expected}' in '{error}'"
+        );
+    }
+    assert_eq!(lab.only()["widgets"].as_array().unwrap().len(), 5);
+}
+
+#[test]
+fn stores_subtitles_and_twelve_month_periods() {
+    let mut lab = lab();
+    lab.create_sales();
+    lab.ok(json!({"action": "add_charts", "dashboard": "Sales", "charts": [
+        {"type": "line", "title": "Umsatz", "subtitle": "  Summe pro Tag  ", "sql": "SELECT created_at AS tag, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "tag", "metrics": ["Umsatz"], "dateColumn": "tag", "period": "12m"},
+        {"type": "column", "title": "Status", "description": "Anzahl Bestellungen", "builder": {"table": "orders", "dimension": "status", "metrics": ["count"]}}
+    ]}));
+    let board = lab.only();
+    assert_eq!(widget(&board, "Umsatz")["subtitle"], "Summe pro Tag");
+    assert_eq!(widget(&board, "Umsatz")["period"], "12m");
+    assert_eq!(widget(&board, "Status")["subtitle"], "Anzahl Bestellungen");
+    assert!(widget(&board, "Revenue").get("subtitle").is_none());
+    let got: Value =
+        serde_json::from_str(&lab.ok(json!({"action": "get", "dashboard": "Sales"}))).unwrap();
+    let chart = |title: &str| {
+        got["charts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["title"] == title)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(chart("Umsatz")["subtitle"], "Summe pro Tag");
+    assert_eq!(chart("Umsatz")["period"], "12m");
+    assert_eq!(chart("Status")["subtitle"], "Anzahl Bestellungen");
+    assert!(chart("Revenue").get("subtitle").is_none());
+
+    lab.ok(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Umsatz", "spec": {"title": "Umsatz je Tag", "options": {"unit": "€"}}}));
+    assert_eq!(
+        widget(&lab.only(), "Umsatz je Tag")["subtitle"],
+        "Summe pro Tag"
+    );
+    lab.ok(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Umsatz je Tag", "spec": {"subtitle": null}}));
+    assert!(widget(&lab.only(), "Umsatz je Tag")
+        .get("subtitle")
+        .is_none());
+    lab.ok(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Status", "spec": {"subtitle": ""}}));
+    assert!(widget(&lab.only(), "Status").get("subtitle").is_none());
+    lab.ok(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Status", "spec": {"description": "Neu"}}));
+    assert_eq!(widget(&lab.only(), "Status")["subtitle"], "Neu");
+    let before = lab.only();
+    let long = lab.err(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Status", "spec": {"subtitle": "x".repeat(121)}}));
+    assert!(long.contains("subtitle ist länger als 120"), "{long}");
+    let bad = lab.err(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Status", "spec": {"subtitle": 5}}));
+    assert!(bad.contains("subtitle muss ein Text"), "{bad}");
+    let period = lab.err(json!({"action": "update_chart", "dashboard": "Sales", "chart": "Revenue", "spec": {"period": "12m"}}));
+    assert!(
+        period.contains("period '12m' braucht dateColumn"),
+        "{period}"
+    );
+    assert_eq!(lab.only(), before);
+}
+
+#[test]
+fn arranges_tiles_on_top_and_pairs_the_rest() {
+    let at = |id: &str, chart: &str, x: i64, y: i64| json!({"id": id, "chart": chart, "x": x, "y": y, "w": 3, "h": 5});
+    let layout = |widgets: Vec<Value>| -> Vec<(String, (i64, i64, i64, i64))> {
+        arrange(&widgets)
+            .iter()
+            .map(|w| (w["id"].as_str().unwrap().to_string(), rect(w)))
+            .collect()
+    };
+    let expect = |list: &[(&str, (i64, i64, i64, i64))]| -> Vec<(String, (i64, i64, i64, i64))> {
+        list.iter().map(|(id, r)| (id.to_string(), *r)).collect()
+    };
+    let tiles = |n: i64| -> Vec<Value> {
+        (0..n)
+            .map(|i| {
+                at(
+                    &format!("k{i}"),
+                    if i % 2 == 1 { "gauge" } else { "kpi" },
+                    0,
+                    i,
+                )
+            })
+            .collect()
+    };
+    assert_eq!(layout(tiles(1)), expect(&[("k0", (0, 0, 12, 4))]));
+    assert_eq!(
+        layout(tiles(5)),
+        expect(&[
+            ("k0", (0, 0, 4, 4)),
+            ("k1", (4, 0, 4, 4)),
+            ("k2", (8, 0, 4, 4)),
+            ("k3", (0, 4, 6, 4)),
+            ("k4", (6, 4, 6, 4)),
+        ])
+    );
+    let seven: Vec<i64> = layout(tiles(7)).iter().map(|(_, r)| r.2).collect();
+    assert_eq!(seven, vec![3, 3, 3, 3, 4, 4, 4]);
+    let eight: Vec<i64> = layout(tiles(8)).iter().map(|(_, r)| r.2).collect();
+    assert_eq!(eight, vec![3; 8]);
+    let nine: Vec<(i64, i64)> = layout(tiles(9)).iter().map(|(_, r)| (r.1, r.2)).collect();
+    assert_eq!(
+        nine,
+        [(0, 4); 3]
+            .iter()
+            .chain(&[(4, 4); 3])
+            .chain(&[(8, 4); 3])
+            .copied()
+            .collect::<Vec<_>>()
+    );
+
+    let mut mixed = vec![
+        at("line", "line", 0, 0),
+        at("donut", "donut", 6, 0),
+        at("bars", "bars", 0, 10),
+        at("radar", "radar", 4, 10),
+        at("rings", "rings", 8, 10),
+        at("table", "table", 0, 20),
+        at("column", "column", 0, 30),
+        at("scatter", "scatter", 0, 40),
+        at("kpi", "kpi", 9, 50),
+    ];
+    mixed.reverse();
+    assert_eq!(
+        layout(mixed),
+        expect(&[
+            ("kpi", (0, 0, 12, 4)),
+            ("line", (0, 4, 8, 8)),
+            ("donut", (8, 4, 4, 8)),
+            ("bars", (0, 12, 4, 9)),
+            ("radar", (4, 12, 4, 9)),
+            ("rings", (8, 12, 4, 9)),
+            ("table", (0, 21, 6, 7)),
+            ("column", (6, 21, 6, 7)),
+            ("scatter", (0, 28, 12, 8)),
+        ])
+    );
+    assert_eq!(
+        layout(vec![
+            at("donut", "donut", 0, 0),
+            at("score", "score", 0, 1),
+            at("area", "area", 0, 2),
+        ]),
+        expect(&[
+            ("donut", (0, 0, 6, 8)),
+            ("score", (6, 0, 6, 8)),
+            ("area", (0, 8, 12, 7)),
+        ])
+    );
+}
+
+#[test]
+fn arrange_action_lays_out_a_typical_dashboard() {
+    let mut lab = lab();
+    lab.ok(json!({"action": "create", "connection": "Shop", "name": "Board", "charts": [
+        {"type": "table", "title": "Liste", "sql": "SELECT id, amount FROM orders", "x": 0, "y": 30, "w": 12},
+        {"type": "kpi", "title": "Umsatz", "sql": "SELECT SUM(amount) AS \"Umsatz\" FROM orders", "x": 0, "y": 0},
+        {"type": "area", "title": "Verlauf", "sql": "SELECT created_at AS tag, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "tag", "metrics": ["Umsatz"], "x": 0, "y": 10},
+        {"type": "kpi", "title": "Bestellungen", "sql": "SELECT COUNT(*) AS \"Bestellungen\" FROM orders", "x": 3, "y": 0},
+        {"type": "donut", "title": "Status", "sql": "SELECT status, COUNT(*) AS \"Anzahl\" FROM orders GROUP BY status", "x": 6, "y": 10},
+        {"type": "kpi", "title": "Schnitt", "sql": "SELECT AVG(amount) AS \"Schnitt\" FROM orders", "x": 6, "y": 0},
+        {"type": "bars", "title": "Regionen", "sql": "SELECT region, SUM(amount) AS \"Umsatz\" FROM orders GROUP BY region", "x": 0, "y": 20}
+    ]}));
+    let text = lab.ok(json!({"action": "arrange", "dashboard": "Board"}));
+    assert!(
+        text.starts_with("ok, 7 Charts in 'Board' neu angeordnet"),
+        "{text}"
+    );
+    assert!(text.contains("'Verlauf' area x=0 y=4 w=8 h=8"), "{text}");
+    let board = lab.only();
+    assert_grid(&board);
+    for (title, expected) in [
+        ("Umsatz", (0, 0, 4, 4)),
+        ("Bestellungen", (4, 0, 4, 4)),
+        ("Schnitt", (8, 0, 4, 4)),
+        ("Verlauf", (0, 4, 8, 8)),
+        ("Status", (8, 4, 4, 8)),
+        ("Regionen", (0, 12, 4, 8)),
+        ("Liste", (4, 12, 8, 8)),
+    ] {
+        assert_eq!(rect(widget(&board, title)), expected, "{title}");
+    }
+    let order: Vec<&str> = board["widgets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        order,
+        [
+            "Umsatz",
+            "Bestellungen",
+            "Schnitt",
+            "Verlauf",
+            "Status",
+            "Regionen",
+            "Liste"
+        ]
+    );
+    assert_eq!(board["datasets"].as_array().unwrap().len(), 7);
+    let again = lab.ok(json!({"action": "arrange", "dashboard": "Board"}));
+    assert_eq!(again, text);
+    lab.ok(json!({"action": "create", "connection": "Shop", "name": "Leer"}));
+    assert!(lab
+        .err(json!({"action": "arrange", "dashboard": "Leer"}))
+        .contains("hat keine Charts"));
+}
+
+#[test]
+fn reports_design_notes_without_failing() {
+    let mut lab = lab();
+    lab.create_sales();
+    let text = lab.ok(json!({"action": "add_charts", "dashboard": "Sales", "charts": [
+        {"type": "donut", "title": "Viele", "sql": "SELECT status || id AS kat, amount AS sum_amount FROM orders UNION ALL SELECT region || id, target FROM orders", "dimension": "kat", "metrics": ["sum_amount"]},
+        {"type": "kpi", "title": "Vergleich", "sql": "SELECT COUNT(*) AS \"Bestellungen\" FROM orders", "options": {"compare": "previous"}},
+        {"type": "column", "title": "Baukasten", "builder": {"table": "orders", "dimension": "status", "metrics": ["sum(amount)"]}},
+        {"type": "line", "title": "Sauber", "sql": "SELECT created_at AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Tag", "metrics": ["Umsatz"], "dateColumn": "Tag", "period": "30d", "options": {"compare": "year"}}
+    ]}));
+    let report = |title: &str| {
+        text.split("\n- chart ")
+            .find(|part| part.contains(&format!("'{title}'")))
+            .unwrap_or_else(|| panic!("{title} missing in {text}"))
+            .to_string()
+    };
+    let many = report("Viele");
+    assert!(
+        many.contains(
+            "10 Kategorien sind für donut zu viele – besser bars oder Top 6 plus „Sonstige“."
+        ),
+        "{many}"
+    );
+    assert!(
+        many.contains("Spaltennamen sum_amount wirken technisch"),
+        "{many}"
+    );
+    let compare = report("Vergleich");
+    assert!(
+        compare.contains("compare wirkt nur mit dateColumn und period ≠ all."),
+        "{compare}"
+    );
+    assert!(compare.contains("kpi ohne dimension"), "{compare}");
+    assert!(!compare.contains("technisch"), "{compare}");
+    assert!(!report("Baukasten").contains("technisch"), "{text}");
+    let clean = report("Sauber");
+    assert!(
+        !clean.contains("compare wirkt")
+            && !clean.contains("technisch")
+            && !clean.contains("Kategorien"),
+        "{clean}"
+    );
+    assert_eq!(lab.only()["widgets"].as_array().unwrap().len(), 5);
+}
+
+#[test]
+fn design_notes_flag_crowded_and_technical_charts() {
+    let shape = |metrics: &[&str], dimension: bool, date: bool| Shape {
+        dimension: dimension.then(|| "d".to_string()),
+        dimension2: None,
+        metrics: metrics.iter().map(|m| m.to_string()).collect(),
+        date,
+    };
+    let none = Map::new();
+    let notes = |name: &str, rows: usize| {
+        design_notes(
+            kind(name).unwrap(),
+            Some(rows),
+            false,
+            &shape(&["Wert"], true, false),
+            "all",
+            &none,
+        )
+    };
+    assert!(notes("bars", 16)[0].starts_with("16 Balken sind zu viele"));
+    assert!(notes("bars", 15).is_empty());
+    assert!(notes("rings", 9)[0].contains("für rings zu viele"));
+    assert!(notes("funnel", 8).is_empty());
+    assert!(notes("column", 40).is_empty());
+    let technical_names = design_notes(
+        kind("column").unwrap(),
+        None,
+        true,
+        &shape(&["m0", "Umsatz", "COUNT", "net_total"], true, false),
+        "all",
+        &none,
+    );
+    assert_eq!(technical_names.len(), 1);
+    assert!(technical_names[0].starts_with("Spaltennamen m0, COUNT, net_total wirken technisch"));
+    let compare: Map<String, Value> = [("compare".to_string(), json!("year"))]
+        .into_iter()
+        .collect();
+    let dated = shape(&["Umsatz"], true, true);
+    assert!(design_notes(kind("line").unwrap(), None, true, &dated, "90d", &compare).is_empty());
+    assert_eq!(
+        design_notes(kind("line").unwrap(), None, true, &dated, "all", &compare),
+        vec!["compare wirkt nur mit dateColumn und period ≠ all.".to_string()]
+    );
+    let off: Map<String, Value> = [("compare".to_string(), json!("none"))]
+        .into_iter()
+        .collect();
+    assert!(design_notes(kind("line").unwrap(), None, true, &dated, "all", &off).is_empty());
+    for name in [
+        "m0",
+        "m12",
+        "order_count",
+        "Sum",
+        "avg",
+        "MAX",
+        "min",
+        "count",
+    ] {
+        assert!(technical(name), "{name}");
+    }
+    for name in ["Umsatz", "m", "mx1", "M1", "Menge", "maximum", "Anzahl"] {
+        assert!(!technical(name), "{name}");
+    }
 }
