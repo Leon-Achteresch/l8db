@@ -9,11 +9,7 @@ import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/rea
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NewBadge } from "@/components/new-badge";
-import {
-  paletteSearchItems,
-  parsePaletteQuery,
-  withRecentCommands,
-} from "@/lib/command-palette-search";
+import { paletteSearchItems, parsePaletteQuery, withHistory } from "@/lib/command-palette-search";
 import { EASE_OUT } from "@/lib/ease";
 import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -22,6 +18,7 @@ import { useRankedCommands } from "@/lib/hooks/use-ranked-commands";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
 import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
 import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
+import type { PaletteHistory } from "@/lib/palette-history";
 import { useActivePortalContainer } from "@/lib/portal-container";
 import { PresenceGate } from "@/lib/presence-gate";
 import { cn } from "@/lib/utils";
@@ -32,7 +29,7 @@ import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
-const NO_RECENT_COMMANDS: string[] = [];
+const NO_HISTORY: PaletteHistory = {};
 type PaletteRow = { key: string; group?: string; item?: CommandItem; itemIndex: number };
 
 export function CommandPalette({
@@ -48,7 +45,7 @@ export function CommandPalette({
   queryItem,
   initialQuery = "",
   commandFeatureId,
-  recentCommandIds = NO_RECENT_COMMANDS,
+  history = NO_HISTORY,
   onSelectItem,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -150,8 +147,8 @@ export function CommandPalette({
 
   const { commandsOnly, search } = parsePaletteQuery(query, Boolean(commandFeatureId));
   const searchItems = useMemo(
-    () => withRecentCommands(paletteSearchItems(items, commandsOnly), recentCommandIds, search),
-    [items, commandsOnly, recentCommandIds, search],
+    () => withHistory(paletteSearchItems(items, commandsOnly), history, search),
+    [items, commandsOnly, history, search],
   );
   const { query: rankedQuery, list: ranked } = useRankedCommands(searchItems, search, maxVisible);
   const searchFeature = useNewFeatureVisibility<HTMLDivElement>(featureId);
