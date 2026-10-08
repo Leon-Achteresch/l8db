@@ -12,6 +12,7 @@ import {
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
+import { viewableSelect } from "@/lib/query-result-view";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -66,6 +67,7 @@ export function useRunSql({
     setErrorSource,
     setResultState,
     setExecutedSql,
+    setViewSource,
   } = exec;
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
@@ -144,6 +146,9 @@ export function useRunSql({
           onJob: setActiveJobId,
         });
         setExecutedSql(sql);
+        const viewText =
+          !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
+        setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
@@ -151,6 +156,7 @@ export function useRunSql({
         setError(message);
         const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
         setErrorSource(base === null ? null : { text: sql, base });
+        setViewSource(null);
         setResult(null);
         finishHistory({ rowCount: null, error: message });
       } finally {
@@ -179,6 +185,7 @@ export function useRunSql({
       setErrorSource,
       setResultState,
       setExecutedSql,
+      setViewSource,
       editorSqlRef,
       cursorOffsetRef,
       setEditorFocus,

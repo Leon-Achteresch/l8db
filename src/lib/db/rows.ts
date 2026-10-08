@@ -1,6 +1,6 @@
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
-import type { QueryResult, RowCount, TableData, TableInfo } from "./types";
+import type { QueryColumnSource, QueryResult, RowCount, TableData, TableInfo } from "./types";
 
 export type TableRowSort = {
   column: string;
@@ -245,4 +245,13 @@ export async function updateViewDefinition(
     body,
     dryRun,
   });
+}
+
+export async function describeQueryColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  database?: string,
+): Promise<QueryColumnSource[]> {
+  return invoke("describe_query_columns", { kind, connectionString, database, sql });
 }

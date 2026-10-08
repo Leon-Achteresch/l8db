@@ -2706,6 +2706,77 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
+    async fn describe_query_columns(
+        &self,
+        sql: &str,
+    ) -> Result<Vec<super::QueryColumnSource>, String> {
+        let trimmed = sql.trim().trim_end_matches(';').trim();
+        if trimmed.is_empty() {
+            return Err("Leere Abfrage".to_string());
+        }
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let statement = conn.prepare(trimmed).await.map_err(map_pg_err)?;
+            let oids: Vec<u32> = statement
+                .columns()
+                .iter()
+                .filter_map(|column| column.table_oid())
+                .collect();
+            let mut origins = std::collections::HashMap::new();
+            if !oids.is_empty() {
+                for row in conn
+                    .query(
+                        "SELECT c.oid, n.nspname, c.relname, a.attnum, a.attname \
+                         FROM pg_class c \
+                         JOIN pg_namespace n ON n.oid = c.relnamespace \
+                         JOIN pg_attribute a ON a.attrelid = c.oid \
+                         WHERE c.oid = ANY($1) AND a.attnum > 0 AND NOT a.attisdropped",
+                        &[&oids],
+                    )
+                    .await
+                    .map_err(map_pg_err)?
+                {
+                    let oid: u32 = row.get(0);
+                    let attnum: i16 = row.get(3);
+                    origins.insert(
+                        (oid, attnum),
+                        (
+                            row.get::<_, String>(1),
+                            row.get::<_, String>(2),
+                            row.get::<_, String>(4),
+                        ),
+                    );
+                }
+            }
+            let names = super::unique_column_names(
+                statement
+                    .columns()
+                    .iter()
+                    .map(|column| column.name().to_string())
+                    .collect(),
+            );
+            Ok(statement
+                .columns()
+                .iter()
+                .zip(names)
+                .map(|(column, name)| {
+                    let origin = column
+                        .table_oid()
+                        .zip(column.column_id())
+                        .and_then(|key| origins.get(&key));
+                    super::QueryColumnSource {
+                        name,
+                        data_type: column.type_().name().to_string(),
+                        schema: origin.map(|origin| origin.0.clone()),
+                        table: origin.map(|origin| origin.1.clone()),
+                        column: origin.map(|origin| origin.2.clone()),
+                    }
+                })
+                .collect())
+        })
+        .await
+    }
+
     async fn list_foreign_keys(
         &self,
         schema: &str,

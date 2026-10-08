@@ -5,26 +5,48 @@ export interface ScrollLineMapping {
   targetEnd: number;
 }
 
+export interface ScrollLineRange extends ScrollLineMapping {
+  targetStartGap: boolean;
+  targetEndGap: boolean;
+}
+
+function lineBlocks(mappings: readonly ScrollLineMapping[], reverse: boolean): ScrollLineMapping[] {
+  return mappings.map((mapping) => ({
+    sourceStart: (reverse ? mapping.targetStart : mapping.sourceStart) + 1,
+    sourceEnd: (reverse ? mapping.targetEnd : mapping.sourceEnd) + 1,
+    targetStart: (reverse ? mapping.sourceStart : mapping.targetStart) + 1,
+    targetEnd: (reverse ? mapping.sourceEnd : mapping.targetEnd) + 1,
+  }));
+}
+
+function lineOffset(blocks: readonly ScrollLineMapping[], line: number): number {
+  let offset = 0;
+  for (const block of blocks) {
+    if (block.sourceEnd > line) break;
+    offset = block.targetEnd - block.sourceEnd;
+  }
+  return offset;
+}
+
 export function projectScrollLine(
   mappings: readonly ScrollLineMapping[],
   line: number,
   reverse = false,
-): ScrollLineMapping {
-  let offset = 0;
-  for (const mapping of mappings) {
-    const sourceStart = (reverse ? mapping.targetStart : mapping.sourceStart) + 1;
-    const sourceEnd = (reverse ? mapping.targetEnd : mapping.sourceEnd) + 1;
-    const targetStart = (reverse ? mapping.sourceStart : mapping.targetStart) + 1;
-    const targetEnd = (reverse ? mapping.sourceEnd : mapping.targetEnd) + 1;
-    if (line < sourceStart) break;
-    if (line < sourceEnd) return { sourceStart, sourceEnd, targetStart, targetEnd };
-    offset = targetEnd - sourceEnd;
-  }
+): ScrollLineRange {
+  const blocks = lineBlocks(mappings, reverse);
+  const block = blocks.find((item) => line >= item.sourceStart && line < item.sourceEnd);
+  if (block)
+    return { ...block, targetStartGap: block.targetStart === block.targetEnd, targetEndGap: false };
+  const next = blocks.find(
+    (item) => item.sourceStart === line + 1 && item.sourceEnd > item.sourceStart,
+  );
   return {
     sourceStart: line,
     sourceEnd: line + 1,
-    targetStart: line + offset,
-    targetEnd: line + offset + 1,
+    targetStart: line + lineOffset(blocks, line),
+    targetEnd: next ? next.targetStart : line + 1 + lineOffset(blocks, line + 1),
+    targetStartGap: false,
+    targetEndGap: next ? next.targetStart === next.targetEnd : false,
   };
 }
 

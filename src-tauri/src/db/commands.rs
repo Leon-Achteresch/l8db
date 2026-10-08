@@ -654,6 +654,24 @@ pub async fn execute_query_with_params(
 }
 
 #[tauri::command]
+pub async fn describe_query_columns(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    sql: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<super::QueryColumnSource>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .describe_query_columns(&sql)
+    .await
+}
+
+#[tauri::command]
 pub async fn list_views(
     kind: DatabaseKind,
     connection_string: String,
