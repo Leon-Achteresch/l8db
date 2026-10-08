@@ -16,7 +16,11 @@ export function PackageMatchingMembers({
     <SidebarMenuSub>
       {members.map((member) => (
         <SidebarMenuSubItem key={member}>
-          <SidebarMenuSubButton size="sm" onClick={() => go("body", member)}>
+          <SidebarMenuSubButton
+            size="sm"
+            className="cursor-pointer"
+            onClick={() => go("body", member)}
+          >
             <BracesIcon className="text-muted-foreground" />
             <span className="truncate">{member}</span>
           </SidebarMenuSubButton>
