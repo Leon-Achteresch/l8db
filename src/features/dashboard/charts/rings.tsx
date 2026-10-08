@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtNumber } from "@/lib/dashboards";
+import { fmtValue } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
 import { type ChartProps, categories, hoveredIndex } from "./chart-utils";
@@ -15,7 +15,7 @@ export function Rings({ rows, shape, options }: ChartProps) {
   const outer = Math.min(width, height) / 2;
   const inner = outer * 0.35;
   const band = (outer - inner) / Math.max(items.length, 1);
-  const stroke = band * 0.82;
+  const stroke = Math.min(14, band * 0.62);
   const hovered = hover !== null ? items[hover] : undefined;
 
   return (
@@ -38,7 +38,7 @@ export function Rings({ rows, shape, options }: ChartProps) {
                   cy={cy}
                   r={r}
                   fill="none"
-                  stroke="var(--muted)"
+                  stroke="var(--dash-track)"
                   strokeWidth={stroke}
                 />
                 <path
@@ -58,7 +58,9 @@ export function Rings({ rows, shape, options }: ChartProps) {
           x={cx}
           y={cy}
           width={width}
-          entries={[{ label: hovered.name, value: fmtNumber(hovered.value), color: hovered.color }]}
+          entries={[
+            { label: hovered.name, value: fmtValue(hovered.value, options), color: hovered.color },
+          ]}
         />
       )}
     </div>

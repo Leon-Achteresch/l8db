@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtCompact, fmtNumber, toLabel, toNumber } from "@/lib/dashboards";
+import { fmtValue, fmtValueCompact, toLabel, toNumber } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
 import { type ChartProps, color, hoveredIndex } from "./chart-utils";
@@ -118,7 +118,7 @@ export function Flow({ rows, shape, options }: ChartProps) {
                 fontSize={11}
                 fill="var(--muted-foreground)"
               >
-                {fmtCompact(node.value)}
+                {fmtValueCompact(node.value, options)}
               </text>
             </g>
           ))}
@@ -157,7 +157,7 @@ export function Flow({ rows, shape, options }: ChartProps) {
           entries={[
             {
               label: `${hovered.link.source} → ${hovered.link.target}`,
-              value: fmtNumber(hovered.link.value),
+              value: fmtValue(hovered.link.value, options),
               color: color(sources.indexOf(hovered.link.source) + options.colorOffset),
             },
           ]}

@@ -2,7 +2,9 @@ export type Agg = "count" | "count_distinct" | "sum" | "avg" | "min" | "max" | "
 export type TimeBucket = "none" | "day" | "week" | "month" | "quarter" | "year";
 export type DatasetMode = "simple" | "expert";
 export type SortMode = "dimension" | "metric_desc" | "metric_asc";
-export type Period = "all" | "7d" | "30d" | "90d" | "quarter" | "year";
+export type Period = "all" | "7d" | "30d" | "90d" | "quarter" | "year" | "12m";
+export type CompareMode = "none" | "previous" | "year";
+export type HeadlineMode = "auto" | "total" | "last" | "average" | "max" | "min";
 export type ChartKind =
   | "kpi"
   | "area"
@@ -35,6 +37,11 @@ export interface WidgetOptions {
   showPercent: boolean;
   labels: boolean;
   sortBy: "none" | "asc" | "desc";
+  compare: CompareMode;
+  headline: HeadlineMode;
+  invertDelta: boolean;
+  unit: string;
+  decimals: number | null;
 }
 
 export const DEFAULT_OPTIONS: WidgetOptions = {
@@ -51,6 +58,11 @@ export const DEFAULT_OPTIONS: WidgetOptions = {
   showPercent: true,
   labels: false,
   sortBy: "none",
+  compare: "previous",
+  headline: "auto",
+  invertDelta: false,
+  unit: "",
+  decimals: null,
 };
 
 export function widgetOptions(widget: Pick<Widget, "options">): WidgetOptions {
@@ -81,35 +93,15 @@ export const PERIOD_LABEL: Record<Period, string> = {
   "7d": "Letzte 7 Tage",
   "30d": "Letzte 30 Tage",
   "90d": "Letzte 90 Tage",
+  "12m": "Letzte 12 Monate",
   quarter: "Dieses Quartal",
   year: "Dieses Jahr",
 };
 
-export const VIVID_PALETTE = [
-  "#a3e635",
-  "#3b82f6",
-  "#c084fc",
-  "#f472b6",
-  "#facc15",
-  "#2dd4bf",
-  "#fb923c",
-  "#94a3b8",
-];
-
-const CONNECTION_TONES = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-  "#94a3b8",
-  "#64748b",
-  "#cbd5e1",
-];
-
-export const PALETTE = CONNECTION_TONES.map(
-  (tone, index) => `var(--dash-color-${index + 1}, ${tone})`,
-);
+export const PALETTE = Array.from({ length: 8 }, (_, index) => `var(--dash-color-${index + 1})`);
+export const ACCENT = "var(--dash-accent)";
+export const COMPARE_COLOR = "var(--dash-compare)";
+export const COMPARE_MARK = "var(--dash-compare-mark)";
 
 export interface DatasetMetric {
   id: string;
@@ -202,6 +194,7 @@ export interface Widget {
   chart: ChartKind;
   datasetId: string | null;
   title: string;
+  subtitle?: string;
   period: Period;
   options?: Partial<WidgetOptions>;
   x: number;

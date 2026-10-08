@@ -42,6 +42,7 @@ export const NEW_FEATURES = {
   "dashboard.studio": "0.13.0",
   "dashboard.studio.joins": "0.13.0",
   "dashboard.studio.formulas": "0.13.0",
+  "dashboard.studio.compare": "0.14.0",
   "dashboard.filters": "0.13.0",
   "er-diagram.clusters": "0.8.0",
   "er-diagram.text-export": "0.10.0",

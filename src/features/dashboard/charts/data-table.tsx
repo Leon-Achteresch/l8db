@@ -1,22 +1,40 @@
 import { useState } from "react";
-import { toLabel } from "@/lib/dashboards";
-import type { ChartProps } from "./chart-utils";
+import { DIM_KEY, DIM2_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
+import { type ChartProps, change, dimensionLabels, goodness } from "./chart-utils";
+import { DeltaBadge } from "./delta-badge";
 
 const PAGE = 40;
 
-export function DataTable({ rows, shape }: ChartProps) {
+export function DataTable({ rows, shape, options, compare }: ChartProps) {
   const [limit, setLimit] = useState(PAGE);
-  const columns = [
-    ...(shape.dimension ? [{ key: shape.dimension, label: "Aufteilung" }] : []),
-    ...(shape.dimension2 ? [{ key: shape.dimension2, label: "Zweite Aufteilung" }] : []),
-    ...shape.metrics,
+  const dims = [
+    ...(shape.dimension
+      ? [
+          {
+            key: shape.dimension,
+            label: shape.dimension === DIM_KEY ? "Aufteilung" : shape.dimension,
+          },
+        ]
+      : []),
+    ...(shape.dimension2
+      ? [
+          {
+            key: shape.dimension2,
+            label: shape.dimension2 === DIM2_KEY ? "Zweite Aufteilung" : shape.dimension2,
+          },
+        ]
+      : []),
   ];
-  const keys = columns.length
-    ? columns
-    : Object.keys(rows[0] ?? {}).map((k) => ({ key: k, label: k }));
+  const metrics = shape.metrics;
+  const raw = dims.length || metrics.length ? [] : Object.keys(rows[0] ?? {});
+  const labels = Object.fromEntries(
+    dims.map((d) => [d.key, dimensionLabels(rows.map((r) => toLabel(r[d.key]))).long]),
+  );
+  const focus = shape.metrics[0]?.key;
+  const head = "border-b px-2.5 py-1.5 font-medium";
   return (
     <div
-      className="h-full overflow-auto rounded-xl border"
+      className="h-full overflow-auto"
       onScroll={(event) => {
         const el = event.currentTarget;
         if (limit < rows.length && el.scrollTop + el.clientHeight * 2 > el.scrollHeight)
@@ -25,24 +43,61 @@ export function DataTable({ rows, shape }: ChartProps) {
     >
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-card">
-          <tr className="text-left text-muted-foreground">
-            {keys.map((c) => (
-              <th key={c.key} className="border-b px-2.5 py-1.5 font-medium">
-                {c.label}
+          <tr className="text-muted-foreground">
+            {dims.map((d) => (
+              <th key={d.key} className={`${head} text-left`}>
+                {d.label}
               </th>
             ))}
+            {metrics.map((m) => (
+              <th key={m.key} className={`${head} text-right`}>
+                {m.label}
+              </th>
+            ))}
+            {raw.map((key) => (
+              <th key={key} className={`${head} text-left`}>
+                {key}
+              </th>
+            ))}
+            {compare && focus && <th className={`${head} text-right`}>ggü. {compare.short}</th>}
           </tr>
         </thead>
         <tbody>
-          {rows.slice(0, limit).map((row, i) => (
-            <tr key={String(i)} className="border-b border-border/50 last:border-0">
-              {keys.map((c) => (
-                <td key={c.key} className="max-w-48 truncate px-2.5 py-1.5 tabular-nums">
-                  {toLabel(row[c.key])}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.slice(0, limit).map((row, i) => {
+            const before = compare?.rows[i]?.[focus ?? ""];
+            const delta =
+              compare && focus && before !== undefined && before !== null
+                ? change(toNumber(row[focus]), toNumber(before))
+                : null;
+            return (
+              <tr key={String(i)} className="border-b border-border/50 last:border-0">
+                {dims.map((d) => (
+                  <td key={d.key} className="max-w-48 truncate px-2.5 py-1.5">
+                    {labels[d.key]?.[i] ?? toLabel(row[d.key])}
+                  </td>
+                ))}
+                {metrics.map((m) => (
+                  <td key={m.key} className="px-2.5 py-1.5 text-right tabular-nums">
+                    {row[m.key] === null || row[m.key] === undefined
+                      ? "–"
+                      : fmtValue(toNumber(row[m.key]), options)}
+                  </td>
+                ))}
+                {raw.map((key) => (
+                  <td key={key} className="max-w-48 truncate px-2.5 py-1.5 tabular-nums">
+                    {toLabel(row[key])}
+                  </td>
+                ))}
+                {compare && focus && (
+                  <td className="px-2.5 py-1.5 text-right">
+                    {delta !== null && (
+                      <DeltaBadge delta={delta} good={goodness(delta, options.invertDelta)} />
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

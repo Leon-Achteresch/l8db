@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { fmtNumber } from "@/lib/dashboards";
+import { fmtValue } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
-import { axisTick, type ChartProps, color, series } from "./chart-utils";
+import { axisTick, type ChartProps, dimensionLabels, series, seriesColor } from "./chart-utils";
 import { labelStep, niceTicks, polar } from "./svg-geometry";
 
 export function RadarNet({ rows, shape, options }: ChartProps) {
@@ -10,6 +10,8 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
   const [hover, setHover] = useState<number | null>(null);
   const data = series(rows, shape);
   const n = data.length;
+  const names = dimensionLabels(data.map((row) => String(row.name)));
+  const count = shape.metrics.length;
   const cx = width / 2;
   const cy = height / 2;
   const radius = (Math.min(width, height) / 2) * 0.62;
@@ -40,7 +42,12 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
           onMouseLeave={() => setHover(null)}
         >
           {ticks.slice(1).map((t) => (
-            <polygon key={t} points={ring((t / max) * radius)} fill="none" stroke="var(--border)" />
+            <polygon
+              key={t}
+              points={ring((t / max) * radius)}
+              fill="none"
+              stroke="var(--dash-grid)"
+            />
           ))}
           {data.map((row, i) => {
             if (i % labelEvery !== 0) return null;
@@ -48,7 +55,7 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
             const [lx, ly] = polar(cx, cy, radius + 14, angle(i));
             return (
               <g key={String(row.name)}>
-                <line x1={cx} y1={cy} x2={x} y2={y} stroke="var(--border)" />
+                <line x1={cx} y1={cy} x2={x} y2={y} stroke="var(--dash-grid)" />
                 <text
                   x={lx}
                   y={ly}
@@ -56,13 +63,13 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
                   dominantBaseline="middle"
                   {...axisTick}
                 >
-                  {String(row.name)}
+                  {names.short[i]}
                 </text>
               </g>
             );
           })}
           {shape.metrics.map((m, k) => {
-            const stroke = color(k + options.colorOffset);
+            const stroke = seriesColor(k, count, options);
             const points = data.map((row, i) =>
               polar(cx, cy, ((Number(row[m.key]) || 0) / max) * radius, angle(i)),
             );
@@ -71,20 +78,19 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
                 <polygon
                   points={points.map((p) => p.join(",")).join(" ")}
                   fill={stroke}
-                  fillOpacity={0.3}
+                  fillOpacity={0.12}
                   stroke={stroke}
                   strokeWidth={2}
                 />
-                {points.map(([x, y], i) =>
-                  n > 60 && hover !== i ? null : (
-                    <circle
-                      key={String(data[i].name)}
-                      cx={x}
-                      cy={y}
-                      r={hover === i ? 4 : 2}
-                      fill={stroke}
-                    />
-                  ),
+                {hover !== null && points[hover] && (
+                  <circle
+                    cx={points[hover][0]}
+                    cy={points[hover][1]}
+                    r={4.5}
+                    fill={stroke}
+                    stroke="var(--card)"
+                    strokeWidth={2}
+                  />
                 )}
               </g>
             );
@@ -96,11 +102,11 @@ export function RadarNet({ rows, shape, options }: ChartProps) {
           x={polar(cx, cy, radius, angle(hover))[0]}
           y={polar(cx, cy, radius, angle(hover))[1]}
           width={width}
-          title={String(hovered.name)}
+          title={names.long[hover]}
           entries={shape.metrics.map((m, k) => ({
             label: m.label,
-            value: fmtNumber(Number(hovered[m.key]) || 0),
-            color: color(k + options.colorOffset),
+            value: fmtValue(Number(hovered[m.key]) || 0, options),
+            color: seriesColor(k, count, options),
           }))}
         />
       )}
