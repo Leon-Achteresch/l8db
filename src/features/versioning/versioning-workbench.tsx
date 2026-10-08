@@ -28,6 +28,7 @@ export function VersioningWorkbench({
   onNavigate,
   area,
   onArea,
+  compact = false,
 }: {
   workspace: VersioningWorkspace;
   development: DevelopmentState;
@@ -35,6 +36,7 @@ export function VersioningWorkbench({
   onNavigate: (area: VersioningArea) => void;
   area: "database" | "git";
   onArea: (area: "database" | "git") => void;
+  compact?: boolean;
 }) {
   const { project, busy, error, message } = workspace;
   const [changesOpen, setChangesOpen] = useState(true);
@@ -56,9 +58,17 @@ export function VersioningWorkbench({
     <div className="flex min-h-0 flex-1">
       <aside
         aria-label="Versionierung"
-        className="flex w-72 shrink-0 flex-col border-r border-border/60"
+        className={cn(
+          "flex shrink-0 flex-col border-r border-border/60",
+          compact ? "w-56" : "w-72",
+        )}
       >
-        <VersioningHeader workspace={workspace} area={area} className="pr-2 pl-3" />
+        <VersioningHeader
+          workspace={workspace}
+          area={area}
+          compact={compact}
+          className="pr-2 pl-3"
+        />
         <VersioningAreaSwitch
           area={area}
           onChange={onArea}

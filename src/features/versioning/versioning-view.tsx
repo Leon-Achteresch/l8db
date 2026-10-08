@@ -46,7 +46,7 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
   };
   const [name, setName] = useState("");
   const count = changedFiles(status?.changes ?? "").size;
-  const workbench = wide && area === "git" && Boolean(status && project);
+  const workbench = area === "git" && Boolean(status && project);
   const create = async () => {
     if (!name.trim() || !connection || !isVersioningKind(connection.kind))
       throw new Error("Projektname und eine SQL-Verbindung auswählen.");
