@@ -10,12 +10,12 @@ use oracle::{Connector, Row};
 use super::pool::{BlockingPool, PoolState, IDLE_CHECK_AFTER};
 use super::server_output::ServerMessage;
 use super::{
-    create_table_ddl, create_table_sql, rows_to_objects, where_clause, AddColumnRequest,
-    AlterColumnRequest, ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo,
-    CreateTableRequest, DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo,
-    DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
-    InvalidObjectInfo, ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize,
-    SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
+    create_table_ddl, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
+    ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
+    DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
+    ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo,
+    SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -33,6 +33,10 @@ pub fn quote(ident: &str) -> String {
 
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn requalify(sql: &str, from_schema: &str, to_schema: &str) -> String {
+    super::requalify_schema_folding(sql, from_schema, to_schema, str::to_uppercase)
 }
 
 fn view_create_script(
@@ -697,6 +701,8 @@ fn is_query(sql: &str) -> bool {
 
 #[path = "oracle_catalog.rs"]
 mod catalog;
+#[path = "oracle_copy.rs"]
+mod copy;
 #[path = "oracle_plan.rs"]
 mod plan;
 #[path = "oracle_sql.rs"]
@@ -822,17 +828,36 @@ fn run_query_named(
 }
 
 fn fetch(conn: &Connection, sql: &str) -> Result<Vec<Row>, String> {
+    fetch_bound(conn, sql, &[])
+}
+
+fn fetch_bound(
+    conn: &Connection,
+    sql: &str,
+    binds: &[(String, String)],
+) -> Result<Vec<Row>, String> {
     let mut stmt = conn
         .statement(sql)
         .fetch_array_size(1000)
         .build()
         .map_err(map_err)?;
+    let params: Vec<(&str, &dyn oracle::sql_type::ToSql)> = binds
+        .iter()
+        .map(|(name, value)| (name.as_str(), value as &dyn oracle::sql_type::ToSql))
+        .collect();
     let rows = stmt
-        .query(&[])
+        .query_named(&params)
         .map_err(map_err)?
         .map(|r| r.map_err(map_err))
         .collect::<Result<Vec<Row>, String>>()?;
     Ok(rows)
+}
+
+fn binds(values: &[(&str, &str)]) -> Vec<(String, String)> {
+    values
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect()
 }
 
 impl OracleAdapter {
@@ -1015,6 +1040,14 @@ impl OracleAdapter {
         self.run_meta(move |c| fetch(c, &sql)).await
     }
 
+    async fn rows_bound(
+        &self,
+        sql: String,
+        binds: Vec<(String, String)>,
+    ) -> Result<Vec<Row>, String> {
+        self.run_meta(move |c| fetch_bound(c, &sql, &binds)).await
+    }
+
     async fn source_script(
         &self,
         owner: &str,
@@ -1105,39 +1138,8 @@ impl OracleAdapter {
         object_type: &str,
         name: &str,
     ) -> Result<Vec<String>, String> {
-        if source_schema.is_empty() || target_schema.is_empty() {
-            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
-        }
-        let requalify = |sql: String| super::requalify_schema(&sql, source_schema, target_schema);
+        let requalify = |sql: String| requalify(&sql, source_schema, target_schema);
         match object_type {
-            "table" => {
-                let columns = self
-                    .list_table_columns_detailed(source_schema, name)
-                    .await?;
-                if columns.is_empty() {
-                    return Err(format!(
-                        "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
-                    ));
-                }
-                let req = CreateTableRequest {
-                    schema: target_schema.to_string(),
-                    name: name.to_string(),
-                    if_not_exists: false,
-                    columns: columns
-                        .iter()
-                        .map(|c| super::ColumnDefinition {
-                            name: c.name.clone(),
-                            data_type: c.data_type.clone(),
-                            is_nullable: c.is_nullable,
-                            default_value: c.column_default.clone().map(&requalify),
-                            is_primary_key: c.is_primary_key,
-                            is_unique: false,
-                        })
-                        .collect(),
-                    ..Default::default()
-                };
-                Ok(vec![create_table_sql(&req, quote, true)])
-            }
             "view" => Ok(vec![requalify(
                 self.get_view_definition(source_schema, name).await?,
             )]),
@@ -1170,6 +1172,27 @@ impl OracleAdapter {
             }
             other => Err(format!("Unbekannter Objekttyp: {other}")),
         }
+    }
+
+    async fn schema_copy_script(
+        &self,
+        target: &dyn DatabaseAdapter,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        check_copy_schemas(source_schema, target_schema)?;
+        if object_type == "table" {
+            return Ok(self
+                .table_copy_plan(target, source_schema, target_schema, name)
+                .await?
+                .script());
+        }
+        Ok(self
+            .schema_copy_statements(source_schema, target_schema, object_type, name)
+            .await?
+            .join("\n/\n\n"))
     }
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
@@ -1356,6 +1379,16 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
         return None;
     }
     Some((host.to_string(), port))
+}
+
+fn check_copy_schemas(source_schema: &str, target_schema: &str) -> Result<(), String> {
+    if source_schema.is_empty() || target_schema.is_empty() {
+        return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+    }
+    if source_schema == target_schema {
+        return Err("Quell- und Zielschema sind identisch.".to_string());
+    }
+    Ok(())
 }
 
 async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, String> {
@@ -1851,7 +1884,7 @@ impl DatabaseAdapter for OracleAdapter {
         Ok(source
             .into_iter()
             .map(|(name, definition)| {
-                let rewritten = super::requalify_schema(&definition, source_schema, target_schema);
+                let rewritten = requalify(&definition, source_schema, target_schema);
                 let (status, target_definition) =
                     match target.iter().find(|(other, _)| other == &name) {
                         None => ("missing", String::new()),
@@ -1878,10 +1911,31 @@ impl DatabaseAdapter for OracleAdapter {
         object_type: &str,
         name: &str,
     ) -> Result<String, String> {
-        Ok(self
-            .schema_copy_statements(source_schema, target_schema, object_type, name)
-            .await?
-            .join("\n/\n\n"))
+        self.schema_copy_script(self, source_schema, target_schema, object_type, name)
+            .await
+    }
+
+    async fn preview_schema_object_copy_into(
+        &self,
+        target: &dyn DatabaseAdapter,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.schema_copy_script(target, source_schema, target_schema, object_type, name)
+            .await
+    }
+
+    async fn copy_schema_table_data(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+        limit: i64,
+    ) -> Result<super::SchemaDataCopy, String> {
+        self.copy_table_data(source_schema, target_schema, name, limit)
+            .await
     }
 
     async fn execute_schema_object_copy(
@@ -1891,9 +1945,7 @@ impl DatabaseAdapter for OracleAdapter {
         object_type: &str,
         name: &str,
     ) -> Result<String, String> {
-        let statements = self
-            .schema_copy_statements(source_schema, target_schema, object_type, name)
-            .await?;
+        check_copy_schemas(source_schema, target_schema)?;
         let exists = self
             .rows(format!(
                 "SELECT 1 FROM all_objects WHERE owner = {} AND object_name = {} AND ROWNUM = 1",
@@ -1906,8 +1958,16 @@ impl DatabaseAdapter for OracleAdapter {
                 "Namenskonflikt: {name} existiert bereits im Zielschema {target_schema}."
             ));
         }
+        if object_type == "table" {
+            return self
+                .execute_table_copy(source_schema, target_schema, name)
+                .await;
+        }
+        let statements = self
+            .schema_copy_statements(source_schema, target_schema, object_type, name)
+            .await?;
         for statement in &statements {
-            self.exec(statement.clone()).await?;
+            execute_one(self, statement).await?;
         }
         Ok(statements.join("\n/\n\n"))
     }
@@ -2267,18 +2327,16 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!(
+        let sql = String::from(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
              (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
              cc.comments \
              FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
-             WHERE c.owner = {} AND c.table_name = {} ORDER BY c.column_id",
-            lit(schema),
-            lit(table)
+             WHERE c.owner = :owner AND c.table_name = :tbl ORDER BY c.column_id"
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| DetailedColumnInfo {
@@ -2504,15 +2562,13 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ConstraintInfo>, String> {
-        let sql = format!(
+        let sql = String::from(
             "SELECT c.constraint_name, c.constraint_type, LISTAGG(cc.column_name, ',') WITHIN GROUP (ORDER BY cc.position), MAX(c.search_condition_vc) \
              FROM all_constraints c LEFT JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
-             WHERE c.owner = {} AND c.table_name = {} GROUP BY c.constraint_name, c.constraint_type ORDER BY c.constraint_type, c.constraint_name",
-            lit(schema),
-            lit(table)
+             WHERE c.owner = :owner AND c.table_name = :tbl GROUP BY c.constraint_name, c.constraint_type ORDER BY c.constraint_type, c.constraint_name"
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| {
@@ -2541,9 +2597,13 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
-        let sql = format!("SELECT sequence_owner, sequence_name, TO_CHAR(min_value), TO_CHAR(max_value), TO_CHAR(increment_by), cycle_flag, TO_CHAR(last_number) FROM all_sequences WHERE {} ORDER BY sequence_name", Self::owner_filter(schema, "sequence_owner"));
+        let (owner, values) = match schema {
+            Some(schema) => (":owner", binds(&[("owner", schema)])),
+            None => ("SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')", Vec::new()),
+        };
+        let sql = format!("SELECT sequence_owner, sequence_name, TO_CHAR(min_value), TO_CHAR(max_value), TO_CHAR(increment_by), cycle_flag, TO_CHAR(last_number) FROM all_sequences WHERE sequence_owner = {owner} ORDER BY sequence_name");
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, values)
             .await?
             .iter()
             .map(|r| SequenceInfo {
@@ -2879,6 +2939,19 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn requalifies_unquoted_oracle_qualifiers_case_insensitively() {
+        let sql = "SELECT hr.f(x), Hr.T.id, \"HR\".u, \"hr\".v, hrx.w, x.hr.y, 'hr.z', nq'[hr.q]' FROM hr.t";
+        assert_eq!(
+            requalify(sql, "HR", "DEV"),
+            "SELECT \"DEV\".f(x), \"DEV\".T.id, \"DEV\".u, \"hr\".v, hrx.w, x.hr.y, 'hr.z', nq'[hr.q]' FROM \"DEV\".t"
+        );
+        assert_eq!(
+            requalify("SELECT \"Mixed\".a, mixed.b FROM dual", "Mixed", "DEV"),
+            "SELECT \"DEV\".a, mixed.b FROM dual"
+        );
+    }
 
     #[test]
     fn view_create_script_and_select_body() {
