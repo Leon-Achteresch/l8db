@@ -107,21 +107,22 @@ The browser fixture has 60 cards. The performance scenario compiles and applies
 5,000 CSS rules (193,889 source bytes), forces style resolution, measures 20 samples
 after two warmups, and exercises 1,000 rapid edits, idle behavior and disposal of a
 pending update. Budgets: median <50 ms, p95 <100 ms, compiled CSS <1.5 MB, one
-retained style element/rule group, one application for the edit burst, no idle or
-abandoned applications, no remaining style after disposal and zero database
+retained style marker/rule group/adopted stylesheet, one application for the edit
+burst, no idle or abandoned applications, no remaining style after disposal and zero database
 requests. Source size and retained DOM are measured bounds, not a native heap
-measurement. The initial CSSOM implementation measured Chromium 39.1/53.0 ms and
-WebKit 111/123 ms (median/p95). After eliminating per-rule CSSOM mutation and
-serializing the browser-parsed stylesheet once, the final measurement was
-**Chromium 18.70/29.60 ms**, and **WebKit 108/121 ms** (median/p95). Compiled CSS
-was 283,926 bytes. Both engines retained one stylesheet/rule group, applied the
-1,000-edit burst once, recorded zero idle/abandoned applications and database
+measurement. The previous serialized stylesheet implementation measured Chromium
+18.70/29.60 ms and WebKit 108/121 ms (median/p95). Reusing a constructed stylesheet
+with `document.adoptedStyleSheets` removes the second parse of serialized CSS.
+Only selectors containing dashboard root aliases need CSSOM mutation. The resulting
+measurement was **Chromium 16.60/26.10 ms** and **WebKit 85/97 ms** (median/p95).
+Serialized compiled CSS was 283,926 bytes. Both engines retained one
+stylesheet/rule group, applied the 1,000-edit burst once, recorded zero idle/abandoned applications and database
 requests, and removed the stylesheet on disposal.
 
-**Known budget failure:** WebKit exceeds the unchanged 50/100 ms latency budgets
-for this large stylesheet. The final WebKit stage medians were 29 ms to compile,
-16 ms to insert and 61 ms for forced style resolution. The scoped performance test
-fails on that engine; this is not a passing cross-platform performance claim.
+**Known budget failure:** WebKit exceeds the unchanged 50 ms median latency budget
+for this large stylesheet; its p95 meets the 100 ms budget. The final WebKit stage
+medians were 26 ms to compile, 0 ms to adopt and 62 ms for forced style resolution.
+The scoped performance test fails on that engine; this is not a passing cross-platform performance claim.
 Chromium meets the budgets. Live edits remain debounced by 180 ms, and unchanged
 CSS does not cause another style update.
 
@@ -138,12 +139,14 @@ were not exercised. Browser database request counts use the fixture's mocked
 Tauri transport; the Rust lifecycle check verifies design updates still work with
 an inaccessible database URL. No live AI provider was called.
 
-The final functional browser audit passed in Chromium and WebKit (42 assertions
+The final functional browser audit passed in Chromium and WebKit (62 assertions
 across both engines). It verifies imported CSS, draft discard, export, persisted
 reload, root variables, nested and responsive selectors, pseudo-elements,
 registered `@font-face` definitions, running `@keyframes` animations, typography,
-scope isolation, hidden-dashboard recovery and the AI/MCP handoff. A deliberately
-delayed file read also verifies that choosing a newer preset cancels the stale
+scope isolation, hidden-dashboard recovery and the AI/MCP handoff. Additional
+checks cover escaped root selectors, custom-property tokens containing braces,
+invalid-draft rollback, independent stylesheet ownership and idempotent disposal.
+A deliberately delayed file read also verifies that choosing a newer preset cancels the stale
 import; typing, reset and the enabled switch use the same cancellation mechanism.
 This audit establishes the requested design capabilities within the documented
 WebView and resource constraints. The separate large-stylesheet WebKit latency

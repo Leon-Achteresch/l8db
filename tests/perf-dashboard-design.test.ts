@@ -29,14 +29,15 @@ for (const engine of [chromium, webkit]) {
           const style = document.createElement("style");
           style.dataset.perfDesign = "true";
           document.head.appendChild(style);
+          const initialSheets = document.adoptedStyleSheets.length;
           const samples: number[] = [];
           const stages: number[][] = [[], [], []];
-          let compiled = "";
+          let compiled: CSSStyleSheet | undefined;
           for (let sample = 0; sample < 22; sample++) {
             const start = performance.now();
-            compiled = api.compileDashboardCss(css, scope);
+            compiled = api.compileDashboardStylesheet(css, scope, api.dashboardStylesheet(style));
             const parsedAt = performance.now();
-            style.textContent = compiled;
+            api.applyDashboardStylesheet(style, compiled);
             const insertedAt = performance.now();
             getComputedStyle(surface).color;
             if (sample >= 2) {
@@ -47,30 +48,38 @@ for (const engine of [chromium, webkit]) {
             }
           }
           samples.sort((a, b) => a - b);
-          let mutations = 0;
-          const observer = new MutationObserver((records) => {
-            mutations += records.length;
-          });
-          observer.observe(style, { childList: true });
+          const compiledBytes = new TextEncoder().encode(
+            Array.from(compiled?.cssRules ?? [], (rule) => rule.cssText).join("\n"),
+          ).byteLength;
+          compiled = undefined;
+          let applications = 0;
+          const replace = CSSStyleSheet.prototype.replaceSync;
+          CSSStyleSheet.prototype.replaceSync = function (css: string) {
+            applications++;
+            replace.call(this, css);
+          };
           const controller = api.createDashboardStyleController(style, scope, () => undefined);
           for (let update = 0; update < 1000; update++)
             controller.update({ css: ".dashboard-widget { opacity: 0.9; }", enabled: true });
           await new Promise((resolve) => setTimeout(resolve, api.DASHBOARD_CSS_DELAY_MS + 40));
-          const applied = mutations;
+          const applied = applications;
           const retainedStyles = document.querySelectorAll("style[data-perf-design]").length;
-          const retainedRules = style.sheet?.cssRules.length ?? 0;
+          const retainedRules = api.dashboardStylesheet(style)?.cssRules.length ?? 0;
+          const retainedSheets = document.adoptedStyleSheets.length - initialSheets;
           await new Promise((resolve) => setTimeout(resolve, 250));
-          const idle = mutations - applied;
+          const idle = applications - applied;
           controller.update({ css: ".dashboard-widget { opacity: 0.1; }", enabled: true });
           controller.dispose();
+          const afterDispose = applications;
           await new Promise((resolve) => setTimeout(resolve, api.DASHBOARD_CSS_DELAY_MS + 40));
-          const abandoned = mutations - applied;
+          const abandoned = applications - afterDispose;
           const remaining = document.querySelectorAll("style[data-perf-design]").length;
-          observer.disconnect();
+          const remainingSheets = document.adoptedStyleSheets.length - initialSheets;
+          CSSStyleSheet.prototype.replaceSync = replace;
           return {
             stages: stages.map((stage) => stage.sort((a, b) => a - b)[10]),
             sourceBytes,
-            compiledBytes: new TextEncoder().encode(compiled).byteLength,
+            compiledBytes,
             medianMs: samples[10],
             p95Ms: samples[18],
             applied,
@@ -78,7 +87,9 @@ for (const engine of [chromium, webkit]) {
             abandoned,
             retainedStyles,
             retainedRules,
+            retainedSheets,
             remaining,
+            remainingSheets,
             databaseRequests: runtime.dashboardDesignCalls.filter(
               (call) => call.command === "execute_query",
             ).length,
@@ -105,9 +116,11 @@ for (const engine of [chromium, webkit]) {
         expect(result.applied).toBe(1);
         expect(result.retainedStyles).toBe(1);
         expect(result.retainedRules).toBe(1);
+        expect(result.retainedSheets).toBe(1);
         expect(result.idle).toBe(0);
         expect(result.abandoned).toBe(0);
         expect(result.remaining).toBe(0);
+        expect(result.remainingSheets).toBe(0);
         expect(result.databaseRequests).toBe(0);
       } finally {
         await browser.close();

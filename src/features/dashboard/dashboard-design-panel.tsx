@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useAiStore } from "@/lib/ai/store";
 import {
-  compileDashboardCss,
+  compileDashboardStylesheet,
   DASHBOARD_DESIGN_PRESETS,
   DASHBOARD_DESIGN_SELECTORS,
   type DashboardDesign,
@@ -58,7 +58,7 @@ export function DashboardDesignPanel({
 
   const checkCss = () => {
     try {
-      compileDashboardCss(design.css, '[data-dashboard-design="validation"]');
+      compileDashboardStylesheet(design.css, '[data-dashboard-design="validation"]');
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "CSS konnte nicht geladen werden.");

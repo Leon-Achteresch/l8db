@@ -126,70 +126,71 @@ function rootSelectors(selector: string): string {
   return result;
 }
 
-function selectorAliases(css: string): string {
-  let result = "";
-  let copied = 0;
-  let start = 0;
-  let quote = "";
-  let parentheses = 0;
-  let brackets = 0;
-  let valueBraces = 0;
-  for (let i = 0; i < css.length; i++) {
-    const char = css[i];
-    if (char === "\\") {
-      i++;
-      continue;
+function selectorAliases(rules: CSSRuleList): void {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) {
+      const selector = rule.selectorText;
+      const next = rootSelectors(selector);
+      if (next !== selector) rule.selectorText = next;
     }
-    if (quote) {
-      if (char === quote) quote = "";
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-    if (char === "(") parentheses++;
-    else if (char === ")") parentheses--;
-    else if (char === "[") brackets++;
-    else if (char === "]") brackets--;
-    if (parentheses || brackets) continue;
-    if (valueBraces) {
-      if (char === "{") valueBraces++;
-      else if (char === "}") valueBraces--;
-      continue;
-    }
-    if (char === "{") {
-      const prelude = css.slice(start, i);
-      if (/^\s*--[\w-]+\s*:/.test(prelude)) {
-        valueBraces = 1;
-        continue;
-      }
-      if (!prelude.trimStart().startsWith("@")) {
-        const next = rootSelectors(prelude);
-        if (next !== prelude) {
-          result += css.slice(copied, start) + next;
-          copied = i;
-        }
-      }
-      start = i + 1;
-    } else if (char === ";" || char === "}") start = i + 1;
+    if (rule instanceof CSSGroupingRule) selectorAliases(rule.cssRules);
   }
-  return result + css.slice(copied);
 }
 
-export function compileDashboardCss(css: string, scope: string): string {
-  validateDashboardDesign({ css, enabled: true });
-  if (!css.trim()) return "";
-  if (!("CSSScopeRule" in globalThis))
-    throw new Error("Eine aktuelle WebView mit CSS-@scope-Unterstützung ist erforderlich.");
-  const sheet = new CSSStyleSheet();
+const stylesheetSources = new WeakMap<CSSStyleSheet, { css: string; scope: string }>();
+
+function replaceDashboardStylesheet(sheet: CSSStyleSheet, css: string, scope: string): void {
+  if (!css.trim()) {
+    sheet.replaceSync("");
+    return;
+  }
   sheet.replaceSync(`@scope (${scope}) {\n${css}\n}`);
   const scoped = sheet.cssRules[0] as CSSGroupingRule | undefined;
   if (!scoped?.cssRules?.length)
     throw new Error(
       "Keine gültige CSS-Regel gefunden. Beispiel: .dashboard-widget { color: red; }",
     );
-  return selectorAliases(scoped.cssText);
+  while (sheet.cssRules.length > 1) sheet.deleteRule(sheet.cssRules.length - 1);
+  selectorAliases(scoped.cssRules);
+}
+
+export function compileDashboardStylesheet(
+  css: string,
+  scope: string,
+  existing?: CSSStyleSheet,
+): CSSStyleSheet {
+  validateDashboardDesign({ css, enabled: true });
+  if (css.trim() && !("CSSScopeRule" in globalThis))
+    throw new Error("Eine aktuelle WebView mit CSS-@scope-Unterstützung ist erforderlich.");
+  const existingSource = existing && stylesheetSources.get(existing);
+  const sheet = existing && existingSource?.scope === scope ? existing : new CSSStyleSheet();
+  const previous = stylesheetSources.get(sheet);
+  try {
+    replaceDashboardStylesheet(sheet, css, scope);
+    stylesheetSources.set(sheet, { css, scope });
+    return sheet;
+  } catch (error) {
+    if (previous) replaceDashboardStylesheet(sheet, previous.css, previous.scope);
+    throw error;
+  }
+}
+
+const dashboardStylesheets = new WeakMap<HTMLStyleElement, CSSStyleSheet>();
+
+export function dashboardStylesheet(style: HTMLStyleElement): CSSStyleSheet | undefined {
+  return dashboardStylesheets.get(style);
+}
+
+export function applyDashboardStylesheet(style: HTMLStyleElement, sheet?: CSSStyleSheet): void {
+  const current = dashboardStylesheets.get(style);
+  const adopted = sheet?.cssRules.length ? sheet : undefined;
+  if (current === adopted) return;
+  const document = style.ownerDocument;
+  const next = document.adoptedStyleSheets.filter((candidate) => candidate !== current);
+  if (adopted) next.push(adopted);
+  document.adoptedStyleSheets = next;
+  if (adopted) dashboardStylesheets.set(style, adopted);
+  else dashboardStylesheets.delete(style);
 }
 
 export function createDashboardStyleController(
@@ -213,7 +214,10 @@ export function createDashboardStyleController(
         try {
           const next = design.enabled ? design.css : "";
           if (next !== applied) {
-            style.textContent = compileDashboardCss(next, scope);
+            applyDashboardStylesheet(
+              style,
+              compileDashboardStylesheet(next, scope, dashboardStylesheet(style)),
+            );
             applied = next;
           }
           onError("");
@@ -225,8 +229,10 @@ export function createDashboardStyleController(
       else timer = setTimeout(apply, DASHBOARD_CSS_DELAY_MS);
     },
     dispose() {
+      if (disposed) return;
       disposed = true;
       cancel();
+      applyDashboardStylesheet(style);
       style.remove();
     },
   };
