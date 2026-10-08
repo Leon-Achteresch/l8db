@@ -28,6 +28,7 @@ import {
 } from "@/lib/hotkeys";
 import { markNewFeatureSeen, useHasNewFeatures } from "@/lib/new-features";
 import { useNotebookStore } from "@/lib/notebook/store";
+import { usePaletteHistoryStore } from "@/lib/palette-history";
 import { supports } from "@/lib/providers";
 import { useAllSchemaObjectsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -55,7 +56,8 @@ export function AppHeaderSearch() {
   const [open, setOpen] = useState(false);
   const [builders, setBuilders] = useState<typeof import("./app-header-search/command-items")>();
   const [initialQuery, setInitialQuery] = useState("");
-  const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
+  const paletteHistory = usePaletteHistoryStore((state) => state.history);
+  const recordPaletteUse = usePaletteHistoryStore((state) => state.record);
   const openSearch = useCallback((commandsOnly = false) => {
     setInitialQuery(commandsOnly ? "> " : "");
     setOpen(true);
@@ -372,14 +374,8 @@ export function AppHeaderSearch() {
         queryItem={askAiItem}
         initialQuery={initialQuery}
         commandFeatureId="search.commands"
-        recentCommandIds={recentCommandIds}
-        onSelectItem={(item) => {
-          if (item.kind === "command") {
-            setRecentCommandIds((ids) =>
-              [item.id, ...ids.filter((id) => id !== item.id)].slice(0, 6),
-            );
-          }
-        }}
+        history={paletteHistory}
+        onSelectItem={(item) => recordPaletteUse(item.id)}
       />
       {objectSearchMounted.current && (
         <Suspense fallback={null}>

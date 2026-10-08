@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { NewFeatureId } from "@/lib/new-features";
+import type { PaletteHistory } from "@/lib/palette-history";
 
 export type CommandItem = {
   id: string;
@@ -29,6 +30,6 @@ export interface CommandPaletteProps {
   queryItem?: (query: string) => CommandItem;
   initialQuery?: string;
   commandFeatureId?: NewFeatureId;
-  recentCommandIds?: string[];
+  history?: PaletteHistory;
   onSelectItem?: (item: CommandItem) => void;
 }
