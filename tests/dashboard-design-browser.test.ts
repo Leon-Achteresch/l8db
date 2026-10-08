@@ -5,6 +5,83 @@ const base = process.env.L8DB_DASHBOARD_DESIGN_BROWSER_URL;
 
 for (const engine of [chromium, webkit]) {
   test.skipIf(!base)(
+    `${engine.name()}: native stylesheets preserve scope, CSS tokens and other owners`,
+    async () => {
+      const browser = await engine.launch();
+      const page = await browser.newPage();
+      try {
+        await page.goto(`${base}/tests/fixtures/dashboard-design.html`);
+        await page.locator(".dashboard-widget").first().waitFor();
+        const result = await page.evaluate(() => {
+          const api = (
+            window as unknown as {
+              dashboardDesign: typeof import("../src/lib/dashboard-design");
+            }
+          ).dashboardDesign;
+          const root = document.querySelector<HTMLElement>(".dashboard-surface")!;
+          const marker = document.createElement("style");
+          document.head.append(marker);
+          const other = new CSSStyleSheet();
+          other.replaceSync("body { --other-owner: survives; }");
+          document.adoptedStyleSheets = [...document.adoptedStyleSheets, other];
+          const errors: string[] = [];
+          const controller = api.createDashboardStyleController(
+            marker,
+            `#${CSS.escape(root.id)}`,
+            (error) => error && errors.push(error),
+          );
+          const css = String.raw`/* } body { color: red; } */ :\72 oot { --token: "body { :root }"; --object: { body: ":root" }; --valid: yes; } } [data-testid="outside"] { --escaped: broken; }`;
+          controller.update({ css, enabled: true }, true);
+          const style = getComputedStyle(root);
+          const token = style.getPropertyValue("--token").trim();
+          const object = style.getPropertyValue("--object").trim();
+          const beforeInvalid = api.dashboardStylesheet(marker);
+          controller.update({ css: "not-a-rule", enabled: true }, true);
+          const preserved = api.dashboardStylesheet(marker) === beforeInvalid;
+          const restored = getComputedStyle(root).getPropertyValue("--valid").trim();
+          const scoped = api.dashboardStylesheet(marker)?.cssRules.length;
+          const escaped = getComputedStyle(
+            document.querySelector('[data-testid="outside"]')!,
+          ).getPropertyValue("--escaped");
+          controller.update({ css: "", enabled: false }, true);
+          const cleared = getComputedStyle(root).getPropertyValue("--valid");
+          controller.dispose();
+          controller.dispose();
+          const otherPreserved = document.adoptedStyleSheets.includes(other);
+          const released = !api.dashboardStylesheet(marker) && !marker.isConnected;
+          document.adoptedStyleSheets = document.adoptedStyleSheets.filter(
+            (sheet) => sheet !== other,
+          );
+          return {
+            token,
+            object,
+            preserved,
+            restored,
+            scoped,
+            escaped,
+            cleared,
+            otherPreserved,
+            released,
+            errors,
+          };
+        });
+        expect(result.token).toBe('"body { :root }"');
+        expect(result.object).toContain('body: ":root"');
+        expect(result.preserved).toBe(true);
+        expect(result.restored).toBe("yes");
+        expect(result.scoped).toBe(1);
+        expect(result.escaped).toBe("");
+        expect(result.cleared).toBe("");
+        expect(result.otherPreserved).toBe(true);
+        expect(result.released).toBe(true);
+        expect(result.errors).toHaveLength(1);
+      } finally {
+        await browser.close();
+      }
+    },
+    15000,
+  );
+  test.skipIf(!base)(
     `${engine.name()}: dashboard CSS preview, import, persistence, recovery and AI`,
     async () => {
       const browser = await engine.launch();
