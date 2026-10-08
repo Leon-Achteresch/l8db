@@ -2298,6 +2298,7 @@ pub async fn list_schema_copy_objects(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn preview_schema_object_copy(
     kind: DatabaseKind,
     connection_string: String,
@@ -2306,16 +2307,33 @@ pub async fn preview_schema_object_copy(
     target_schema: String,
     object_type: String,
     name: String,
+    target_connection_string: Option<String>,
+    target_database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<String, String> {
-    create_adapter_from_string(
+    let pool = pool_state.inner().clone();
+    let adapter =
+        create_adapter_from_string(kind, &connection_string, database.as_deref(), pool.clone())?;
+    let Some(target_connection_string) = target_connection_string else {
+        return adapter
+            .preview_schema_object_copy(&source_schema, &target_schema, &object_type, &name)
+            .await;
+    };
+    let target = create_adapter_from_string(
         kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .preview_schema_object_copy(&source_schema, &target_schema, &object_type, &name)
-    .await
+        &target_connection_string,
+        target_database.as_deref(),
+        pool,
+    )?;
+    adapter
+        .preview_schema_object_copy_into(
+            target.as_ref(),
+            &source_schema,
+            &target_schema,
+            &object_type,
+            &name,
+        )
+        .await
 }
 
 #[tauri::command]

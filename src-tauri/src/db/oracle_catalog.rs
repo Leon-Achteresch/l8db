@@ -4,7 +4,7 @@ use std::future::Future;
 use futures_util::future::try_join_all;
 use oracle::Row;
 
-use super::{create_script, fetch, lit, quote, s, view_create_script, OracleAdapter};
+use super::{binds, create_script, fetch, lit, quote, s, view_create_script, OracleAdapter};
 use crate::db::schema_catalog::CatalogObject;
 
 const SYSTEM_TYPE_OWNERS: [&str; 6] = ["SYS", "PUBLIC", "MDSYS", "XDB", "CTXSYS", "ORDSYS"];
@@ -49,6 +49,69 @@ fn column_type(
     }
 }
 
+fn identity_options(options: &str) -> String {
+    let value = |key: &str| {
+        options
+            .split(',')
+            .find_map(|part| part.trim().strip_prefix(key)?.strip_prefix(':'))
+            .map(str::trim)
+            .unwrap_or_default()
+    };
+    let flag = |key: &str| value(key) == "Y";
+    let increment = value("INCREMENT BY");
+    let descending = increment.starts_with('-');
+    let (min, max) = if descending {
+        ("-999999999999999999999999999", "-1")
+    } else {
+        ("1", "9999999999999999999999999999")
+    };
+    let mut parts = Vec::new();
+    let start = value("START WITH");
+    if !start.is_empty() && start != if descending { max } else { min } {
+        parts.push(format!("START WITH {start}"));
+    }
+    if !increment.is_empty() && increment != "1" {
+        parts.push(format!("INCREMENT BY {increment}"));
+    }
+    let min_value = value("MIN_VALUE");
+    if !min_value.is_empty() && min_value != min {
+        parts.push(format!("MINVALUE {min_value}"));
+    }
+    let max_value = value("MAX_VALUE");
+    if !max_value.is_empty() && max_value != max {
+        parts.push(format!("MAXVALUE {max_value}"));
+    }
+    if flag("CYCLE_FLAG") {
+        parts.push("CYCLE".to_string());
+    }
+    match value("CACHE_SIZE") {
+        "" | "20" => {}
+        "0" => parts.push("NOCACHE".to_string()),
+        cache => parts.push(format!("CACHE {cache}")),
+    }
+    if flag("ORDER_FLAG") {
+        parts.push("ORDER".to_string());
+    }
+    if flag("SCALE_FLAG") {
+        parts.push(
+            if flag("EXTEND_FLAG") {
+                "SCALE EXTEND"
+            } else {
+                "SCALE NOEXTEND"
+            }
+            .to_string(),
+        );
+    }
+    if flag("KEEP_VALUE") {
+        parts.push("KEEP".to_string());
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", parts.join(" "))
+    }
+}
+
 fn is_not_null_check(condition: &str) -> bool {
     condition
         .trim()
@@ -61,6 +124,40 @@ fn partition_clause(ddl: &str) -> Option<&str> {
     ddl.match_indices("PARTITION BY")
         .find(|(index, _)| ddl[..*index].ends_with(char::is_whitespace))
         .map(|(index, _)| ddl[index..].trim_end())
+}
+
+fn only_table(column: &str, table: Option<&str>) -> String {
+    table
+        .map(|_| format!(" AND {column} = :tbl"))
+        .unwrap_or_default()
+}
+
+fn scope(schema: &str, table: Option<&str>) -> Vec<(String, String)> {
+    let mut values = vec![("owner", schema)];
+    values.extend(table.map(|table| ("tbl", table)));
+    binds(&values)
+}
+
+pub(super) fn table_ddl(schema: &str, meta: &Row, lines: &[String]) -> String {
+    let temporary = s(meta, 1) == "Y";
+    let mut ddl = format!(
+        "CREATE {}TABLE {}.{}\n(\n  {}\n)",
+        if temporary { "GLOBAL TEMPORARY " } else { "" },
+        quote(schema),
+        quote(&s(meta, 0)),
+        lines.join(",\n  ")
+    );
+    if s(meta, 4) == "IOT" {
+        ddl.push_str(" ORGANIZATION INDEX");
+    }
+    if temporary {
+        ddl.push_str(if s(meta, 2) == "SYS$TRANSACTION" {
+            " ON COMMIT DELETE ROWS"
+        } else {
+            " ON COMMIT PRESERVE ROWS"
+        });
+    }
+    ddl
 }
 
 fn columns_list(columns: &[String]) -> String {
@@ -90,23 +187,7 @@ fn table_objects(
             let mut columns = by_table.remove(table.as_str()).unwrap_or_default();
             let iot_key = primary_keys.get(&table).filter(|_| s(r, 4) == "IOT");
             columns.extend(iot_key.cloned());
-            let mut ddl = format!(
-                "CREATE {}TABLE {}.{}\n(\n  {}\n)",
-                if temporary { "GLOBAL TEMPORARY " } else { "" },
-                quote(schema),
-                quote(&table),
-                columns.join(",\n  ")
-            );
-            if iot_key.is_some() {
-                ddl.push_str(" ORGANIZATION INDEX");
-            }
-            if temporary {
-                ddl.push_str(if s(r, 2) == "SYS$TRANSACTION" {
-                    " ON COMMIT DELETE ROWS"
-                } else {
-                    " ON COMMIT PRESERVE ROWS"
-                });
-            }
+            let ddl = table_ddl(schema, r, &columns);
             let mut object = CatalogObject::new("table", table, None, ddl);
             if temporary {
                 object = object.attr("temporary", s(r, 2));
@@ -141,10 +222,10 @@ impl OracleAdapter {
             self.catalog_relations(schema, want("table"), want("constraint"), want("index")),
             when(want("view"), self.catalog_views(schema)),
             when(want("materialized_view"), self.catalog_mviews(schema)),
-            when(want("sequence"), self.catalog_sequences(schema)),
+            when(want("sequence"), self.catalog_sequences(schema, None)),
             when(!code.is_empty(), self.catalog_source(schema, &code)),
             when(want("synonym"), self.catalog_synonyms(schema)),
-            when(want("comment"), self.catalog_comments(schema)),
+            when(want("comment"), self.catalog_comments(schema, None)),
             when(want("grant"), self.catalog_grants(schema)),
         )?;
         Ok([
@@ -210,10 +291,10 @@ impl OracleAdapter {
             return Ok(Vec::new());
         }
         let (meta, (mut constraints, backing), mut columns, mut indexes) = tokio::try_join!(
-            self.catalog_table_meta(schema),
-            self.catalog_constraints(schema),
-            when(tables_wanted, self.catalog_columns(schema)),
-            when(indexes_wanted, self.catalog_indexes(schema)),
+            self.catalog_table_meta(schema, None),
+            self.catalog_constraints(schema, None),
+            when(tables_wanted, self.catalog_columns(schema, None)),
+            when(indexes_wanted, self.catalog_indexes(schema, None)),
         )?;
         let tables: HashSet<String> = meta.iter().map(|r| s(r, 0)).collect();
         let in_tables = |object: &CatalogObject| {
@@ -246,18 +327,24 @@ impl OracleAdapter {
         Ok(out)
     }
 
-    async fn catalog_table_meta(&self, schema: &str) -> Result<Vec<Row>, String> {
-        let owner = lit(schema);
+    pub(super) async fn catalog_table_meta(
+        &self,
+        schema: &str,
+        table: Option<&str>,
+    ) -> Result<Vec<Row>, String> {
+        let owner = ":owner";
+        let tables = only_table("table_name", table);
+        let containers = only_table("container_name", table);
         let rows = self
-            .rows(format!(
+            .rows_bound(format!(
                 "SELECT table_name, temporary, duration, partitioned, iot_type, 'T' FROM all_tables \
-                 WHERE owner = {owner} AND nested = 'NO' AND secondary = 'N' AND dropped = 'NO' \
+                 WHERE owner = {owner}{tables} AND nested = 'NO' AND secondary = 'N' AND dropped = 'NO' \
                  AND (iot_type IS NULL OR iot_type = 'IOT') \
                  AND table_name NOT LIKE 'BIN$%' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' \
                  AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'AQ$%' \
-                 UNION ALL SELECT container_name, NULL, NULL, NULL, NULL, 'X' FROM all_mviews WHERE owner = {owner} \
-                 UNION ALL SELECT table_name, NULL, NULL, NULL, NULL, 'X' FROM all_external_tables WHERE owner = {owner}"
-            ))
+                 UNION ALL SELECT container_name, NULL, NULL, NULL, NULL, 'X' FROM all_mviews WHERE owner = {owner}{containers} \
+                 UNION ALL SELECT table_name, NULL, NULL, NULL, NULL, 'X' FROM all_external_tables WHERE owner = {owner}{tables}"
+            ), scope(schema, table))
             .await?;
         let excluded: HashSet<String> = rows
             .iter()
@@ -270,18 +357,21 @@ impl OracleAdapter {
             .collect())
     }
 
-    async fn catalog_columns(&self, schema: &str) -> Objects {
+    pub(super) async fn catalog_columns(&self, schema: &str, table: Option<&str>) -> Objects {
         let rows = self
-            .rows(format!(
-                "SELECT c.table_name, c.column_name, c.data_type, c.data_type_owner, c.data_length, c.data_precision, \
+            .rows_bound(
+                format!(
+                    "SELECT c.table_name, c.column_name, c.data_type, c.data_type_owner, c.data_length, c.data_precision, \
                         c.data_scale, c.char_length, c.char_used, c.nullable, c.data_default, c.virtual_column, \
-                        c.default_on_null, ic.generation_type \
+                        c.default_on_null, ic.generation_type, ic.identity_options, c.hidden_column \
                  FROM all_tab_cols c \
                  LEFT JOIN all_tab_identity_cols ic ON ic.owner = c.owner AND ic.table_name = c.table_name AND ic.column_name = c.column_name \
-                 WHERE c.owner = {} AND c.hidden_column = 'NO' AND c.table_name NOT LIKE 'BIN$%' \
-                 ORDER BY c.table_name, c.column_id",
-                lit(schema)
-            ))
+                 WHERE c.owner = :owner{} AND c.user_generated = 'YES' AND c.table_name NOT LIKE 'BIN$%' \
+                 ORDER BY c.table_name, c.column_id NULLS LAST, c.internal_column_id",
+                    only_table("c.table_name", table)
+                ),
+                scope(schema, table),
+            )
             .await?;
         Ok(rows
             .iter()
@@ -301,6 +391,9 @@ impl OracleAdapter {
                 let on_null = s(r, 12) == "YES";
                 let identity = s(r, 13);
                 let mut ddl = format!("{} {data_type}", quote(&name));
+                if s(r, 15) == "YES" {
+                    ddl.push_str(" INVISIBLE");
+                }
                 let mut object = CatalogObject::new("column", name, Some(s(r, 0)), "")
                     .attr("type", data_type)
                     .attr("nullable", if nullable == "N" { "NO" } else { "YES" });
@@ -313,7 +406,10 @@ impl OracleAdapter {
                     } else {
                         identity
                     };
-                    ddl.push_str(&format!(" GENERATED {identity} AS IDENTITY"));
+                    ddl.push_str(&format!(
+                        " GENERATED {identity} AS IDENTITY{}",
+                        identity_options(&s(r, 14))
+                    ));
                     object = object.attr("identity", identity);
                 } else if !default.is_empty() {
                     let default = if on_null {
@@ -333,27 +429,31 @@ impl OracleAdapter {
             .collect())
     }
 
-    async fn catalog_constraints(
+    pub(super) async fn catalog_constraints(
         &self,
         schema: &str,
+        table: Option<&str>,
     ) -> Result<(Vec<CatalogObject>, HashSet<String>), String> {
-        let owner = lit(schema);
+        let owner = ":owner";
+        let only = only_table("table_name", table);
         let (mut columns, rows) = tokio::try_join!(
-            self.rows(format!(
+            self.rows_bound(format!(
                 "SELECT owner, constraint_name, table_name, column_name FROM all_cons_columns \
-                 WHERE owner = {owner} ORDER BY constraint_name, position"
-            )),
-            self.rows(format!(
+                 WHERE owner = {owner}{only} ORDER BY constraint_name, position"
+            ), scope(schema, table)),
+            self.rows_bound(format!(
                 "SELECT table_name, constraint_name, constraint_type, search_condition_vc, r_owner, r_constraint_name, \
                         delete_rule, status, deferrable, deferred, generated, validated, index_owner, index_name \
                  FROM all_constraints \
-                 WHERE owner = {owner} AND constraint_type IN ('P', 'U', 'R', 'C') AND table_name NOT LIKE 'BIN$%' \
+                 WHERE owner = {owner}{only} AND constraint_type IN ('P', 'U', 'R', 'C') AND table_name NOT LIKE 'BIN$%' \
                  ORDER BY table_name, constraint_name"
-            )),
+            ), scope(schema, table)),
         )?;
+        let loaded: HashSet<(String, String)> =
+            columns.iter().map(|r| (s(r, 0), s(r, 1))).collect();
         let foreign: Vec<String> = rows
             .iter()
-            .filter(|r| s(r, 2) == "R" && s(r, 4) != schema)
+            .filter(|r| s(r, 2) == "R" && !loaded.contains(&(s(r, 4), s(r, 5))))
             .map(|r| format!("({}, {})", lit(&s(r, 4)), lit(&s(r, 5))))
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -463,25 +563,26 @@ impl OracleAdapter {
         Ok((out, backing))
     }
 
-    async fn catalog_indexes(&self, schema: &str) -> Objects {
-        let owner = lit(schema);
+    pub(super) async fn catalog_indexes(&self, schema: &str, table: Option<&str>) -> Objects {
+        let owner = ":owner";
+        let only = only_table("table_name", table);
         let (expressions, columns, rows) = tokio::try_join!(
-            self.rows(format!(
-                "SELECT index_name, column_position, column_expression FROM all_ind_expressions WHERE index_owner = {owner}"
-            )),
-            self.rows(format!(
+            self.rows_bound(format!(
+                "SELECT index_name, column_position, column_expression FROM all_ind_expressions WHERE index_owner = {owner}{only}"
+            ), scope(schema, table)),
+            self.rows_bound(format!(
                 "SELECT index_name, column_name, descend, column_position FROM all_ind_columns \
-                 WHERE index_owner = {owner} ORDER BY index_name, column_position"
-            )),
-            self.rows(format!(
+                 WHERE index_owner = {owner}{only} ORDER BY index_name, column_position"
+            ), scope(schema, table)),
+            self.rows_bound(format!(
                 "SELECT index_name, table_name, index_type, uniqueness, generated, ityp_owner, ityp_name, \
                         parameters, partitioned \
                  FROM all_indexes \
-                 WHERE owner = {owner} AND table_owner = {owner} AND index_type NOT IN ('LOB', 'IOT - TOP', 'CLUSTER') \
+                 WHERE owner = {owner} AND table_owner = {owner}{only} AND index_type NOT IN ('LOB', 'IOT - TOP', 'CLUSTER') \
                  AND table_name NOT LIKE 'BIN$%' AND index_name NOT LIKE 'BIN$%' AND table_type = 'TABLE' \
                  AND index_name NOT LIKE 'I\\_SNAP$\\_%' ESCAPE '\\' \
                  ORDER BY index_name"
-            )),
+            ), scope(schema, table)),
         )?;
         let expressions: HashMap<(String, String), String> = expressions
             .iter()
@@ -607,17 +708,28 @@ impl OracleAdapter {
         Ok(out)
     }
 
-    async fn catalog_sequences(&self, schema: &str) -> Objects {
+    pub(super) async fn catalog_sequences(
+        &self,
+        schema: &str,
+        names: Option<&[String]>,
+    ) -> Objects {
         let mut out = Vec::new();
-        let rows = self
-            .rows(format!(
+        if names.is_some_and(<[String]>::is_empty) {
+            return Ok(out);
+        }
+        let rows: Vec<Row> = self
+            .rows_bound(
                 "SELECT sequence_name, TO_CHAR(min_value), TO_CHAR(max_value), TO_CHAR(increment_by), cycle_flag, \
                         order_flag, TO_CHAR(cache_size), TO_CHAR(last_number) \
-                 FROM all_sequences WHERE sequence_owner = {} AND sequence_name NOT LIKE 'ISEQ$$\\_%' ESCAPE '\\' \
-                 ORDER BY sequence_name",
-                lit(schema)
-            ))
-            .await?;
+                 FROM all_sequences WHERE sequence_owner = :owner AND sequence_name NOT LIKE 'ISEQ$$\\_%' ESCAPE '\\' \
+                 ORDER BY sequence_name"
+                    .to_string(),
+                scope(schema, None),
+            )
+            .await?
+            .into_iter()
+            .filter(|r| names.is_none_or(|names| names.contains(&s(r, 0))))
+            .collect();
         for r in &rows {
             let name = s(r, 0);
             let cache = s(r, 6);
@@ -745,17 +857,19 @@ impl OracleAdapter {
         Ok(out)
     }
 
-    async fn catalog_comments(&self, schema: &str) -> Objects {
+    pub(super) async fn catalog_comments(&self, schema: &str, table: Option<&str>) -> Objects {
         let mut out = Vec::new();
-        let owner = lit(schema);
+        let owner = ":owner";
+        let only = only_table("table_name", table);
+        let mviews = only_table("mview_name", table);
         let tables = self
-            .rows(format!(
+            .rows_bound(format!(
                 "SELECT table_name, comments, 'TABLE' FROM all_tab_comments \
-                 WHERE owner = {owner} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' \
+                 WHERE owner = {owner}{only} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' \
                  AND table_name NOT IN (SELECT mview_name FROM all_mviews WHERE owner = {owner}) \
                  UNION ALL SELECT mview_name, comments, 'MATERIALIZED VIEW' FROM all_mview_comments \
-                 WHERE owner = {owner} AND comments IS NOT NULL ORDER BY 1"
-            ))
+                 WHERE owner = {owner}{mviews} AND comments IS NOT NULL ORDER BY 1"
+            ), scope(schema, table))
             .await?;
         for r in &tables {
             let table = s(r, 0);
@@ -774,10 +888,10 @@ impl OracleAdapter {
             ));
         }
         let columns = self
-            .rows(format!(
+            .rows_bound(format!(
                 "SELECT table_name, column_name, comments FROM all_col_comments \
-                 WHERE owner = {owner} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' ORDER BY table_name, column_name"
-            ))
+                 WHERE owner = {owner}{only} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' ORDER BY table_name, column_name"
+            ), scope(schema, table))
             .await?;
         for r in &columns {
             let table = s(r, 0);
