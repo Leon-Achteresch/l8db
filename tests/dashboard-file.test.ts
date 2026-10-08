@@ -31,6 +31,17 @@ test("roundtrip", () => {
   expect(parseDashboard(serializeDashboard(dashboard)).name).toBe("Sales");
 });
 
+test("dashboard files preserve free CSS and its enabled state", () => {
+  const design = {
+    css: ":root { --dash-color-1: #f0f; } @media (width > 800px) { .dashboard-widget { border-radius: 20px; } }",
+    enabled: false,
+  };
+  expect(parseDashboard(serializeDashboard({ ...dashboard, design })).design).toEqual(design);
+  expect(() =>
+    parseDashboard(JSON.stringify({ ...dashboard, design: { css: 1, enabled: true } })),
+  ).toThrow();
+});
+
 test("rejects foreign json", () => {
   expect(() => parseDashboard('{"name":"x"}')).toThrow();
 });

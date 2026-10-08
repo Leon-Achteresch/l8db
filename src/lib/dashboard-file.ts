@@ -1,5 +1,6 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, stat, writeTextFile } from "@tauri-apps/plugin-fs";
+import { validateDashboardDesign } from "@/lib/dashboard-design";
 import type { Dashboard } from "@/lib/dashboards";
 
 export type DashboardFile = Omit<
@@ -11,6 +12,8 @@ export function parseDashboard(text: string): DashboardFile {
   const parsed = JSON.parse(text) as DashboardFile;
   if (!Array.isArray(parsed.widgets) || !Array.isArray(parsed.datasets))
     throw new Error("Ungültiges Dashboard-Format");
+  if (parsed.design != null) validateDashboardDesign(parsed.design);
+  else delete parsed.design;
   return parsed;
 }
 
@@ -41,8 +44,8 @@ export function confirmExpertSql(dashboard: DashboardFile): boolean {
 }
 
 export function serializeDashboard(dashboard: Dashboard): string {
-  const { name, datasets, widgets, variables, refreshSec, locked } = dashboard;
-  return `${JSON.stringify({ name, datasets, widgets, ...(variables?.length ? { variables } : {}), refreshSec, locked }, null, 2)}\n`;
+  const { name, datasets, widgets, variables, refreshSec, locked, design } = dashboard;
+  return `${JSON.stringify({ name, datasets, widgets, ...(variables?.length ? { variables } : {}), refreshSec, locked, ...(design ? { design } : {}) }, null, 2)}\n`;
 }
 
 export async function fileStamp(path: string): Promise<string> {

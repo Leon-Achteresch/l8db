@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useStore } from "zustand";
+import { type DashboardDesign, DEFAULT_DASHBOARD_DESIGN } from "@/lib/dashboard-design";
 import {
   CHARTS,
   type ChartTab,
@@ -21,6 +22,7 @@ import { useHasNewFeatures } from "@/lib/new-features";
 import { type ChartDraft, preferredChart } from "./chart-draft";
 import { ChartLibraryDrawer } from "./chart-library-drawer";
 import { DashboardCanvas } from "./dashboard-canvas";
+import { DashboardDesignStyle } from "./dashboard-design-style";
 import { useDashboardFileReload } from "./dashboard-editor/use-dashboard-file-reload";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
 import { DashboardPeriodContext } from "./dashboard-period";
@@ -31,6 +33,10 @@ import { DashboardVariablesBar } from "./dashboard-variables-bar";
 
 const ChartStudio = lazy(() =>
   import("./chart-studio/chart-studio").then((module) => ({ default: module.ChartStudio })),
+);
+
+const DashboardDesignPanel = lazy(() =>
+  import("./dashboard-design-panel").then((module) => ({ default: module.DashboardDesignPanel })),
 );
 
 export function DashboardEditor({
@@ -45,6 +51,26 @@ export function DashboardEditor({
   database: string | null;
 }) {
   const store = useDashboardsStore();
+  const scopeId = useId();
+  const [designDraft, setDesignDraft] = useState<DashboardDesign | null>(null);
+  const [designError, setDesignError] = useState("");
+  const [designSuspended, setDesignSuspended] = useState(false);
+  const savedDesign = dashboard.design ?? DEFAULT_DASHBOARD_DESIGN;
+  const selectedDesign = designDraft ?? savedDesign;
+  const activeDesign = useMemo(
+    () => ({ ...selectedDesign, enabled: selectedDesign.enabled && !designSuspended }),
+    [selectedDesign, designSuspended],
+  );
+  useEffect(() => {
+    const recover = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.code !== "KeyD") return;
+      event.preventDefault();
+      setDesignSuspended(true);
+      setDesignDraft((draft) => draft ?? { ...(dashboard.design ?? DEFAULT_DASHBOARD_DESIGN) });
+    };
+    window.addEventListener("keydown", recover);
+    return () => window.removeEventListener("keydown", recover);
+  }, [dashboard.design]);
   const queryClient = useQueryClient();
   const hasNew = useHasNewFeatures("dashboard");
   const [drawer, setDrawer] = useState<"dashboards" | "charts" | null>(null);
@@ -194,99 +220,129 @@ export function DashboardEditor({
   return (
     <DashboardScopeContext.Provider value={scope}>
       <DashboardPeriodContext.Provider value={period}>
-        <div
-          className="flex min-h-0 flex-1 flex-col bg-background"
-          style={paletteStyle(paletteMode)}
-        >
-          <DashboardToolbar
-            dashboard={dashboard}
-            siblings={siblings}
-            database={database}
-            editing={editing}
-            compact={Boolean(activeTab)}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            hasNew={hasNew}
-            period={period}
-            onPeriod={setPeriod}
-            onSelect={(id) => {
-              const target = siblings.find((item) => item.id === id);
-              if (target?.database)
-                useDbSelectionStore.getState().setDatabase(connectionId, target.database);
-              store.setActive(connectionId, id);
-            }}
-            onCreate={() => store.add(connectionId, database)}
-            onUpdate={update}
-            onNewChart={startNewChart}
-            onReload={() => {
-              void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
-              void reloadFile(false);
-            }}
-            onDrawer={setDrawer}
-          />
-          {!activeTab && (editing || variables.length > 0) && (
-            <div className="shrink-0 border-b px-3 py-2">
-              <DashboardVariablesBar
+        <DashboardDesignStyle scopeId={scopeId} design={activeDesign} onError={setDesignError} />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div
+            id={`dashboard-design-${scopeId}`}
+            data-dashboard-design={scopeId}
+            className="dashboard-surface flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+            style={paletteStyle(paletteMode)}
+          >
+            <DashboardToolbar
+              dashboard={dashboard}
+              siblings={siblings}
+              database={database}
+              editing={editing}
+              compact={Boolean(activeTab)}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              hasNew={hasNew}
+              period={period}
+              onPeriod={setPeriod}
+              onSelect={(id) => {
+                const target = siblings.find((item) => item.id === id);
+                if (target?.database)
+                  useDbSelectionStore.getState().setDatabase(connectionId, target.database);
+                store.setActive(connectionId, id);
+              }}
+              onCreate={() => store.add(connectionId, database)}
+              onUpdate={update}
+              onNewChart={startNewChart}
+              onReload={() => {
+                void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+                void reloadFile(false);
+              }}
+              onDesign={() => {
+                setDesignSuspended(false);
+                setDesignDraft({ ...savedDesign });
+              }}
+              onDrawer={setDrawer}
+            />
+            {!activeTab && (editing || variables.length > 0) && (
+              <div className="dashboard-filters shrink-0 border-b px-3 py-2">
+                <DashboardVariablesBar
+                  dashboardId={dashboard.id}
+                  variables={variables}
+                  editing={editing}
+                  onChange={(next) => update({ variables: next })}
+                />
+              </div>
+            )}
+            <DashboardTabStrip
+              dashboardName={dashboard.name}
+              tabs={chartTabs}
+              active={activeTab?.id ?? null}
+              onFocus={(id) => useChartTabsStore.getState().focus(dashboard.id, id)}
+              onClose={(tab) => {
+                if (tab.dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+                useChartTabsStore.getState().close(tab.id);
+              }}
+            />
+            <DashboardLibraryDrawer
+              open={drawer === "dashboards"}
+              onOpenChange={(open) => setDrawer(open ? "dashboards" : null)}
+              dashboard={dashboard}
+              dashboards={siblings}
+              connectionId={connectionId}
+              database={database}
+            />
+            <ChartLibraryDrawer
+              open={drawer === "charts"}
+              onOpenChange={(open) => setDrawer(open ? "charts" : null)}
+              dashboard={dashboard}
+              onLoaded={(id) => {
+                update({ locked: false });
+                startEdit(id);
+              }}
+            />
+            {activeTab ? (
+              <Suspense fallback={null}>
+                <ChartStudio
+                  key={activeTab.id}
+                  tab={activeTab}
+                  variablesBar={
+                    <DashboardVariablesBar
+                      dashboardId={dashboard.id}
+                      variables={variables}
+                      editing
+                      onChange={(next) => update({ variables: next })}
+                    />
+                  }
+                  onSave={(next, close) => saveDraft(activeTab, next, close)}
+                  onDelete={activeTab.isNew ? undefined : () => deleteDraft(activeTab)}
+                  onDuplicate={activeTab.isNew ? undefined : () => duplicateDraft(activeTab)}
+                  onClose={() => useChartTabsStore.getState().close(activeTab.id)}
+                />
+              </Suspense>
+            ) : (
+              <DashboardCanvas
                 dashboardId={dashboard.id}
-                variables={variables}
-                editing={editing}
-                onChange={(next) => update({ variables: next })}
+                onEdit={editing ? startEdit : undefined}
+                onAdd={editing ? startNewChart : undefined}
+                onOpenCharts={editing ? openCharts : undefined}
               />
-            </div>
-          )}
-          <DashboardTabStrip
-            dashboardName={dashboard.name}
-            tabs={chartTabs}
-            active={activeTab?.id ?? null}
-            onFocus={(id) => useChartTabsStore.getState().focus(dashboard.id, id)}
-            onClose={(tab) => {
-              if (tab.dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
-              useChartTabsStore.getState().close(tab.id);
-            }}
-          />
-          <DashboardLibraryDrawer
-            open={drawer === "dashboards"}
-            onOpenChange={(open) => setDrawer(open ? "dashboards" : null)}
-            dashboard={dashboard}
-            dashboards={siblings}
-            connectionId={connectionId}
-            database={database}
-          />
-          <ChartLibraryDrawer
-            open={drawer === "charts"}
-            onOpenChange={(open) => setDrawer(open ? "charts" : null)}
-            dashboard={dashboard}
-            onLoaded={(id) => {
-              update({ locked: false });
-              startEdit(id);
-            }}
-          />
-          {activeTab ? (
+            )}
+          </div>
+          {designDraft && (
             <Suspense fallback={null}>
-              <ChartStudio
-                key={activeTab.id}
-                tab={activeTab}
-                variablesBar={
-                  <DashboardVariablesBar
-                    dashboardId={dashboard.id}
-                    variables={variables}
-                    editing
-                    onChange={(next) => update({ variables: next })}
-                  />
-                }
-                onSave={(next, close) => saveDraft(activeTab, next, close)}
-                onDelete={activeTab.isNew ? undefined : () => deleteDraft(activeTab)}
-                onDuplicate={activeTab.isNew ? undefined : () => duplicateDraft(activeTab)}
-                onClose={() => useChartTabsStore.getState().close(activeTab.id)}
+              <DashboardDesignPanel
+                dashboardId={dashboard.id}
+                design={designDraft}
+                error={designError}
+                onChange={(next) => {
+                  setDesignSuspended(false);
+                  setDesignDraft(next);
+                }}
+                onClose={() => {
+                  setDesignDraft(null);
+                }}
+                onSave={() => {
+                  update({ design: designDraft });
+                  setDesignSuspended(false);
+                  setDesignDraft(null);
+                }}
               />
             </Suspense>
-          ) : (
-            <DashboardCanvas
-              dashboardId={dashboard.id}
-              onEdit={editing ? startEdit : undefined}
-              onAdd={editing ? startNewChart : undefined}
-              onOpenCharts={editing ? openCharts : undefined}
-            />
           )}
         </div>
       </DashboardPeriodContext.Provider>

@@ -1,11 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
+import { validateDashboardDesign } from "@/lib/dashboard-design";
 import { confirmExpertSql, dashboardSqlParts } from "@/lib/dashboard-file";
 import type { Dashboard } from "./model";
 import { useDashboardsStore, withoutDashboardHistory } from "./store";
 
-type Content = Pick<Dashboard, "name" | "datasets" | "widgets" | "refreshSec" | "variables">;
+type Content = Pick<
+  Dashboard,
+  "name" | "datasets" | "widgets" | "refreshSec" | "variables" | "design"
+>;
 
-export interface McpDashboardFile extends Content {
+export interface McpDashboardFile extends Omit<Content, "design"> {
+  design?: Dashboard["design"] | null;
   id: string;
   connectionId: string;
   stamp: string;
@@ -27,7 +32,7 @@ function approved(file: McpDashboardFile, current: Dashboard | undefined): boole
   if (file.trusted === true) return true;
   if (current && expertSql(current) === expertSql(file)) return true;
   if (declined.get(file.id) === file.stamp) return false;
-  if (confirmExpertSql({ ...file, locked: true })) {
+  if (confirmExpertSql({ ...file, design: file.design ?? undefined, locked: true })) {
     declined.delete(file.id);
     return true;
   }
@@ -42,6 +47,7 @@ function content(dashboard: Content): string {
     dashboard.widgets,
     dashboard.refreshSec,
     dashboard.variables ?? [],
+    dashboard.design ?? null,
   ]);
 }
 
@@ -54,6 +60,13 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       continue;
     }
     if (pending.has(file.id)) continue;
+    if (file.design != null) {
+      try {
+        validateDashboardDesign(file.design);
+      } catch {
+        continue;
+      }
+    }
     if (!approved(file, current)) continue;
     const next = {
       name: file.name,
@@ -61,6 +74,7 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       widgets: file.widgets,
       variables: file.variables ?? [],
       refreshSec: file.refreshSec ?? 0,
+      design: file.design ?? undefined,
       mcpStamp: file.stamp,
     };
     synced.set(file.id, content(next));
@@ -99,6 +113,7 @@ async function writeBack(mcpId: string): Promise<void> {
         widgets: dashboard.widgets,
         ...(dashboard.variables?.length ? { variables: dashboard.variables } : {}),
         refreshSec: dashboard.refreshSec,
+        ...(dashboard.design ? { design: dashboard.design } : {}),
       },
     });
     useDashboardsStore.getState().update(dashboard.id, { mcpStamp: stamp });

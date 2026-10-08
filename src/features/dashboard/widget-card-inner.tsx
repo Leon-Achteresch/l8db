@@ -85,21 +85,24 @@ export function WidgetCardInner({
   return (
     <div
       ref={rootRef}
-      className="flex h-full flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xs"
+      className="dashboard-widget flex h-full flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xs"
     >
-      <div className="mb-3 flex shrink-0 flex-col gap-2">
+      <div className="dashboard-widget-header mb-3 flex shrink-0 flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1 text-sm font-medium text-foreground">
               {!locked && (
                 <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
               )}
-              <span className="truncate" title={title}>
+              <span className="dashboard-widget-title truncate" title={title}>
                 {title}
               </span>
             </div>
             {subtitle && (
-              <div className="mt-0.5 truncate text-xs text-muted-foreground" title={subtitle}>
+              <div
+                className="dashboard-widget-subtitle mt-0.5 truncate text-xs text-muted-foreground"
+                title={subtitle}
+              >
                 {subtitle}
               </div>
             )}
@@ -155,7 +158,7 @@ export function WidgetCardInner({
           </div>
         </div>
         {(figure || legend.length > 0) && (
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+          <div className="dashboard-widget-summary flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             {figure &&
               (query.isPending || summaryPending || !summary ? (
                 <Skeleton className="h-8 w-28" />
@@ -166,7 +169,7 @@ export function WidgetCardInner({
           </div>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="dashboard-widget-content min-h-0 flex-1 overflow-hidden">
         {problem || !shape ? (
           <div className="grid h-full place-items-center text-center text-xs text-muted-foreground">
             {problem}

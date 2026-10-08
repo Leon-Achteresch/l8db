@@ -16,6 +16,7 @@ const MAX_H: i64 = 40;
 const MAX_Y: i64 = 1000;
 const MAX_CHARTS: usize = 60;
 const MAX_SQL_CHARS: usize = 20_000;
+const MAX_CSS_BYTES: usize = 256 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const PERIODS: &[&str] = &["all", "7d", "30d", "90d", "quarter", "year", "12m"];
 const REFRESH_HINT: &str = "refreshSec muss 0 (aus) oder 10 bis 86400 sein";
@@ -156,7 +157,7 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out all charts into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top (a kpi always shows sparkline and trend, never a bare number: give it a time dimension for the latest value, or no dimension plus dateColumn for the period total), then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables, design), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out all charts into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top (a kpi always shows sparkline and trend, never a bare number: give it a time dimension for the latest value, or no dimension plus dateColumn for the period total), then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -165,6 +166,7 @@ pub fn tool_definition() -> Value {
                 "dashboard": {"type": "string", "description": "Dashboard id or name"},
                 "name": {"type": "string"},
                 "refreshSec": {"type": "integer", "description": "Auto refresh in seconds, 0 = off"},
+                "design": {"type": ["object", "null"], "description": "create/update: free dashboard CSS (max 256 KiB). null resets. Scoped to this dashboard, all CSS properties supported. Stable selectors: .dashboard-surface (:root/:scope), .dashboard-toolbar, .dashboard-filters, .dashboard-canvas, .dashboard-grid, .dashboard-widget, .dashboard-widget-header, .dashboard-widget-title, .dashboard-widget-subtitle, .dashboard-widget-summary, .dashboard-widget-content, [data-widget-id=\"chart-id\"], [data-chart-type=\"kpi\"]. Theme variables: --background, --foreground, --card, --border, --muted-foreground. Chart colors: --dash-accent, --dash-color-1 through --dash-color-8, --dash-compare. Use unique @keyframes/font names. @import is not loaded; external URLs follow app CSP. CSS-only updates do not execute database queries.", "properties": {"css": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["css", "enabled"], "additionalProperties": false},
                 "chart": {"type": "string", "description": "Chart id or title"},
                 "limit": {"type": "integer", "minimum": 1, "description": "Rows per chart for preview (default 20) and run (default 5)"},
                 "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Dashboard filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
@@ -352,12 +354,14 @@ pub fn mcp_dashboard_save(dashboard: Value) -> Result<String, String> {
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         .and_then(|old| old["createdAt"].as_i64())
         .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+    let design = validate_design(dashboard.get("design"))?;
     write(&json!({
         "id": id,
         "connectionId": connection_id,
         "name": dashboard["name"].as_str().unwrap_or("Dashboard"),
         "refreshSec": dashboard["refreshSec"].as_u64().unwrap_or(0),
         "createdAt": created,
+        "design": design,
         "datasets": dashboard["datasets"],
         "widgets": dashboard["widgets"],
         "variables": dashboard["variables"].as_array().cloned().unwrap_or_default(),
@@ -367,6 +371,22 @@ pub fn mcp_dashboard_save(dashboard: Value) -> Result<String, String> {
 #[tauri::command]
 pub fn mcp_dashboard_delete(id: String) -> Result<(), String> {
     remove_file(&id)
+}
+
+fn validate_design(value: Option<&Value>) -> Result<Value, String> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(Value::Null);
+    };
+    let css = value["css"]
+        .as_str()
+        .ok_or("design.css muss ein Text sein.")?;
+    let enabled = value["enabled"]
+        .as_bool()
+        .ok_or("design.enabled muss true/false sein.")?;
+    if css.len() > MAX_CSS_BYTES {
+        return Err("Das Dashboard-CSS darf höchstens 256 KiB groß sein.".into());
+    }
+    Ok(json!({"css": css, "enabled": enabled}))
 }
 
 fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
@@ -1049,6 +1069,7 @@ impl Server {
             "widgets": [],
             "variables": [],
         });
+        dashboard["design"] = validate_design(args.get("design"))?;
         dashboard["variables"] = json!(
             self.prepare_variables(config, connection, args.get("variables"))
                 .await?
@@ -1504,8 +1525,14 @@ impl Server {
                     changed.push(format!("variables={}", next.len()));
                     dashboard["variables"] = json!(next);
                 }
+                if args.get("design").is_some() {
+                    dashboard["design"] = validate_design(args.get("design"))?;
+                    changed.push("design".into());
+                }
                 if changed.is_empty() {
-                    return Err("update braucht name, refreshSec und/oder variables.".into());
+                    return Err(
+                        "update braucht name, refreshSec, variables und/oder design.".into(),
+                    );
                 }
                 format!("ok, Dashboard '{name}' geändert: {}", changed.join(", "))
             }
@@ -2303,6 +2330,7 @@ fn describe(dashboard: &Value, connection: &McpConnection) -> String {
         "connection": connection.name,
         "refreshSec": dashboard["refreshSec"],
         "variables": variables_of(dashboard),
+        "design": dashboard["design"],
         "charts": charts,
     });
     serde_json::to_string_pretty(&out).unwrap_or_default()

@@ -61,7 +61,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
   return (
     <div
       ref={setScrollRoot}
-      className="relative min-h-0 flex-1 overflow-y-auto"
+      className="dashboard-canvas relative min-h-0 flex-1 overflow-y-auto"
       onMouseDownCapture={(event) => {
         if ((event.target as Element).closest(".widget-drag-handle, .react-resizable-handle"))
           event.preventDefault();
@@ -86,10 +86,15 @@ export const DashboardCanvas = memo(function DashboardCanvas({
             resizeConfig={{ enabled: !dashboard.locked, handles: ["se"] }}
             onDragStop={applyLayout}
             onResizeStop={applyLayout}
-            className="min-h-[60vh] [&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
+            className="dashboard-grid min-h-[60vh] [&_.react-grid-item]:[contain:layout_paint] [&_.react-grid-item.cssTransforms]:[transition-property:transform]!"
           >
             {widgets.map((w) => (
-              <div key={w.id} className="[&_.react-resizable-handle]:z-10">
+              <div
+                key={w.id}
+                data-widget-id={w.id}
+                data-chart-type={w.chart}
+                className="[&_.react-resizable-handle]:z-10"
+              >
                 <WidgetCard
                   dashboardId={dashboardId}
                   widgetId={w.id}
