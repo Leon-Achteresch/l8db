@@ -43,7 +43,7 @@ export function AppNavRail() {
     <nav
       data-tour="header-nav"
       aria-label="Bereiche"
-      className="flex w-14 shrink-0 flex-col items-center gap-1.5 overflow-y-auto bg-sidebar py-2 [scrollbar-width:none]"
+      className="app-nav-rail flex w-14 shrink-0 flex-col gap-1 overflow-y-auto bg-sidebar px-2 py-3 2xl:w-40 [scrollbar-width:none]"
     >
       {navItems.map((item) => {
         const active = item.url === activeUrl;
@@ -56,12 +56,13 @@ export function AppNavRail() {
               aria-label={item.title}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors",
+                "relative inline-flex h-9 w-full shrink-0 items-center justify-center gap-2.5 rounded-md px-2 text-muted-foreground transition-colors 2xl:justify-start",
                 "hover:bg-sidebar-accent hover:text-foreground",
-                active && "bg-sidebar-accent text-foreground",
+                active && "bg-primary/10 text-primary",
               )}
             >
-              <item.icon className="size-[18px]" strokeWidth={2} />
+              <item.icon aria-hidden="true" className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <span className="hidden truncate text-xs font-medium 2xl:block">{item.title}</span>
               {hasNewFeatures(item.featureScope, seenFeatures) && (
                 <span
                   className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"

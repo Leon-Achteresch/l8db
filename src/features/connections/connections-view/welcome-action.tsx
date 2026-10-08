@@ -1,4 +1,4 @@
-import { ArrowUpRight, type LucideIcon } from "lucide-react";
+import { ArrowRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function WelcomeAction({
@@ -25,25 +25,40 @@ export function WelcomeAction({
       data-tour={dataTour}
       onClick={onClick}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-150 hover:bg-muted/70 disabled:cursor-wait disabled:opacity-60",
-        primary && "bg-primary/7 hover:bg-primary/12",
+        "welcome-action group flex w-full items-center gap-3 rounded-lg border border-transparent px-4 py-3 text-left transition-colors duration-150 disabled:cursor-wait disabled:opacity-60",
+        primary
+          ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+          : "hover:border-border hover:bg-muted/60",
       )}
     >
       <Icon
         aria-hidden="true"
-        className={cn("size-4 shrink-0 text-muted-foreground", primary && "text-primary")}
+        className={cn(
+          "size-4 shrink-0",
+          primary ? "text-primary-foreground" : "text-muted-foreground",
+        )}
       />
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-sm font-medium", primary && "text-primary")}>{label}</span>
+        <span className="block text-sm font-medium">{label}</span>
         {description && (
-          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+          <span
+            className={cn(
+              "mt-0.5 block text-xs leading-relaxed",
+              primary ? "text-primary-foreground/85" : "text-muted-foreground",
+            )}
+          >
             {description}
           </span>
         )}
       </span>
-      <ArrowUpRight
+      <ArrowRight
         aria-hidden="true"
-        className="size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground"
+        className={cn(
+          "size-3.5 shrink-0",
+          primary
+            ? "text-primary-foreground"
+            : "text-muted-foreground/60 group-hover:text-foreground",
+        )}
       />
     </button>
   );
