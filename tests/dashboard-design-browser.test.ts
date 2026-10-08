@@ -36,6 +36,18 @@ for (const engine of [chromium, webkit]) {
           const token = style.getPropertyValue("--token").trim();
           const object = style.getPropertyValue("--object").trim();
           const beforeInvalid = api.dashboardStylesheet(marker);
+          let repeatedParses = 0;
+          const replace = CSSStyleSheet.prototype.replaceSync;
+          CSSStyleSheet.prototype.replaceSync = function (source: string) {
+            repeatedParses++;
+            replace.call(this, source);
+          };
+          const reused = api.compileDashboardStylesheet(
+            css,
+            `#${CSS.escape(root.id)}`,
+            beforeInvalid,
+          );
+          CSSStyleSheet.prototype.replaceSync = replace;
           controller.update({ css: "not-a-rule", enabled: true }, true);
           const preserved = api.dashboardStylesheet(marker) === beforeInvalid;
           const restored = getComputedStyle(root).getPropertyValue("--valid").trim();
@@ -43,6 +55,15 @@ for (const engine of [chromium, webkit]) {
           const escaped = getComputedStyle(
             document.querySelector('[data-testid="outside"]')!,
           ).getPropertyValue("--escaped");
+          controller.update(
+            { css: String.raw`:\72 oot { --valid: escaped; }`, enabled: true },
+            true,
+          );
+          const escapedRoot = getComputedStyle(root).getPropertyValue("--valid").trim();
+          controller.update({ css: "BODY { --valid: uppercase; }", enabled: true }, true);
+          const uppercaseRoot = getComputedStyle(root).getPropertyValue("--valid").trim();
+          controller.update({ css: ".DASHBOARD-SURFACE { --valid: wrong; }", enabled: true }, true);
+          const uppercaseClass = getComputedStyle(root).getPropertyValue("--valid").trim();
           controller.update({ css: "", enabled: false }, true);
           const cleared = getComputedStyle(root).getPropertyValue("--valid");
           controller.dispose();
@@ -56,9 +77,14 @@ for (const engine of [chromium, webkit]) {
             token,
             object,
             preserved,
+            reused: reused === beforeInvalid,
+            repeatedParses,
             restored,
             scoped,
             escaped,
+            escapedRoot,
+            uppercaseRoot,
+            uppercaseClass,
             cleared,
             otherPreserved,
             released,
@@ -68,9 +94,14 @@ for (const engine of [chromium, webkit]) {
         expect(result.token).toBe('"body { :root }"');
         expect(result.object).toContain('body: ":root"');
         expect(result.preserved).toBe(true);
+        expect(result.reused).toBe(true);
+        expect(result.repeatedParses).toBe(0);
         expect(result.restored).toBe("yes");
         expect(result.scoped).toBe(1);
         expect(result.escaped).toBe("");
+        expect(result.escapedRoot).toBe("escaped");
+        expect(result.uppercaseRoot).toBe("uppercase");
+        expect(result.uppercaseClass).toBe("");
         expect(result.cleared).toBe("");
         expect(result.otherPreserved).toBe(true);
         expect(result.released).toBe(true);

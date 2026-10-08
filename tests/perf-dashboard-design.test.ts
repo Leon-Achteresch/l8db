@@ -25,6 +25,8 @@ for (const engine of [chromium, webkit]) {
           ).join("\n");
           const sourceBytes = new TextEncoder().encode(css).byteLength;
           const surface = document.querySelector<HTMLElement>(".dashboard-surface")!;
+          const card = surface.querySelector<HTMLElement>(".dashboard-widget")!;
+          card.classList.add("r0");
           const scope = `#${CSS.escape(surface.id)}`;
           const style = document.createElement("style");
           style.dataset.perfDesign = "true";
@@ -33,13 +35,21 @@ for (const engine of [chromium, webkit]) {
           const samples: number[] = [];
           const stages: number[][] = [[], [], []];
           let compiled: CSSStyleSheet | undefined;
+          let visibleEdits = 0;
           for (let sample = 0; sample < 22; sample++) {
             const start = performance.now();
-            compiled = api.compileDashboardStylesheet(css, scope, api.dashboardStylesheet(style));
+            const editedCss = css.replace("#abcdef", sample % 2 ? "#fedcba" : "#abcdef");
+            compiled = api.compileDashboardStylesheet(
+              editedCss,
+              scope,
+              api.dashboardStylesheet(style),
+            );
             const parsedAt = performance.now();
             api.applyDashboardStylesheet(style, compiled);
             const insertedAt = performance.now();
-            getComputedStyle(surface).color;
+            const color = getComputedStyle(card).color;
+            if (color === (sample % 2 ? "rgb(254, 220, 186)" : "rgb(171, 205, 239)"))
+              visibleEdits++;
             if (sample >= 2) {
               samples.push(performance.now() - start);
               stages[0].push(parsedAt - start);
@@ -78,6 +88,7 @@ for (const engine of [chromium, webkit]) {
           CSSStyleSheet.prototype.replaceSync = replace;
           return {
             stages: stages.map((stage) => stage.sort((a, b) => a - b)[10]),
+            visibleEdits,
             sourceBytes,
             compiledBytes,
             medianMs: samples[10],
@@ -110,6 +121,7 @@ for (const engine of [chromium, webkit]) {
           }),
         );
         expect(result.sourceBytes).toBeLessThanOrEqual(256 * 1024);
+        expect(result.visibleEdits).toBe(22);
         expect(result.compiledBytes).toBeLessThan(1500000);
         expect(result.medianMs).toBeLessThan(50);
         expect(result.p95Ms).toBeLessThan(100);
