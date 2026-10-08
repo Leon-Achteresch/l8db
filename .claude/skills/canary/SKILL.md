@@ -46,6 +46,6 @@ Grundregeln:
    git push origin origin/development:refs/heads/canary
    gh run list --workflow release.yml --branch canary --limit 1
    ```
-   Lehnt GitHub den Push ab (kein Fast-Forward), nicht forcen, sondern melden.
+   Lehnt GitHub den Push ab (kein Fast-Forward), nicht forcen, sondern melden. Erscheint nach einer Minute kein Lauf, den Workflow manuell starten: `gh workflow run release.yml --ref canary`. Das passiert, wenn der Push keine geänderten Dateien enthält, etwa beim Anlegen von `canary` ohne neue Commits; dann greift der Filter `paths-ignore` und kein Push-Lauf startet.
 
 Schlägt ein Canary-Lauf fehl, den Fix normal auf `development` committen und erneut `/canary` ausführen. Der Entwurf des fehlgeschlagenen Laufs wird ersetzt; haben sich nur build-neutrale Dateien geändert, übernimmt der neue Lauf dessen Kompilate.
