@@ -1,6 +1,11 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
-import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  isReadOnlyConnection,
+  type SavedConnection,
+  useActiveConnection,
+  useConnectionsStore,
+} from "@/lib/connections";
 import {
   cancelExecution,
   loadPartitionDdl,
@@ -13,6 +18,8 @@ import {
   type TransferProgress,
   type TransferSchemaPair,
 } from "@/lib/db";
+import { databaseFromConnectionString, useActiveDatabase } from "@/lib/db-selection";
+import { capabilitiesFor } from "@/lib/providers";
 import { prepareConnection } from "@/lib/schema-compare/store";
 import { defaultCompareTypes } from "@/lib/schema-compare/types";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -80,7 +87,17 @@ async function withNativeStructure(
 
 export function useTransfer() {
   const connections = useConnectionsStore((state) => state.connections);
-  const [source, setSource] = useState<TransferSide>(EMPTY_TRANSFER_SIDE);
+  const active = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const [source, setSource] = useState<TransferSide>(() =>
+    active && capabilitiesFor(active.kind).table_copy
+      ? {
+          connectionId: active.id,
+          database:
+            activeDatabase ?? databaseFromConnectionString(effectiveConnectionString(active)),
+        }
+      : EMPTY_TRANSFER_SIDE,
+  );
   const [target, setTarget] = useState<TransferSide>(EMPTY_TRANSFER_SIDE);
   const [sourceSchemas, setSourceSchemas] = useState<string[]>([]);
   const [targetSchemas, setTargetSchemas] = useState<string[]>([]);
