@@ -52,9 +52,7 @@ function mappedScrollTop(
     scrollTop,
     lineTop(source, range.sourceStart),
     lineEnd(source, range.sourceEnd),
-    range.targetStartGap
-      ? gapTop(target, range.targetStart)
-      : lineTop(target, range.targetStart),
+    range.targetStartGap ? gapTop(target, range.targetStart) : lineTop(target, range.targetStart),
     range.targetEndGap ? gapTop(target, range.targetEnd) : lineEnd(target, range.targetEnd),
   );
 }
@@ -80,6 +78,19 @@ export function syncScrollGroup(
         scrollLeft: horizontal ? source.getScrollLeft() : undefined,
       });
     }
+  } finally {
+    group.syncing = false;
+  }
+}
+
+export function withoutScrollSync(group: ScrollSyncGroup | undefined, action: () => void): void {
+  if (!group || group.syncing) {
+    action();
+    return;
+  }
+  group.syncing = true;
+  try {
+    action();
   } finally {
     group.syncing = false;
   }
