@@ -6,6 +6,7 @@ import {
   EllipsisIcon,
   FolderOpenIcon,
   LibraryIcon,
+  PaletteIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -45,6 +46,7 @@ import {
   undoDashboards,
   useDashboardPalette,
 } from "@/lib/dashboards";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 
 const REFRESH_OPTIONS = [
@@ -75,6 +77,7 @@ export function DashboardToolbar({
   onNewChart,
   onReload,
   onDrawer,
+  onDesign,
 }: {
   dashboard: Dashboard;
   siblings: Dashboard[];
@@ -91,8 +94,10 @@ export function DashboardToolbar({
   onUpdate: (patch: Partial<Dashboard>) => void;
   onNewChart: () => void;
   onReload: () => void;
+  onDesign: () => void;
   onDrawer: (drawer: "dashboards" | "charts") => void;
 }) {
+  const hasNewDesign = useHasNewFeatures("dashboard.design.css");
   const paletteMode = useDashboardPalette((s) => s.mode);
   const setPaletteMode = useDashboardPalette((s) => s.setMode);
   const fetching = useIsFetching({ queryKey: ["dashboard-data"] });
@@ -102,7 +107,7 @@ export function DashboardToolbar({
   }, [fetching]);
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+    <div className="dashboard-toolbar flex h-11 shrink-0 items-center gap-2 border-b px-3">
       <div className="flex min-w-0 items-center gap-0.5">
         {editing && !compact && (
           <Input
@@ -238,6 +243,10 @@ export function DashboardToolbar({
             >
               <LibraryIcon />
             </IconButton>
+            <Button variant="outline" size="sm" className="h-7" onClick={onDesign}>
+              <PaletteIcon /> Design
+              {hasNewDesign && <NewBadge />}
+            </Button>
             {editing ? (
               <>
                 <Button

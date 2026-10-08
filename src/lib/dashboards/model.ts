@@ -211,6 +211,7 @@ export interface Dashboard {
   datasets: Dataset[];
   widgets: Widget[];
   variables?: DashboardVariable[];
+  design?: { css: string; enabled: boolean };
   refreshSec: number;
   locked: boolean;
   createdAt: number;

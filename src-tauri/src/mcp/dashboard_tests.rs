@@ -158,6 +158,94 @@ fn widget<'a>(dashboard: &'a Value, title: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("widget {title} missing"))
 }
 
+#[test]
+fn dashboard_css_design_lifecycle_preserves_charts_without_querying() {
+    let mut lab = lab();
+    let id = lab.create_sales();
+    let original = lab.only();
+    let design = json!({"css": ":root { --dash-color-1: #c084fc; } .dashboard-widget::before { content: 'CSS'; }", "enabled": true});
+    lab.ok(json!({"action": "update", "dashboard": id, "design": design}));
+    let styled = lab.only();
+    assert_eq!(styled["design"], design);
+    assert_eq!(styled["datasets"], original["datasets"]);
+    assert_eq!(styled["widgets"], original["widgets"]);
+    let described: Value =
+        serde_json::from_str(&lab.ok(json!({"action": "get", "dashboard": id}))).unwrap();
+    assert_eq!(described["design"], design);
+    let mut disconnected = config::load();
+    for connection in &mut disconnected.connections {
+        connection.connection_string = "sqlite:/missing/directory/no.db".into();
+    }
+    std::fs::write(
+        config::config_path(),
+        serde_json::to_vec(&disconnected).unwrap(),
+    )
+    .unwrap();
+    lab.ok(json!({"action": "update", "dashboard": id, "design": {"css": "* { color: purple; }", "enabled": false}}));
+    assert_eq!(lab.only()["design"]["enabled"], false);
+    lab.ok(json!({"action": "update", "dashboard": id, "design": null}));
+    assert!(lab.only()["design"].is_null());
+}
+
+#[test]
+fn dashboard_css_design_validates_bytes_and_desktop_save_roundtrip() {
+    let mut lab = lab();
+    let id = lab.create_sales();
+    for design in [
+        json!({"css": {}, "enabled": true}),
+        json!({"css": "", "enabled": "yes"}),
+        json!({"css": "ü".repeat(MAX_CSS_BYTES / 2 + 1), "enabled": true}),
+    ] {
+        assert!(!lab
+            .err(json!({"action": "update", "dashboard": id, "design": design}))
+            .is_empty());
+    }
+    let mut saved = lab.only();
+    saved["design"] = json!({"css": "@keyframes fixture { to { opacity: 0.5; } } .dashboard-widget { animation: fixture 2s; }", "enabled": true});
+    mcp_dashboard_save(saved.clone()).unwrap();
+    assert_eq!(lab.only()["design"], saved["design"]);
+    assert_eq!(lab.only()["datasets"], saved["datasets"]);
+    lab.ok(json!({"action": "create", "connection": "Shop", "name": "Styled", "charts": [], "design": {"css": ".dashboard-widget { padding: 20px; }", "enabled": false}}));
+    let created = read_all()
+        .into_iter()
+        .find(|(value, _)| value["name"] == "Styled")
+        .unwrap()
+        .0;
+    assert_eq!(created["design"]["enabled"], false);
+}
+
+#[test]
+fn dashboard_css_design_large_update_performance() {
+    let mut lab = lab();
+    let id = lab.create_sales();
+    let css = (0..5000)
+        .map(|i| format!(".dashboard-widget.r{i}{{color:#abcdef}}\n"))
+        .collect::<String>();
+    assert!(css.len() <= MAX_CSS_BYTES);
+    let original = lab.only();
+    let mut samples = Vec::new();
+    for iteration in 0..22 {
+        let started = Instant::now();
+        lab.ok(json!({"action": "update", "dashboard": id, "design": {"css": css, "enabled": iteration % 2 == 0}}));
+        if iteration >= 2 {
+            samples.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+    }
+    samples.sort_by(f64::total_cmp);
+    let median = samples[10];
+    let p95 = samples[18];
+    println!(
+        "dashboard CSS: 5000 rules, {} source bytes, median {median:.2} ms, p95 {p95:.2} ms",
+        css.len()
+    );
+    assert!(median < 50.0, "median {median} ms exceeds 50 ms");
+    assert!(p95 < 100.0, "p95 {p95} ms exceeds 100 ms");
+    assert_eq!(lab.only()["datasets"], original["datasets"]);
+    assert_eq!(lab.only()["widgets"], original["widgets"]);
+    assert_eq!(read_all().len(), 1);
+    assert!(std::fs::metadata(path_of(&id).unwrap()).unwrap().len() < 512 * 1024);
+}
+
 fn dataset_for<'a>(dashboard: &'a Value, title: &str) -> &'a Value {
     dataset_of(dashboard, widget(dashboard, title)).unwrap()
 }
