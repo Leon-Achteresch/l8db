@@ -71,11 +71,28 @@ describe("auto-update settings", () => {
 });
 
 describe("update channel", () => {
-  test("startet auf Stable und merkt sich Canary", () => {
-    expect(useSettingsStore.getState().updateChannel).toBe("stable");
-    useSettingsStore.getState().setUpdateChannel("canary");
-    expect(useSettingsStore.getState().updateChannel).toBe("canary");
-    expect(JSON.parse(storage.get("l8db.settings") ?? "{}").state.updateChannel).toBe("canary");
+  test("startet auf Stable, merkt sich Canary und verwirft unbekannte Kanäle", async () => {
+    const options = useSettingsStore.persist.getOptions();
+    useSettingsStore.persist.setOptions({
+      storage: {
+        getItem: (key) => JSON.parse(storage.get(key) ?? "null"),
+        setItem: (key, value) => storage.set(key, JSON.stringify(value)),
+        removeItem: (key) => storage.delete(key),
+      },
+    });
+    try {
+      expect(useSettingsStore.getState().updateChannel).toBe("stable");
+      useSettingsStore.getState().setUpdateChannel("canary");
+      expect(JSON.parse(storage.get("l8db.settings") ?? "{}").state.updateChannel).toBe("canary");
+      storage.set(
+        "l8db.settings",
+        JSON.stringify({ state: { updateChannel: "beta" }, version: 1 }),
+      );
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState().updateChannel).toBe("stable");
+    } finally {
+      useSettingsStore.persist.setOptions(options);
+    }
   });
 });
 
