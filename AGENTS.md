@@ -38,6 +38,7 @@ Keep checks fast: run only what the change can break, once at the end, not after
 ## Git & Releases
 
 - Daily work goes to `development` (features: `merge --no-ff`); `development` publishes nothing.
+- Before starting any change, run `git fetch` and `git pull` on `development`. When a change is finished, commit it and `git push` to `development`.
 - Canary: every push to `canary` publishes a GitHub pre-release `vX.Y.Z-canary.N` (never "Latest"). `/canary` (`.claude/skills/canary/SKILL.md`) fast-forwards `canary` to `development` after confirmation; never force-push or commit directly to `canary`.
 - Stable: every push to `main` publishes `vX.Y.Z`. `/release` (`.claude/skills/release/SKILL.md`) opens or updates the PR `canary` → `main`; it is merged with a merge commit, never squashed. No release branches, no version PR, no back-merge, except after a hotfix (`fix/*` from `main` → PR → `main`): merge `main` into `development` right away, then run `/canary`.
 - Versions come from Conventional Commits since the last stable tag (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE:` → major, minor before 1.0; anything else alone releases nothing). Canary `N` counts per target version. The version in `package.json`/Cargo/`tauri.conf.json` and `CHANGELOG.md` are set only inside the release runners and are not maintained in the repo; see `.github/RELEASING.md`. Commit messages must use Conventional Commit prefixes.
