@@ -51,7 +51,12 @@ export function QueryView({ tabId }: QueryViewProps) {
   const deferredNavigatorVisible = useDeferredValue(workspace.navigatorVisible, false);
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
-  useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus);
+  const [resultFocus, setResultFocus] = useState(false);
+  const toggleResultFocus = () => {
+    setEditorFocus(false);
+    setResultFocus((focus) => !focus);
+  };
+  useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus || resultFocus);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const { sql, updateQuerySql, markQueryTabExecuted, filePath, fileDirty, externalChange } =
@@ -206,7 +211,12 @@ export function QueryView({ tabId }: QueryViewProps) {
             analysisOpen={analysis.open}
             onOpenAnalysis={() => analysis.openAnalysis(caps.explain ? "plan" : "perf")}
             editorFocus={editorFocus}
-            onEditorFocusChange={setEditorFocus}
+            onEditorFocusChange={(focus) => {
+              setEditorFocus(focus);
+              if (focus) setResultFocus(false);
+            }}
+            resultFocus={resultFocus && !editorFocus}
+            onResultFocusChange={toggleResultFocus}
             toolsMenu={
               <QueryToolsMenu
                 editorApiRef={editorApiRef}
@@ -249,6 +259,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           workspace={workspace}
           workspaceGroup={workspaceGroup}
           editorFocus={editorFocus}
+          resultFocus={resultFocus && !editorFocus}
           navigator={
             workspace.navigatorVisible &&
             deferredNavigatorVisible &&
@@ -298,6 +309,9 @@ export function QueryView({ tabId }: QueryViewProps) {
               statusText={statusText}
               actions={resultActions}
               chart={chart}
+              tables={schema.registry.tables}
+              maximized={resultFocus && !editorFocus}
+              onToggleMaximized={toggleResultFocus}
               sql={sql}
               names={errorNames}
               onRevealError={(marker) => {

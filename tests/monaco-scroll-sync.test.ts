@@ -56,6 +56,12 @@ class ScrollEditor {
     return this.getTopForLineNumber(line) + 22;
   }
 
+  getContentHeight() {
+    return (
+      24 + this.lineCount * 22 + Object.values(this.gaps).reduce((height, gap) => height + gap, 0)
+    );
+  }
+
   getVisibleRanges() {
     let line = 1;
     while (line < this.lineCount && this.getTopForLineNumber(line) < this.scrollTop) line++;
@@ -118,13 +124,19 @@ describe("Merge-Ergebnis: Zuordnung der Textstellen", () => {
       sourceEnd: 5,
       targetStart: 5,
       targetEnd: 5,
+      targetStartGap: true,
+      targetEndGap: false,
     });
     expect(projectScrollLine(edits, 2, true)).toEqual({
       sourceStart: 2,
       sourceEnd: 4,
       targetStart: 2,
       targetEnd: 2,
+      targetStartGap: true,
+      targetEndGap: false,
     });
+    expect(projectScrollLine(edits, 1)).toMatchObject({ targetStart: 1, targetEnd: 4 });
+    expect(projectScrollLine(edits, 2)).toMatchObject({ targetEnd: 5, targetEndGap: true });
     expect(projectScrollLine([], 7).targetStart).toBe(7);
   });
 
@@ -167,6 +179,38 @@ describe("Merge-Ergebnis: synchrones Scrollen", () => {
     expect(source.scrollTop - result.scrollTop).toBe(220);
     source.scrollTo(180);
     expect(result.scrollTop).toBeCloseTo(100 + (80 / 242) * 22);
+  });
+
+  test("folgt am Dokumentende übernommenen Zeilen durch die Diff-Lücke nach der letzten Zeile", () => {
+    const group = createScrollSyncGroup();
+    group.enabled = true;
+    group.mappings = [{ sourceStart: 10, sourceEnd: 10, targetStart: 10, targetEnd: 20 }];
+    const source = new ScrollEditor(10, { 10: 220 });
+    const result = new ScrollEditor(20);
+    joinScrollSyncGroup(group, source.api);
+    joinScrollSyncGroup(group, result.api, "result");
+    source.scrollTo(source.getBottomForLineNumber(10) + 110);
+    expect(result.scrollTop).toBe(342);
+    source.scrollTo(source.getBottomForLineNumber(10) + 200);
+    expect(result.scrollTop).toBe(432);
+    result.scrollTo(result.getTopForLineNumber(13) + 5);
+    expect(source.scrollTop).toBe(source.getBottomForLineNumber(10) + 49);
+  });
+
+  test("scrollt Diff-Lücken vor gemeinsamen Schlusszeilen durch die übernommenen Zeilen", () => {
+    const group = createScrollSyncGroup();
+    group.enabled = true;
+    group.mappings = [{ sourceStart: 8, sourceEnd: 8, targetStart: 8, targetEnd: 18 }];
+    const source = new ScrollEditor(12, { 8: 220 });
+    const result = new ScrollEditor(22);
+    joinScrollSyncGroup(group, source.api);
+    joinScrollSyncGroup(group, result.api, "result");
+    source.scrollTo(source.getBottomForLineNumber(8) + 110);
+    expect(result.scrollTop).toBe(298);
+    result.scrollTo(result.getTopForLineNumber(12) + 5);
+    expect(source.scrollTop).toBe(source.getBottomForLineNumber(8) + 71);
+    result.scrollTo(result.getTopForLineNumber(8) + 11);
+    expect(source.scrollTop).toBe(source.getTopForLineNumber(8) + 11);
   });
 
   test("berechnet die Zuordnung nach Änderungen und beim Aktivieren des synchronen Scrollens neu", () => {

@@ -46,6 +46,14 @@ export interface ExtensionInfo {
   description: string | null;
 }
 
+export interface QueryColumnSource {
+  name: string;
+  data_type: string;
+  schema: string | null;
+  table: string | null;
+  column: string | null;
+}
+
 export interface ForeignKeyInfo {
   constraint_name: string;
   from_schema: string;

@@ -15,9 +15,24 @@ export function createScrollSyncGroup(): ScrollSyncGroup {
   return { enabled: false, syncing: false, editors: new Map(), mappings: [], lastScrolled: null };
 }
 
+function lineCount(editor: monaco.editor.ICodeEditor): number {
+  return editor.getModel()?.getLineCount() ?? 1;
+}
+
 function lineTop(editor: monaco.editor.ICodeEditor, line: number): number {
-  const count = editor.getModel()?.getLineCount() ?? 1;
+  const count = lineCount(editor);
   return line > count ? editor.getBottomForLineNumber(count) : editor.getTopForLineNumber(line);
+}
+
+function lineEnd(editor: monaco.editor.ICodeEditor, line: number): number {
+  const count = lineCount(editor);
+  return line > count
+    ? Math.max(editor.getContentHeight(), editor.getBottomForLineNumber(count))
+    : editor.getTopForLineNumber(line);
+}
+
+function gapTop(editor: monaco.editor.ICodeEditor, line: number): number {
+  return line <= 1 ? 0 : editor.getBottomForLineNumber(Math.min(line - 1, lineCount(editor)));
 }
 
 function mappedScrollTop(
@@ -27,14 +42,20 @@ function mappedScrollTop(
 ): number | undefined {
   const visibleLine = source.getVisibleRanges()[0]?.startLineNumber;
   if (visibleLine === undefined || !source.getModel() || !target.getModel()) return undefined;
-  const line = Math.max(1, visibleLine - 1);
-  const range = projectScrollLine(group.mappings, line, group.editors.get(source) === "result");
+  const reverse = group.editors.get(source) === "result";
+  const scrollTop = source.getScrollTop();
+  const count = lineCount(source);
+  let range = projectScrollLine(group.mappings, Math.max(1, visibleLine - 1), reverse);
+  while (range.sourceEnd <= count && scrollTop >= lineTop(source, range.sourceEnd))
+    range = projectScrollLine(group.mappings, range.sourceEnd, reverse);
   return interpolateScrollTop(
-    source.getScrollTop(),
+    scrollTop,
     lineTop(source, range.sourceStart),
-    lineTop(source, range.sourceEnd),
-    lineTop(target, range.targetStart),
-    lineTop(target, range.targetEnd),
+    lineEnd(source, range.sourceEnd),
+    range.targetStartGap
+      ? gapTop(target, range.targetStart)
+      : lineTop(target, range.targetStart),
+    range.targetEndGap ? gapTop(target, range.targetEnd) : lineEnd(target, range.targetEnd),
   );
 }
 

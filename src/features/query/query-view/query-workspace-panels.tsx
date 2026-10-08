@@ -9,6 +9,7 @@ interface QueryWorkspacePanelsProps {
   workspace: QueryWorkspaceState;
   workspaceGroup: ReturnType<typeof useGroupRef>;
   editorFocus: boolean;
+  resultFocus: boolean;
   navigator: ReactNode;
   editor: ReactNode;
   results: ReactNode;
@@ -18,6 +19,7 @@ export function QueryWorkspacePanels({
   workspace,
   workspaceGroup,
   editorFocus,
+  resultFocus,
   navigator,
   editor,
   results,
@@ -52,6 +54,7 @@ export function QueryWorkspacePanels({
           onLayoutChanged={(layout) => {
             if (
               !editorFocus &&
+              !resultFocus &&
               layout.editor &&
               layout.results &&
               Math.abs(layout.editor - workspace.editorShare) > 0.1
@@ -59,15 +62,17 @@ export function QueryWorkspacePanels({
               workspace.update({ editorShare: layout.editor });
           }}
         >
-          <ResizablePanel
-            id="editor"
-            defaultSize={`${workspace.editorShare}%`}
-            minSize="20%"
-            className="flex min-h-0 flex-col"
-          >
-            {editor}
-          </ResizablePanel>
-          {!editorFocus && <ResizableHandle withHandle />}
+          {!resultFocus && (
+            <ResizablePanel
+              id="editor"
+              defaultSize={`${workspace.editorShare}%`}
+              minSize="20%"
+              className="flex min-h-0 flex-col"
+            >
+              {editor}
+            </ResizablePanel>
+          )}
+          {!editorFocus && !resultFocus && <ResizableHandle withHandle />}
           {!editorFocus && (
             <ResizablePanel
               id="results"

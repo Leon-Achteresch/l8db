@@ -299,6 +299,15 @@ pub struct SchedulerJobInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct QueryColumnSource {
+    pub name: String,
+    pub data_type: String,
+    pub schema: Option<String>,
+    pub table: Option<String>,
+    pub column: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ForeignKeyInfo {
     pub constraint_name: String,
     pub from_schema: String,
@@ -785,6 +794,10 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Fremdschlüssel"))
+    }
+    async fn describe_query_columns(&self, sql: &str) -> Result<Vec<QueryColumnSource>, String> {
+        let _ = sql;
+        Err(unsupported("Spaltenherkunft"))
     }
     async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String> {
         let mut tables = Vec::new();
