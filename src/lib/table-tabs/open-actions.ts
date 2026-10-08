@@ -1,3 +1,4 @@
+import { requestEditorFocus } from "@/lib/pending-editor-focus";
 import { nextQueryTitle, storeFor } from "./helpers";
 import { tabKey } from "./tab-keys";
 import type {
@@ -72,6 +73,7 @@ export function createOpenActions(
         title: nextQueryTitle(get().tabs),
         sql: "",
       };
+      requestEditorFocus(qt.id);
       set((state) => storeFor([...state.tabs, qt], state));
       return qt.id;
     },
