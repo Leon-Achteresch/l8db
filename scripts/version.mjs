@@ -84,6 +84,15 @@ function set(version) {
   );
   writeFileSync(new URL(cargoPath, root), cargo);
   tauri.version = version;
+  const canary = version.match(/^(\d+\.\d+\.\d+)-canary\.(\d+)$/);
+  if (canary) {
+    tauri.bundle ??= {};
+    tauri.bundle.windows ??= {};
+    tauri.bundle.windows.wix = {
+      ...tauri.bundle.windows.wix,
+      version: `${canary[1]}.${canary[2]}`,
+    };
+  }
   writeFileSync(new URL(tauriPath, root), `${JSON.stringify(tauri, null, 2)}\n`);
   console.log(`Version set to ${version} in package.json, Cargo.toml, Cargo.lock, tauri.conf.json`);
 }

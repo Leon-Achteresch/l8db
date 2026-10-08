@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const version = process.argv[2];
-if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
+if (!version || !/^\d+\.\d+\.\d+(-canary\.[1-9]\d*)?$/.test(version)) {
   throw new Error(`Ungueltige Version: ${version ?? "<leer>"}`);
 }
 const run = (path, ...args) =>
