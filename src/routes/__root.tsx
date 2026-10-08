@@ -5,7 +5,6 @@ import { lazy, Suspense, startTransition, useEffect, useState } from "react";
 import { WindowCloseGuard } from "@/features/shell/window-close-guard";
 import { WorkbenchHost } from "@/features/shell/workbench-host";
 import "../index.css";
-import "../styles/workspace.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";

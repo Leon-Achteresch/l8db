@@ -4,7 +4,6 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.14.0";
 
 export const NEW_FEATURES = {
-  "connections.onboarding.quick-start": NEXT_FEATURE_VERSION,
   "settings.general.workspace-tab": "0.9.1",
   "workspace.inline-tabs": "0.9.1",
   "workspace.status.branch": "0.9.1",

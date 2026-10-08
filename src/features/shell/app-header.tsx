@@ -122,7 +122,6 @@ export function AppHeader() {
   return (
     <header
       ref={headerRef}
-      data-slot="app-header"
       data-tauri-drag-region="deep"
       className={cn(
         "@container relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",

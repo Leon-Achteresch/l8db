@@ -16,7 +16,7 @@ export function AppFrame() {
       <div
         data-slot="app-workspace-shell"
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-tl-lg border-t border-l bg-background has-data-[slot=sidebar-inset]:rounded-none has-data-[slot=sidebar-inset]:border-0 has-data-[slot=sidebar-inset]:bg-sidebar",
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-tl-xl border-t border-l bg-background shadow-lg shadow-black/10 dark:shadow-black/40 has-data-[slot=sidebar-inset]:rounded-none has-data-[slot=sidebar-inset]:border-0 has-data-[slot=sidebar-inset]:bg-sidebar has-data-[slot=sidebar-inset]:shadow-none",
           aiOpen &&
             "my-2 !rounded-xl !border !bg-background has-data-[slot=sidebar-inset]:!border-0 has-data-[slot=sidebar-inset]:!bg-sidebar",
         )}
