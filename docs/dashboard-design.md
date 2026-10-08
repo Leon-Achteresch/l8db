@@ -124,7 +124,20 @@ for this large stylesheet; its p95 meets the 100 ms budget. The final WebKit sta
 medians were 26 ms to compile, 0 ms to adopt and 62 ms for forced style resolution.
 The scoped performance test fails on that engine; this is not a passing cross-platform performance claim.
 Chromium meets the budgets. Live edits remain debounced by 180 ms, and unchanged
-CSS does not cause another style update.
+CSS does not cause another style update. The compiler also reuses its previously
+parsed sheet for identical source text and avoids walking individual CSSOM rules
+when the source contains no root aliases or CSS escapes. Case-insensitive HTML
+root aliases retain case-sensitive class matching.
+
+The current performance scenario alternates an actual card's color on every
+sample and verifies all 22 visible updates; it no longer reparses identical CSS
+without changing the result. With unchanged budgets, it measured Chromium
+**39.30/90.90 ms** and WebKit **93/100 ms** (median/p95). WebKit stage medians were
+20 ms compile, 0 ms adoption and 70 ms forced resolution. Chromium passed;
+WebKit failed the median budget and its p95 did not meet the strict <100 ms limit.
+The retained-sheet, cancellation, idle and database counts remained unchanged.
+These measurements ran during concurrent builds on the VM and are not an isolated
+before/after comparison with the earlier workload.
 
 Rust additionally tests the same 5,000-rule update workload, with 20 measured
 updates after two warmups, unchanged chart data, one retained dashboard file and a
@@ -139,13 +152,19 @@ were not exercised. Browser database request counts use the fixture's mocked
 Tauri transport; the Rust lifecycle check verifies design updates still work with
 an inaccessible database URL. No live AI provider was called.
 
-The final functional browser audit passed in Chromium and WebKit (62 assertions
-across both engines). It verifies imported CSS, draft discard, export, persisted
+The functional browser audit passed in Chromium and WebKit (four scenarios, 72
+assertions across completed scenarios). It verifies imported CSS, draft discard, export, persisted
 reload, root variables, nested and responsive selectors, pseudo-elements,
 registered `@font-face` definitions, running `@keyframes` animations, typography,
 scope isolation, hidden-dashboard recovery and the AI/MCP handoff. Additional
 checks cover escaped root selectors, custom-property tokens containing braces,
-invalid-draft rollback, independent stylesheet ownership and idempotent disposal.
+invalid-draft rollback, independent stylesheet ownership, unchanged-source reuse
+without another native parse and idempotent disposal. A further audit verifies
+escaped aliases without literal root names, uppercase HTML aliases and
+case-sensitive class selectors in both engines. The first run timed out in the
+WebKit UI scenario during concurrent compilation (3 passed, 1 timeout). A scoped
+rerun of that failed scenario passed all 21 assertions in 23.59 seconds after the
+local typecheck completed; the timeout and performance budgets were not changed.
 A deliberately delayed file read also verifies that choosing a newer preset cancels the stale
 import; typing, reset and the enabled switch use the same cancellation mechanism.
 This audit establishes the requested design capabilities within the documented

@@ -89,7 +89,7 @@ export function validateDashboardDesign(value: unknown): asserts value is Dashbo
 }
 
 function rootSelectors(selector: string): string {
-  if (!/:root|:scope|html|body|\.dashboard-surface/.test(selector)) return selector;
+  if (!/:root|:scope|html|body|\.dashboard-surface/i.test(selector)) return selector;
   let result = "";
   let quote = "";
   let brackets = 0;
@@ -114,7 +114,12 @@ function rootSelectors(selector: string): string {
         .match(/^(:(?:root|scope)|html|body|\.dashboard-surface)(?![\w-])/i)?.[0];
       const previous = selector[i - 1] ?? "";
       const alias = token?.startsWith(":") || token === ".dashboard-surface";
-      if (token && (alias || (!parentheses && (!previous || !/[\w.#:\\-]/.test(previous))))) {
+      const type =
+        token &&
+        !token.startsWith(".") &&
+        !parentheses &&
+        (!previous || !/[\w.#:\\-]/.test(previous));
+      if (token && (alias || type)) {
         result += ":scope";
         i += token.length;
         continue;
@@ -151,7 +156,7 @@ function replaceDashboardStylesheet(sheet: CSSStyleSheet, css: string, scope: st
       "Keine gültige CSS-Regel gefunden. Beispiel: .dashboard-widget { color: red; }",
     );
   while (sheet.cssRules.length > 1) sheet.deleteRule(sheet.cssRules.length - 1);
-  selectorAliases(scoped.cssRules);
+  if (/\\|:root|:scope|html|body|\.dashboard-surface/i.test(css)) selectorAliases(scoped.cssRules);
 }
 
 export function compileDashboardStylesheet(
@@ -163,6 +168,7 @@ export function compileDashboardStylesheet(
   if (css.trim() && !("CSSScopeRule" in globalThis))
     throw new Error("Eine aktuelle WebView mit CSS-@scope-Unterstützung ist erforderlich.");
   const existingSource = existing && stylesheetSources.get(existing);
+  if (existing && existingSource?.scope === scope && existingSource.css === css) return existing;
   const sheet = existing && existingSource?.scope === scope ? existing : new CSSStyleSheet();
   const previous = stylesheetSources.get(sheet);
   try {
