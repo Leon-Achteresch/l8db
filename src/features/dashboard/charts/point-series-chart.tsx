@@ -64,10 +64,10 @@ export function PointSeriesChart({
         <defs>
           {shape.metrics.map((m, i) => (
             <linearGradient key={m.key} id={`fill-${uid}-${i}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={seriesColor(i, count, options)} stopOpacity={0.24} />
+              <stop offset="0%" stopColor={seriesColor(i, shape, options)} stopOpacity={0.24} />
               <stop
                 offset="100%"
-                stopColor={seriesColor(i, count, options)}
+                stopColor={seriesColor(i, shape, options)}
                 stopOpacity={options.stacked && count > 1 ? 0.14 : 0.02}
               />
             </linearGradient>
@@ -95,7 +95,7 @@ export function PointSeriesChart({
           />
         )}
         {stacks.map((stack, i) => {
-          const stroke = seriesColor(i, count, options);
+          const stroke = seriesColor(i, shape, options);
           const top = tops[i];
           const line = curvePath(top, options.curve);
           const last = top[top.length - 1];
@@ -202,7 +202,7 @@ export function PointSeriesChart({
                   cx={top[hover][0]}
                   cy={top[hover][1]}
                   r={4.5}
-                  fill={seriesColor(i, count, options)}
+                  fill={seriesColor(i, shape, options)}
                   stroke="var(--card)"
                   strokeWidth={2}
                 />
@@ -220,7 +220,7 @@ export function PointSeriesChart({
             ...shape.metrics.map((m, i) => ({
               label: m.label,
               value: fmtValue(Number(hovered[m.key]) || 0, options),
-              color: seriesColor(i, count, options),
+              color: seriesColor(i, shape, options),
             })),
             ...(compare && ghostValue !== null && ghostValue !== undefined
               ? [

@@ -10,7 +10,13 @@ export function Kpi({ rows, shape, options, compare }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const key = shape.metrics[0]?.key ?? "";
-  if (!shape.dimension || rows.length < 2) return null;
+  if (!shape.dimension || rows.length < 2)
+    return (
+      <div className="grid h-full place-items-center px-2 text-center text-xs text-pretty text-muted-foreground">
+        Kein Verlauf: Die Daten enthalten nur einen Zeitpunkt. Für Sparkline und Trend braucht der
+        KPI eine Zeile pro Tag, Woche oder Monat.
+      </div>
+    );
   const values = rows.map((r) => toNumber(r[key]));
   const ghost = compare?.values ?? [];
   const all = [...values, ...ghost.filter((v): v is number => v !== null)];

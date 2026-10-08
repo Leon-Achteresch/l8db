@@ -249,7 +249,7 @@ export function legendFor(
     items.push(
       ...shape.metrics.map((m, i) => ({
         name: m.label,
-        color: seriesColor(i, count, options),
+        color: seriesColor(i, shape, options),
         line: kind === "line",
       })),
     );

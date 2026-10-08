@@ -1464,7 +1464,6 @@ fn reports_design_notes_without_failing() {
         {"type": "kpi", "title": "Vergleich", "sql": "SELECT substr(created_at, 1, 7) AS \"Monat\", COUNT(*) AS \"Bestellungen\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Monat", "options": {"compare": "previous"}},
         {"type": "column", "title": "Baukasten", "builder": {"table": "orders", "dimension": "status", "metrics": ["sum(amount)"]}},
         {"type": "line", "title": "Sauber", "sql": "SELECT created_at AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1 ORDER BY 1", "dimension": "Tag", "metrics": ["Umsatz"], "dateColumn": "Tag", "period": "30d", "options": {"compare": "year"}},
-        {"type": "kpi", "title": "Summenzeile", "sql": "SELECT MAX(created_at) AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders", "metrics": ["Umsatz"], "dateColumn": "Tag"},
         {"type": "kpi", "title": "Pro Tag", "sql": "SELECT created_at AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders GROUP BY 1", "metrics": ["Umsatz"], "dateColumn": "Tag"}
     ]}));
     let report = |title: &str| {
@@ -1489,7 +1488,6 @@ fn reports_design_notes_without_failing() {
         compare.contains("compare wirkt nur mit dateColumn und period ≠ all."),
         "{compare}"
     );
-    assert!(!compare.contains("kpi ohne dimension"), "{compare}");
     assert!(!compare.contains("technisch"), "{compare}");
     assert!(!report("Baukasten").contains("technisch"), "{text}");
     let clean = report("Sauber");
@@ -1499,14 +1497,8 @@ fn reports_design_notes_without_failing() {
             && !clean.contains("Kategorien"),
         "{clean}"
     );
-    assert!(
-        report("Summenzeile").contains(
-            "kpi ohne dimension: Die Sparkline braucht Zeilen pro Datum (z. B. GROUP BY Tag über die dateColumn) statt einer einzelnen Summenzeile – oder eine Zeit-dimension."
-        ),
-        "{text}"
-    );
-    assert!(!report("Pro Tag").contains("kpi ohne dimension"), "{text}");
-    assert_eq!(lab.only()["widgets"].as_array().unwrap().len(), 7);
+    assert!(!report("Pro Tag").contains("Verlauf"), "{text}");
+    assert_eq!(lab.only()["widgets"].as_array().unwrap().len(), 6);
 }
 
 #[test]
@@ -1531,6 +1523,19 @@ fn kpi_needs_a_time_dimension_or_date_column() {
     let preview = lab.ok(json!({"action": "preview", "connection": "Shop", "spec": {"type": "kpi", "sql": "SELECT COUNT(*) AS n FROM orders", "metrics": ["n"]}}));
     assert!(preview.contains(&format!("Passung: {rule}")), "{preview}");
     assert_eq!(lab.only(), before);
+    for spec in [
+        json!({"type": "kpi", "title": "Summenzeile", "sql": "SELECT MAX(created_at) AS \"Tag\", SUM(amount) AS \"Umsatz\" FROM orders", "metrics": ["Umsatz"], "dateColumn": "Tag"}),
+        json!({"type": "kpi", "title": "Ein Monat", "sql": "SELECT '2026-10' AS \"Monat\", COUNT(*) AS n FROM orders", "dimension": "Monat"}),
+    ] {
+        let error = lab
+            .err(json!({"action": "add_charts", "dashboard": "Sales", "charts": [spec.clone()]}));
+        assert!(
+            error
+                .contains("'kpi' braucht einen Verlauf, das Ergebnis hat aber nur einen Zeitpunkt"),
+            "{spec}: {error}"
+        );
+    }
+    assert_eq!(lab.only(), before);
 
     let text = lab.ok(json!({"action": "add_charts", "dashboard": "Sales", "charts": [
         {"type": "kpi", "title": "Bestellungen", "sql": "SELECT created_at AS \"Tag\", COUNT(*) AS \"Bestellungen\" FROM orders GROUP BY 1", "dateColumn": "Tag", "period": "30d"},
@@ -1538,7 +1543,7 @@ fn kpi_needs_a_time_dimension_or_date_column() {
         {"type": "kpi", "title": "Menge", "builder": {"table": "orders", "metrics": ["sum(amount)"], "dateColumn": "created_at"}, "period": "90d"},
         {"type": "kpi", "title": "Monatlich", "builder": {"table": "orders", "dimension": {"field": "created_at", "bucket": "month"}, "metrics": ["count"]}}
     ]}));
-    assert!(!text.contains("kpi ohne dimension"), "{text}");
+    assert!(!text.contains("Verlauf"), "{text}");
     let board = lab.only();
     let mapping = |title: &str| dataset_for(&board, title)["mapping"].clone();
     assert_eq!(mapping("Bestellungen")["dateColumn"], "Tag");
@@ -1627,24 +1632,6 @@ fn design_notes_flag_crowded_and_technical_charts() {
         .into_iter()
         .collect();
     assert!(design_notes(kind("line").unwrap(), None, true, &dated, "all", &off).is_empty());
-    let kpi = |rows: usize, expert: bool, dimension: bool| {
-        design_notes(
-            kind("kpi").unwrap(),
-            Some(rows),
-            expert,
-            &shape(&["Umsatz"], dimension, true),
-            "all",
-            &none,
-        )
-    };
-    for rows in [0, 1] {
-        let notes = kpi(rows, true, false);
-        assert_eq!(notes.len(), 1, "{notes:?}");
-        assert!(notes[0].starts_with("kpi ohne dimension: Die Sparkline braucht Zeilen pro Datum"));
-    }
-    assert!(kpi(2, true, false).is_empty());
-    assert!(kpi(1, false, false).is_empty());
-    assert!(kpi(1, true, true).is_empty());
     for name in [
         "m0",
         "m12",

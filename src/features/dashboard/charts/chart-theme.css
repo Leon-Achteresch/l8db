@@ -15,6 +15,7 @@
   --dash-track: oklch(0.95 0.008 var(--db-hue));
   --dash-up: #11803a;
   --dash-down: #c4302b;
+  --dash-other: oklch(0.78 0.01 var(--db-hue));
 }
 
 .dark {
@@ -34,4 +35,5 @@
   --dash-track: oklch(1 0 0 / 7%);
   --dash-up: #3fb950;
   --dash-down: #f47067;
+  --dash-other: oklch(0.46 0.012 var(--db-hue));
 }
