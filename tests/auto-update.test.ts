@@ -39,6 +39,7 @@ beforeEach(() => {
     transactionsEnabled: true,
     autoUpdateCheck: true,
     autoUpdateInstall: false,
+    updateChannel: "stable",
     skippedUpdateVersion: null,
   });
 });
@@ -66,6 +67,15 @@ describe("auto-update settings", () => {
     useSettingsStore.getState().setAutoUpdateInstall(true);
     useSettingsStore.getState().setAutoUpdateCheck(true);
     expect(useSettingsStore.getState().autoUpdateInstall).toBe(true);
+  });
+});
+
+describe("update channel", () => {
+  test("startet auf Stable und merkt sich Canary", () => {
+    expect(useSettingsStore.getState().updateChannel).toBe("stable");
+    useSettingsStore.getState().setUpdateChannel("canary");
+    expect(useSettingsStore.getState().updateChannel).toBe("canary");
+    expect(JSON.parse(storage.get("l8db.settings") ?? "{}").state.updateChannel).toBe("canary");
   });
 });
 
