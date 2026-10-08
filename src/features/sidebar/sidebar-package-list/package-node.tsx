@@ -18,6 +18,7 @@ import { copyNameActions } from "@/lib/clipboard";
 import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import type { PackagePart } from "@/lib/plsql";
 import { useTableTabs } from "@/lib/table-tabs";
+import { PackageMatchingMembers } from "./package-matching-members";
 import { PartNode } from "./part-node";
 import { usePackageNavigate } from "./use-package-navigate";
 
@@ -26,6 +27,7 @@ export type DropKind = "package" | "body";
 interface PackageNodeProps {
   schema: string;
   name: string;
+  matchingMembers?: string[];
   invalid: boolean;
   canCopy: boolean;
   canCompile: boolean;
@@ -37,6 +39,7 @@ interface PackageNodeProps {
 export function PackageNode({
   schema,
   name,
+  matchingMembers,
   invalid,
   canCopy,
   canCompile,
@@ -116,6 +119,9 @@ export function PackageNode({
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {matchingMembers?.length ? (
+        <PackageMatchingMembers schema={schema} name={name} members={matchingMembers} />
+      ) : null}
       {open ? (
         <SidebarMenuSub>
           <PartNode schema={schema} name={name} part="spec" title="Spec" />

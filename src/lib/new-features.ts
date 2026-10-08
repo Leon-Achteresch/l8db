@@ -11,6 +11,7 @@ export const NEW_FEATURES = {
   "workspace.status.query": "0.9.1",
   "sidebar.rename-inline": "0.9.1",
   "sidebar.object-menu": "0.14.0",
+  "sidebar.packages.member-search": "0.14.0",
   "search.fuzzy": "0.10.0",
   "search.commands": "0.9.1",
   "search.commands.new-compare": "0.14.0",

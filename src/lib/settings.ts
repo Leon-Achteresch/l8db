@@ -88,6 +88,7 @@ export interface SettingsState {
   hideOwnSchemaSelect: boolean;
   sidebarObjectNav: SidebarObjectNav;
   searchIncludeColumns: boolean;
+  searchIncludePackageMembers: boolean;
   uiDensity: UiDensity;
   uiScale: number;
   sidebarExtraCompact: boolean;
@@ -147,6 +148,7 @@ export interface SettingsState {
   setHideOwnSchemaSelect: (value: boolean) => void;
   setSidebarObjectNav: (value: SidebarObjectNav) => void;
   setSearchIncludeColumns: (v: boolean) => void;
+  setSearchIncludePackageMembers: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setUiScale: (v: number) => void;
   resetAppearance: () => void;
@@ -233,6 +235,7 @@ export const DEFAULT_SETTINGS = {
   hideOwnSchemaSelect: true,
   sidebarObjectNav: "tabs" as SidebarObjectNav,
   searchIncludeColumns: true,
+  searchIncludePackageMembers: true,
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
   sidebarExtraCompact: false,
@@ -321,6 +324,8 @@ export const useSettingsStore = create<SettingsState>()(
       setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
       setSidebarObjectNav: (sidebarObjectNav) => set({ sidebarObjectNav }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
+      setSearchIncludePackageMembers: (searchIncludePackageMembers) =>
+        set({ searchIncludePackageMembers }),
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),

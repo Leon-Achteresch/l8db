@@ -396,6 +396,7 @@ pub fn run() {
             db::commands::rollback_transaction,
             db::commands::list_transactions,
             db::commands::list_functions,
+            db::commands::list_package_members,
             db::commands::get_function_definition,
             db::commands::list_procedures,
             db::commands::compile_object,

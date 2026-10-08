@@ -338,6 +338,13 @@ pub struct FunctionInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct PackageMemberInfo {
+    pub schema: String,
+    pub package: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CompileResult {
     pub status: String,
     pub message: Option<String>,
@@ -595,6 +602,13 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
         let _ = schema;
         Err(unsupported("Funktionen"))
+    }
+    async fn list_package_members(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<PackageMemberInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Package-Funktionen"))
     }
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let _ = oid;

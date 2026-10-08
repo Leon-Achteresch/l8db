@@ -12,9 +12,9 @@ use super::{
     CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
     CreateTableRequest, DatabaseKind, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
     ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
-    InvalidObjectInfo, ObjectGrantInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo,
-    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo, PrivilegeChange, ProxyUserInfo,
+    QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo,
+    SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -920,6 +920,24 @@ pub async fn list_functions(
         .list_functions(schema.as_deref())
         .await
     })
+    .await
+}
+
+#[tauri::command]
+pub async fn list_package_members(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<PackageMemberInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_package_members(schema.as_deref())
     .await
 }
 

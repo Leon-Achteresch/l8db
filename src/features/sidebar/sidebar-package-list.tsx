@@ -1,7 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { SearchIcon } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { BracesIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
+import { SidebarSearchInput } from "@/components/sidebar-search-input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,8 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { SidebarInput } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
@@ -21,14 +24,15 @@ import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, type SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { buildInvalidSet, isPackageInvalid } from "@/lib/invalid-objects";
 import { type PackagePart, packageOid } from "@/lib/plsql";
 import { useInvalidObjectsQuery } from "@/lib/queries";
-import { useSidebarSearch } from "@/lib/sidebar-search";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
 import { type DropKind, PackageNode } from "./sidebar-package-list/package-node";
+import { usePackageFilter } from "./sidebar-package-list/use-package-filter";
 
 interface SidebarPackageListProps {
   items: { schema: string; name: string }[] | undefined;
@@ -44,13 +48,20 @@ interface DropTarget {
 }
 
 export function SidebarPackageList({ items, isLoading, isError, error }: SidebarPackageListProps) {
-  const [search, setSearch] = useSidebarSearch("packages");
-  const deferredSearch = useDeferredValue(search);
-  const filtered = useMemo(() => {
-    const q = deferredSearch.trim().toLowerCase();
-    if (!q) return items;
-    return items?.filter((item) => item.name.toLowerCase().includes(q));
-  }, [items, deferredSearch]);
+  const {
+    search,
+    setSearch,
+    searchIncludePackageMembers,
+    setSearchIncludePackageMembers,
+    regexEnabled,
+    setRegexEnabled,
+    regexError,
+    filtered,
+    measured,
+    isMembersLoading,
+    membersError,
+  } = usePackageFilter(items);
+  const feature = useNewFeatureVisibility<HTMLButtonElement>("sidebar.packages.member-search");
   const capabilities = useActiveCapabilities();
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -89,6 +100,7 @@ export function SidebarPackageList({ items, isLoading, isError, error }: Sidebar
       toast.success(kind === "body" ? `Body von ${label} gelöscht` : `${label} gelöscht`);
       if (kind === "package") closeTab(`package:${schema}.${name}`);
       await queryClient.invalidateQueries({ queryKey: ["functions"] });
+      await queryClient.invalidateQueries({ queryKey: ["package-members"] });
       await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
       await queryClient.invalidateQueries({ queryKey: ["invalid-objects"] });
       await queryClient.invalidateQueries({ queryKey: ["compile-errors"] });
@@ -116,19 +128,52 @@ export function SidebarPackageList({ items, isLoading, isError, error }: Sidebar
   }
   return (
     <div className="flex flex-col gap-2">
-      <div className="sticky top-0 z-10 bg-sidebar py-1">
-        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <SidebarInput
-          placeholder="Packages…"
+      <div className="sticky top-0 z-10 flex items-center gap-1 bg-sidebar py-1">
+        <SidebarSearchInput
+          placeholder={searchIncludePackageMembers ? "Packages & Funktionen…" : "Packages…"}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8"
+          onChange={setSearch}
+          regexEnabled={regexEnabled}
+          onRegexEnabledChange={(enabled) => setRegexEnabled("sidebar", enabled)}
+          regexError={regexError}
         />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Toggle
+              ref={feature.ref}
+              size="sm"
+              variant="outline"
+              pressed={searchIncludePackageMembers}
+              onPressedChange={setSearchIncludePackageMembers}
+              aria-label="Funktionen und Prozeduren in Suche einbeziehen"
+              className="relative h-7 shrink-0 px-1.5"
+            >
+              <BracesIcon className="size-3.5" />
+              {feature.isNew ? (
+                <NewBadge className="absolute -right-1 -top-2 px-1 text-[8px]" />
+              ) : null}
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {searchIncludePackageMembers
+              ? "Funktionssuche deaktivieren"
+              : "Funktionssuche aktivieren"}
+          </TooltipContent>
+        </Tooltip>
       </div>
+      {isMembersLoading ? (
+        <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
+          <Spinner />
+          Lade Funktionsnamen…
+        </div>
+      ) : null}
+      {membersError ? <SidebarQueryError error={membersError} /> : null}
       {!filtered || filtered.length === 0 ? (
-        <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
+        !isMembersLoading && !membersError ? (
+          <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
+        ) : null
       ) : (
-        <SidebarWindow count={filtered.length}>
+        <SidebarWindow count={filtered.length} measured={measured}>
           {(index) => {
             const item = filtered[index];
             return (
@@ -136,6 +181,7 @@ export function SidebarPackageList({ items, isLoading, isError, error }: Sidebar
                 key={`${item.schema}.${item.name}`}
                 schema={item.schema}
                 name={item.name}
+                matchingMembers={item.matchingMembers}
                 invalid={isPackageInvalid(invalidSet, item.schema, item.name)}
                 canCopy={Boolean(capabilities.schema_object_copy)}
                 canCompile={Boolean(capabilities.compile_objects)}
