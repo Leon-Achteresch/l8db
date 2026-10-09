@@ -191,8 +191,9 @@ export async function listViews(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<TableInfo[]> {
-  return invoke("list_views", { kind, connectionString, database, schema });
+  return invoke("list_views", { kind, connectionString, database, schema, options });
 }
 
 export async function getTableDdl(

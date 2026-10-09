@@ -130,13 +130,8 @@ export function useDataTableModel({
   });
 
   const rows = table.getRowModel().rows;
-  const { uiScale, rowVirtualizer, virtualRows, paddingTop, paddingBottom } = useRowVirtualizer(
-    rows,
-    draftHeight,
-    scrollRef,
-    stateKey,
-    scrollIdentity,
-  );
+  const { uiScale, rowVirtualizer, measureRow, virtualRows, paddingTop, paddingBottom } =
+    useRowVirtualizer(rows, draftHeight, scrollRef, stateKey, scrollIdentity);
   const tableWidth = table.getTotalSize();
   const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
   const hasRowActions = !!onInsertRow || !!onDeleteRow;
@@ -199,6 +194,7 @@ export function useDataTableModel({
     columnSizing,
     uiScale,
     rowVirtualizer,
+    measureRow,
     virtualRows,
     paddingTop,
     paddingBottom,

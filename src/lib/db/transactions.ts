@@ -81,8 +81,9 @@ export async function listFunctions(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<FunctionInfo[]> {
-  return invoke("list_functions", { kind, connectionString, database, schema });
+  return invoke("list_functions", { kind, connectionString, database, schema, options });
 }
 
 export async function getFunctionDefinition(
@@ -144,8 +145,9 @@ export async function listProcedures(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<FunctionInfo[]> {
-  return invoke("list_procedures", { kind, connectionString, database, schema });
+  return invoke("list_procedures", { kind, connectionString, database, schema, options });
 }
 
 export async function compileObject(

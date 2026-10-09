@@ -24,6 +24,7 @@ export interface CommandPaletteProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   maxVisible?: number;
+  lockDocumentScroll?: boolean;
   featureId?: NewFeatureId;
   queryItem?: (query: string) => CommandItem;
   initialQuery?: string;

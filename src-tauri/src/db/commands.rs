@@ -18,6 +18,19 @@ use super::{
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
+async fn run_schema_metadata<T>(
+    kind: DatabaseKind,
+    options: Option<super::execution::ExecutionOptions>,
+    future: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        future,
+    )
+    .await
+}
+
 #[tauri::command(async)]
 pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
     super::provider::list_providers()
@@ -155,14 +168,18 @@ pub async fn list_tables(
     database: Option<String>,
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<TableInfo>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .list_tables(schema.as_deref())
+    run_schema_metadata(kind, options, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .list_tables(schema.as_deref())
+        .await
+    })
     .await
 }
 
@@ -678,14 +695,18 @@ pub async fn list_views(
     database: Option<String>,
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<TableInfo>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .list_views(schema.as_deref())
+    run_schema_metadata(kind, options, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .list_views(schema.as_deref())
+        .await
+    })
     .await
 }
 
@@ -887,14 +908,18 @@ pub async fn list_functions(
     database: Option<String>,
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<FunctionInfo>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .list_functions(schema.as_deref())
+    run_schema_metadata(kind, options, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .list_functions(schema.as_deref())
+        .await
+    })
     .await
 }
 
@@ -923,14 +948,18 @@ pub async fn list_procedures(
     database: Option<String>,
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<FunctionInfo>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .list_procedures(schema.as_deref())
+    run_schema_metadata(kind, options, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .list_procedures(schema.as_deref())
+        .await
+    })
     .await
 }
 
@@ -2600,4 +2629,138 @@ pub async fn copy_table_to_connection(
         ),
     )
     .await
+}
+
+#[cfg(test)]
+mod metadata_performance_tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    fn options(id: String) -> Option<super::super::execution::ExecutionOptions> {
+        Some(super::super::execution::ExecutionOptions {
+            job_id: Some(id),
+            ..Default::default()
+        })
+    }
+
+    #[tokio::test]
+    async fn metadata_dispatch_cancellation_stops_delayed_sqlite_reads() {
+        let pool = Arc::new(super::super::pool::PoolManager::new());
+        let mut durations = Vec::new();
+        for index in 0..11 {
+            let id = format!("metadata-delayed-{index}");
+            let worker_id = id.clone();
+            let worker_pool = pool.clone();
+            let (ready_sender, ready_receiver) = tokio::sync::oneshot::channel();
+            let (continue_sender, continue_receiver) = tokio::sync::oneshot::channel();
+            let task = tokio::spawn(async move {
+                run_schema_metadata(DatabaseKind::Sqlite, options(worker_id), async {
+                    let _ = ready_sender.send(());
+                    continue_receiver.await.map_err(|error| error.to_string())?;
+                    create_adapter_from_string(DatabaseKind::Sqlite, ":memory:", None, worker_pool)?
+                        .list_tables(None)
+                        .await
+                })
+                .await
+            });
+            ready_receiver.await.unwrap();
+            let start = Instant::now();
+            assert!(super::super::execution::cancel(&id).unwrap());
+            continue_sender.send(()).unwrap();
+            let error = task.await.unwrap().unwrap_err();
+            assert!(error.contains("bevor sie gestartet"), "{error}");
+            assert!(!super::super::execution::cancel(&id).unwrap());
+            if index >= 2 {
+                durations.push(start.elapsed().as_secs_f64() * 1000.0);
+            }
+        }
+        durations.sort_by(f64::total_cmp);
+        eprintln!(
+            "performance metadata-dispatch-cancellation: median_ms={:.3} p95_ms={:.3} runs={} catalog_reads_started=0 retained_jobs=0",
+            durations[4], durations[8], durations.len()
+        );
+        assert!(durations[8] < 120.0, "{durations:?}");
+    }
+
+    #[tokio::test]
+    async fn metadata_catalog_large_input_has_bounded_results_and_latency() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("metadata.sqlite");
+        {
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            connection.execute_batch("BEGIN").unwrap();
+            for index in 0..3000 {
+                connection
+                    .execute_batch(&format!("CREATE TABLE t_{index}(id INTEGER)"))
+                    .unwrap();
+            }
+            for index in 0..1000 {
+                connection
+                    .execute_batch(&format!("CREATE VIEW v_{index} AS SELECT id FROM t_0"))
+                    .unwrap();
+            }
+            connection.execute_batch("COMMIT").unwrap();
+        }
+        let connection_string = path.to_string_lossy().into_owned();
+        let pool = Arc::new(super::super::pool::PoolManager::new());
+        let mut durations = Vec::new();
+        let mut result_bytes = 0;
+        for index in 0..11 {
+            let start = Instant::now();
+            let tables = run_schema_metadata(
+                DatabaseKind::Sqlite,
+                options(format!("metadata-tables-{index}")),
+                async {
+                    create_adapter_from_string(
+                        DatabaseKind::Sqlite,
+                        &connection_string,
+                        None,
+                        pool.clone(),
+                    )?
+                    .list_tables(None)
+                    .await
+                },
+            )
+            .await
+            .unwrap();
+            let views = run_schema_metadata(
+                DatabaseKind::Sqlite,
+                options(format!("metadata-views-{index}")),
+                async {
+                    create_adapter_from_string(
+                        DatabaseKind::Sqlite,
+                        &connection_string,
+                        None,
+                        pool.clone(),
+                    )?
+                    .list_views(None)
+                    .await
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(tables.len(), 3000);
+            assert_eq!(views.len(), 1000);
+            result_bytes = (tables.capacity() + views.capacity())
+                * std::mem::size_of::<TableInfo>()
+                + tables
+                    .iter()
+                    .chain(&views)
+                    .map(|row| row.name.capacity() + row.schema.capacity())
+                    .sum::<usize>();
+            assert!(!super::super::execution::cancel(&format!("metadata-tables-{index}")).unwrap());
+            assert!(!super::super::execution::cancel(&format!("metadata-views-{index}")).unwrap());
+            if index >= 2 {
+                durations.push(start.elapsed().as_secs_f64() * 1000.0);
+            }
+        }
+        durations.sort_by(f64::total_cmp);
+        eprintln!(
+            "performance metadata-catalog-sqlite: median_ms={:.3} p95_ms={:.3} tables=3000 views=1000 result_allocation_bytes={} requests_per_run=2 retained_jobs=0",
+            durations[4], durations[8], result_bytes
+        );
+        assert!(durations[8] < 250.0, "{durations:?}");
+        assert!(result_bytes < 2 * 1024 * 1024);
+    }
 }

@@ -31,7 +31,11 @@ Keep checks fast: run only what the change can break, once at the end, not after
 | `src/**/*.ts(x)` | `npx tsc -p tsconfig.app.json --noEmit`, `bunx biome check <changed files>`, and only the tests that cover the change (`grep -l <module> tests/*.test.ts`) |
 | `src-tauri/**/*.rs` | `cargo check`, plus `cargo test <module>` if logic changed |
 
-- Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, browser/perf/integration/E2E tests, `production:check`, `tauri build`.
+- Every runtime feature, including small additions, needs a scoped performance regression test. Extend an existing scenario when possible. Cover realistic large inputs, latency (median/p95), retained memory or bounded allocations/DOM, and database request counts/concurrency where applicable; include cancellation and idle behavior for background work. Functional correctness alone does not establish performance.
+- Run the feature's performance tests once after implementation and record the measured workload and limits. `bun run test:perf:core` covers shared cache/grid budgets; browser, constrained CPU/heap, and PostgreSQL suites run in `.github/workflows/performance.yml`. Document a baseline and resulting measurements for optimizations. Do not loosen budgets to make a regression pass.
+- Real platform results and CPU/heap simulation are separate evidence. Never claim every computer or database family was tested; record OS, architecture, CPU, RAM, runtime, and missing coverage. Prefer eliminating duplicate reads, bounding results and caches, and cancelling abandoned work over increasing database concurrency or automatic polling.
+
+- Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, unrelated browser/perf/integration/E2E tests, `production:check`, `tauri build`. Scoped performance tests required above are included in the change's checks.
 - Do not re-run a check that already passed, and do not wait for CI.
 - If a check fails for reasons unrelated to your change, report it instead of fixing it.
 

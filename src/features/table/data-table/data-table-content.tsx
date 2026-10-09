@@ -83,7 +83,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     paddingBottom,
     paddingTop,
     rootRef,
-    rowVirtualizer,
+    measureRow,
     rows,
     saveCellValue,
     scrollRef,
@@ -243,7 +243,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       outgoingFkByColumn={outgoingFkByColumn}
                       paddingBottom={paddingBottom}
                       paddingTop={paddingTop}
-                      rowVirtualizer={rowVirtualizer}
+                      measureRow={measureRow}
                       rows={rows}
                       scrollRef={scrollRef}
                       selectedByRow={selectedByRow}
