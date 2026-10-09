@@ -9,6 +9,8 @@ import { OnboardingDrivers } from "@/features/onboarding/onboarding-drivers";
 import { OnboardingExtensions } from "@/features/onboarding/onboarding-extensions";
 import { OnboardingIntro } from "@/features/onboarding/onboarding-intro";
 import { OnboardingThemePreview } from "@/features/onboarding/onboarding-theme-preview";
+import { SettingsAppearance } from "@/features/settings/settings-appearance";
+import { SettingsTableAppearance } from "@/features/settings/settings-table-appearance";
 import { EASE_OUT } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
@@ -22,6 +24,7 @@ export function Onboarding() {
   const setCrashReports = useSettingsStore((s) => s.setCrashReports);
   const usageMetrics = useSettingsStore((s) => s.usageMetrics);
   const setUsageMetrics = useSettingsStore((s) => s.setUsageMetrics);
+  const resetAppearance = useSettingsStore((s) => s.resetAppearance);
   const { theme, setTheme } = useTheme();
   const [step, setStep] = useState(0);
   const [shownDone, setShownDone] = useState(done);
@@ -62,6 +65,30 @@ export function Onboarding() {
           preview: <OnboardingThemePreview variant="system" />,
         },
       ],
+    },
+    {
+      id: "tables",
+      title: "Wie sollen deine Tabellen aussehen?",
+      subtitle:
+        "Stil, Spaltenbreite und ob Werte nach Datentyp eingefärbt werden. Kein Bock? Überspringen behält die Standards.",
+      skippable: true,
+      content: (
+        <div className="@container mt-8 space-y-3">
+          <SettingsTableAppearance />
+        </div>
+      ),
+    },
+    {
+      id: "layout",
+      title: "Wie viel Platz soll die Oberfläche bekommen?",
+      subtitle:
+        "Größe, Dichte und Navigation. Alles lässt sich später unter Einstellungen › Darstellung ändern.",
+      skippable: true,
+      content: (
+        <div className="@container mt-8 space-y-3">
+          <SettingsAppearance onboarding />
+        </div>
+      ),
     },
     {
       id: "mode",
@@ -157,6 +184,10 @@ export function Onboarding() {
   ];
   const current = steps[Math.max(step, 1) - 1];
   const last = step === steps.length;
+  const skipAppearance = () => {
+    resetAppearance();
+    setStep(steps.findIndex((s) => s.id === "mode") + 1);
+  };
 
   return (
     <AnimatePresence>
@@ -178,12 +209,12 @@ export function Onboarding() {
             ) : (
               <motion.div
                 key="steps"
-                className="absolute inset-0 flex items-center justify-center overflow-y-auto px-8 py-10"
+                className="absolute inset-0 flex justify-center overflow-y-auto px-8 py-10"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 1, delay: 0.3, ease: EASE_OUT }}
               >
-                <div className="w-full max-w-3xl">
+                <div className="my-auto w-full max-w-3xl">
                   <div className="mb-8 flex items-center gap-3">
                     <AppLogo className="size-9" />
                     <div>
@@ -245,6 +276,11 @@ export function Onboarding() {
                       ))}
                     </div>
                     <div className="flex gap-2">
+                      {"skippable" in current && (
+                        <Button variant="ghost" onClick={skipAppearance}>
+                          Überspringen
+                        </Button>
+                      )}
                       {step > 1 && (
                         <Button variant="ghost" onClick={() => setStep(step - 1)}>
                           Zurück
