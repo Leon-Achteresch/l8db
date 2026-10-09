@@ -1048,7 +1048,19 @@ pub struct AutomationConnection {
     #[serde(default)]
     pub proxy: Option<ProxyDescriptor>,
     #[serde(default)]
+    pub command_tunnel: Option<CommandTunnelDescriptor>,
+    #[serde(default)]
     pub vault: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandTunnelDescriptor {
+    pub command: String,
+    #[serde(default)]
+    pub local_port: Option<u16>,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

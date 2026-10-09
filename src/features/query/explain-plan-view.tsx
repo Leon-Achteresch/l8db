@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { SaveIcon, XIcon } from "lucide-react";
+import { SaveIcon, Sparkles, XIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +17,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { IndexAdvisorPanel } from "@/features/explain/index-advisor-panel";
 import { PlanVisualizer } from "@/features/explain/plan-visualizer";
+import { explainPlanPrompt } from "@/lib/ai/editor/chat-prompts";
+import { compactExplain } from "@/lib/ai/editor/compact";
+import { useAiStore } from "@/lib/ai/store";
 import type { ExplainNode } from "@/lib/db";
 import {
   buildSavedExplainPlan,
@@ -131,6 +134,16 @@ export function ExplainPlanView({
           variant="ghost"
           size="sm"
           className="ml-auto h-7 gap-1.5 px-2 text-xs"
+          title="Plan verdichtet an den KI-Chat senden"
+          onClick={() => useAiStore.getState().ask(explainPlanPrompt(sql, compactExplain(plan)))}
+        >
+          <Sparkles className="size-3.5" />
+          Mit KI erklären
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs"
           onClick={() => setConfirmOpen(true)}
           disabled={saving}
           title="Plan mit SQL und Kontext als Datei speichern (führt nichts aus)"

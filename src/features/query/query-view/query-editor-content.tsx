@@ -86,6 +86,7 @@ export function QueryEditorContent({
           sql={sql}
           dialect={dialect}
           dialectLabel={dialectLabel}
+          editorId={tabId}
         />
       )}
     </>

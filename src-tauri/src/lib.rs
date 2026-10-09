@@ -4,6 +4,7 @@ mod automation;
 mod baas_file;
 mod branching;
 mod check_cli;
+mod cli;
 mod community_extensions;
 mod convex;
 mod db;
@@ -54,6 +55,9 @@ pub fn run() {
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if cli::wants(&args) {
+        std::process::exit(cli::main(&args));
+    }
     if args.iter().any(|arg| arg == "--check") {
         std::process::exit(check_cli::cli(&args));
     }
@@ -145,6 +149,8 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_approve,
             ai::ai_respond,
+            ai::complete::ai_complete,
+            ai::complete::ai_complete_cancel,
             ai::knowledge::ai_knowledge_get,
             ai::knowledge::ai_knowledge_set,
             desktop::set_crash_reporting,
@@ -322,6 +328,9 @@ pub fn run() {
             mcp::clients::mcp_clients,
             mcp::clients::mcp_register,
             mcp::clients::mcp_server_command,
+            cli::install::cli_status,
+            cli::install::cli_install,
+            cli::install::cli_uninstall,
             db::commands::list_providers,
             db::s3::commands::s3_list_buckets,
             db::s3::commands::s3_create_bucket,

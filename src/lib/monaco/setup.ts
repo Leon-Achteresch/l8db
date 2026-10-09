@@ -23,6 +23,7 @@ import "monaco-editor/features/gpu/register";
 import "monaco-editor/features/hover/register";
 import "monaco-editor/features/iPadShowKeyboard/register";
 import "monaco-editor/features/indentation/register";
+import "monaco-editor/features/inlineCompletions/register";
 import "monaco-editor/features/inPlaceReplace/register";
 import "monaco-editor/features/insertFinalNewLine/register";
 import "monaco-editor/features/lineSelection/register";

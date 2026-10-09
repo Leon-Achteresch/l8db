@@ -469,7 +469,16 @@ fn tool_history_converts_to_each_provider_protocol() {
             byok::payload(&profile(provider), "instructions", &messages, &tools).unwrap();
         match provider {
             "anthropic" => {
-                assert_eq!(payload["system"], "instructions");
+                assert_eq!(payload["system"][0]["text"], "instructions");
+                assert_eq!(payload["system"][0]["cache_control"]["type"], "ephemeral");
+                assert_eq!(payload["tools"][0]["cache_control"]["type"], "ephemeral");
+                assert_eq!(
+                    payload["messages"][2]["content"][0]["cache_control"]["type"],
+                    "ephemeral"
+                );
+                assert!(payload["messages"][1]["content"][0]
+                    .get("cache_control")
+                    .is_none());
                 assert_eq!(payload["messages"][1]["content"][0]["type"], "tool_use");
                 assert_eq!(
                     payload["messages"][2]["content"][0]["tool_use_id"],

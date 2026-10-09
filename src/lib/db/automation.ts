@@ -512,7 +512,14 @@ export interface AutomationConnection {
   tags: string[];
   ssh: SshDescriptor | null;
   proxy: ProxyDescriptor | null;
+  commandTunnel: CommandTunnelDescriptor | null;
   vault: boolean;
+}
+
+export interface CommandTunnelDescriptor {
+  command: string;
+  localPort: number | null;
+  timeoutSecs: number | null;
 }
 
 export interface RunSummary {

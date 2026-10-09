@@ -8,6 +8,7 @@ import {
   Monitor,
   ShieldCheck,
   Sliders,
+  SquareTerminal,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { NewBadge } from "@/components/new-badge";
@@ -43,6 +44,11 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     id: "security",
     label: "Sicherheit & SSH",
     icon: ShieldCheck,
+  },
+  {
+    id: "cli",
+    label: "Kommandozeile",
+    icon: SquareTerminal,
   },
   {
     id: "extensions",
