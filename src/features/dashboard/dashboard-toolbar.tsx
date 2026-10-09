@@ -9,11 +9,19 @@ import {
   PaletteIcon,
   PencilIcon,
   PlusIcon,
+  RainbowIcon,
   RefreshCwIcon,
   TimerIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IconButton } from "@/components/icon-button";
+import {
+  IconMenu,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuRadioItem,
+  IconMenuSeparator,
+} from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -273,34 +281,43 @@ export function DashboardToolbar({
                 {hasNew && <NewBadge />}
               </Button>
             )}
-            <DropdownMenu>
+            <IconMenu>
               <DropdownMenuTrigger asChild>
                 <IconButton variant="ghost" size="icon-sm" aria-label="Weitere Dashboard-Aktionen">
                   <EllipsisIcon />
                 </IconButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={onReload}>
-                  <RefreshCwIcon /> Jetzt neu laden
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-[10px]">Farben</DropdownMenuLabel>
+              <IconMenuContent>
+                <IconMenuItem
+                  icon={<RefreshCwIcon />}
+                  label="Jetzt neu laden"
+                  onSelect={onReload}
+                />
+                <IconMenuSeparator />
                 <DropdownMenuRadioGroup
                   value={paletteMode}
                   onValueChange={(mode) => setPaletteMode(mode as DashboardPaletteMode)}
                 >
-                  <DropdownMenuRadioItem value="connection">Verbindungsfarbe</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="vivid">Bunt</DropdownMenuRadioItem>
+                  <IconMenuRadioItem
+                    icon={<PaletteIcon />}
+                    label="Farben: Verbindungsfarbe"
+                    value="connection"
+                  />
+                  <IconMenuRadioItem icon={<RainbowIcon />} label="Farben: Bunt" value="vivid" />
                 </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => onDrawer("dashboards")}>
-                  <FolderOpenIcon /> Dashboards verwalten
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onDrawer("charts")}>
-                  <LibraryIcon /> Gespeicherte Charts
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <IconMenuSeparator />
+                <IconMenuItem
+                  icon={<FolderOpenIcon />}
+                  label="Dashboards verwalten"
+                  onSelect={() => onDrawer("dashboards")}
+                />
+                <IconMenuItem
+                  icon={<LibraryIcon />}
+                  label="Gespeicherte Charts"
+                  onSelect={() => onDrawer("charts")}
+                />
+              </IconMenuContent>
+            </IconMenu>
           </div>
         </>
       )}

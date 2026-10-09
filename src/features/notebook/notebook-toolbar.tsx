@@ -1,28 +1,37 @@
 import {
+  BookOpenIcon,
   ChevronRightIcon,
+  DatabaseIcon,
   DownloadIcon,
   EllipsisIcon,
   FilePlusIcon,
   FolderOpenIcon,
+  HistoryIcon,
+  NotebookIcon,
   PlayIcon,
+  RectangleVerticalIcon,
+  SaveAllIcon,
   SaveIcon,
   SquareIcon,
 } from "lucide-react";
 import { IconButton } from "@/components/icon-button";
+import {
+  IconMenu,
+  IconMenuCheckboxItem,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuRadioItem,
+  IconMenuSeparator,
+  IconMenuSubContent,
+  IconMenuSubTrigger,
+} from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useActiveConnection } from "@/lib/connections";
@@ -108,64 +117,73 @@ export function NotebookToolbar({
             <span className="text-[10px] opacity-70">⇧⌘↵</span>
           </Button>
         )}
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <IconButton variant="ghost" size="icon-sm" aria-label="Weitere Notebook-Aktionen">
               <EllipsisIcon />
             </IconButton>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem onSelect={() => newNotebookDraft(active?.id ?? null)}>
-              <FilePlusIcon /> Neues Notebook
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void openNotebook()}>
-              <FolderOpenIcon /> Datei öffnen…
-            </DropdownMenuItem>
+          <IconMenuContent>
+            <IconMenuItem
+              icon={<FilePlusIcon />}
+              label="Neues Notebook"
+              onSelect={() => newNotebookDraft(active?.id ?? null)}
+            />
+            <IconMenuItem
+              icon={<FolderOpenIcon />}
+              label="Datei öffnen…"
+              onSelect={() => void openNotebook()}
+            />
             {recent.length > 0 && (
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="pl-8">Zuletzt geöffnet</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="max-w-80">
-                  <DropdownMenuLabel className="text-[10px]">Zuletzt geöffnet</DropdownMenuLabel>
+                <IconMenuSubTrigger icon={<HistoryIcon />} label="Zuletzt geöffnet" />
+                <IconMenuSubContent>
                   {recent.map((entry) => (
-                    <DropdownMenuItem
+                    <IconMenuItem
                       key={entry.path}
-                      title={entry.path}
+                      icon={<NotebookIcon />}
+                      label={entry.name}
                       onSelect={() => void openNotebook(entry.path)}
-                    >
-                      <span className="truncate">{entry.name}</span>
-                    </DropdownMenuItem>
+                    />
                   ))}
-                </DropdownMenuSubContent>
+                </IconMenuSubContent>
               </DropdownMenuSub>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void saveNotebook(false)}>
-              <SaveIcon /> Speichern
-              <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="pl-8" onSelect={() => void saveNotebook(true)}>
-              Speichern unter…
-              <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-[10px]">Ansicht</DropdownMenuLabel>
+            <IconMenuSeparator />
+            <IconMenuItem
+              icon={<SaveIcon />}
+              label="Speichern"
+              shortcut="⌘S"
+              onSelect={() => void saveNotebook(false)}
+            />
+            <IconMenuItem
+              icon={<SaveAllIcon />}
+              label="Speichern unter…"
+              shortcut="⇧⌘S"
+              onSelect={() => void saveNotebook(true)}
+            />
+            <IconMenuSeparator />
             <DropdownMenuRadioGroup
               value={layout}
               onValueChange={(value) => setLayout(value as NotebookLayout)}
             >
-              <DropdownMenuRadioItem value="column">Spalte</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="book">Buch</DropdownMenuRadioItem>
+              <IconMenuRadioItem
+                icon={<RectangleVerticalIcon />}
+                label="Ansicht: Spalte"
+                value="column"
+              />
+              <IconMenuRadioItem icon={<BookOpenIcon />} label="Ansicht: Buch" value="book" />
             </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
+            <IconMenuSeparator />
+            <IconMenuCheckboxItem
+              icon={<DatabaseIcon />}
+              label="Ergebnisse mitspeichern"
               checked={doc.saveResults}
               onCheckedChange={(saveResults) => patchDoc({ saveResults: Boolean(saveResults) })}
               onSelect={(event) => event.preventDefault()}
-            >
-              Ergebnisse mitspeichern
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            />
+          </IconMenuContent>
+        </IconMenu>
       </div>
     </div>
   );

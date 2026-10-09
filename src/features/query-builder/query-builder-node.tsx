@@ -4,17 +4,15 @@ import {
   FunnelIcon,
   KeyRoundIcon,
   LinkIcon,
+  ListChecksIcon,
+  ListXIcon,
   TableIcon,
+  UnlinkIcon,
 } from "lucide-react";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export const NODE_WIDTH = 232;
@@ -74,7 +72,7 @@ export function QueryBuilderNode({
         <TableIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate font-medium">{table}</span>
         {alias && <span className="font-mono text-[11px] text-muted-foreground">{alias}</span>}
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -85,19 +83,30 @@ export function QueryBuilderNode({
               <EllipsisIcon />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={onSelectAll}>Alle Spalten wählen</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onSelectNone}>Keine Spalte wählen</DropdownMenuItem>
+          <IconMenuContent>
+            <IconMenuItem
+              icon={<ListChecksIcon />}
+              label="Alle Spalten wählen"
+              onSelect={onSelectAll}
+            />
+            <IconMenuItem
+              icon={<ListXIcon />}
+              label="Keine Spalte wählen"
+              onSelect={onSelectNone}
+            />
             {onRemove && (
               <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onSelect={onRemove}>
-                  Join entfernen
-                </DropdownMenuItem>
+                <IconMenuSeparator />
+                <IconMenuItem
+                  icon={<UnlinkIcon />}
+                  label="Join entfernen"
+                  variant="destructive"
+                  onSelect={onRemove}
+                />
               </>
             )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </IconMenuContent>
+        </IconMenu>
       </div>
       {loading ? (
         <div className="px-2.5 text-muted-foreground" style={{ lineHeight: `${NODE_ROW}px` }}>

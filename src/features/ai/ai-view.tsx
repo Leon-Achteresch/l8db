@@ -8,9 +8,9 @@ import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
+import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
@@ -652,19 +652,23 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     },
     menu: (item: { id: string; label: string }, rename: () => void) => (
       <>
-        <DropdownMenuItem disabled={Boolean(runId)} onSelect={rename}>
-          <Pencil className="size-3.5" />
-          Umbenennen
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => exportSession(item.id)}>
-          <Download className="size-3.5" />
-          Als Markdown exportieren
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
+        <IconMenuItem
+          icon={<Pencil />}
+          label="Umbenennen"
+          disabled={Boolean(runId)}
+          onSelect={rename}
+        />
+        <IconMenuItem
+          icon={<Download />}
+          label="Als Markdown exportieren"
+          onSelect={() => exportSession(item.id)}
+        />
+        <IconMenuSeparator />
+        <IconMenuItem
+          icon={<Trash2 />}
+          label={`${item.label} löschen`}
           variant="destructive"
           disabled={Boolean(runId)}
-          aria-label={`${item.label} löschen`}
           onSelect={() => {
             const entry = state.sessions.find((session) => session.id === item.id);
             if (entry)
@@ -678,10 +682,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                 updatedAt: Date.now(),
               });
           }}
-        >
-          <Trash2 className="size-3.5" />
-          Löschen
-        </DropdownMenuItem>
+        />
       </>
     ),
   };

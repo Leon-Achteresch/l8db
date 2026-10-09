@@ -7,13 +7,9 @@ import {
   UploadCloudIcon,
 } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { SqlImportDraft } from "@/lib/import-workspace";
 import { splitSqlStatements } from "@/lib/sql-statements";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
@@ -160,25 +156,23 @@ export function ImportFileList({
       </div>
       <div className="flex items-center justify-between px-4 pt-1 pb-1.5">
         <span className="text-xs font-semibold">Dateien</span>
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-xs" aria-label="Weitere Aktionen">
               <EllipsisIcon />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <IconMenuContent>
             {csv && (
-              <DropdownMenuItem onSelect={onPickData}>
-                <FileTextIcon />
-                Datendatei wählen…
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<FileTextIcon />}
+                label="Datendatei wählen…"
+                onSelect={onPickData}
+              />
             )}
-            <DropdownMenuItem onSelect={onPickSql}>
-              <FileCodeIcon />
-              SQL-Skript wählen…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <IconMenuItem icon={<FileCodeIcon />} label="SQL-Skript wählen…" onSelect={onPickSql} />
+          </IconMenuContent>
+        </IconMenu>
       </div>
       <ul className="grid gap-0.5 px-1.5">
         {csv &&

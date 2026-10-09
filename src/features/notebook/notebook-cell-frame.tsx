@@ -12,12 +12,12 @@ import {
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/icon-button";
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  IconMenu,
+  IconMenuCheckboxItem,
+  IconMenuContent,
+  IconMenuItem,
+} from "@/components/icon-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { NotebookCellType } from "@/lib/notebook";
 import { cn } from "@/lib/utils";
 import { NotebookAddCell } from "./notebook-add-cell";
@@ -128,27 +128,30 @@ export function NotebookCellFrame({
               <Trash2Icon />
             </IconButton>
             <span className="mx-0.5 h-4 w-px bg-border" />
-            <DropdownMenu>
+            <IconMenu>
               <DropdownMenuTrigger asChild>
                 <IconButton variant="ghost" size="icon-xs" aria-label="Weitere Zellaktionen">
                   <EllipsisIcon />
                 </IconButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <IconMenuContent>
                 {run && (
-                  <DropdownMenuItem disabled={run.running} onSelect={run.onRunFrom}>
-                    <ListEndIcon /> Ab hier ausführen
-                  </DropdownMenuItem>
+                  <IconMenuItem
+                    icon={<ListEndIcon />}
+                    label="Ab hier ausführen"
+                    disabled={run.running}
+                    onSelect={run.onRunFrom}
+                  />
                 )}
-                <DropdownMenuCheckboxItem
+                <IconMenuCheckboxItem
+                  icon={<SeparatorHorizontalIcon />}
+                  label="Auf neuer Seite beginnen"
                   checked={pageBreak}
                   disabled={first}
                   onCheckedChange={onTogglePageBreak}
-                >
-                  <SeparatorHorizontalIcon /> Auf neuer Seite beginnen
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                />
+              </IconMenuContent>
+            </IconMenu>
           </div>
           <div
             className={cn(

@@ -1,5 +1,15 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MoreHorizontal } from "lucide-react";
+import {
+  BracesIcon,
+  ChartColumnIcon,
+  CopyIcon,
+  EyeIcon,
+  FileSpreadsheetIcon,
+  HashIcon,
+  MoreHorizontal,
+  SheetIcon,
+  TableIcon,
+} from "lucide-react";
 import {
   lazy,
   type ReactNode,
@@ -11,17 +21,19 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import {
+  IconMenu,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuRadioItem,
+  IconMenuSeparator,
+  IconMenuSubContent,
+  IconMenuSubTrigger,
+} from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -41,6 +53,13 @@ import { QueryCellInspector } from "./query-cell-inspector";
 import { useMaskedQueryResult } from "./query-result-masking";
 import { QueryResultTable } from "./query-result-table";
 import type { ResultChartBinding } from "./result-chart/types";
+
+const COPY_FORMAT_ICONS: Record<CopyFormat, typeof CopyIcon> = {
+  json: BracesIcon,
+  csv: FileSpreadsheetIcon,
+  tsv: SheetIcon,
+  markdown: HashIcon,
+};
 
 const ResultChartView = lazy(() =>
   import("./result-chart/result-chart-view").then((m) => ({ default: m.ResultChartView })),
@@ -203,13 +222,13 @@ export function QueryResultWorkbench({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" className="size-7" variant="ghost" aria-label="Ergebnisoptionen">
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <IconMenuContent>
               <DropdownMenuRadioGroup
                 value={chartView ? "chart" : workspace.resultView}
                 onValueChange={(value) =>
@@ -218,34 +237,41 @@ export function QueryResultWorkbench({
                     : showGrid(value as "table" | "json")
                 }
               >
-                <DropdownMenuRadioItem value="table">Tabelle</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="json">JSON</DropdownMenuRadioItem>
-                {chart && <DropdownMenuRadioItem value="chart">Diagramm</DropdownMenuRadioItem>}
+                <IconMenuRadioItem icon={<TableIcon />} label="Tabelle" value="table" />
+                <IconMenuRadioItem icon={<BracesIcon />} label="JSON" value="json" />
+                {chart && (
+                  <IconMenuRadioItem icon={<ChartColumnIcon />} label="Diagramm" value="chart" />
+                )}
               </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
+              <IconMenuSeparator />
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger>Kopieren</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {COPY_FORMATS.map((format) => (
-                    <DropdownMenuItem
-                      key={format.value}
-                      onSelect={() => void handleCopy(format.value)}
-                    >
-                      Als {format.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
+                <IconMenuSubTrigger icon={<CopyIcon />} label="Kopieren" />
+                <IconMenuSubContent>
+                  {COPY_FORMATS.map((format) => {
+                    const Icon = COPY_FORMAT_ICONS[format.value];
+                    return (
+                      <IconMenuItem
+                        key={format.value}
+                        icon={<Icon />}
+                        label={`Als ${format.label}`}
+                        onSelect={() => void handleCopy(format.value)}
+                      />
+                    );
+                  })}
+                </IconMenuSubContent>
               </DropdownMenuSub>
               {canCreateView && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setViewDialogOpen(true)}>
-                    Als View speichern…
-                  </DropdownMenuItem>
+                  <IconMenuSeparator />
+                  <IconMenuItem
+                    icon={<EyeIcon />}
+                    label="Als View speichern…"
+                    onSelect={() => setViewDialogOpen(true)}
+                  />
                 </>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </IconMenuContent>
+          </IconMenu>
           {chart && viewConnection && (
             <CreateViewDialog
               open={viewDialogOpen}
