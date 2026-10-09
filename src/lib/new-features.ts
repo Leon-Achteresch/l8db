@@ -42,6 +42,7 @@ export const NEW_FEATURES = {
   "mcp.workflows": "0.10.0",
   "mcp.scripts": "0.14.0",
   "health.advisor": "0.10.0",
+  "monitor.live": NEXT_FEATURE_VERSION,
   "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",

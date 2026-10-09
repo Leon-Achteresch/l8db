@@ -510,6 +510,7 @@ pub fn run() {
             db::commands::cancel_session,
             db::commands::terminate_session,
             db::commands::list_locks,
+            db::commands::live_metrics,
             db::commands::list_enums,
             db::commands::create_schema,
             db::commands::drop_schema,

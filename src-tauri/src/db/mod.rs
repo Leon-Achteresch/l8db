@@ -1089,6 +1089,10 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn list_locks(&self) -> Result<Vec<LockInfo>, String> {
         Err(unsupported("Sperren"))
     }
+    async fn live_metrics(&self, include_details: bool) -> Result<LiveMetrics, String> {
+        let _ = include_details;
+        Err(unsupported("Live-Monitor"))
+    }
     async fn list_enums(&self, schema: Option<&str>) -> Result<Vec<EnumInfo>, String> {
         let _ = schema;
         Err(unsupported("Enums"))
@@ -1446,7 +1450,7 @@ pub struct CreateSubscriptionRequest {
     pub connect: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct SessionInfo {
     pub pid: i32,
     pub user: String,
@@ -1460,6 +1464,79 @@ pub struct SessionInfo {
     pub wait_event: Option<String>,
     pub is_self: bool,
     pub blocked_by: Vec<i32>,
+    pub client_port: Option<i32>,
+    pub backend_start: Option<String>,
+    pub state_change: Option<String>,
+    pub backend_xid: Option<String>,
+    pub wait_event_type: Option<String>,
+    pub backend_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ReplicationStat {
+    pub name: String,
+    pub client_addr: Option<String>,
+    pub state: String,
+    pub sync_state: Option<String>,
+    pub write_lag_ms: Option<f64>,
+    pub flush_lag_ms: Option<f64>,
+    pub replay_lag_ms: Option<f64>,
+    pub lag_bytes: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TableIoStat {
+    pub name: String,
+    pub heap_read: i64,
+    pub heap_hit: i64,
+    pub idx_read: i64,
+    pub idx_hit: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct LiveMetrics {
+    pub connections: i64,
+    pub max_connections: Option<i64>,
+    pub active_sessions: i64,
+    pub waiting_locks: i64,
+    pub database_size_bytes: Option<i64>,
+    pub commits: i64,
+    pub rollbacks: i64,
+    pub queries_read: Option<i64>,
+    pub queries_write: Option<i64>,
+    pub queries_other: Option<i64>,
+    pub rows_read: i64,
+    pub rows_written: i64,
+    pub blocks_read: i64,
+    pub blocks_hit: i64,
+    pub temp_bytes: Option<i64>,
+    pub deadlocks: Option<i64>,
+    pub cpu_busy: Option<i64>,
+    pub cpu_total: Option<i64>,
+    pub server_version: String,
+    pub uptime_seconds: Option<i64>,
+    pub timezone: Option<String>,
+    pub default_isolation: Option<String>,
+    pub in_recovery: bool,
+    pub replay_delay_ms: Option<f64>,
+    pub replication: Vec<ReplicationStat>,
+    pub table_io: Vec<TableIoStat>,
+}
+
+pub fn parse_proc_stat_cpu(text: &str) -> Option<(i64, i64)> {
+    let line = text.lines().find(|line| line.starts_with("cpu "))?;
+    let values: Vec<i64> = line
+        .split_whitespace()
+        .skip(1)
+        .take(8)
+        .map(|value| value.parse().ok())
+        .collect::<Option<_>>()?;
+    if values.len() < 4 {
+        return None;
+    }
+    let total: i64 = values.iter().sum();
+    let idle = values[3] + values.get(4).copied().unwrap_or(0);
+    Some((total - idle, total))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2077,6 +2154,27 @@ pub fn build_object_ddl(req: &ObjectDdlRequest) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parse_proc_stat_cpu_counts_idle_and_iowait_as_free() {
+        let text = "cpu  100 5 50 800 20 3 2 0 0 0\ncpu0 50 2 25 400 10 1 1 0 0 0\n";
+        assert_eq!(super::parse_proc_stat_cpu(text), Some((160, 980)));
+        assert_eq!(super::parse_proc_stat_cpu("intr 1 2 3"), None);
+        assert_eq!(super::parse_proc_stat_cpu("cpu  1 x 3 4"), None);
+    }
+
+    #[test]
+    fn parse_proc_stat_cpu_handles_large_inputs_quickly() {
+        let mut text = String::from("cpu  123456 789 34567 9876543 1234 0 567 0 0 0\n");
+        for index in 0..256 {
+            text.push_str(&format!("cpu{index} 1 2 3 4 5 6 7 8 0 0\n"));
+        }
+        let started = std::time::Instant::now();
+        for _ in 0..10_000 {
+            assert!(super::parse_proc_stat_cpu(&text).is_some());
+        }
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+    }
+
     #[test]
     fn unique_column_names_suffixes_duplicates() {
         let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
