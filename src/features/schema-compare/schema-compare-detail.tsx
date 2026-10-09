@@ -1,12 +1,8 @@
-import { ArrowDownIcon, ArrowUpIcon, EllipsisIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, DiffIcon, EllipsisIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { IconMenu, IconMenuCheckboxItem, IconMenuContent } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   type DefinitionDiffApi,
@@ -104,7 +100,7 @@ export function SchemaCompareDetail({
           >
             <ArrowDownIcon className="size-3.5" />
           </Button>
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 size="icon-sm"
@@ -115,15 +111,15 @@ export function SchemaCompareDetail({
                 <EllipsisIcon className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuCheckboxItem
+            <IconMenuContent>
+              <IconMenuCheckboxItem
+                icon={<DiffIcon />}
+                label="Nur Unterschiede"
                 checked={onlyDifferences}
                 onCheckedChange={(checked) => setOnlyDifferences(checked === true)}
-              >
-                Nur Unterschiede
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              />
+            </IconMenuContent>
+          </IconMenu>
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
