@@ -219,6 +219,7 @@ export interface Dashboard {
   fileStamp?: string | null;
   mcpId?: string | null;
   mcpStamp?: string | null;
+  sharedId?: string | null;
 }
 
 export const GRID_COLS = 12;
