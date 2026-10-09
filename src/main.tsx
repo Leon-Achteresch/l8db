@@ -17,7 +17,7 @@ import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
 import { useSettingsViewState } from "@/lib/settings-view-state";
 import { activateConnectionWithToast, restoreSshTunnel } from "@/lib/ssh";
-import { recordDuration } from "@/lib/telemetry";
+import { recordDuration, trackRoute } from "@/lib/telemetry";
 import { initUsageTracking } from "@/lib/usage-tracking";
 import { initWindowIntegration } from "@/lib/window-integration";
 import { router } from "./router";
@@ -37,12 +37,13 @@ if (import.meta.hot) import.meta.hot.dispose(usageTracking.dispose);
 const unsubscribeUsageRoute = router.subscribe("onResolved", () => {
   const route = router.state.matches.at(-1)?.routeId;
   const tab = (router.state.location.search as { tab?: string }).tab;
-  if (route)
-    usageTracking.view(
-      route.endsWith("/settings")
-        ? `/settings/${tab ?? useSettingsViewState.getState().category}`
-        : route,
-    );
+  if (!route) return;
+  trackRoute(route);
+  usageTracking.view(
+    route.endsWith("/settings")
+      ? `/settings/${tab ?? useSettingsViewState.getState().category}`
+      : route,
+  );
 });
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeUsageRoute);
 

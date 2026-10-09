@@ -96,12 +96,12 @@ pub fn run() {
     }
     builder
         .setup(move |app| {
+            desktop::install_logger(app.handle())?;
             windows::install_quick_menu(app.handle());
             windows::handle_args(app.handle(), &args, false);
             automation::init(app.handle());
             Ok(())
         })
-        .plugin(desktop::log_plugin())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(

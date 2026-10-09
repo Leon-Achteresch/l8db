@@ -339,8 +339,17 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "about",
     title: "Absturzberichte senden",
     description:
-      "Abstürze mit Fehlermeldung, Stacktrace, Version und Betriebssystem an Sentry (EU) senden. Verbindungsdaten werden entfernt, SQL und Ergebnisdaten nie gesendet.",
-    keywords: ["absturz", "crash", "sentry", "telemetrie", "datenschutz", "fehlerbericht"],
+      "Abstürze mit Fehlermeldung, Stacktrace, Version und Betriebssystem sowie Warn- und Fehlerprotokolle und die letzten Befehlsnamen an Sentry (EU) senden. Verbindungsdaten werden entfernt, SQL und Ergebnisdaten nie gesendet.",
+    keywords: [
+      "absturz",
+      "crash",
+      "sentry",
+      "telemetrie",
+      "datenschutz",
+      "fehlerbericht",
+      "logs",
+      "protokoll",
+    ],
     key: "crashReports",
   },
   {
@@ -348,8 +357,18 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "about",
     title: "Nutzungs- und Leistungsdaten senden",
     description:
-      "Bereiche, Bedienwege, aktive Vordergrundzeit, Sitzungen, Startzeit sowie Erfolg, Fehler, Abbrüche und Dauer von Datenbankbefehlen je DB-Typ an Sentry (EU) senden. Nie SQL, Ergebnisdaten, Namen oder Verbindungsdaten.",
-    keywords: ["metriken", "metrics", "nutzung", "leistung", "performance", "telemetrie", "sentry"],
+      "Bereiche, Bedienwege, aktive Vordergrundzeit, Sitzungen, Startzeit sowie Erfolg, Fehler, Abbrüche und Dauer von Datenbankbefehlen je DB-Typ (auch als Traces mit Ladezeiten) an Sentry (EU) senden. Nie SQL, Ergebnisdaten, Namen oder Verbindungsdaten.",
+    keywords: [
+      "metriken",
+      "metrics",
+      "nutzung",
+      "leistung",
+      "performance",
+      "telemetrie",
+      "sentry",
+      "traces",
+      "tracing",
+    ],
     key: "usageMetrics",
   },
   {

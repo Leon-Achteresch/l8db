@@ -3,7 +3,12 @@ import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
-import { recordDatabaseOperation, USAGE_COMMANDS, usageOutcome } from "@/lib/telemetry";
+import {
+  recordDatabaseOperation,
+  traceCommand,
+  USAGE_COMMANDS,
+  usageOutcome,
+} from "@/lib/telemetry";
 import { cancelTableExport, type TableExportProgress, type TableExportRequest } from "./columns";
 import type { DatabaseKind } from "./providers";
 
@@ -283,12 +288,15 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
       }).catch(() => undefined);
     }
   }
+  const kind = typeof args?.kind === "string" ? args.kind : "unknown";
   try {
     if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
       throw new Error(READ_ONLY_MESSAGE);
-    const result = await tauriInvoke<T>(
-      command,
-      CONFIGURED_COMMANDS.has(command) ? { ...args, options: backendOptions } : args,
+    const result = await traceCommand(command, { kind }, () =>
+      tauriInvoke<T>(
+        command,
+        CONFIGURED_COMMANDS.has(command) ? { ...args, options: backendOptions } : args,
+      ),
     );
     unlisten?.();
     if (taskId) finishTask(taskId, result);
