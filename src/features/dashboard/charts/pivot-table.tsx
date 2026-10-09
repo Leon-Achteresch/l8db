@@ -15,7 +15,13 @@ function axisOf(rows: ChartProps["rows"], key: string): Axis {
   return { labels: [...seen.keys()], raw: [...seen.values()] };
 }
 
-export function PivotTable({ rows, shape, options, totals: exact }: ChartProps) {
+export function PivotTable({
+  rows,
+  shape,
+  options,
+  totals: exact,
+  interactive = false,
+}: ChartProps) {
   const metric = shape.metrics[0]?.key ?? "";
   const rowKey = shape.dimension ?? "";
   const colKey = shape.dimension2 ?? "";
@@ -38,16 +44,25 @@ export function PivotTable({ rows, shape, options, totals: exact }: ChartProps) 
   const summable = shape.metrics[0] ? additive(shape.metrics[0]) : false;
   const margin = (list: ChartProps["rows"] | null | undefined) =>
     list ? new Map(list.map((row) => [toLabel(row[DIM_KEY]), row[metric]])) : null;
-  const exactRows = margin(exact?.rows);
-  const exactColumns = margin(exact?.columns);
+  const queried = exact && !exact.complete ? exact : null;
+  const exactRows = margin(queried?.rows);
+  const exactColumns = margin(queried?.columns);
   const show = (value: unknown) =>
     value === null || value === undefined ? "–" : fmtValue(toNumber(value), options);
   const fallback = (value: number | undefined) => (summable ? fmtValue(value ?? 0, options) : "–");
-  const rowTotal = (y: string) =>
-    exact?.pending ? "…" : exactRows ? show(exactRows.get(y)) : fallback(rowTotals.get(y));
-  const columnTotal = (x: string) =>
-    exact?.pending ? "…" : exactColumns ? show(exactColumns.get(x)) : fallback(colTotals.get(x));
-  const grandTotal = exact?.pending ? "…" : exact ? show(exact.grand?.[metric]) : fallback(total);
+  const marginTotal = (
+    exactMap: Map<string, unknown> | null,
+    sum: number | undefined,
+    key: string,
+  ) =>
+    queried?.pending ? "…" : exactMap ? show(exactMap.get(key)) : queried ? "–" : fallback(sum);
+  const rowTotal = (y: string) => marginTotal(exactRows, rowTotals.get(y), y);
+  const columnTotal = (x: string) => marginTotal(exactColumns, colTotals.get(x), x);
+  const grandTotal = queried?.pending
+    ? "…"
+    : queried
+      ? show(queried.grand?.[metric])
+      : fallback(total);
   const totalLabel = exact ? "Gesamt" : "Summe";
   const totalHint = exact
     ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
@@ -70,9 +85,9 @@ export function PivotTable({ rows, shape, options, totals: exact }: ChartProps) 
               <th
                 key={x}
                 data-dim2={dimAttr(xs.raw[i])}
-                tabIndex={0}
+                tabIndex={interactive ? 0 : undefined}
                 title={xNames.long[i]}
-                className={`${head} max-w-36 cursor-pointer truncate text-right`}
+                className={`${head} max-w-36 truncate text-right`}
               >
                 {xNames.short[i]}
               </th>
@@ -90,9 +105,9 @@ export function PivotTable({ rows, shape, options, totals: exact }: ChartProps) 
               <th
                 scope="row"
                 data-dim={dimAttr(ys.raw[r])}
-                tabIndex={0}
+                tabIndex={interactive ? 0 : undefined}
                 title={yNames.long[r]}
-                className="sticky left-0 max-w-44 cursor-pointer truncate bg-card px-2.5 py-1.5 text-left font-normal text-muted-foreground"
+                className="sticky left-0 max-w-44 truncate bg-card px-2.5 py-1.5 text-left font-normal text-muted-foreground"
               >
                 {yNames.short[r]}
               </th>
@@ -104,7 +119,7 @@ export function PivotTable({ rows, shape, options, totals: exact }: ChartProps) 
                     data-dim={dimAttr(ys.raw[r])}
                     data-dim2={dimAttr(xs.raw[c])}
                     title={`${yNames.long[r]} × ${xNames.long[c]}`}
-                    className="cursor-pointer px-2.5 py-1.5 text-right"
+                    className="px-2.5 py-1.5 text-right"
                     style={{ background: value === undefined ? undefined : fill(value) }}
                   >
                     {value === undefined ? "–" : fmtValue(value, options)}

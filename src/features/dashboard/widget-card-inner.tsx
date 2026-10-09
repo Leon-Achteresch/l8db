@@ -20,6 +20,7 @@ import {
   type Widget,
   widgetOptions,
 } from "@/lib/dashboards";
+import { ChartInteractionArea } from "./chart-interaction-area";
 import { ChartPointMenu } from "./chart-point-menu";
 import { CHART_RENDERERS, ChartHeadline, ChartLegend } from "./charts";
 import { useDashboardPeriod } from "./dashboard-period";
@@ -204,10 +205,10 @@ export function WidgetCardInner({
           </div>
         )}
       </div>
-      <div
-        className={`dashboard-widget-content min-h-0 flex-1 overflow-hidden${interact.pointer ? " [&_[data-active-dim]]:cursor-pointer [&_[data-dim]]:cursor-pointer" : ""}`}
-        role="application"
-        aria-label={`${title}: Datenpunkt anklicken oder fokussieren und mit Enter filtern oder Details öffnen`}
+      <ChartInteractionArea
+        enabled={interact.pointer}
+        label={`${title}: Datenpunkt anklicken oder fokussieren und mit Enter filtern oder Details öffnen`}
+        className="dashboard-widget-content min-h-0 flex-1 overflow-hidden"
         onClick={interact.onContentClick}
         onKeyDown={interact.onContentKeyDown}
       >
@@ -239,10 +240,11 @@ export function WidgetCardInner({
               compare={compare}
               period={shape.hasDate ? period : undefined}
               totals={margin}
+              interactive={interact.pointer}
             />
           </PanelErrorBoundary>
         )}
-      </div>
+      </ChartInteractionArea>
     </div>
   );
 }

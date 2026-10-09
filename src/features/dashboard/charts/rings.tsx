@@ -5,7 +5,7 @@ import { ChartTooltip } from "./chart-tooltip";
 import { type ChartProps, categories, dimAttr, hoveredIndex } from "./chart-utils";
 import { roundArcPath } from "./svg-geometry";
 
-export function Rings({ rows, shape, options }: ChartProps) {
+export function Rings({ rows, shape, options, interactive = false }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const items = categories(rows, shape, options.colorOffset).sort((a, b) => a.value - b.value);
@@ -32,7 +32,12 @@ export function Rings({ rows, shape, options }: ChartProps) {
           {items.map((item, i) => {
             const r = inner + band * i + band / 2;
             return (
-              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)} tabIndex={0}>
+              <g
+                key={item.name}
+                data-index={i}
+                data-dim={dimAttr(item.raw)}
+                tabIndex={interactive ? 0 : undefined}
+              >
                 <circle
                   cx={cx}
                   cy={cy}

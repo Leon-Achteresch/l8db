@@ -23,6 +23,7 @@ export interface ChartComparison {
 }
 
 export interface ChartTotals {
+  complete: boolean;
   pending: boolean;
   grand: Row | null;
   rows: Row[] | null;
@@ -36,6 +37,7 @@ export interface ChartProps {
   compare?: ChartComparison | null;
   period?: Period;
   totals?: ChartTotals | null;
+  interactive?: boolean;
 }
 
 export const axisTick = { fontSize: 11, fill: "var(--muted-foreground)" } as const;
