@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CommandMatchText } from "./command-match-text";
 import type { CommandItem } from "./types";
@@ -9,7 +8,6 @@ export function CommandPaletteOption({
   index,
   isActive,
   uid,
-  reduce,
   hasIcons,
   onHover,
   onSelect,
@@ -40,21 +38,7 @@ export function CommandPaletteOption({
       )}
     >
       {isActive ? (
-        <motion.span
-          layoutId={`${uid}-active`}
-          className="absolute inset-0 z-0 rounded-md bg-primary/[0.05]"
-          transition={
-            reduce
-              ? { duration: 0 }
-              : // Tracks rapid arrow-key navigation — keep it tighter
-                // than SPRING_LAYOUT so it never lags the active row.
-                {
-                  type: "spring",
-                  stiffness: 480,
-                  damping: 38,
-                }
-          }
-        />
+        <span aria-hidden className="absolute inset-0 z-0 rounded-md bg-primary/[0.05]" />
       ) : null}
       {Icon ? (
         <Icon className="relative z-10 h-4 w-4" />

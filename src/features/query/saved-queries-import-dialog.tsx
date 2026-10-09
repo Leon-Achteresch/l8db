@@ -1,19 +1,20 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { AlertTriangle, CopyPlus, FileJson } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { QueryHistoryDialogContent } from "@/features/query/query-history-dialog-content";
+import { usePortalContainer } from "@/lib/portal-container";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import {
   parseSavedQueryImport,
@@ -25,9 +26,13 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
-export function SavedQueriesImportDialog({ open, onOpenChange }: Props) {
+export function SavedQueriesImportDialog({ open, onOpenChange, onCloseAutoFocus }: Props) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const scopedContainer = usePortalContainer();
   const [candidates, setCandidates] = useState<SavedQueryImportCandidate[] | null>(null);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -114,11 +119,17 @@ export function SavedQueriesImportDialog({ open, onOpenChange }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={close} modal={!scopedContainer}>
+      <QueryHistoryDialogContent
+        className="max-w-lg"
+        onCloseAutoFocus={onCloseAutoFocus}
+        onDismiss={() => close(false)}
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <DialogHeader>
-          <DialogTitle>Gespeicherte Queries importieren</DialogTitle>
-          <DialogDescription>
+          <DialogTitle id={titleId}>Gespeicherte Queries importieren</DialogTitle>
+          <DialogDescription id={descriptionId}>
             Der Import führt nichts aus. Jeder Eintrag lässt sich vor der Übernahme einsehen.
           </DialogDescription>
         </DialogHeader>
@@ -213,7 +224,7 @@ export function SavedQueriesImportDialog({ open, onOpenChange }: Props) {
             {importable === 1 ? "1 Query importieren" : `${importable} Queries importieren`}
           </Button>
         </DialogFooter>
-      </DialogContent>
+      </QueryHistoryDialogContent>
     </Dialog>
   );
 }

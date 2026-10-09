@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   lazy,
   Suspense,
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -14,13 +15,6 @@ import {
 import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
-import {
-  buildDiagramExportItems,
-  buildHotkeyItems,
-  buildNotebookItems,
-  buildObjectItems,
-  buildSettingsItems,
-} from "@/features/shell/app-header-search/command-items";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
@@ -59,6 +53,7 @@ export function AppHeaderSearch() {
   const dynamicIsland = useSettingsStore((state) => state.dynamicIsland);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [builders, setBuilders] = useState<typeof import("./app-header-search/command-items")>();
   const [initialQuery, setInitialQuery] = useState("");
   const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
   const openSearch = useCallback((commandsOnly = false) => {
@@ -77,7 +72,7 @@ export function AppHeaderSearch() {
   const shortcutsMounted = useRef(false);
   if (objectSearchOpen) objectSearchMounted.current = true;
   if (shortcutsOpen) shortcutsMounted.current = true;
-  const { data: objects } = useAllSchemaObjectsQuery(open);
+  const { data: objects } = useAllSchemaObjectsQuery(open && Boolean(builders));
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
   const extensionHost = useExtensionHost();
@@ -88,6 +83,21 @@ export function AppHeaderSearch() {
   const quickOpenHotkey = useResolvedHotkey("palette.quickOpen");
   const shortcutsHotkey = useResolvedHotkey("shortcuts.open");
   const focusSearchHotkey = useResolvedHotkey("app.focusSearch");
+
+  useEffect(() => {
+    if (!open || builders) return;
+    let active = true;
+    void import("./app-header-search/command-items")
+      .then((module) => {
+        if (active) startTransition(() => setBuilders(module));
+      })
+      .catch((error) => {
+        if (active) toast.error(`Suchbefehle konnten nicht geladen werden: ${String(error)}`);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, builders]);
 
   useEffect(() => {
     const subscription = extensionHost.changes.on("change", () =>
@@ -177,10 +187,18 @@ export function AppHeaderSearch() {
     }),
     [askNew],
   );
+  const objectItems = useMemo(
+    () => builders?.buildObjectItems(objects, setOpen, navigate) ?? NO_ITEMS,
+    [builders, objects, navigate],
+  );
+  const settingsItems = useMemo(
+    () => builders?.buildSettingsItems(setOpen, navigate) ?? NO_ITEMS,
+    [builders, navigate],
+  );
 
   const items = useMemo<CommandItem[]>(() => {
     void hotkeyOverrideVersion;
-    if (!open) return NO_ITEMS;
+    if (!open || !builders) return NO_ITEMS;
     const connectionItems = connections.map((connection) => ({
       id: `connection:${connection.id}`,
       label: connection.name,
@@ -196,7 +214,6 @@ export function AppHeaderSearch() {
             : undefined,
       onSelect: () => void onSelectConnection(connection.id),
     }));
-    const objectItems = buildObjectItems(objects, setOpen, navigate);
     const connectionManagerItem: CommandItem = {
       id: "connections:manage",
       label: "Verbindungen verwalten",
@@ -253,17 +270,19 @@ export function AppHeaderSearch() {
       },
     };
     const notebookItems = activeConnection
-      ? buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
+      ? builders.buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
       : [];
-    const hotkeyItems = buildHotkeyItems(
+    const hotkeyItems = builders.buildHotkeyItems(
       pathname,
       activeConnection !== null,
       setOpen,
       setShortcutsOpen,
       easyMode,
     );
-    const diagramExportItems = buildDiagramExportItems(pathname, activeConnection !== null);
-    const settingsItems = buildSettingsItems(setOpen, navigate);
+    const diagramExportItems = builders.buildDiagramExportItems(
+      pathname,
+      activeConnection !== null,
+    );
     return [
       ...connectionItems,
       connectionManagerItem,
@@ -286,7 +305,8 @@ export function AppHeaderSearch() {
     extensionItems,
     navigate,
     recentNotebooks,
-    objects,
+    objectItems,
+    settingsItems,
     onSelectConnection,
     isSwitching,
     switchTargetId,
@@ -295,11 +315,12 @@ export function AppHeaderSearch() {
     easyMode,
     pathname,
     open,
+    builders,
   ]);
 
-  return (
-    <>
-      {dynamicIsland ? (
+  const searchButton = useMemo(
+    () =>
+      dynamicIsland ? (
         <DynamicIsland
           buttonRef={searchButtonRef}
           shortcut={formatHotkeyDisplay(paletteHotkey)}
@@ -332,13 +353,20 @@ export function AppHeaderSearch() {
             {formatHotkeyDisplay(paletteHotkey)}
           </kbd>
         </button>
-      )}
+      ),
+    [dynamicIsland, openSearch, paletteHotkey, searchNew],
+  );
+
+  return (
+    <>
+      {searchButton}
       <CommandPalette
+        lockDocumentScroll={false}
         items={items}
         open={open}
         onOpenChange={setOpen}
         placeholder="Suchen… · > für Befehle"
-        emptyMessage="Keine Treffer"
+        emptyMessage={builders ? "Keine Treffer" : "Suchbefehle laden…"}
         maxVisible={MAX_VISIBLE_RESULTS}
         featureId="search.fuzzy"
         queryItem={askAiItem}

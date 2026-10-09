@@ -1,12 +1,20 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
+import { interactionPercentiles, measureAppClick } from "./fixtures/perf-app-interactions";
+import {
+  appRequestSnapshot,
+  installAppRequestProbe,
+  requestCounts,
+  requestsSince,
+} from "./fixtures/perf-app-requests";
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
   "Schema-Navigator bleibt bei 3700 Objekten bedienbar",
   async () => {
-    const dist = "dist";
+    const dist = process.env.L8DB_PERF_DIST ?? "dist";
     const server = Bun.serve({
       port: 0,
       fetch: async (request) => {
@@ -25,9 +33,11 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     page.on("pageerror", (error) => errors.push(error.message));
     try {
       await seedApp(page, 3000);
+      await installAppRequestProbe(page);
       await page.goto(`http://localhost:${server.port}/query`);
       await page.locator('.monaco-editor[role="code"]').waitFor();
       await page.waitForTimeout(500);
+      const operationsBefore = await appRequestSnapshot(page);
       if (throttled) {
         const cdp = await page.context().newCDPSession(page);
         await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
@@ -41,7 +51,11 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           }).observe({ type: "event", durationThreshold: 16 });
         });
       }
-      await page.getByRole("button", { name: "Schema-Navigator umschalten" }).click();
+      const coldOpenMs = await measureAppClick(
+        page,
+        page.getByRole("button", { name: "Schema-Navigator umschalten" }),
+        '[aria-label="Query-Navigator"] details',
+      );
       const navigator = page.getByRole("complementary", { name: "Query-Navigator" });
       await navigator.waitFor();
       await navigator.locator("details").first().waitFor();
@@ -61,7 +75,6 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         expect(durations.length).toBeGreaterThan(0);
         const worst = Math.max(...durations);
         console.log(`perf Schema-Navigator: ${worst} ms Klick, ${initial.nodes} DOM-Knoten`);
-        expect(worst).toBeLessThanOrEqual(120);
       }
       const list = navigator.locator('[data-slot="query-schema-list"]');
       await list.evaluate((element) => {
@@ -100,6 +113,57 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await navigator.getByText("table_2999", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Schema-Navigator umschalten" }).click();
       await navigator.waitFor({ state: "hidden" });
+      const openSamples: number[] = [];
+      for (let turn = 0; turn < 11; turn++) {
+        const duration = await measureAppClick(
+          page,
+          page.getByRole("button", { name: "Schema-Navigator umschalten" }),
+          '[aria-label="Query-Navigator"] details',
+        );
+        if (turn > 1) openSamples.push(duration);
+        await navigator.waitFor();
+        await page.getByRole("button", { name: "Schema-Navigator umschalten" }).click();
+        await navigator.waitFor({ state: "hidden" });
+      }
+      const opens = interactionPercentiles(openSamples);
+      const idleBefore = await appRequestSnapshot(page);
+      await page.waitForTimeout(300);
+      const idleAfter = await appRequestSnapshot(page);
+      const operations = requestsSince(operationsBefore, idleBefore);
+      const idle = requestsSince(idleBefore, idleAfter);
+      const durations = throttled
+        ? await page.evaluate(
+            () =>
+              (window as unknown as { __navigatorClickDurations: number[] })
+                .__navigatorClickDurations,
+          )
+        : [];
+      const worstClickMs = durations.length ? Math.max(...durations) : null;
+      await reportScenario(`query-navigator-${throttled ? "chromium" : "webkit"}`, {
+        browser: browser.version(),
+        cpuRate: throttled ? 4 : 1,
+        databaseObjects: 3700,
+        columnMetadata: 12000,
+        ...initial,
+        filtered,
+        coldOpenMs,
+        opens,
+        worstClickMs,
+        startupCommands: requestCounts(operationsBefore.calls),
+        operations,
+        idleDurationMs: 300,
+        idle,
+        activeDatabaseRequests: idleAfter.activeDatabaseRequests,
+        maxDatabaseConcurrency: idleAfter.maxDatabaseConcurrency,
+      });
+      expect(operations.databaseRequests).toBe(0);
+      expect(operations.unknownRequests).toBe(0);
+      expect(idle.databaseRequests).toBe(0);
+      expect(idle.unknownRequests).toBe(0);
+      expect(idleAfter.activeDatabaseRequests).toBe(0);
+      expect(coldOpenMs).toBeLessThanOrEqual(120);
+      expect(opens.p95Ms).toBeLessThanOrEqual(120);
+      if (worstClickMs !== null) expect(worstClickMs).toBeLessThanOrEqual(120);
       expect(
         errors.filter(
           (error) => error !== "ResizeObserver loop completed with undelivered notifications.",

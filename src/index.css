@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source("./");
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/ibm-plex-sans";
@@ -455,11 +455,12 @@
   }
 }
 
-body:has([data-onboarding])
+body[data-onboarding-active]
   :is(
     [data-radix-popper-content-wrapper],
     [data-slot="dialog-overlay"],
     [data-slot="dialog-content"],
+    [data-slot="query-history-host"],
     [data-slot="alert-dialog-overlay"],
     [data-slot="alert-dialog-content"]
   ) {

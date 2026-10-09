@@ -3,6 +3,7 @@
 // beui.dev/components/blocks/command-palette
 
 import { useHotkey } from "@tanstack/react-hotkeys";
+import { defaultRangeExtractor, type Range, useVirtualizer } from "@tanstack/react-virtual";
 import { Search } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -14,13 +15,17 @@ import {
   withRecentCommands,
 } from "@/lib/command-palette-search";
 import { EASE_OUT } from "@/lib/ease";
+import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
 import { useRankedCommands } from "@/lib/hooks/use-ranked-commands";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
 import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
+import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
+import { useActivePortalContainer } from "@/lib/portal-container";
 import { PresenceGate } from "@/lib/presence-gate";
 import { cn } from "@/lib/utils";
+import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 import { CommandPaletteOption } from "./command-palette/command-palette-option";
 import { LIST_HEIGHT_SPRING, PANEL_SPRING } from "./command-palette/constants";
 import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
@@ -28,6 +33,7 @@ import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 const NO_RECENT_COMMANDS: string[] = [];
+type PaletteRow = { key: string; group?: string; item?: CommandItem; itemIndex: number };
 
 export function CommandPalette({
   items,
@@ -37,6 +43,7 @@ export function CommandPalette({
   open: controlledOpen,
   onOpenChange,
   maxVisible,
+  lockDocumentScroll = true,
   featureId,
   queryItem,
   initialQuery = "",
@@ -57,15 +64,56 @@ export function CommandPalette({
 
   const [query, setQuery] = useState(initialQuery);
   // Portal target only exists client-side; render nothing during SSR/hydration.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null);
+  const portalHome = useRef<HTMLDivElement | null>(null);
+  const returnContainerFocus = useRef<HTMLElement | null>(null);
+  const activeContainer = useActivePortalContainer();
+  const mounted = portalTarget !== null;
+  useEffect(() => {
+    const home = document.createElement("div");
+    home.dataset.commandPaletteHome = "";
+    home.className = "contents";
+    const target = document.createElement("div");
+    target.dataset.commandPalettePortal = "";
+    target.style.position = "fixed";
+    target.style.inset = "0";
+    target.style.contain = "layout style";
+    target.style.pointerEvents = "none";
+    target.style.zIndex = "100";
+    home.appendChild(target);
+    document.body.appendChild(home);
+    portalHome.current = home;
+    setPortalTarget(target);
+    return () => {
+      target.remove();
+      home.remove();
+      portalHome.current = null;
+    };
+  }, []);
   const uid = useId();
   const reduce = useReducedMotion();
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const listFrameRef = useRef<HTMLDivElement>(null);
+  const previousScroll = useRef<{ list: HTMLDivElement | null; active: number } | null>(null);
   const listHeight = useSpring(0, LIST_HEIGHT_SPRING);
+
+  useLayoutEffect(() => {
+    const home = portalHome.current;
+    if (!portalTarget || !home) return;
+    const parent = open && activeContainer?.isConnected ? activeContainer : home;
+    if (portalTarget.parentElement === parent) return;
+    const active = document.activeElement;
+    if (parent !== home && active instanceof HTMLElement && !portalTarget.contains(active))
+      returnContainerFocus.current = active;
+    parent.appendChild(portalTarget);
+    if (parent === home) {
+      const target = returnContainerFocus.current;
+      returnContainerFocus.current = null;
+      if (!open && target?.isConnected) target.focus({ preventScroll: true });
+    } else if (open) inputRef.current?.focus({ preventScroll: true });
+  }, [activeContainer, open, portalTarget]);
 
   useHotkey(
     "Escape",
@@ -87,8 +135,9 @@ export function CommandPalette({
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !lockDocumentScroll) return;
     const root = document.documentElement;
+    if (root.scrollHeight <= root.clientHeight) return;
     const previousRootOverflow = root.style.overflow;
     const previousBodyOverflow = document.body.style.overflow;
     root.style.overflow = "hidden";
@@ -97,7 +146,7 @@ export function CommandPalette({
       root.style.overflow = previousRootOverflow;
       document.body.style.overflow = previousBodyOverflow;
     };
-  }, [open]);
+  }, [open, lockDocumentScroll]);
 
   const { commandsOnly, search } = parsePaletteQuery(query, Boolean(commandFeatureId));
   const searchItems = useMemo(
@@ -141,6 +190,41 @@ export function CommandPalette({
     moveTo,
     moveActive,
   } = useRowCursor(rows, `${commandsOnly}:${rankedQuery}`);
+  const paletteRows = useMemo<PaletteRow[]>(() => {
+    let itemIndex = 0;
+    return grouped.flatMap(([group, list]) => [
+      { key: `group:${group}`, group, itemIndex: -1 },
+      ...list.map((item) => ({ key: `item:${item.id}`, item, itemIndex: itemIndex++ })),
+    ]);
+  }, [grouped]);
+  const activeVirtualIndex = paletteRows.findIndex((row) => row.itemIndex === active);
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indices = defaultRangeExtractor(range);
+      if (activeVirtualIndex >= 0 && !indices.includes(activeVirtualIndex)) {
+        indices.push(activeVirtualIndex);
+        indices.sort((left, right) => left - right);
+      }
+      return indices;
+    },
+    [activeVirtualIndex],
+  );
+  const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
+  const listVirtualizer = useVirtualizer({
+    count: paletteRows.length,
+    enabled: open,
+    getScrollElement: () => listRef.current,
+    estimateSize: (index) => (paletteRows[index].item ? 36 : 27),
+    getItemKey: (index) => paletteRows[index].key,
+    initialRect: { width: 560, height: 480 },
+    overscan: 2,
+    rangeExtractor,
+    measureElement: measureVirtualItem,
+    observeElementRect: observeVirtualScrollRect,
+    scrollToFn,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
+  });
 
   // Clearing the query would drop the cursor on its own, but only if it had
   // changed; `moveTo(null)` covers reopening on an already-empty query.
@@ -151,7 +235,7 @@ export function CommandPalette({
 
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [open]);
 
@@ -188,8 +272,8 @@ export function CommandPalette({
     const frame = listFrameRef.current;
     if (!mounted || !open || !list || !frame) return;
     let measured = false;
-    const observer = new ResizeObserver(() => {
-      const height = list.offsetHeight;
+    const observer = new ResizeObserver(([entry]) => {
+      const height = Math.round(entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height);
       if (measured && !reduce) {
         listHeight.set(height);
         return;
@@ -203,12 +287,22 @@ export function CommandPalette({
   }, [mounted, open, reduce, listHeight]);
 
   useEffect(() => {
-    if (!open) return;
-    const el = listRef.current?.querySelector<HTMLButtonElement>(`[data-index="${active}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [active, open]);
+    if (!open) {
+      previousScroll.current = null;
+      return;
+    }
+    const list = listRef.current;
+    const previous = previousScroll.current;
+    previousScroll.current = { list, active };
+    if (active === 0) {
+      if (list && previous && list === previous.list && previous.active !== 0) list.scrollTop = 0;
+      return;
+    }
+    if (activeVirtualIndex >= 0)
+      listVirtualizer.scrollToIndex(activeVirtualIndex, { align: "auto" });
+  }, [active, open, activeVirtualIndex, listVirtualizer]);
 
-  if (!mounted) return null;
+  if (!portalTarget) return null;
 
   // Portaled to <body> so ancestors with transforms, filters, or fixed
   // positioning can't trap the overlay in their stacking context, and mounted
@@ -327,35 +421,42 @@ export function CommandPalette({
                         {emptyMessage}
                       </div>
                     ) : (
-                      grouped.map(([group, list]) => (
-                        <div key={group} className="mb-1 last:mb-0">
-                          <div
-                            aria-hidden
-                            className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-                          >
-                            {group}
-                          </div>
-                          {list.map((it) => {
-                            // `rows` holds these very objects, in render order.
-                            const idx = rows.indexOf(it);
-                            const isActive = idx === active;
-                            return (
-                              <CommandPaletteOption
-                                key={it.id}
-                                item={it}
-                                query={rankedQuery}
-                                index={idx}
-                                isActive={isActive}
-                                uid={uid}
-                                reduce={reduce}
-                                hasIcons={hasIcons}
-                                onHover={() => moveTo(it.id)}
-                                onSelect={() => selectItem(it)}
-                              />
-                            );
-                          })}
-                        </div>
-                      ))
+                      <div className="relative" style={{ height: listVirtualizer.getTotalSize() }}>
+                        {listVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const row = paletteRows[virtualRow.index];
+                          const it = row.item;
+                          return (
+                            <div
+                              key={virtualRow.key}
+                              data-index={virtualRow.index}
+                              ref={listVirtualizer.measureElement}
+                              className="absolute top-0 left-0 w-full"
+                              style={{ transform: `translateY(${virtualRow.start}px)` }}
+                            >
+                              {it ? (
+                                <CommandPaletteOption
+                                  item={it}
+                                  query={rankedQuery}
+                                  index={row.itemIndex}
+                                  isActive={row.itemIndex === active}
+                                  uid={uid}
+                                  reduce={reduce}
+                                  hasIcons={hasIcons}
+                                  onHover={() => moveTo(it.id)}
+                                  onSelect={() => selectItem(it)}
+                                />
+                              ) : (
+                                <div
+                                  aria-hidden
+                                  className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                                >
+                                  {row.group}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </motion.div>
@@ -382,6 +483,6 @@ export function CommandPalette({
         </PresenceGate>
       ) : null}
     </AnimatePresence>,
-    document.body,
+    portalTarget,
   );
 }

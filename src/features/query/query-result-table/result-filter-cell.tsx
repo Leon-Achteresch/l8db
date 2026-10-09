@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,13 +32,20 @@ export function ResultFilterCell({
   translatedOperators,
   setFilter,
 }: ResultFilterCellProps) {
+  const releaseFocus = useCallback((element: HTMLTableCellElement | null) => {
+    if (!element) return;
+    return () => {
+      const focused = element.ownerDocument.activeElement;
+      if (focused instanceof HTMLInputElement && element.contains(focused)) focused.blur();
+    };
+  }, []);
   const filter = filters[col] ?? {
     operator: "contains" as ResultFilterOperator,
     value: "",
   };
   const needsValue = operatorNeedsValue(normalizeResultFilterOperator(filter.operator));
   return (
-    <th className="border-b border-r bg-muted px-1 py-1">
+    <th ref={releaseFocus} className="border-b border-r bg-muted px-1 py-1">
       <div className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

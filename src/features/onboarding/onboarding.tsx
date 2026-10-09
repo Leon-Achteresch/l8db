@@ -30,6 +30,9 @@ export function Onboarding() {
     if (!done) setStep(0);
   }
   const finishIntro = useCallback(() => setStep((s) => Math.max(s, 1)), []);
+  const overlayRef = useCallback((element: HTMLDivElement | null) => {
+    document.body.toggleAttribute("data-onboarding-active", element !== null);
+  }, []);
 
   const steps = [
     {
@@ -159,6 +162,7 @@ export function Onboarding() {
     <AnimatePresence>
       {!done && (
         <motion.div
+          ref={overlayRef}
           key="onboarding"
           role="dialog"
           aria-modal="true"
