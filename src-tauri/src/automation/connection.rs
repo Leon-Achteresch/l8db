@@ -27,6 +27,7 @@ pub enum Via {
     Direct,
     Ssh(u16),
     Proxy(u16),
+    Command(u16),
 }
 
 impl Via {
@@ -35,6 +36,7 @@ impl Via {
             Via::Direct => "direkt",
             Via::Ssh(_) => "SSH-Tunnel",
             Via::Proxy(_) => "Proxy",
+            Via::Command(_) => "Befehls-Tunnel",
         }
     }
 }
@@ -422,7 +424,11 @@ pub async fn resolve(
     } else {
         secret(connection.id.clone()).await?
     };
-    if password.is_none() && !connection.kind.is_file_based() && has_user_without_password(&raw) {
+    if services.require_password
+        && password.is_none()
+        && !connection.kind.is_file_based()
+        && has_user_without_password(&raw)
+    {
         return Err(format!(
             "Für „{}“ ist kein Passwort im Schlüsselbund gespeichert. Speichere das Passwort in der Verbindung, damit geplante Läufe sie nutzen können.",
             connection.name
@@ -439,7 +445,33 @@ pub async fn resolve(
         .proxy
         .as_ref()
         .is_some_and(|proxy| !proxy.host.trim().is_empty());
-    let (url, via) = if uses_ssh {
+    let command = connection
+        .command_tunnel
+        .as_ref()
+        .filter(|tunnel| !tunnel.command.trim().is_empty());
+    let (url, via) = if let Some(command) = command {
+        if !base.contains("://") {
+            return Err(
+                "Für Tunnel-Verbindungen wird eine URL-Verbindungszeichenfolge benötigt.".into(),
+            );
+        }
+        let request = crate::db::ssh::command::CommandTunnelRequest {
+            id: tunnel_id(&connection.id),
+            command: command.command.trim().to_string(),
+            local_port: command.local_port,
+            timeout_secs: command.timeout_secs,
+        };
+        let info = services.ssh.open_command(request).await.map_err(|error| {
+            format!(
+                "Befehls-Tunnel für „{}“ konnte nicht gestartet werden: {error}",
+                connection.name
+            )
+        })?;
+        (
+            tunneled(&base, info.local_port, connection.kind)?,
+            Via::Command(info.local_port),
+        )
+    } else if uses_ssh {
         let secrets = NetworkSecrets {
             ssh: secret(format!("{}:ssh", connection.id)).await?,
             jumps: parse_jumps(secret(format!("{}:ssh-jumps", connection.id)).await?),
@@ -576,6 +608,22 @@ mod tests {
             missing.contains("kein Passwort im Schlüsselbund"),
             "{missing}"
         );
+        let (_lenient_dir, mut lenient) = self::services(vec![connection(
+            &id,
+            "Prod",
+            DatabaseKind::Postgres,
+            "postgres://alice@db.example.com:5432/app?sslmode=require",
+        )])
+        .await;
+        lenient.require_password = false;
+        let trusted = resolve(&lenient, &mut ConnectionCache::new(), &id, None)
+            .await
+            .unwrap();
+        assert!(
+            trusted.url.starts_with("postgres://alice@db.example.com"),
+            "{}",
+            trusted.url
+        );
         crate::db::secrets::store_secret(id.clone(), "p@ss w".into())
             .await
             .unwrap();
@@ -694,6 +742,62 @@ mod tests {
             "Für Tunnel-Verbindungen wird eine URL-Verbindungszeichenfolge benötigt."
         );
         assert!(tunneled("host=db user=x", 4000, DatabaseKind::Postgres).is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn command_tunnel_is_used_and_failure_never_falls_back_to_direct() {
+        let id = unique("cmd");
+        let mut tunneled = connection(
+            &id,
+            "Hinter Befehl",
+            DatabaseKind::Postgres,
+            "postgres://db.internal:5432/app",
+        );
+        tunneled.command_tunnel = Some(crate::automation::model::CommandTunnelDescriptor {
+            command: "sh -c 'exit 3' {localPort}".into(),
+            local_port: None,
+            timeout_secs: Some(2),
+        });
+        let (_dir, services) = services(vec![tunneled]).await;
+        let mut cache = ConnectionCache::new();
+        let error = resolve(&services, &mut cache, &id, None).await.unwrap_err();
+        assert!(error.contains("Befehls-Tunnel"), "{error}");
+        assert!(cache.is_empty());
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let ok = unique("cmd-ok");
+        let mut forwarded = connection(
+            &ok,
+            "Port-Forward",
+            DatabaseKind::Postgres,
+            "postgres://db.internal:5432/app",
+        );
+        forwarded.command_tunnel = Some(crate::automation::model::CommandTunnelDescriptor {
+            command: "python3 -c \"import socket,time;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('127.0.0.1',{localPort}));s.listen();time.sleep(30)\"".into(),
+            local_port: Some(port),
+            timeout_secs: Some(10),
+        });
+        services
+            .store
+            .replace_connections(vec![forwarded])
+            .await
+            .unwrap();
+        let resolved = resolve(&services, &mut cache, &ok, None).await.unwrap();
+        assert_eq!(resolved.via, Via::Command(port));
+        assert!(
+            resolved.url.contains(&format!(":{port}/app")),
+            "{}",
+            resolved.url
+        );
+        assert!(
+            resolved.url.contains("hostaddr=127.0.0.1"),
+            "{}",
+            resolved.url
+        );
+        forget(&services, &ok).await;
     }
 
     #[tokio::test]

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
 import { SettingsAppearanceTab } from "@/features/settings/settings-appearance-tab";
+import { SettingsCliTab } from "@/features/settings/settings-cli-tab";
 import { SettingsDataTab } from "@/features/settings/settings-data-tab";
 import { SettingsEditorTab } from "@/features/settings/settings-editor-tab";
 import { SettingsExtensionsTab } from "@/features/settings/settings-extensions-tab";
@@ -159,6 +160,7 @@ export function SettingsView() {
                   {category === "editor" ? <SettingsEditorTab /> : null}
                   {category === "data" ? <SettingsDataTab /> : null}
                   {category === "security" ? <SettingsSecurityTab /> : null}
+                  {category === "cli" ? <SettingsCliTab /> : null}
                   {category === "extensions" ? <SettingsExtensionsTab /> : null}
                   {category === "hotkeys" ? <SettingsHotkeysTab /> : null}
                   {category === "statistics" ? <SettingsUsageTab /> : null}

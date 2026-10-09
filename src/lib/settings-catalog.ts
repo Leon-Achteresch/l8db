@@ -79,6 +79,49 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: ["reset", "werkseinstellungen", "standard", "löschen", "zurücksetzen"],
   },
   {
+    id: "cli-install",
+    tabId: "cli",
+    title: "Befehl „l8db“ im Terminal",
+    description:
+      "Macht „l8db“ in jedem Terminal verfügbar. Die CLI nutzt deine gespeicherten Verbindungen samt SSH-Tunnel und Schlüsselbund.",
+    keywords: [
+      "cli",
+      "terminal",
+      "kommandozeile",
+      "shell",
+      "konsole",
+      "path",
+      "befehl",
+      "installieren",
+    ],
+  },
+  {
+    id: "cli-cheatsheet",
+    tabId: "cli",
+    title: "Erste Schritte",
+    description:
+      "Die wichtigsten Befehle zum Kopieren. Jeder Befehl erklärt sich mit --help selbst.",
+    keywords: [
+      "cli",
+      "terminal",
+      "befehle",
+      "beispiele",
+      "spickzettel",
+      "query",
+      "sql",
+      "csv",
+      "json",
+    ],
+  },
+  {
+    id: "cli-completions",
+    tabId: "cli",
+    title: "Tab-Vervollständigung",
+    description:
+      "Befehle, Optionen und Formate per Tab-Taste ergänzen. Einmal einrichten, dann ein neues Terminal öffnen.",
+    keywords: ["cli", "completion", "autovervollständigung", "zsh", "bash", "fish", "powershell"],
+  },
+  {
     id: "ui-scale",
     tabId: "appearance",
     title: "Oberflächengröße",
