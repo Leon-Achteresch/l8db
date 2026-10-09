@@ -87,7 +87,11 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
           </SelectContent>
         </Select>
       </Row>
-      <Row settingId="editor-parameter-hints" compact={compact}>
+      <Row
+        settingId="editor-parameter-hints"
+        featureId="settings.editor.parameter-hints"
+        compact={compact}
+      >
         <Switch
           checked={store.editorParameterHints}
           onCheckedChange={store.setEditorParameterHints}

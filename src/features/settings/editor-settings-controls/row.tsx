@@ -1,15 +1,18 @@
 import type { ReactNode } from "react";
 import { SettingsRow } from "@/features/settings/settings-row";
+import type { NewFeatureId } from "@/lib/new-features";
 import { SETTINGS_BY_ID } from "@/lib/settings-catalog";
 
 export function Row({
   settingId,
+  featureId,
   title: fallbackTitle,
   description: fallbackDescription,
   compact,
   children,
 }: {
   settingId?: string;
+  featureId?: NewFeatureId;
   title?: string;
   description?: string;
   compact: boolean;
@@ -20,7 +23,12 @@ export function Row({
   const description = setting?.description ?? fallbackDescription ?? "";
   if (!compact) {
     return (
-      <SettingsRow settingId={settingId} title={title} description={description}>
+      <SettingsRow
+        settingId={settingId}
+        featureId={featureId}
+        title={title}
+        description={description}
+      >
         {children}
       </SettingsRow>
     );
