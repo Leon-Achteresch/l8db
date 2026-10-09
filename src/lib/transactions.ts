@@ -10,6 +10,7 @@ export interface TransactionChange {
   schema?: string;
   table?: string;
   ctid?: string;
+  rowKey?: string;
   oldValues?: Record<string, unknown>;
   newValues?: Record<string, string | null>;
   rowValues?: Record<string, unknown>;
