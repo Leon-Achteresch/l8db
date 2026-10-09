@@ -3,6 +3,7 @@ mod byok;
 #[cfg(test)]
 mod byok_e2e_tests;
 mod cli;
+pub mod complete;
 mod context;
 mod files;
 mod integrations;
@@ -475,6 +476,13 @@ pub fn close_window(window: &tauri::Window) {
     if let Some(state) = window.try_state::<Arc<AiState>>() {
         if let Ok(runs) = state.runs.lock() {
             for (key, cancel) in runs.iter() {
+                if key.starts_with(&format!("{}:", window.label())) {
+                    let _ = cancel.send(true);
+                }
+            }
+        }
+        if let Ok(completions) = state.completions.lock() {
+            for (key, cancel) in completions.iter() {
                 if key.starts_with(&format!("{}:", window.label())) {
                     let _ = cancel.send(true);
                 }

@@ -6,6 +6,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   editor: "SQL-Editor",
   data: "Daten & Abfragen",
   security: "Sicherheit & SSH",
+  cli: "Kommandozeile",
   extensions: "Erweiterungen",
   hotkeys: "Tastenkürzel",
   statistics: "Nutzungsstatistik",

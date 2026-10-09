@@ -208,6 +208,22 @@ describe("buildAutomationConnection", () => {
     });
   });
 
+  test("Befehls-Tunnel werden übernommen, leere Befehle nicht", () => {
+    const descriptor = buildAutomationConnection({
+      ...base,
+      commandTunnel: { command: "  kubectl port-forward svc/db {localPort}:5432 ", localPort: 0 },
+    });
+    expect(descriptor.commandTunnel).toEqual({
+      command: "kubectl port-forward svc/db {localPort}:5432",
+      localPort: null,
+      timeoutSecs: null,
+    });
+    expect(
+      buildAutomationConnection({ ...base, commandTunnel: { command: "   " } }).commandTunnel,
+    ).toBeNull();
+    expect(buildAutomationConnection(base).commandTunnel).toBeNull();
+  });
+
   test("Key-Value-Strings verlieren ihr Passwort", () => {
     const descriptor = buildAutomationConnection({
       ...base,

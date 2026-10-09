@@ -79,6 +79,49 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: ["reset", "werkseinstellungen", "standard", "löschen", "zurücksetzen"],
   },
   {
+    id: "cli-install",
+    tabId: "cli",
+    title: "Befehl „l8db“ im Terminal",
+    description:
+      "Macht „l8db“ in jedem Terminal verfügbar. Die CLI nutzt deine gespeicherten Verbindungen samt SSH-Tunnel und Schlüsselbund.",
+    keywords: [
+      "cli",
+      "terminal",
+      "kommandozeile",
+      "shell",
+      "konsole",
+      "path",
+      "befehl",
+      "installieren",
+    ],
+  },
+  {
+    id: "cli-cheatsheet",
+    tabId: "cli",
+    title: "Erste Schritte",
+    description:
+      "Die wichtigsten Befehle zum Kopieren. Jeder Befehl erklärt sich mit --help selbst.",
+    keywords: [
+      "cli",
+      "terminal",
+      "befehle",
+      "beispiele",
+      "spickzettel",
+      "query",
+      "sql",
+      "csv",
+      "json",
+    ],
+  },
+  {
+    id: "cli-completions",
+    tabId: "cli",
+    title: "Tab-Vervollständigung",
+    description:
+      "Befehle, Optionen und Formate per Tab-Taste ergänzen. Einmal einrichten, dann ein neues Terminal öffnen.",
+    keywords: ["cli", "completion", "autovervollständigung", "zsh", "bash", "fish", "powershell"],
+  },
+  {
     id: "ui-scale",
     tabId: "appearance",
     title: "Oberflächengröße",
@@ -499,6 +542,82 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     description: "Vertikale Hilfslinien bei Spalten, z. B. 80, 120. Leer lassen zum Deaktivieren.",
     keywords: [],
     key: "editorRulers",
+  },
+  {
+    id: "editor-ai",
+    tabId: "editor",
+    title: "KI im Editor",
+    description:
+      "Ghost-Text, Bearbeiten mit ⌘I, KI-Aktionen im Kontextmenü und über Anweisungen. Nutzt den KI-Anbieter aus dem Chat.",
+    keywords: ["ki", "ai", "cursor", "copilot", "assistent", "inline", "llm"],
+  },
+  {
+    id: "editor-ai-inline",
+    tabId: "editor",
+    title: "Ghost-Text-Vorschläge",
+    description:
+      "Mehrzeilige KI-Vorschläge beim Tippen. Tab übernimmt, ⌘→ wortweise. Nur mit API- oder lokalem Anbieter.",
+    keywords: ["ki", "ghost", "autocomplete", "vervollständigung", "tab", "vorschlag"],
+  },
+  {
+    id: "editor-ai-delay",
+    tabId: "editor",
+    title: "Wartezeit für Ghost-Text",
+    description: "Pause nach dem Tippen, bevor eine Anfrage gesendet wird. Länger spart Tokens.",
+    keywords: ["ki", "debounce", "verzögerung", "tokens"],
+  },
+  {
+    id: "editor-ai-codelens",
+    tabId: "editor",
+    title: "KI-Aktionen über Anweisungen",
+    description: "Erklären, Optimieren und Bearbeiten direkt über jedem SQL-Statement.",
+    keywords: ["ki", "codelens", "erklären", "optimieren"],
+  },
+  {
+    id: "editor-ai-next-edit",
+    tabId: "editor",
+    title: "Umbenennung weiterführen",
+    description:
+      "Nach dem Umbenennen eines Alias oder Namens die übrigen Vorkommen der Anweisung per Tab anpassen. Läuft lokal ohne KI.",
+    keywords: ["umbenennen", "alias", "rename", "next edit", "tab"],
+  },
+  {
+    id: "editor-ai-profile",
+    tabId: "editor",
+    title: "Anbieter für den Editor",
+    description: "Eigener KI-Anbieter für Editor-Funktionen, sonst der aktuelle aus dem Chat.",
+    keywords: ["ki", "anbieter", "provider", "modell"],
+  },
+  {
+    id: "editor-ai-fast-model",
+    tabId: "editor",
+    title: "Schnelles Modell",
+    description:
+      "Kleines Modell für Ghost-Text, Kommentare und Testdaten. Leer lassen für das Standardmodell. Größere Umbauten nutzen immer das Hauptmodell.",
+    keywords: ["ki", "modell", "routing", "günstig", "schnell", "tokens"],
+  },
+  {
+    id: "editor-ai-validate",
+    tabId: "editor",
+    title: "KI-Vorschläge prüfen",
+    description:
+      "Erzeugtes SQL lokal und per EXPLAIN ohne Ausführung prüfen und bei Fehlern einmal korrigieren lassen.",
+    keywords: ["ki", "prüfen", "validieren", "explain", "korrektur"],
+  },
+  {
+    id: "editor-ai-share-values",
+    tabId: "editor",
+    title: "Ergebniswerte an die KI senden",
+    description:
+      "Aus: Die KI sieht nur Spalten, Typen und Statistiken. An: zusätzlich einige Beispielzeilen (maskierte Spalten bleiben maskiert).",
+    keywords: ["ki", "datenschutz", "privacy", "werte", "ergebnis"],
+  },
+  {
+    id: "editor-ai-metrics",
+    tabId: "editor",
+    title: "KI-Verbrauch im Editor",
+    description: "Tokens, Cache-Quote, Annahmequote und Antwortzeiten pro Aktion.",
+    keywords: ["ki", "tokens", "kosten", "statistik", "cache"],
   },
   {
     id: "editor-font-family",

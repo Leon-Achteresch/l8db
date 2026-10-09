@@ -37,6 +37,7 @@ export interface AiSession {
   usage?: Record<string, unknown>;
   usageModel?: string;
   usageRequestedModel?: string;
+  summary?: { upTo: string; count: number; text: string };
 }
 export function aiSessionConnection(session: AiSession): string | null {
   return session.connectionId !== undefined
@@ -67,6 +68,8 @@ interface AiState extends AiData {
   setMinimized: (minimized: boolean) => void;
   pendingPrompt: string;
   ask: (prompt: string) => void;
+  pendingDraft: string;
+  draft: (text: string) => void;
   selectProfile: (id: string) => void;
   selectSession: (id: string | null) => void;
   saveProfile: (profile: AiProfile) => void;
@@ -119,6 +122,8 @@ function sanitizeSession(session: AiSession): AiSession {
           createdAt,
           durationMs,
           attachments,
+          context,
+          contextLabels,
         },
         index,
       ) => ({
@@ -134,6 +139,14 @@ function sanitizeSession(session: AiSession): AiSession {
         ...(typeof durationMs === "number" ? { durationMs } : {}),
         ...(Array.isArray(attachments) && attachments.length
           ? { attachments: attachments.slice(0, 10) }
+          : {}),
+        ...(typeof context === "string" && context ? { context } : {}),
+        ...(Array.isArray(contextLabels) && contextLabels.length
+          ? {
+              contextLabels: contextLabels
+                .filter((label) => typeof label === "string")
+                .slice(0, 20),
+            }
           : {}),
       }),
     ),
@@ -194,6 +207,13 @@ export const useAiStore = create<AiState>((set) => ({
   setMinimized: (minimized) => set({ minimized }),
   pendingPrompt: "",
   ask: (pendingPrompt) => set({ pendingPrompt, open: true, minimized: false }),
+  pendingDraft: "",
+  draft: (text) =>
+    set((state) => ({
+      pendingDraft: state.pendingDraft ? `${state.pendingDraft}\n\n${text}` : text,
+      open: true,
+      minimized: false,
+    })),
   selectProfile: (profileId) => {
     set({ profileId, sessionId: null });
     try {

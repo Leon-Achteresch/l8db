@@ -27,6 +27,7 @@ import { useAutoAssessment } from "./query-view/use-auto-assessment";
 import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
 import { useEditorStateSync } from "./query-view/use-editor-state-sync";
 import { useExplainPlan } from "./query-view/use-explain-plan";
+import { useLastResultSync } from "./query-view/use-last-result-sync";
 import { useQueryExecutionState } from "./query-view/use-query-execution-state";
 import { useQueryFileActions } from "./query-view/use-query-file-actions";
 import { useQueryRegistry } from "./query-view/use-query-registry";
@@ -69,6 +70,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const exec = useQueryExecutionState();
   const exportState = useResultExport(exec.result);
+  useLastResultSync(tabId, connection?.id ?? null, exec.executedSql, exec.result);
   const cursor = useEditorCursorState(sql);
   const bookmarks = useQueryTabBookmarks(tabId);
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
@@ -177,6 +179,7 @@ export function QueryView({ tabId }: QueryViewProps) {
       connected={Boolean(connection)}
       onToggleOutput={() => output.setOutputOpen((open) => !open)}
       exportState={exportState}
+      sql={exec.executedSql ?? undefined}
     />
   );
 
@@ -312,6 +315,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               onToggleMaximized={toggleResultFocus}
               sql={sql}
               names={errorNames}
+              onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
               onRevealError={(marker) => {
                 const prefix = sql.slice(0, marker.start);
                 const line = prefix.split("\n").length;

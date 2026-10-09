@@ -10,6 +10,7 @@ use tokio::sync::{oneshot, watch};
 pub struct AiState {
     pub runs: Mutex<HashMap<String, watch::Sender<bool>>>,
     pub approvals: Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    pub completions: Mutex<HashMap<String, watch::Sender<bool>>>,
 }
 
 #[derive(Default)]

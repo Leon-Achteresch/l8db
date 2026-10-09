@@ -1,4 +1,4 @@
-import { ChevronRightIcon, CircleXIcon, CopyIcon, LightbulbIcon } from "lucide-react";
+import { ChevronRightIcon, CircleXIcon, CopyIcon, LightbulbIcon, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ interface ResultErrorProps {
   tables?: string[];
   onReveal?: (marker: SqlMarker) => void;
   onReplace?: (start: number, end: number, text: string) => void;
+  onFixWithAi?: () => void;
 }
 
 export function ResultError({
@@ -27,6 +28,7 @@ export function ResultError({
   tables,
   onReveal,
   onReplace,
+  onFixWithAi,
 }: ResultErrorProps) {
   const insight = useMemo(
     () => sqlErrorInsight({ error, kind, source, sql, columns, tables }),
@@ -84,6 +86,12 @@ export function ResultError({
                 }}
               >
                 <code className="font-mono">{insight.fix.text}</code> einsetzen
+              </Button>
+            )}
+            {onFixWithAi && (
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onFixWithAi}>
+                <Sparkles className="size-3.5" />
+                Mit KI beheben
               </Button>
             )}
             {target && onReveal && (

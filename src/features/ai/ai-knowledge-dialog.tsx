@@ -1,6 +1,7 @@
 import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { forgetEditorKnowledge } from "@/lib/ai/editor/context";
 import { type AiKnowledge, aiKnowledgeGet, aiKnowledgeSet } from "@/lib/db/ai";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 const EMPTY: AiKnowledge = { notes: "", glossary: [], tables: {} };
 
@@ -32,6 +35,9 @@ export function AiKnowledgeDialog({
   const [knowledge, setKnowledge] = useState<AiKnowledge>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const rulesFeature = useNewFeatureVisibility<HTMLElement>(
+    open ? "ai.chat.plus.knowledge.rules" : undefined,
+  );
   useEffect(() => {
     if (!open) return;
     let live = true;
@@ -61,6 +67,7 @@ export function AiKnowledgeDialog({
     setSaving(true);
     try {
       setKnowledge(await aiKnowledgeSet(connectionId, knowledge));
+      forgetEditorKnowledge(connectionId);
       toast.success("KI-Wissen gespeichert");
       onOpenChange(false);
     } catch (error) {
@@ -98,6 +105,20 @@ export function AiKnowledgeDialog({
             </Button>
           </div>
         )}
+        <section ref={rulesFeature.ref} className="space-y-2" aria-label="Regeln">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            Regeln
+            {rulesFeature.isNew && <NewBadge />}
+          </h3>
+          <Textarea
+            aria-label="Regeln"
+            placeholder="Verbindliche Vorgaben für Chat und Editor-KI, z. B. „Immer LIMIT 100 setzen“, „Keine SELECT *“ oder „Gelöschte Zeilen über deleted_at ausfiltern“."
+            value={knowledge.rules ?? ""}
+            rows={3}
+            maxLength={8000}
+            onChange={(event) => setKnowledge({ ...knowledge, rules: event.target.value })}
+          />
+        </section>
         <section className="space-y-2" aria-label="Begriffe">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">Begriffe</h3>

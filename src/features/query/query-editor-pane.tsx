@@ -1,7 +1,8 @@
 import { useTheme } from "next-themes";
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 
 import { VimStatusLine } from "@/components/editor/vim-status-line";
+import { attachEditorAi, type EditorAiController } from "@/lib/ai/editor";
 import { buildEditorOptions } from "@/lib/editor-options";
 import { emitHotkeyAction } from "@/lib/hotkeys";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
@@ -11,6 +12,7 @@ import { takeEditorFocus } from "@/lib/pending-editor-focus";
 import { takeQuerySnippet } from "@/lib/pending-query-snippets";
 import type { BookmarkSlots } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { EditorAiLayer } from "./editor-ai/editor-ai-layer";
 import { createEditorApi } from "./query-editor-pane/create-editor-api";
 import { createEditorKeydown } from "./query-editor-pane/create-editor-keydown";
 import {
@@ -67,6 +69,9 @@ export function QueryEditorPane({
   const onCursorChangeRef = useRef(onCursorChange);
   const onPositionChangeRef = useRef(onPositionChange);
   const registryRef = useRef(registry);
+  const errorRef = useRef(error ?? null);
+  const fallbackId = useId();
+  const [aiController, setAiController] = useState<EditorAiController | null>(null);
   const { resolvedTheme } = useTheme();
 
   onChangeRef.current = onChange;
@@ -80,6 +85,7 @@ export function QueryEditorPane({
   onPositionChangeRef.current = onPositionChange;
   onSearchTabsRef.current = onSearchTabs;
   registryRef.current = registry;
+  errorRef.current = error ?? null;
   const editorSettings = useEditorSettings();
   const {
     bookmarkDecorationsRef,
@@ -155,6 +161,19 @@ export function QueryEditorPane({
       }, 500);
     });
 
+    const ai = attachEditorAi(editor, {
+      editorId: stateKey ?? fallbackId,
+      getError: () => errorRef.current,
+    });
+    ai.setError(errorRef.current);
+    setAiController(ai);
+    const aiKeydown = (event: KeyboardEvent) => {
+      if (!ai.handleKeydown(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    container.addEventListener("keydown", aiKeydown, true);
+
     const keydown = createEditorKeydown({
       editor,
       setSlotAtCursor,
@@ -180,6 +199,9 @@ export function QueryEditorPane({
     return () => {
       if (lintTimer) clearTimeout(lintTimer);
       container.removeEventListener("keydown", keydown, true);
+      container.removeEventListener("keydown", aiKeydown, true);
+      ai.dispose();
+      setAiController(null);
       changeSub.dispose();
       selectionSub.dispose();
       plsqlLint.dispose();
@@ -203,7 +225,8 @@ export function QueryEditorPane({
   useEffect(() => {
     const editor = editorRef.current;
     if (editor) showSqlError(editor, error ?? null);
-  }, [error]);
+    aiController?.setError(error ?? null);
+  }, [error, aiController]);
 
   useWorkspaceEditorOptions(editorRef);
 
@@ -289,6 +312,7 @@ export function QueryEditorPane({
   return (
     <div className={cn("relative flex flex-col", className ?? "size-full")}>
       <div ref={containerRef} className="relative min-h-0 flex-1" />
+      <EditorAiLayer controller={aiController} />
       {vimEnabled && <VimStatusLine ref={vimStatusRef} />}
     </div>
   );

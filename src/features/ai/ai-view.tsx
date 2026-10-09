@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { CircleCheck, CircleHelp, CircleX, LoaderCircle } from "lucide";
@@ -13,8 +13,15 @@ import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
+import {
+  type ChatContextItem,
+  contextSuggestions,
+  resolveChatContext,
+} from "@/lib/ai/chat-context";
+import { chatWireMessages, summarizeChat } from "@/lib/ai/chat-history";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
 import { setAiDropHandler } from "@/lib/ai/drop-target";
+import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AiFigureContext } from "@/lib/ai/figures";
 import { AI_KNOWLEDGE_PROMPT } from "@/lib/ai/prompts";
 import { aiFigures, aiThreadMarkdown } from "@/lib/ai/result";
@@ -37,11 +44,14 @@ import {
   aiSkills,
   aiStatus,
 } from "@/lib/db/ai";
-import { useDbSelectionStore } from "@/lib/db-selection";
+import type { TableInfo } from "@/lib/db/types";
+import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { isProduction, isProductionLocked } from "@/lib/environments";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { IMPORT_FILE_EXTENSIONS } from "@/lib/import-file";
 import { useHasNewFeatures } from "@/lib/new-features";
+import { useQueryHistoryStore } from "@/lib/query-history";
+import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { type AiAccessLevel, AiAccessStrip } from "./ai-access-strip";
 import { AiApproval } from "./ai-approval";
@@ -49,6 +59,7 @@ import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
+import { AiContextChips } from "./ai-context-chips";
 import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
 import { AiOnboarding } from "./ai-onboarding";
 import { AiPanelHeader } from "./ai-panel-header";
@@ -65,6 +76,7 @@ import { PromptInput } from "./beui/agents/prompt-input";
 
 export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const state = useAiStore();
   const profile = state.profiles.find((entry) => entry.id === state.profileId) ?? state.profiles[0];
   const connections = useConnectionsStore((value) => value.connections);
@@ -89,13 +101,17 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
   const [mentioned, setMentioned] = useState<string[]>([]);
+  const [contextItems, setContextItems] = useState<ChatContextItem[]>([]);
+  const contextFeature = useNewFeatureVisibility<HTMLDivElement>(
+    contextItems.length ? "ai.chat.context-mentions" : undefined,
+  );
   const [allowWrites, setAllowWrites] = useState(false);
   const [allowDdl, setAllowDdl] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<AiEvent[]>([]);
-  const [queue, setQueue] = useState<{ id: string; text: string; attachments: AiAttachment[] }[]>(
-    [],
-  );
+  const [queue, setQueue] = useState<
+    { id: string; text: string; attachments: AiAttachment[]; context: ChatContextItem[] }[]
+  >([]);
   const [attachments, setAttachments] = useState<AiAttachment[]>([]);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -247,6 +263,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setSelectedSkills([]);
     setSelectedServers([]);
     setMentioned([]);
+    setContextItems([]);
     setApprovals([]);
     setUsage({});
     setAllowWrites(false);
@@ -361,13 +378,26 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       usageRef.current = {};
       liveSession.current = { ...next, usage: {}, usageModel: profile.model };
       setRunStatus("Startet …");
+      const wire = chatWireMessages(turn, base.summary);
+      if (wire.summarizeUpTo) {
+        const sessionId = next.id;
+        void summarizeChat(turn, wire.summarizeUpTo, profile)
+          .then((summary) => {
+            const stored = useAiStore.getState().sessions.find((entry) => entry.id === sessionId);
+            if (!summary || !stored) return;
+            if (liveSession.current?.id === sessionId)
+              liveSession.current = { ...liveSession.current, summary };
+            state.saveSession({ ...stored, summary, updatedAt: Date.now() });
+          })
+          .catch(() => undefined);
+      }
       await aiRun(
         {
           runId: id,
           profile,
           cwd,
           sessionId: resume,
-          messages: turn.map(({ role, text }) => ({ role, text })),
+          messages: wire.messages,
           connections: selected,
           activeId: current.activeId,
           skills: selectedSkills.filter((path) => skills.some((skill) => skill.path === path)),
@@ -492,38 +522,72 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       input.current?.focus();
     }
   };
-  const send = (text = prompt, files = attachments) => {
+  const currentTabSql = () => {
+    const match = /^\/query\/([^/]+)/.exec(router.state.location.pathname);
+    const tab = match
+      ? useTableTabs
+          .getState()
+          .tabs.find((entry) => entry.kind === "query" && entry.id === decodeURIComponent(match[1]))
+      : undefined;
+    return tab?.kind === "query" ? tab.sql : null;
+  };
+  const withContext = async (items: ChatContextItem[]) => {
+    if (!items.length) return {};
+    const current = useConnectionsStore.getState();
+    const connection = current.connections.find((entry) => entry.id === current.activeId) ?? null;
+    const selection = useDbSelectionStore.getState();
+    const context = await resolveChatContext(items, {
+      queryClient,
+      connection,
+      database: connection
+        ? (selection.databaseByConnection[connection.id] ??
+          databaseFromConnectionString(connection.connectionString))
+        : null,
+      defaultSchema: connection ? (selection.schemaByConnection[connection.id] ?? null) : null,
+      tabSql: currentTabSql(),
+      history: useQueryHistoryStore.getState().entries,
+      shareValues: useEditorAiSettings.getState().shareValues,
+    }).catch(() => "");
+    return context ? { context, contextLabels: items.map((item) => `@${item.label}`) } : {};
+  };
+  const send = (text = prompt, files = attachments, items = contextItems) => {
     if (!text.trim()) return;
     if (run.current) {
       setQueue((entries) => [
         ...entries,
-        { id: crypto.randomUUID(), text: text.trim(), attachments: files },
+        { id: crypto.randomUUID(), text: text.trim(), attachments: files, context: items },
       ]);
       setPrompt("");
       setAttachments([]);
+      setContextItems([]);
       return;
     }
-    void runTurn(
-      thread,
-      {
-        id: crypto.randomUUID(),
-        parentId: thread.at(-1)?.id ?? null,
-        role: "user",
-        text: text.trim(),
-        createdAt: Date.now(),
-        ...(files.length ? { attachments: files } : {}),
-      },
-      () => {
-        setPrompt("");
-        setAttachments([]);
-      },
+    const trimmed = text.trim();
+    void withContext(items).then((extra) =>
+      runTurn(
+        thread,
+        {
+          id: crypto.randomUUID(),
+          parentId: thread.at(-1)?.id ?? null,
+          role: "user",
+          text: trimmed,
+          createdAt: Date.now(),
+          ...(files.length ? { attachments: files } : {}),
+          ...extra,
+        },
+        () => {
+          setPrompt("");
+          setAttachments([]);
+          setContextItems([]);
+        },
+      ),
     );
   };
-  const ask = (text: string) => send(text, []);
+  const ask = (text: string) => send(text, [], []);
   useEffect(() => {
     if (runId || !queue.length) return;
     setQueue(queue.slice(1));
-    send(queue[0].text, queue[0].attachments);
+    send(queue[0].text, queue[0].attachments, queue[0].context);
   });
   const pending = state.pendingPrompt;
   useEffect(() => {
@@ -531,8 +595,21 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     useAiStore.setState({ pendingPrompt: "" });
     setView("chat");
     if (setupNeeded) setPrompt(pending);
-    else send(pending, []);
+    else send(pending, [], []);
   });
+  const draft = state.pendingDraft;
+  useEffect(() => {
+    if (!draft || !(state.open || fullPage)) return;
+    useAiStore.setState({ pendingDraft: "" });
+    setView("chat");
+    setPrompt((current) => (current.trim() ? `${current}\n\n${draft}` : draft));
+    requestAnimationFrame(() => {
+      const element = input.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(element.value.length, element.value.length);
+    });
+  }, [draft, state.open, fullPage]);
   const edit = (message: AiMessage, text: string) => {
     const index = thread.indexOf(message);
     if (index < 0 || !text.trim()) return;
@@ -543,6 +620,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       text: text.trim(),
       createdAt: Date.now(),
       ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(message.context
+        ? { context: message.context, contextLabels: message.contextLabels }
+        : {}),
     });
   };
   const retry = (message: AiMessage) => {
@@ -558,6 +638,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setAllowWrites(false);
     setAllowDdl(false);
     setMentioned([]);
+    setContextItems([]);
     setApprovals([]);
     setQueue([]);
     setUsage({});
@@ -593,12 +674,39 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           !mentioned.includes(connection.id),
       )
     : [];
+  const mentionTables = (): TableInfo[] => {
+    if (!mentionMatch || !active) return [];
+    const database =
+      useDbSelectionStore.getState().databaseByConnection[active.id] ??
+      databaseFromConnectionString(active.connectionString);
+    const objects = queryClient.getQueryData<{ tables?: TableInfo[]; views?: TableInfo[] }>([
+      "all-objects",
+      active.id,
+      database,
+    ]);
+    return objects?.tables
+      ? [...objects.tables, ...(objects.views ?? [])]
+      : (queryClient.getQueryData<TableInfo[]>(["all-tables", active.id, database]) ?? []);
+  };
+  const contextMatches =
+    mentionMatch && activeId
+      ? contextSuggestions(mentionMatch[1], mentionTables(), contextItems, 6)
+      : [];
+  const mentionCount = suggestions.length + contextMatches.length;
+  const replaceMention = (label: string) => {
+    if (!mentionMatch) return;
+    setPrompt(`${prompt.slice(0, prompt.length - mentionMatch[1].length - 1)}@${label} `);
+    input.current?.focus();
+  };
   const selectMention = (id: string) => {
     const connection = connections.find((entry) => entry.id === id);
     if (!connection || !mentionMatch) return;
     setMentioned((ids) => [...ids, id]);
-    setPrompt(`${prompt.slice(0, prompt.length - mentionMatch[1].length - 1)}@${connection.name} `);
-    input.current?.focus();
+    replaceMention(connection.name);
+  };
+  const selectContext = (item: ChatContextItem) => {
+    setContextItems((items) => [...items, item]);
+    replaceMention(item.label);
   };
   const pickSession = (id: string) => {
     if (runId) return;
@@ -788,12 +896,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           </p>
         </div>
       )}
-      {suggestions.length > 0 && (
+      {mentionCount > 0 && (
         <div
           role="listbox"
-          aria-label="Verbindung erwähnen"
-          className="mb-2 max-h-36 overflow-auto rounded-xl border bg-popover p-1 shadow-sm"
+          aria-label="Kontext oder Verbindung erwähnen"
+          className="mb-2 max-h-48 overflow-auto rounded-xl border bg-popover p-1 shadow-sm"
         >
+          {contextMatches.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => selectContext(item)}
+            >
+              <span className="min-w-0 flex-1 truncate">@{item.label}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {item.kind === "table" ? item.schema || "Tabelle" : "Kontext"}
+              </span>
+            </button>
+          ))}
           {suggestions.map((connection) => (
             <button
               key={connection.id}
@@ -806,6 +929,16 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               @{connection.name}
             </button>
           ))}
+        </div>
+      )}
+      {contextItems.length > 0 && (
+        <div ref={contextFeature.ref} className="mb-2">
+          <AiContextChips
+            items={contextItems}
+            isNew={contextFeature.isNew}
+            disabled={busy}
+            onRemove={(id) => setContextItems((items) => items.filter((item) => item.id !== id))}
+          />
         </div>
       )}
       {mentioned.length > 0 && (
@@ -905,10 +1038,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               event.key === "Enter" &&
               !event.shiftKey &&
               !event.nativeEvent.isComposing &&
-              suggestions.length
+              mentionCount
             ) {
               event.preventDefault();
-              selectMention(suggestions[0].id);
+              if (contextMatches.length) selectContext(contextMatches[0]);
+              else selectMention(suggestions[0].id);
             }
           }}
           leadingAction={

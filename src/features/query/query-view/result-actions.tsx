@@ -13,6 +13,7 @@ import type { QueryResult } from "@/lib/db";
 import { DATA_EXPORT_FORMATS } from "@/lib/export-formats";
 import { cn } from "@/lib/utils";
 
+import { ResultAskAiButton } from "./result-ask-ai-button";
 import type { ResultExportState } from "./use-result-export";
 
 interface ResultActionsProps {
@@ -22,6 +23,7 @@ interface ResultActionsProps {
   connected: boolean;
   onToggleOutput: () => void;
   exportState: ResultExportState;
+  sql?: string;
 }
 
 export function ResultActions({
@@ -31,6 +33,7 @@ export function ResultActions({
   connected,
   onToggleOutput,
   exportState,
+  sql,
 }: ResultActionsProps) {
   const { exporting, setCsvExportOpen, setXlsxExportOpen, setDataExportFormat, handleExportJson } =
     exportState;
@@ -49,6 +52,7 @@ export function ResultActions({
           <TerminalIcon className="size-3.5" />
         </Button>
       )}
+      {result && result.columns.length > 0 && <ResultAskAiButton result={result} sql={sql} />}
       {result && result.columns.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

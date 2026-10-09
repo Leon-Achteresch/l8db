@@ -20,6 +20,7 @@ interface QueryResultsContentProps {
   actions: ReactNode;
   onRevealError: (marker: SqlMarker) => void;
   onReplaceSql?: (start: number, end: number, text: string) => void;
+  onFixWithAi?: () => void;
   sql?: string;
   names?: { columns: string[]; tables: string[] };
   chart?: ResultChartBinding;
@@ -35,6 +36,7 @@ export function QueryResultsContent({
   actions,
   onRevealError,
   onReplaceSql,
+  onFixWithAi,
   sql,
   names,
   chart,
@@ -79,6 +81,7 @@ export function QueryResultsContent({
             tables={names?.tables}
             onReveal={onRevealError}
             onReplace={onReplaceSql}
+            onFixWithAi={onFixWithAi}
           />
         ) : showView && viewSource && result ? (
           <QueryResultView
