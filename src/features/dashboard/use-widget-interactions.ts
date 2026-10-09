@@ -1,9 +1,11 @@
+import { useQueryClient } from "@tanstack/react-query";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useCallback, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
 import {
   applyCrossFilters,
+  CALC_PREFIX,
   type CrossCondition,
   type CrossFilter,
   crossField,
@@ -14,6 +16,7 @@ import {
   datasetShape,
   ownCondition,
   type Period,
+  parseRef,
   refLabel,
   toLabel,
   useCrossFilterStore,
@@ -61,6 +64,20 @@ function uniqueLabels(labels: string[]): string[] {
   });
 }
 
+function sourceColumn(dataset: Dataset, key: string): string | null {
+  return crossField(dataset, key)?.column ?? (fieldLabel(dataset, key) || null);
+}
+
+const RAW_AGGS = new Set(["none", "min", "max"]);
+
+function metricSource(dataset: Dataset, index: number): string | null {
+  if (dataset.mode === "expert") return dataset.mapping.metrics[index] ?? null;
+  const metric = dataset.simple.metrics.filter((m) => m.agg === "count" || m.column)[index];
+  if (!metric?.column || !RAW_AGGS.has(metric.agg)) return null;
+  if (metric.column.startsWith(CALC_PREFIX)) return refLabel(metric.column, dataset.simple);
+  return parseRef(metric.column, dataset.simple).column;
+}
+
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -83,6 +100,7 @@ export function useWidgetInteractions({
   const filters = useCrossFilters(dashboardId);
   const connection = useActiveConnection();
   const scope = useDashboardScope();
+  const queryClient = useQueryClient();
   const scopeId = useId();
   const [point, setPoint] = useState<(ChartPoint & { picks: Pick[] }) | null>(null);
   const effective = useMemo(
@@ -138,7 +156,13 @@ export function useWidgetInteractions({
 
   const onContentClick = (event: MouseEvent<HTMLElement>) => {
     const target = (event.target as Element).closest("[data-dim], [data-dim2], [data-active-dim]");
-    if (target) openPoint(target, event.currentTarget, { x: event.clientX, y: event.clientY });
+    if (!target) return;
+    const keyboard = event.detail === 0;
+    openPoint(
+      target,
+      event.currentTarget,
+      keyboard ? null : { x: event.clientX, y: event.clientY },
+    );
   };
 
   const onContentKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -177,30 +201,54 @@ export function useWidgetInteractions({
     const shape = datasetShape(effective);
     const columns = [
       ...(shape.dimension
-        ? [{ key: shape.dimension, label: fieldLabel(effective, DIM_KEY) || "Aufteilung" }]
+        ? [
+            {
+              key: shape.dimension,
+              label: fieldLabel(effective, DIM_KEY) || "Aufteilung",
+              source: sourceColumn(effective, DIM_KEY),
+            },
+          ]
         : []),
       ...(shape.dimension2
-        ? [{ key: shape.dimension2, label: fieldLabel(effective, DIM2_KEY) || "Aufteilung 2" }]
+        ? [
+            {
+              key: shape.dimension2,
+              label: fieldLabel(effective, DIM2_KEY) || "Aufteilung 2",
+              source: sourceColumn(effective, DIM2_KEY),
+            },
+          ]
         : []),
-      ...shape.metrics.map((m) => ({ key: m.key, label: m.label })),
+      ...shape.metrics.map((m, index) => ({
+        key: m.key,
+        label: m.label,
+        source: metricSource(effective, index),
+      })),
     ];
     try {
       const labels = uniqueLabels(columns.map((c) => c.label));
       const names = columns.length ? labels : result.columns;
+      const sources = columns.length ? columns.map((c) => c.source) : result.columns;
       const rows = columns.length
         ? result.rows.map((row) =>
             Object.fromEntries(columns.map((c, i) => [labels[i], row[c.key]])),
           )
         : result.rows;
-      const masked =
-        connection && useMaskingDisplay.getState().enabled[connection.id]
-          ? await loadMcpConfig()
-              .catch(() => null)
-              .then((config) => {
-                const { rules, replacement } = connectionMaskRules(connection, config);
-                return applyMasks(names, rows, resolveMasks(names, rules, replacement));
-              })
-          : rows;
+      let masked = rows;
+      if (connection && useMaskingDisplay.getState().enabled[connection.id]) {
+        const config = await queryClient.fetchQuery({
+          queryKey: ["mcp-config"],
+          queryFn: loadMcpConfig,
+          staleTime: 60_000,
+        });
+        const { rules, replacement } = connectionMaskRules(connection, config);
+        const named = sources.filter((source): source is string => Boolean(source));
+        const masks = resolveMasks(named, rules, replacement).flatMap((mask) =>
+          sources.flatMap((source, index) =>
+            source === mask.column ? [{ ...mask, column: names[index] }] : [],
+          ),
+        );
+        masked = applyMasks(names, rows, masks);
+      }
       const saved = await exportRowsCsv(title, names, masked);
       if (saved) toast.success("CSV exportiert");
     } catch (error) {

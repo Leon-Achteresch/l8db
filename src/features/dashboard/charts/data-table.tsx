@@ -5,7 +5,14 @@ import { DeltaBadge } from "./delta-badge";
 
 const PAGE = 40;
 
-export function DataTable({ rows, shape, options, compare, totals: exact }: ChartProps) {
+export function DataTable({
+  rows,
+  shape,
+  options,
+  compare,
+  totals: exact,
+  interactive = false,
+}: ChartProps) {
   const [limit, setLimit] = useState(PAGE);
   const dims = [
     ...(shape.dimension
@@ -38,14 +45,15 @@ export function DataTable({ rows, shape, options, compare, totals: exact }: Char
       Math.max(1e-9, ...rows.map((row) => Math.abs(toNumber(row[m.key])))),
     ]),
   );
+  const queried = exact && !exact.complete ? exact : null;
   const totals =
-    options.totals && metrics.length && (exact || (rows.length > 1 && metrics.some(additive)))
+    options.totals && metrics.length && (queried || (rows.length > 1 && metrics.some(additive)))
       ? Object.fromEntries(
           metrics.map((m) => [
             m.key,
-            exact
-              ? exact.grand && exact.grand[m.key] != null
-                ? toNumber(exact.grand[m.key])
+            queried
+              ? queried.grand && queried.grand[m.key] != null
+                ? toNumber(queried.grand[m.key])
                 : null
               : additive(m)
                 ? rows.reduce((sum, row) => sum + toNumber(row[m.key]), 0)
@@ -100,7 +108,7 @@ export function DataTable({ rows, shape, options, compare, totals: exact }: Char
                 key={String(i)}
                 data-dim={shape.dimension ? dimAttr(row[shape.dimension]) : undefined}
                 data-dim2={shape.dimension2 ? dimAttr(row[shape.dimension2]) : undefined}
-                tabIndex={shape.dimension ? 0 : undefined}
+                tabIndex={interactive && shape.dimension ? 0 : undefined}
                 className="border-b border-border/50 last:border-0"
               >
                 {dims.map((d) => (
@@ -151,7 +159,7 @@ export function DataTable({ rows, shape, options, compare, totals: exact }: Char
               ))}
               {metrics.map((m) => (
                 <td key={m.key} className="px-2.5 py-1.5 text-right tabular-nums">
-                  {exact?.pending
+                  {queried?.pending
                     ? "…"
                     : totals[m.key] === null
                       ? "–"

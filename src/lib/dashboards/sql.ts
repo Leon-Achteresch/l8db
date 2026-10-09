@@ -261,6 +261,15 @@ export function crossCondition(
   kind: DatabaseKind | null,
   temporal = false,
 ): string {
+  if (Array.isArray(value)) {
+    const present = value.filter((entry) => entry !== null && entry !== undefined);
+    const list = present.length
+      ? `${expr} IN (${present.map((entry) => crossLiteral(entry, kind, temporal)).join(", ")})`
+      : "";
+    const nulls = present.length < value.length ? `${expr} IS NULL` : "";
+    if (list && nulls) return `(${list} OR ${nulls})`;
+    return list || nulls || "1 = 0";
+  }
   return value === null || value === undefined
     ? `${expr} IS NULL`
     : `${expr} = ${crossLiteral(value, kind, temporal)}`;
@@ -468,21 +477,37 @@ export function datasetTotalsSql(
   );
 }
 
+export const MAX_MARGIN_VALUES = 500;
+
 export function datasetMarginSql(
   ds: Dataset,
   axis: "rows" | "columns",
+  values: unknown[],
   kind: DatabaseKind | null,
   period: Period,
   scope: VariableScope = EMPTY_SCOPE,
   range: DateRange = periodRange(period),
 ): string {
   if (ds.mode !== "simple" || !ds.simple.dimension || !ds.simple.dimension2) return "";
+  if (!values.length || values.length > MAX_MARGIN_VALUES) return "";
   const dimension =
     axis === "rows"
       ? ds.simple.dimension
       : { column: ds.simple.dimension2, bucket: "none" as const };
+  const visible: CrossCondition = {
+    ref: dimension.column,
+    bucket: dimension.bucket,
+    value: values,
+  };
   return buildSimpleSql(
-    { ...ds.simple, dimension, dimension2: null, sort: "dimension" },
+    {
+      ...ds.simple,
+      dimension,
+      dimension2: null,
+      sort: "dimension",
+      limit: values.length,
+      [CROSS_WHERE]: [...(ds.simple[CROSS_WHERE] ?? []), visible],
+    },
     kind,
     period,
     scope,

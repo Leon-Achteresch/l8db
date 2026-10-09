@@ -158,14 +158,16 @@ test("exact pivot totals add a bounded number of queries per chart", async () =>
     base.simple.dimension2 = "product";
     return base;
   });
+  const regions = Array.from({ length: 50 }, (_, i) => `Region ${i}`);
+  const products = Array.from({ length: 40 }, (_, i) => `Produkt ${i}`);
   let queries = 0;
   const timing = await measureScenario(() => {
     const distinct = new Set<string>();
     for (const pivot of pivots) {
       distinct.add(datasetSql(pivot, "postgres", "30d"));
       distinct.add(datasetTotalsSql(pivot, "postgres", "30d"));
-      distinct.add(datasetMarginSql(pivot, "rows", "postgres", "30d"));
-      distinct.add(datasetMarginSql(pivot, "columns", "postgres", "30d"));
+      distinct.add(datasetMarginSql(pivot, "rows", regions, "postgres", "30d"));
+      distinct.add(datasetMarginSql(pivot, "columns", products, "postgres", "30d"));
     }
     queries = distinct.size;
   }, 21);

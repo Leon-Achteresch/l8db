@@ -55,7 +55,9 @@ function mentionsTable(sql: string, table: string): boolean {
   const name = table.slice(table.lastIndexOf(".") + 1);
   if (!name) return false;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`, "i").test(sql);
+  const quoted = `["\`\\[]?${escaped}["\`\\]]?`;
+  const qualifier = `(?:["\`\\[]?[\\w$]+["\`\\]]?\\.)*`;
+  return new RegExp(`\\b(?:from|join)\\s+${qualifier}${quoted}(?![\\w$])`, "i").test(sql);
 }
 
 function targetRef(dataset: Dataset, field: CrossField): string | null {

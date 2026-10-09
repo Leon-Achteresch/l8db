@@ -104,24 +104,39 @@ export function useWidgetData({
     dataset && trend && range ? datasetTrendSql(dataset, kind, period, scope, range) : "",
     debounceMs,
   );
+  const tabular = widget.chart === "table" || widget.chart === "pivot";
   const margins = Boolean(
     dataset?.mode === "simple" &&
       !problem &&
       options.totals &&
       baseShape?.dimension &&
-      (widget.chart === "table" || widget.chart === "pivot"),
+      tabular &&
+      query.isSuccess &&
+      !datasetMetricAggs(dataset).includes("none"),
   );
-  const pivotMargins = margins && widget.chart === "pivot";
+  const exactNeeded = Boolean(margins && dataset && needsTotals(dataset, rawRows.length));
+  const pivotMargins = exactNeeded && widget.chart === "pivot" && Boolean(baseShape?.dimension2);
+  const visible = useMemo(() => {
+    if (!pivotMargins || !baseShape?.dimension || !baseShape.dimension2) return null;
+    const unique = (key: string) => {
+      const seen = new Map<string, unknown>();
+      for (const row of rawRows) seen.set(JSON.stringify(row[key] ?? null), row[key] ?? null);
+      return [...seen.values()];
+    };
+    return { rows: unique(baseShape.dimension), columns: unique(baseShape.dimension2) };
+  }, [pivotMargins, baseShape, rawRows]);
   const grandSql = useDebounced(
-    dataset && margins ? datasetTotalsSql(dataset, kind, period, scope) : "",
+    dataset && exactNeeded ? datasetTotalsSql(dataset, kind, period, scope) : "",
     debounceMs,
   );
   const rowMarginSql = useDebounced(
-    dataset && pivotMargins ? datasetMarginSql(dataset, "rows", kind, period, scope) : "",
+    dataset && visible ? datasetMarginSql(dataset, "rows", visible.rows, kind, period, scope) : "",
     debounceMs,
   );
   const columnMarginSql = useDebounced(
-    dataset && pivotMargins ? datasetMarginSql(dataset, "columns", kind, period, scope) : "",
+    dataset && visible
+      ? datasetMarginSql(dataset, "columns", visible.columns, kind, period, scope)
+      : "",
     debounceMs,
   );
   const grandQuery = useSqlQuery(grandSql, refreshMs);
@@ -203,32 +218,39 @@ export function useWidgetData({
   const grandRow = grandQuery.data?.rows[0] ?? null;
   const rowMarginRows = rowMargins.data?.rows ?? null;
   const columnMarginRows = columnMargins.data?.rows ?? null;
-  const margin = useMemo(
-    () =>
-      margins && grandSql
-        ? {
-            pending:
-              grandQuery.isPending ||
-              (Boolean(rowMarginSql) && rowMargins.isPending) ||
-              (Boolean(columnMarginSql) && columnMargins.isPending),
-            grand: grandRow,
-            rows: rowMarginRows,
-            columns: columnMarginRows,
-          }
-        : null,
-    [
-      margins,
-      grandSql,
-      rowMarginSql,
-      columnMarginSql,
-      grandQuery.isPending,
-      rowMargins.isPending,
-      columnMargins.isPending,
-      grandRow,
-      rowMarginRows,
-      columnMarginRows,
-    ],
-  );
+  const failed =
+    grandQuery.isError ||
+    (Boolean(rowMarginSql) && rowMargins.isError) ||
+    (Boolean(columnMarginSql) && columnMargins.isError);
+  const margin = useMemo(() => {
+    if (!margins || failed) return null;
+    if (!exactNeeded)
+      return { complete: true, pending: false, grand: null, rows: null, columns: null };
+    if (!grandSql) return null;
+    return {
+      complete: false,
+      pending:
+        grandQuery.isPending ||
+        (Boolean(rowMarginSql) && rowMargins.isPending) ||
+        (Boolean(columnMarginSql) && columnMargins.isPending),
+      grand: grandRow,
+      rows: rowMarginRows,
+      columns: columnMarginRows,
+    };
+  }, [
+    margins,
+    failed,
+    exactNeeded,
+    grandSql,
+    rowMarginSql,
+    columnMarginSql,
+    grandQuery.isPending,
+    rowMargins.isPending,
+    columnMargins.isPending,
+    grandRow,
+    rowMarginRows,
+    columnMarginRows,
+  ]);
 
   return {
     margin,

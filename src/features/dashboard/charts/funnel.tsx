@@ -1,8 +1,9 @@
 import { fmtShare, fmtValueCompact } from "@/lib/dashboards";
+import { CategoryRow } from "./category-row";
 import { accent, type ChartProps, categories, change, dimAttr, goodness } from "./chart-utils";
 import { DeltaBadge } from "./delta-badge";
 
-export function Funnel({ rows, shape, options, compare }: ChartProps) {
+export function Funnel({ rows, shape, options, compare, interactive = false }: ChartProps) {
   const items = categories(rows, shape);
   if (!items.length) return null;
   const max = Math.max(1, ...items.map((i) => i.value));
@@ -18,11 +19,11 @@ export function Funnel({ rows, shape, options, compare }: ChartProps) {
         {items.map((item, i) => {
           const delta = compare ? change(item.value, compare.values[i]) : null;
           return (
-            <button
-              type="button"
+            <CategoryRow
               key={item.name}
-              data-dim={dimAttr(item.raw)}
-              className="col-span-full grid grid-cols-subgrid items-center text-left"
+              interactive={interactive}
+              dim={dimAttr(item.raw)}
+              className="col-span-full grid grid-cols-subgrid items-center"
             >
               <span className="max-w-44 truncate text-right text-muted-foreground">
                 {item.name}
@@ -54,7 +55,7 @@ export function Funnel({ rows, shape, options, compare }: ChartProps) {
                   )}
                 </span>
               )}
-            </button>
+            </CategoryRow>
           );
         })}
       </div>

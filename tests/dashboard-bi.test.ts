@@ -471,8 +471,8 @@ describe("Exakte Summen", () => {
     const dataset = simple("orders", "region");
     dataset.simple.dimension2 = "product";
     dataset.simple.metrics = [{ id: "m", agg: "avg", column: "amount", label: "Schnitt" }];
-    const rows = datasetMarginSql(dataset, "rows", "postgres", "all");
-    const columns = datasetMarginSql(dataset, "columns", "postgres", "all");
+    const rows = datasetMarginSql(dataset, "rows", ["Nord", "Süd", null], "postgres", "all");
+    const columns = datasetMarginSql(dataset, "columns", ["A"], "postgres", "all");
     const grand = datasetTotalsSql(dataset, "postgres", "all");
     expect(rows).toContain(`"region" AS "dim"`);
     expect(rows).not.toContain("dim2");
@@ -480,7 +480,11 @@ describe("Exakte Summen", () => {
     expect(grand).toContain(`AVG("amount") AS "m0"`);
     expect(grand).not.toContain("GROUP BY");
     expect(new Set([datasetSql(dataset, "postgres", "all"), rows, columns, grand]).size).toBe(4);
-    expect(datasetMarginSql(simple("orders", "region"), "rows", "postgres", "all")).toBe("");
+    expect(rows).toContain(`("region" IN ('Nord', 'Süd') OR "region" IS NULL)`);
+    expect(rows).toContain("LIMIT 3");
+    expect(columns).toContain(`"product" IN ('A')`);
+    expect(datasetMarginSql(simple("orders", "region"), "rows", ["x"], "postgres", "all")).toBe("");
+    expect(datasetMarginSql(dataset, "rows", [], "postgres", "all")).toBe("");
   });
 
   test("Tabelle und Pivot zeigen den exakten Gesamtwert statt der geladenen Summe", () => {
@@ -491,6 +495,7 @@ describe("Exakte Summen", () => {
       hasDate: false,
     };
     const totals = {
+      complete: false,
       pending: false,
       grand: { m0: 42 },
       rows: [{ dim: "Nord", m0: 40 }],
@@ -528,5 +533,54 @@ describe("Exakte Summen", () => {
     );
     expect(table).toContain("Gesamt");
     expect(table).toContain(">42<");
+  });
+});
+
+describe("Re-Review-Korrekturen", () => {
+  test("Tabellennamen wie SQL-Schlüsselwörter zählen nur nach FROM oder JOIN", () => {
+    const source = simple("order", "status");
+    const unrelated = expert("SELECT status, 1 AS umsatz FROM invoices ORDER BY status", "status");
+    expect(applyCrossFilters(unrelated, [filterFrom(source, "x")], "t")).toBe(unrelated);
+    const related = expert('SELECT status, 1 AS umsatz FROM public."order"', "status");
+    expect(applyCrossFilters(related, [filterFrom(source, "x")], "t")).not.toBe(related);
+  });
+
+  test("vollständig geladene Ergebnisse zeigen Gesamt aus den geladenen Zeilen", () => {
+    const html = renderToStaticMarkup(
+      createElement(DataTable, {
+        rows: [
+          { dim: "Nord", m0: 1 },
+          { dim: "Süd", m0: 2 },
+        ],
+        shape: {
+          dimension: DIM_KEY,
+          dimension2: null,
+          metrics: [{ key: "m0", label: "Summe", agg: "sum" as const }],
+          hasDate: false,
+        },
+        options: { ...DEFAULT_OPTIONS },
+        totals: { complete: true, pending: false, grand: null, rows: null, columns: null },
+      }),
+    );
+    expect(html).toContain("Gesamt");
+    expect(html).toContain(">3<");
+    expect(html).not.toContain("tabindex");
+  });
+
+  test("interaktive Charts sind per Tastatur erreichbar, andere nicht", () => {
+    const props = {
+      rows: [{ dim: "Nord", m0: 1 }],
+      shape: {
+        dimension: DIM_KEY,
+        dimension2: null,
+        metrics: [{ key: "m0", label: "Summe", agg: "sum" as const }],
+        hasDate: false,
+      },
+      options: { ...DEFAULT_OPTIONS },
+    };
+    expect(
+      renderToStaticMarkup(createElement(DataTable, { ...props, interactive: true })),
+    ).toContain('tabindex="0"');
+    expect(renderToStaticMarkup(createElement(DataTable, props))).not.toContain("tabindex");
   });
 });

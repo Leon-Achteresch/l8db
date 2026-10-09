@@ -5,7 +5,7 @@ import { ChartTooltip } from "./chart-tooltip";
 import { type ChartProps, categories, dimAttr, hoveredIndex } from "./chart-utils";
 import { squarify } from "./svg-geometry";
 
-export function TreemapChart({ rows, shape, options }: ChartProps) {
+export function TreemapChart({ rows, shape, options, interactive = false }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const items = categories(rows, shape, options.colorOffset).filter((i) => i.value > 0);
@@ -28,7 +28,12 @@ export function TreemapChart({ rows, shape, options }: ChartProps) {
             const roomy = w > 56 && h > 34;
             const inner = { x: x + 1, y: y + 1, w: Math.max(0, w - 2), h: Math.max(0, h - 2) };
             return (
-              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)} tabIndex={0}>
+              <g
+                key={item.name}
+                data-index={i}
+                data-dim={dimAttr(item.raw)}
+                tabIndex={interactive ? 0 : undefined}
+              >
                 <rect
                   x={inner.x}
                   y={inner.y}

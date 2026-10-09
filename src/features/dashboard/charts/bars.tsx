@@ -1,7 +1,8 @@
 import { COMPARE_MARK, fmtShare, fmtValue, fmtValueCompact } from "@/lib/dashboards";
+import { CategoryRow } from "./category-row";
 import { accent, CHAR_WIDTH, type ChartProps, categories, dimAttr } from "./chart-utils";
 
-export function Bars({ rows, shape, options, compare }: ChartProps) {
+export function Bars({ rows, shape, options, compare, interactive = false }: ChartProps) {
   const items = categories(rows, shape);
   const ghost = compare?.values ?? [];
   const max = Math.max(
@@ -25,11 +26,11 @@ export function Bars({ rows, shape, options, compare }: ChartProps) {
         {items.map((item, i) => {
           const before = ghost[i];
           return (
-            <button
-              type="button"
+            <CategoryRow
               key={item.name}
-              data-dim={dimAttr(item.raw)}
-              className="col-span-2 grid grid-cols-subgrid items-center text-left"
+              interactive={interactive}
+              dim={dimAttr(item.raw)}
+              className="col-span-2 grid grid-cols-subgrid items-center"
               title={
                 compare && before != null
                   ? `${item.name}: ${fmtValue(item.value, options)} · ${compare.short}: ${fmtValue(before, options)}`
@@ -64,7 +65,7 @@ export function Bars({ rows, shape, options, compare }: ChartProps) {
                   />
                 )}
               </div>
-            </button>
+            </CategoryRow>
           );
         })}
       </div>
