@@ -15,6 +15,7 @@ import { useDashboardWorkspaceStore } from "@/lib/dashboard-workspace";
 import { type Dashboard, useDashboardsStore } from "@/lib/dashboards";
 import { useDbSelectionStore } from "@/lib/db-selection";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
+import { DashboardSharedSection } from "./dashboard-shared-section";
 
 export function DashboardLibraryDrawer({
   open,
@@ -133,6 +134,13 @@ export function DashboardLibraryDrawer({
             <p className="break-all text-xs text-muted-foreground">Datei: {dashboard.filePath}</p>
           )}
         </section>
+        <DashboardSharedSection
+          dashboard={dashboard}
+          database={database}
+          busy={busy}
+          task={task}
+          onOpened={() => onOpenChange(false)}
+        />
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Auf diesem Gerät</h3>
           <Button
