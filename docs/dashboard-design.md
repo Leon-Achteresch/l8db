@@ -119,25 +119,35 @@ Serialized compiled CSS was 283,926 bytes. Both engines retained one
 stylesheet/rule group, applied the 1,000-edit burst once, recorded zero idle/abandoned applications and database
 requests, and removed the stylesheet on disposal.
 
-**Known budget failure:** WebKit exceeds the unchanged 50 ms median latency budget
-for this large stylesheet; its p95 meets the 100 ms budget. The final WebKit stage
-medians were 26 ms to compile, 0 ms to adopt and 62 ms for forced style resolution.
-The scoped performance test fails on that engine; this is not a passing cross-platform performance claim.
-Chromium meets the budgets. Live edits remain debounced by 180 ms, and unchanged
-CSS does not cause another style update. The compiler also reuses its previously
-parsed sheet for identical source text and avoids walking individual CSSOM rules
-when the source contains no root aliases or CSS escapes. Case-insensitive HTML
-root aliases retain case-sensitive class matching.
+The previous visible-edit workload alternated an actual card's color on every
+sample and verified all 22 visible updates. Before the incremental optimization it
+measured Chromium **39.30/90.90 ms** and WebKit **93/100 ms** (median/p95), with
+WebKit failing the unchanged limits. Concurrent builds ran on the VM; the results
+are separate observations rather than an isolated before/after comparison.
 
-The current performance scenario alternates an actual card's color on every
-sample and verifies all 22 visible updates; it no longer reparses identical CSS
-without changing the result. With unchanged budgets, it measured Chromium
-**39.30/90.90 ms** and WebKit **93/100 ms** (median/p95). WebKit stage medians were
-20 ms compile, 0 ms adoption and 70 ms forced resolution. Chromium passed;
-WebKit failed the median budget and its p95 did not meet the strict <100 ms limit.
-The retained-sheet, cancellation, idle and database counts remained unchanged.
-These measurements ran during concurrent builds on the VM and are not an isolated
-before/after comparison with the earlier workload.
+The current implementation lazily bridges simple literal edits through private
+CSS variables when an already adopted large stylesheet consists of class
+selectors with single declarations. The first changed declaration receives a
+native `var()` fallback, and subsequent edits change only its private root
+variable. Original CSS remains unchanged in the editor, exports, storage and MCP.
+Selectors, cascade order, `!important`, relative values and dynamically added
+cards continue to use native CSS. A bounded source-position index has two offsets
+per eligible rule; each changed rule retains at most one variable binding.
+Complex values, CSS-wide keywords, custom properties, selector changes and other
+stylesheet structures use a newly parsed native stylesheet instead. Invalid
+sources leave the accepted stylesheet and its variable values untouched.
+Replacement, disabling and disposal remove only owned variables and stylesheets.
+No CSS property allowlist is imposed.
+
+With the same 5,000 rules, 193,889 source bytes, 22 verified visible edits and
+unchanged 50/100 ms limits, the resulting measurements were **Chromium
+7.70/24.50 ms** and **WebKit 35/57 ms** (median/p95). Both engines passed. Compiled
+CSS measured 283,972 bytes. Each retained one marker, rule group, adopted
+stylesheet and private variable; the 1,000-edit burst applied once. Idle and
+abandoned applications, remaining stylesheets/variables after disposal and
+database requests were all zero. This budget measures repeated literal edits
+after two warmups; it does not establish the same latency for cold application,
+structural changes or arbitrary complex CSS. Those retain the full native path.
 
 Rust additionally tests the same 5,000-rule update workload, with 20 measured
 updates after two warmups, unchanged chart data, one retained dashboard file and a
@@ -168,5 +178,18 @@ local typecheck completed; the timeout and performance budgets were not changed.
 A deliberately delayed file read also verifies that choosing a newer preset cancels the stale
 import; typing, reset and the enabled switch use the same cancellation mechanism.
 This audit establishes the requested design capabilities within the documented
-WebView and resource constraints. The separate large-stylesheet WebKit latency
-failure above remains open.
+WebView and resource constraints. The formerly failing WebKit literal-edit budget now passes; complex and cold
+stylesheet changes have no equivalent performance measurement.
+
+The scoped implementation check passed 11 tests with 139 assertions: six browser scenarios,
+three unit scenarios and two performance scenarios. The added native comparison
+checks literal colors, `currentColor`, relative dimensions, shorthands and
+`!important`, plus fallback for child-local `var()`, CSS-wide keywords and invalid
+values. It verifies invalid-draft preservation, dynamic cards, reattachment and
+owned-variable cleanup. Additional lifecycle checks cover source-length changes
+followed by edits to later rules, transition to contextual values and disposal
+while private variables are active.
+
+After extending the lifecycle coverage, the focused Chromium/WebKit literal-edit
+scenarios passed again (two tests, 28 assertions). The frontend typecheck passed;
+scoped Biome checks passed with test non-null assertion warnings and no errors.
