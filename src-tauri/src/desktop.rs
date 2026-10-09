@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use regex::Regex;
+use sentry::integrations::log::LogFilter;
 use tauri::Runtime;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
@@ -22,8 +23,10 @@ static SECRET_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 static BEARER_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]+").expect("bearer pattern"));
 
-pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
-    tauri_plugin_log::Builder::new()
+pub fn install_logger<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (plugin, level, logger) = tauri_plugin_log::Builder::new()
         .clear_targets()
         .target(Target::new(TargetKind::LogDir { file_name: None }))
         .target(Target::new(TargetKind::Stdout))
@@ -32,7 +35,19 @@ pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .max_file_size(5_000_000)
         .rotation_strategy(RotationStrategy::KeepSome(5))
         .timezone_strategy(TimezoneStrategy::UseLocal)
-        .build()
+        .split(app)?;
+    app.plugin(plugin)?;
+    let logger =
+        sentry::integrations::log::SentryLogger::with_dest(logger).filter(
+            |metadata| match metadata.level() {
+                log::Level::Error | log::Level::Warn => LogFilter::Log | LogFilter::Breadcrumb,
+                log::Level::Info => LogFilter::Breadcrumb,
+                _ => LogFilter::Ignore,
+            },
+        );
+    log::set_boxed_logger(Box::new(logger))?;
+    log::set_max_level(level);
+    Ok(())
 }
 
 pub fn install_panic_hook() {
@@ -71,6 +86,19 @@ fn scrub(mut event: sentry::protocol::Event<'static>) -> Option<sentry::protocol
     Some(event)
 }
 
+fn scrub_log(mut entry: sentry::protocol::Log) -> Option<sentry::protocol::Log> {
+    entry.body = redact(&entry.body);
+    Some(entry)
+}
+
+fn scrub_breadcrumb(
+    mut crumb: sentry::protocol::Breadcrumb,
+) -> Option<sentry::protocol::Breadcrumb> {
+    crumb.message = crumb.message.map(|message| redact(&message));
+    crumb.data.clear();
+    Some(crumb)
+}
+
 #[tauri::command]
 pub async fn set_crash_reporting(enabled: bool) {
     let mut guard = SENTRY
@@ -87,8 +115,10 @@ pub async fn set_crash_reporting(enabled: bool) {
     options.release = sentry::release_name!();
     options.environment = Some(Cow::Borrowed("production"));
     options.send_default_pii = false;
-    options.max_breadcrumbs = 0;
+    options.max_breadcrumbs = 50;
     options.before_send = Some(Arc::new(scrub));
+    options.before_send_log = Some(Arc::new(scrub_log));
+    options.before_breadcrumb = Some(Arc::new(scrub_breadcrumb));
     *guard = Some(sentry::init((SENTRY_DSN, options)));
 }
 

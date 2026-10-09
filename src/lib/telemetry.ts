@@ -14,10 +14,16 @@ type Emit = (client: SentryModule) => void;
 const PENDING_LIMIT = 50;
 
 let client: SentryModule | null = null;
+let crashClient: SentryModule | null = null;
 const pending: Emit[] = [];
 
-export function setTelemetryClient(next: SentryModule | null, discardPending = true): void {
+export function setTelemetryClient(
+  next: SentryModule | null,
+  discardPending = true,
+  crashes: SentryModule | null = null,
+): void {
   client = next;
+  crashClient = crashes;
   if (!next) {
     if (discardPending) pending.length = 0;
     return;
@@ -139,4 +145,26 @@ export function recordUserQueryOutcome(kind: unknown, error: unknown, ms: number
   const attributes = { kind: family, status };
   recordCount("user.query.count", attributes);
   recordDuration("user.query.duration", ms, attributes);
+}
+
+export function trackRoute(route: string): void {
+  crashClient?.addBreadcrumb({ category: "navigation", message: route });
+  emit((sentry) => {
+    const sentryClient = sentry.getClient();
+    if (sentryClient)
+      sentry.startBrowserTracingNavigationSpan(sentryClient, {
+        name: route,
+        attributes: { "sentry.source": "route" },
+      });
+  });
+}
+
+export function traceCommand<T>(
+  command: string,
+  attributes: MetricAttributes,
+  run: () => Promise<T>,
+): Promise<T> {
+  crashClient?.addBreadcrumb({ category: "tauri.invoke", message: command, data: attributes });
+  if (!client || !metricsEnabled()) return run();
+  return client.startSpan({ op: "tauri.invoke", name: command, attributes }, run);
 }

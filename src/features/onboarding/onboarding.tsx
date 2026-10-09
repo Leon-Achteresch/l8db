@@ -116,7 +116,7 @@ export function Onboarding() {
           value: "all",
           label: "Abstürze und Nutzung",
           description:
-            "Zusätzlich Startzeit, Dauer von Datenbankbefehlen und geöffnete Bereiche. Nie SQL, Tabellennamen oder Verbindungsdaten.",
+            "Zusätzlich Startzeit, Ladezeiten, Dauer von Datenbankbefehlen und geöffnete Bereiche. Nie SQL, Tabellennamen oder Verbindungsdaten.",
           preview: (
             <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
               <ChartNoAxesColumn className="size-9 text-primary" />
@@ -127,7 +127,7 @@ export function Onboarding() {
           value: "crash",
           label: "Nur Abstürze",
           description:
-            "Fehlermeldung, Stacktrace, App-Version und Betriebssystem gehen an Sentry (EU). Verbindungsdaten werden entfernt.",
+            "Fehlermeldung, Stacktrace, Fehlerprotokolle, App-Version und Betriebssystem gehen an Sentry (EU). Verbindungsdaten werden entfernt.",
           preview: (
             <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
               <ShieldCheck className="size-9 text-primary" />
