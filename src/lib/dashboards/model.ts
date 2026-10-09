@@ -21,6 +21,7 @@ export type ChartKind =
   | "gauge"
   | "treemap"
   | "heatmap"
+  | "pivot"
   | "table";
 
 export interface WidgetOptions {
@@ -42,6 +43,12 @@ export interface WidgetOptions {
   invertDelta: boolean;
   unit: string;
   decimals: number | null;
+  crossFilter: boolean;
+  drill: boolean;
+  totals: boolean;
+  dataBars: boolean;
+  target: number | null;
+  targetLabel: string;
 }
 
 export const DEFAULT_OPTIONS: WidgetOptions = {
@@ -63,6 +70,12 @@ export const DEFAULT_OPTIONS: WidgetOptions = {
   invertDelta: false,
   unit: "",
   decimals: null,
+  crossFilter: true,
+  drill: true,
+  totals: true,
+  dataBars: false,
+  target: null,
+  targetLabel: "",
 };
 
 export function widgetOptions(widget: Pick<Widget, "options">): WidgetOptions {
@@ -158,7 +171,16 @@ export interface DashboardVariable {
   optionsSql?: string;
 }
 
+export const CROSS_WHERE = Symbol("crossWhere");
+
+export interface CrossCondition {
+  ref: string;
+  bucket: TimeBucket;
+  value: unknown;
+}
+
 export interface SimpleDataset {
+  [CROSS_WHERE]?: CrossCondition[];
   schema: string;
   table: string;
   join: DatasetJoin | null;
@@ -181,12 +203,55 @@ export interface ExpertMapping {
 }
 
 export interface Dataset {
+  [CROSS_WHERE]?: CrossCondition[];
   id: string;
   name: string;
   mode: DatasetMode;
   simple: SimpleDataset;
   sql: string;
   mapping: ExpertMapping;
+}
+
+export type BlockKind = "text" | "image" | "link" | "divider";
+
+export interface WidgetBlock {
+  type: BlockKind;
+  text?: string;
+  src?: string;
+  fit?: "contain" | "cover";
+  href?: string;
+  page?: string;
+  align?: "left" | "center" | "right";
+  variant?: "plain" | "card" | "accent";
+}
+
+export interface DashboardPage {
+  id: string;
+  name: string;
+  hidden?: boolean;
+}
+
+export type ThemeFont = "system" | "inter" | "serif" | "mono" | "rounded" | "condensed";
+export type ThemeCard = "outlined" | "elevated" | "flat" | "glass";
+export type ThemeDensity = "compact" | "normal" | "spacious";
+
+export interface DashboardTheme {
+  brand?: string;
+  tagline?: string;
+  logo?: string;
+  primary?: string;
+  background?: string;
+  surface?: string;
+  text?: string;
+  muted?: string;
+  border?: string;
+  palette?: string[];
+  font?: ThemeFont;
+  radius?: number;
+  card?: ThemeCard;
+  density?: ThemeDensity;
+  header?: boolean;
+  nav?: "tabs" | "sidebar";
 }
 
 export interface Widget {
@@ -197,6 +262,8 @@ export interface Widget {
   subtitle?: string;
   period: Period;
   options?: Partial<WidgetOptions>;
+  page?: string | null;
+  block?: WidgetBlock;
   x: number;
   y: number;
   w: number;
@@ -212,6 +279,8 @@ export interface Dashboard {
   widgets: Widget[];
   variables?: DashboardVariable[];
   design?: { css: string; enabled: boolean };
+  pages?: DashboardPage[];
+  theme?: DashboardTheme | null;
   refreshSec: number;
   locked: boolean;
   createdAt: number;
@@ -225,6 +294,22 @@ export interface Dashboard {
 export const GRID_COLS = 12;
 export function minSize(kind: ChartKind): { minW: number; minH: number } {
   return kind === "kpi" || kind === "gauge" ? { minW: 2, minH: 3 } : { minW: 3, minH: 5 };
+}
+
+export const BLOCK_SIZE: Record<BlockKind, { w: number; h: number; minW: number; minH: number }> = {
+  text: { w: 12, h: 2, minW: 2, minH: 1 },
+  image: { w: 3, h: 3, minW: 1, minH: 1 },
+  link: { w: 3, h: 1, minW: 1, minH: 1 },
+  divider: { w: 12, h: 1, minW: 2, minH: 1 },
+};
+
+export function widgetMinSize(widget: Pick<Widget, "chart" | "block">): {
+  minW: number;
+  minH: number;
+} {
+  if (!widget.block) return minSize(widget.chart);
+  const { minW, minH } = BLOCK_SIZE[widget.block.type] ?? BLOCK_SIZE.text;
+  return { minW, minH };
 }
 export const ROW_HEIGHT = 44;
 export const GRID_GAP = 12;

@@ -34,6 +34,10 @@ const OPTION_TEXT: Partial<Record<keyof WidgetOptions, string>> = {
   labels: "Werte direkt am Chart zeigen",
   stacked: "Reihen stapeln",
   horizontal: "Liegender Chart (Balken nach rechts)",
+  crossFilter: "Klick filtert die anderen Charts",
+  drill: "Klick zeigt die Detailzeilen",
+  totals: "Summen anzeigen",
+  dataBars: "Datenbalken und Farbskala",
 };
 
 const SELECTS: Partial<
@@ -103,6 +107,7 @@ export function ChartStyleStep({
   const titleId = useId();
   const subtitleId = useId();
   const compareFeature = useNewFeatureVisibility<HTMLDivElement>("dashboard.studio.compare");
+  const interactFeature = useNewFeatureVisibility<HTMLDivElement>("dashboard.studio.interactions");
   const options = widgetOptions(widget);
   const setOption = <K extends keyof WidgetOptions>(key: K, value: WidgetOptions[K]) =>
     onChange({ options: { ...widget.options, [key]: value } });
@@ -150,6 +155,37 @@ export function ChartStyleStep({
           {CHARTS[widget.chart].options.map((key) => {
             if (key === "metricKeys" || key === "colorOffset" || key === "showPeriod") return null;
             if (key === "compare" && !shape.hasDate) return null;
+            if (key === "target")
+              return (
+                <div key={key} className="flex items-center justify-between gap-2 text-xs">
+                  <span>Zielwert (Linie)</span>
+                  <Input
+                    aria-label="Zielwert"
+                    type="number"
+                    value={options.target ?? ""}
+                    onChange={(e) => {
+                      const next = e.target.value.trim() === "" ? null : Number(e.target.value);
+                      setOption("target", next !== null && Number.isFinite(next) ? next : null);
+                    }}
+                    placeholder="kein Ziel"
+                    className="h-7 w-32 text-xs"
+                  />
+                </div>
+              );
+            if (key === "targetLabel")
+              return options.target === null ? null : (
+                <div key={key} className="flex items-center justify-between gap-2 text-xs">
+                  <span>Beschriftung Ziel</span>
+                  <Input
+                    aria-label="Beschriftung Ziel"
+                    value={options.targetLabel}
+                    maxLength={40}
+                    onChange={(e) => setOption("targetLabel", e.target.value)}
+                    placeholder="z. B. Plan 2026"
+                    className="h-7 w-32 text-xs"
+                  />
+                </div>
+              );
             if (key === "unit")
               return (
                 <div key={key} className="flex items-center justify-between gap-2 text-xs">
@@ -206,8 +242,15 @@ export function ChartStyleStep({
             const label = OPTION_TEXT[key];
             if (!label) return null;
             return (
-              <div key={key} className="flex items-center justify-between gap-2 text-xs">
-                <span>{label}</span>
+              <div
+                key={key}
+                ref={key === "crossFilter" ? interactFeature.ref : undefined}
+                className="flex items-center justify-between gap-2 text-xs"
+              >
+                <span className="flex items-center gap-1.5">
+                  {label}
+                  {key === "crossFilter" && interactFeature.isNew && <NewBadge />}
+                </span>
                 <Switch
                   aria-label={label}
                   checked={Boolean(options[key])}

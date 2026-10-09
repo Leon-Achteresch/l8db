@@ -8,6 +8,11 @@ export const DEFAULT_DASHBOARD_DESIGN: DashboardDesign = { css: "", enabled: tru
 export const DASHBOARD_DESIGN_SELECTORS = [
   [".dashboard-surface", "Gesamtes Dashboard und CSS-Variablen"],
   [".dashboard-toolbar", "Kopfzeile und Aktionen"],
+  [".dashboard-header", "Marken-Kopfzeile mit Logo"],
+  [".dashboard-header-title", "Markenname"],
+  [".dashboard-nav", "Seitennavigation"],
+  [".dashboard-nav-item", "Seiten-Link"],
+  [".dashboard-selection", "Aktive Auswahl-Filter"],
   [".dashboard-filters", "Dashboard-Filter"],
   [".dashboard-canvas", "Scrollfläche"],
   [".dashboard-grid", "Chart-Raster"],
@@ -18,6 +23,8 @@ export const DASHBOARD_DESIGN_SELECTORS = [
   [".dashboard-widget-summary", "Kennzahlen und Legende"],
   [".dashboard-widget-content", "Diagramme und Tabellen"],
   ['[data-chart-type="kpi"]', "Ein Chart-Typ"],
+  [".dashboard-block", "Inhaltsblöcke (Text, Bild, Button, Abschnitt)"],
+  ['[data-block-type="text"]', "Ein Blocktyp"],
   ['[data-widget-id="…"]', "Eine bestimmte Karte"],
 ] as const;
 
@@ -351,10 +358,12 @@ export function createDashboardStyleController(
 
 export function dashboardDesignPrompt(dashboard: Dashboard, request: string): string {
   return `Gestalte das Design des bestehenden l8db-Dashboards ${JSON.stringify(dashboard.name)} (dashboard=${JSON.stringify(dashboard.mcpId ?? dashboard.id)}) nach diesem Wunsch: ${request}
-Nutze das dashboard-Tool: get für das aktuelle Dashboard, update mit design: {css: "vollständiges CSS", enabled: true}. Lade es bei Bedarf mit discover_tools. Verändere nur das Design, erhalte Charts, Abfragen, Filter und Layout. Führe keine Datenbankabfragen aus.
+Nutze das dashboard-Tool: get für das aktuelle Dashboard. Bevorzuge update mit theme (brand, tagline, logo als data:image/svg+xml, primary, background, surface, text, muted, border, palette, font, radius, card, density, header, nav; siehe chart_types) für Marke, Farben und Schrift und ergänze update mit design: {css: "vollständiges CSS", enabled: true} nur für Feinheiten, die das Theme nicht abdeckt. Inhaltsblöcke (text, image, link, divider) und Seiten darfst du ergänzen, wenn der Wunsch das verlangt. Lade das Tool bei Bedarf mit discover_tools. Erhalte Charts, Abfragen und Filter. Führe keine Datenbankabfragen aus.
 CSS kann jede Eigenschaft und alle Unterelemente einschließlich SVG/Tabellen, Pseudoelementen, Animationen, Media Queries und CSS-Variablen gestalten. Regeln werden auf dieses Dashboard begrenzt. :root und :scope adressieren .dashboard-surface. Verwende eindeutige Namen für @keyframes und @font-face; externe Ressourcen unterliegen der App-CSP.
 Stabile Selektoren: ${DASHBOARD_DESIGN_SELECTORS.map(([selector, description]) => `${selector}: ${description}`).join("; ")}.
 Chart-Farben: --dash-accent, --dash-color-1 bis --dash-color-8, --dash-compare; Theme: --background, --foreground, --card, --border, --muted-foreground. Die Palette setzt --dash-accent eventuell inline, dann !important verwenden.
-Karten: ${JSON.stringify(dashboard.widgets.map(({ id, title, chart }) => ({ id, title, chart })))}.
+Seiten: ${JSON.stringify((dashboard.pages ?? []).map(({ id, name }) => ({ id, name })))}.
+Karten: ${JSON.stringify(dashboard.widgets.map(({ id, title, chart, block, page }) => ({ id, title, ...(block ? { block: block.type } : { chart }), page })))}.
+Aktuelles Theme: ${JSON.stringify({ ...(dashboard.theme ?? {}), logo: dashboard.theme?.logo ? "(gesetzt)" : undefined })}.
 Aktuelles CSS: ${dashboard.design?.css ?? ""}`;
 }

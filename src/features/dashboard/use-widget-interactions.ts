@@ -1,0 +1,200 @@
+import type { MouseEvent } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { useActiveConnection } from "@/lib/connections";
+import {
+  applyCrossFilters,
+  type CrossCondition,
+  crossField,
+  type Dataset,
+  DIM_KEY,
+  DIM2_KEY,
+  datasetDetailSql,
+  datasetShape,
+  ownCondition,
+  type Period,
+  refLabel,
+  toLabel,
+  useCrossFilterStore,
+  useCrossFilters,
+  type Widget,
+  type WidgetOptions,
+} from "@/lib/dashboards";
+import { exportRowsCsv } from "@/lib/dashboards/csv";
+import type { QueryResult } from "@/lib/db";
+import type { ChartPoint } from "./chart-point-menu";
+import { useDashboardInteraction } from "./dashboard-interaction";
+import { useDashboardScope } from "./dashboard-scope";
+import { useWidgetDetailsStore } from "./widget-details-store";
+
+interface Pick {
+  key: string;
+  value: unknown;
+}
+
+function parseAttr(value: string | null): unknown {
+  if (value === null) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function fieldLabel(dataset: Dataset, key: string): string {
+  if (dataset.mode === "expert")
+    return (key === DIM2_KEY ? dataset.mapping.dimension2 : dataset.mapping.dimension) ?? "";
+  const ref = key === DIM2_KEY ? dataset.simple.dimension2 : dataset.simple.dimension?.column;
+  return ref ? refLabel(ref, dataset.simple) : "";
+}
+
+function same(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function useWidgetInteractions({
+  widget,
+  dataset,
+  options,
+  period,
+  title,
+}: {
+  widget: Widget;
+  dataset: Dataset | null;
+  options: WidgetOptions;
+  period: Period;
+  title: string;
+}) {
+  const interaction = useDashboardInteraction();
+  const dashboardId = interaction?.dashboardId ?? null;
+  const filters = useCrossFilters(dashboardId);
+  const connection = useActiveConnection();
+  const scope = useDashboardScope();
+  const scopeId = useId();
+  const [point, setPoint] = useState<(ChartPoint & { picks: Pick[] }) | null>(null);
+  const effective = useMemo(
+    () => (dataset ? applyCrossFilters(dataset, filters, widget.id) : null),
+    [dataset, filters, widget.id],
+  );
+  const own = useMemo(() => filters.filter((f) => f.widgetId === widget.id), [filters, widget.id]);
+  const kind = connection?.kind ?? null;
+
+  const openDetails = useCallback(
+    (conditions: CrossCondition[], subtitle: string) => {
+      if (!effective) return;
+      const sql = datasetDetailSql(effective, conditions, kind, period, scope);
+      if (!sql) return;
+      useWidgetDetailsStore.getState().open({ title, subtitle, sql });
+    },
+    [effective, kind, period, scope, title],
+  );
+
+  const onContentClick = (event: MouseEvent<HTMLElement>) => {
+    if (!dashboardId || !dataset || (!options.crossFilter && !options.drill)) return;
+    const target = (event.target as Element).closest("[data-dim], [data-dim2], [data-active-dim]");
+    if (!target) return;
+    const dim = parseAttr(
+      target.getAttribute("data-dim") ?? target.getAttribute("data-active-dim"),
+    );
+    const dim2 = parseAttr(target.getAttribute("data-dim2"));
+    const picks: Pick[] = [
+      ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
+      ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),
+    ];
+    if (!picks.length) return;
+    const canFilter = options.crossFilter && picks.some((p) => crossField(dataset, p.key));
+    const canDrill = options.drill && picks.some((p) => ownCondition(dataset, p.key, p.value));
+    if (!canFilter && !canDrill) return;
+    const root = event.currentTarget.closest(".dashboard-widget") ?? event.currentTarget;
+    const rect = root.getBoundingClientRect();
+    setPoint({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      label: picks.map((p) => toLabel(p.value)).join(" × "),
+      filtered: picks.every((p) => own.some((f) => f.key === p.key && same(f.value, p.value))),
+      canFilter,
+      canDrill,
+      picks,
+    });
+  };
+
+  const filterPoint = () => {
+    if (!point || !dashboardId || !dataset) return;
+    const store = useCrossFilterStore.getState();
+    for (const p of point.picks) {
+      const field = crossField(dataset, p.key);
+      if (!field) continue;
+      store.toggle(dashboardId, {
+        widgetId: widget.id,
+        key: p.key,
+        field,
+        value: p.value,
+        label: `${fieldLabel(dataset, p.key) || title}: ${toLabel(p.value)}`,
+      });
+    }
+  };
+
+  const detailsPoint = () => {
+    if (!point || !effective) return;
+    const conditions = point.picks
+      .map((p) => ownCondition(effective, p.key, p.value))
+      .filter((c): c is CrossCondition => c !== null);
+    openDetails(conditions, point.label);
+  };
+
+  const exportCsv = async (result: QueryResult | undefined) => {
+    if (!result || !effective) return;
+    const shape = datasetShape(effective);
+    const columns = [
+      ...(shape.dimension
+        ? [{ key: shape.dimension, label: fieldLabel(effective, DIM_KEY) || "Aufteilung" }]
+        : []),
+      ...(shape.dimension2
+        ? [{ key: shape.dimension2, label: fieldLabel(effective, DIM2_KEY) || "Aufteilung 2" }]
+        : []),
+      ...shape.metrics.map((m) => ({ key: m.key, label: m.label })),
+    ];
+    try {
+      const saved = columns.length
+        ? await exportRowsCsv(
+            title,
+            columns.map((c) => c.label),
+            result.rows.map((row) => Object.fromEntries(columns.map((c) => [c.label, row[c.key]]))),
+          )
+        : await exportRowsCsv(title, result.columns, result.rows);
+      if (saved) toast.success("CSV exportiert");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Export fehlgeschlagen");
+    }
+  };
+
+  const highlightCss = useMemo(() => {
+    if (!own.length) return "";
+    const scope = `[data-cross-scope="${CSS.escape(scopeId)}"]`;
+    return own
+      .map((filter) => {
+        const attr = filter.key === DIM2_KEY ? "data-dim2" : "data-dim";
+        return `${scope} [${attr}]:not([${attr}="${CSS.escape(JSON.stringify(filter.value ?? null))}"]) { opacity: 0.35; }`;
+      })
+      .join("\n");
+  }, [own, scopeId]);
+
+  return {
+    interactive: Boolean(dashboardId),
+    effective,
+    point,
+    closePoint: () => setPoint(null),
+    onContentClick,
+    filterPoint,
+    detailsPoint,
+    openAllDetails: options.drill && effective ? () => openDetails([], "Alle Zeilen") : undefined,
+    exportCsv,
+    highlightCss,
+    scopeId,
+    clearOwnFilter:
+      own.length && dashboardId
+        ? () => useCrossFilterStore.getState().remove(dashboardId, widget.id)
+        : undefined,
+    pointer: Boolean(dashboardId && dataset && (options.crossFilter || options.drill)),
+  };
+}

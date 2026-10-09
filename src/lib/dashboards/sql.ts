@@ -1,15 +1,18 @@
 import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier, type SqlIdentifierStyle } from "@/lib/export";
 import { compileConditionExpression } from "@/lib/sql-filter";
+import { quoteString } from "@/lib/sql-filter/quote";
 import { aliasOf, calcOf, datasetJoins, parseRef, replaceFieldTokens } from "./joins";
-import type {
-  Agg,
-  CompareMode,
-  Dataset,
-  DatasetMetric,
-  Period,
-  SimpleDataset,
-  TimeBucket,
+import {
+  type Agg,
+  type CompareMode,
+  CROSS_WHERE,
+  type CrossCondition,
+  type Dataset,
+  type DatasetMetric,
+  type Period,
+  type SimpleDataset,
+  type TimeBucket,
 } from "./model";
 import {
   EMPTY_SCOPE,
@@ -234,6 +237,30 @@ export function dateLiteral(iso: string, kind: DatabaseKind | null): string {
   return kind === "oracle" ? `DATE '${iso}'` : `'${iso}'`;
 }
 
+const ISO_DATE =
+  /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
+
+export function crossLiteral(value: unknown, kind: DatabaseKind | null): string {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "bigint") return String(value);
+  if (typeof value === "boolean")
+    return kind === "mssql" || kind === "oracle" ? (value ? "1" : "0") : String(value);
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (kind === "oracle" && ISO_DATE.test(text)) {
+    const time = text.slice(11, 19);
+    return time && time !== "00:00:00" && time.length === 8
+      ? `TIMESTAMP '${text.slice(0, 10)} ${time}'`
+      : `DATE '${text.slice(0, 10)}'`;
+  }
+  return quoteString(text, kind ?? undefined);
+}
+
+export function crossCondition(expr: string, value: unknown, kind: DatabaseKind | null): string {
+  return value === null || value === undefined
+    ? `${expr} IS NULL`
+    : `${expr} = ${crossLiteral(value, kind)}`;
+}
+
 export const DIM_KEY = "dim";
 export const DIM2_KEY = "dim2";
 export function metricKey(index: number): string {
@@ -303,6 +330,14 @@ export function buildSimpleSql(
       );
     })
     .filter((part): part is string => part !== null);
+  for (const cross of ds[CROSS_WHERE] ?? [])
+    where.push(
+      crossCondition(
+        bucketExpr(refExpr(cross.ref, ds, style), cross.bucket, kind),
+        cross.value,
+        kind,
+      ),
+    );
   if (ds.dateColumn) where.push(...rangeConditions(refExpr(ds.dateColumn, ds, style), range, kind));
   if (where.length) lines.push(`WHERE ${where.join(" AND ")}`);
   if (grouped) lines.push(`GROUP BY ${groups.join(", ")}`);
@@ -329,10 +364,54 @@ export function buildExpertSql(
   range: DateRange = periodRange(period),
 ): string {
   const sql = substituteVariables(ds.sql.trim().replace(/;+\s*$/, ""), scope, kind);
-  if (!sql || !ds.mapping.dateColumn || (!range.start && !range.end)) return sql;
   const style = identifierStyleForKind(kind);
-  const col = `q.${quoteIdentifier(ds.mapping.dateColumn, style)}`;
-  return `SELECT * FROM (\n${sql}\n) ${kind === "oracle" ? "" : "AS "}q WHERE ${rangeConditions(col, range, kind).join(" AND ")}`;
+  const conditions = (ds[CROSS_WHERE] ?? []).map((cross) =>
+    crossCondition(`q.${quoteIdentifier(cross.ref, style)}`, cross.value, kind),
+  );
+  if (ds.mapping.dateColumn && (range.start || range.end))
+    conditions.push(
+      ...rangeConditions(`q.${quoteIdentifier(ds.mapping.dateColumn, style)}`, range, kind),
+    );
+  if (!sql || !conditions.length) return sql;
+  return `SELECT * FROM (\n${sql}\n) ${kind === "oracle" ? "" : "AS "}q WHERE ${conditions.join(" AND ")}`;
+}
+
+export const DETAIL_LIMIT = 200;
+
+export function datasetDetailSql(
+  ds: Dataset,
+  conditions: CrossCondition[],
+  kind: DatabaseKind | null,
+  period: Period,
+  scope: VariableScope = EMPTY_SCOPE,
+): string {
+  if (ds.mode === "simple") {
+    const simple: SimpleDataset = {
+      ...ds.simple,
+      dimension: null,
+      dimension2: null,
+      metrics: [],
+      sort: "dimension",
+      limit: DETAIL_LIMIT,
+      [CROSS_WHERE]: [...(ds.simple[CROSS_WHERE] ?? []), ...conditions],
+    };
+    const sql = buildSimpleSql(simple, kind, period, scope);
+    return datasetJoins(simple).length
+      ? sql.replace(/^SELECT (TOP \d+ )?\*/, "SELECT $1t1.*")
+      : sql;
+  }
+  const base = buildExpertSql(
+    { ...ds, [CROSS_WHERE]: [...(ds[CROSS_WHERE] ?? []), ...conditions] },
+    kind,
+    period,
+    scope,
+  );
+  if (!base) return "";
+  const as = kind === "oracle" ? "" : "AS ";
+  if (kind === "mssql") return `SELECT TOP ${DETAIL_LIMIT} * FROM (\n${base}\n) ${as}d`;
+  if (kind === "oracle")
+    return `SELECT * FROM (\n${base}\n) d FETCH FIRST ${DETAIL_LIMIT} ROWS ONLY`;
+  return `SELECT * FROM (\n${base}\n) ${as}d LIMIT ${DETAIL_LIMIT}`;
 }
 
 export function datasetSql(

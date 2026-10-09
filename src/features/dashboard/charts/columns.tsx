@@ -6,12 +6,14 @@ import { ChartTooltip } from "./chart-tooltip";
 import {
   CHAR_WIDTH,
   type ChartProps,
+  dimAttr,
   dimensionLabels,
   series,
   seriesColor,
   xAxisLabels,
 } from "./chart-utils";
 import { barPath, niceTicks, scale, stackValues } from "./svg-geometry";
+import { TargetLine } from "./target-line";
 
 const MAX_BAR = 24;
 const GAP = 2;
@@ -43,6 +45,10 @@ export function Columns({ rows, shape, options, compare }: ChartProps) {
         min = Math.min(min, value);
         max = Math.max(max, value);
       }
+    if (options.target !== null) {
+      min = Math.min(min, options.target);
+      max = Math.max(max, options.target);
+    }
     const ticks = niceTicks(
       min,
       max,
@@ -115,6 +121,14 @@ export function Columns({ rows, shape, options, compare }: ChartProps) {
         {[...paths].map(([fill, d]) => (
           <path key={fill} d={d} fill={fill} />
         ))}
+        {options.target !== null && (
+          <TargetLine
+            box={box}
+            pos={value(options.target)}
+            horizontal={horizontal}
+            label={options.targetLabel || `Ziel ${fmtValueCompact(options.target, options)}`}
+          />
+        )}
         {ghostTicks.map((tick) => (
           <line
             key={`${tick.x1}-${tick.y1}`}
@@ -150,7 +164,13 @@ export function Columns({ rows, shape, options, compare }: ChartProps) {
   const ghostValue = hover !== null ? compare?.values[hover] : null;
 
   return (
-    <div ref={ref} className="relative h-full w-full">
+    <div
+      ref={ref}
+      className="relative h-full w-full"
+      data-active-dim={
+        hover !== null && shape.dimension ? dimAttr(rows[hover]?.[shape.dimension]) : undefined
+      }
+    >
       {width > 0 && height > 0 && (
         <svg
           className="chart-surface"

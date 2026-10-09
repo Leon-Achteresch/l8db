@@ -1,9 +1,10 @@
 import { useId, useState } from "react";
-import { COMPARE_COLOR, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
+import { COMPARE_COLOR, fmtValue, fmtValueCompact, toLabel, toNumber } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
 import { accent, type ChartProps, dimensionLabels } from "./chart-utils";
 import { curvePath, type Point, scale } from "./svg-geometry";
+import { TargetLine } from "./target-line";
 
 export function Kpi({ rows, shape, options, compare }: ChartProps) {
   const uid = useId();
@@ -19,7 +20,11 @@ export function Kpi({ rows, shape, options, compare }: ChartProps) {
     );
   const values = rows.map((r) => toNumber(r[key]));
   const ghost = compare?.values ?? [];
-  const all = [...values, ...ghost.filter((v): v is number => v !== null)];
+  const all = [
+    ...values,
+    ...ghost.filter((v): v is number => v !== null),
+    ...(options.target !== null ? [options.target] : []),
+  ];
   const low = Math.min(...all);
   const high = Math.max(...all);
   const pad = (high - low) * 0.12 || Math.abs(high) * 0.1 || 1;
@@ -74,6 +79,13 @@ export function Kpi({ rows, shape, options, compare }: ChartProps) {
             strokeLinejoin="round"
             strokeLinecap="round"
           />
+          {options.target !== null && (
+            <TargetLine
+              box={{ left: 0, top: 0, right: width, bottom: height }}
+              pos={y(options.target)}
+              label={options.targetLabel || `Ziel ${fmtValueCompact(options.target, options)}`}
+            />
+          )}
           {hover !== null && (
             <line x1={x(hover)} x2={x(hover)} y1={0} y2={height} stroke="var(--dash-axis)" />
           )}

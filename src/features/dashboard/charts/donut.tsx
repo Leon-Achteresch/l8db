@@ -3,7 +3,15 @@ import { COMPARE_COLOR, fmtNumber, fmtShare, fmtValue, fmtValueCompact } from "@
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { cn } from "@/lib/utils";
 import { ChartTooltip } from "./chart-tooltip";
-import { type ChartProps, categories, change, color, goodness, hoveredIndex } from "./chart-utils";
+import {
+  type ChartProps,
+  categories,
+  change,
+  color,
+  dimAttr,
+  goodness,
+  hoveredIndex,
+} from "./chart-utils";
 import { DeltaBadge } from "./delta-badge";
 import { polar, sectorPath } from "./svg-geometry";
 
@@ -68,6 +76,7 @@ export function Donut({ rows, shape, options, compare }: ChartProps) {
               <path
                 key={slice.item.name}
                 data-index={i}
+                data-dim={"raw" in slice.item ? dimAttr(slice.item.raw) : undefined}
                 d={sectorPath(cx, cy, inner, outer, slice.from, slice.to)}
                 fill={slice.item.color}
                 stroke="var(--card)"

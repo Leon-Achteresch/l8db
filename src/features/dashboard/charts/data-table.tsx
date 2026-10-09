@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { DIM_KEY, DIM2_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
-import { type ChartProps, change, dimensionLabels, goodness } from "./chart-utils";
+import { additive, DIM_KEY, DIM2_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
+import { accent, type ChartProps, change, dimAttr, dimensionLabels, goodness } from "./chart-utils";
 import { DeltaBadge } from "./delta-badge";
 
 const PAGE = 40;
@@ -31,6 +31,22 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
     dims.map((d) => [d.key, dimensionLabels(rows.map((r) => toLabel(r[d.key]))).long]),
   );
   const focus = shape.metrics[0]?.key;
+  const fill = accent(options);
+  const peaks = Object.fromEntries(
+    metrics.map((m) => [
+      m.key,
+      Math.max(1e-9, ...rows.map((row) => Math.abs(toNumber(row[m.key])))),
+    ]),
+  );
+  const totals =
+    options.totals && rows.length > 1 && metrics.some(additive)
+      ? Object.fromEntries(
+          metrics.map((m) => [
+            m.key,
+            additive(m) ? rows.reduce((sum, row) => sum + toNumber(row[m.key]), 0) : null,
+          ]),
+        )
+      : null;
   const head = "border-b px-2.5 py-1.5 font-medium";
   return (
     <div
@@ -70,14 +86,29 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
                 ? change(toNumber(row[focus]), toNumber(before))
                 : null;
             return (
-              <tr key={String(i)} className="border-b border-border/50 last:border-0">
+              <tr
+                key={String(i)}
+                data-dim={shape.dimension ? dimAttr(row[shape.dimension]) : undefined}
+                data-dim2={shape.dimension2 ? dimAttr(row[shape.dimension2]) : undefined}
+                className="border-b border-border/50 last:border-0"
+              >
                 {dims.map((d) => (
                   <td key={d.key} className="max-w-48 truncate px-2.5 py-1.5">
                     {labels[d.key]?.[i] ?? toLabel(row[d.key])}
                   </td>
                 ))}
                 {metrics.map((m) => (
-                  <td key={m.key} className="px-2.5 py-1.5 text-right tabular-nums">
+                  <td
+                    key={m.key}
+                    className="px-2.5 py-1.5 text-right tabular-nums"
+                    style={
+                      options.dataBars && row[m.key] !== null && row[m.key] !== undefined
+                        ? {
+                            background: `linear-gradient(to left, color-mix(in oklab, ${fill} 28%, transparent) ${Math.round((Math.abs(toNumber(row[m.key])) / peaks[m.key]) * 100)}%, transparent 0)`,
+                          }
+                        : undefined
+                    }
+                  >
                     {row[m.key] === null || row[m.key] === undefined
                       ? "–"
                       : fmtValue(toNumber(row[m.key]), options)}
@@ -99,6 +130,23 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
             );
           })}
         </tbody>
+        {totals && (
+          <tfoot className="sticky bottom-0 bg-card font-medium">
+            <tr className="border-t">
+              {dims.map((d, i) => (
+                <td key={d.key} className="px-2.5 py-1.5">
+                  {i === 0 ? "Summe" : ""}
+                </td>
+              ))}
+              {metrics.map((m) => (
+                <td key={m.key} className="px-2.5 py-1.5 text-right tabular-nums">
+                  {totals[m.key] === null ? "–" : fmtValue(totals[m.key] ?? 0, options)}
+                </td>
+              ))}
+              {compare && focus && <td />}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

@@ -20,7 +20,54 @@ const MAX_CSS_BYTES: usize = 256 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const PERIODS: &[&str] = &["all", "7d", "30d", "90d", "quarter", "year", "12m"];
 const REFRESH_HINT: &str = "refreshSec muss 0 (aus) oder 10 bis 86400 sein";
-const SERIES_KINDS: &[&str] = &["column", "line", "area", "radar", "sankey", "heatmap"];
+const SERIES_KINDS: &[&str] = &[
+    "column", "line", "area", "radar", "sankey", "heatmap", "pivot",
+];
+const MAX_PAGES: usize = 30;
+const MAX_PAGE_NAME: usize = 60;
+const MAX_IMAGE_CHARS: usize = 700_000;
+const MAX_BLOCK_TEXT: usize = 20_000;
+const MAX_HREF: usize = 2000;
+const MAX_TARGET_LABEL: usize = 40;
+const IMAGE_TYPES: &[&str] = &["png", "jpeg", "gif", "webp", "svg+xml"];
+const COLOR_FUNCTIONS: &[&str] = &["rgb", "rgba", "hsl", "hsla", "oklch", "oklab"];
+const THEME_COLORS: &[&str] = &[
+    "primary",
+    "background",
+    "surface",
+    "text",
+    "muted",
+    "border",
+];
+const THEME_CHOICES: &[(&str, &[&str])] = &[
+    (
+        "font",
+        &["system", "inter", "serif", "mono", "rounded", "condensed"],
+    ),
+    ("card", &["outlined", "elevated", "flat", "glass"]),
+    ("density", &["compact", "normal", "spacious"]),
+    ("nav", &["tabs", "sidebar"]),
+];
+const BLOCKS: &[(&str, (i64, i64), (i64, i64))] = &[
+    ("text", (12, 2), (2, 1)),
+    ("image", (3, 3), (1, 1)),
+    ("link", (3, 1), (1, 1)),
+    ("divider", (12, 1), (2, 1)),
+];
+const BLOCK_KEYS: &[&str] = &[
+    "text",
+    "src",
+    "href",
+    "targetPage",
+    "align",
+    "variant",
+    "fit",
+];
+const BLOCK_CHOICES: &[(&str, &[&str])] = &[
+    ("align", &["left", "center", "right"]),
+    ("variant", &["plain", "card", "accent"]),
+    ("fit", &["contain", "cover"]),
+];
 const DATA_KEYS: &[&str] = &[
     "sql",
     "builder",
@@ -45,6 +92,14 @@ const SPEC_KEYS: &[&str] = &[
     "y",
     "w",
     "h",
+    "page",
+    "text",
+    "src",
+    "href",
+    "targetPage",
+    "align",
+    "variant",
+    "fit",
 ];
 const SPEC_ALIASES: &[(&str, &str)] = &[
     ("chart", "type"),
@@ -60,6 +115,10 @@ const SPEC_ALIASES: &[(&str, &str)] = &[
     ("groupBy", "dimension"),
     ("series", "dimension2"),
     ("date", "dateColumn"),
+    ("markdown", "text"),
+    ("content", "text"),
+    ("label", "text"),
+    ("url", "href"),
 ];
 
 struct Kind {
@@ -72,22 +131,23 @@ struct Kind {
 }
 
 const KINDS: &[Kind] = &[
-    Kind { name: "kpi", dim: "optional", metrics: (1, 1), size: (3, 4), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta curve", hint: "Big number with sparkline and trend %, never a bare number, so it needs a time dimension or a dateColumn. Time dimension (day/week/month, ORDER BY it): latest value (headline auto), trend vs. the previous bucket or comparison period. No dimension + dateColumn: period total, sparkline grouped by dateColumn per day/week/month (return rows per date, not one sum row), trend vs. the comparison period." },
-    Kind { name: "area", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked curve showGrid", hint: "Filled areas over the dimension (usually time). dimension2 splits into series." },
-    Kind { name: "line", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend curve showGrid labels", hint: "One line per metric over the dimension. dimension2 splits into series." },
-    Kind { name: "column", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked showGrid labels sortBy horizontal", hint: "Vertical columns per category (horizontal: bars to the right). Several metrics or dimension2 give grouped/stacked columns." },
-    Kind { name: "bars", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy", hint: "Horizontal bars with share of total (ranking, pipeline). Keep it to 12 bars or fewer." },
-    Kind { name: "funnel", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy", hint: "Funnel stages in row order with conversion percent." },
-    Kind { name: "donut", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy", hint: "Shares of a whole as ring. Keep it to 6 categories or fewer." },
-    Kind { name: "rings", dim: "required", metrics: (1, 1), size: (4, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend sortBy", hint: "Concentric rings per category, relative to the largest." },
-    Kind { name: "radar", dim: "required", metrics: (1, 3), size: (4, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend sortBy", hint: "Spider net, one axis per category, one polygon per metric or dimension2 value." },
-    Kind { name: "scatter", dim: "optional", metrics: (2, 3), size: (6, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showGrid", hint: "Bubbles: metrics are x, y and optional size; dimension colors groups." },
+    Kind { name: "kpi", dim: "optional", metrics: (1, 1), size: (3, 4), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta curve drill target targetLabel", hint: "Big number with sparkline and trend %, never a bare number, so it needs a time dimension or a dateColumn. Time dimension (day/week/month, ORDER BY it): latest value (headline auto), trend vs. the previous bucket or comparison period. No dimension + dateColumn: period total, sparkline grouped by dateColumn per day/week/month (return rows per date, not one sum row), trend vs. the comparison period." },
+    Kind { name: "area", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked curve showGrid crossFilter drill target targetLabel", hint: "Filled areas over the dimension (usually time). dimension2 splits into series." },
+    Kind { name: "line", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend curve showGrid labels crossFilter drill target targetLabel", hint: "One line per metric over the dimension. dimension2 splits into series." },
+    Kind { name: "column", dim: "required", metrics: (1, 6), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend stacked showGrid labels sortBy horizontal crossFilter drill target targetLabel", hint: "Vertical columns per category (horizontal: bars to the right). Several metrics or dimension2 give grouped/stacked columns." },
+    Kind { name: "bars", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy crossFilter drill target targetLabel", hint: "Horizontal bars with share of total (ranking, pipeline). Keep it to 12 bars or fewer." },
+    Kind { name: "funnel", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy crossFilter drill", hint: "Funnel stages in row order with conversion percent." },
+    Kind { name: "donut", dim: "required", metrics: (1, 1), size: (4, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showPercent sortBy crossFilter drill", hint: "Shares of a whole as ring. Keep it to 6 categories or fewer." },
+    Kind { name: "rings", dim: "required", metrics: (1, 1), size: (4, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend sortBy crossFilter drill", hint: "Concentric rings per category, relative to the largest." },
+    Kind { name: "radar", dim: "required", metrics: (1, 3), size: (4, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend sortBy crossFilter drill", hint: "Spider net, one axis per category, one polygon per metric or dimension2 value." },
+    Kind { name: "scatter", dim: "optional", metrics: (2, 3), size: (6, 8), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend showGrid crossFilter drill", hint: "Bubbles: metrics are x, y and optional size; dimension colors groups." },
     Kind { name: "sankey", dim: "two", metrics: (1, 1), size: (6, 9), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta", hint: "Flows from dimension (source) to dimension2 (target) weighted by the metric." },
     Kind { name: "score", dim: "required", metrics: (2, 2), size: (4, 7), options: "showValue showDelta showPeriod colorOffset unit decimals showLegend", hint: "Achieved vs. maximum points per category: metrics = [value, max]." },
     Kind { name: "gauge", dim: "none", metrics: (2, 2), size: (3, 5), options: "showValue showDelta showPeriod colorOffset unit decimals", hint: "Half-circle gauge: metrics = [value, target], summed over all rows; with period quarter or year a pace marker shows the expected progress." },
-    Kind { name: "treemap", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend labels sortBy", hint: "Rectangles sized by the metric per category." },
-    Kind { name: "heatmap", dim: "two", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta labels", hint: "Matrix dimension (rows) x dimension2 (columns), colored by the metric." },
-    Kind { name: "table", dim: "optional", metrics: (0, 6), size: (6, 7), options: "showValue showPeriod compare unit decimals invertDelta", hint: "Raw result rows as table; mapping is optional." },
+    Kind { name: "treemap", dim: "required", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta showLegend labels sortBy crossFilter drill", hint: "Rectangles sized by the metric per category." },
+    Kind { name: "heatmap", dim: "two", metrics: (1, 1), size: (6, 7), options: "showValue showDelta showPeriod colorOffset compare headline unit decimals invertDelta labels crossFilter drill", hint: "Matrix dimension (rows) x dimension2 (columns), colored by the metric." },
+    Kind { name: "pivot", dim: "two", metrics: (1, 1), size: (6, 8), options: "showValue showPeriod colorOffset unit decimals totals dataBars crossFilter drill", hint: "Pivot table: rows = dimension, columns = dimension2, cells = metric, with row/column totals and optional color scale (dataBars). Classic BI cross-tab." },
+    Kind { name: "table", dim: "optional", metrics: (0, 6), size: (6, 7), options: "showValue showPeriod compare unit decimals invertDelta totals dataBars crossFilter drill", hint: "Raw result rows as table; mapping is optional." },
 ];
 
 fn kind(name: &str) -> Result<&'static Kind, String> {
@@ -109,7 +169,11 @@ fn kind(name: &str) -> Result<&'static Kind, String> {
         .find(|kind| kind.name == wanted)
         .ok_or_else(|| {
             let names: Vec<&str> = KINDS.iter().map(|kind| kind.name).collect();
-            format!("type '{name}' unbekannt. Möglich: {}", names.join(", "))
+            format!(
+                "type '{name}' unbekannt. Möglich: {}; Inhaltsblöcke: {}",
+                names.join(", "),
+                block_names().join(", ")
+            )
         })
 }
 
@@ -121,14 +185,545 @@ fn min_size(kind: &Kind) -> (i64, i64) {
     }
 }
 
+fn block_names() -> Vec<&'static str> {
+    BLOCKS.iter().map(|block| block.0).collect()
+}
+
+fn block_type(name: &str) -> Option<&'static str> {
+    let lower = name.trim().to_lowercase();
+    let wanted = match lower
+        .trim_end_matches("block")
+        .trim_end_matches(['_', '-', ' '])
+    {
+        "markdown" | "heading" | "note" => "text",
+        "logo" | "picture" | "img" => "image",
+        "button" => "link",
+        "separator" | "section" | "hr" => "divider",
+        other => other,
+    };
+    BLOCKS
+        .iter()
+        .find(|block| block.0 == wanted)
+        .map(|block| block.0)
+}
+
+fn block_sizes(block: &str) -> ((i64, i64), (i64, i64)) {
+    BLOCKS
+        .iter()
+        .find(|entry| entry.0 == block)
+        .map_or(((12, 2), (1, 1)), |entry| (entry.1, entry.2))
+}
+
+fn block_of(widget: &Value) -> Option<&Value> {
+    widget.get("block").filter(|block| block.is_object())
+}
+
+fn block_kind(widget: &Value) -> Option<&str> {
+    block_of(widget).and_then(|block| block["type"].as_str())
+}
+
+fn full_width(widget: &Value) -> bool {
+    match block_kind(widget) {
+        Some("divider") => true,
+        Some("text") => widget["w"].as_i64().unwrap_or(0) >= GRID_COLS,
+        _ => false,
+    }
+}
+
+fn valid_page_id(id: &str) -> bool {
+    (1..=40).contains(&id.len())
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn pages_of(dashboard: &Value) -> Vec<Value> {
+    dashboard["pages"].as_array().cloned().unwrap_or_default()
+}
+
+fn page_ids(pages: &[Value]) -> Vec<String> {
+    pages
+        .iter()
+        .filter_map(|page| page["id"].as_str().map(str::to_string))
+        .collect()
+}
+
+fn page_of(widget: &Value, pages: &[Value]) -> Option<String> {
+    let ids = page_ids(pages);
+    widget["page"]
+        .as_str()
+        .filter(|page| ids.iter().any(|id| id == page))
+        .map(str::to_string)
+        .or_else(|| ids.first().cloned())
+}
+
+fn page_list(pages: &[Value]) -> String {
+    pages
+        .iter()
+        .map(|page| {
+            format!(
+                "{} ({})",
+                page["name"].as_str().unwrap_or(""),
+                page["id"].as_str().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn page_name(pages: &[Value], id: &str) -> String {
+    pages
+        .iter()
+        .find(|page| page["id"].as_str() == Some(id))
+        .and_then(|page| page["name"].as_str())
+        .unwrap_or(id)
+        .to_string()
+}
+
+fn resolve_page(pages: &[Value], value: &Value) -> Result<Option<String>, String> {
+    let wanted = match value {
+        Value::Null => return Ok(None),
+        Value::String(name) if name.trim().is_empty() => return Ok(None),
+        Value::String(name) => name.trim(),
+        _ => return Err("page muss die Id oder der Name einer Seite sein.".into()),
+    };
+    if pages.is_empty() {
+        return Err(format!(
+            "Seite '{wanted}' gibt es nicht: Das Dashboard hat noch keine Seiten. Erst mit update pages anlegen."
+        ));
+    }
+    let lower = wanted.to_lowercase();
+    pages
+        .iter()
+        .find(|page| page["id"].as_str() == Some(wanted))
+        .or_else(|| {
+            pages.iter().find(|page| {
+                ["name", "id"]
+                    .iter()
+                    .any(|key| page[*key].as_str().map(str::to_lowercase) == Some(lower.clone()))
+            })
+        })
+        .and_then(|page| page["id"].as_str())
+        .map(|id| Some(id.to_string()))
+        .ok_or_else(|| {
+            format!(
+                "Seite '{wanted}' gibt es nicht. Seiten: {}",
+                page_list(pages)
+            )
+        })
+}
+
+fn slug(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.to_lowercase().chars() {
+        let part = match c {
+            'ä' => "ae".to_string(),
+            'ö' => "oe".to_string(),
+            'ü' => "ue".to_string(),
+            'ß' => "ss".to_string(),
+            c if c.is_ascii_alphanumeric() => c.to_string(),
+            _ => "-".to_string(),
+        };
+        if part == "-" && (out.is_empty() || out.ends_with('-')) {
+            continue;
+        }
+        out.push_str(&part);
+    }
+    let out: String = out.trim_end_matches('-').chars().take(36).collect();
+    let out = out.trim_end_matches('-').to_string();
+    if out.is_empty() {
+        "seite".into()
+    } else {
+        out
+    }
+}
+
+fn validate_pages(value: Option<&Value>) -> Result<Vec<Value>, String> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(Vec::new());
+    };
+    let list = value
+        .as_array()
+        .ok_or("pages muss eine Liste von Seiten sein.")?;
+    if list.len() > MAX_PAGES {
+        return Err(format!("Höchstens {MAX_PAGES} Seiten pro Dashboard."));
+    }
+    let mut out: Vec<Value> = Vec::new();
+    for page in list {
+        let id = page["id"]
+            .as_str()
+            .filter(|id| valid_page_id(id))
+            .ok_or_else(|| {
+                format!(
+                    "Seiten-Id {} ist ungültig: 1 bis 40 Zeichen aus A-Z, a-z, 0-9, _ und -.",
+                    page["id"]
+                )
+            })?;
+        if out.iter().any(|other| other["id"] == id) {
+            return Err(format!("Seiten-Id '{id}' ist doppelt."));
+        }
+        let name = page["name"].as_str().map(str::trim).unwrap_or("");
+        if !(1..=MAX_PAGE_NAME).contains(&name.chars().count()) {
+            return Err(format!(
+                "Seite '{id}': name muss 1 bis {MAX_PAGE_NAME} Zeichen haben."
+            ));
+        }
+        let mut clean = json!({"id": id, "name": name});
+        match page.get("hidden") {
+            None | Some(Value::Null) => {}
+            Some(Value::Bool(hidden)) => clean["hidden"] = json!(hidden),
+            Some(_) => return Err(format!("Seite '{id}': hidden muss true/false sein.")),
+        }
+        out.push(clean);
+    }
+    Ok(out)
+}
+
+fn prepare_pages(raw: Option<&Value>) -> Result<Vec<Value>, String> {
+    let list = match raw {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(list)) => list,
+        Some(_) => {
+            return Err(
+                "pages muss eine Liste sein, z. B. [{\"name\": \"Übersicht\"}, {\"name\": \"Vertrieb\"}].".into(),
+            )
+        }
+    };
+    let items: Vec<Value> = list
+        .iter()
+        .map(|item| match item {
+            Value::String(name) => Ok(json!({"name": name})),
+            Value::Object(_) => Ok(item.clone()),
+            _ => Err("Jede Seite ist ein Objekt {id?, name, hidden?}.".to_string()),
+        })
+        .collect::<Result<_, _>>()?;
+    let mut taken: Vec<String> = items
+        .iter()
+        .filter_map(|item| text(item, "id").map(str::to_string))
+        .collect();
+    let mut pages = Vec::new();
+    for item in items {
+        let name = text(&item, "name")
+            .or_else(|| text(&item, "title"))
+            .ok_or("Jede Seite braucht name.")?;
+        let id = match text(&item, "id") {
+            Some(id) => id.to_string(),
+            None => {
+                let base = slug(name);
+                let mut id = base.clone();
+                let mut n = 2;
+                while taken.contains(&id) {
+                    id = format!("{base}-{n}");
+                    n += 1;
+                }
+                taken.push(id.clone());
+                id
+            }
+        };
+        let mut page = json!({"id": id, "name": name});
+        if let Some(hidden) = item.get("hidden").filter(|hidden| !hidden.is_null()) {
+            page["hidden"] = hidden.clone();
+        }
+        pages.push(page);
+    }
+    validate_pages(Some(&Value::Array(pages)))
+}
+
+fn valid_color(color: &str) -> bool {
+    if let Some(hex) = color.strip_prefix('#') {
+        return (3..=8).contains(&hex.len()) && hex.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    let Some((name, rest)) = color.split_once('(') else {
+        return false;
+    };
+    COLOR_FUNCTIONS.contains(&name)
+        && rest.strip_suffix(')').is_some_and(|inner| {
+            inner
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || " .,%/+-".contains(c))
+        })
+}
+
+fn shorten(value: &str) -> String {
+    let short: String = value.chars().take(40).collect();
+    if short.len() < value.len() {
+        format!("{short}…")
+    } else {
+        short
+    }
+}
+
+fn check_color(value: &Value, label: &str) -> Result<String, String> {
+    let color = value.as_str().map(str::trim).unwrap_or("");
+    if valid_color(color) {
+        return Ok(color.to_string());
+    }
+    Err(format!(
+        "{label}: '{}' ist keine erlaubte Farbe. Erlaubt sind #rgb, #rrggbb, #rrggbbaa oder rgb(), rgba(), hsl(), hsla(), oklch(), oklab() ohne weitere CSS-Angaben.",
+        shorten(&value.as_str().map_or_else(|| value.to_string(), str::to_string))
+    ))
+}
+
+fn check_image(value: &Value, label: &str) -> Result<String, String> {
+    let invalid = || {
+        format!(
+            "{label} muss eine data:image/…-URL sein (png, jpeg, gif, webp oder svg+xml, z. B. data:image/svg+xml;base64,… oder data:image/svg+xml,<svg …>). Externe Bilder blockiert die Sicherheitsrichtlinie der App."
+        )
+    };
+    let image = value.as_str().map(str::trim).ok_or_else(invalid)?;
+    if image.chars().count() > MAX_IMAGE_CHARS {
+        return Err(format!(
+            "{label} darf höchstens 512 KiB groß sein ({MAX_IMAGE_CHARS} Zeichen)."
+        ));
+    }
+    let start = image
+        .chars()
+        .take(80)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let rest = start.strip_prefix("data:image/").ok_or_else(invalid)?;
+    let mime = rest.find([';', ',']).map(|end| &rest[..end]).unwrap_or("");
+    if !IMAGE_TYPES.contains(&mime) || !image.contains(',') {
+        return Err(invalid());
+    }
+    Ok(image.to_string())
+}
+
+fn check_href(value: &Value) -> Result<String, String> {
+    let href = value.as_str().map(str::trim).unwrap_or("");
+    let ok = href.len() > "https://".len()
+        && href.len() <= MAX_HREF
+        && href.starts_with("https://")
+        && !href.chars().any(|c| c.is_whitespace() || c.is_control());
+    if ok {
+        Ok(href.to_string())
+    } else {
+        Err(format!(
+            "href muss eine externe Adresse sein, die mit https beginnt (ohne Leerzeichen, höchstens {MAX_HREF} Zeichen)."
+        ))
+    }
+}
+
+fn validate_theme(value: Option<&Value>) -> Result<Value, String> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(Value::Null);
+    };
+    let map = value
+        .as_object()
+        .ok_or("theme muss ein Objekt oder null sein.")?;
+    let mut out = Map::new();
+    for (key, value) in map {
+        if blank(value) {
+            continue;
+        }
+        let label = format!("theme.{key}");
+        let clean = match key.as_str() {
+            "brand" | "tagline" => {
+                let max = if key == "brand" { 80 } else { 160 };
+                let text = value
+                    .as_str()
+                    .ok_or_else(|| format!("{label} muss ein Text sein."))?
+                    .trim();
+                if text.chars().count() > max {
+                    return Err(format!("{label} darf höchstens {max} Zeichen haben."));
+                }
+                if text.is_empty() {
+                    continue;
+                }
+                json!(text)
+            }
+            "logo" => json!(check_image(value, &label)?),
+            "palette" => {
+                let list = value
+                    .as_array()
+                    .filter(|list| (1..=8).contains(&list.len()))
+                    .ok_or_else(|| format!("{label} muss eine Liste mit 1 bis 8 Farben sein."))?;
+                let colors: Vec<String> = list
+                    .iter()
+                    .map(|color| check_color(color, &label))
+                    .collect::<Result<_, _>>()?;
+                json!(colors)
+            }
+            "radius" => {
+                let radius = value
+                    .as_f64()
+                    .filter(|n| n.fract() == 0.0 && (0.0..=32.0).contains(n))
+                    .ok_or_else(|| format!("{label} muss eine Ganzzahl von 0 bis 32 sein."))?;
+                json!(radius as i64)
+            }
+            "header" => json!(value
+                .as_bool()
+                .ok_or_else(|| format!("{label} muss true/false sein."))?),
+            name if THEME_COLORS.contains(&name) => json!(check_color(value, &label)?),
+            name => match THEME_CHOICES.iter().find(|(choice, _)| *choice == name) {
+                Some((_, allowed)) => {
+                    let choice = value.as_str().map(str::trim).unwrap_or("");
+                    if !allowed.contains(&choice) {
+                        return Err(format!(
+                            "{label} muss {} sein.",
+                            allowed
+                                .iter()
+                                .map(|a| format!("'{a}'"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                    }
+                    json!(choice)
+                }
+                None => continue,
+            },
+        };
+        out.insert(key.clone(), clean);
+    }
+    Ok(if out.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(out)
+    })
+}
+
+fn blank(value: &Value) -> bool {
+    match value {
+        Value::Null => true,
+        Value::String(text) => text.trim().is_empty(),
+        _ => false,
+    }
+}
+
+fn theme_keys() -> Vec<&'static str> {
+    let mut keys = vec!["brand", "tagline", "logo", "palette", "radius", "header"];
+    keys.extend(THEME_COLORS);
+    keys.extend(THEME_CHOICES.iter().map(|(key, _)| *key));
+    keys
+}
+
+fn merge_theme(current: &Value, patch: &Value) -> Result<(Value, Vec<String>), String> {
+    let patch = match patch {
+        Value::Null => return Ok((Value::Null, Vec::new())),
+        Value::Object(map) => map,
+        _ => return Err("theme muss ein Objekt oder null sein.".into()),
+    };
+    let known = theme_keys();
+    let ignored: Vec<String> = patch
+        .keys()
+        .filter(|key| !known.contains(&key.as_str()))
+        .cloned()
+        .collect();
+    let mut merged = current.as_object().cloned().unwrap_or_default();
+    for (key, value) in patch {
+        if blank(value) {
+            merged.remove(key);
+        } else {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    Ok((validate_theme(Some(&Value::Object(merged)))?, ignored))
+}
+
+fn compact_image(image: &str) -> String {
+    match image.split_once(',') {
+        Some((header, data)) if image.len() > 160 => {
+            format!("{header},… ({} KiB)", data.len().div_ceil(1024))
+        }
+        _ => image.to_string(),
+    }
+}
+
+fn reassign_pages(dashboard: &mut Value, old: &[Value]) -> usize {
+    let pages = pages_of(dashboard);
+    let ids = page_ids(&pages);
+    let old_first = page_ids(old).first().cloned();
+    let target = |widget: &Value| -> (Option<String>, bool) {
+        let current = page_of(widget, old);
+        match current {
+            Some(page) if ids.contains(&page) => (Some(page), false),
+            Some(page) if ids.is_empty() => (None, Some(page) != old_first),
+            None => (ids.first().cloned(), false),
+            Some(_) => (ids.first().cloned(), true),
+        }
+    };
+    let widgets = dashboard["widgets"].as_array().cloned().unwrap_or_default();
+    let plan: Vec<(Option<String>, bool)> = widgets.iter().map(&target).collect();
+    let mut placed: Vec<(Option<String>, Value)> = widgets
+        .iter()
+        .zip(&plan)
+        .filter(|(_, (_, moved))| !moved)
+        .map(|(widget, (page, _))| (page.clone(), widget.clone()))
+        .collect();
+    let mut moved = 0;
+    let mut out = Vec::new();
+    for (mut widget, (page, move_it)) in widgets.into_iter().zip(plan) {
+        if move_it {
+            let peers: Vec<Value> = placed
+                .iter()
+                .filter(|(other, _)| *other == page)
+                .map(|(_, w)| w.clone())
+                .collect();
+            let (_, _, w, h) = rect(&widget);
+            let (x, y) = place(&peers, w.clamp(1, GRID_COLS), h.max(1));
+            widget["x"] = json!(x);
+            widget["y"] = json!(y);
+            placed.push((page.clone(), widget.clone()));
+            moved += 1;
+        }
+        match &page {
+            Some(page) => widget["page"] = json!(page),
+            None => {
+                if let Some(map) = widget.as_object_mut() {
+                    map.remove("page");
+                }
+            }
+        }
+        if let Some(block) = widget.get_mut("block").and_then(Value::as_object_mut) {
+            let stale = block
+                .get("page")
+                .and_then(Value::as_str)
+                .is_some_and(|link| !ids.iter().any(|id| id == link));
+            if stale {
+                match ids.first() {
+                    Some(first) => {
+                        block.insert("page".into(), json!(first));
+                    }
+                    None => {
+                        block.remove("page");
+                    }
+                }
+            }
+        }
+        out.push(widget);
+    }
+    dashboard["widgets"] = json!(out);
+    moved
+}
+
 pub fn tool_definition() -> Value {
-    let kinds: Vec<&str> = KINDS.iter().map(|kind| kind.name).collect();
+    let kinds: Vec<&str> = KINDS
+        .iter()
+        .map(|kind| kind.name)
+        .chain(block_names())
+        .collect();
+    let choices = |key: &str| -> Vec<&str> {
+        BLOCK_CHOICES
+            .iter()
+            .chain(THEME_CHOICES)
+            .find(|(name, _)| *name == key)
+            .map(|(_, list)| list.to_vec())
+            .unwrap_or_default()
+    };
     let nullable =
         |description: &str| json!({"type": ["string", "null"], "description": description});
     let spec = json!({
         "type": "object",
         "properties": {
-            "type": {"type": "string", "enum": kinds},
+            "type": {"type": "string", "enum": kinds, "description": "Chart type, or a content block without data: text (Markdown), image, link (button), divider (section header)"},
+            "page": nullable("Page id or name the chart or block sits on (default: first page)"),
+            "text": nullable("Blocks: Markdown for text (max 20000 chars, {{variable}} shows the current filter value), button label for link, optional section label for divider"),
+            "src": nullable("image: data:image/(png|jpeg|gif|webp|svg+xml)[;base64],... URL, max 512 KiB. Remote image URLs are blocked by the app's CSP."),
+            "href": nullable("image/link: external https:// URL opened on click"),
+            "targetPage": nullable("link: page id or name to navigate to inside the dashboard"),
+            "align": {"type": "string", "enum": choices("align")},
+            "variant": {"type": "string", "enum": choices("variant"), "description": "Block look: plain, card (framed) or accent (filled with the primary color)"},
+            "fit": {"type": "string", "enum": choices("fit"), "description": "image: contain (whole image) or cover (fill and crop)"},
             "title": {"type": "string"},
             "subtitle": nullable("Line under the title that says what is measured, e.g. 'Summe pro Monat' (max 120 chars, null removes it)"),
             "sql": {"type": "string", "description": "One read-only SELECT. Column aliases are the names used by the mapping fields and become legend/axis labels, so alias readably (AS \"Umsatz\"). Use {{variable}} for dashboard filters."},
@@ -146,18 +741,24 @@ pub fn tool_definition() -> Value {
                     "headline": nullable("auto|total|last|average|max|min: value of the big number"),
                     "unit": nullable("Unit after values, 1-8 chars, e.g. €, %, ms, Stk."),
                     "decimals": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
-                    "invertDelta": {"type": ["boolean", "null"], "description": "true when lower is better (costs, latency)"}
+                    "invertDelta": {"type": ["boolean", "null"], "description": "true when lower is better (costs, latency)"},
+                    "crossFilter": {"type": ["boolean", "null"], "description": "Default true: clicking a category, bar or slice filters all other charts of the dashboard that use the same column"},
+                    "drill": {"type": ["boolean", "null"], "description": "Default true: a click offers Details, a drill-through to the underlying rows"},
+                    "totals": {"type": ["boolean", "null"], "description": "table, pivot: totals row/column (default true)"},
+                    "dataBars": {"type": ["boolean", "null"], "description": "table, pivot: in-cell data bars / color scale (default false)"},
+                    "target": {"type": ["number", "null"], "description": "Target/reference line (line, area, column, bars) or target marker (kpi)"},
+                    "targetLabel": nullable("Label of the target line, max 40 chars")
                 }
             },
             "x": {"type": "integer", "minimum": 0},
             "y": {"type": "integer", "minimum": 0},
-            "w": {"type": "integer", "minimum": 2, "maximum": GRID_COLS},
-            "h": {"type": "integer", "minimum": 3, "maximum": MAX_H}
+            "w": {"type": "integer", "minimum": 1, "maximum": GRID_COLS, "description": "Width in grid columns; charts need at least 2-3, blocks 1"},
+            "h": {"type": "integer", "minimum": 1, "maximum": MAX_H, "description": "Height in rows of ~44px; charts need at least 3-5, blocks 1"}
         }
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, charts), update (name, refreshSec, variables, design), delete, add_charts (charts), update_chart (chart + spec with changed fields only; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out all charts into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top (a kpi always shows sparkline and trend, never a bare number: give it a time dimension for the latest value, or no dimension plus dateColumn for the period total), then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide.",
+        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Dashboards can have pages (tabs or sidebar; every chart has a page), a theme for company branding (brand, logo, colors, palette, font, card style) and content blocks without data (type text with Markdown, image, link button to a page or URL, divider as section header). Charts support BI interactions: cross filtering and drill-through on click (options crossFilter, drill), target lines (options target, targetLabel) and pivot cross-tabs (type pivot). Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, pages, theme, charts), update (name, refreshSec, variables, design, pages replaces the list, theme merges key by key), delete, add_charts (charts), update_chart (chart + spec with changed fields only, page moves it; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out each page into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, blocks, pages, theme, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top (a kpi always shows sparkline and trend, never a bare number: give it a time dimension for the latest value, or no dimension plus dateColumn for the period total), then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -167,7 +768,26 @@ pub fn tool_definition() -> Value {
                 "name": {"type": "string"},
                 "refreshSec": {"type": "integer", "description": "Auto refresh in seconds, 0 = off"},
                 "design": {"type": ["object", "null"], "description": "create/update: free dashboard CSS (max 256 KiB). null resets. Scoped to this dashboard, all CSS properties supported. Stable selectors: .dashboard-surface (:root/:scope), .dashboard-toolbar, .dashboard-filters, .dashboard-canvas, .dashboard-grid, .dashboard-widget, .dashboard-widget-header, .dashboard-widget-title, .dashboard-widget-subtitle, .dashboard-widget-summary, .dashboard-widget-content, [data-widget-id=\"chart-id\"], [data-chart-type=\"kpi\"]. Theme variables: --background, --foreground, --card, --border, --muted-foreground. Chart colors: --dash-accent, --dash-color-1 through --dash-color-8, --dash-compare. Use unique @keyframes/font names. @import is not loaded; external URLs follow app CSP. CSS-only updates do not execute database queries.", "properties": {"css": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["css", "enabled"], "additionalProperties": false},
-                "chart": {"type": "string", "description": "Chart id or title"},
+                "pages": {"type": ["array", "null"], "items": {"type": "object", "properties": {"id": {"type": "string", "description": "1-40 chars A-Z a-z 0-9 _ -; generated from the name when missing"}, "name": {"type": "string", "description": "Tab label, 1-60 chars"}, "hidden": {"type": "boolean"}}, "required": ["name"]}, "description": "create/update: dashboard pages (max 30), replaces the list. Charts on removed pages move to the first page. [] or null = one implicit page."},
+                "theme": {"type": ["object", "null"], "description": "create/update: branding. update merges key by key (a key set to null removes it), theme null resets. Colors: #hex or rgb()/rgba()/hsl()/hsla()/oklch()/oklab() only. logo: data:image/... URL (png, jpeg, gif, webp, svg+xml; max 512 KiB), remote images are blocked.", "properties": {
+                    "brand": {"type": ["string", "null"], "description": "Company or page title in the branded header, max 80 chars"},
+                    "tagline": {"type": ["string", "null"], "description": "Max 160 chars"},
+                    "logo": {"type": ["string", "null"]},
+                    "primary": {"type": ["string", "null"], "description": "Accent color"},
+                    "background": {"type": ["string", "null"]},
+                    "surface": {"type": ["string", "null"], "description": "Card background"},
+                    "text": {"type": ["string", "null"]},
+                    "muted": {"type": ["string", "null"]},
+                    "border": {"type": ["string", "null"]},
+                    "palette": {"type": ["array", "null"], "items": {"type": "string"}, "description": "1-8 chart colors"},
+                    "font": {"type": ["string", "null"], "enum": choices("font")},
+                    "radius": {"type": ["integer", "null"], "minimum": 0, "maximum": 32, "description": "Card corner radius in px"},
+                    "card": {"type": ["string", "null"], "enum": choices("card")},
+                    "density": {"type": ["string", "null"], "enum": choices("density")},
+                    "header": {"type": ["boolean", "null"], "description": "Show the branded header (logo, brand, tagline)"},
+                    "nav": {"type": ["string", "null"], "enum": choices("nav"), "description": "Page navigation style"}
+                }},
+                "chart": {"type": "string", "description": "Chart or block id or title"},
                 "limit": {"type": "integer", "minimum": 1, "description": "Rows per chart for preview (default 20) and run (default 5)"},
                 "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Dashboard filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
                 "table": {"type": "string", "description": "joins: table to find join partners for (schema.table)"},
@@ -355,6 +975,8 @@ pub fn mcp_dashboard_save(dashboard: Value) -> Result<String, String> {
         .and_then(|old| old["createdAt"].as_i64())
         .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
     let design = validate_design(dashboard.get("design"))?;
+    let pages = validate_pages(dashboard.get("pages"))?;
+    let theme = validate_theme(dashboard.get("theme"))?;
     write(&json!({
         "id": id,
         "connectionId": connection_id,
@@ -362,6 +984,8 @@ pub fn mcp_dashboard_save(dashboard: Value) -> Result<String, String> {
         "refreshSec": dashboard["refreshSec"].as_u64().unwrap_or(0),
         "createdAt": created,
         "design": design,
+        "pages": pages,
+        "theme": theme,
         "datasets": dashboard["datasets"],
         "widgets": dashboard["widgets"],
         "variables": dashboard["variables"].as_array().cloned().unwrap_or_default(),
@@ -497,10 +1121,21 @@ fn dataset_of<'a>(dashboard: &'a Value, widget: &Value) -> Option<&'a Value> {
 }
 
 fn widget_title(dashboard: &Value, widget: &Value) -> String {
-    text(widget, "title")
+    if let Some(title) = text(widget, "title")
         .or_else(|| dataset_of(dashboard, widget).and_then(|d| text(d, "name")))
-        .unwrap_or("")
-        .to_string()
+    {
+        return title.to_string();
+    }
+    block_of(widget)
+        .and_then(|block| text(block, "text"))
+        .and_then(|body| body.lines().map(str::trim).find(|line| !line.is_empty()))
+        .map(|line| {
+            line.trim_start_matches(['#', '>', '*', '-', ' '])
+                .chars()
+                .take(40)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 struct Shape {
@@ -635,7 +1270,7 @@ fn check_options(
             options.remove(&key);
             continue;
         }
-        if key == "unit" {
+        if key == "unit" || key == "targetLabel" {
             if let Some(unit) = value.as_str() {
                 value = json!(unit.trim());
             }
@@ -660,6 +1295,10 @@ fn check_options(
                 .as_str()
                 .is_some_and(|unit| (1..=8).contains(&unit.chars().count())),
             "decimals" => value.as_i64().is_some_and(|n| (0..=4).contains(&n)),
+            "target" => value.as_f64().is_some_and(f64::is_finite),
+            "targetLabel" => value
+                .as_str()
+                .is_some_and(|label| label.chars().count() <= MAX_TARGET_LABEL),
             "metricKeys" => value
                 .as_array()
                 .is_some_and(|list| !list.is_empty() && list.iter().all(|v| v.is_string())),
@@ -676,6 +1315,8 @@ fn check_options(
                     "headline" => "'auto', 'total', 'last', 'average', 'max' oder 'min'",
                     "unit" => "Text mit 1 bis 8 Zeichen",
                     "decimals" => "Ganzzahl 0 bis 4",
+                    "target" => "Zahl (Ziel- bzw. Referenzwert)",
+                    "targetLabel" => "Text mit höchstens 40 Zeichen",
                     "metricKeys" => "nicht-leere Liste von metrics",
                     _ => "true oder false",
                 }
@@ -721,7 +1362,8 @@ fn place(others: &[Value], w: i64, h: i64) -> (i64, i64) {
 }
 
 fn layout(
-    kind: &Kind,
+    name: &str,
+    (size, (min_w, min_h)): ((i64, i64), (i64, i64)),
     spec: &Map<String, Value>,
     others: &[Value],
     notes: &mut Vec<String>,
@@ -735,20 +1377,13 @@ fn layout(
                 .ok_or_else(|| format!("{key} muss eine Ganzzahl sein.")),
         }
     };
-    let (min_w, min_h) = min_size(kind);
-    let w = int("w")?.unwrap_or(kind.size.0);
-    let h = int("h")?.unwrap_or(kind.size.1);
+    let w = int("w")?.unwrap_or(size.0);
+    let h = int("h")?.unwrap_or(size.1);
     if !(min_w..=GRID_COLS).contains(&w) {
-        return Err(format!(
-            "w für '{}' muss {min_w} bis {GRID_COLS} sein.",
-            kind.name
-        ));
+        return Err(format!("w für '{name}' muss {min_w} bis {GRID_COLS} sein."));
     }
     if !(min_h..=MAX_H).contains(&h) {
-        return Err(format!(
-            "h für '{}' muss {min_h} bis {MAX_H} sein.",
-            kind.name
-        ));
+        return Err(format!("h für '{name}' muss {min_h} bis {MAX_H} sein."));
     }
     let (x, y) = match (int("x")?, int("y")?) {
         (None, None) => place(others, w, h),
@@ -831,16 +1466,63 @@ fn design_notes(
     notes
 }
 
+fn arrange_pages(widgets: &[Value], pages: &[Value]) -> Vec<Value> {
+    if pages.is_empty() {
+        return arrange(widgets);
+    }
+    page_ids(pages)
+        .into_iter()
+        .flat_map(|id| {
+            let group: Vec<Value> = widgets
+                .iter()
+                .filter(|widget| page_of(widget, pages).as_deref() == Some(id.as_str()))
+                .cloned()
+                .collect();
+            arrange(&group)
+        })
+        .collect()
+}
+
 fn arrange(widgets: &[Value]) -> Vec<Value> {
     let mut sorted = widgets.to_vec();
     sorted.sort_by_key(|widget| {
         let (x, y, _, _) = rect(widget);
         (y, x)
     });
+    let mut out = Vec::new();
+    let mut y = 0;
+    let mut section = Vec::new();
+    for mut widget in sorted {
+        if !full_width(&widget) {
+            section.push(widget);
+            continue;
+        }
+        y = arrange_section(std::mem::take(&mut section), y, &mut out);
+        let min_h = block_kind(&widget).map_or(1, |block| block_sizes(block).1 .1);
+        let height = widget["h"].as_i64().unwrap_or(1).clamp(min_h, MAX_H);
+        widget["x"] = json!(0);
+        widget["y"] = json!(y);
+        widget["w"] = json!(GRID_COLS);
+        widget["h"] = json!(height);
+        y += height;
+        out.push(widget);
+    }
+    arrange_section(section, y, &mut out);
+    out
+}
+
+fn arrange_section(sorted: Vec<Value>, start: i64, out: &mut Vec<Value>) -> i64 {
     let chart = |widget: &Value| widget["chart"].as_str().unwrap_or("").to_string();
-    let (tiles, rest): (Vec<Value>, Vec<Value>) = sorted
-        .into_iter()
-        .partition(|widget| matches!(chart(widget).as_str(), "kpi" | "gauge"));
+    let (tiles, rest): (Vec<Value>, Vec<Value>) = sorted.into_iter().partition(|widget| {
+        block_of(widget).is_some() || matches!(chart(widget).as_str(), "kpi" | "gauge")
+    });
+    let tile_height = |widget: &Value| match block_kind(widget) {
+        Some(block) => widget["h"]
+            .as_i64()
+            .unwrap_or(1)
+            .clamp(block_sizes(block).1 .1, MAX_H),
+        None => 4,
+    };
     let narrow = |widget: &Value| {
         matches!(
             chart(widget).as_str(),
@@ -855,7 +1537,8 @@ fn arrange(widgets: &[Value]) -> Vec<Value> {
         let count = total / tile_rows + usize::from(row < total % tile_rows);
         let group: Vec<Value> = queue.by_ref().take(count).collect();
         let widths = vec![GRID_COLS / count as i64; count];
-        rows.push((group, widths, 4));
+        let height = group.iter().map(tile_height).max().unwrap_or(4);
+        rows.push((group, widths, height));
     }
     let mut index = 0;
     while index < rest.len() {
@@ -881,8 +1564,7 @@ fn arrange(widgets: &[Value]) -> Vec<Value> {
         index += widths.len();
         rows.push((group, widths, height));
     }
-    let mut out = Vec::new();
-    let mut y = 0;
+    let mut y = start;
     for (group, widths, height) in rows {
         let mut x = 0;
         for (mut widget, w) in group.into_iter().zip(widths) {
@@ -895,7 +1577,7 @@ fn arrange(widgets: &[Value]) -> Vec<Value> {
         }
         y += height;
     }
-    out
+    y
 }
 
 fn empty_simple() -> Value {
@@ -907,14 +1589,37 @@ fn empty_simple() -> Value {
     })
 }
 
-fn flatten(dashboard: &Value, widget: &Value) -> Map<String, Value> {
+fn flatten(dashboard: &Value, widget: &Value, pages: &[Value]) -> Map<String, Value> {
     let dataset = dataset_of(dashboard, widget);
     let mut out = Map::new();
     out.insert("id".into(), widget["id"].clone());
-    out.insert("type".into(), widget["chart"].clone());
+    let block = block_of(widget);
+    out.insert(
+        "type".into(),
+        block.map_or_else(|| widget["chart"].clone(), |b| b["type"].clone()),
+    );
     out.insert("title".into(), json!(widget_title(dashboard, widget)));
     if let Some(subtitle) = text(widget, "subtitle") {
         out.insert("subtitle".into(), json!(subtitle));
+    }
+    if let Some(page) = page_of(widget, pages) {
+        out.insert("page".into(), json!(page));
+    }
+    if let Some(block) = block {
+        for key in BLOCK_KEYS {
+            let stored = if *key == "targetPage" { "page" } else { key };
+            if let Some(value) = block.get(stored).filter(|value| !value.is_null()) {
+                let value = match (*key, value.as_str()) {
+                    ("src", Some(src)) => json!(compact_image(src)),
+                    _ => value.clone(),
+                };
+                out.insert((*key).into(), value);
+            }
+        }
+        for key in ["x", "y", "w", "h"] {
+            out.insert(key.into(), widget[key].clone());
+        }
+        return out;
     }
     match dataset {
         Some(dataset) if dataset["mode"] == "expert" => {
@@ -998,6 +1703,273 @@ fn optional_text(spec: &Map<String, Value>, key: &str) -> Result<Option<String>,
     }
 }
 
+fn titles(
+    spec: &Map<String, Value>,
+    base: Option<&Value>,
+) -> Result<(String, Option<String>), String> {
+    let title = match spec.get("title") {
+        Some(_) => optional_text(spec, "title")?.unwrap_or_default(),
+        None => base
+            .and_then(|w| text(w, "title"))
+            .unwrap_or("")
+            .to_string(),
+    };
+    if title.chars().count() > MAX_NAME_CHARS {
+        return Err(format!("title ist länger als {MAX_NAME_CHARS} Zeichen."));
+    }
+    let subtitle = match spec.get("subtitle") {
+        Some(_) => optional_text(spec, "subtitle")?,
+        None => base.and_then(|w| text(w, "subtitle")).map(str::to_string),
+    };
+    if subtitle
+        .as_ref()
+        .is_some_and(|s| s.chars().count() > MAX_NAME_CHARS)
+    {
+        return Err(format!("subtitle ist länger als {MAX_NAME_CHARS} Zeichen."));
+    }
+    Ok((title, subtitle))
+}
+
+fn widget_page(
+    spec: &Map<String, Value>,
+    base: Option<&Value>,
+    pages: &[Value],
+) -> Result<(Option<String>, bool), String> {
+    let current = base.and_then(|widget| page_of(widget, pages));
+    let first = || page_ids(pages).first().cloned();
+    let page = match spec.get("page") {
+        Some(value) => resolve_page(pages, value)?.or_else(first),
+        None => current.clone().or_else(first),
+    };
+    let moved =
+        base.is_some() && page != current && !spec.contains_key("x") && !spec.contains_key("y");
+    Ok((page, moved))
+}
+
+fn position(
+    spec: &Map<String, Value>,
+    base: Option<&Value>,
+    (size, min): ((i64, i64), (i64, i64)),
+    moved: bool,
+) -> Map<String, Value> {
+    let mut position = spec.clone();
+    let Some(widget) = base else {
+        return position;
+    };
+    for (key, min) in [("w", min.0), ("h", min.1)] {
+        if !spec.contains_key(key) {
+            let size = widget[key].as_i64().unwrap_or(0).max(min);
+            position.insert(key.into(), json!(size));
+        }
+    }
+    if moved {
+        return position;
+    }
+    if !spec.contains_key("y") {
+        position.insert("y".into(), widget["y"].clone());
+    }
+    if !spec.contains_key("x") {
+        let w = position.get("w").and_then(Value::as_i64).unwrap_or(size.0);
+        let x = widget["x"].as_i64().unwrap_or(0).min(GRID_COLS - w).max(0);
+        position.insert("x".into(), json!(x));
+    }
+    position
+}
+
+fn text_tokens(body: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = body;
+    while let Some(start) = rest.find("{{") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else {
+            break;
+        };
+        let name = after[..end].trim();
+        if !name.is_empty()
+            && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+            && !out.iter().any(|seen| seen == name)
+        {
+            out.push(name.to_string());
+        }
+        rest = &after[end + 2..];
+    }
+    out
+}
+
+fn block_fields(block: &str) -> &'static [&'static str] {
+    match block {
+        "text" => &["text", "align", "variant"],
+        "image" => &["src", "fit", "href", "align", "variant"],
+        "link" => &["text", "href", "page", "align", "variant"],
+        _ => &["text", "align", "variant"],
+    }
+}
+
+fn spec_key(stored: &str) -> &str {
+    if stored == "page" {
+        "targetPage"
+    } else {
+        stored
+    }
+}
+
+fn build_block(
+    block: &'static str,
+    spec: &Map<String, Value>,
+    base: Option<&Value>,
+    peers: &[Value],
+    (pages, page): (&[Value], Option<String>),
+    moved: bool,
+    variables: &[Value],
+) -> Result<Built, String> {
+    let label = format!("Inhaltsblock '{block}'");
+    let data = DATA_KEYS
+        .iter()
+        .copied()
+        .filter(|key| spec.get(*key).is_some_and(|value| !value.is_null()))
+        .chain(
+            spec.get("options")
+                .is_some_and(|o| o.as_object().is_some_and(|m| !m.is_empty()) || o.is_string())
+                .then_some("options"),
+        )
+        .chain(
+            spec.get("period")
+                .and_then(Value::as_str)
+                .filter(|period| *period != "all")
+                .map(|_| "period"),
+        )
+        .collect::<Vec<_>>();
+    if !data.is_empty() {
+        return Err(format!(
+            "{label} zeigt keine Daten: {} weglassen. Für Kennzahlen einen Chart-Typ wählen (chart_types).",
+            data.join(", ")
+        ));
+    }
+    let allowed = block_fields(block);
+    let mut fields: Map<String, Value> = base
+        .and_then(block_of)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    fields.retain(|key, _| allowed.contains(&key.as_str()));
+    for key in BLOCK_KEYS {
+        let stored = if *key == "targetPage" { "page" } else { key };
+        let Some(value) = spec.get(*key) else {
+            continue;
+        };
+        if blank(value) {
+            fields.remove(stored);
+            continue;
+        }
+        if !allowed.contains(&stored) {
+            return Err(format!(
+                "Feld '{key}' gibt es bei {label} nicht. Möglich: {}",
+                allowed
+                    .iter()
+                    .map(|key| spec_key(key))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        fields.insert(stored.to_string(), value.clone());
+    }
+    let mut clean = Map::new();
+    clean.insert("type".into(), json!(block));
+    for (key, value) in &fields {
+        let checked = match key.as_str() {
+            "text" => {
+                let body = value.as_str().ok_or("text muss ein Text sein.")?;
+                let body = if block == "text" {
+                    body.trim_matches(['\n', '\r'])
+                } else {
+                    body.trim()
+                };
+                let max = if block == "text" {
+                    MAX_BLOCK_TEXT
+                } else {
+                    MAX_NAME_CHARS
+                };
+                if body.chars().count() > max {
+                    return Err(format!("text für {label} ist länger als {max} Zeichen."));
+                }
+                check_variables(&text_tokens(body), variables)?;
+                json!(body)
+            }
+            "src" => json!(check_image(value, "src")?),
+            "href" => json!(check_href(value)?),
+            "page" => json!(resolve_page(pages, value)
+                .map_err(|e| format!("targetPage: {e}"))?
+                .unwrap_or_default()),
+            name => {
+                let options = BLOCK_CHOICES
+                    .iter()
+                    .find(|(choice, _)| *choice == name)
+                    .map_or(&[][..], |(_, list)| *list);
+                let choice = value.as_str().map(str::trim).unwrap_or("");
+                if !options.contains(&choice) {
+                    return Err(format!("{name} muss {} sein.", options.join(", ")));
+                }
+                json!(choice)
+            }
+        };
+        clean.insert(key.clone(), checked);
+    }
+    let has = |key: &str| clean.get(key).is_some_and(|value| !blank(value));
+    match block {
+        "text" if !has("text") => {
+            return Err(format!("{label} braucht text (Markdown)."));
+        }
+        "image" if !has("src") => {
+            return Err(format!(
+                "{label} braucht src (data:image/…-URL, z. B. ein SVG-Logo)."
+            ));
+        }
+        "link" if !has("text") || !(has("href") || has("page")) => {
+            return Err(format!(
+                "{label} braucht text (Beschriftung) und targetPage (Seite des Dashboards) oder href (externe Adresse, beginnt mit https)."
+            ));
+        }
+        _ => {}
+    }
+    let (title, subtitle) = titles(spec, base)?;
+    let sizes = block_sizes(block);
+    let position = position(spec, base, sizes, moved);
+    let mut notes = Vec::new();
+    let (x, y, w, h) = layout(block, sizes, &position, peers, &mut notes)?;
+    let id = base
+        .and_then(|w| w["id"].as_str())
+        .map(str::to_string)
+        .unwrap_or_else(new_id);
+    let mut widget = json!({
+        "id": id,
+        "chart": "table",
+        "datasetId": null,
+        "title": title,
+        "period": "all",
+        "options": {},
+        "x": x, "y": y, "w": w, "h": h,
+        "block": clean,
+    });
+    if let Some(subtitle) = subtitle {
+        widget["subtitle"] = json!(subtitle);
+    }
+    if let Some(page) = &page {
+        widget["page"] = json!(page);
+    }
+    let mut report = format!("\n- block {id} '{title}' {block} at x={x} y={y} w={w} h={h}");
+    if let Some(page) = page.filter(|_| pages.len() > 1) {
+        report.push_str(&format!(" auf Seite '{}'", page_name(pages, &page)));
+    }
+    if !notes.is_empty() {
+        report.push_str(&format!(" [{}]", notes.join("; ")));
+    }
+    Ok(Built {
+        widget,
+        dataset: None,
+        report,
+    })
+}
+
 impl Server {
     pub(super) async fn dashboard(
         &mut self,
@@ -1070,6 +2042,10 @@ impl Server {
             "variables": [],
         });
         dashboard["design"] = validate_design(args.get("design"))?;
+        dashboard["pages"] = json!(prepare_pages(args.get("pages"))?);
+        let (theme, ignored) =
+            merge_theme(&Value::Null, args.get("theme").unwrap_or(&Value::Null))?;
+        dashboard["theme"] = theme;
         dashboard["variables"] = json!(
             self.prepare_variables(config, connection, args.get("variables"))
                 .await?
@@ -1082,10 +2058,15 @@ impl Server {
             connection,
             name.clone(),
             format!(
-                "ok, Dashboard '{name}' angelegt (id {}), {} Charts. Sichtbar in l8db unter Dashboard von '{}'.{}",
+                "ok, Dashboard '{name}' angelegt (id {}), {} Charts{}. Sichtbar in l8db unter Dashboard von '{}'.{}{}",
                 dashboard["id"].as_str().unwrap_or(""),
                 reports.len(),
+                match pages_of(&dashboard).len() {
+                    0 => String::new(),
+                    n => format!(", {n} Seiten ({})", page_list(&pages_of(&dashboard))),
+                },
                 connection.name,
+                ignored_note(&ignored),
                 reports.join("")
             ),
         ))
@@ -1114,6 +2095,7 @@ impl Server {
         }
         let mut reports = Vec::new();
         let variables = variables_of(dashboard);
+        let pages = pages_of(dashboard);
         for (index, spec) in specs.iter().enumerate() {
             let label = spec
                 .get("title")
@@ -1124,7 +2106,7 @@ impl Server {
             let spec = spec_object(spec).map_err(|e| format!("Chart {label}: {e}"))?;
             let others = dashboard["widgets"].as_array().cloned().unwrap_or_default();
             let built = self
-                .build(config, connection, &spec, None, &others, &variables)
+                .build(config, connection, &spec, None, &others, &variables, &pages)
                 .await
                 .map_err(|e| format!("Chart {label}: {e}"))?;
             if let Some(dataset) = built.dataset {
@@ -1144,39 +2126,53 @@ impl Server {
         existing: Option<(&Value, Option<&Value>)>,
         others: &[Value],
         variables: &[Value],
+        pages: &[Value],
     ) -> Result<Built, String> {
         let base_widget = existing.map(|(widget, _)| widget);
         let base_dataset = existing.and_then(|(_, dataset)| dataset);
+        let base_block = base_widget.and_then(block_kind).map(str::to_string);
         let kind_name = optional_text(spec, "type")?
+            .or_else(|| base_block.clone())
             .or_else(|| {
                 base_widget
                     .and_then(|w| text(w, "chart"))
                     .map(str::to_string)
             })
             .ok_or("type fehlt. chart_types zeigt die Möglichkeiten.")?;
-        let kind = kind(&kind_name)?;
-        let title = match spec.get("title") {
-            Some(_) => optional_text(spec, "title")?.unwrap_or_default(),
-            None => base_widget
-                .and_then(|w| text(w, "title"))
-                .unwrap_or("")
-                .to_string(),
-        };
-        if title.chars().count() > MAX_NAME_CHARS {
-            return Err(format!("title ist länger als {MAX_NAME_CHARS} Zeichen."));
+        let (page, moved) = widget_page(spec, base_widget, pages)?;
+        let peers: Vec<Value> = others
+            .iter()
+            .filter(|widget| page_of(widget, pages) == page)
+            .cloned()
+            .collect();
+        if let Some(block) = block_type(&kind_name) {
+            return build_block(
+                block,
+                spec,
+                base_widget,
+                &peers,
+                (pages, page),
+                moved,
+                variables,
+            );
         }
-        let subtitle = match spec.get("subtitle") {
-            Some(_) => optional_text(spec, "subtitle")?,
-            None => base_widget
-                .and_then(|w| text(w, "subtitle"))
-                .map(str::to_string),
-        };
-        if subtitle
-            .as_ref()
-            .is_some_and(|s| s.chars().count() > MAX_NAME_CHARS)
+        if let Some(key) = BLOCK_KEYS
+            .iter()
+            .find(|key| spec.get(**key).is_some_and(|value| !value.is_null()))
         {
-            return Err(format!("subtitle ist länger als {MAX_NAME_CHARS} Zeichen."));
+            return Err(format!(
+                "Feld '{key}' gibt es nur bei Inhaltsblöcken ({}), nicht bei Charts.",
+                block_names().join(", ")
+            ));
         }
+        if base_block.is_some() && !DATA_KEYS.iter().any(|key| spec.contains_key(*key)) {
+            return Err(
+                "Aus dem Inhaltsblock wird ein Chart: sql oder builder (plus dimension/metrics) mitgeben."
+                    .into(),
+            );
+        }
+        let kind = kind(&kind_name)?;
+        let (title, subtitle) = titles(spec, base_widget)?;
         let period = match spec.get("period") {
             None => base_widget
                 .and_then(|w| text(w, "period"))
@@ -1352,28 +2348,14 @@ impl Server {
             .cloned()
             .unwrap_or_default();
         let options = check_options(kind, &base_options, spec.get("options"), &shape.metrics)?;
-        let mut position = spec.clone();
-        if let Some(widget) = base_widget {
-            let (min_w, min_h) = min_size(kind);
-            for (key, min) in [("w", min_w), ("h", min_h)] {
-                if !spec.contains_key(key) {
-                    let size = widget[key].as_i64().unwrap_or(0).max(min);
-                    position.insert(key.into(), json!(size));
-                }
-            }
-            if !spec.contains_key("y") {
-                position.insert("y".into(), widget["y"].clone());
-            }
-            if !spec.contains_key("x") {
-                let w = position
-                    .get("w")
-                    .and_then(Value::as_i64)
-                    .unwrap_or(kind.size.0);
-                let x = widget["x"].as_i64().unwrap_or(0).min(GRID_COLS - w).max(0);
-                position.insert("x".into(), json!(x));
-            }
-        }
-        let (x, y, w, h) = layout(kind, &position, others, &mut notes)?;
+        let position = position(spec, base_widget, (kind.size, min_size(kind)), moved);
+        let (x, y, w, h) = layout(
+            kind.name,
+            (kind.size, min_size(kind)),
+            &position,
+            &peers,
+            &mut notes,
+        )?;
         let expert = dataset
             .as_ref()
             .or(base_dataset)
@@ -1400,10 +2382,16 @@ impl Server {
         if let Some(subtitle) = subtitle {
             widget["subtitle"] = json!(subtitle);
         }
+        if let Some(page) = &page {
+            widget["page"] = json!(page);
+        }
         let mut report = format!(
             "\n- chart {id} '{}' {} at x={x} y={y} w={w} h={h}",
             title, kind.name
         );
+        if let Some(page) = page.filter(|_| pages.len() > 1) {
+            report.push_str(&format!(" auf Seite '{}'", page_name(pages, &page)));
+        }
         if !notes.is_empty() {
             report.push_str(&format!(" [{}]", notes.join("; ")));
         }
@@ -1529,9 +2517,36 @@ impl Server {
                     dashboard["design"] = validate_design(args.get("design"))?;
                     changed.push("design".into());
                 }
+                if args.get("pages").is_some() {
+                    let old = pages_of(&dashboard);
+                    let next = prepare_pages(args.get("pages"))?;
+                    dashboard["pages"] = json!(next);
+                    let moved = reassign_pages(&mut dashboard, &old);
+                    let mut note = format!("pages={}", next.len());
+                    if !next.is_empty() {
+                        note.push_str(&format!(" ({})", page_list(&next)));
+                    }
+                    if moved > 0 {
+                        note.push_str(&format!(
+                            ", {moved} Charts auf {} verschoben",
+                            next.first()
+                                .and_then(|page| page["name"].as_str())
+                                .map_or("die einzige Seite".to_string(), |name| format!(
+                                    "Seite '{name}'"
+                                ))
+                        ));
+                    }
+                    changed.push(note);
+                }
+                if let Some(patch) = args.get("theme") {
+                    let (theme, ignored) = merge_theme(&dashboard["theme"], patch)?;
+                    dashboard["theme"] = theme;
+                    changed.push(format!("theme{}", ignored_note(&ignored)));
+                }
                 if changed.is_empty() {
                     return Err(
-                        "update braucht name, refreshSec, variables und/oder design.".into(),
+                        "update braucht name, refreshSec, variables, design, pages und/oder theme."
+                            .into(),
                     );
                 }
                 format!("ok, Dashboard '{name}' geändert: {}", changed.join(", "))
@@ -1584,6 +2599,7 @@ impl Server {
                         Some((&widget, base.as_ref())),
                         &others,
                         &variables_of(&dashboard),
+                        &pages_of(&dashboard),
                     )
                     .await?;
                 if let Some(next) = built.dataset {
@@ -1606,23 +2622,35 @@ impl Server {
                         "Dashboard '{name}' hat keine Charts. Erst add_charts."
                     ));
                 }
-                let arranged = arrange(&widgets);
+                let pages = pages_of(&dashboard);
+                let arranged = arrange_pages(&widgets, &pages);
                 let lines: Vec<String> = arranged
                     .iter()
                     .map(|widget| {
                         let (x, y, w, h) = rect(widget);
+                        let page = match page_of(widget, &pages) {
+                            Some(page) if pages.len() > 1 => {
+                                format!(" (Seite '{}')", page_name(&pages, &page))
+                            }
+                            _ => String::new(),
+                        };
                         format!(
-                            "\n- {} '{}' {} x={x} y={y} w={w} h={h}",
+                            "\n- {} '{}' {} x={x} y={y} w={w} h={h}{page}",
                             widget["id"].as_str().unwrap_or(""),
                             widget_title(&dashboard, widget),
-                            widget["chart"].as_str().unwrap_or("")
+                            block_kind(widget).unwrap_or(widget["chart"].as_str().unwrap_or(""))
                         )
                     })
                     .collect();
                 dashboard["widgets"] = json!(arranged);
                 format!(
-                    "ok, {} Charts in '{name}' neu angeordnet: Kacheln (kpi, gauge) oben, danach Zeilen aus breiten und schmalen Charts, Reihenfolge beibehalten. Feinschliff mit update_chart (x, y, w, h), Daten prüfen mit action=run.{}",
+                    "ok, {} Charts in '{name}' neu angeordnet: Kacheln (kpi, gauge) oben, danach Zeilen aus breiten und schmalen Charts, Reihenfolge beibehalten.{} Feinschliff mit update_chart (x, y, w, h), Daten prüfen mit action=run.{}",
                     lines.len(),
+                    if pages.len() > 1 || arranged.iter().any(|w| block_of(w).is_some()) {
+                        " Jede Seite für sich; Trenner und breite Textblöcke bilden eigene Zeilen und beginnen einen Abschnitt, kleine Blöcke laufen wie Kacheln mit."
+                    } else {
+                        ""
+                    },
                     lines.join("")
                 )
             }
@@ -1651,6 +2679,12 @@ impl Server {
                 find_dashboard(config, server::arg_str(args, "dashboard"))?;
             let index = find_widget(&dashboard, server::arg_str(args, "chart"))?;
             let widget = &dashboard["widgets"][index];
+            if let Some(block) = block_kind(widget) {
+                return Err(format!(
+                    "'{}' ist ein Inhaltsblock ({block}) ohne Abfrage.",
+                    widget_title(&dashboard, widget)
+                ));
+            }
             let dataset = dataset_of(&dashboard, widget).ok_or("Chart hat keinen Datensatz.")?;
             let (sql, mut mapping) = dataset_query(
                 dataset,
@@ -1664,6 +2698,12 @@ impl Server {
         }
         let connection = sql_connection(config, server::arg_str(args, "connection"))?;
         let spec = spec_object(args.get("spec").unwrap_or(&Value::Null))?;
+        if optional_text(&spec, "type")?.is_some_and(|name| block_type(&name).is_some()) {
+            return Err(format!(
+                "Inhaltsblöcke ({}) haben keine Daten für eine Vorschau.",
+                block_names().join(", ")
+            ));
+        }
         let variables = builder::parse_variables(args.get("variables").unwrap_or(&Value::Null))?;
         let (sql, mut mapping, built) = match spec.get("builder").filter(|v| !v.is_null()) {
             Some(raw) => {
@@ -1891,6 +2931,13 @@ impl Server {
                 continue;
             }
             let title = widget_title(&dashboard, widget);
+            if let Some(block) = block_kind(widget) {
+                out.push(format!(
+                    "· '{title}' (Inhaltsblock {block}, id {}): keine Abfrage",
+                    widget["id"].as_str().unwrap_or("")
+                ));
+                continue;
+            }
             let chart = widget["chart"].as_str().unwrap_or("");
             let Some(dataset) = dataset_of(&dashboard, widget) else {
                 failed += 1;
@@ -2192,6 +3239,18 @@ fn crowding(kind: &Kind, result: &QueryResult, mapping: &Mapping) -> Vec<String>
     }
 }
 
+fn ignored_note(ignored: &[String]) -> String {
+    if ignored.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " (unbekannte theme-Felder ignoriert: {}; möglich: {})",
+            ignored.join(", "),
+            theme_keys().join(", ")
+        )
+    }
+}
+
 fn values_of(args: &Value) -> Map<String, Value> {
     args["values"].as_object().cloned().unwrap_or_default()
 }
@@ -2294,12 +3353,13 @@ fn list(config: &McpConfig, args: &Value) -> Result<String, String> {
                 return None;
             }
             Some(format!(
-                "{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}",
                 value["id"].as_str().unwrap_or(""),
                 value["name"].as_str().unwrap_or(""),
                 connection.name,
                 value["widgets"].as_array().map_or(0, Vec::len),
-                value["refreshSec"].as_u64().unwrap_or(0)
+                value["refreshSec"].as_u64().unwrap_or(0),
+                value["pages"].as_array().map_or(0, Vec::len).max(1)
             ))
         })
         .collect();
@@ -2308,7 +3368,7 @@ fn list(config: &McpConfig, args: &Value) -> Result<String, String> {
     }
     Ok(server::cap(
         format!(
-            "id\tname\tconnection\tcharts\trefreshSec\n{}",
+            "id\tname\tconnection\tcharts\trefreshSec\tpages\n{}",
             lines.join("\n")
         ),
         config.max_chars,
@@ -2316,20 +3376,27 @@ fn list(config: &McpConfig, args: &Value) -> Result<String, String> {
 }
 
 fn describe(dashboard: &Value, connection: &McpConnection) -> String {
+    let pages = pages_of(dashboard);
     let charts: Vec<Value> = dashboard["widgets"]
         .as_array()
         .map(|list| {
             list.iter()
-                .map(|w| Value::Object(flatten(dashboard, w)))
+                .map(|w| Value::Object(flatten(dashboard, w, &pages)))
                 .collect()
         })
         .unwrap_or_default();
+    let mut theme = dashboard["theme"].clone();
+    if let Some(logo) = theme.get("logo").and_then(Value::as_str) {
+        theme["logo"] = json!(compact_image(logo));
+    }
     let out = json!({
         "id": dashboard["id"],
         "name": dashboard["name"],
         "connection": connection.name,
         "refreshSec": dashboard["refreshSec"],
         "variables": variables_of(dashboard),
+        "pages": pages,
+        "theme": theme,
         "design": dashboard["design"],
         "charts": charts,
     });
@@ -2349,6 +3416,11 @@ fn chart_types() -> String {
         "- Comparison: set dateColumn and a period (7d, 30d, 90d, quarter, year, 12m) so charts compare against the previous period (options.compare previous|year|none, default previous). options.headline picks the big number (auto|total|last|average|max|min): average for averages, last for current state values (stock level, latency).".to_string(),
         "- Categories: keep them few (donut/funnel <= 6, bars <= 12) and fold the rest into \"Sonstige\" in SQL. ORDER BY the date dimension for time series.".to_string(),
         "- Colors: leave colorOffset alone; single-series charts use the connection accent, multi-series charts use a validated palette in fixed order.".to_string(),
+        "Pages (create/update pages: [{id?, name, hidden?}], max 30): a dashboard can have several pages shown as tabs or a sidebar (theme.nav). update replaces the list; ids are generated from the name (\"Vertrieb\" -> vertrieb); charts and blocks on removed pages move to the first page. Every chart/block spec takes page (page id or name, default first page); update_chart with page moves it. arrange lays out each page on its own.".to_string(),
+        "Theme (create/update theme, branding): {brand, tagline, logo, primary, background, surface, text, muted, border, palette: [1-8 colors], font: system|inter|serif|mono|rounded|condensed, radius: 0-32, card: outlined|elevated|flat|glass, density: compact|normal|spacious, header: true shows logo, brand and tagline, nav: tabs|sidebar}. Colors only as #hex or rgb()/rgba()/hsl()/hsla()/oklch()/oklab(). logo is a data:image/(png|jpeg|gif|webp|svg+xml) URL (max 512 KiB); remote image URLs are blocked by the app. update merges key by key, a key set to null or \"\" removes it, theme null resets all. Example: {\"brand\": \"Nordfrost GmbH\", \"tagline\": \"Kennzahlen Logistik\", \"primary\": \"#0f766e\", \"palette\": [\"#0f766e\", \"#f59e0b\", \"#6366f1\", \"#e11d48\"], \"font\": \"inter\", \"radius\": 12, \"card\": \"elevated\", \"header\": true, \"nav\": \"tabs\"}. theme is the structured way to brand; design.css stays for free CSS on top.".to_string(),
+        "Content blocks (chart spec type text|image|link|divider, no sql/builder/metrics/options): text = Markdown in text (headings, lists, bold, links; {{variable}} shows the current filter value, max 20000 chars), default 12x2; image = src data:image URL, fit contain|cover, optional href https://, default 3x3; link = button with text as label and targetPage (page id or name) or href (https://), default 3x1; divider = line with optional section label in text, default 12x1. All take align left|center|right and variant plain|card|accent; blocks may be as small as w 1 x h 1. Examples: {\"type\": \"text\", \"text\": \"# Willkommen\\nAktuelle Zahlen für **{{mandant}}**, täglich aktualisiert.\", \"variant\": \"accent\"} · {\"type\": \"image\", \"src\": \"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='18' fill='%230f766e'/></svg>\", \"w\": 2, \"h\": 2} · {\"type\": \"link\", \"text\": \"Zu Vertrieb\", \"targetPage\": \"Vertrieb\"} · {\"type\": \"divider\", \"text\": \"Umsatz\"}. update_chart edits block fields, and switches between block and chart (block to chart needs sql or builder).".to_string(),
+        "Interactions (BI): options.crossFilter (default true) - clicking a category, bar or slice filters every other chart that uses the same column, like Power BI; options.drill (default true) - click offers Details with the underlying rows; options.target + targetLabel - target/reference line on line, area, column, bars and a target marker on kpi; type pivot - cross-tab with rows = dimension, columns = dimension2, cells = metric, totals and dataBars color scale; table also takes totals and dataBars.".to_string(),
+        "Design for a company's own page: set theme (brand, logo, primary, palette, font, header true) so the dashboard looks like the company's own page. First page \"Übersicht\": a text block with a Markdown heading and a short intro, then 3-4 kpi tiles, a wide trend and link buttons to the detail pages. Further pages per topic (\"Vertrieb\", \"Finanzen\", \"Logistik\") with dividers labelled as section headers, then charts and a pivot or table for details. Keep cross filtering on so users can click into the data.".to_string(),
         "Grid: 12 columns, row height ~44px. type\tdimension\tmetrics\tdefault w x h\toptions\thint".to_string(),
     ];
     for kind in KINDS {
@@ -2366,6 +3438,12 @@ fn chart_types() -> String {
             kind.size.1,
             kind.options.replace(' ', ","),
             kind.hint
+        ));
+    }
+    for (name, size, min) in BLOCKS {
+        lines.push(format!(
+            "{name}\tblock\t0\t{}x{} (min {}x{})\talign,variant\tContent block without data, see Content blocks.",
+            size.0, size.1, min.0, min.1
         ));
     }
     lines.join("\n")

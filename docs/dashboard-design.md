@@ -1,5 +1,10 @@
 # Dashboard design
 
+The **Gestaltung** tab sets a structured theme (brand, logo, colors, chart palette,
+font, card style, spacing, corner radius, page navigation); see
+[dashboard-bi.md](dashboard-bi.md). The theme is applied first, so custom CSS can
+override it. The **Eigenes CSS** tab is described below.
+
 Open **Dashboard → Design** to edit a dashboard's CSS. The editor supports `.css`
 file import, CSS export, three editable starting designs, live preview, an enabled
 switch, reset, discard and apply. Import replaces the draft; it does not immediately
@@ -41,6 +46,10 @@ unique names per dashboard. This follows the
 | `.dashboard-widget-content` | Chart/table content |
 | `[data-chart-type="kpi"]` | Grid item for a chart type |
 | `[data-widget-id="chart-id"]` | One grid item |
+| `.dashboard-header`, `.dashboard-header-title`, `.dashboard-header-tagline` | Branded header (theme) |
+| `.dashboard-nav`, `.dashboard-nav-item` | Page navigation |
+| `.dashboard-selection` | Active cross-filter chips |
+| `.dashboard-block`, `[data-block-type="text"]` | Content blocks |
 
 Use any descendant selector, SVG selector, state pseudo-class or pseudo-element.
 Example:

@@ -1,13 +1,24 @@
 import { CHARTS } from "./charts";
-import { refLabel } from "./joins";
-import { AGG_LABEL, type ChartKind, type Dataset, type Widget, type WidgetOptions } from "./model";
+import { calcOf, refLabel } from "./joins";
+import {
+  AGG_LABEL,
+  type Agg,
+  type ChartKind,
+  type Dataset,
+  type Widget,
+  type WidgetOptions,
+} from "./model";
 import { DIM_KEY, DIM2_KEY, metricKey } from "./sql";
 
 export interface DatasetShape {
   dimension: string | null;
   dimension2: string | null;
-  metrics: { key: string; label: string }[];
+  metrics: { key: string; label: string; agg?: Agg }[];
   hasDate: boolean;
+}
+
+export function additive(metric: { agg?: Agg }): boolean {
+  return metric.agg === undefined || metric.agg === "sum" || metric.agg === "count";
 }
 
 export function datasetShape(ds: Dataset): DatasetShape {
@@ -25,6 +36,7 @@ export function datasetShape(ds: Dataset): DatasetShape {
     dimension2: s.dimension2 ? DIM2_KEY : null,
     metrics: metrics.map((m, i) => ({
       key: metricKey(i),
+      agg: m.column && calcOf(m.column, s)?.aggregate ? "avg" : m.agg,
       label:
         m.label || (m.column ? `${AGG_LABEL[m.agg]} ${refLabel(m.column, s)}` : AGG_LABEL[m.agg]),
     })),

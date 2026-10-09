@@ -12,6 +12,8 @@ export async function saveDashboardForDesignAi(dashboard: Dashboard): Promise<st
       variables: dashboard.variables ?? [],
       refreshSec: dashboard.refreshSec,
       design: dashboard.design,
+      pages: dashboard.pages ?? [],
+      theme: dashboard.theme ?? null,
     },
   });
 }

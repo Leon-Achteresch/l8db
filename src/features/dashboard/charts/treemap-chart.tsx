@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fmtShare, fmtValue, fmtValueCompact } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
-import { type ChartProps, categories, hoveredIndex } from "./chart-utils";
+import { type ChartProps, categories, dimAttr, hoveredIndex } from "./chart-utils";
 import { squarify } from "./svg-geometry";
 
 export function TreemapChart({ rows, shape, options }: ChartProps) {
@@ -28,7 +28,7 @@ export function TreemapChart({ rows, shape, options }: ChartProps) {
             const roomy = w > 56 && h > 34;
             const inner = { x: x + 1, y: y + 1, w: Math.max(0, w - 2), h: Math.max(0, h - 2) };
             return (
-              <g key={item.name} data-index={i}>
+              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)}>
                 <rect
                   x={inner.x}
                   y={inner.y}

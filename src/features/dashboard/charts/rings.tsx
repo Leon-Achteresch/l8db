@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fmtValue } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
-import { type ChartProps, categories, hoveredIndex } from "./chart-utils";
+import { type ChartProps, categories, dimAttr, hoveredIndex } from "./chart-utils";
 import { roundArcPath } from "./svg-geometry";
 
 export function Rings({ rows, shape, options }: ChartProps) {
@@ -32,7 +32,7 @@ export function Rings({ rows, shape, options }: ChartProps) {
           {items.map((item, i) => {
             const r = inner + band * i + band / 2;
             return (
-              <g key={item.name} data-index={i}>
+              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)}>
                 <circle
                   cx={cx}
                   cy={cy}

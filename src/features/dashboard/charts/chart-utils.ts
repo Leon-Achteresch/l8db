@@ -72,6 +72,7 @@ export function seriesColor(index: number, shape: DatasetShape, options: WidgetO
 export function categories(rows: Row[], shape: DatasetShape, offset = 0, metricIndex = 0) {
   const key = shape.metrics[metricIndex]?.key ?? "";
   return rows.map((row, i) => ({
+    raw: shape.dimension ? row[shape.dimension] : undefined,
     name: shape.dimension ? toLabel(row[shape.dimension]) : `#${i + 1}`,
     value: toNumber(row[key]),
     color: color(i + offset),
@@ -112,4 +113,8 @@ export function goodness(delta: number | null, invert: boolean): boolean | null 
 export function hoveredIndex(target: EventTarget) {
   const index = (target as Element).closest?.("[data-index]")?.getAttribute("data-index");
   return index == null ? null : Number(index);
+}
+
+export function dimAttr(value: unknown): string {
+  return JSON.stringify(value === undefined ? null : value);
 }
