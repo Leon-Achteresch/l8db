@@ -1069,3 +1069,19 @@ tr[data-context-menu-target] > td {
     animation: none;
   }
 }
+
+.monaco-editor .l8db-selection {
+  background-color: #add6ff;
+}
+
+.monaco-editor:not(.focused) .l8db-selection {
+  background-color: #e5ebf1;
+}
+
+.monaco-editor.vs-dark .l8db-selection {
+  background-color: #264f78;
+}
+
+.monaco-editor.vs-dark:not(.focused) .l8db-selection {
+  background-color: #3a3d41;
+}
