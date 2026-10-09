@@ -11,6 +11,7 @@ import {
   DEFAULT_OPTIONS,
   DIM_KEY,
   DIM2_KEY,
+  datasetMarginSql,
   datasetSql,
   datasetTotalsSql,
   emptyDataset,
@@ -149,4 +150,30 @@ test("toggling 1,000 selections keeps one filter per widget and field", async ()
   store.clear("perf");
   expect(retained).toBeLessThanOrEqual(10);
   expect(timing.p95Ms).toBeLessThan(100);
+});
+
+test("exact pivot totals add a bounded number of queries per chart", async () => {
+  const pivots = Array.from({ length: 60 }, (_, index) => {
+    const base = dataset(`table_${index % 12}`, "region");
+    base.simple.dimension2 = "product";
+    return base;
+  });
+  let queries = 0;
+  const timing = await measureScenario(() => {
+    const distinct = new Set<string>();
+    for (const pivot of pivots) {
+      distinct.add(datasetSql(pivot, "postgres", "30d"));
+      distinct.add(datasetTotalsSql(pivot, "postgres", "30d"));
+      distinct.add(datasetMarginSql(pivot, "rows", "postgres", "30d"));
+      distinct.add(datasetMarginSql(pivot, "columns", "postgres", "30d"));
+    }
+    queries = distinct.size;
+  }, 21);
+  await reportScenario("dashboard-pivot-totals-queries", {
+    ...timing,
+    pivots: pivots.length,
+    distinctQueries: queries,
+  });
+  expect(queries).toBe(12 * 4);
+  expect(timing.p95Ms).toBeLessThan(25);
 });

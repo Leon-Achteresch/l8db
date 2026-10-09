@@ -32,7 +32,7 @@ export function Rings({ rows, shape, options }: ChartProps) {
           {items.map((item, i) => {
             const r = inner + band * i + band / 2;
             return (
-              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)}>
+              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)} tabIndex={0}>
                 <circle
                   cx={cx}
                   cy={cy}

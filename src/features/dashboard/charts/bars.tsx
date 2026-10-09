@@ -25,10 +25,11 @@ export function Bars({ rows, shape, options, compare }: ChartProps) {
         {items.map((item, i) => {
           const before = ghost[i];
           return (
-            <div
+            <button
+              type="button"
               key={item.name}
               data-dim={dimAttr(item.raw)}
-              className="col-span-2 grid grid-cols-subgrid items-center"
+              className="col-span-2 grid grid-cols-subgrid items-center text-left"
               title={
                 compare && before != null
                   ? `${item.name}: ${fmtValue(item.value, options)} · ${compare.short}: ${fmtValue(before, options)}`
@@ -63,7 +64,7 @@ export function Bars({ rows, shape, options, compare }: ChartProps) {
                   />
                 )}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

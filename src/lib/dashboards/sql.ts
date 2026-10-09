@@ -468,6 +468,28 @@ export function datasetTotalsSql(
   );
 }
 
+export function datasetMarginSql(
+  ds: Dataset,
+  axis: "rows" | "columns",
+  kind: DatabaseKind | null,
+  period: Period,
+  scope: VariableScope = EMPTY_SCOPE,
+  range: DateRange = periodRange(period),
+): string {
+  if (ds.mode !== "simple" || !ds.simple.dimension || !ds.simple.dimension2) return "";
+  const dimension =
+    axis === "rows"
+      ? ds.simple.dimension
+      : { column: ds.simple.dimension2, bucket: "none" as const };
+  return buildSimpleSql(
+    { ...ds.simple, dimension, dimension2: null, sort: "dimension" },
+    kind,
+    period,
+    scope,
+    range,
+  );
+}
+
 export type TrendBucket = "day" | "week" | "month";
 
 export function trendBucket(period: Period): TrendBucket {

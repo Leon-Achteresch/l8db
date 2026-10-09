@@ -10,6 +10,7 @@ import {
   currentBucketStart,
   type Dataset,
   DIM_KEY,
+  datasetMarginSql,
   datasetMetricAggs,
   datasetShape,
   datasetSql,
@@ -103,6 +104,29 @@ export function useWidgetData({
     dataset && trend && range ? datasetTrendSql(dataset, kind, period, scope, range) : "",
     debounceMs,
   );
+  const margins = Boolean(
+    dataset?.mode === "simple" &&
+      !problem &&
+      options.totals &&
+      baseShape?.dimension &&
+      (widget.chart === "table" || widget.chart === "pivot"),
+  );
+  const pivotMargins = margins && widget.chart === "pivot";
+  const grandSql = useDebounced(
+    dataset && margins ? datasetTotalsSql(dataset, kind, period, scope) : "",
+    debounceMs,
+  );
+  const rowMarginSql = useDebounced(
+    dataset && pivotMargins ? datasetMarginSql(dataset, "rows", kind, period, scope) : "",
+    debounceMs,
+  );
+  const columnMarginSql = useDebounced(
+    dataset && pivotMargins ? datasetMarginSql(dataset, "columns", kind, period, scope) : "",
+    debounceMs,
+  );
+  const grandQuery = useSqlQuery(grandSql, refreshMs);
+  const rowMargins = useSqlQuery(rowMarginSql, refreshMs);
+  const columnMargins = useSqlQuery(columnMarginSql, refreshMs);
   const trendQuery = useSqlQuery(trendSql, refreshMs);
   const previousTrend = useSqlQuery(previousTrendSql, refreshMs);
   const previous = useSqlQuery(previousSql, refreshMs);
@@ -176,7 +200,38 @@ export function useWidgetData({
     previousTrend.data,
   ]);
 
+  const grandRow = grandQuery.data?.rows[0] ?? null;
+  const rowMarginRows = rowMargins.data?.rows ?? null;
+  const columnMarginRows = columnMargins.data?.rows ?? null;
+  const margin = useMemo(
+    () =>
+      margins && grandSql
+        ? {
+            pending:
+              grandQuery.isPending ||
+              (Boolean(rowMarginSql) && rowMargins.isPending) ||
+              (Boolean(columnMarginSql) && columnMargins.isPending),
+            grand: grandRow,
+            rows: rowMarginRows,
+            columns: columnMarginRows,
+          }
+        : null,
+    [
+      margins,
+      grandSql,
+      rowMarginSql,
+      columnMarginSql,
+      grandQuery.isPending,
+      rowMargins.isPending,
+      columnMargins.isPending,
+      grandRow,
+      rowMarginRows,
+      columnMarginRows,
+    ],
+  );
+
   return {
+    margin,
     options,
     shape: view?.chartShape ?? shape,
     rows: view?.chartRows ?? rows,
