@@ -9,6 +9,9 @@ monaco.editor.defineTheme("l8db-light", {
   colors: {
     "editor.background": transparent,
     "editor.lineHighlightBackground": "#64748b0c",
+    "editor.selectionBackground": transparent,
+    "editor.inactiveSelectionBackground": transparent,
+    "editor.selectionHighlightBackground": "#add6ff80",
     "editor.lineHighlightBorder": transparent,
     "editorGutter.background": transparent,
     "editorOverviewRuler.background": transparent,
@@ -35,6 +38,9 @@ monaco.editor.defineTheme("l8db-dark", {
   colors: {
     "editor.background": transparent,
     "editor.lineHighlightBackground": "#94a3b80c",
+    "editor.selectionBackground": transparent,
+    "editor.inactiveSelectionBackground": transparent,
+    "editor.selectionHighlightBackground": "#add6ff26",
     "editor.lineHighlightBorder": transparent,
     "editorGutter.background": transparent,
     "editorOverviewRuler.background": transparent,
