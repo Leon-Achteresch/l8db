@@ -149,6 +149,8 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_approve,
             ai::ai_respond,
+            ai::complete::ai_complete,
+            ai::complete::ai_complete_cancel,
             ai::knowledge::ai_knowledge_get,
             ai::knowledge::ai_knowledge_set,
             desktop::set_crash_reporting,
