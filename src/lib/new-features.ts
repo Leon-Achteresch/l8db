@@ -127,6 +127,7 @@ export const NEW_FEATURES = {
   "settings.appearance.table-style": "0.14.0",
   "query.transaction.changes": "0.7.0",
   "query.transaction.database-diff": "0.14.0",
+  "settings.editor.parameter-hints": NEXT_FEATURE_VERSION,
   "compare.scroll-sync": "0.7.0",
   "compare.draft-toggle": "0.11.0",
   "split.pane-tables": "0.8.0",

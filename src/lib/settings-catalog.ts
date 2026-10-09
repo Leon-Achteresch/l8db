@@ -487,8 +487,9 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     id: "editor-parameter-hints",
     tabId: "editor",
     title: "Parameter-Hinweise",
-    description: "Signatur-Hilfe bei Funktionen wie SUBSTRING(…) einblenden.",
-    keywords: [],
+    description:
+      "Beim Aufruf von Funktionen, Prozeduren und Package-Routinen die Parameter einblenden und den aktuellen hervorheben.",
+    keywords: ["signatur", "parameter", "prozedur", "package"],
     key: "editorParameterHints",
   },
   {
