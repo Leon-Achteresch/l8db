@@ -537,6 +537,40 @@ body[data-onboarding-active]
   pointer-events: none !important;
 }
 
+.l8db-ai-zone {
+  z-index: 5;
+  pointer-events: auto;
+  font-family: var(--font-sans, inherit);
+}
+
+.monaco-editor .l8db-ai-added {
+  background-color: color-mix(in oklch, oklch(0.72 0.17 150) 16%, transparent);
+}
+
+.monaco-editor .l8db-ai-added-gutter {
+  background-color: oklch(0.68 0.17 150);
+  width: 3px !important;
+  margin-left: 3px;
+}
+
+.monaco-editor .l8db-ai-rename-target {
+  border-radius: 2px;
+  background-color: color-mix(in oklch, var(--primary) 14%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in oklch, var(--primary) 70%, transparent);
+}
+
+.l8db-ai-rename-hint {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--popover);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans, inherit);
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px -10px oklch(0 0 0 / 40%);
+}
+
 .sql-flash-line {
   background-color: color-mix(in oklab, var(--primary) 18%, transparent);
 }

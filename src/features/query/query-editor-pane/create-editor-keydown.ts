@@ -29,6 +29,7 @@ export function createEditorKeydown({
   onSave,
 }: EditorKeydownHandlers) {
   return (event: KeyboardEvent) => {
+    if (event.target instanceof Element && event.target.closest("[data-ai-zone]")) return;
     const slotMatch = /^(?:Digit|Numpad)([1-9])$/.exec(event.code ?? "");
     if (slotMatch && event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();

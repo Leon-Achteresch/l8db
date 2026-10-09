@@ -1,3 +1,5 @@
+import { EditorAiMetricsSection } from "./editor-settings-controls/ai-metrics-section";
+import { EditorAiSection } from "./editor-settings-controls/ai-section";
 import { EditorBehaviorSection } from "./editor-settings-controls/behavior-section";
 import { EditorDisplaySection } from "./editor-settings-controls/display-section";
 import { EditorFormattingSection } from "./editor-settings-controls/formatting-section";
@@ -19,6 +21,10 @@ export function EditorSettingsControls({
       <EditorDisplaySection store={store} compact={compact} />
 
       <EditorBehaviorSection store={store} compact={compact} />
+
+      <EditorAiSection compact={compact} />
+
+      {!compact && <EditorAiMetricsSection />}
 
       <EditorKeymapSection store={store} compact={compact} />
 

@@ -55,6 +55,27 @@ export const SQL_EDITOR_COMMANDS: HotkeyCommand[] = [
     origin: "l8db",
   },
   {
+    id: "query.aiEdit",
+    routeScope: "query",
+    label: "KI: Inline bearbeiten",
+    description:
+      "Auswahl oder Anweisung per Anweisung an die KI ändern lassen, mit Diff zum Annehmen",
+    area: "SQL-Editor",
+    defaultHotkey: "Mod+I",
+    origin: "VS Code",
+    reference: "VS Code: Strg+I Inline Chat, Cursor: Strg+K Inline Edit",
+  },
+  {
+    id: "query.aiAsk",
+    routeScope: "query",
+    label: "KI: Auswahl an Chat senden",
+    description: "Markiertes SQL oder die Anweisung unter dem Cursor in den KI-Chat übernehmen",
+    area: "SQL-Editor",
+    defaultHotkey: "Mod+Alt+L",
+    origin: "l8db",
+    reference: "Cursor: Strg+L Auswahl zum Chat hinzufügen",
+  },
+  {
     id: "query.save",
     routeScope: "query",
     label: "Abfrage speichern",
