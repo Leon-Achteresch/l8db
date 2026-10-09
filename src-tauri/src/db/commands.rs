@@ -2196,6 +2196,24 @@ pub async fn list_locks(
 }
 
 #[tauri::command]
+pub async fn live_metrics(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    include_details: bool,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::LiveMetrics, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .live_metrics(include_details)
+    .await
+}
+
+#[tauri::command]
 pub async fn list_enums(
     kind: DatabaseKind,
     connection_string: String,

@@ -4329,8 +4329,10 @@ impl DatabaseAdapter for PostgresAdapter {
         self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
-                        state, COALESCE(left(query, 500), ''), query_start::text, xact_start::text, \
-                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid) \
+                        state, COALESCE(left(query, 4000), ''), query_start::text, xact_start::text, \
+                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid), client_port, \
+                        backend_start::text, state_change::text, backend_xid::text, \
+                        wait_event_type, backend_type \
                  FROM pg_stat_activity WHERE datname IS NOT NULL \
                  ORDER BY query_start NULLS LAST",
                 &[],
@@ -4352,6 +4354,12 @@ impl DatabaseAdapter for PostgresAdapter {
                         wait_event: row.get(9),
                         is_self: row.get(10),
                         blocked_by: row.get(11),
+                        client_port: row.get(12),
+                        backend_start: row.get(13),
+                        state_change: row.get(14),
+                        backend_xid: row.get(15),
+                        wait_event_type: row.get(16),
+                        backend_type: row.get(17),
                     })
                     .collect()
             })
@@ -4502,6 +4510,176 @@ impl DatabaseAdapter for PostgresAdapter {
         let suffix = if cascade { " CASCADE" } else { "" };
         let sql = format!("DROP SCHEMA {}{suffix}", quote_ident(name));
         self.run_ddl(&[sql], true).await
+    }
+
+    async fn live_metrics(&self, include_details: bool) -> Result<super::LiveMetrics, String> {
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let base = conn.query_one(
+                "SELECT \
+                    (SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend')::bigint, \
+                    current_setting('max_connections')::bigint, \
+                    (SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend' \
+                        AND state = 'active' AND pid <> pg_backend_pid())::bigint, \
+                    (SELECT count(*) FROM pg_locks WHERE NOT granted)::bigint, \
+                    COALESCE(d.xact_commit, 0)::bigint, COALESCE(d.xact_rollback, 0)::bigint, \
+                    COALESCE(d.tup_returned, 0)::bigint, \
+                    COALESCE(d.tup_inserted + d.tup_updated + d.tup_deleted, 0)::bigint, \
+                    COALESCE(d.blks_read, 0)::bigint, COALESCE(d.blks_hit, 0)::bigint, \
+                    d.temp_bytes::bigint, d.deadlocks::bigint, \
+                    current_setting('server_version'), \
+                    EXTRACT(EPOCH FROM now() - pg_postmaster_start_time())::bigint, \
+                    current_setting('TimeZone'), current_setting('default_transaction_isolation'), \
+                    pg_is_in_recovery(), \
+                    CASE WHEN pg_is_in_recovery() \
+                        THEN (EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp()) * 1000)::float8 END \
+                 FROM (SELECT 1) one \
+                 LEFT JOIN pg_stat_database d ON d.datname = current_database()",
+                &[],
+            );
+            let size = async {
+                if !include_details {
+                    return None;
+                }
+                conn.query_one("SELECT pg_database_size(current_database())::bigint", &[])
+                    .await
+                    .ok()
+                    .map(|row| row.get::<_, i64>(0))
+            };
+            let cpu = async {
+                conn.query_one(
+                    "SELECT CASE WHEN (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) \
+                        OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pg_read_server_files' \
+                            AND pg_has_role(current_user, oid, 'MEMBER')) \
+                     THEN pg_read_file('/proc/stat', 0, 512, true) END",
+                    &[],
+                )
+                .await
+                .ok()
+                .and_then(|row| row.get::<_, Option<String>>(0))
+                .and_then(|text| super::parse_proc_stat_cpu(&text))
+            };
+            let queries = async {
+                let available: bool = conn
+                    .query_one(
+                        "SELECT to_regclass('pg_stat_statements') IS NOT NULL \
+                            AND current_setting('shared_preload_libraries') LIKE '%pg_stat_statements%'",
+                        &[],
+                    )
+                    .await
+                    .ok()?
+                    .get(0);
+                if !available {
+                    return None;
+                }
+                conn.query_one(
+                    "SELECT \
+                        COALESCE(sum(calls) FILTER (WHERE query ~* '^\\s*(select|with|table|values|show)\\M'), 0)::bigint, \
+                        COALESCE(sum(calls) FILTER (WHERE query ~* '^\\s*(insert|update|delete|merge|copy)\\M'), 0)::bigint, \
+                        COALESCE(sum(calls), 0)::bigint \
+                     FROM pg_stat_statements \
+                     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())",
+                    &[],
+                )
+                .await
+                .ok()
+                .map(|row| {
+                    let read: i64 = row.get(0);
+                    let write: i64 = row.get(1);
+                    let total: i64 = row.get(2);
+                    (read, write, (total - read - write).max(0))
+                })
+            };
+            let replication = async {
+                conn.query(
+                    "SELECT COALESCE(NULLIF(application_name, ''), client_addr::text, pid::text), \
+                        client_addr::text, COALESCE(state, ''), sync_state, \
+                        (EXTRACT(EPOCH FROM write_lag) * 1000)::float8, \
+                        (EXTRACT(EPOCH FROM flush_lag) * 1000)::float8, \
+                        (EXTRACT(EPOCH FROM replay_lag) * 1000)::float8, \
+                        CASE WHEN pg_is_in_recovery() THEN NULL \
+                            ELSE (pg_current_wal_lsn() - replay_lsn)::bigint END \
+                     FROM pg_stat_replication ORDER BY 1",
+                    &[],
+                )
+                .await
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| super::ReplicationStat {
+                            name: row.get(0),
+                            client_addr: row.get(1),
+                            state: row.get(2),
+                            sync_state: row.get(3),
+                            write_lag_ms: row.get(4),
+                            flush_lag_ms: row.get(5),
+                            replay_lag_ms: row.get(6),
+                            lag_bytes: row.get(7),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+            };
+            let table_io = async {
+                if !include_details {
+                    return Vec::new();
+                }
+                conn.query(
+                    "SELECT schemaname || '.' || relname, \
+                        COALESCE(heap_blks_read, 0)::bigint, COALESCE(heap_blks_hit, 0)::bigint, \
+                        COALESCE(idx_blks_read, 0)::bigint, COALESCE(idx_blks_hit, 0)::bigint \
+                     FROM pg_statio_user_tables \
+                     ORDER BY COALESCE(heap_blks_read, 0) + COALESCE(idx_blks_read, 0) DESC, \
+                        COALESCE(heap_blks_hit, 0) + COALESCE(idx_blks_hit, 0) DESC \
+                     LIMIT 10",
+                    &[],
+                )
+                .await
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| super::TableIoStat {
+                            name: row.get(0),
+                            heap_read: row.get(1),
+                            heap_hit: row.get(2),
+                            idx_read: row.get(3),
+                            idx_hit: row.get(4),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+            };
+            let (base, size, cpu, queries, replication, table_io) =
+                tokio::join!(base, size, cpu, queries, replication, table_io);
+            let row = base.map_err(map_pg_err)?;
+            Ok(super::LiveMetrics {
+                connections: row.get(0),
+                max_connections: Some(row.get(1)),
+                active_sessions: row.get(2),
+                waiting_locks: row.get(3),
+                database_size_bytes: size,
+                commits: row.get(4),
+                rollbacks: row.get(5),
+                queries_read: queries.map(|q| q.0),
+                queries_write: queries.map(|q| q.1),
+                queries_other: queries.map(|q| q.2),
+                rows_read: row.get(6),
+                rows_written: row.get(7),
+                blocks_read: row.get(8),
+                blocks_hit: row.get(9),
+                temp_bytes: row.get(10),
+                deadlocks: row.get(11),
+                cpu_busy: cpu.map(|c| c.0),
+                cpu_total: cpu.map(|c| c.1),
+                server_version: row.get(12),
+                uptime_seconds: row.get(13),
+                timezone: row.get(14),
+                default_isolation: row.get(15),
+                in_recovery: row.get(16),
+                replay_delay_ms: row.get(17),
+                replication,
+                table_io,
+            })
+        })
+        .await
     }
 
     async fn get_database_overview(&self) -> Result<super::DatabaseOverview, String> {
@@ -6689,6 +6867,30 @@ mod tests {
         )
         .await;
         lab_execute(&adapter, "DROP DATABASE testsub").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_metrics_reports_monotonic_counters() {
+        let adapter = lab_adapter();
+        let first = adapter.live_metrics(true).await.expect("metrics");
+        assert!(first.connections >= 1);
+        assert!(first.max_connections.unwrap_or(0) >= first.connections);
+        assert!(first.database_size_bytes.unwrap_or(0) > 0);
+        assert!(!first.server_version.is_empty());
+        assert!(first.default_isolation.is_some());
+        lab_execute(&adapter, "SELECT 1").await;
+        let started = std::time::Instant::now();
+        let second = adapter.live_metrics(false).await.expect("metrics");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(second.database_size_bytes.is_none());
+        assert!(second.table_io.is_empty());
+        assert!(second.commits >= first.commits);
+        assert!(second.blocks_hit >= first.blocks_hit);
+        let sessions = adapter.list_sessions().await.expect("sessions");
+        let own = sessions.iter().find(|s| s.is_self).expect("own session");
+        assert!(own.backend_start.is_some());
+        assert_eq!(own.backend_type.as_deref(), Some("client backend"));
     }
 
     #[tokio::test]

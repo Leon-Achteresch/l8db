@@ -1268,6 +1268,7 @@ impl DatabaseAdapter for MysqlAdapter {
                     wait_event: None,
                     is_self: self_id == Some(pid as u64),
                     blocked_by: Vec::new(),
+                    ..Default::default()
                 }
             })
             .collect())
@@ -1291,6 +1292,129 @@ impl DatabaseAdapter for MysqlAdapter {
 
     async fn drop_schema(&self, name: &str, _cascade: bool) -> Result<(), String> {
         self.exec(&format!("DROP DATABASE {}", quote(name))).await
+    }
+
+    async fn live_metrics(&self, include_details: bool) -> Result<super::LiveMetrics, String> {
+        let mut conn = self.conn().await?;
+        let rows: Vec<Row> = conn.query("SHOW GLOBAL STATUS").await.map_err(map_err)?;
+        let status: std::collections::HashMap<String, i64> = rows
+            .iter()
+            .filter_map(|r| cell(r, 1).parse().ok().map(|value| (cell(r, 0), value)))
+            .collect();
+        let stat = |name: &str| status.get(name).copied().unwrap_or(0);
+        let sum = |names: &[&str]| names.iter().map(|name| stat(name)).sum::<i64>();
+        let variables: Option<Row> = conn
+            .query_first("SELECT @@max_connections, @@version, @@time_zone, @@system_time_zone")
+            .await
+            .map_err(map_err)?;
+        let isolation: Option<String> = match conn
+            .query_first::<Row, _>("SELECT @@transaction_isolation")
+            .await
+        {
+            Ok(row) => row.and_then(|r| cell_opt(&r, 0)),
+            Err(_) => conn
+                .query_first::<Row, _>("SELECT @@tx_isolation")
+                .await
+                .ok()
+                .flatten()
+                .and_then(|r| cell_opt(&r, 0)),
+        };
+        let size = if include_details {
+            conn.query_first::<Row, _>(
+                "SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema = DATABASE()",
+            )
+            .await
+            .ok()
+            .flatten()
+            .map(|r| cell_i64(&r, 0))
+        } else {
+            None
+        };
+        let replica: Vec<Row> = match conn.query("SHOW REPLICA STATUS").await {
+            Ok(rows) => rows,
+            Err(_) => conn.query("SHOW SLAVE STATUS").await.unwrap_or_default(),
+        };
+        let replication: Vec<super::ReplicationStat> = replica
+            .iter()
+            .map(|r| {
+                let named = |names: &[&str]| {
+                    r.columns_ref()
+                        .iter()
+                        .position(|column| names.contains(&column.name_str().as_ref()))
+                        .and_then(|index| cell_opt(r, index))
+                };
+                let io = named(&["Replica_IO_Running", "Slave_IO_Running"]).unwrap_or_default();
+                let sql = named(&["Replica_SQL_Running", "Slave_SQL_Running"]).unwrap_or_default();
+                super::ReplicationStat {
+                    name: named(&["Channel_Name"])
+                        .filter(|name| !name.is_empty())
+                        .or_else(|| named(&["Source_Host", "Master_Host"]))
+                        .unwrap_or_default(),
+                    client_addr: named(&["Source_Host", "Master_Host"]),
+                    state: format!("IO {io} · SQL {sql}"),
+                    sync_state: None,
+                    write_lag_ms: None,
+                    flush_lag_ms: None,
+                    replay_lag_ms: named(&["Seconds_Behind_Source", "Seconds_Behind_Master"])
+                        .and_then(|value| value.parse::<f64>().ok())
+                        .map(|seconds| seconds * 1000.0),
+                    lag_bytes: None,
+                }
+            })
+            .collect();
+        let read = stat("Com_select");
+        let write = sum(&[
+            "Com_insert",
+            "Com_insert_select",
+            "Com_update",
+            "Com_update_multi",
+            "Com_delete",
+            "Com_delete_multi",
+            "Com_replace",
+            "Com_replace_select",
+            "Com_load",
+        ]);
+        Ok(super::LiveMetrics {
+            connections: stat("Threads_connected"),
+            max_connections: variables.as_ref().map(|r| cell_i64(r, 0)),
+            active_sessions: (stat("Threads_running") - 1).max(0),
+            waiting_locks: stat("Innodb_row_lock_current_waits"),
+            database_size_bytes: size,
+            commits: stat("Handler_commit"),
+            rollbacks: stat("Handler_rollback"),
+            queries_read: Some(read),
+            queries_write: Some(write),
+            queries_other: Some((stat("Questions") - read - write).max(0)),
+            rows_read: stat("Innodb_rows_read"),
+            rows_written: sum(&[
+                "Innodb_rows_inserted",
+                "Innodb_rows_updated",
+                "Innodb_rows_deleted",
+            ]),
+            blocks_read: stat("Innodb_buffer_pool_reads"),
+            blocks_hit: (stat("Innodb_buffer_pool_read_requests")
+                - stat("Innodb_buffer_pool_reads"))
+            .max(0),
+            temp_bytes: None,
+            deadlocks: status.get("Innodb_deadlocks").copied(),
+            cpu_busy: None,
+            cpu_total: None,
+            server_version: variables.as_ref().map(|r| cell(r, 1)).unwrap_or_default(),
+            uptime_seconds: status.get("Uptime").copied(),
+            timezone: variables.as_ref().and_then(|r| {
+                cell_opt(r, 2)
+                    .filter(|zone| zone != "SYSTEM")
+                    .or_else(|| cell_opt(r, 3))
+            }),
+            default_isolation: isolation.map(|level| level.replace('-', " ").to_lowercase()),
+            in_recovery: !replication.is_empty(),
+            replay_delay_ms: replication
+                .iter()
+                .filter_map(|r| r.replay_lag_ms)
+                .reduce(f64::max),
+            replication,
+            table_io: Vec::new(),
+        })
     }
 
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {

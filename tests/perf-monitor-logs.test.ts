@@ -47,7 +47,6 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       });
       await page.goto(`http://localhost:${server.port}/monitor`);
       await page.locator('[data-tour="monitor"]').waitFor();
-      await page.locator('[data-slot="chart"]').waitFor();
       await page.waitForTimeout(500);
       if (throttled) {
         const cdp = await page.context().newCDPSession(page);
