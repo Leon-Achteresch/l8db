@@ -430,6 +430,9 @@ fn prepare_pages(raw: Option<&Value>) -> Result<Vec<Value>, String> {
 }
 
 fn valid_color(color: &str) -> bool {
+    if color.len() > 64 {
+        return false;
+    }
     if let Some(hex) = color.strip_prefix('#') {
         return (3..=8).contains(&hex.len()) && hex.chars().all(|c| c.is_ascii_hexdigit());
     }
@@ -486,7 +489,26 @@ fn check_image(value: &Value, label: &str) -> Result<String, String> {
     if !IMAGE_TYPES.contains(&mime) || !image.contains(',') {
         return Err(invalid());
     }
+    if compacted(image) {
+        return Err(format!(
+            "{label} ist die gekürzte Anzeige aus get. Feld weglassen, um das gespeicherte Bild zu behalten, oder das vollständige Bild senden."
+        ));
+    }
     Ok(image.to_string())
+}
+
+fn compacted(image: &str) -> bool {
+    image.ends_with(" KiB)")
+        && image
+            .split_once(',')
+            .is_some_and(|(_, data)| data.starts_with("… ("))
+}
+
+fn keep_image(incoming: &Value, current: Option<&Value>) -> Value {
+    match (incoming.as_str(), current.and_then(Value::as_str)) {
+        (Some(new), Some(old)) if compacted(new) && new == compact_image(old) => json!(old),
+        _ => incoming.clone(),
+    }
 }
 
 fn check_href(value: &Value) -> Result<String, String> {
@@ -613,6 +635,9 @@ fn merge_theme(current: &Value, patch: &Value) -> Result<(Value, Vec<String>), S
     for (key, value) in patch {
         if blank(value) {
             merged.remove(key);
+        } else if key == "logo" {
+            let kept = keep_image(value, current.get("logo"));
+            merged.insert(key.clone(), kept);
         } else {
             merged.insert(key.clone(), value.clone());
         }
@@ -1852,6 +1877,7 @@ fn build_block(
         .cloned()
         .unwrap_or_default();
     fields.retain(|key, _| allowed.contains(&key.as_str()));
+    let previous_src = fields.get("src").cloned();
     for key in BLOCK_KEYS {
         let stored = if *key == "targetPage" { "page" } else { key };
         let Some(value) = spec.get(*key) else {
@@ -1871,7 +1897,12 @@ fn build_block(
                     .join(", ")
             ));
         }
-        fields.insert(stored.to_string(), value.clone());
+        let value = if stored == "src" {
+            keep_image(value, previous_src.as_ref())
+        } else {
+            value.clone()
+        };
+        fields.insert(stored.to_string(), value);
     }
     let mut clean = Map::new();
     clean.insert("type".into(), json!(block));

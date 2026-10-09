@@ -1,6 +1,7 @@
 import { memo, useRef } from "react";
 import { CHARTS, useDashboardsStore } from "@/lib/dashboards";
 import { useInView } from "@/lib/hooks/use-in-view";
+import { useDashboardInteraction } from "./dashboard-interaction";
 import { useChartSlot } from "./use-chart-slot";
 import { WidgetCardInner } from "./widget-card-inner";
 
@@ -33,9 +34,11 @@ export const WidgetCard = memo(function WidgetCard({
   const refreshSec = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.refreshSec ?? 0,
   );
-  const locked = useDashboardsStore(
+  const presenting = useDashboardInteraction()?.presenting ?? false;
+  const storedLock = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.locked ?? false,
   );
+  const locked = storedLock || presenting;
   const update = useDashboardsStore((s) => s.update);
   if (!widget) return null;
   return (

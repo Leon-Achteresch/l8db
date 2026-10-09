@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { insertChartFile, makeChartFile } from "../src/lib/chart-file";
 import { parseDashboard, serializeDashboard } from "../src/lib/dashboard-file";
 import {
   addPage,
@@ -27,6 +28,7 @@ import {
   sanitizeTheme,
   themeCss,
   themeShowsHeader,
+  useCrossFilterStore,
   type Widget,
   widgetsOnPage,
 } from "../src/lib/dashboards";
@@ -385,5 +387,75 @@ describe("Datei", () => {
       }),
     );
     expect(parsed.pages).toEqual([{ id: "ok", name: "Ok" }]);
+  });
+});
+
+describe("Review-Korrekturen", () => {
+  test("Expertenabfragen ohne die Quelltabelle bleiben ungefiltert", () => {
+    const source = simple("customers", "status");
+    const target = expert(
+      "SELECT status, COUNT(*) AS umsatz FROM orders GROUP BY status",
+      "status",
+    );
+    expect(applyCrossFilters(target, [filterFrom(source, "aktiv")], "t")).toBe(target);
+    const related = expert("SELECT c.status, 1 AS umsatz FROM public.customers c", "status");
+    expect(applyCrossFilters(related, [filterFrom(source, "aktiv")], "t")).not.toBe(related);
+  });
+
+  test("Oracle vergleicht ungebuckelte Werte als Text", () => {
+    const source = simple("orders", "code");
+    const target = simple("orders", "product");
+    const sql = datasetSql(
+      applyCrossFilters(target, [filterFrom(source, "2024-03-01")], "t"),
+      "oracle",
+      "all",
+    );
+    expect(sql).toContain(`"code" = '2024-03-01'`);
+  });
+
+  test("Pivot-Zellen setzen beide Filter gemeinsam", () => {
+    const store = useCrossFilterStore.getState();
+    const source = simple("orders", "region");
+    source.simple.dimension2 = "month";
+    const row = crossField(source, DIM_KEY);
+    const column = crossField(source, DIM2_KEY);
+    if (!row || !column) throw new Error("Feld fehlt");
+    const cell = (r: string, c: string): CrossFilter[] => [
+      { widgetId: "p", key: DIM_KEY, field: row, value: r, label: r },
+      { widgetId: "p", key: DIM2_KEY, field: column, value: c, label: c },
+    ];
+    store.clear("review");
+    store.select("review", cell("A", "Jan"));
+    store.select("review", cell("A", "Feb"));
+    expect(useCrossFilterStore.getState().filters.review.map((f) => f.value)).toEqual(["A", "Feb"]);
+    store.select("review", cell("A", "Feb"));
+    expect(useCrossFilterStore.getState().filters.review).toEqual([]);
+  });
+
+  test("Farbfunktionen müssen klein geschrieben sein wie im Rust-Backend", () => {
+    expect(() => sanitizeTheme({ primary: "RGB(1,2,3)" })).toThrow();
+    expect(sanitizeTheme({ primary: "rgb(1, 2, 3)" })).toEqual({ primary: "rgb(1, 2, 3)" });
+  });
+
+  test("Charts aus der Bibliothek landen auf der aktiven Seite", () => {
+    const dashboard: Dashboard = {
+      id: "d",
+      connectionId: "c",
+      database: null,
+      name: "x",
+      datasets: [],
+      widgets: [widget("a", "eins", { y: 0, h: 30 }), widget("b", "zwei", { y: 0, h: 5 })],
+      pages: [
+        { id: "eins", name: "Eins" },
+        { id: "zwei", name: "Zwei" },
+      ],
+      refreshSec: 0,
+      locked: false,
+      createdAt: 0,
+    };
+    const file = makeChartFile(widget("src", "weg"), emptyDataset("Kopie"), "Kopie");
+    const inserted = insertChartFile(dashboard, file, "zwei");
+    expect(inserted.widget.page).toBe("zwei");
+    expect(inserted.widget.y).toBe(5);
   });
 });

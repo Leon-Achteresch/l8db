@@ -15,6 +15,7 @@ import {
 } from "@/lib/dashboards";
 import { BlockCard } from "./blocks/block-card";
 import { DashboardEmptyCanvas } from "./dashboard-empty-canvas";
+import { useDashboardInteraction } from "./dashboard-interaction";
 import { WidgetCard } from "./widget-card";
 
 const EMPTY_WIDGETS: Widget[] = [];
@@ -41,9 +42,11 @@ export const DashboardCanvas = memo(function DashboardCanvas({
     const list: DashboardPage[] = dashboardPages({ pages });
     return widgetsOnPage(allWidgets, list, pageId);
   }, [allWidgets, pages, pageId]);
-  const locked = useDashboardsStore(
+  const presenting = useDashboardInteraction()?.presenting ?? false;
+  const storedLock = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.locked ?? false,
   );
+  const locked = storedLock || presenting;
   const update = useDashboardsStore((s) => s.update);
   const dashboard = { widgets, locked };
   const onChange = (patch: Partial<Dashboard> | ((d: Dashboard) => Partial<Dashboard>)) =>

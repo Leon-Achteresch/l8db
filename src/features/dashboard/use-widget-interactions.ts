@@ -5,6 +5,7 @@ import { useActiveConnection } from "@/lib/connections";
 import {
   applyCrossFilters,
   type CrossCondition,
+  type CrossFilter,
   crossField,
   type Dataset,
   DIM_KEY,
@@ -22,6 +23,9 @@ import {
 } from "@/lib/dashboards";
 import { exportRowsCsv } from "@/lib/dashboards/csv";
 import type { QueryResult } from "@/lib/db";
+import { applyMasks, resolveMasks } from "@/lib/masking";
+import { connectionMaskRules, useMaskingDisplay } from "@/lib/masking-display";
+import { loadMcpConfig } from "@/lib/mcp";
 import type { ChartPoint } from "./chart-point-menu";
 import { useDashboardInteraction } from "./dashboard-interaction";
 import { useDashboardScope } from "./dashboard-scope";
@@ -46,6 +50,15 @@ function fieldLabel(dataset: Dataset, key: string): string {
     return (key === DIM2_KEY ? dataset.mapping.dimension2 : dataset.mapping.dimension) ?? "";
   const ref = key === DIM2_KEY ? dataset.simple.dimension2 : dataset.simple.dimension?.column;
   return ref ? refLabel(ref, dataset.simple) : "";
+}
+
+function uniqueLabels(labels: string[]): string[] {
+  const seen = new Map<string, number>();
+  return labels.map((label) => {
+    const count = (seen.get(label) ?? 0) + 1;
+    seen.set(label, count);
+    return count === 1 ? label : `${label} (${count})`;
+  });
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -120,11 +133,11 @@ export function useWidgetInteractions({
 
   const filterPoint = () => {
     if (!point || !dashboardId || !dataset) return;
-    const store = useCrossFilterStore.getState();
+    const next: CrossFilter[] = [];
     for (const p of point.picks) {
       const field = crossField(dataset, p.key);
       if (!field) continue;
-      store.toggle(dashboardId, {
+      next.push({
         widgetId: widget.id,
         key: p.key,
         field,
@@ -132,6 +145,7 @@ export function useWidgetInteractions({
         label: `${fieldLabel(dataset, p.key) || title}: ${toLabel(p.value)}`,
       });
     }
+    if (next.length) useCrossFilterStore.getState().select(dashboardId, next);
   };
 
   const detailsPoint = () => {
@@ -155,13 +169,23 @@ export function useWidgetInteractions({
       ...shape.metrics.map((m) => ({ key: m.key, label: m.label })),
     ];
     try {
-      const saved = columns.length
-        ? await exportRowsCsv(
-            title,
-            columns.map((c) => c.label),
-            result.rows.map((row) => Object.fromEntries(columns.map((c) => [c.label, row[c.key]]))),
+      const labels = uniqueLabels(columns.map((c) => c.label));
+      const names = columns.length ? labels : result.columns;
+      const rows = columns.length
+        ? result.rows.map((row) =>
+            Object.fromEntries(columns.map((c, i) => [labels[i], row[c.key]])),
           )
-        : await exportRowsCsv(title, result.columns, result.rows);
+        : result.rows;
+      const masked =
+        connection && useMaskingDisplay.getState().enabled[connection.id]
+          ? await loadMcpConfig()
+              .catch(() => null)
+              .then((config) => {
+                const { rules, replacement } = connectionMaskRules(connection, config);
+                return applyMasks(names, rows, resolveMasks(names, rules, replacement));
+              })
+          : rows;
+      const saved = await exportRowsCsv(title, names, masked);
       if (saved) toast.success("CSV exportiert");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Export fehlgeschlagen");

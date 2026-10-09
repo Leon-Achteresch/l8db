@@ -99,7 +99,12 @@ export function PivotTable({ rows, shape, options }: ChartProps) {
         {options.totals && (
           <tfoot>
             <tr className="font-medium">
-              <th className="sticky bottom-0 left-0 bg-card px-2.5 py-1.5 text-left">Summe</th>
+              <th
+                className="sticky bottom-0 left-0 bg-card px-2.5 py-1.5 text-left"
+                title="Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)"
+              >
+                Summe
+              </th>
               {xs.labels.map((x) => (
                 <td key={x} className="sticky bottom-0 bg-card px-2.5 py-1.5 text-right">
                   {sum(colTotals.get(x))}
