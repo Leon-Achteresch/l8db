@@ -58,6 +58,9 @@ for (const engine of [chromium, webkit]) {
             }
           }
           samples.sort((a, b) => a - b);
+          const retainedVariables = Array.from(surface.style).filter((name) =>
+            name.startsWith("--l8db-design-"),
+          ).length;
           const compiledBytes = new TextEncoder().encode(
             Array.from(compiled?.cssRules ?? [], (rule) => rule.cssText).join("\n"),
           ).byteLength;
@@ -85,6 +88,9 @@ for (const engine of [chromium, webkit]) {
           const abandoned = applications - afterDispose;
           const remaining = document.querySelectorAll("style[data-perf-design]").length;
           const remainingSheets = document.adoptedStyleSheets.length - initialSheets;
+          const remainingVariables = Array.from(surface.style).filter((name) =>
+            name.startsWith("--l8db-design-"),
+          ).length;
           CSSStyleSheet.prototype.replaceSync = replace;
           return {
             stages: stages.map((stage) => stage.sort((a, b) => a - b)[10]),
@@ -99,8 +105,10 @@ for (const engine of [chromium, webkit]) {
             retainedStyles,
             retainedRules,
             retainedSheets,
+            retainedVariables,
             remaining,
             remainingSheets,
+            remainingVariables,
             databaseRequests: runtime.dashboardDesignCalls.filter(
               (call) => call.command === "execute_query",
             ).length,
@@ -129,10 +137,12 @@ for (const engine of [chromium, webkit]) {
         expect(result.retainedStyles).toBe(1);
         expect(result.retainedRules).toBe(1);
         expect(result.retainedSheets).toBe(1);
+        expect(result.retainedVariables).toBe(1);
         expect(result.idle).toBe(0);
         expect(result.abandoned).toBe(0);
         expect(result.remaining).toBe(0);
         expect(result.remainingSheets).toBe(0);
+        expect(result.remainingVariables).toBe(0);
         expect(result.databaseRequests).toBe(0);
       } finally {
         await browser.close();

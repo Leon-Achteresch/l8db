@@ -5,6 +5,151 @@ const base = process.env.L8DB_DASHBOARD_DESIGN_BROWSER_URL;
 
 for (const engine of [chromium, webkit]) {
   test.skipIf(!base)(
+    `${engine.name()}: literal edits match native CSS and release private variables`,
+    async () => {
+      const browser = await engine.launch();
+      const page = await browser.newPage();
+      try {
+        await page.goto(`${base}/tests/fixtures/dashboard-design.html`);
+        await page.locator(".dashboard-widget").first().waitFor();
+        const result = await page.evaluate(() => {
+          const api = (
+            window as unknown as {
+              dashboardDesign: typeof import("../src/lib/dashboard-design");
+            }
+          ).dashboardDesign;
+          const root = document.querySelector<HTMLElement>(".dashboard-surface")!;
+          const card = root.querySelector<HTMLElement>(".dashboard-widget")!;
+          card.classList.add("literal");
+          card.style.setProperty("--local-color", "rgb(11, 22, 33)");
+          const marker = document.createElement("style");
+          const reference = document.createElement("style");
+          document.head.append(marker, reference);
+          const scope = `#${CSS.escape(root.id)}`;
+          const filler = Array.from(
+            { length: 1000 },
+            (_, i) => `.dashboard-widget.r${i}{opacity:1}`,
+          ).join("\n");
+          const privateNames = () =>
+            Array.from(root.style).filter((name) => name.startsWith("--l8db-design-"));
+          const matches: boolean[] = [];
+          const reused: boolean[] = [];
+          for (const [property, before, after, priority] of [
+            ["color", "#abcdef", "#fedcba", ""],
+            ["color", "red", "currentColor", ""],
+            ["border-radius", "2em", "1.5em", ""],
+            ["margin", "1px", "2px 3px", ""],
+            ["font-weight", "400", "700", "!important"],
+            ["color", "red", "var(--local-color)", ""],
+            ["color", "red", "inherit", ""],
+            ["color", "red", "not-a-color", ""],
+          ]) {
+            const css = (value: string) =>
+              `.dashboard-widget.literal{${property}:${value}${priority}}\n${filler}`;
+            const initial = api.compileDashboardStylesheet(css(before), scope);
+            api.applyDashboardStylesheet(marker, initial);
+            const updated = api.compileDashboardStylesheet(css(after), scope, initial);
+            api.applyDashboardStylesheet(marker, updated);
+            reused.push(initial === updated);
+            const actual = getComputedStyle(card).getPropertyValue(property);
+            api.applyDashboardStylesheet(
+              reference,
+              api.compileDashboardStylesheet(css(after), scope),
+            );
+            matches.push(actual === getComputedStyle(card).getPropertyValue(property));
+            api.applyDashboardStylesheet(reference);
+            api.applyDashboardStylesheet(marker);
+          }
+          const source = `.dashboard-widget.literal{color:red}\n${filler}`;
+          const updatedSource = source.replace("color:red", "color:blue");
+          const initial = api.compileDashboardStylesheet(source, scope);
+          api.applyDashboardStylesheet(marker, initial);
+          const updated = api.compileDashboardStylesheet(updatedSource, scope, initial);
+          const variables = privateNames().length;
+          let rejected = false;
+          try {
+            api.compileDashboardStylesheet("invalid", scope, updated);
+          } catch {
+            rejected = true;
+          }
+          const preserved = getComputedStyle(card).color;
+          api.applyDashboardStylesheet(marker);
+          const cleared = privateNames().length;
+          api.applyDashboardStylesheet(marker, updated);
+          const reattached = getComputedStyle(card).color;
+          const added = document.createElement("div");
+          added.className = "dashboard-widget literal";
+          root.append(added);
+          const dynamic = getComputedStyle(added).color;
+          added.remove();
+          const controller = api.createDashboardStyleController(marker, scope, () => undefined);
+          controller.update({ css: source, enabled: true }, true);
+          controller.update({ css: updatedSource, enabled: true }, true);
+          controller.update({ css: updatedSource, enabled: false }, true);
+          const disabled = privateNames().length;
+          controller.update({ css: source, enabled: true }, true);
+          controller.update(
+            { css: source.replace("color:red", "color:#abcdef"), enabled: true },
+            true,
+          );
+          const shiftedSource = source
+            .replace("color:red", "color:#abcdef")
+            .replace("r999{opacity:1}", "r999{opacity:0.5}");
+          const beforeShift = api.dashboardStylesheet(marker);
+          controller.update({ css: shiftedSource, enabled: true }, true);
+          card.classList.add("r999");
+          const shifted =
+            api.dashboardStylesheet(marker) === beforeShift &&
+            getComputedStyle(card).opacity === "0.5";
+          const activeVariables = privateNames().length;
+          const contextual = shiftedSource.replace("color:#abcdef", "color:var(--local-color)");
+          controller.update({ css: contextual, enabled: true }, true);
+          const fallback = getComputedStyle(card).color;
+          const fallbackVariables = privateNames().length;
+          controller.update({ css: source, enabled: true }, true);
+          controller.update({ css: updatedSource, enabled: true }, true);
+          controller.dispose();
+          reference.remove();
+          card.style.removeProperty("--local-color");
+          card.classList.remove("literal", "r999");
+          return {
+            matches,
+            reused,
+            variables,
+            rejected,
+            preserved,
+            cleared,
+            reattached,
+            dynamic,
+            disabled,
+            shifted,
+            activeVariables,
+            fallback,
+            fallbackVariables,
+            remaining: privateNames().length,
+          };
+        });
+        expect(result.matches).toEqual(Array(8).fill(true));
+        expect(result.reused).toEqual([true, true, true, true, true, false, false, false]);
+        expect(result.variables).toBe(1);
+        expect(result.rejected).toBe(true);
+        expect(result.preserved).toBe("rgb(0, 0, 255)");
+        expect(result.cleared).toBe(0);
+        expect(result.reattached).toBe("rgb(0, 0, 255)");
+        expect(result.dynamic).toBe("rgb(0, 0, 255)");
+        expect(result.disabled).toBe(0);
+        expect(result.shifted).toBe(true);
+        expect(result.activeVariables).toBe(2);
+        expect(result.fallback).toBe("rgb(11, 22, 33)");
+        expect(result.fallbackVariables).toBe(0);
+        expect(result.remaining).toBe(0);
+      } finally {
+        await browser.close();
+      }
+    },
+    30000,
+  );
+  test.skipIf(!base)(
     `${engine.name()}: native stylesheets preserve scope, CSS tokens and other owners`,
     async () => {
       const browser = await engine.launch();

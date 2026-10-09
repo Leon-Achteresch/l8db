@@ -142,7 +142,108 @@ function selectorAliases(rules: CSSRuleList): void {
   }
 }
 
-const stylesheetSources = new WeakMap<CSSStyleSheet, { css: string; scope: string }>();
+type StylesheetSource = {
+  css: string;
+  scope: string;
+  bodies?: number[];
+  bindings: Map<
+    number,
+    { name: string; root: HTMLElement; property: string; value: string; priority: string }
+  >;
+};
+
+const stylesheetSources = new WeakMap<CSSStyleSheet, StylesheetSource>();
+const stylesheetOwners = new WeakMap<CSSStyleSheet, HTMLStyleElement>();
+
+function indexedBodies(css: string, sheet: CSSStyleSheet): number[] | undefined {
+  if (css.length < 32000 || css.includes(".dashboard-surface")) return;
+  const rule = /\s*(?:\.[a-zA-Z_-][\w-]*)+\s*\{([^{};]+;?)\}/y;
+  const bodies: number[] = [];
+  while (rule.lastIndex < css.trimEnd().length) {
+    const match = rule.exec(css);
+    if (!match) return;
+    bodies.push(rule.lastIndex - match[1].length - 1, rule.lastIndex - 1);
+  }
+  const scoped = sheet.cssRules[0] as CSSGroupingRule | undefined;
+  return scoped?.cssRules.length === bodies.length / 2 ? bodies : undefined;
+}
+
+function literalDeclaration(body: string) {
+  const match = body.match(/^\s*([a-zA-Z][\w-]*)\s*:\s*([#\w.%+\-\s]+?)\s*(!important)?\s*;?\s*$/i);
+  if (!match) return;
+  const value = match[2].trim();
+  if (/^(inherit|initial|unset|revert|revert-layer)$/i.test(value)) return;
+  const property = match[1].toLowerCase();
+  if (!CSS.supports(property, value)) return;
+  return { property, value, priority: match[3] ? "important" : "" };
+}
+
+function updateLiteral(sheet: CSSStyleSheet, source: StylesheetSource, css: string): boolean {
+  const bodies = source.bodies;
+  const owner = stylesheetOwners.get(sheet);
+  if (!bodies || !owner?.ownerDocument.adoptedStyleSheets.includes(sheet)) return false;
+  let start = 0;
+  while (start < source.css.length && source.css[start] === css[start]) start++;
+  let previousEnd = source.css.length;
+  let nextEnd = css.length;
+  while (
+    previousEnd > start &&
+    nextEnd > start &&
+    source.css[previousEnd - 1] === css[nextEnd - 1]
+  ) {
+    previousEnd--;
+    nextEnd--;
+  }
+  let low = 0;
+  let high = bodies.length / 2;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (bodies[middle * 2 + 1] < start) low = middle + 1;
+    else high = middle;
+  }
+  const index = low * 2;
+  if (index >= bodies.length || start < bodies[index] || previousEnd > bodies[index + 1])
+    return false;
+  const delta = css.length - source.css.length;
+  const before = literalDeclaration(source.css.slice(bodies[index], bodies[index + 1]));
+  const after = literalDeclaration(css.slice(bodies[index], bodies[index + 1] + delta));
+  if (!before || !after || before.property !== after.property || before.priority !== after.priority)
+    return false;
+  const scoped = sheet.cssRules[0] as CSSGroupingRule;
+  const rule = scoped.cssRules[low];
+  if (!(rule instanceof CSSStyleRule)) return false;
+  let binding = source.bindings.get(low);
+  if (!binding) {
+    const root = owner.ownerDocument.querySelector(source.scope);
+    if (!(root instanceof HTMLElement)) return false;
+    binding = { name: `--l8db-design-${crypto.randomUUID()}`, root, ...after };
+    rule.style.setProperty(
+      before.property,
+      `var(${binding.name}, ${before.value})`,
+      before.priority,
+    );
+    source.bindings.set(low, binding);
+  }
+  binding.root.style.setProperty(binding.name, after.value);
+  binding.value = after.value;
+  bodies[index + 1] += delta;
+  if (delta) for (let i = index + 2; i < bodies.length; i++) bodies[i] += delta;
+  source.css = css;
+  return true;
+}
+
+function releaseStylesheet(sheet: CSSStyleSheet): void {
+  const source = stylesheetSources.get(sheet);
+  const scoped = sheet.cssRules[0] as CSSGroupingRule | undefined;
+  for (const [index, binding] of source?.bindings ?? []) {
+    const rule = scoped?.cssRules[index];
+    if (rule instanceof CSSStyleRule)
+      rule.style.setProperty(binding.property, binding.value, binding.priority);
+    binding.root.style.removeProperty(binding.name);
+  }
+  source?.bindings.clear();
+  stylesheetOwners.delete(sheet);
+}
 
 function replaceDashboardStylesheet(sheet: CSSStyleSheet, css: string, scope: string): void {
   if (!css.trim()) {
@@ -169,16 +270,17 @@ export function compileDashboardStylesheet(
     throw new Error("Eine aktuelle WebView mit CSS-@scope-Unterstützung ist erforderlich.");
   const existingSource = existing && stylesheetSources.get(existing);
   if (existing && existingSource?.scope === scope && existingSource.css === css) return existing;
-  const sheet = existing && existingSource?.scope === scope ? existing : new CSSStyleSheet();
-  const previous = stylesheetSources.get(sheet);
-  try {
-    replaceDashboardStylesheet(sheet, css, scope);
-    stylesheetSources.set(sheet, { css, scope });
-    return sheet;
-  } catch (error) {
-    if (previous) replaceDashboardStylesheet(sheet, previous.css, previous.scope);
-    throw error;
-  }
+  if (existing && existingSource?.scope === scope && updateLiteral(existing, existingSource, css))
+    return existing;
+  const sheet = new CSSStyleSheet();
+  replaceDashboardStylesheet(sheet, css, scope);
+  stylesheetSources.set(sheet, {
+    css,
+    scope,
+    bodies: indexedBodies(css, sheet),
+    bindings: new Map(),
+  });
+  return sheet;
 }
 
 const dashboardStylesheets = new WeakMap<HTMLStyleElement, CSSStyleSheet>();
@@ -195,8 +297,11 @@ export function applyDashboardStylesheet(style: HTMLStyleElement, sheet?: CSSSty
   const next = document.adoptedStyleSheets.filter((candidate) => candidate !== current);
   if (adopted) next.push(adopted);
   document.adoptedStyleSheets = next;
-  if (adopted) dashboardStylesheets.set(style, adopted);
-  else dashboardStylesheets.delete(style);
+  if (current) releaseStylesheet(current);
+  if (adopted) {
+    dashboardStylesheets.set(style, adopted);
+    stylesheetOwners.set(adopted, style);
+  } else dashboardStylesheets.delete(style);
 }
 
 export function createDashboardStyleController(
