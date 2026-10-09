@@ -30,6 +30,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   replication: true,
   sessions: true,
   locks: true,
+  live_monitor: true,
   transactions: true,
   table_transactions: true,
   row_edit: true,
@@ -185,6 +186,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      live_monitor: false,
       health_advisor: false,
       query_stats: false,
       proxy_user: false,
@@ -223,6 +225,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      live_monitor: false,
       health_advisor: false,
       query_stats: false,
       proxy_user: false,

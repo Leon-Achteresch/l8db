@@ -1802,6 +1802,7 @@ impl DatabaseAdapter for MssqlAdapter {
                 wait_event: text_opt(r, 8),
                 is_self: int(r, 9) == 1,
                 blocked_by: Vec::new(),
+                ..Default::default()
             })
             .collect())
     }
