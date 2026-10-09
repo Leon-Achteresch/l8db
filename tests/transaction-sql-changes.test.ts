@@ -4,6 +4,7 @@ import type { QueryResult } from "../src/lib/db";
 
 const calls: string[] = [];
 let handler: (sql: string) => QueryResult = () => result();
+let databaseChanges: unknown = [];
 
 function result(rows: Record<string, unknown>[] = [], rowsAffected = 1): QueryResult {
   return {
@@ -23,10 +24,16 @@ mock.module("@tauri-apps/api/core", () => ({
       if (sql.includes("FROM pg_index i")) return result([{ name: "id" }]);
       return handler(sql);
     }
+    if (command === "transaction_database_changes") {
+      calls.push(command);
+      return databaseChanges;
+    }
   },
 }));
 
-const { executeWithTransactionChanges } = await import("../src/lib/transaction-sql-changes");
+const { databaseChangesFrom, executeWithTransactionChanges } = await import(
+  "../src/lib/transaction-sql-changes"
+);
 const { executeSqlWithTransactions } = await import("../src/features/query/query-view/execute-sql");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const connection: SavedConnection = {
@@ -40,6 +47,7 @@ const connection: SavedConnection = {
 beforeEach(() => {
   calls.length = 0;
   handler = () => result();
+  databaseChanges = [];
   useTransactionStore.setState({
     transactions: [],
     busyTransactions: {},
@@ -246,6 +254,27 @@ for (const [kind, target] of [
     ]);
   });
 
+  test(`${kind} DELETE lists the removed rows`, async () => {
+    handler = (sql) => (sql.startsWith("SELECT") ? result([{ id: "1", name: "old" }]) : result());
+    const tracked = await executeWithTransactionChanges(
+      { ...connection, kind },
+      null,
+      "tx",
+      `DELETE FROM ${target} WHERE id = 1`,
+      async () => result([], 1),
+    );
+    expect(tracked.changes).toEqual([
+      {
+        type: "delete",
+        schema:
+          kind === "sqlite" ? "main" : kind === "mysql" ? "demo" : kind === "mssql" ? "dbo" : "APP",
+        table: kind === "oracle" ? "PEOPLE" : "people",
+        oldValues: { id: "1", name: "old" },
+        fromSql: true,
+      },
+    ]);
+  });
+
   test(`${kind} UPDATE displays the before and after values`, async () => {
     let values = [{ id: "1", name: "old" }];
     handler = (sql) => (sql.startsWith("SELECT") ? result(values) : result());
@@ -391,4 +420,174 @@ test("MySQL row key literals escape backslashes and quotes", async () => {
     },
   );
   expect(calls.find((sql) => sql.includes("WHERE (`id`"))).toContain("'x\\\\'' OR 1=1 --'");
+});
+
+test("PostgreSQL DELETE returns the removed rows", async () => {
+  handler = (sql) =>
+    sql.startsWith("SELECT") || sql.includes("RETURNING *")
+      ? result([{ id: "1", name: "old" }])
+      : result();
+  const tracked = await executeWithTransactionChanges(
+    connection,
+    null,
+    "tx",
+    "DELETE FROM public.people WHERE id = 1",
+    async () => result(),
+  );
+  expect(calls).toContain("DELETE FROM public.people WHERE id = 1\nRETURNING *");
+  expect(tracked.changes).toEqual([
+    {
+      type: "delete",
+      schema: "public",
+      table: "people",
+      oldValues: { id: "1", name: "old" },
+      fromSql: true,
+    },
+  ]);
+});
+
+test("PostgreSQL DELETE over 100 rows runs unchanged without returning rows", async () => {
+  handler = (sql) =>
+    sql.startsWith("SELECT") ? result(Array.from({ length: 101 }, (_, id) => ({ id }))) : result();
+  const original = mock(async () => result([], 101));
+  const tracked = await executeWithTransactionChanges(
+    connection,
+    null,
+    "tx",
+    "DELETE FROM people",
+    original,
+  );
+  expect(original).toHaveBeenCalledTimes(1);
+  expect(calls.some((sql) => sql.includes("RETURNING"))).toBe(false);
+  expect(tracked.changes).toEqual([]);
+});
+
+test("database diff pairs rows by primary key into updates, inserts and deletes", () => {
+  const { changes, notes } = databaseChangesFrom([
+    {
+      schema: "APP",
+      table: "ORDERS",
+      key_columns: ["ID"],
+      added: [
+        { ID: 1, STATE: "moved" },
+        { ID: 3, STATE: "new" },
+      ],
+      removed: [
+        { ID: 1, STATE: "open" },
+        { ID: 2, STATE: "gone" },
+      ],
+      note: null,
+    },
+    {
+      schema: "APP",
+      table: "LOG",
+      key_columns: [],
+      added: [{ MSG: "a" }],
+      removed: [{ MSG: "b" }],
+      note: "Mehr als 100 geänderte Zeilen; nur die ersten werden gezeigt.",
+    },
+  ]);
+  expect(changes).toEqual([
+    {
+      type: "update",
+      schema: "APP",
+      table: "ORDERS",
+      fromSql: true,
+      oldValues: { STATE: "open" },
+      newValues: { STATE: "moved" },
+    },
+    {
+      type: "insert",
+      schema: "APP",
+      table: "ORDERS",
+      fromSql: true,
+      rowValues: { ID: 3, STATE: "new" },
+    },
+    {
+      type: "delete",
+      schema: "APP",
+      table: "ORDERS",
+      fromSql: true,
+      oldValues: { ID: 2, STATE: "gone" },
+    },
+    { type: "insert", schema: "APP", table: "LOG", fromSql: true, rowValues: { MSG: "a" } },
+    { type: "delete", schema: "APP", table: "LOG", fromSql: true, oldValues: { MSG: "b" } },
+  ]);
+  expect(notes).toEqual(["APP.LOG: Mehr als 100 geänderte Zeilen; nur die ersten werden gezeigt."]);
+});
+
+test("Oracle PL/SQL block in a transaction shows the database diff once", async () => {
+  useTransactionStore.getState().addTransaction({
+    txId: "tx",
+    connectionId: connection.id,
+    connectionName: connection.name,
+    scope: { type: "query" },
+    changes: [],
+    startedAt: Date.now(),
+  });
+  databaseChanges = [
+    {
+      schema: "APP",
+      table: "WA_VERLADUNG",
+      key_columns: ["ID"],
+      added: [{ ID: 1884, ORDER_ID: 473435 }],
+      removed: [{ ID: 1884, ORDER_ID: 1 }],
+      note: null,
+    },
+  ];
+  handler = () => ({ ...result(), rows_affected: null });
+  await executeSqlWithTransactions({
+    connection: { ...connection, kind: "oracle" },
+    database: null,
+    sql: "DECLARE res INTEGER; BEGIN res := PA.MOVE_ORDER(1884); END;",
+    transactionsCapable: true,
+    onJob: () => {},
+  });
+  const tx = useTransactionStore.getState().transactions[0];
+  expect(calls.filter((call) => call === "transaction_database_changes")).toHaveLength(1);
+  expect(tx.changes[0]).toMatchObject({ type: "query", rowsAffected: null });
+  expect(tx.databaseChanges?.changes).toMatchObject([
+    {
+      type: "update",
+      table: "WA_VERLADUNG",
+      oldValues: { ORDER_ID: 1 },
+      newValues: { ORDER_ID: "473435" },
+    },
+  ]);
+});
+
+test("database diff pairing stays fast for many changed tables", () => {
+  const tables = Array.from({ length: 50 }, (_, table) => ({
+    schema: "APP",
+    table: `T${table}`,
+    key_columns: ["ID"],
+    added: Array.from({ length: 100 }, (_, id) =>
+      Object.fromEntries([
+        ["ID", id],
+        ...Array.from({ length: 30 }, (_, c) => [`C${c}`, `new${c}`]),
+      ]),
+    ),
+    removed: Array.from({ length: 100 }, (_, id) =>
+      Object.fromEntries([
+        ["ID", id + 50],
+        ...Array.from({ length: 30 }, (_, c) => [`C${c}`, `old${c}`]),
+      ]),
+    ),
+    note: null,
+  }));
+  const durations: number[] = [];
+  for (let run = 0; run < 15; run += 1) {
+    const started = performance.now();
+    const { changes } = databaseChangesFrom(tables);
+    durations.push(performance.now() - started);
+    expect(changes).toHaveLength(50 * 150);
+  }
+  durations.sort((a, b) => a - b);
+  const median = durations[7];
+  const p95 = durations[14];
+  console.log(
+    `database diff 50x200 rows: median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms`,
+  );
+  expect(median).toBeLessThan(40);
+  expect(p95).toBeLessThan(80);
 });

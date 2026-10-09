@@ -27,6 +27,23 @@ export async function executeInTransactionWithParams(
   return invoke("execute_in_transaction_with_params", { txId, sql, params, options });
 }
 
+export interface TransactionTableChanges {
+  schema: string;
+  table: string;
+  key_columns: string[];
+  added: Record<string, unknown>[];
+  removed: Record<string, unknown>[];
+  note: string | null;
+}
+
+export async function transactionDatabaseChanges(txId: string): Promise<TransactionTableChanges[]> {
+  return invoke("transaction_database_changes", { txId });
+}
+
+export async function transactionServerOutput(txId: string): Promise<string[]> {
+  return invoke("transaction_server_output", { txId });
+}
+
 export async function updateRowInTransaction(
   txId: string,
   schema: string,

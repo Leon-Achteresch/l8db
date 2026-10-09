@@ -3,8 +3,10 @@ import { CheckIcon, RotateCcwIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { finishManagedTransaction } from "@/lib/managed-transactions";
 import { type ActiveTransaction, useTransactionStore } from "@/lib/transactions";
 import { DiffQueryEntry } from "./transaction-query-entry";
@@ -22,6 +24,9 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         ? "SQL-Transaktion"
         : "Gemeinsame Transaktion";
   const queryClient = useQueryClient();
+  const databaseDiff = useNewFeatureVisibility<HTMLParagraphElement>(
+    tx.databaseChanges ? "query.transaction.database-diff" : undefined,
+  );
 
   const handleCommit = useCallback(async () => {
     try {
@@ -89,6 +94,33 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         <p className="px-3 pt-2 text-[10px] text-muted-foreground">
           Eigene Transaktion für diese Tabelle. Trigger und Kaskaden gehören ebenfalls dazu.
         </p>
+      )}
+      {tx.databaseChanges && (
+        <div className="space-y-2 border-b border-border/50 p-2.5">
+          <p
+            ref={databaseDiff.ref}
+            className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+          >
+            Gesamtstand laut Datenbank ·{" "}
+            {new Date(tx.databaseChanges.at).toLocaleTimeString("de-DE")}
+            {databaseDiff.isNew && <NewBadge />}
+          </p>
+          {tx.databaseChanges.changes.map((change) =>
+            change.type === "update" ? (
+              <DiffUpdateEntry key={change.id} change={change} />
+            ) : (
+              <DiffRowEntry key={change.id} change={change} />
+            ),
+          )}
+          {tx.databaseChanges.notes.map((note) => (
+            <p key={note} className="text-[10px] text-muted-foreground">
+              {note}
+            </p>
+          ))}
+          {!tx.databaseChanges.changes.length && !tx.databaseChanges.notes.length && (
+            <p className="text-xs text-muted-foreground">Keine Datenänderungen</p>
+          )}
+        </div>
       )}
       <div className="space-y-2 p-2.5">
         {tx.changes.map((change) =>

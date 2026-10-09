@@ -578,6 +578,20 @@ impl TransactionManager {
         }
     }
 
+    pub async fn oracle_changes(&self, tx_id: &str) -> Result<Vec<oracle::TxTableChanges>, String> {
+        match &*self.entry(tx_id).await? {
+            TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_table_changes(c)).await,
+            _ => Err("Datenbank-Diff gibt es nur für Oracle-Transaktionen".into()),
+        }
+    }
+
+    pub async fn server_output(&self, tx_id: &str) -> Result<Vec<String>, String> {
+        match &*self.entry(tx_id).await? {
+            TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::read_output(c)).await,
+            _ => Ok(vec![]),
+        }
+    }
+
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
         let (session, ssl) = match &*entry {
