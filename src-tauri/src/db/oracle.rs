@@ -2713,6 +2713,7 @@ impl DatabaseAdapter for OracleAdapter {
                 wait_event: s_opt(r, 7),
                 is_self: i(r, 8) == 1,
                 blocked_by: Vec::new(),
+                ..Default::default()
             })
             .collect())
     }

@@ -43,6 +43,7 @@ export interface Capabilities {
   replication: boolean;
   sessions: boolean;
   locks: boolean;
+  live_monitor: boolean;
   transactions: boolean;
   table_transactions: boolean;
   row_edit: boolean;
