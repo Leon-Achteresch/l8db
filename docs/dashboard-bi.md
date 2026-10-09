@@ -49,9 +49,15 @@ before the dashboard's own CSS.
   underlying rows (with joins only the base table's columns) with the chart's filters,
   period and selection. The dialog shows the SQL and exports CSV.
 - **CSV export** of any chart's current result from the card menu.
-- **Pivot** chart: rows × columns × one metric with totals (only for additive
-  metrics) and optional color scale.
-- **Tables**: totals row and data bars (`totals`, `dataBars`).
+- **Pivot** chart: rows × columns × one metric with an optional color scale. With
+  `totals`, builder charts load exact row, column and grand totals through three extra
+  grouped queries ("Gesamt"; averages stay averages, not sums of averages). Expert SQL
+  charts fall back to summing the loaded rows of additive metrics ("Summe").
+- **Tables**: totals row and data bars (`totals`, `dataBars`). Builder charts query the
+  exact total over all rows (shared with the headline total query when identical);
+  expert SQL charts show "Summe geladener Zeilen".
+- **Keyboard**: bars, funnel stages, table rows, pivot headers, ring and treemap
+  segments are focusable; Enter or Space opens the same filter/details menu as a click.
 - **Target lines** (`target`, `targetLabel`) on line, area, column, bar and KPI charts.
 - **Presentation mode** hides the editor, switches the window to fullscreen and ends
   with Esc.
@@ -59,7 +65,9 @@ before the dashboard's own CSS.
 ## Performance
 
 `tests/perf-dashboard-bi.test.ts` (core suite) covers cross-filter fan-out over 60
-widgets, a 60 × 40 pivot, a theme with a 512 KiB logo and 1,000 selection toggles.
+widgets, a 60 × 40 pivot, a theme with a 512 KiB logo, 1,000 selection toggles and the
+query count of exact pivot totals (60 pivots over 12 datasets: 48 distinct queries,
+p95 2 ms to build).
 Measured on Linux x86_64 (QEMU VM, 8 vCPU, 15 GB RAM, Bun 1.3.10): fan-out median
 1.7 ms / p95 2.5 ms with 40 of 60 queries rebuilt and 20 untouched; pivot render median
 37 ms / p95 46 ms for 2,501 cells; theme compile p95 0.07 ms; 1,000 toggles p95 1.6 ms

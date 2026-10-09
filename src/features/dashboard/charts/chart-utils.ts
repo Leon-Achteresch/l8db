@@ -22,12 +22,20 @@ export interface ChartComparison {
   short: string;
 }
 
+export interface ChartTotals {
+  pending: boolean;
+  grand: Row | null;
+  rows: Row[] | null;
+  columns: Row[] | null;
+}
+
 export interface ChartProps {
   rows: Row[];
   shape: DatasetShape;
   options: WidgetOptions;
   compare?: ChartComparison | null;
   period?: Period;
+  totals?: ChartTotals | null;
 }
 
 export const axisTick = { fontSize: 11, fill: "var(--muted-foreground)" } as const;

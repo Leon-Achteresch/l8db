@@ -18,10 +18,11 @@ export function Funnel({ rows, shape, options, compare }: ChartProps) {
         {items.map((item, i) => {
           const delta = compare ? change(item.value, compare.values[i]) : null;
           return (
-            <div
+            <button
+              type="button"
               key={item.name}
               data-dim={dimAttr(item.raw)}
-              className="col-span-full grid grid-cols-subgrid items-center"
+              className="col-span-full grid grid-cols-subgrid items-center text-left"
             >
               <span className="max-w-44 truncate text-right text-muted-foreground">
                 {item.name}
@@ -53,7 +54,7 @@ export function Funnel({ rows, shape, options, compare }: ChartProps) {
                   )}
                 </span>
               )}
-            </div>
+            </button>
           );
         })}
       </div>

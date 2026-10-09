@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { useCallback, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
@@ -102,10 +102,12 @@ export function useWidgetInteractions({
     [effective, kind, period, scope, title],
   );
 
-  const onContentClick = (event: MouseEvent<HTMLElement>) => {
-    if (!dashboardId || !dataset || (!options.crossFilter && !options.drill)) return;
-    const target = (event.target as Element).closest("[data-dim], [data-dim2], [data-active-dim]");
-    if (!target) return;
+  const openPoint = (
+    target: Element,
+    container: HTMLElement,
+    at: { x: number; y: number } | null,
+  ): boolean => {
+    if (!dashboardId || !dataset || (!options.crossFilter && !options.drill)) return false;
     const dim = parseAttr(
       target.getAttribute("data-dim") ?? target.getAttribute("data-active-dim"),
     );
@@ -114,21 +116,35 @@ export function useWidgetInteractions({
       ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
       ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),
     ];
-    if (!picks.length) return;
+    if (!picks.length) return false;
     const canFilter = options.crossFilter && picks.some((p) => crossField(dataset, p.key));
     const canDrill = options.drill && picks.some((p) => ownCondition(dataset, p.key, p.value));
-    if (!canFilter && !canDrill) return;
-    const root = event.currentTarget.closest(".dashboard-widget") ?? event.currentTarget;
+    if (!canFilter && !canDrill) return false;
+    const root = container.closest(".dashboard-widget") ?? container;
     const rect = root.getBoundingClientRect();
+    const box = target.getBoundingClientRect();
+    const point = at ?? { x: box.left + box.width / 2, y: box.top + box.height / 2 };
     setPoint({
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: point.x - rect.left,
+      y: point.y - rect.top,
       label: picks.map((p) => toLabel(p.value)).join(" × "),
       filtered: picks.every((p) => own.some((f) => f.key === p.key && same(f.value, p.value))),
       canFilter,
       canDrill,
       picks,
     });
+    return true;
+  };
+
+  const onContentClick = (event: MouseEvent<HTMLElement>) => {
+    const target = (event.target as Element).closest("[data-dim], [data-dim2], [data-active-dim]");
+    if (target) openPoint(target, event.currentTarget, { x: event.clientX, y: event.clientY });
+  };
+
+  const onContentKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = (event.target as Element).closest("[data-dim], [data-dim2]");
+    if (target && openPoint(target, event.currentTarget, null)) event.preventDefault();
   };
 
   const filterPoint = () => {
@@ -209,6 +225,7 @@ export function useWidgetInteractions({
     point,
     closePoint: () => setPoint(null),
     onContentClick,
+    onContentKeyDown,
     filterPoint,
     detailsPoint,
     openAllDetails: options.drill && effective ? () => openDetails([], "Alle Zeilen") : undefined,

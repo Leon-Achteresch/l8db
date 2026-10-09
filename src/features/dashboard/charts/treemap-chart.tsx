@@ -28,7 +28,7 @@ export function TreemapChart({ rows, shape, options }: ChartProps) {
             const roomy = w > 56 && h > 34;
             const inner = { x: x + 1, y: y + 1, w: Math.max(0, w - 2), h: Math.max(0, h - 2) };
             return (
-              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)}>
+              <g key={item.name} data-index={i} data-dim={dimAttr(item.raw)} tabIndex={0}>
                 <rect
                   x={inner.x}
                   y={inner.y}

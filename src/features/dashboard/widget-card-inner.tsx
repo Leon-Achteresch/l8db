@@ -75,6 +75,7 @@ export function WidgetCardInner({
     legend,
     bucket,
     summaryPending,
+    margin,
   } = useWidgetData({
     widget,
     dataset: effective,
@@ -205,8 +206,10 @@ export function WidgetCardInner({
       </div>
       <div
         className={`dashboard-widget-content min-h-0 flex-1 overflow-hidden${interact.pointer ? " [&_[data-active-dim]]:cursor-pointer [&_[data-dim]]:cursor-pointer" : ""}`}
-        role="presentation"
+        role="application"
+        aria-label={`${title}: Datenpunkt anklicken oder fokussieren und mit Enter filtern oder Details öffnen`}
         onClick={interact.onContentClick}
+        onKeyDown={interact.onContentKeyDown}
       >
         {problem || !shape ? (
           <div className="grid h-full place-items-center text-center text-xs text-muted-foreground">
@@ -235,6 +238,7 @@ export function WidgetCardInner({
               options={options}
               compare={compare}
               period={shape.hasDate ? period : undefined}
+              totals={margin}
             />
           </PanelErrorBoundary>
         )}

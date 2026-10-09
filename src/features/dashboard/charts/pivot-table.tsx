@@ -1,4 +1,4 @@
-import { additive, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
+import { additive, DIM_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
 import { accent, type ChartProps, dimAttr, dimensionLabels } from "./chart-utils";
 
 interface Axis {
@@ -15,7 +15,7 @@ function axisOf(rows: ChartProps["rows"], key: string): Axis {
   return { labels: [...seen.keys()], raw: [...seen.values()] };
 }
 
-export function PivotTable({ rows, shape, options }: ChartProps) {
+export function PivotTable({ rows, shape, options, totals: exact }: ChartProps) {
   const metric = shape.metrics[0]?.key ?? "";
   const rowKey = shape.dimension ?? "";
   const colKey = shape.dimension2 ?? "";
@@ -36,7 +36,22 @@ export function PivotTable({ rows, shape, options }: ChartProps) {
   }
   const max = Math.max(1, ...[...cells.values()].map(Math.abs));
   const summable = shape.metrics[0] ? additive(shape.metrics[0]) : false;
-  const sum = (value: number | undefined) => (summable ? fmtValue(value ?? 0, options) : "–");
+  const margin = (list: ChartProps["rows"] | null | undefined) =>
+    list ? new Map(list.map((row) => [toLabel(row[DIM_KEY]), row[metric]])) : null;
+  const exactRows = margin(exact?.rows);
+  const exactColumns = margin(exact?.columns);
+  const show = (value: unknown) =>
+    value === null || value === undefined ? "–" : fmtValue(toNumber(value), options);
+  const fallback = (value: number | undefined) => (summable ? fmtValue(value ?? 0, options) : "–");
+  const rowTotal = (y: string) =>
+    exact?.pending ? "…" : exactRows ? show(exactRows.get(y)) : fallback(rowTotals.get(y));
+  const columnTotal = (x: string) =>
+    exact?.pending ? "…" : exactColumns ? show(exactColumns.get(x)) : fallback(colTotals.get(x));
+  const grandTotal = exact?.pending ? "…" : exact ? show(exact.grand?.[metric]) : fallback(total);
+  const totalLabel = exact ? "Gesamt" : "Summe";
+  const totalHint = exact
+    ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
+    : "Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)";
   const base = accent(options);
   const xNames = dimensionLabels(xs.labels);
   const yNames = dimensionLabels(ys.labels);
@@ -55,13 +70,18 @@ export function PivotTable({ rows, shape, options }: ChartProps) {
               <th
                 key={x}
                 data-dim2={dimAttr(xs.raw[i])}
+                tabIndex={0}
                 title={xNames.long[i]}
                 className={`${head} max-w-36 cursor-pointer truncate text-right`}
               >
                 {xNames.short[i]}
               </th>
             ))}
-            {options.totals && <th className={`${head} text-right text-foreground`}>Summe</th>}
+            {options.totals && (
+              <th title={totalHint} className={`${head} text-right text-foreground`}>
+                {totalLabel}
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -70,6 +90,7 @@ export function PivotTable({ rows, shape, options }: ChartProps) {
               <th
                 scope="row"
                 data-dim={dimAttr(ys.raw[r])}
+                tabIndex={0}
                 title={yNames.long[r]}
                 className="sticky left-0 max-w-44 cursor-pointer truncate bg-card px-2.5 py-1.5 text-left font-normal text-muted-foreground"
               >
@@ -91,7 +112,7 @@ export function PivotTable({ rows, shape, options }: ChartProps) {
                 );
               })}
               {options.totals && (
-                <td className="px-2.5 py-1.5 text-right font-medium">{sum(rowTotals.get(y))}</td>
+                <td className="px-2.5 py-1.5 text-right font-medium">{rowTotal(y)}</td>
               )}
             </tr>
           ))}
@@ -101,16 +122,16 @@ export function PivotTable({ rows, shape, options }: ChartProps) {
             <tr className="font-medium">
               <th
                 className="sticky bottom-0 left-0 bg-card px-2.5 py-1.5 text-left"
-                title="Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)"
+                title={totalHint}
               >
-                Summe
+                {totalLabel}
               </th>
               {xs.labels.map((x) => (
                 <td key={x} className="sticky bottom-0 bg-card px-2.5 py-1.5 text-right">
-                  {sum(colTotals.get(x))}
+                  {columnTotal(x)}
                 </td>
               ))}
-              <td className="sticky bottom-0 bg-card px-2.5 py-1.5 text-right">{sum(total)}</td>
+              <td className="sticky bottom-0 bg-card px-2.5 py-1.5 text-right">{grandTotal}</td>
             </tr>
           </tfoot>
         )}

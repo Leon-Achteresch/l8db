@@ -5,7 +5,7 @@ import { DeltaBadge } from "./delta-badge";
 
 const PAGE = 40;
 
-export function DataTable({ rows, shape, options, compare }: ChartProps) {
+export function DataTable({ rows, shape, options, compare, totals: exact }: ChartProps) {
   const [limit, setLimit] = useState(PAGE);
   const dims = [
     ...(shape.dimension
@@ -39,14 +39,24 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
     ]),
   );
   const totals =
-    options.totals && rows.length > 1 && metrics.some(additive)
+    options.totals && metrics.length && (exact || (rows.length > 1 && metrics.some(additive)))
       ? Object.fromEntries(
           metrics.map((m) => [
             m.key,
-            additive(m) ? rows.reduce((sum, row) => sum + toNumber(row[m.key]), 0) : null,
+            exact
+              ? exact.grand && exact.grand[m.key] != null
+                ? toNumber(exact.grand[m.key])
+                : null
+              : additive(m)
+                ? rows.reduce((sum, row) => sum + toNumber(row[m.key]), 0)
+                : null,
           ]),
         )
       : null;
+  const totalLabel = exact ? "Gesamt" : "Summe geladener Zeilen";
+  const totalHint = exact
+    ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
+    : "Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)";
   const head = "border-b px-2.5 py-1.5 font-medium";
   return (
     <div
@@ -90,6 +100,7 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
                 key={String(i)}
                 data-dim={shape.dimension ? dimAttr(row[shape.dimension]) : undefined}
                 data-dim2={shape.dimension2 ? dimAttr(row[shape.dimension2]) : undefined}
+                tabIndex={shape.dimension ? 0 : undefined}
                 className="border-b border-border/50 last:border-0"
               >
                 {dims.map((d) => (
@@ -134,19 +145,17 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
           <tfoot className="sticky bottom-0 bg-card font-medium">
             <tr className="border-t">
               {dims.map((d, i) => (
-                <td
-                  key={d.key}
-                  className="px-2.5 py-1.5"
-                  title={
-                    i === 0 ? "Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)" : undefined
-                  }
-                >
-                  {i === 0 ? "Summe geladener Zeilen" : ""}
+                <td key={d.key} className="px-2.5 py-1.5" title={i === 0 ? totalHint : undefined}>
+                  {i === 0 ? totalLabel : ""}
                 </td>
               ))}
               {metrics.map((m) => (
                 <td key={m.key} className="px-2.5 py-1.5 text-right tabular-nums">
-                  {totals[m.key] === null ? "–" : fmtValue(totals[m.key] ?? 0, options)}
+                  {exact?.pending
+                    ? "…"
+                    : totals[m.key] === null
+                      ? "–"
+                      : fmtValue(totals[m.key] ?? 0, options)}
                 </td>
               ))}
               {compare && focus && <td />}

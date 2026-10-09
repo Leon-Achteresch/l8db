@@ -32,6 +32,7 @@ export function ChartBuilderPreview({
     legend,
     bucket,
     summaryPending,
+    margin,
   } = useWidgetData({ widget, dataset, period: widget.period, query, debounceMs: 500 });
   const subtitle =
     widget.subtitle ?? autoSubtitle(bucket, shape?.hasDate ? widget.period : null, options.unit);
@@ -117,6 +118,7 @@ export function ChartBuilderPreview({
                 options={options}
                 compare={compare}
                 period={shape.hasDate ? widget.period : undefined}
+                totals={margin}
               />
             </PanelErrorBoundary>
           )}

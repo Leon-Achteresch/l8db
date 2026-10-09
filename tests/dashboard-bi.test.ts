@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { DataTable } from "../src/features/dashboard/charts/data-table";
+import { PivotTable } from "../src/features/dashboard/charts/pivot-table";
 import { insertChartFile, makeChartFile } from "../src/lib/chart-file";
 import { parseDashboard, serializeDashboard } from "../src/lib/dashboard-file";
 import {
@@ -9,11 +13,13 @@ import {
   crossField,
   type Dashboard,
   type Dataset,
+  DEFAULT_OPTIONS,
   DETAIL_LIMIT,
   DIM_KEY,
   DIM2_KEY,
   dashboardPages,
   datasetDetailSql,
+  datasetMarginSql,
   datasetSql,
   datasetTotalsSql,
   emptyDataset,
@@ -457,5 +463,70 @@ describe("Review-Korrekturen", () => {
     const inserted = insertChartFile(dashboard, file, "zwei");
     expect(inserted.widget.page).toBe("zwei");
     expect(inserted.widget.y).toBe(5);
+  });
+});
+
+describe("Exakte Summen", () => {
+  test("Pivot-Ränder und Gesamtwert kommen aus eigenen gruppierten Abfragen", () => {
+    const dataset = simple("orders", "region");
+    dataset.simple.dimension2 = "product";
+    dataset.simple.metrics = [{ id: "m", agg: "avg", column: "amount", label: "Schnitt" }];
+    const rows = datasetMarginSql(dataset, "rows", "postgres", "all");
+    const columns = datasetMarginSql(dataset, "columns", "postgres", "all");
+    const grand = datasetTotalsSql(dataset, "postgres", "all");
+    expect(rows).toContain(`"region" AS "dim"`);
+    expect(rows).not.toContain("dim2");
+    expect(columns).toContain(`"product" AS "dim"`);
+    expect(grand).toContain(`AVG("amount") AS "m0"`);
+    expect(grand).not.toContain("GROUP BY");
+    expect(new Set([datasetSql(dataset, "postgres", "all"), rows, columns, grand]).size).toBe(4);
+    expect(datasetMarginSql(simple("orders", "region"), "rows", "postgres", "all")).toBe("");
+  });
+
+  test("Tabelle und Pivot zeigen den exakten Gesamtwert statt der geladenen Summe", () => {
+    const shape = {
+      dimension: DIM_KEY,
+      dimension2: DIM2_KEY,
+      metrics: [{ key: "m0", label: "Schnitt", agg: "avg" as const }],
+      hasDate: false,
+    };
+    const totals = {
+      pending: false,
+      grand: { m0: 42 },
+      rows: [{ dim: "Nord", m0: 40 }],
+      columns: [{ dim: "A", m0: 41 }],
+    };
+    const options = { ...DEFAULT_OPTIONS };
+    const pivot = renderToStaticMarkup(
+      createElement(PivotTable, {
+        rows: [{ dim: "Nord", dim2: "A", m0: 10 }],
+        shape,
+        options,
+        totals,
+      }),
+    );
+    expect(pivot).toContain("Gesamt");
+    expect(pivot).toContain(">42<");
+    expect(pivot).toContain(">40<");
+    expect(pivot).toContain(">41<");
+    const fallback = renderToStaticMarkup(
+      createElement(PivotTable, { rows: [{ dim: "Nord", dim2: "A", m0: 10 }], shape, options }),
+    );
+    expect(fallback).toContain("Summe");
+    expect(fallback).not.toContain("Gesamt");
+    expect(fallback.match(/>–</g)?.length).toBe(3);
+    const table = renderToStaticMarkup(
+      createElement(DataTable, {
+        rows: [
+          { dim: "Nord", m0: 1 },
+          { dim: "Süd", m0: 2 },
+        ],
+        shape: { ...shape, dimension2: null },
+        options,
+        totals: { ...totals, rows: null, columns: null },
+      }),
+    );
+    expect(table).toContain("Gesamt");
+    expect(table).toContain(">42<");
   });
 });
