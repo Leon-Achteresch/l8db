@@ -100,6 +100,7 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
           expect(errors).toEqual([]);
         }
       }
+      await page.getByRole("button", { name: "Klassische Ergebnisansicht", exact: true }).click();
       await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
       await page.getByRole("menuitemradio", { name: "JSON", exact: true }).click();
       await page.locator("[data-slot=query-json-rows]").click();
