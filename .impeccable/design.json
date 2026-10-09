@@ -4,74 +4,319 @@
   "title": "Design System: l8db",
   "extensions": {
     "colorMeta": {
-      "primary": { "role": "primary", "displayName": "Bench Navy", "canonical": "oklch(0.4 var(--db-chroma) var(--db-hue))", "tonalRamp": ["oklch(0.15 0.12 248)", "oklch(0.25 0.12 248)", "oklch(0.35 0.12 248)", "oklch(0.45 0.12 248)", "oklch(0.55 0.12 248)", "oklch(0.68 0.1 248)", "oklch(0.82 0.06 248)", "oklch(0.95 0.02 248)"] },
-      "primary-foreground": { "role": "primary", "displayName": "Navy Paper", "canonical": "oklch(0.99 0.005 var(--db-hue))" },
-      "ring": { "role": "primary", "displayName": "Focus Ring", "canonical": "oklch(0.5 0.06 var(--db-hue))" },
-      "dark-primary": { "role": "primary", "displayName": "Night Navy", "canonical": "oklch(0.78 calc(var(--db-chroma) + 0.02) var(--db-hue))" },
-      "access-read": { "role": "secondary", "displayName": "Access Emerald", "canonical": "var(--color-emerald-500)", "tonalRamp": ["oklch(0.26 0.05 163)", "oklch(0.38 0.08 163)", "oklch(0.5 0.12 163)", "oklch(0.6 0.15 163)", "oklch(0.696 0.17 162.48)", "oklch(0.8 0.13 163)", "oklch(0.9 0.07 163)", "oklch(0.97 0.02 163)"] },
-      "access-write": { "role": "secondary", "displayName": "Access Amber", "canonical": "var(--color-amber-500)", "tonalRamp": ["oklch(0.28 0.06 70)", "oklch(0.4 0.1 70)", "oklch(0.52 0.14 70)", "oklch(0.65 0.17 70)", "oklch(0.769 0.188 70.08)", "oklch(0.85 0.14 75)", "oklch(0.92 0.08 80)", "oklch(0.97 0.03 85)"] },
-      "access-schema": { "role": "secondary", "displayName": "Access Red", "canonical": "var(--color-red-500)", "tonalRamp": ["oklch(0.26 0.09 25)", "oklch(0.38 0.14 25)", "oklch(0.5 0.2 25)", "oklch(0.637 0.237 25.331)", "oklch(0.72 0.18 22)", "oklch(0.81 0.11 20)", "oklch(0.9 0.05 18)", "oklch(0.97 0.015 17)"] },
+      "primary": {
+        "role": "primary",
+        "displayName": "Bench Navy",
+        "canonical": "oklch(0.4 var(--db-chroma) var(--db-hue))",
+        "tonalRamp": [
+          "oklch(0.15 0.12 248)",
+          "oklch(0.25 0.12 248)",
+          "oklch(0.35 0.12 248)",
+          "oklch(0.45 0.12 248)",
+          "oklch(0.55 0.12 248)",
+          "oklch(0.68 0.1 248)",
+          "oklch(0.82 0.06 248)",
+          "oklch(0.95 0.02 248)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "primary",
+        "displayName": "Navy Paper",
+        "canonical": "oklch(0.99 0.005 var(--db-hue))"
+      },
+      "ring": {
+        "role": "primary",
+        "displayName": "Focus Ring",
+        "canonical": "oklch(0.5 0.06 var(--db-hue))"
+      },
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Night Navy",
+        "canonical": "oklch(0.78 calc(var(--db-chroma) + 0.02) var(--db-hue))"
+      },
+      "access-read": {
+        "role": "secondary",
+        "displayName": "Access Emerald",
+        "canonical": "var(--color-emerald-500)",
+        "tonalRamp": [
+          "oklch(0.26 0.05 163)",
+          "oklch(0.38 0.08 163)",
+          "oklch(0.5 0.12 163)",
+          "oklch(0.6 0.15 163)",
+          "oklch(0.696 0.17 162.48)",
+          "oklch(0.8 0.13 163)",
+          "oklch(0.9 0.07 163)",
+          "oklch(0.97 0.02 163)"
+        ]
+      },
+      "access-write": {
+        "role": "secondary",
+        "displayName": "Access Amber",
+        "canonical": "var(--color-amber-500)",
+        "tonalRamp": [
+          "oklch(0.28 0.06 70)",
+          "oklch(0.4 0.1 70)",
+          "oklch(0.52 0.14 70)",
+          "oklch(0.65 0.17 70)",
+          "oklch(0.769 0.188 70.08)",
+          "oklch(0.85 0.14 75)",
+          "oklch(0.92 0.08 80)",
+          "oklch(0.97 0.03 85)"
+        ]
+      },
+      "access-schema": {
+        "role": "secondary",
+        "displayName": "Access Red",
+        "canonical": "var(--color-red-500)",
+        "tonalRamp": [
+          "oklch(0.26 0.09 25)",
+          "oklch(0.38 0.14 25)",
+          "oklch(0.5 0.2 25)",
+          "oklch(0.637 0.237 25.331)",
+          "oklch(0.72 0.18 22)",
+          "oklch(0.81 0.11 20)",
+          "oklch(0.9 0.05 18)",
+          "oklch(0.97 0.015 17)"
+        ]
+      },
       "figure-lime": { "role": "tertiary", "displayName": "Figure Lime", "canonical": "#a3e635" },
       "figure-blue": { "role": "tertiary", "displayName": "Figure Blue", "canonical": "#3b82f6" },
-      "figure-violet": { "role": "tertiary", "displayName": "Figure Violet", "canonical": "#c084fc" },
+      "figure-violet": {
+        "role": "tertiary",
+        "displayName": "Figure Violet",
+        "canonical": "#c084fc"
+      },
       "figure-pink": { "role": "tertiary", "displayName": "Figure Pink", "canonical": "#f472b6" },
-      "figure-yellow": { "role": "tertiary", "displayName": "Figure Yellow", "canonical": "#facc15" },
+      "figure-yellow": {
+        "role": "tertiary",
+        "displayName": "Figure Yellow",
+        "canonical": "#facc15"
+      },
       "figure-teal": { "role": "tertiary", "displayName": "Figure Teal", "canonical": "#2dd4bf" },
-      "figure-orange": { "role": "tertiary", "displayName": "Figure Orange", "canonical": "#fb923c" },
+      "figure-orange": {
+        "role": "tertiary",
+        "displayName": "Figure Orange",
+        "canonical": "#fb923c"
+      },
       "figure-slate": { "role": "tertiary", "displayName": "Figure Slate", "canonical": "#94a3b8" },
-      "background": { "role": "neutral", "displayName": "Tinted Paper", "canonical": "oklch(0.975 0.004 var(--db-hue))", "tonalRamp": ["oklch(0.15 0.02 248)", "oklch(0.21 0.022 248)", "oklch(0.3 0.02 248)", "oklch(0.46 0.012 248)", "oklch(0.6 0.01 248)", "oklch(0.75 0.008 248)", "oklch(0.89 0.008 248)", "oklch(0.975 0.004 248)"] },
-      "foreground": { "role": "neutral", "displayName": "Ink", "canonical": "oklch(0.22 0.012 var(--db-hue))" },
-      "card": { "role": "neutral", "displayName": "Card White", "canonical": "oklch(0.995 0.002 var(--db-hue))" },
-      "card-foreground": { "role": "neutral", "displayName": "Card Ink", "canonical": "oklch(0.2 0.01 var(--db-hue))" },
-      "popover": { "role": "neutral", "displayName": "Popover White", "canonical": "oklch(0.995 0.003 var(--db-hue))" },
-      "secondary": { "role": "neutral", "displayName": "Mist", "canonical": "oklch(0.95 0.008 var(--db-hue))" },
-      "muted": { "role": "neutral", "displayName": "Mist", "canonical": "oklch(0.955 0.006 var(--db-hue))" },
-      "muted-foreground": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "oklch(0.46 0.012 var(--db-hue))" },
-      "accent": { "role": "neutral", "displayName": "Mist Accent", "canonical": "oklch(0.945 0.01 var(--db-hue))" },
-      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "oklch(0.89 0.008 var(--db-hue))" },
-      "input": { "role": "neutral", "displayName": "Input Hairline", "canonical": "oklch(0.91 0.008 var(--db-hue))" },
-      "sidebar": { "role": "neutral", "displayName": "Rail", "canonical": "oklch(0.965 0.004 var(--db-hue))" },
-      "sidebar-accent": { "role": "neutral", "displayName": "Rail Accent", "canonical": "oklch(0.925 0.008 var(--db-hue))" },
-      "destructive": { "role": "neutral", "displayName": "Signal Red", "canonical": "oklch(0.56 0.2 28)" },
-      "dark-background": { "role": "neutral", "displayName": "Night Ground", "canonical": "oklch(0.175 0.02 var(--db-hue))" },
-      "dark-card": { "role": "neutral", "displayName": "Night Card", "canonical": "oklch(0.21 0.022 var(--db-hue))" },
-      "dark-foreground": { "role": "neutral", "displayName": "Night Ink", "canonical": "oklch(0.97 0.01 var(--db-hue))" },
-      "dark-muted-foreground": { "role": "neutral", "displayName": "Night Quiet Ink", "canonical": "oklch(0.74 0.03 var(--db-hue))" }
+      "background": {
+        "role": "neutral",
+        "displayName": "Tinted Paper",
+        "canonical": "oklch(0.975 0.004 var(--db-hue))",
+        "tonalRamp": [
+          "oklch(0.15 0.02 248)",
+          "oklch(0.21 0.022 248)",
+          "oklch(0.3 0.02 248)",
+          "oklch(0.46 0.012 248)",
+          "oklch(0.6 0.01 248)",
+          "oklch(0.75 0.008 248)",
+          "oklch(0.89 0.008 248)",
+          "oklch(0.975 0.004 248)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.22 0.012 var(--db-hue))"
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "oklch(0.995 0.002 var(--db-hue))"
+      },
+      "card-foreground": {
+        "role": "neutral",
+        "displayName": "Card Ink",
+        "canonical": "oklch(0.2 0.01 var(--db-hue))"
+      },
+      "popover": {
+        "role": "neutral",
+        "displayName": "Popover White",
+        "canonical": "oklch(0.995 0.003 var(--db-hue))"
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Mist",
+        "canonical": "oklch(0.95 0.008 var(--db-hue))"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Mist",
+        "canonical": "oklch(0.955 0.006 var(--db-hue))"
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "oklch(0.46 0.012 var(--db-hue))"
+      },
+      "accent": {
+        "role": "neutral",
+        "displayName": "Mist Accent",
+        "canonical": "oklch(0.945 0.01 var(--db-hue))"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.89 0.008 var(--db-hue))"
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Input Hairline",
+        "canonical": "oklch(0.91 0.008 var(--db-hue))"
+      },
+      "sidebar": {
+        "role": "neutral",
+        "displayName": "Rail",
+        "canonical": "oklch(0.965 0.004 var(--db-hue))"
+      },
+      "sidebar-accent": {
+        "role": "neutral",
+        "displayName": "Rail Accent",
+        "canonical": "oklch(0.925 0.008 var(--db-hue))"
+      },
+      "destructive": {
+        "role": "neutral",
+        "displayName": "Signal Red",
+        "canonical": "oklch(0.56 0.2 28)"
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "oklch(0.175 0.02 var(--db-hue))"
+      },
+      "dark-card": {
+        "role": "neutral",
+        "displayName": "Night Card",
+        "canonical": "oklch(0.21 0.022 var(--db-hue))"
+      },
+      "dark-foreground": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "oklch(0.97 0.01 var(--db-hue))"
+      },
+      "dark-muted-foreground": {
+        "role": "neutral",
+        "displayName": "Night Quiet Ink",
+        "canonical": "oklch(0.74 0.03 var(--db-hue))"
+      }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Empty-state heading of the AI and comparable single-purpose screens." },
-      "headline": { "displayName": "Question", "purpose": "The user's question in the AI transcript." },
-      "title": { "displayName": "Title", "purpose": "Panel and rail headers, conversation titles, figure captions." },
-      "body": { "displayName": "Answer Prose", "purpose": "AI answer prose at 90% foreground, held to the reading measure." },
-      "body-ui": { "displayName": "Body UI", "purpose": "Work-line rows, follow-up questions, tabs, markdown tables." },
-      "label": { "displayName": "Label", "purpose": "Figure labels, row counts, captions, menu hints." },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Empty-state heading of the AI and comparable single-purpose screens."
+      },
+      "headline": {
+        "displayName": "Question",
+        "purpose": "The user's question in the AI transcript."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel and rail headers, conversation titles, figure captions."
+      },
+      "body": {
+        "displayName": "Answer Prose",
+        "purpose": "AI answer prose at 90% foreground, held to the reading measure."
+      },
+      "body-ui": {
+        "displayName": "Body UI",
+        "purpose": "Work-line rows, follow-up questions, tabs, markdown tables."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Figure labels, row counts, captions, menu hints."
+      },
       "micro": { "displayName": "Micro", "purpose": "Chips such as Produktion, menu footnotes." },
-      "mono": { "displayName": "Mono", "purpose": "SQL, tool output, identifiers and the number inside Abb. n." }
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "SQL, tool output, identifiers and the number inside Abb. n."
+      }
     },
     "shadows": [
-      { "name": "hairline-lift", "value": "0 1px 2px oklch(0 0 0 / 4%)", "purpose": "Figure cards at rest." },
-      { "name": "card-ambient", "value": "inset 0 1px 0 oklch(1 0 0 / 0.28), 0 10px 28px -22px oklch(0 0 0 / 0.35)", "purpose": "shadcn cards." },
-      { "name": "composer-float", "value": "0 1px 2px oklch(0 0 0 / 4%), 0 10px 28px -16px oklch(0 0 0 / 18%)", "purpose": "The AI composer." },
-      { "name": "active-tab", "value": "0 1px 3px oklch(0 0 0 / 8%)", "purpose": "Selected pill in segmented tabs." },
-      { "name": "menu-drop", "value": "drop-shadow(0 8px 16px rgb(0 0 0 / 0.14)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.08))", "purpose": "Icon menus (as filter)." },
-      { "name": "toast", "value": "0 14px 36px -10px oklch(0 0 0 / 24%), 0 4px 10px -4px oklch(0 0 0 / 12%)", "purpose": "Transient notices, the only strong shadow." },
-      { "name": "figure-focus", "value": "0 0 0 3px color-mix(in oklab, var(--primary) 14%, transparent)", "purpose": "A focused figure in the results shelf." },
-      { "name": "station-halo", "value": "0 0 0 3px var(--background)", "purpose": "Cuts a work-line station out of its rule." }
+      {
+        "name": "hairline-lift",
+        "value": "0 1px 2px oklch(0 0 0 / 4%)",
+        "purpose": "Figure cards at rest."
+      },
+      {
+        "name": "card-ambient",
+        "value": "inset 0 1px 0 oklch(1 0 0 / 0.28), 0 10px 28px -22px oklch(0 0 0 / 0.35)",
+        "purpose": "shadcn cards."
+      },
+      {
+        "name": "composer-float",
+        "value": "0 1px 2px oklch(0 0 0 / 4%), 0 10px 28px -16px oklch(0 0 0 / 18%)",
+        "purpose": "The AI composer."
+      },
+      {
+        "name": "active-tab",
+        "value": "0 1px 3px oklch(0 0 0 / 8%)",
+        "purpose": "Selected pill in segmented tabs."
+      },
+      {
+        "name": "menu-drop",
+        "value": "drop-shadow(0 8px 16px rgb(0 0 0 / 0.14)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.08))",
+        "purpose": "Icon menus (as filter)."
+      },
+      {
+        "name": "toast",
+        "value": "0 14px 36px -10px oklch(0 0 0 / 24%), 0 4px 10px -4px oklch(0 0 0 / 12%)",
+        "purpose": "Transient notices, the only strong shadow."
+      },
+      {
+        "name": "figure-focus",
+        "value": "0 0 0 3px color-mix(in oklab, var(--primary) 14%, transparent)",
+        "purpose": "A focused figure in the results shelf."
+      },
+      {
+        "name": "station-halo",
+        "value": "0 0 0 3px var(--background)",
+        "purpose": "Cuts a work-line station out of its rule."
+      }
     ],
     "motion": [
-      { "name": "ease-smooth-out", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Default curve for buttons, menus, toasts and theme shifts." },
-      { "name": "button", "value": "160ms", "purpose": "Button colour, shadow and press transitions." },
-      { "name": "control", "value": "200ms", "purpose": "Input focus, chevron rotation, follow-up arrow slide." },
+      {
+        "name": "ease-smooth-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Default curve for buttons, menus, toasts and theme shifts."
+      },
+      {
+        "name": "button",
+        "value": "160ms",
+        "purpose": "Button colour, shadow and press transitions."
+      },
+      {
+        "name": "control",
+        "value": "200ms",
+        "purpose": "Input focus, chevron rotation, follow-up arrow slide."
+      },
       { "name": "access-tint", "value": "300ms", "purpose": "Access strip tint change." },
-      { "name": "figure-focus", "value": "500ms", "purpose": "Figure focus ring and border in the shelf." },
-      { "name": "db-theme", "value": "420ms", "purpose": "Background, text and border shift when the database hue changes." },
-      { "name": "icon-menu-open", "value": "340ms ease-smooth-out", "purpose": "Icon menu morph from its trigger." },
-      { "name": "icon-menu-close", "value": "180ms cubic-bezier(0.4, 0, 1, 1)", "purpose": "Icon menu morph back." },
-      { "name": "reduced-motion", "value": "0.01ms", "purpose": "All animations and transitions collapse under prefers-reduced-motion." }
+      {
+        "name": "figure-focus",
+        "value": "500ms",
+        "purpose": "Figure focus ring and border in the shelf."
+      },
+      {
+        "name": "db-theme",
+        "value": "420ms",
+        "purpose": "Background, text and border shift when the database hue changes."
+      },
+      {
+        "name": "icon-menu-open",
+        "value": "340ms ease-smooth-out",
+        "purpose": "Icon menu morph from its trigger."
+      },
+      {
+        "name": "icon-menu-close",
+        "value": "180ms cubic-bezier(0.4, 0, 1, 1)",
+        "purpose": "Icon menu morph back."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "All animations and transitions collapse under prefers-reduced-motion."
+      }
     ],
-    "breakpoints": [
-      { "name": "md", "value": "768px" }
-    ]
+    "breakpoints": [{ "name": "md", "value": "768px" }]
   },
   "components": [
     {
@@ -151,14 +396,46 @@
       "AI answers as prose plus numbered figures, a station-dot work line and a colour-coded access strip."
     ],
     "rules": [
-      { "name": "The Tinted Neutral Rule", "body": "Every solid neutral is an OKLCH value at `--db-hue` with chroma at or below 0.03. Translucent white or black borders and shadows are the only untinted values.", "section": "colors" },
-      { "name": "The Access Is Colour Rule", "body": "Emerald, amber and red mean read, write and schema/production access in the AI. They are never used decoratively elsewhere on an AI surface.", "section": "colors" },
-      { "name": "The Shared Figure Palette Rule", "body": "Charts draw series colours from the shared figure palette, in order, so the same result looks the same in a figure, the shelf and a dashboard.", "section": "colors" },
-      { "name": "The Mono For Machines Rule", "body": "Monospace is for SQL, identifiers, raw output and figure numbers. Prose, labels and buttons stay in Plex Sans.", "section": "typography" },
-      { "name": "The Tabular Ground Rule", "body": "The body sets `font-variant-numeric: tabular-nums`; numbers in tables, counts and timers align without per-element opt-in.", "section": "typography" },
-      { "name": "The Reading Measure Rule", "body": "Transcript content is capped at 704px (44rem; 46rem for the full-page empty state) and centred; answers never stretch to the window.", "section": "layout" },
-      { "name": "The Whisper Shadow Rule", "body": "Resting surfaces use a shadow no darker than 4% at small offsets; anything heavier is reserved for floating, transient layers.", "section": "elevation" },
-      { "name": "The One Radius Root Rule", "body": "New radii are expressed as a multiple of `--radius`, never as a free pixel value, so the whole app stays concentric when the root changes.", "section": "shapes" }
+      {
+        "name": "The Tinted Neutral Rule",
+        "body": "Every solid neutral is an OKLCH value at `--db-hue` with chroma at or below 0.03. Translucent white or black borders and shadows are the only untinted values.",
+        "section": "colors"
+      },
+      {
+        "name": "The Access Is Colour Rule",
+        "body": "Emerald, amber and red mean read, write and schema/production access in the AI. They are never used decoratively elsewhere on an AI surface.",
+        "section": "colors"
+      },
+      {
+        "name": "The Shared Figure Palette Rule",
+        "body": "Charts draw series colours from the shared figure palette, in order, so the same result looks the same in a figure, the shelf and a dashboard.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono For Machines Rule",
+        "body": "Monospace is for SQL, identifiers, raw output and figure numbers. Prose, labels and buttons stay in Plex Sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Ground Rule",
+        "body": "The body sets `font-variant-numeric: tabular-nums`; numbers in tables, counts and timers align without per-element opt-in.",
+        "section": "typography"
+      },
+      {
+        "name": "The Reading Measure Rule",
+        "body": "Transcript content is capped at 704px (44rem; 46rem for the full-page empty state) and centred; answers never stretch to the window.",
+        "section": "layout"
+      },
+      {
+        "name": "The Whisper Shadow Rule",
+        "body": "Resting surfaces use a shadow no darker than 4% at small offsets; anything heavier is reserved for floating, transient layers.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Radius Root Rule",
+        "body": "New radii are expressed as a multiple of `--radius`, never as a free pixel value, so the whole app stays concentric when the root changes.",
+        "section": "shapes"
+      }
     ],
     "dos": [
       "Do derive every new neutral from `--db-hue` in OKLCH so the surface follows the active database.",
