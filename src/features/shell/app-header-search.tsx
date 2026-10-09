@@ -285,6 +285,7 @@ export function AppHeaderSearch() {
       pathname,
       activeConnection !== null,
     );
+    const compareItems = builders.buildCompareItems(activeConnection !== null, setOpen, navigate);
     return [
       ...connectionItems,
       connectionManagerItem,
