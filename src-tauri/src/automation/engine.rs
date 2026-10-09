@@ -1374,6 +1374,7 @@ pub(crate) mod tests {
                 tags: vec!["lab".into()],
                 ssh: None,
                 proxy: None,
+                command_tunnel: None,
                 vault: false,
             });
             services.store.replace_connections(list).await.unwrap();
