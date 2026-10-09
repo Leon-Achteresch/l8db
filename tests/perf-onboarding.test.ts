@@ -132,3 +132,87 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
   },
   60000,
 );
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "onboarding appearance steps switch table styles within budget and skip restores defaults",
+  async () => {
+    const dist = resolve(process.env.L8DB_PERF_DIST ?? "dist");
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const path = new URL(request.url).pathname;
+        const file = Bun.file(resolve(dist, path.slice(1)));
+        return new Response(
+          path !== "/" && (await file.exists()) ? file : Bun.file(resolve(dist, "index.html")),
+        );
+      },
+    });
+    const engine = process.env.L8DB_PERF_ENGINE === "webkit" ? "webkit" : "chromium";
+    const browser = await (engine === "webkit" ? webkit : chromium).launch({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+      await seedApp(page, 3000);
+      await page.addInitScript(() => {
+        const stored = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
+        stored.state.onboardingDone = false;
+        localStorage.setItem("l8db.settings", JSON.stringify(stored));
+      });
+      await page.goto(`http://localhost:${server.port}/`);
+      await page.getByRole("dialog", { name: "Willkommen bei l8db" }).waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Weiter", exact: true }).click();
+      await page.getByRole("heading", { name: "Wie sollen deine Tabellen aussehen?" }).waitFor();
+      if (engine === "chromium")
+        await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", {
+          rate: 4,
+        });
+      const metrics = await page.evaluate(async () => {
+        const frame = () => new Promise(requestAnimationFrame);
+        await frame();
+        const nodesBefore = document.querySelectorAll("*").length;
+        const styles = ["compact", "semantic", "profile", "classic"];
+        const durations: number[] = [];
+        for (let turn = 0; turn < 12; turn++) {
+          const style = styles[turn % styles.length];
+          const started = performance.now();
+          document.querySelector<HTMLElement>(`[data-table-style="${style}"] input`)?.click();
+          await frame();
+          await frame();
+          const stored = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
+          if (stored.state.tableStyle !== style) throw new Error(`style ${style} not applied`);
+          if (turn > 2) durations.push(performance.now() - started);
+        }
+        durations.sort((left, right) => left - right);
+        return {
+          medianMs: durations[4],
+          p95Ms: durations[8],
+          nodesBefore,
+          nodesAfter: document.querySelectorAll("*").length,
+        };
+      });
+      expect(metrics.p95Ms).toBeLessThan(250);
+      expect(metrics.nodesAfter).toBeLessThanOrEqual(metrics.nodesBefore + 20);
+      await page.evaluate(() => {
+        document.querySelector<HTMLElement>('[data-table-style="profile"] input')?.click();
+      });
+      await page.getByRole("button", { name: "Überspringen", exact: true }).click();
+      await page.getByRole("heading", { name: "Wie viel Werkzeug brauchst du?" }).waitFor();
+      const settings = await page.evaluate(
+        () => JSON.parse(localStorage.getItem("l8db.settings") ?? "{}").state,
+      );
+      expect(settings.tableStyle).toBe("classic");
+      expect(settings.monochromeCells).toBe(true);
+      expect(settings.uiDensity).toBe("normal");
+      await reportScenario(`onboarding-appearance-${engine}`, {
+        browser: browser.version(),
+        cpuRate: engine === "chromium" ? 4 : 1,
+        samples: 9,
+        ...metrics,
+      });
+    } finally {
+      await browser.close();
+      server.stop(true);
+    }
+  },
+  60000,
+);

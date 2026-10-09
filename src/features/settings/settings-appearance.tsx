@@ -3,11 +3,11 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
-import { TableStylePicker } from "@/features/settings/table-style-picker";
+import { SettingsTableAppearance } from "@/features/settings/settings-table-appearance";
 import { islandName, previewIsland } from "@/lib/dynamic-island";
 import { UI_SCALE_MAX, UI_SCALE_MIN, UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 
-export function SettingsAppearance() {
+export function SettingsAppearance({ onboarding = false }: { onboarding?: boolean }) {
   const {
     uiScale,
     uiDensity,
@@ -17,12 +17,9 @@ export function SettingsAppearance() {
     fitColumnsToHeader,
     monochromeCells,
     tableStyle,
-    setTableStyle,
     setSidebarExtraCompact,
     setNavInHeader,
     setDynamicIsland,
-    setFitColumnsToHeader,
-    setMonochromeCells,
     setUiScale,
     setUiDensity,
     resetAppearance,
@@ -108,43 +105,31 @@ export function SettingsAppearance() {
           />
         </div>
       </SettingsRow>
-      <SettingsRow settingId="table-style" featureId="settings.appearance.table-style" stacked>
-        <TableStylePicker value={tableStyle} onChange={setTableStyle} />
-      </SettingsRow>
-      <SettingsRow settingId="fit-columns-to-header">
-        <Switch
-          aria-label="An Spaltentitel anpassen"
-          checked={fitColumnsToHeader}
-          onCheckedChange={setFitColumnsToHeader}
-        />
-      </SettingsRow>
-      <SettingsRow settingId="monochrome-cells">
-        <Switch
-          aria-label="Einfarbige Tabellenwerte"
-          checked={monochromeCells}
-          onCheckedChange={setMonochromeCells}
-        />
-      </SettingsRow>
-      <SettingsRow settingId="reset-appearance">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={
-            uiScale === 100 &&
-            uiDensity === "normal" &&
-            !sidebarExtraCompact &&
-            !navInHeader &&
-            dynamicIsland &&
-            fitColumnsToHeader &&
-            monochromeCells &&
-            tableStyle === "classic"
-          }
-          onClick={resetAppearance}
-        >
-          <RotateCcw className="size-3.5" />
-          Zurücksetzen
-        </Button>
-      </SettingsRow>
+      {onboarding ? null : (
+        <>
+          <SettingsTableAppearance />
+          <SettingsRow settingId="reset-appearance">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                uiScale === 100 &&
+                uiDensity === "normal" &&
+                !sidebarExtraCompact &&
+                !navInHeader &&
+                dynamicIsland &&
+                fitColumnsToHeader &&
+                monochromeCells &&
+                tableStyle === "classic"
+              }
+              onClick={resetAppearance}
+            >
+              <RotateCcw className="size-3.5" />
+              Zurücksetzen
+            </Button>
+          </SettingsRow>
+        </>
+      )}
     </>
   );
 }
