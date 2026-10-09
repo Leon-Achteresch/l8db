@@ -134,8 +134,14 @@ export function DataTable({ rows, shape, options, compare }: ChartProps) {
           <tfoot className="sticky bottom-0 bg-card font-medium">
             <tr className="border-t">
               {dims.map((d, i) => (
-                <td key={d.key} className="px-2.5 py-1.5">
-                  {i === 0 ? "Summe" : ""}
+                <td
+                  key={d.key}
+                  className="px-2.5 py-1.5"
+                  title={
+                    i === 0 ? "Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)" : undefined
+                  }
+                >
+                  {i === 0 ? "Summe geladener Zeilen" : ""}
                 </td>
               ))}
               {metrics.map((m) => (

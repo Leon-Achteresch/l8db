@@ -240,13 +240,13 @@ export function dateLiteral(iso: string, kind: DatabaseKind | null): string {
 const ISO_DATE =
   /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
 
-export function crossLiteral(value: unknown, kind: DatabaseKind | null): string {
+export function crossLiteral(value: unknown, kind: DatabaseKind | null, temporal = false): string {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "bigint") return String(value);
   if (typeof value === "boolean")
     return kind === "mssql" || kind === "oracle" ? (value ? "1" : "0") : String(value);
   const text = typeof value === "string" ? value : JSON.stringify(value);
-  if (kind === "oracle" && ISO_DATE.test(text)) {
+  if (kind === "oracle" && temporal && ISO_DATE.test(text)) {
     const time = text.slice(11, 19);
     return time && time !== "00:00:00" && time.length === 8
       ? `TIMESTAMP '${text.slice(0, 10)} ${time}'`
@@ -255,10 +255,15 @@ export function crossLiteral(value: unknown, kind: DatabaseKind | null): string 
   return quoteString(text, kind ?? undefined);
 }
 
-export function crossCondition(expr: string, value: unknown, kind: DatabaseKind | null): string {
+export function crossCondition(
+  expr: string,
+  value: unknown,
+  kind: DatabaseKind | null,
+  temporal = false,
+): string {
   return value === null || value === undefined
     ? `${expr} IS NULL`
-    : `${expr} = ${crossLiteral(value, kind)}`;
+    : `${expr} = ${crossLiteral(value, kind, temporal)}`;
 }
 
 export const DIM_KEY = "dim";
@@ -336,6 +341,7 @@ export function buildSimpleSql(
         bucketExpr(refExpr(cross.ref, ds, style), cross.bucket, kind),
         cross.value,
         kind,
+        cross.bucket !== "none",
       ),
     );
   if (ds.dateColumn) where.push(...rangeConditions(refExpr(ds.dateColumn, ds, style), range, kind));

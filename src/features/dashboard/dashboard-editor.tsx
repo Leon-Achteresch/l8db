@@ -17,6 +17,7 @@ import {
   dashboardPages,
   emptyDataset,
   type Period,
+  pageOf,
   paletteStyle,
   removePage,
   sanitizeTheme,
@@ -90,9 +91,10 @@ export function DashboardEditor({
   const interaction = useMemo(
     () => ({
       dashboardId: dashboard.id,
+      presenting: presentation.presenting,
       goToPage: (id: string) => setPageId(id),
     }),
-    [dashboard.id],
+    [dashboard.id, presentation.presenting],
   );
   useEffect(() => () => useCrossFilterStore.getState().clear(dashboard.id), [dashboard.id]);
   useEffect(() => {
@@ -204,7 +206,7 @@ export function DashboardEditor({
           ...d.widgets,
           settle(
             { ...next.widget, w: CHARTS[next.widget.chart].w, h: CHARTS[next.widget.chart].h },
-            widgetsOnPage(d.widgets, dashboardPages(d), next.widget.page ?? activePage),
+            widgetsOnPage(d.widgets, dashboardPages(d), pageOf(next.widget, dashboardPages(d))),
           ),
         ],
         datasets: [...d.datasets, next.dataset],
@@ -251,7 +253,7 @@ export function DashboardEditor({
           id: createId(),
           title: `${draft.widget.title || draft.dataset.name || "Chart"} (Kopie)`,
         },
-        widgetsOnPage(d.widgets, dashboardPages(d), draft.widget.page ?? activePage),
+        widgetsOnPage(d.widgets, dashboardPages(d), pageOf(draft.widget, dashboardPages(d))),
       );
       const dataset = { ...structuredClone(draft.dataset), id: createId() };
       copy.datasetId = dataset.id;
@@ -345,7 +347,6 @@ export function DashboardEditor({
                     useChartTabsStore.getState().focus(dashboard.id, null);
                     setDesignDraft(null);
                     setThemeDraft(null);
-                    if (!dashboard.locked) update({ locked: true });
                     presentation.start();
                   }}
                   onReload={() => {
@@ -397,6 +398,7 @@ export function DashboardEditor({
                 open={drawer === "charts"}
                 onOpenChange={(open) => setDrawer(open ? "charts" : null)}
                 dashboard={dashboard}
+                pageId={activePage}
                 onLoaded={(id) => {
                   update({ locked: false });
                   startEdit(id);

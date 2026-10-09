@@ -1,5 +1,5 @@
 import { CodeIcon, DownloadIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,19 +13,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { queryErrorMessage } from "@/lib/connection-url";
 import { type DatasetShape, DEFAULT_OPTIONS, DETAIL_LIMIT } from "@/lib/dashboards";
 import { exportRowsCsv } from "@/lib/dashboards/csv";
+import { applyMasks } from "@/lib/masking";
+import { useActiveMasks } from "@/lib/masking-display";
 import { DataTable } from "./charts/data-table";
 import { useSqlQuery } from "./use-dataset-query";
 import { useWidgetDetailsStore } from "./widget-details-store";
 
 const RAW_SHAPE: DatasetShape = { dimension: null, dimension2: null, metrics: [], hasDate: false };
 const RAW_OPTIONS = { ...DEFAULT_OPTIONS, totals: false };
+const NO_COLUMNS: string[] = [];
+const NO_ROWS: Record<string, unknown>[] = [];
 
 export function WidgetDetailsDialog() {
   const request = useWidgetDetailsStore((s) => s.request);
   const close = useWidgetDetailsStore((s) => s.close);
   const [showSql, setShowSql] = useState(false);
   const query = useSqlQuery(request?.sql ?? "");
-  const rows = query.data?.rows ?? [];
+  const columns = query.data?.columns ?? NO_COLUMNS;
+  const { active: masks } = useActiveMasks(columns);
+  const raw = query.data?.rows ?? NO_ROWS;
+  const rows = useMemo(() => applyMasks(columns, raw, masks), [columns, raw, masks]);
   return (
     <Dialog open={request !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-5xl">
@@ -44,7 +51,7 @@ export function WidgetDetailsDialog() {
             onClick={async () => {
               if (!query.data || !request) return;
               try {
-                if (await exportRowsCsv(request.title, query.data.columns, rows))
+                if (await exportRowsCsv(request.title, columns, rows))
                   toast.success("CSV exportiert");
               } catch (error) {
                 toast.error(error instanceof Error ? error.message : "Export fehlgeschlagen");

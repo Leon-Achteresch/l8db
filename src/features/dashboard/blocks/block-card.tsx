@@ -8,6 +8,7 @@ import {
   type WidgetBlock,
 } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
+import { useDashboardInteraction } from "../dashboard-interaction";
 import { BlockEditor } from "./block-editor";
 import { DividerBlock } from "./divider-block";
 import { ImageBlock } from "./image-block";
@@ -27,9 +28,11 @@ export const BlockCard = memo(function BlockCard({
   const widget = useDashboardsStore((s) =>
     s.dashboards.find((d) => d.id === dashboardId)?.widgets.find((w) => w.id === widgetId),
   );
-  const locked = useDashboardsStore(
+  const presenting = useDashboardInteraction()?.presenting ?? false;
+  const storedLock = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.locked ?? false,
   );
+  const locked = storedLock || presenting;
   const pages = useDashboardsStore((s) => s.dashboards.find((d) => d.id === dashboardId)?.pages);
   const variables = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.variables ?? NO_VARIABLES,

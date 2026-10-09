@@ -3,7 +3,7 @@ import type { DashboardTheme, ThemeCard, ThemeDensity, ThemeFont } from "./model
 export const MAX_IMAGE_BYTES = 512 * 1024;
 export const MAX_PALETTE = 8;
 
-const COLOR = /^(?:#[0-9a-f]{3,8}|(?:rgba?|hsla?|oklch|oklab)\([0-9a-z.,%/ +-]*\))$/i;
+const COLOR = /^(?:#[0-9a-fA-F]{3,8}|(?:rgba?|hsla?|oklch|oklab)\([0-9a-zA-Z.,%/ +-]*\))$/;
 const IMAGE = /^data:image\/(?:png|jpeg|gif|webp|svg\+xml)(?:;[a-z0-9=._+-]+)*,/i;
 const HTTPS = /^https:\/\/[^\s"'<>]+$/i;
 

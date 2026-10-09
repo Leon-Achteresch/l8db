@@ -2318,3 +2318,23 @@ fn arrange_and_theme_validation_stay_fast() {
     assert!(worst < 50.0, "arrange took {worst} ms");
     assert!(theme_worst < 20.0, "theme validation took {theme_worst} ms");
 }
+
+#[test]
+fn compacted_images_from_get_keep_the_stored_image() {
+    let logo = format!("data:image/png;base64,{}", "A".repeat(4096));
+    let shown = compact_image(&logo);
+    let current = json!({"brand": "ACME", "logo": logo});
+    let (merged, _) = merge_theme(&current, &json!({"brand": "ACME 2", "logo": shown})).unwrap();
+    assert_eq!(merged["logo"], json!(logo));
+    assert_eq!(merged["brand"], json!("ACME 2"));
+    let error = merge_theme(&json!({}), &json!({"logo": shown})).unwrap_err();
+    assert!(error.contains("gekürzte Anzeige"), "{error}");
+    assert!(check_image(&json!(shown), "src").is_err());
+    assert!(check_image(&json!(logo), "src").is_ok());
+}
+
+#[test]
+fn overlong_colors_are_rejected() {
+    assert!(valid_color("#123456"));
+    assert!(!valid_color(&format!("rgb({})", "1".repeat(80))));
+}
