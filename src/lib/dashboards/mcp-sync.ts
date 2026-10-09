@@ -1,12 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { validateDashboardDesign } from "@/lib/dashboard-design";
-import { confirmExpertSql, dashboardSqlParts } from "@/lib/dashboard-file";
+import { confirmExpertSql, dashboardSqlParts, sanitizePages } from "@/lib/dashboard-file";
 import type { Dashboard } from "./model";
 import { useDashboardsStore, withoutDashboardHistory } from "./store";
+import { sanitizeTheme } from "./theme";
 
 type Content = Pick<
   Dashboard,
-  "name" | "datasets" | "widgets" | "refreshSec" | "variables" | "design"
+  "name" | "datasets" | "widgets" | "refreshSec" | "variables" | "design" | "pages" | "theme"
 >;
 
 export interface McpDashboardFile extends Omit<Content, "design"> {
@@ -48,6 +49,8 @@ function content(dashboard: Content): string {
     dashboard.refreshSec,
     dashboard.variables ?? [],
     dashboard.design ?? null,
+    dashboard.pages ?? [],
+    dashboard.theme ?? null,
   ]);
 }
 
@@ -60,12 +63,12 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       continue;
     }
     if (pending.has(file.id)) continue;
-    if (file.design != null) {
-      try {
-        validateDashboardDesign(file.design);
-      } catch {
-        continue;
-      }
+    let theme: Dashboard["theme"] = null;
+    try {
+      if (file.design != null) validateDashboardDesign(file.design);
+      theme = sanitizeTheme(file.theme);
+    } catch {
+      continue;
     }
     if (!approved(file, current)) continue;
     const next = {
@@ -75,6 +78,8 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       variables: file.variables ?? [],
       refreshSec: file.refreshSec ?? 0,
       design: file.design ?? undefined,
+      pages: sanitizePages(file.pages),
+      theme,
       mcpStamp: file.stamp,
     };
     synced.set(file.id, content(next));
@@ -114,6 +119,8 @@ async function writeBack(mcpId: string): Promise<void> {
         ...(dashboard.variables?.length ? { variables: dashboard.variables } : {}),
         refreshSec: dashboard.refreshSec,
         ...(dashboard.design ? { design: dashboard.design } : {}),
+        ...(dashboard.pages?.length ? { pages: dashboard.pages } : {}),
+        ...(dashboard.theme ? { theme: dashboard.theme } : {}),
       },
     });
     useDashboardsStore.getState().update(dashboard.id, { mcpStamp: stamp });

@@ -1,5 +1,5 @@
 import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -18,12 +18,16 @@ import {
   PERIOD_LABEL,
   type Period,
   type Widget,
+  widgetOptions,
 } from "@/lib/dashboards";
+import { ChartPointMenu } from "./chart-point-menu";
 import { CHART_RENDERERS, ChartHeadline, ChartLegend } from "./charts";
 import { useDashboardPeriod } from "./dashboard-period";
 import { useChartSlot } from "./use-chart-slot";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
 import { useWidgetData } from "./use-widget-data";
+import { useWidgetInteractions } from "./use-widget-interactions";
+import { WidgetMenu } from "./widget-menu";
 
 export function WidgetCardInner({
   widget,
@@ -47,7 +51,17 @@ export function WidgetCardInner({
   useEffect(() => setViewPeriod(widget.period), [widget.period]);
   const sharedPeriod = useDashboardPeriod();
   const period = sharedPeriod ?? (locked ? viewPeriod : widget.period);
-  const sql = useDatasetSql(dataset, period);
+  const baseOptions = useMemo(() => widgetOptions(widget), [widget]);
+  const title = widget.title || dataset?.name || CHARTS[widget.chart].label;
+  const interact = useWidgetInteractions({
+    widget,
+    dataset,
+    options: baseOptions,
+    period,
+    title,
+  });
+  const effective = interact.effective;
+  const sql = useDatasetSql(effective, period);
   const query = useSqlQuery(sql, refreshSec * 1000);
   const {
     options,
@@ -61,13 +75,18 @@ export function WidgetCardInner({
     legend,
     bucket,
     summaryPending,
-  } = useWidgetData({ widget, dataset, period, query, refreshMs: refreshSec * 1000 });
+  } = useWidgetData({
+    widget,
+    dataset: effective,
+    period,
+    query,
+    refreshMs: refreshSec * 1000,
+  });
   const Renderer = CHART_RENDERERS[widget.chart];
   const chartReady = useChartSlot(
     Boolean(shape) && !problem && query.isSuccess && rows.length > 0,
     rootRef,
   );
-  const title = widget.title || dataset?.name || CHARTS[widget.chart].label;
   const periodPicker = Boolean(shape?.hasDate && options.showPeriod && !sharedPeriod);
   const subtitle =
     widget.subtitle ??
@@ -85,8 +104,16 @@ export function WidgetCardInner({
   return (
     <div
       ref={rootRef}
-      className="dashboard-widget flex h-full flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xs"
+      data-cross-scope={interact.scopeId}
+      className="dashboard-widget relative flex h-full flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xs"
     >
+      {interact.highlightCss && <style>{interact.highlightCss}</style>}
+      <ChartPointMenu
+        point={interact.point}
+        onClose={interact.closePoint}
+        onFilter={interact.filterPoint}
+        onDetails={interact.detailsPoint}
+      />
       <div className="dashboard-widget-header mb-3 flex shrink-0 flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -133,6 +160,13 @@ export function WidgetCardInner({
                 </SelectContent>
               </Select>
             )}
+            {interact.interactive && (
+              <WidgetMenu
+                onDetails={interact.openAllDetails}
+                onExport={query.data ? () => void interact.exportCsv(query.data) : undefined}
+                onClearFilter={interact.clearOwnFilter}
+              />
+            )}
             {!locked && onEdit && (
               <IconButton
                 variant="ghost"
@@ -169,7 +203,11 @@ export function WidgetCardInner({
           </div>
         )}
       </div>
-      <div className="dashboard-widget-content min-h-0 flex-1 overflow-hidden">
+      <div
+        className={`dashboard-widget-content min-h-0 flex-1 overflow-hidden${interact.pointer ? " [&_[data-active-dim]]:cursor-pointer [&_[data-dim]]:cursor-pointer" : ""}`}
+        role="presentation"
+        onClick={interact.onContentClick}
+      >
         {problem || !shape ? (
           <div className="grid h-full place-items-center text-center text-xs text-muted-foreground">
             {problem}

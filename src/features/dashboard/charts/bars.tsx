@@ -1,10 +1,15 @@
 import { COMPARE_MARK, fmtShare, fmtValue, fmtValueCompact } from "@/lib/dashboards";
-import { accent, CHAR_WIDTH, type ChartProps, categories } from "./chart-utils";
+import { accent, CHAR_WIDTH, type ChartProps, categories, dimAttr } from "./chart-utils";
 
 export function Bars({ rows, shape, options, compare }: ChartProps) {
   const items = categories(rows, shape);
   const ghost = compare?.values ?? [];
-  const max = Math.max(1, ...items.map((i) => i.value), ...ghost.map((v) => v ?? 0));
+  const max = Math.max(
+    1,
+    ...items.map((i) => i.value),
+    ...ghost.map((v) => v ?? 0),
+    options.target ?? 0,
+  );
   const total = items.reduce((s, i) => s + Math.max(0, i.value), 0);
   const fill = accent(options);
   const texts = items.map((item) => ({
@@ -22,6 +27,7 @@ export function Bars({ rows, shape, options, compare }: ChartProps) {
           return (
             <div
               key={item.name}
+              data-dim={dimAttr(item.raw)}
               className="col-span-2 grid grid-cols-subgrid items-center"
               title={
                 compare && before != null
@@ -43,6 +49,13 @@ export function Bars({ rows, shape, options, compare }: ChartProps) {
                     <span className="ml-1.5 text-muted-foreground">{texts[i].share}</span>
                   )}
                 </span>
+                {options.target !== null && (
+                  <span
+                    title={options.targetLabel || "Ziel"}
+                    className="pointer-events-none absolute inset-y-0.5 w-0 border-l border-dashed border-foreground/60"
+                    style={{ left: scaled(options.target) }}
+                  />
+                )}
                 {before != null && (
                   <span
                     className="absolute top-1/2 h-5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full"

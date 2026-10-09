@@ -13,6 +13,7 @@ import { GaugeChart } from "./gauge-chart";
 import { Heatmap } from "./heatmap";
 import { Kpi } from "./kpi";
 import { Lines } from "./lines";
+import { PivotTable } from "./pivot-table";
 import { RadarNet } from "./radar-net";
 import { Rings } from "./rings";
 import { Score } from "./score";
@@ -35,5 +36,6 @@ export const CHART_RENDERERS: Record<ChartKind, ComponentType<ChartProps>> = {
   gauge: memo(GaugeChart),
   treemap: memo(TreemapChart),
   heatmap: memo(Heatmap),
+  pivot: memo(PivotTable),
   table: memo(DataTable),
 };

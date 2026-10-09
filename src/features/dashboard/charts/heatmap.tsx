@@ -1,16 +1,23 @@
 import { fmtValue, fmtValueCompact, toLabel, toNumber } from "@/lib/dashboards";
-import { accent, type ChartProps, dimensionLabels } from "./chart-utils";
+import { accent, type ChartProps, dimAttr, dimensionLabels } from "./chart-utils";
 
 export function Heatmap({ rows, shape, options }: ChartProps) {
   const metric = shape.metrics[0]?.key ?? "";
   const xs: string[] = [];
   const ys: string[] = [];
   const cells = new Map<string, number>();
+  const raw = new Map<string, unknown>();
   for (const row of rows) {
     const y = toLabel(row[shape.dimension ?? ""]);
     const x = toLabel(row[shape.dimension2 ?? ""]);
-    if (!xs.includes(x)) xs.push(x);
-    if (!ys.includes(y)) ys.push(y);
+    if (!xs.includes(x)) {
+      xs.push(x);
+      raw.set(`x${x}`, row[shape.dimension2 ?? ""]);
+    }
+    if (!ys.includes(y)) {
+      ys.push(y);
+      raw.set(`y${y}`, row[shape.dimension ?? ""]);
+    }
     cells.set(`${y}|${x}`, (cells.get(`${y}|${x}`) ?? 0) + toNumber(row[metric]));
   }
   const max = Math.max(1, ...cells.values());
@@ -45,6 +52,8 @@ export function Heatmap({ rows, shape, options }: ChartProps) {
                 return (
                   <td
                     key={x}
+                    data-dim={dimAttr(raw.get(`y${y}`))}
+                    data-dim2={dimAttr(raw.get(`x${x}`))}
                     title={`${yNames.long[row]} × ${xNames.long[xs.indexOf(x)]}: ${fmtValue(v, options)}`}
                     className="h-8 rounded-[4px] text-center tabular-nums"
                     style={{

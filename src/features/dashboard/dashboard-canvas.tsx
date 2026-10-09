@@ -1,15 +1,19 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import {
   type Dashboard,
+  type DashboardPage,
+  dashboardPages,
   GRID_COLS,
   GRID_GAP,
-  minSize,
   rowHeightFor,
   useDashboardsStore,
   type Widget,
+  widgetMinSize,
+  widgetsOnPage,
 } from "@/lib/dashboards";
+import { BlockCard } from "./blocks/block-card";
 import { DashboardEmptyCanvas } from "./dashboard-empty-canvas";
 import { WidgetCard } from "./widget-card";
 
@@ -17,19 +21,26 @@ const EMPTY_WIDGETS: Widget[] = [];
 
 export const DashboardCanvas = memo(function DashboardCanvas({
   dashboardId,
+  pageId,
   onEdit,
   onAdd,
   onOpenCharts,
 }: {
   dashboardId: string;
+  pageId: string;
   onEdit?: (id: string) => void;
   onAdd?: () => void;
   onOpenCharts?: () => void;
 }) {
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
-  const widgets = useDashboardsStore(
+  const allWidgets = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.widgets ?? EMPTY_WIDGETS,
   );
+  const pages = useDashboardsStore((s) => s.dashboards.find((d) => d.id === dashboardId)?.pages);
+  const widgets = useMemo(() => {
+    const list: DashboardPage[] = dashboardPages({ pages });
+    return widgetsOnPage(allWidgets, list, pageId);
+  }, [allWidgets, pages, pageId]);
   const locked = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.locked ?? false,
   );
@@ -44,7 +55,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
     y: w.y,
     w: w.w,
     h: w.h,
-    ...minSize(w.chart),
+    ...widgetMinSize(w),
     static: dashboard.locked,
   }));
 
@@ -92,15 +103,20 @@ export const DashboardCanvas = memo(function DashboardCanvas({
               <div
                 key={w.id}
                 data-widget-id={w.id}
-                data-chart-type={w.chart}
+                data-chart-type={w.block ? undefined : w.chart}
+                data-block-type={w.block?.type}
                 className="[&_.react-resizable-handle]:z-10"
               >
-                <WidgetCard
-                  dashboardId={dashboardId}
-                  widgetId={w.id}
-                  scrollRoot={scrollRoot}
-                  onEdit={onEdit}
-                />
+                {w.block ? (
+                  <BlockCard dashboardId={dashboardId} widgetId={w.id} />
+                ) : (
+                  <WidgetCard
+                    dashboardId={dashboardId}
+                    widgetId={w.id}
+                    scrollRoot={scrollRoot}
+                    onEdit={onEdit}
+                  />
+                )}
               </div>
             ))}
           </GridLayout>

@@ -6,12 +6,14 @@ import { ChartTooltip } from "./chart-tooltip";
 import {
   CHAR_WIDTH,
   type ChartProps,
+  dimAttr,
   dimensionLabels,
   series,
   seriesColor,
   xAxisLabels,
 } from "./chart-utils";
 import { curvePath, niceTicks, type Point, scale, stackValues } from "./svg-geometry";
+import { TargetLine } from "./target-line";
 
 const MAX_DOTS = 40;
 
@@ -47,6 +49,10 @@ export function PointSeriesChart({
         min = Math.min(min, value);
         max = Math.max(max, value);
       }
+    if (options.target !== null) {
+      min = Math.min(min, options.target);
+      max = Math.max(max, options.target);
+    }
     const ticks = niceTicks(min, max, Math.max(2, Math.min(4, Math.floor(height / 70))));
     const tickText = ticks.map((t) => fmtValueCompact(t, options));
     const left = Math.max(28, ...tickText.map((t) => t.length * CHAR_WIDTH)) + 12;
@@ -80,6 +86,13 @@ export function PointSeriesChart({
           yLabels={ticks.map((t, i) => ({ pos: y(t), text: tickText[i] }))}
           xLabels={xAxisLabels(names.short, x, n < 2 ? span : span / (n - 1), width)}
         />
+        {options.target !== null && (
+          <TargetLine
+            box={box}
+            pos={y(options.target)}
+            label={options.targetLabel || `Ziel ${fmtValueCompact(options.target, options)}`}
+          />
+        )}
       </>
     );
     const marks = (
@@ -157,7 +170,13 @@ export function PointSeriesChart({
   const ghostValue = hover !== null ? compare?.values[hover] : null;
 
   return (
-    <div ref={ref} className="relative h-full w-full">
+    <div
+      ref={ref}
+      className="relative h-full w-full"
+      data-active-dim={
+        hover !== null && shape.dimension ? dimAttr(rows[hover]?.[shape.dimension]) : undefined
+      }
+    >
       {width > 0 && height > 0 && (
         <svg
           className="chart-surface"

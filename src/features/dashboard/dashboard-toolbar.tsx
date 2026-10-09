@@ -9,8 +9,10 @@ import {
   PaletteIcon,
   PencilIcon,
   PlusIcon,
+  PresentationIcon,
   RainbowIcon,
   RefreshCwIcon,
+  ShapesIcon,
   TimerIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -46,6 +48,9 @@ import {
 import { UndoRedoControls } from "@/components/undo-redo-controls";
 import { fileLabel } from "@/lib/dashboard-file";
 import {
+  BLOCK_HINT,
+  BLOCK_LABEL,
+  type BlockKind,
   type Dashboard,
   type DashboardPaletteMode,
   PERIOD_LABEL,
@@ -54,6 +59,7 @@ import {
   undoDashboards,
   useDashboardPalette,
 } from "@/lib/dashboards";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +89,8 @@ export function DashboardToolbar({
   onCreate,
   onUpdate,
   onNewChart,
+  onAddBlock,
+  onPresent,
   onReload,
   onDrawer,
   onDesign,
@@ -101,11 +109,15 @@ export function DashboardToolbar({
   onCreate: () => void;
   onUpdate: (patch: Partial<Dashboard>) => void;
   onNewChart: () => void;
+  onAddBlock: (type: BlockKind) => void;
+  onPresent: () => void;
   onReload: () => void;
   onDesign: () => void;
   onDrawer: (drawer: "dashboards" | "charts") => void;
 }) {
-  const hasNewDesign = useHasNewFeatures("dashboard.design.css");
+  const hasNewDesign = useHasNewFeatures("dashboard.design");
+  const blocksFeature = useNewFeatureVisibility<HTMLButtonElement>("dashboard.blocks");
+  const presentFeature = useNewFeatureVisibility<HTMLButtonElement>("dashboard.present");
   const paletteMode = useDashboardPalette((s) => s.mode);
   const setPaletteMode = useDashboardPalette((s) => s.setMode);
   const fetching = useIsFetching({ queryKey: ["dashboard-data"] });
@@ -115,7 +127,7 @@ export function DashboardToolbar({
   }, [fetching]);
 
   return (
-    <div className="dashboard-toolbar flex h-11 shrink-0 items-center gap-2 border-b px-3">
+    <div className="dashboard-toolbar @container/toolbar flex h-11 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-3">
       <div className="flex min-w-0 items-center gap-0.5">
         {editing && !compact && (
           <Input
@@ -239,7 +251,7 @@ export function DashboardToolbar({
               </Select>
             </div>
             {updatedAt && (
-              <span className="hidden text-xs tabular-nums text-muted-foreground lg:inline">
+              <span className="hidden text-xs tabular-nums text-muted-foreground @[1180px]/toolbar:inline">
                 Aktualisiert {TIME.format(updatedAt)}
               </span>
             )}
@@ -251,8 +263,27 @@ export function DashboardToolbar({
             >
               <LibraryIcon />
             </IconButton>
-            <Button variant="outline" size="sm" className="h-7" onClick={onDesign}>
-              <PaletteIcon /> Design
+            <Button
+              ref={presentFeature.ref}
+              variant="ghost"
+              size="sm"
+              className="h-7"
+              aria-label="Präsentieren"
+              onClick={onPresent}
+            >
+              <PresentationIcon />
+              <span className="hidden @[1000px]/toolbar:inline">Präsentieren</span>
+              {presentFeature.isNew && <NewBadge />}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7"
+              aria-label="Design"
+              onClick={onDesign}
+            >
+              <PaletteIcon />
+              <span className="hidden @[760px]/toolbar:inline">Design</span>
               {hasNewDesign && <NewBadge />}
             </Button>
             {editing ? (
@@ -261,10 +292,42 @@ export function DashboardToolbar({
                   variant="outline"
                   size="sm"
                   className="h-7"
+                  aria-label="Fertig"
                   onClick={() => onUpdate({ locked: true })}
                 >
-                  <CheckIcon /> Fertig
+                  <CheckIcon />
+                  <span className="hidden @[700px]/toolbar:inline">Fertig</span>
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      ref={blocksFeature.ref}
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      aria-label="Element hinzufügen"
+                    >
+                      <ShapesIcon />
+                      <span className="hidden @[860px]/toolbar:inline">Element</span>
+                      {blocksFeature.isNew && <NewBadge />}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+                      Inhalte für diese Seite
+                    </DropdownMenuLabel>
+                    {(Object.keys(BLOCK_LABEL) as BlockKind[]).map((type) => (
+                      <DropdownMenuItem key={type} onSelect={() => onAddBlock(type)}>
+                        <div className="grid">
+                          <span>{BLOCK_LABEL[type]}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {BLOCK_HINT[type]}
+                          </span>
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button size="sm" className="h-7" onClick={onNewChart}>
                   <PlusIcon /> Chart erstellen
                   {hasNew && <NewBadge />}

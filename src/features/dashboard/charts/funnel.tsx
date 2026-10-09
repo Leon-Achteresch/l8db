@@ -1,5 +1,5 @@
 import { fmtShare, fmtValueCompact } from "@/lib/dashboards";
-import { accent, type ChartProps, categories, change, goodness } from "./chart-utils";
+import { accent, type ChartProps, categories, change, dimAttr, goodness } from "./chart-utils";
 import { DeltaBadge } from "./delta-badge";
 
 export function Funnel({ rows, shape, options, compare }: ChartProps) {
@@ -18,7 +18,11 @@ export function Funnel({ rows, shape, options, compare }: ChartProps) {
         {items.map((item, i) => {
           const delta = compare ? change(item.value, compare.values[i]) : null;
           return (
-            <div key={item.name} className="col-span-full grid grid-cols-subgrid items-center">
+            <div
+              key={item.name}
+              data-dim={dimAttr(item.raw)}
+              className="col-span-full grid grid-cols-subgrid items-center"
+            >
               <span className="max-w-44 truncate text-right text-muted-foreground">
                 {item.name}
               </span>

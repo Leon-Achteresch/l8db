@@ -15,22 +15,28 @@ import {
   MAX_DASHBOARD_CSS_BYTES,
   validateDashboardDesign,
 } from "@/lib/dashboard-design";
-import { useDashboardsStore } from "@/lib/dashboards";
+import { type DashboardTheme, sanitizeTheme, useDashboardsStore } from "@/lib/dashboards";
 import { saveDashboardForDesignAi } from "@/lib/db/dashboard-design";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { cn } from "@/lib/utils";
+import { DashboardThemeEditor } from "./dashboard-theme-editor";
 
 export function DashboardDesignPanel({
   dashboardId,
   design,
+  theme,
   error,
   onChange,
+  onThemeChange,
   onClose,
   onSave,
 }: {
   dashboardId: string;
   design: DashboardDesign;
+  theme: DashboardTheme;
   error: string;
   onChange: (design: DashboardDesign) => void;
+  onThemeChange: (theme: DashboardTheme) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -38,6 +44,9 @@ export function DashboardDesignPanel({
   const operationRef = useRef(0);
   const [request, setRequest] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"theme" | "css">(
+    design.css.trim() && !Object.keys(theme).length ? "css" : "theme",
+  );
   const { ref } = useNewFeatureVisibility<HTMLElement>("dashboard.design.css");
   useEffect(
     () => () => {
@@ -59,6 +68,7 @@ export function DashboardDesignPanel({
   const checkCss = () => {
     try {
       compileDashboardStylesheet(design.css, '[data-dashboard-design="validation"]');
+      sanitizeTheme(theme);
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "CSS konnte nicht geladen werden.");
@@ -72,10 +82,11 @@ export function DashboardDesignPanel({
     if (!current) return;
     setBusy(true);
     try {
-      const next = { ...current, design };
+      const next = { ...current, design, theme: sanitizeTheme(theme) };
       const stamp = await saveDashboardForDesignAi(next);
       useDashboardsStore.getState().update(current.id, {
         design,
+        theme: next.theme,
         mcpId: current.mcpId ?? current.id,
         mcpStamp: stamp,
       });
@@ -97,7 +108,9 @@ export function DashboardDesignPanel({
       <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Dashboard gestalten</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Freies CSS · Live-Vorschau</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Marke, Farben und freies CSS · Live-Vorschau
+          </p>
         </div>
         <IconButton
           variant="ghost"
@@ -109,141 +122,168 @@ export function DashboardDesignPanel({
           <XIcon />
         </IconButton>
       </div>
+      <div className="flex shrink-0 gap-1 border-b px-4 py-2" role="tablist">
+        {(
+          [
+            ["theme", "Gestaltung"],
+            ["css", "Eigenes CSS"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+              tab === key
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        <div className="flex items-center justify-between gap-2">
-          <label htmlFor="dashboard-css-enabled" className="text-xs font-medium">
-            Eigenes CSS aktivieren
-          </label>
-          <Switch
-            id="dashboard-css-enabled"
-            checked={design.enabled}
-            disabled={busy}
-            onCheckedChange={(enabled) => change({ ...design, enabled })}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Farben, Schriften, Abstände, Rahmen, Hintergründe, Layouts, SVG, Animationen und alle
-          weiteren CSS-Eigenschaften. Die Vorschau gilt nur für dieses Dashboard. Änderungen werden
-          mit „Übernehmen“ gespeichert.
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {DASHBOARD_DESIGN_PRESETS.map((preset) => (
+        {tab === "theme" && <DashboardThemeEditor theme={theme} onChange={onThemeChange} />}
+        <div className={cn("flex flex-col gap-3", tab !== "css" && "hidden")}>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="dashboard-css-enabled" className="text-xs font-medium">
+              Eigenes CSS aktivieren
+            </label>
+            <Switch
+              id="dashboard-css-enabled"
+              checked={design.enabled}
+              disabled={busy}
+              onCheckedChange={(enabled) => change({ ...design, enabled })}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Farben, Schriften, Abstände, Rahmen, Hintergründe, Layouts, SVG, Animationen und alle
+            weiteren CSS-Eigenschaften. Die Vorschau gilt nur für dieses Dashboard. Änderungen
+            werden mit „Übernehmen“ gespeichert.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {DASHBOARD_DESIGN_PRESETS.map((preset) => (
+              <Button
+                key={preset.name}
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => change({ enabled: true, css: preset.css })}
+              >
+                {preset.name}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button
-              key={preset.name}
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => change({ enabled: true, css: preset.css })}
+              onClick={() => fileRef.current?.click()}
             >
-              {preset.name}
+              <UploadIcon /> CSS importieren
             </Button>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
+            <input
+              ref={fileRef}
+              className="hidden"
+              type="file"
+              accept=".css,text/css"
+              aria-label="CSS-Datei auswählen"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                const operation = ++operationRef.current;
+                if (!file) return;
+                if (file.size > MAX_DASHBOARD_CSS_BYTES) {
+                  toast.error("Die CSS-Datei darf höchstens 256 KiB groß sein.");
+                  return;
+                }
+                try {
+                  const css = await file.text();
+                  if (operation !== operationRef.current) return;
+                  validateDashboardDesign({ css, enabled: true });
+                  onChange({ css, enabled: true });
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error ? error.message : "Datei konnte nicht gelesen werden.",
+                  );
+                }
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                const url = URL.createObjectURL(new Blob([design.css], { type: "text/css" }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "dashboard.css";
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+              }}
+            >
+              <DownloadIcon /> Exportieren
+            </Button>
+            <IconButton
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Design zurücksetzen"
+              disabled={busy}
+              onClick={() => change({ css: "", enabled: true })}
+            >
+              <RotateCcwIcon />
+            </IconButton>
+          </div>
+          <label htmlFor="dashboard-css" className="text-xs font-medium">
+            Eigenes CSS
+          </label>
+          <textarea
+            id="dashboard-css"
+            aria-label="Dashboard-CSS"
+            className="min-h-64 w-full flex-1 resize-y rounded-md border bg-muted/20 p-3 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            spellCheck={false}
             disabled={busy}
-            onClick={() => fileRef.current?.click()}
-          >
-            <UploadIcon /> CSS importieren
-          </Button>
-          <input
-            ref={fileRef}
-            className="hidden"
-            type="file"
-            accept=".css,text/css"
-            aria-label="CSS-Datei auswählen"
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              const operation = ++operationRef.current;
-              if (!file) return;
-              if (file.size > MAX_DASHBOARD_CSS_BYTES) {
-                toast.error("Die CSS-Datei darf höchstens 256 KiB groß sein.");
-                return;
-              }
-              try {
-                const css = await file.text();
-                if (operation !== operationRef.current) return;
-                validateDashboardDesign({ css, enabled: true });
-                onChange({ css, enabled: true });
-              } catch (error) {
-                toast.error(
-                  error instanceof Error ? error.message : "Datei konnte nicht gelesen werden.",
-                );
+            value={design.css}
+            placeholder={
+              ".dashboard-widget {\n  border-radius: 24px;\n  box-shadow: 0 8px 30px #0002;\n}\n\n:root {\n  --dash-color-1: #8b5cf6;\n}"
+            }
+            onChange={(event) => change({ ...design, css: event.target.value })}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                if (checkCss()) onSave();
               }
             }}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => {
-              const url = URL.createObjectURL(new Blob([design.css], { type: "text/css" }));
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = "dashboard.css";
-              link.click();
-              setTimeout(() => URL.revokeObjectURL(url), 1000);
-            }}
-          >
-            <DownloadIcon /> Exportieren
-          </Button>
-          <IconButton
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Design zurücksetzen"
-            disabled={busy}
-            onClick={() => change({ css: "", enabled: true })}
-          >
-            <RotateCcwIcon />
-          </IconButton>
-        </div>
-        <label htmlFor="dashboard-css" className="text-xs font-medium">
-          Eigenes CSS
-        </label>
-        <textarea
-          id="dashboard-css"
-          aria-label="Dashboard-CSS"
-          className="min-h-64 w-full flex-1 resize-y rounded-md border bg-muted/20 p-3 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          spellCheck={false}
-          disabled={busy}
-          value={design.css}
-          placeholder={
-            ".dashboard-widget {\n  border-radius: 24px;\n  box-shadow: 0 8px 30px #0002;\n}\n\n:root {\n  --dash-color-1: #8b5cf6;\n}"
-          }
-          onChange={(event) => change({ ...design, css: event.target.value })}
-          onKeyDown={(event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-              event.preventDefault();
-              if (checkCss()) onSave();
-            }
-          }}
-        />
-        {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        )}
-        <details className="text-xs">
-          <summary className="cursor-pointer font-medium">Selektoren und CSS-Variablen</summary>
-          <div className="mt-2 space-y-1 text-muted-foreground">
-            {DASHBOARD_DESIGN_SELECTORS.map(([selector, description]) => (
-              <p key={selector}>
-                <code className="text-foreground">{selector}</code> · {description}
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+          <details className="text-xs">
+            <summary className="cursor-pointer font-medium">Selektoren und CSS-Variablen</summary>
+            <div className="mt-2 space-y-1 text-muted-foreground">
+              {DASHBOARD_DESIGN_SELECTORS.map(([selector, description]) => (
+                <p key={selector}>
+                  <code className="text-foreground">{selector}</code> · {description}
+                </p>
+              ))}
+              <p className="pt-2">
+                :root / :scope = Dashboard. --dash-color-1 bis --dash-color-8, --dash-accent,
+                --dash-compare, --background, --foreground, --card, --border.
               </p>
-            ))}
-            <p className="pt-2">
-              :root / :scope = Dashboard. --dash-color-1 bis --dash-color-8, --dash-accent,
-              --dash-compare, --background, --foreground, --card, --border.
-            </p>
-            <p>
-              Externe Ressourcen und @import unterliegen der App-CSP. Für eine Datei „CSS
-              importieren“ nutzen; @import wird vom CSS-Parser nicht eingebunden.
-            </p>
-          </div>
-        </details>
+              <p>
+                Externe Ressourcen und @import unterliegen der App-CSP. Für eine Datei „CSS
+                importieren“ nutzen; @import wird vom CSS-Parser nicht eingebunden.
+              </p>
+            </div>
+          </details>
+        </div>
         <div className="space-y-2 border-t pt-3">
           <label htmlFor="dashboard-design-request" className="text-xs font-medium">
             Mit KI gestalten

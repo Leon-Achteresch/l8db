@@ -43,7 +43,7 @@ const GROUPS = [
     hint: "Muster, Beziehungen und Datenflüsse entdecken",
     kinds: ["scatter", "heatmap", "sankey"],
   },
-  { id: "data", label: "Daten", hint: "Einzelne Werte im Detail lesen", kinds: ["table"] },
+  { id: "data", label: "Daten", hint: "Einzelne Werte im Detail lesen", kinds: ["table", "pivot"] },
 ] satisfies { id: string; label: string; hint: string; kinds: ChartKind[] }[];
 
 const LABELS: Partial<Record<ChartKind, string>> = {
@@ -72,6 +72,7 @@ const HINTS: Record<ChartKind, string> = {
   scatter: "Beziehungen zwischen Kennzahlen entdecken",
   heatmap: "Muster zwischen zwei Aufteilungen erkennen",
   sankey: "Mengen zwischen Quellen und Zielen zeigen",
+  pivot: "Kreuztabelle mit Summen je Zeile und Spalte",
   table: "Alle Werte als Zeilen und Spalten anzeigen",
 };
 
@@ -79,7 +80,7 @@ function fitProblem(kind: ChartKind, shape: DatasetShape): string | null {
   const problem = widgetFits(kind, shape);
   if (!problem) return null;
   if (CHARTS[kind].dim === "two" && (!shape.dimension || !shape.dimension2))
-    return kind === "heatmap"
+    return kind === "heatmap" || kind === "pivot"
       ? "Zwei Aufteilungen für Zeilen und Spalten wählen"
       : "Zwei Aufteilungen für Quelle und Ziel wählen";
   if (CHARTS[kind].dim === "required" && !shape.dimension)
@@ -100,6 +101,7 @@ export function ChartKindPicker({
 }) {
   const id = useId();
   const feature = useNewFeatureVisibility<HTMLDivElement>("dashboard.chart-gallery");
+  const pivotFeature = useNewFeatureVisibility<HTMLButtonElement>("dashboard.studio.pivot");
   const [group, setGroup] = useState("all");
   const available = Object.keys(CHARTS).filter(
     (kind) => !widgetFits(kind as ChartKind, shape),
@@ -110,7 +112,7 @@ export function ChartKindPicker({
     <div className="space-y-5">
       <div ref={feature.ref} className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {available} von 16 Darstellungen passen zu deinen Daten
+          {available} von {Object.keys(CHARTS).length} Darstellungen passen zu deinen Daten
         </p>
         <div className="flex items-center gap-2">
           {feature.isNew && <NewBadge />}
@@ -152,6 +154,7 @@ export function ChartKindPicker({
                 return (
                   <button
                     key={kind}
+                    ref={kind === "pivot" ? pivotFeature.ref : undefined}
                     type="button"
                     aria-pressed={active}
                     aria-disabled={Boolean(problem)}
@@ -177,8 +180,9 @@ export function ChartKindPicker({
                       kind={kind}
                       className={cn("mb-2", problem && "text-muted-foreground/50")}
                     />
-                    <span className="text-xs font-semibold">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold">
                       {LABELS[kind] ?? CHARTS[kind].label}
+                      {kind === "pivot" && pivotFeature.isNew && <NewBadge />}
                     </span>
                     <span
                       id={descriptionId}

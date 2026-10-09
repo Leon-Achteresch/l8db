@@ -9,6 +9,8 @@ const BASE: (keyof WidgetOptions)[] = [
   "decimals",
 ];
 const COMMON: (keyof WidgetOptions)[] = [...BASE, "compare", "headline", "invertDelta"];
+const INTERACTIVE: (keyof WidgetOptions)[] = ["crossFilter", "drill"];
+const TARGET: (keyof WidgetOptions)[] = ["target", "targetLabel"];
 
 export const CHARTS: Record<ChartKind, ChartDef> = {
   kpi: {
@@ -18,7 +20,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 3,
     h: 4,
-    options: [...COMMON, "curve"],
+    options: [...COMMON, "curve", "drill", ...TARGET],
   },
   area: {
     label: "Verlauf",
@@ -27,7 +29,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 6],
     w: 6,
     h: 7,
-    options: [...COMMON, "showLegend", "stacked", "curve", "showGrid"],
+    options: [...COMMON, "showLegend", "stacked", "curve", "showGrid", ...INTERACTIVE, ...TARGET],
   },
   line: {
     label: "Linien",
@@ -36,7 +38,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 6],
     w: 6,
     h: 7,
-    options: [...COMMON, "showLegend", "curve", "showGrid", "labels"],
+    options: [...COMMON, "showLegend", "curve", "showGrid", "labels", ...INTERACTIVE, ...TARGET],
   },
   column: {
     label: "Säulen",
@@ -45,7 +47,17 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 6],
     w: 6,
     h: 7,
-    options: [...COMMON, "showLegend", "stacked", "showGrid", "labels", "sortBy", "horizontal"],
+    options: [
+      ...COMMON,
+      "showLegend",
+      "stacked",
+      "showGrid",
+      "labels",
+      "sortBy",
+      "horizontal",
+      ...INTERACTIVE,
+      ...TARGET,
+    ],
   },
   bars: {
     label: "Pipeline",
@@ -54,7 +66,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 4,
     h: 8,
-    options: [...COMMON, "showLegend", "showPercent", "sortBy"],
+    options: [...COMMON, "showLegend", "showPercent", "sortBy", ...INTERACTIVE, ...TARGET],
   },
   funnel: {
     label: "Funnel",
@@ -63,7 +75,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 6,
     h: 7,
-    options: [...COMMON, "showLegend", "showPercent", "sortBy"],
+    options: [...COMMON, "showLegend", "showPercent", "sortBy", ...INTERACTIVE],
   },
   donut: {
     label: "Donut",
@@ -72,7 +84,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 4,
     h: 8,
-    options: [...COMMON, "showLegend", "showPercent", "sortBy"],
+    options: [...COMMON, "showLegend", "showPercent", "sortBy", ...INTERACTIVE],
   },
   rings: {
     label: "Ringe",
@@ -81,7 +93,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 4,
     h: 9,
-    options: [...COMMON, "showLegend", "sortBy"],
+    options: [...COMMON, "showLegend", "sortBy", ...INTERACTIVE],
   },
   radar: {
     label: "Radar",
@@ -90,7 +102,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 3],
     w: 4,
     h: 9,
-    options: [...COMMON, "showLegend", "sortBy"],
+    options: [...COMMON, "showLegend", "sortBy", ...INTERACTIVE],
   },
   scatter: {
     label: "Blasen",
@@ -99,7 +111,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [2, 3],
     w: 6,
     h: 8,
-    options: [...COMMON, "showLegend", "showGrid"],
+    options: [...COMMON, "showLegend", "showGrid", ...INTERACTIVE],
   },
   sankey: {
     label: "Fluss",
@@ -135,7 +147,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 6,
     h: 7,
-    options: [...COMMON, "showLegend", "labels", "sortBy"],
+    options: [...COMMON, "showLegend", "labels", "sortBy", ...INTERACTIVE],
   },
   heatmap: {
     label: "Heatmap",
@@ -144,7 +156,25 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [1, 1],
     w: 6,
     h: 7,
-    options: [...COMMON, "labels"],
+    options: [...COMMON, "labels", ...INTERACTIVE],
+  },
+  pivot: {
+    label: "Pivot",
+    hint: "Kreuztabelle mit Summen je Zeile und Spalte",
+    dim: "two",
+    metrics: [1, 1],
+    w: 6,
+    h: 8,
+    options: [
+      "showValue",
+      "showPeriod",
+      "colorOffset",
+      "unit",
+      "decimals",
+      "totals",
+      "dataBars",
+      ...INTERACTIVE,
+    ],
   },
   table: {
     label: "Tabelle",
@@ -153,7 +183,17 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
     metrics: [0, 6],
     w: 6,
     h: 7,
-    options: ["showValue", "showPeriod", "compare", "invertDelta", "unit", "decimals"],
+    options: [
+      "showValue",
+      "showPeriod",
+      "compare",
+      "invertDelta",
+      "unit",
+      "decimals",
+      "totals",
+      "dataBars",
+      ...INTERACTIVE,
+    ],
   },
 };
 
@@ -176,6 +216,12 @@ export const OPTION_LABEL: Record<keyof WidgetOptions, string> = {
   invertDelta: "Rückgang ist gut",
   unit: "Einheit",
   decimals: "Nachkommastellen",
+  crossFilter: "Klick filtert andere Charts",
+  drill: "Details per Klick",
+  totals: "Summen anzeigen",
+  dataBars: "Datenbalken und Farbskala",
+  target: "Zielwert",
+  targetLabel: "Beschriftung Ziellinie",
 };
 
 export function chartNeeds(kind: ChartKind): string {

@@ -344,6 +344,27 @@ function illustration(kind: ChartKind): ReactNode {
           ))}
         </>
       );
+    case "pivot":
+      return (
+        <>
+          <rect x="14" y="8" width="132" height="12" rx="3" opacity="0.2" />
+          <rect x="14" y="8" width="30" height="56" rx="3" opacity="0.2" />
+          {[26, 39, 52].map((y, row) =>
+            [52, 76, 100, 124].map((x, col) => (
+              <rect
+                key={`${x}-${y}`}
+                x={x}
+                y={y}
+                width="18"
+                height="9"
+                rx="2"
+                opacity={0.2 + ((row * 4 + col * 3) % 7) * 0.1}
+              />
+            )),
+          )}
+          <path d="M14 64H146M146 8V64" stroke="currentColor" strokeWidth="2" opacity="0.35" />
+        </>
+      );
     case "table":
       return (
         <>
