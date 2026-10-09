@@ -598,7 +598,12 @@ export function databaseChangesFrom(tables: TransactionTableChanges[]) {
         continue;
       }
       removed.delete(key);
-      changes.push({ type: "update", ...target, ...changedColumns(old, row) });
+      changes.push({
+        type: "update",
+        ...target,
+        rowKey: table.key_columns.map((column) => `${column} ${rowValue(row, column)}`).join(", "),
+        ...changedColumns(old, row),
+      });
     }
     for (const row of removed.values()) changes.push({ type: "delete", ...target, oldValues: row });
   }

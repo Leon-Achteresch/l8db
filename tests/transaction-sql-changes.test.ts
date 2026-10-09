@@ -493,6 +493,7 @@ test("database diff pairs rows by primary key into updates, inserts and deletes"
       schema: "APP",
       table: "ORDERS",
       fromSql: true,
+      rowKey: "ID 1",
       oldValues: { STATE: "open" },
       newValues: { STATE: "moved" },
     },
