@@ -20,8 +20,15 @@ export interface TransactionChange {
   detailsUnavailable?: boolean;
 }
 
+export interface DatabaseChanges {
+  changes: TransactionChange[];
+  notes: string[];
+  at: number;
+}
+
 export interface ActiveTransaction {
   lastError?: string;
+  databaseChanges?: DatabaseChanges;
   txId: string;
   connectionId: string;
   connectionName: string;
@@ -46,6 +53,7 @@ interface TransactionStoreState {
   addTransaction: (tx: ActiveTransaction) => void;
   removeTransaction: (txId: string) => void;
   addChange: (txId: string, change: TransactionChange) => void;
+  setDatabaseChanges: (txId: string, databaseChanges: DatabaseChanges) => void;
   syncWithBackend: () => Promise<void>;
 }
 
@@ -71,6 +79,13 @@ export const useTransactionStore = create<TransactionStoreState>()(
         set((s) => ({
           transactions: s.transactions.map((t) =>
             t.txId === txId ? { ...t, changes: [...t.changes, change] } : t,
+          ),
+        })),
+
+      setDatabaseChanges: (txId, databaseChanges) =>
+        set((s) => ({
+          transactions: s.transactions.map((t) =>
+            t.txId === txId ? { ...t, databaseChanges } : t,
           ),
         })),
 

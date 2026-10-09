@@ -14,7 +14,10 @@ import { useSettingsStore } from "@/lib/settings";
 import { analyzedSql, managedQueryIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, opensManagedTransaction } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { executeWithTransactionChanges } from "@/lib/transaction-sql-changes";
+import {
+  executeWithTransactionChanges,
+  refreshDatabaseChanges,
+} from "@/lib/transaction-sql-changes";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
 interface ExecuteSqlOptions {
@@ -81,7 +84,9 @@ export async function executeSqlWithTransactions({
           rowsAffected: connection.kind === "dynamodb" ? null : res.rows_affected,
           planned: connection.kind === "dynamodb",
           detailsUnavailable:
-            /^\s*(INSERT|UPDATE)\b/i.test(sql) && !changes.length && Number(res.rows_affected) > 0,
+            /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql) &&
+            !changes.length &&
+            Number(res.rows_affected) > 0,
         },
         ...changes,
       ]) {
@@ -91,6 +96,9 @@ export async function executeSqlWithTransactions({
           ...change,
         });
       }
+      await runManagedOperation(existingTx.txId, () =>
+        refreshDatabaseChanges(connection, existingTx.txId),
+      );
       store.setPanelOpen(true);
     }
     return res;
@@ -119,12 +127,15 @@ export async function executeSqlWithTransactions({
         rowsAffected: connection.kind === "dynamodb" ? null : res.rows_affected,
         planned: connection.kind === "dynamodb",
         detailsUnavailable:
-          /^\s*(INSERT|UPDATE)\b/i.test(sql) && !changes.length && Number(res.rows_affected) > 0,
+          /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql) &&
+          !changes.length &&
+          Number(res.rows_affected) > 0,
       },
       ...changes,
     ]) {
       store.addChange(txId, { id: crypto.randomUUID(), timestamp: Date.now(), ...change });
     }
+    await runManagedOperation(txId, () => refreshDatabaseChanges(connection, txId));
     store.setPanelOpen(true);
     return res;
   }

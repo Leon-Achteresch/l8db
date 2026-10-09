@@ -699,6 +699,15 @@ fn is_query(sql: &str) -> bool {
     matches!(first.as_str(), "SELECT" | "WITH")
 }
 
+fn is_plsql(sql: &str) -> bool {
+    let first = sql
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .next()
+        .unwrap_or("")
+        .to_uppercase();
+    matches!(first.as_str(), "BEGIN" | "DECLARE" | "CALL")
+}
+
 #[path = "oracle_catalog.rs"]
 mod catalog;
 #[path = "oracle_copy.rs"]
@@ -1404,11 +1413,12 @@ async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, 
             truncated: false,
         });
     }
+    let plsql = is_plsql(&statement);
     let affected = adapter.exec(statement).await?;
     Ok(QueryResult {
         columns: vec![],
         rows: vec![],
-        rows_affected: Some(affected),
+        rows_affected: (!plsql).then_some(affected),
         execution_time_ms: start.elapsed().as_millis() as u64,
         truncated: false,
     })
@@ -3184,6 +3194,65 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_transaction_plsql_changes() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a = OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "txdiff".into())
+            .unwrap();
+        let _ = a.execute_query("DROP TABLE L8_TXDIFF PURGE").await;
+        for sql in [
+            "CREATE TABLE L8_TXDIFF (ID NUMBER PRIMARY KEY, STATE VARCHAR2(20), NOTE CLOB)",
+            "INSERT INTO L8_TXDIFF VALUES (1, 'open', 'x')",
+            "INSERT INTO L8_TXDIFF VALUES (2, 'gone', NULL)",
+            "CREATE OR REPLACE PROCEDURE L8_TXDIFF_MOVE(p NUMBER, code OUT NUMBER) AS BEGIN UPDATE L8_TXDIFF SET STATE = 'moved' WHERE ID = p; INSERT INTO L8_TXDIFF VALUES (3, 'new', NULL); DELETE FROM L8_TXDIFF WHERE ID = 2; code := 0; DBMS_OUTPUT.PUT_LINE('code=' || code); END;",
+        ] {
+            a.execute_query(sql).await.expect(sql);
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        let mut conn = a.open_connection().await.unwrap().into_inner().unwrap();
+        tx_begin(&mut conn);
+        let block =
+            tx_execute(&conn, "DECLARE c NUMBER; BEGIN L8_TXDIFF_MOVE(1, c); END;").expect("block");
+        assert_eq!(block.rows_affected, None);
+        assert_eq!(read_output(&conn).unwrap(), vec!["code=0".to_string()]);
+        let seen = tx_execute(&conn, "SELECT STATE FROM L8_TXDIFF WHERE ID = 1").unwrap();
+        assert_eq!(seen.rows[0]["STATE"], "moved");
+        match tx_table_changes(&conn) {
+            Ok(tables) => {
+                let table = tables
+                    .iter()
+                    .find(|t| t.table == "L8_TXDIFF")
+                    .expect("table");
+                assert_eq!(table.note, None);
+                assert_eq!(table.key_columns, vec!["ID".to_string()]);
+                let mut added: Vec<String> =
+                    table.added.iter().map(|r| r["STATE"].to_string()).collect();
+                let mut removed: Vec<String> = table
+                    .removed
+                    .iter()
+                    .map(|r| r["STATE"].to_string())
+                    .collect();
+                added.sort();
+                removed.sort();
+                assert_eq!(added, vec!["\"moved\"", "\"new\""]);
+                assert_eq!(removed, vec!["\"gone\"", "\"open\""]);
+                assert!(table.added.iter().all(|r| r.get("NOTE").is_none()));
+            }
+            Err(e) => assert!(e.contains("V$LOCKED_OBJECT"), "{e}"),
+        }
+        tx_finish(&mut conn, false).unwrap();
+        let after = a
+            .execute_query("SELECT COUNT(*) AS N FROM L8_TXDIFF")
+            .await
+            .unwrap();
+        assert_eq!(after.rows[0]["N"], 2);
+        let _ = a.execute_query("DROP PROCEDURE L8_TXDIFF_MOVE").await;
+        let _ = a.execute_query("DROP TABLE L8_TXDIFF PURGE").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn live_explain_plan_and_analyze() {
         let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
             return;
@@ -4440,6 +4509,133 @@ fn column_value(
 
 pub fn tx_begin(c: &mut Connection) {
     c.set_autocommit(false);
+    let _ = c.execute("BEGIN DBMS_OUTPUT.ENABLE(NULL); END;", &[]);
+}
+
+const TX_DIFF_MAX_TABLE_ROWS: usize = 200_000;
+const TX_DIFF_MAX_ROWS: usize = 100;
+
+#[derive(serde::Serialize)]
+pub struct TxTableChanges {
+    pub schema: String,
+    pub table: String,
+    pub key_columns: Vec<String>,
+    pub added: Vec<serde_json::Value>,
+    pub removed: Vec<serde_json::Value>,
+    pub note: Option<String>,
+}
+
+pub fn tx_table_changes(c: &Connection) -> Result<Vec<TxTableChanges>, String> {
+    let tables = fetch(
+        c,
+        "SELECT DISTINCT o.owner, o.object_name FROM v$locked_object l \
+         JOIN all_objects o ON o.object_id = l.object_id \
+         WHERE l.session_id = SYS_CONTEXT('USERENV', 'SID') AND o.object_type LIKE 'TABLE%' \
+         ORDER BY 1, 2",
+    )
+    .map_err(|e| {
+        format!("Geänderte Tabellen nicht ermittelbar (Leserecht auf V$LOCKED_OBJECT nötig): {e}")
+    })?;
+    let as_of = fetch(c, "SELECT TO_CHAR(current_scn) FROM v$database")
+        .or_else(|_| {
+            fetch(
+                c,
+                "SELECT TO_CHAR(DBMS_FLASHBACK.GET_SYSTEM_CHANGE_NUMBER) FROM dual",
+            )
+        })
+        .ok()
+        .and_then(|rows| rows.first().map(|row| s(row, 0)))
+        .filter(|scn| !scn.is_empty())
+        .map(|scn| format!("AS OF SCN {scn}"))
+        .unwrap_or_else(|| "AS OF TIMESTAMP SYSTIMESTAMP".to_string());
+    Ok(tables
+        .iter()
+        .map(|row| tx_table_diff(c, &s(row, 0), &s(row, 1), &as_of))
+        .filter(|t| t.note.is_some() || !t.added.is_empty() || !t.removed.is_empty())
+        .collect())
+}
+
+fn tx_table_diff(c: &Connection, owner: &str, table: &str, as_of: &str) -> TxTableChanges {
+    let mut out = TxTableChanges {
+        schema: owner.to_string(),
+        table: table.to_string(),
+        key_columns: vec![],
+        added: vec![],
+        removed: vec![],
+        note: None,
+    };
+    let target = format!("{}.{}", quote(owner), quote(table));
+    let names = binds(&[("o", owner), ("t", table)]);
+    let outcome = (|| -> Result<(), String> {
+        let count = fetch(
+            c,
+            &format!(
+                "SELECT COUNT(*) FROM {target} WHERE ROWNUM <= {}",
+                TX_DIFF_MAX_TABLE_ROWS + 1
+            ),
+        )?;
+        if count.first().map(|row| i(row, 0)).unwrap_or(0) as usize > TX_DIFF_MAX_TABLE_ROWS {
+            out.note = Some(format!(
+                "Mehr als {TX_DIFF_MAX_TABLE_ROWS} Zeilen; kein Zeilen-Diff."
+            ));
+            return Ok(());
+        }
+        let columns: Vec<String> = fetch_bound(
+            c,
+            "SELECT column_name FROM all_tab_columns WHERE owner = :o AND table_name = :t \
+             AND data_type_owner IS NULL \
+             AND data_type NOT IN ('CLOB', 'NCLOB', 'BLOB', 'BFILE', 'LONG', 'LONG RAW') \
+             ORDER BY column_id",
+            &names,
+        )?
+        .iter()
+        .map(|row| s(row, 0))
+        .collect();
+        if columns.is_empty() {
+            return Err("keine vergleichbaren Spalten".to_string());
+        }
+        out.key_columns = fetch_bound(
+            c,
+            "SELECT cc.column_name FROM all_constraints k JOIN all_cons_columns cc \
+             ON cc.owner = k.owner AND cc.constraint_name = k.constraint_name \
+             WHERE k.owner = :o AND k.table_name = :t AND k.constraint_type = 'P' \
+             ORDER BY cc.position",
+            &names,
+        )?
+        .iter()
+        .map(|row| s(row, 0))
+        .collect();
+        let list = columns
+            .iter()
+            .map(|col| quote(col))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let diff = |from: &str, minus: &str| {
+            run_query(
+                c,
+                &format!(
+                    "SELECT * FROM (SELECT {list} FROM {target} {from} MINUS SELECT {list} FROM {target} {minus}) WHERE ROWNUM <= {}",
+                    TX_DIFF_MAX_ROWS + 1
+                ),
+            )
+        };
+        let (cols, mut added) = diff("", as_of)?;
+        let (_, mut removed) = diff(as_of, "")?;
+        if added.len() > TX_DIFF_MAX_ROWS || removed.len() > TX_DIFF_MAX_ROWS {
+            out.note = Some(format!(
+                "Mehr als {TX_DIFF_MAX_ROWS} geänderte Zeilen; nur die ersten werden gezeigt."
+            ));
+            added.truncate(TX_DIFF_MAX_ROWS);
+            removed.truncate(TX_DIFF_MAX_ROWS);
+        }
+        out.added = rows_to_objects(&cols, added);
+        out.removed = rows_to_objects(&cols, removed);
+        Ok(())
+    })();
+    if let Err(e) = outcome {
+        out.note = Some(format!("Zeilen-Diff nicht möglich: {e}"));
+    }
+    out
 }
 
 pub fn tx_finish(c: &mut Connection, commit: bool) -> Result<(), String> {
@@ -4496,7 +4692,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     Ok(QueryResult {
         columns: vec![],
         rows: vec![],
-        rows_affected: Some(affected),
+        rows_affected: (!is_plsql(statement)).then_some(affected),
         execution_time_ms: start.elapsed().as_millis() as u64,
         truncated: false,
     })

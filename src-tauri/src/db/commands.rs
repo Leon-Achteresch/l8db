@@ -818,6 +818,22 @@ pub async fn execute_in_transaction(
 }
 
 #[tauri::command]
+pub async fn transaction_database_changes(
+    tx_id: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<Vec<super::oracle::TxTableChanges>, String> {
+    tx_state.oracle_changes(&tx_id).await
+}
+
+#[tauri::command]
+pub async fn transaction_server_output(
+    tx_id: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<Vec<String>, String> {
+    tx_state.server_output(&tx_id).await
+}
+
+#[tauri::command]
 pub async fn execute_in_transaction_with_params(
     tx_id: String,
     sql: String,

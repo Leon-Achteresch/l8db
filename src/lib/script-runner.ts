@@ -17,7 +17,10 @@ import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
-import { executeWithTransactionChanges } from "@/lib/transaction-sql-changes";
+import {
+  executeWithTransactionChanges,
+  refreshDatabaseChanges,
+} from "@/lib/transaction-sql-changes";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
 export interface ScriptRequest {
@@ -159,7 +162,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
               rowsAffected: connection.kind === "dynamodb" ? null : result.rows_affected,
               planned: connection.kind === "dynamodb",
               detailsUnavailable:
-                /^\s*(INSERT|UPDATE)\b/i.test(entry.sql) &&
+                /^\s*(INSERT|UPDATE|DELETE)\b/i.test(entry.sql) &&
                 !tracked.changes.length &&
                 Number(result.rows_affected) > 0,
             },
@@ -197,6 +200,9 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         publish();
       }
     }
+    const touchedTxId = txId;
+    if (touchedTxId && entries.some((entry) => entry.status === "success"))
+      await runManagedOperation(touchedTxId, () => refreshDatabaseChanges(connection, touchedTxId));
     if (stopped && entries.some((entry) => entry.status === "skipped") && !error)
       error = "Skript zwischen den Statements abgebrochen.";
     const outcome = { entries, lastResult, error, txId };
