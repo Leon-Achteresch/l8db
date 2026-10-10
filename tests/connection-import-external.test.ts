@@ -212,7 +212,9 @@ test("maps DBeaver connections, folders, credentials and SSH handlers", async ()
   const candidates = buildExternalCandidates(result.connections, []);
   const byLabel = new Map(candidates.map((entry) => [entry.label, entry]));
   const prod = byLabel.get("Prod Postgres");
-  expect(prod?.profile?.connectionString).toBe("postgresql://app_owner@db.internal:5433/app");
+  expect(prod?.profile?.connectionString).toBe(
+    "postgresql://app_owner@db.internal:5433/app?sslmode=prefer",
+  );
   expect(prod?.profile?.ssh).toMatchObject({
     host: "bastion.example.com",
     remoteHost: "db.internal",
@@ -222,7 +224,7 @@ test("maps DBeaver connections, folders, credentials and SSH handlers", async ()
   expect(prod?.profile?.environment).toBe("production");
   expect(prod?.warnings).toEqual([]);
   expect(byLabel.get("Legacy MySQL (URL)")?.profile?.connectionString).toBe(
-    "mysql://root@legacy.example.com:3307/shop?useSSL=false",
+    "mysql://root@legacy.example.com:3307/shop?sslmode=disable",
   );
   expect(byLabel.get("Local SQLite")?.profile?.connectionString).toBe("/home/leon/data/app.db");
   const oracle = byLabel.get("Oracle SID");
@@ -365,7 +367,7 @@ test("merges DataGrip data sources, local user names and SSH configs", () => {
   expect(shop?.missingPassword).toBe(true);
   expect(shop?.warnings[0]).toContain("JetBrains-Schlüsselbund");
   expect(byLabel.get("sqlserver")?.profile?.connectionString).toBe(
-    "mssql://sa@mssql.example.com:1433/erp?encrypt=true",
+    "mssql://sa@mssql.example.com:1433/erp?sslmode=verify-full",
   );
   expect(byLabel.get("oracle")?.profile?.connectionString).toBe(
     "oracle://ora.example.com:1522/FREEPDB1",
@@ -478,7 +480,7 @@ test("maps Navicat connections with SSH, legacy fallback and unsupported types",
   expect(byLabel.get("snow")?.skipReason).toContain("SNOWFLAKE");
   expect(byLabel.get("ob oracle")?.skipReason).toContain("Nicht unterstützter Typ");
   const cache = byLabel.get("cache");
-  expect(cache?.profile?.connectionString).toBe("redis://default@redis.example.com:6380");
+  expect(cache?.profile?.connectionString).toBe("redis://@redis.example.com:6380");
   expect(cache?.password).toBe("s3cr3t!Pass");
   expect(cache?.sshSecret).toBe("ssh-Key-Phrase");
 });
@@ -564,6 +566,7 @@ test("xml reader handles entities, CDATA, comments and quoted angle brackets", (
 function existing(
   connectionString: string,
   kind: SavedConnection["kind"] = "postgres",
+  extra: Partial<SavedConnection> = {},
 ): SavedConnection {
   return {
     id: "existing-1",
@@ -571,13 +574,26 @@ function existing(
     kind,
     connectionString,
     sslMode: "prefer",
+    ...extra,
   };
 }
+
+const PG_PROD_SSH = {
+  host: "JUMP.example.com",
+  port: 2022,
+  user: "ops",
+  auth: "key" as const,
+  keyFile: "/home/ops/.ssh/id_rsa",
+  remoteHost: "pg.example.com",
+  remotePort: 5432,
+};
 
 test("detects duplicates by host, port, database and user and resolves skip or copy", async () => {
   const result = await parseNavicatExport(NAVICAT_NCX);
   const candidates = buildExternalCandidates(result.connections, [
-    existing("postgresql://billing:secret@PG.example.com/billing"),
+    existing("postgresql://billing:secret@PG.example.com/billing", "postgres", {
+      ssh: PG_PROD_SSH,
+    }),
   ]);
   const pg = candidates.find((entry) => entry.label === "pg prod");
   expect(pg?.duplicateOf?.id).toBe("existing-1");
@@ -604,10 +620,11 @@ test("detects duplicates by host, port, database and user and resolves skip or c
     id: copy?.id as string,
     password: "s3cr3t!Pass",
     sshSecret: "ssh-Key-Phrase",
+    proxySecret: null,
   });
   expect(copied.summary.imported).toBe(selectable.size);
   const cache = copied.connections.find((entry) => entry.name === "cache");
-  expect(cache?.connectionString).toBe("redis://default:s3cr3t!Pass@redis.example.com:6380");
+  expect(cache?.connectionString).toBe("redis://:s3cr3t!Pass@redis.example.com:6380");
   expect(cache?.ssh?.auth).toBe("password");
 });
 
@@ -617,10 +634,10 @@ test("persists imported secrets to the keychain with bounded concurrency", async
   let peak = 0;
   const failed = await persistImportedSecrets(
     [
-      { id: "a", password: "pw-a", sshSecret: "ssh-a" },
-      { id: "b", password: null, sshSecret: "ssh-b" },
-      { id: "c", password: "pw-c", sshSecret: null },
-      { id: "d", password: "pw-d", sshSecret: null },
+      { id: "a", password: "pw-a", sshSecret: "ssh-a", proxySecret: null },
+      { id: "b", password: null, sshSecret: "ssh-b", proxySecret: "proxy-b" },
+      { id: "c", password: "pw-c", sshSecret: null, proxySecret: null },
+      { id: "d", password: "pw-d", sshSecret: null, proxySecret: null },
     ],
     async (account, secret) => {
       active++;
@@ -630,7 +647,7 @@ test("persists imported secrets to the keychain with bounded concurrency", async
       if (account === "d") throw new Error("Schlüsselbund gesperrt");
       stored.push([account, secret]);
     },
-    (id) => `${id}:ssh`,
+    { ssh: (id) => `${id}:ssh`, proxy: (id) => `${id}:proxy` },
     2,
   );
   expect(failed).toBe(1);
@@ -638,7 +655,258 @@ test("persists imported secrets to the keychain with bounded concurrency", async
   expect(stored.sort()).toEqual([
     ["a", "pw-a"],
     ["a:ssh", "ssh-a"],
+    ["b:proxy", "proxy-b"],
     ["b:ssh", "ssh-b"],
     ["c", "pw-c"],
   ]);
+});
+
+function dbeaverEntry(configuration: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    connections: {
+      entry: {
+        provider: "postgresql",
+        driver: "postgres-jdbc",
+        name: "Eintrag",
+        configuration,
+        ...extra,
+      },
+    },
+  });
+}
+
+async function singleCandidate(configuration: Record<string, unknown>, extra = {}) {
+  const parsed = await parseDbeaverConfig(dbeaverEntry(configuration, extra), null);
+  const [candidate] = buildExternalCandidates(parsed.connections, []);
+  return candidate;
+}
+
+test("maps SQL Server JDBC parameters to the adapter keys", () => {
+  const result = parseDataGripConfig([
+    {
+      name: "dataSources.xml",
+      text: `<project><component name="DataSourceManagerImpl"><data-source name="ms" uuid="m1"><driver-ref>sqlserver.ms</driver-ref><jdbc-url>jdbc:sqlserver://srv\\SQLEXPRESS:1433;databaseName=crm;user=sa;integratedSecurity=true;trustServerCertificate=true;encrypt=true;applicationName=erp</jdbc-url></data-source></component></project>`,
+    },
+  ]);
+  const [candidate] = buildExternalCandidates(result.connections, []);
+  const url = new URL(candidate.profile?.connectionString ?? "");
+  expect(url.hostname).toBe("srv");
+  expect(url.searchParams.get("instance")).toBe("SQLEXPRESS");
+  expect(url.searchParams.get("integrated_security")).toBe("true");
+  expect(url.searchParams.get("trust_server_certificate")).toBe("true");
+  expect(url.searchParams.get("application_name")).toBe("erp");
+  expect(url.searchParams.get("sslmode")).toBe("require");
+  expect(url.searchParams.has("instanceName")).toBe(false);
+  expect(url.searchParams.has("encrypt")).toBe(false);
+  expect(candidate.profile?.sslMode).toBe("require");
+});
+
+test("splits a Navicat SQL Server host with a named instance", async () => {
+  const result = await parseNavicatExport(
+    `<Connections><Connection ConnectionName="ms" ConnType="MSSQL" Host="sql01\\INST2" Port="1433" UserName="sa"/></Connections>`,
+  );
+  const [candidate] = buildExternalCandidates(result.connections, []);
+  expect(candidate.skipReason).toBeNull();
+  const url = new URL(candidate.profile?.connectionString ?? "");
+  expect(url.hostname).toBe("sql01");
+  expect(url.searchParams.get("instance")).toBe("INST2");
+});
+
+test("maps DBeaver SOCKS and HTTP proxies and never imports them as direct connections", async () => {
+  const socks = await parseDbeaverConfig(
+    dbeaverEntry({
+      host: "db",
+      database: "app",
+      user: "u",
+      handlers: {
+        proxy: {
+          type: "PROXY",
+          enabled: true,
+          properties: { "socks-host": "socks.example.com", "socks-port": 1081 },
+        },
+      },
+    }),
+    null,
+  );
+  const [socksCandidate] = buildExternalCandidates(socks.connections, []);
+  expect(socksCandidate.profile?.proxy).toEqual({
+    type: "socks5",
+    host: "socks.example.com",
+    port: 1081,
+  });
+  const http = await singleCandidate({
+    host: "db",
+    database: "app",
+    user: "u",
+    handlers: {
+      "http-proxy": {
+        type: "PROXY",
+        enabled: true,
+        user: "pu",
+        password: "pp",
+        properties: { host: "http.example.com", port: 3128 },
+      },
+    },
+  });
+  expect(http.profile?.proxy).toEqual({
+    type: "http",
+    host: "http.example.com",
+    port: 3128,
+    username: "pu",
+  });
+  expect(http.proxySecret).toBe("pp");
+  const resolved = resolveExternalImport([http], new Set([http.index]), "skip");
+  expect(resolved.connections[0].proxy?.host).toBe("http.example.com");
+  expect(resolved.secrets[0].proxySecret).toBe("pp");
+  const noHost = await singleCandidate({
+    host: "db",
+    database: "app",
+    handlers: { proxy: { type: "PROXY", enabled: true, properties: {} } },
+  });
+  expect(noHost.skipReason).toContain("Proxy-Host fehlt");
+  expect(noHost.profile).toBeNull();
+  const unknownTunnel = await singleCandidate({
+    host: "db",
+    database: "app",
+    handlers: { k8s: { type: "TUNNEL", enabled: true, properties: { pod: "x" } } },
+  });
+  expect(unknownTunnel.skipReason).toContain("k8s");
+  const disabled = await singleCandidate({
+    host: "db",
+    database: "app",
+    handlers: { proxy: { type: "PROXY", enabled: false, properties: {} } },
+  });
+  expect(disabled.skipReason).toBeNull();
+  expect(disabled.profile?.proxy).toBeUndefined();
+});
+
+test("skips Navicat HTTP tunnels instead of connecting directly", async () => {
+  const result = await parseNavicatExport(
+    `<Connections><Connection ConnectionName="tun" ConnType="MYSQL" Host="db" Port="3306" UserName="u" HTTP="true" HTTP_URL="https://example.com/ntunnel_mysql.php"/></Connections>`,
+  );
+  const [candidate] = buildExternalCandidates(result.connections, []);
+  expect(candidate.skipReason).toContain("HTTP-Tunnel");
+  expect(candidate.profile).toBeNull();
+});
+
+test("strips secret-like JDBC parameters from the stored connection string", () => {
+  const result = parseDataGripConfig([
+    {
+      name: "dataSources.xml",
+      text: `<project><data-source name="my" uuid="s1"><driver-ref>mysql.8</driver-ref><jdbc-url>jdbc:mysql://db:3306/app?user=u&amp;keyStorePassword=k1&amp;trustCertificateKeyStorePassword=k2&amp;clientCertificateKeyStorePassword=k3&amp;accessToken=t&amp;useUnicode=true</jdbc-url></data-source></project>`,
+    },
+  ]);
+  const [candidate] = buildExternalCandidates(result.connections, []);
+  const stored = candidate.profile?.connectionString ?? "";
+  for (const secret of ["k1", "k2", "k3", "accessToken", "KeyStorePassword"])
+    expect(stored).not.toContain(secret);
+  expect(stored).toContain("useUnicode=true");
+  expect(candidate.warnings.join(" ")).toContain("keyStorePassword");
+  const resolved = resolveExternalImport([candidate], new Set([candidate.index]), "skip");
+  expect(resolved.connections[0].connectionString).not.toContain("k1");
+});
+
+test("keeps a host rule's production environment over an imported environment", async () => {
+  const parsed = await parseDbeaverConfig(
+    dbeaverEntry({ host: "prod-db.example.com", database: "app", user: "u", type: "dev" }),
+    null,
+  );
+  const [candidate] = buildExternalCandidates(parsed.connections, []);
+  expect(candidate.profile?.environment).toBe("development");
+  const rules = [{ id: "r1", name: "Prod", pattern: "prod-*", environment: "production" as const }];
+  const guarded = resolveExternalImport([candidate], new Set([0]), "skip", rules);
+  expect(guarded.connections[0].environment).toBeUndefined();
+  const unguarded = resolveExternalImport([candidate], new Set([0]), "skip", []);
+  expect(unguarded.connections[0].environment).toBe("development");
+});
+
+test("maps SSL settings without downgrading to prefer", async () => {
+  const mode = async (url: string, handlers?: Record<string, unknown>) =>
+    (await singleCandidate({ url, user: "u", ...(handlers ? { handlers } : {}) })).profile?.sslMode;
+  expect(await mode("jdbc:postgresql://db/app?ssl=true")).toBe("verify-full");
+  expect(
+    await mode(
+      "jdbc:postgresql://db/app?ssl=true&sslfactory=org.postgresql.ssl.NonValidatingFactory",
+    ),
+  ).toBe("require");
+  expect(await mode("jdbc:postgresql://db/app?ssl=true&sslmode=verify-ca")).toBe("verify-ca");
+  expect(await mode("jdbc:postgresql://db/app?ssl=false")).toBe("disable");
+  expect(await mode("jdbc:postgresql://db/app")).toBe("prefer");
+  expect(
+    await mode("jdbc:postgresql://db/app", {
+      postgre_ssl: { type: "CONFIG", enabled: true, properties: { sslMode: "verify-ca" } },
+    }),
+  ).toBe("verify-ca");
+  expect(
+    await mode("jdbc:postgresql://db/app", {
+      postgre_ssl: { type: "CONFIG", enabled: true, properties: {} },
+    }),
+  ).toBe("verify-full");
+  const ssl = await singleCandidate({ url: "jdbc:postgresql://db/app?ssl=true", user: "u" });
+  const url = new URL(ssl.profile?.connectionString ?? "");
+  expect(url.searchParams.get("sslmode")).toBe("verify-full");
+  expect(url.searchParams.has("ssl")).toBe(false);
+  const mysql = await parseDbeaverConfig(
+    JSON.stringify({
+      connections: {
+        m: {
+          provider: "mysql",
+          driver: "mysql8",
+          name: "m",
+          configuration: { url: "jdbc:mysql://db:3306/app?sslMode=REQUIRED", user: "u" },
+        },
+      },
+    }),
+    null,
+  );
+  expect(buildExternalCandidates(mysql.connections, [])[0].profile?.sslMode).toBe("require");
+  const navicat = await parseNavicatExport(
+    `<Connections><Connection ConnectionName="n" ConnType="MYSQL" Host="db" UserName="u" SSL="true"/></Connections>`,
+  );
+  expect(buildExternalCandidates(navicat.connections, [])[0].profile?.sslMode).toBe("verify-full");
+});
+
+test("duplicate detection includes the SSH tunnel and proxy", async () => {
+  const result = await parseNavicatExport(NAVICAT_NCX);
+  const direct = buildExternalCandidates(result.connections, [
+    existing("postgresql://billing@pg.example.com/billing"),
+  ]);
+  expect(direct.find((entry) => entry.label === "pg prod")?.duplicateOf).toBeNull();
+  const otherJump = buildExternalCandidates(result.connections, [
+    existing("postgresql://billing@pg.example.com/billing", "postgres", {
+      ssh: { ...PG_PROD_SSH, host: "other-jump" },
+    }),
+  ]);
+  expect(otherJump.find((entry) => entry.label === "pg prod")?.duplicateOf).toBeNull();
+  const viaProxy = buildExternalCandidates(result.connections, [
+    existing("postgresql://billing@pg.example.com/billing", "postgres", {
+      ssh: PG_PROD_SSH,
+      proxy: { type: "socks5", host: "socks", port: 1080 },
+    }),
+  ]);
+  expect(viaProxy.find((entry) => entry.label === "pg prod")?.duplicateOf).toBeNull();
+});
+
+test("Redis with a password but no user keeps an empty user", async () => {
+  const result = await parseNavicatExport(NAVICAT_NCX);
+  const cache = buildExternalCandidates(result.connections, []).find(
+    (entry) => entry.label === "cache",
+  );
+  const resolved = resolveExternalImport(
+    cache ? [cache] : [],
+    new Set([cache?.index ?? -1]),
+    "skip",
+  );
+  const url = new URL(resolved.connections[0].connectionString);
+  expect(url.username).toBe("");
+  expect(url.password).toBe("s3cr3t!Pass");
+});
+
+test("xml reader skips DOCTYPE declarations with an internal subset", () => {
+  const root = parseXml(
+    `<?xml version="1.0"?><!DOCTYPE Connections [<!ELEMENT Connections ANY><!ATTLIST Connection Host CDATA "x>y"><!-- ] > --><!ENTITY e "v">]><Connections><Connection Host="h"/></Connections>`,
+  );
+  expect(root.children[0].name).toBe("Connections");
+  expect(root.children[0].children[0].attributes.Host).toBe("h");
+  expect(() => parseXml("<!DOCTYPE x [<!ELEMENT x ANY>")).toThrow();
 });

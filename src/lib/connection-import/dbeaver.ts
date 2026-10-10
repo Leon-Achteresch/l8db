@@ -1,4 +1,5 @@
-import type { ConnectionEnvironment, SshAuth } from "@/lib/connections";
+import type { ConnectionEnvironment, NetworkProxy, SshAuth } from "@/lib/connections";
+import type { SslMode } from "@/lib/db";
 import { decryptDbeaverCredentials } from "./crypto";
 import { parseJdbcUrl, parsePort } from "./jdbc";
 import { FILE_KINDS, resolveProduct } from "./products";
@@ -47,17 +48,114 @@ function sshAuthOf(value: string, keyFile: string): SshAuth {
   return keyFile ? "key" : "password";
 }
 
-function sshHandler(configuration: Json): [string, Json] | null {
-  const handlers = record(configuration.handlers);
-  for (const [id, raw] of Object.entries(handlers)) {
-    const handler = record(raw);
-    const type = text(handler.type).toLowerCase();
-    const isSsh = SSH_HANDLERS.includes(id.toLowerCase()) || id.toLowerCase().includes("ssh");
-    if (!isSsh || (type && type !== "tunnel")) continue;
-    if (handler.enabled === false || text(handler.enabled) === "false") continue;
-    return [id, handler];
+interface Handler {
+  id: string;
+  type: string;
+  handler: Json;
+}
+
+function enabledHandlers(configuration: Json): Handler[] {
+  return Object.entries(record(configuration.handlers))
+    .map(([id, raw]) => ({ id, handler: record(raw) }))
+    .filter(({ handler }) => handler.enabled !== false && text(handler.enabled) !== "false")
+    .map(({ id, handler }) => ({ id, type: text(handler.type).toLowerCase(), handler }));
+}
+
+function isSshHandler({ id, type }: Handler): boolean {
+  const lower = id.toLowerCase();
+  return (SSH_HANDLERS.includes(lower) || lower.includes("ssh")) && (!type || type === "tunnel");
+}
+
+function isProxyHandler({ id, type }: Handler): boolean {
+  return type === "proxy" || (!type && id.toLowerCase().includes("proxy"));
+}
+
+function sslModeOf(value: string): SslMode | null {
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+  const mapped: Record<string, SslMode> = {
+    disable: "disable",
+    disabled: "disable",
+    allow: "prefer",
+    prefer: "prefer",
+    preferred: "prefer",
+    require: "require",
+    required: "require",
+    "verify-ca": "verify-ca",
+    "verify-full": "verify-full",
+    "verify-identity": "verify-full",
+  };
+  return mapped[normalized] ?? null;
+}
+
+function parseSslHandler(handler: Json): SslMode {
+  const properties = record(handler.properties);
+  const mode = sslModeOf(
+    text(properties.sslMode) || text(properties["ssl.mode"]) || text(properties.sslmode),
+  );
+  if (mode) return mode;
+  if (/NonValidatingFactory/i.test(text(properties.sslFactory))) return "require";
+  const verify =
+    text(properties["ssl.verify.server"]) || text(properties["ssl.verify.server.cert"]);
+  if (verify.toLowerCase() === "false") return "require";
+  return "verify-full";
+}
+
+function parseProxy(
+  { id, handler }: Handler,
+  credentials: Json,
+): { proxy: NetworkProxy | null; secret: string | null; issue: string | null } {
+  const properties = record(handler.properties);
+  const host =
+    text(properties["socks-host"]) || text(properties.host) || text(properties["proxy-host"]);
+  if (!host)
+    return {
+      proxy: null,
+      secret: null,
+      issue: "Proxy ist aktiv, aber der Proxy-Host fehlt in der Konfiguration.",
+    };
+  const secure = record(credentials[`network/${id}`]);
+  const username =
+    text(secure.user) ||
+    text(handler.user) ||
+    text(properties["socks-user"]) ||
+    text(properties.user);
+  const kind = `${id} ${text(properties.type)} ${text(properties["proxy-type"])}`.toLowerCase();
+  const http = kind.includes("http");
+  return {
+    proxy: {
+      type: http ? "http" : "socks5",
+      host,
+      port:
+        parsePort(properties["socks-port"]) ??
+        parsePort(properties.port) ??
+        parsePort(properties["proxy-port"]) ??
+        (http ? 8080 : 1080),
+      ...(username ? { username } : {}),
+    },
+    secret:
+      text(secure.password) || text(handler.password) || text(properties["socks-password"]) || null,
+    issue: null,
+  };
+}
+
+function applyHandlers(connection: ExternalConnection, configuration: Json, stored: Json) {
+  for (const entry of enabledHandlers(configuration)) {
+    if (isSshHandler(entry)) {
+      if (connection.ssh || connection.sshIssue) continue;
+      const { ssh, issue } = parseSsh(entry.id, entry.handler, stored);
+      connection.ssh = ssh;
+      connection.sshIssue = issue;
+    } else if (isProxyHandler(entry)) {
+      const { proxy, secret, issue } = parseProxy(entry, stored);
+      connection.proxy = proxy;
+      connection.proxySecret = secret;
+      connection.sshIssue ||= issue;
+    } else if (entry.type === "config" && entry.id.toLowerCase().includes("ssl")) {
+      connection.sslMode = parseSslHandler(entry.handler);
+    } else if (entry.type === "tunnel" || entry.type === "proxy") {
+      connection.sshIssue ||= `Netzwerk-Handler „${entry.id}“ wird nicht unterstützt.`;
+    }
   }
-  return null;
 }
 
 function parseSsh(
@@ -140,12 +238,7 @@ function parseEntry(id: string, raw: Json, credentials: Json): ExternalConnectio
       "SID";
   connection.oracleDescriptor = target?.oracleDescriptor ?? "";
   connection.srv = target?.srv ?? false;
-  const handler = sshHandler(configuration);
-  if (handler) {
-    const { ssh, issue } = parseSsh(handler[0], handler[1], stored);
-    connection.ssh = ssh;
-    connection.sshIssue = issue;
-  }
+  applyHandlers(connection, configuration, stored);
   return connection;
 }
 

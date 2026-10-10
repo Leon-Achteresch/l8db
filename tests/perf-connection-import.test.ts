@@ -76,7 +76,9 @@ async function dbeaverFixture() {
     };
     credentials[id] = {
       "#connection": { user: `user_${index}`, password: `pw-${index}-${"x".repeat(index % 17)}` },
-      ...(index % 5 === 0 ? { "network/ssh_tunnel": { user: "ops", password: `ssh-${index}` } } : {}),
+      ...(index % 5 === 0
+        ? { "network/ssh_tunnel": { user: "ops", password: `ssh-${index}` } }
+        : {}),
     };
   }
   const iv = crypto.getRandomValues(new Uint8Array(16));
@@ -200,7 +202,9 @@ test("DBeaver import of 2,000 connections with encrypted credentials stays withi
     parseDbeaverConfig(fixture.dataSources, fixture.credentials),
   );
   expect(candidates.filter((candidate) => candidate.skipReason)).toHaveLength(CONNECTIONS / 4);
-  expect(candidates.filter((candidate) => candidate.duplicateOf)).toHaveLength(CONNECTIONS / 4);
+  expect(candidates.filter((candidate) => candidate.duplicateOf)).toHaveLength(
+    CONNECTIONS / 4 - CONNECTIONS / 20,
+  );
   expect(resolved.summary.missingPassword).toBe(0);
 });
 
@@ -238,6 +242,7 @@ test("storing 2,000 imported secrets keeps keychain concurrency bounded", async 
     id: `id-${index}`,
     password: `pw-${index}`,
     sshSecret: index % 5 === 0 ? `ssh-${index}` : null,
+    proxySecret: null,
   }));
   let active = 0;
   let peak = 0;
@@ -252,7 +257,7 @@ test("storing 2,000 imported secrets keeps keychain concurrency bounded", async 
       await Promise.resolve();
       active--;
     },
-    (id) => `${id}:ssh`,
+    { ssh: (id) => `${id}:ssh`, proxy: (id) => `${id}:proxy` },
     SECRET_CONCURRENCY,
   );
   const elapsedMs = performance.now() - started;

@@ -56,6 +56,30 @@ function tagEnd(source: string, from: number): number {
   return -1;
 }
 
+function declarationEnd(source: string, from: number): number {
+  let quote = "";
+  let depth = 0;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote) quote = "";
+    } else if (source.startsWith("<!--", index)) {
+      const end = source.indexOf("-->", index + 4);
+      if (end < 0) return -1;
+      index = end + 2;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "[") {
+      depth++;
+    } else if (char === "]") {
+      depth = Math.max(0, depth - 1);
+    } else if (char === ">" && depth === 0) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function invalid(detail: string): Error {
   return new Error(`Ungültiges XML: ${detail}`);
 }
@@ -86,8 +110,14 @@ export function parseXml(source: string): XmlElement {
       position = end + 3;
       continue;
     }
-    if (source.startsWith("<?", open) || source.startsWith("<!", open)) {
-      const end = source.indexOf(">", open + 2);
+    if (source.startsWith("<?", open)) {
+      const end = source.indexOf("?>", open + 2);
+      if (end < 0) throw invalid("Verarbeitungsanweisung ist nicht geschlossen.");
+      position = end + 2;
+      continue;
+    }
+    if (source.startsWith("<!", open)) {
+      const end = declarationEnd(source, open + 2);
       if (end < 0) throw invalid("Deklaration ist nicht geschlossen.");
       position = end + 1;
       continue;

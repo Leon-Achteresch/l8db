@@ -1,3 +1,5 @@
+import { hexToBytes } from "@/lib/value-viewers/binary";
+
 const DBEAVER_KEY_HEX = "babb4a9f774ab853c96c2d653dfe544a";
 
 const NAVICAT_KEY = "libcckeylibcckey";
@@ -11,15 +13,6 @@ const MAX_PASSWORD_HEX = 4096;
 const encoder = new TextEncoder();
 
 const strictDecoder = new TextDecoder("utf-8", { fatal: true });
-
-export function hexToBytes(value: string): Uint8Array | null {
-  const clean = value.trim();
-  if (!clean || clean.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(clean)) return null;
-  const bytes = new Uint8Array(clean.length / 2);
-  for (let index = 0; index < bytes.length; index++)
-    bytes[index] = Number.parseInt(clean.slice(index * 2, index * 2 + 2), 16);
-  return bytes;
-}
 
 function cryptoApi(): SubtleCrypto {
   const subtle = globalThis.crypto?.subtle;
@@ -100,8 +93,8 @@ function printable(value: string): boolean {
 
 export async function decryptNavicatPassword(value: string): Promise<string | null> {
   if (value.length > MAX_PASSWORD_HEX) return null;
-  const bytes = hexToBytes(value);
-  if (!bytes) return null;
+  const bytes = hexToBytes(value.trim());
+  if (!bytes?.length) return null;
   const plain = await aesCbcDecrypt(encoder.encode(NAVICAT_KEY), encoder.encode(NAVICAT_IV), bytes);
   if (!plain) return null;
   const text = decodeText(plain);
