@@ -141,7 +141,7 @@ fn as_admin(script: &str) -> Result<(), String> {
         "do shell script \"{}\" with administrator privileges",
         script.replace('\\', "\\\\").replace('"', "\\\"")
     );
-    let output = std::process::Command::new("osascript")
+    let output = crate::process::std_command("osascript")
         .args(["-e", &apple])
         .output()
         .map_err(|e| format!("osascript: {e}"))?;
@@ -216,10 +216,8 @@ fn uninstall() -> Result<CliStatus, String> {
 
 #[cfg(windows)]
 fn powershell(script: &str) -> Result<String, String> {
-    use std::os::windows::process::CommandExt;
-    let output = std::process::Command::new("powershell")
+    let output = crate::process::std_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .creation_flags(0x0800_0000)
         .output()
         .map_err(|e| format!("PowerShell: {e}"))?;
     if output.status.success() {
