@@ -9,6 +9,7 @@ import {
   type ProductMatch,
   resolveProduct,
 } from "./products";
+import { sslModeOf } from "./transport";
 import { type ExternalParseResult, emptyExternalConnection } from "./types";
 import { attribute, findElements, parseXml, type XmlElement } from "./xml";
 
@@ -38,17 +39,8 @@ function productOf(connType: string, serviceProvider: string): ProductMatch | nu
   return refined;
 }
 
-const PG_SSL_MODES: Record<string, SslMode> = {
-  disable: "disable",
-  allow: "prefer",
-  prefer: "prefer",
-  require: "require",
-  "verify-ca": "verify-ca",
-  "verify-full": "verify-full",
-};
-
 function navicatSslMode(element: XmlElement): SslMode {
-  const pg = PG_SSL_MODES[attribute(element, "SSL_PGSSLMode").toLowerCase().replace(/_/g, "-")];
+  const pg = sslModeOf(attribute(element, "SSL_PGSSLMode"));
   if (pg) return pg;
   const verify = attribute(element, "SSL_VerifyServerCert", "SSL_VerifyCA", "SSL_VerifyCert");
   return verify && !truthy(verify) ? "require" : "verify-full";

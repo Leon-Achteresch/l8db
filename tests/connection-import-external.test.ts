@@ -699,7 +699,7 @@ test("maps SQL Server JDBC parameters to the adapter keys", () => {
   expect(url.hostname).toBe("srv");
   expect(url.searchParams.get("instance")).toBe("SQLEXPRESS");
   expect(url.searchParams.get("integrated_security")).toBe("true");
-  expect(url.searchParams.get("trust_server_certificate")).toBe("true");
+  expect(url.searchParams.has("trust_server_certificate")).toBe(false);
   expect(url.searchParams.get("application_name")).toBe("erp");
   expect(url.searchParams.get("sslmode")).toBe("require");
   expect(url.searchParams.has("instanceName")).toBe(false);

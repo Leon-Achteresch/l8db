@@ -3,6 +3,7 @@ import type { SslMode } from "@/lib/db";
 import { decryptDbeaverCredentials } from "./crypto";
 import { parseJdbcUrl, parsePort } from "./jdbc";
 import { CLOUD_KINDS, FILE_KINDS, resolveProduct } from "./products";
+import { sslModeOf } from "./transport";
 import {
   type ExternalConnection,
   type ExternalParseResult,
@@ -79,23 +80,6 @@ function isSshHandler({ id, type }: Handler): boolean {
 
 function isProxyHandler({ id, type }: Handler): boolean {
   return type === "proxy" || (!type && id.toLowerCase().includes("proxy"));
-}
-
-function sslModeOf(value: string): SslMode | null {
-  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
-  const mapped: Record<string, SslMode> = {
-    disable: "disable",
-    disabled: "disable",
-    allow: "prefer",
-    prefer: "prefer",
-    preferred: "prefer",
-    require: "require",
-    required: "require",
-    "verify-ca": "verify-ca",
-    "verify-full": "verify-full",
-    "verify-identity": "verify-full",
-  };
-  return mapped[normalized] ?? null;
 }
 
 function parseSslHandler(handler: Json): SslMode {
@@ -254,6 +238,7 @@ function parseEntry(id: string, raw: Json, credentials: Json): ExternalConnectio
       "SID";
   connection.oracleDescriptor = target?.oracleDescriptor ?? "";
   connection.srv = target?.srv ?? false;
+  connection.urlScheme = text(configuration.host) ? null : (target?.transport ?? null);
   applyHandlers(connection, configuration, stored);
   return connection;
 }

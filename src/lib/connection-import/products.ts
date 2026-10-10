@@ -77,19 +77,6 @@ export function resolveProduct(hints: string[]): ProductMatch | null {
   return null;
 }
 
-export const DEFAULT_PORTS: Partial<Record<DatabaseKind, number>> = {
-  postgres: 5432,
-  mysql: 3306,
-  mssql: 1433,
-  oracle: 1521,
-  clickhouse: 8123,
-  mongodb: 27017,
-  redis: 6379,
-  cassandra: 9042,
-  elasticsearch: 9200,
-  influxdb: 8086,
-};
-
 export const CLOUD_KINDS: DatabaseKind[] = ["snowflake", "bigquery", "athena", "dynamodb"];
 
 export const FILE_KINDS: DatabaseKind[] = ["sqlite", "duckdb"];

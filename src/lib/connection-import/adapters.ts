@@ -1,0 +1,202 @@
+import type { DatabaseKind, SslMode } from "@/lib/db";
+
+export type TlsWriter = "sslmode" | "secure" | "ssl" | "mongo" | "scheme" | "none";
+
+export interface AdapterFacts {
+  scheme: string;
+  tlsScheme: string;
+  fieldPort: number | null;
+  fieldTlsPort: number | null;
+  httpsUrlPort: number | null;
+  implicitTlsPort: number | null;
+  tlsWriter: TlsWriter;
+  insecureParam: [string, string] | null;
+  flagMode: SslMode;
+  identity: string[];
+  source: string;
+}
+
+const NO_TLS: Omit<AdapterFacts, "scheme" | "tlsScheme" | "fieldPort" | "fieldTlsPort" | "source"> =
+  {
+    httpsUrlPort: null,
+    implicitTlsPort: null,
+    tlsWriter: "none",
+    insecureParam: null,
+    flagMode: "verify-full",
+    identity: [],
+  };
+
+export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
+  postgres: {
+    scheme: "postgresql",
+    tlsScheme: "postgresql",
+    fieldPort: 5432,
+    fieldTlsPort: 5432,
+    httpsUrlPort: null,
+    implicitTlsPort: 5432,
+    tlsWriter: "sslmode",
+    insecureParam: null,
+    flagMode: "verify-full",
+    identity: ["options"],
+    source: "connection.rs:104",
+  },
+  mysql: {
+    scheme: "mysql",
+    tlsScheme: "mysql",
+    fieldPort: 3306,
+    fieldTlsPort: 3306,
+    httpsUrlPort: null,
+    implicitTlsPort: 3306,
+    tlsWriter: "sslmode",
+    insecureParam: null,
+    flagMode: "require",
+    identity: [],
+    source: "mysql.rs:394",
+  },
+  mssql: {
+    scheme: "mssql",
+    tlsScheme: "mssql",
+    fieldPort: 1433,
+    fieldTlsPort: 1433,
+    httpsUrlPort: null,
+    implicitTlsPort: 1433,
+    tlsWriter: "sslmode",
+    insecureParam: null,
+    flagMode: "verify-full",
+    identity: ["instance"],
+    source: "mssql.rs:508",
+  },
+  cassandra: {
+    scheme: "cassandra",
+    tlsScheme: "cassandra",
+    fieldPort: 9042,
+    fieldTlsPort: 9042,
+    httpsUrlPort: null,
+    implicitTlsPort: 9042,
+    tlsWriter: "sslmode",
+    insecureParam: null,
+    flagMode: "require",
+    identity: [],
+    source: "cassandra.rs:285",
+  },
+  clickhouse: {
+    scheme: "clickhouse",
+    tlsScheme: "clickhouse",
+    fieldPort: 8123,
+    fieldTlsPort: 8443,
+    httpsUrlPort: 8443,
+    implicitTlsPort: 8443,
+    tlsWriter: "secure",
+    insecureParam: null,
+    flagMode: "verify-full",
+    identity: [],
+    source: "clickhouse.rs:75",
+  },
+  elasticsearch: {
+    scheme: "elasticsearch",
+    tlsScheme: "elasticsearch",
+    fieldPort: 9200,
+    fieldTlsPort: 9200,
+    httpsUrlPort: null,
+    implicitTlsPort: 443,
+    tlsWriter: "ssl",
+    insecureParam: ["insecure", "true"],
+    flagMode: "verify-full",
+    identity: [],
+    source: "http_api.rs:115",
+  },
+  influxdb: {
+    scheme: "influxdb",
+    tlsScheme: "influxdb",
+    fieldPort: 8086,
+    fieldTlsPort: 8086,
+    httpsUrlPort: null,
+    implicitTlsPort: 443,
+    tlsWriter: "ssl",
+    insecureParam: ["insecure", "true"],
+    flagMode: "verify-full",
+    identity: ["org"],
+    source: "http_api.rs:115",
+  },
+  mongodb: {
+    scheme: "mongodb",
+    tlsScheme: "mongodb",
+    fieldPort: 27017,
+    fieldTlsPort: 27017,
+    httpsUrlPort: null,
+    implicitTlsPort: 27017,
+    tlsWriter: "mongo",
+    insecureParam: ["tlsAllowInvalidCertificates", "true"],
+    flagMode: "verify-full",
+    identity: ["replicaSet", "authSource"],
+    source: "mongodb.rs:126",
+  },
+  redis: {
+    scheme: "redis",
+    tlsScheme: "rediss",
+    fieldPort: 6379,
+    fieldTlsPort: 6379,
+    httpsUrlPort: null,
+    implicitTlsPort: 6379,
+    tlsWriter: "scheme",
+    insecureParam: null,
+    flagMode: "verify-full",
+    identity: [],
+    source: "redis.rs:155",
+  },
+  oracle: {
+    ...NO_TLS,
+    scheme: "oracle",
+    tlsScheme: "oracle",
+    fieldPort: 1521,
+    fieldTlsPort: 1521,
+    implicitTlsPort: 1521,
+    identity: ["connect_string"],
+    source: "oracle.rs:906",
+  },
+  snowflake: {
+    ...NO_TLS,
+    scheme: "snowflake",
+    tlsScheme: "snowflake",
+    fieldPort: null,
+    fieldTlsPort: null,
+    identity: ["warehouse", "role"],
+    source: "snowflake.rs:333",
+  },
+  bigquery: {
+    ...NO_TLS,
+    scheme: "bigquery",
+    tlsScheme: "bigquery",
+    fieldPort: null,
+    fieldTlsPort: null,
+    identity: ["location", "credentials_file"],
+    source: "bigquery.rs:310",
+  },
+  athena: {
+    ...NO_TLS,
+    scheme: "athena",
+    tlsScheme: "athena",
+    fieldPort: null,
+    fieldTlsPort: null,
+    identity: ["schema", "output", "profile", "endpoint", "workgroup"],
+    source: "aws.rs:81",
+  },
+  dynamodb: {
+    ...NO_TLS,
+    scheme: "dynamodb",
+    tlsScheme: "dynamodb",
+    fieldPort: null,
+    fieldTlsPort: null,
+    identity: ["profile", "endpoint"],
+    source: "aws.rs:90",
+  },
+};
+
+export const SCHEME_ALIASES: Record<string, string> = {
+  postgres: "postgresql",
+  mariadb: "mysql",
+  sqlserver: "mssql",
+  valkey: "redis",
+  scylla: "cassandra",
+  "mongodb+srv": "mongodb",
+};
