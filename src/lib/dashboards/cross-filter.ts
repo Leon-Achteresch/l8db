@@ -51,27 +51,90 @@ export function ownCondition(dataset: Dataset, key: string, value: unknown): Cro
   return { ref, bucket: key === DIM_KEY ? (s.dimension?.bucket ?? "none") : "none", value };
 }
 
-const NOISE = /'(?:[^']|'')*'|\$\$[\s\S]*?\$\$|--[^\n]*|\/\*[\s\S]*?\*\//g;
-const CLAUSE =
-  /\b(select|from|join|where|group|order|having|on|using|limit|union|returning|set|values)\b/gi;
-const TABLE_START = /\b(?:from|join|only|lateral)\s*$/i;
+const SQL_TOKEN =
+  /'(?:[^']|'')*'|\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$|--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|`(?:[^`]|``)*`|\[[^\]]*\]|[A-Za-z_][\w$]*|[(),.]/g;
+const ENDS_FROM = new Set([
+  "where",
+  "group",
+  "order",
+  "having",
+  "limit",
+  "offset",
+  "fetch",
+  "union",
+  "intersect",
+  "except",
+  "returning",
+  "window",
+  "qualify",
+  "select",
+  "into",
+  "set",
+  "values",
+]);
+
+interface SqlToken {
+  word: string | null;
+  ident: string | null;
+  mark: string | null;
+}
+
+function sqlTokens(sql: string): SqlToken[] {
+  const tokens: SqlToken[] = [];
+  for (const [token] of sql.matchAll(SQL_TOKEN)) {
+    const first = token[0];
+    if (first === "'" || first === "$" || token.startsWith("--") || token.startsWith("/*"))
+      continue;
+    if (token.length === 1 && "(),.".includes(token)) {
+      tokens.push({ word: null, ident: null, mark: token });
+      continue;
+    }
+    const quoted =
+      first === '"'
+        ? token.slice(1, -1).replace(/""/g, '"')
+        : first === "`"
+          ? token.slice(1, -1).replace(/``/g, "`")
+          : first === "["
+            ? token.slice(1, -1)
+            : null;
+    tokens.push({
+      word: quoted === null ? token.toLowerCase() : null,
+      ident: (quoted ?? token).toLowerCase(),
+      mark: null,
+    });
+  }
+  return tokens;
+}
 
 function mentionsTable(sql: string, table: string): boolean {
-  const name = table.slice(table.lastIndexOf(".") + 1);
+  const name = table.slice(table.lastIndexOf(".") + 1).toLowerCase();
   if (!name) return false;
-  const code = sql.replace(NOISE, " ");
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const token = new RegExp(`(^|[^\\w$])(["\`\\[]?)${escaped}\\2(?![\\w$])`, "gi");
-  for (const match of code.matchAll(token)) {
-    const before = code
-      .slice(0, (match.index ?? 0) + match[1].length)
-      .replace(/(?:["`[]?[\w$]+["`\]]?\s*\.\s*)+$/, "")
-      .trimEnd();
-    if (TABLE_START.test(before)) return true;
-    if (before.endsWith(",")) {
-      const clauses = [...before.matchAll(CLAUSE)];
-      const last = clauses.at(-1)?.[1].toLowerCase();
-      if (last === "from" || last === "join") return true;
+  const tokens = sqlTokens(sql);
+  const stack = [{ from: false, expect: false }];
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    const state = stack[stack.length - 1];
+    if (token.mark === "(") {
+      state.expect = false;
+      stack.push({ from: false, expect: false });
+    } else if (token.mark === ")") {
+      if (stack.length > 1) stack.pop();
+    } else if (token.mark === ",") {
+      if (state.from) state.expect = true;
+    } else if (token.mark === ".") {
+    } else if (token.word === "from" || token.word === "join") {
+      state.from = true;
+      state.expect = true;
+    } else if (token.word !== null && ENDS_FROM.has(token.word)) {
+      state.from = false;
+      state.expect = false;
+    } else if (token.word === "on" || token.word === "using") {
+      state.expect = false;
+    } else if (state.expect && (token.word === "only" || token.word === "lateral")) {
+    } else if (state.expect && token.ident !== null) {
+      if (tokens[index + 1]?.mark === ".") continue;
+      if (token.ident === name) return true;
+      state.expect = false;
     }
   }
   return false;
