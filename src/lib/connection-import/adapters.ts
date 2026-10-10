@@ -12,6 +12,8 @@ export interface AdapterFacts {
   tlsWriter: TlsWriter;
   insecureParam: [string, string] | null;
   flagMode: SslMode;
+  flagKeys: string[];
+  tlsInKey: boolean;
   identity: string[];
   source: string;
 }
@@ -23,6 +25,8 @@ const NO_TLS: Omit<AdapterFacts, "scheme" | "tlsScheme" | "fieldPort" | "fieldTl
     tlsWriter: "none",
     insecureParam: null,
     flagMode: "verify-full",
+    flagKeys: [],
+    tlsInKey: false,
     identity: [],
   };
 
@@ -37,7 +41,9 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "verify-full",
-    identity: ["options"],
+    flagKeys: ["ssl"],
+    tlsInKey: false,
+    identity: ["options", "hostaddr"],
     source: "connection.rs:104",
   },
   mysql: {
@@ -50,6 +56,8 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "require",
+    flagKeys: ["usessl", "requiressl", "ssl"],
+    tlsInKey: false,
     identity: [],
     source: "mysql.rs:394",
   },
@@ -63,6 +71,8 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "verify-full",
+    flagKeys: ["encrypt"],
+    tlsInKey: false,
     identity: ["instance"],
     source: "mssql.rs:508",
   },
@@ -76,7 +86,9 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "require",
-    identity: [],
+    flagKeys: ["ssl", "tls"],
+    tlsInKey: false,
+    identity: ["nodes|hosts"],
     source: "cassandra.rs:285",
   },
   clickhouse: {
@@ -89,6 +101,8 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "secure",
     insecureParam: null,
     flagMode: "verify-full",
+    flagKeys: ["secure", "ssl"],
+    tlsInKey: true,
     identity: [],
     source: "clickhouse.rs:75",
   },
@@ -102,6 +116,8 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "ssl",
     insecureParam: ["insecure", "true"],
     flagMode: "verify-full",
+    flagKeys: ["tls", "ssl", "secure"],
+    tlsInKey: true,
     identity: [],
     source: "http_api.rs:115",
   },
@@ -115,7 +131,9 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "ssl",
     insecureParam: ["insecure", "true"],
     flagMode: "verify-full",
-    identity: ["org"],
+    flagKeys: ["tls", "ssl", "secure"],
+    tlsInKey: true,
+    identity: ["org|orgID|org_id", "db|bucket|database", "version"],
     source: "http_api.rs:115",
   },
   mongodb: {
@@ -128,6 +146,8 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "mongo",
     insecureParam: ["tlsAllowInvalidCertificates", "true"],
     flagMode: "verify-full",
+    flagKeys: ["tls", "ssl"],
+    tlsInKey: false,
     identity: ["replicaSet", "authSource"],
     source: "mongodb.rs:126",
   },
@@ -141,6 +161,8 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsWriter: "scheme",
     insecureParam: null,
     flagMode: "verify-full",
+    flagKeys: ["ssl", "tls"],
+    tlsInKey: true,
     identity: [],
     source: "redis.rs:155",
   },
@@ -151,7 +173,7 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 1521,
     fieldTlsPort: 1521,
     implicitTlsPort: 1521,
-    identity: ["connect_string"],
+    identity: ["connect_string|tns"],
     source: "oracle.rs:906",
   },
   snowflake: {
@@ -160,7 +182,7 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsScheme: "snowflake",
     fieldPort: null,
     fieldTlsPort: null,
-    identity: ["warehouse", "role"],
+    identity: ["database|db", "schema", "warehouse", "role", "endpoint|host"],
     source: "snowflake.rs:333",
   },
   bigquery: {
@@ -169,7 +191,12 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsScheme: "bigquery",
     fieldPort: null,
     fieldTlsPort: null,
-    identity: ["location", "credentials_file"],
+    identity: [
+      "project|project_id",
+      "location",
+      "endpoint|api_endpoint",
+      "credentials_file|key_file",
+    ],
     source: "bigquery.rs:310",
   },
   athena: {
@@ -178,7 +205,7 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     tlsScheme: "athena",
     fieldPort: null,
     fieldTlsPort: null,
-    identity: ["schema", "output", "profile", "endpoint", "workgroup"],
+    identity: ["schema", "output", "workgroup", "profile", "endpoint"],
     source: "aws.rs:81",
   },
   dynamodb: {
@@ -192,11 +219,4 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
   },
 };
 
-export const SCHEME_ALIASES: Record<string, string> = {
-  postgres: "postgresql",
-  mariadb: "mysql",
-  sqlserver: "mssql",
-  valkey: "redis",
-  scylla: "cassandra",
-  "mongodb+srv": "mongodb",
-};
+export const TLS_SCHEMES = ["https", "rediss"];

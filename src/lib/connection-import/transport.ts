@@ -5,6 +5,7 @@ export interface TransportSource {
   params: Array<[string, string]>;
   sslMode: SslMode | null;
   urlScheme: "http" | "https" | null;
+  portFromUrl: boolean;
   port: number | null;
 }
 
@@ -112,16 +113,16 @@ function decisive(mode: SslMode | null): mode is SslMode {
 
 function readSignals(facts: AdapterFacts, source: TransportSource): Signals {
   let paramMode: SslMode | null = null;
-  let flagged: boolean | null = null;
   let verifyOff = false;
   let verifyOn = false;
+  const flags = new Map<string, boolean>();
   for (const [rawKey, value] of source.params) {
     const key = rawKey.trim().toLowerCase();
     if (MODE_KEYS.includes(key)) paramMode = sslModeOf(value) ?? paramMode;
     else if (FLAG_KEYS.includes(key)) {
       const on = flag(value);
-      if (key === "encrypt" && value.trim().toLowerCase() === "optional") continue;
-      if (on !== null) flagged = flagged === true ? true : on;
+      if (on !== null && !(key === "encrypt" && value.trim().toLowerCase() === "optional"))
+        flags.set(key, on);
     } else if (INSECURE_KEYS.includes(key) && flag(value) === true) verifyOff = true;
     else if (VERIFY_KEYS.includes(key)) {
       const on = flag(value);
@@ -129,11 +130,19 @@ function readSignals(facts: AdapterFacts, source: TransportSource): Signals {
       if (on === true) verifyOn = true;
     } else if (FACTORY_KEYS.includes(key) && /NonValidatingFactory/i.test(value)) verifyOff = true;
   }
+  const decidingKey = facts.flagKeys.find((key) => flags.has(key));
+  const flagged = decidingKey
+    ? (flags.get(decidingKey) as boolean)
+    : source.urlScheme === "https"
+      ? true
+      : source.urlScheme === "http"
+        ? false
+        : null;
   const mode = decisive(paramMode)
     ? paramMode
     : decisive(source.sslMode)
       ? source.sslMode
-      : flagged === true || source.urlScheme === "https"
+      : flagged === true
         ? verifyOn && facts.flagMode === "require"
           ? "verify-ca"
           : facts.flagMode
@@ -184,9 +193,12 @@ export function implicitPort(kind: DatabaseKind, tls: boolean): number | null {
   return tls ? facts.implicitTlsPort : facts.fieldPort;
 }
 
-export function resolveTransport(kind: DatabaseKind, source: TransportSource): ResolvedTransport {
+export function resolveTransport(
+  kind: DatabaseKind,
+  source: TransportSource,
+): ResolvedTransport | null {
   const facts = ADAPTERS[kind];
-  if (!facts) throw new Error(`Keine Adapterdaten für ${kind}.`);
+  if (!facts) return null;
   const signals = readSignals(facts, source);
   const sslMode = finalMode(signals);
   const renames = RENAMES[kind] ?? {};
@@ -211,7 +223,7 @@ export function resolveTransport(kind: DatabaseKind, source: TransportSource): R
   const tls = signals.tls === true;
   const port =
     source.port ??
-    (source.urlScheme === "https"
+    (source.urlScheme === "https" && source.portFromUrl
       ? facts.httpsUrlPort
       : tls
         ? facts.fieldTlsPort

@@ -21,6 +21,8 @@ interface Spec {
   flagMode: SslMode;
   database: string;
   identity: string;
+  tlsInKey: boolean;
+  flagParam: string;
 }
 
 const SPECS: Spec[] = [
@@ -37,7 +39,9 @@ const SPECS: Spec[] = [
     insecure: null,
     flagMode: "verify-full",
     database: "app",
-    identity: "options=",
+    identity: "options=,hostaddr=",
+    tlsInKey: false,
+    flagParam: "ssl",
   },
   {
     kind: "mysql",
@@ -53,6 +57,8 @@ const SPECS: Spec[] = [
     flagMode: "require",
     database: "app",
     identity: "",
+    tlsInKey: false,
+    flagParam: "useSSL",
   },
   {
     kind: "mssql",
@@ -68,6 +74,8 @@ const SPECS: Spec[] = [
     flagMode: "verify-full",
     database: "app",
     identity: "instance=",
+    tlsInKey: false,
+    flagParam: "encrypt",
   },
   {
     kind: "cassandra",
@@ -82,7 +90,9 @@ const SPECS: Spec[] = [
     insecure: null,
     flagMode: "require",
     database: "app",
-    identity: "",
+    identity: "nodes=",
+    tlsInKey: false,
+    flagParam: "ssl",
   },
   {
     kind: "clickhouse",
@@ -98,6 +108,8 @@ const SPECS: Spec[] = [
     flagMode: "verify-full",
     database: "app",
     identity: "",
+    tlsInKey: true,
+    flagParam: "secure",
   },
   {
     kind: "elasticsearch",
@@ -113,6 +125,8 @@ const SPECS: Spec[] = [
     flagMode: "verify-full",
     database: "app",
     identity: "",
+    tlsInKey: true,
+    flagParam: "tls",
   },
   {
     kind: "influxdb",
@@ -127,7 +141,9 @@ const SPECS: Spec[] = [
     insecure: "insecure=true",
     flagMode: "verify-full",
     database: "app",
-    identity: "org=",
+    identity: "org=,db=,version=",
+    tlsInKey: true,
+    flagParam: "ssl",
   },
   {
     kind: "mongodb",
@@ -143,6 +159,8 @@ const SPECS: Spec[] = [
     flagMode: "verify-full",
     database: "app",
     identity: "replicaSet=,authSource=",
+    tlsInKey: false,
+    flagParam: "tls",
   },
   {
     kind: "redis",
@@ -158,6 +176,8 @@ const SPECS: Spec[] = [
     flagMode: "verify-full",
     database: "0",
     identity: "",
+    tlsInKey: true,
+    flagParam: "ssl",
   },
 ];
 
@@ -189,10 +209,11 @@ function source(
   connection.ssh = { ...JUMP };
   if (signal === "url") {
     connection.urlScheme = "https";
+    connection.portFromUrl = true;
     if (verifyOff) connection.params.push(["skip_verify", "true"]);
   }
   if (signal === "param") {
-    connection.params.push(["ssl", "true"]);
+    connection.params.push([spec.flagParam, "true"]);
     if (verifyOff) connection.params.push(["verify_ssl", "false"]);
   }
   if (signal === "sslMode")
@@ -221,7 +242,7 @@ function expected(spec: Spec, signal: Signal, port: number | null, verifyOff: bo
   const scheme = tls && spec.writer === "scheme" ? spec.tlsScheme : spec.scheme;
   const url = `${scheme}://u@db.example.com${urlPort ? `:${urlPort}` : ""}/${spec.database}${query.length ? `?${query.join("&")}` : ""}`;
   const key = [
-    scheme,
+    `${spec.kind}${spec.tlsInKey && tls ? "+tls" : ""}`,
     "db.example.com",
     String(remote),
     spec.database,
@@ -437,6 +458,7 @@ describe("review scenarios", () => {
       connection.params = scenario.params ?? [];
       connection.sslMode = scenario.sslMode ?? null;
       connection.urlScheme = scenario.urlScheme ?? null;
+      connection.portFromUrl = scenario.urlScheme != null;
       connection.ssh = { ...JUMP };
       const [candidate] = buildExternalCandidates([connection], []);
       expect(candidate.profile?.connectionString).toBe(scenario.url);
@@ -477,7 +499,7 @@ describe("DynamoDB endpoints (aws.rs:90)", () => {
     [
       "non-AWS host with region",
       { host: "ddb.internal", params: [["AwsRegion", "eu-central-1"]] },
-      "dynamodb://local@eu-central-1?endpoint=http%3A%2F%2Fddb.internal%3A8000",
+      "dynamodb://eu-central-1?endpoint=http%3A%2F%2Fddb.internal",
     ],
     [
       "https local",
@@ -599,4 +621,289 @@ test("existing URLs without a port resolve to the adapter default in the duplica
   expect(endpointKey("postgres", "postgres://u@db/app")).toBe(
     endpointKey("postgres", "postgresql://u@db:5432/app?sslmode=prefer"),
   );
+});
+
+async function dbeaverRow(
+  provider: string,
+  driver: string,
+  configuration: Record<string, unknown>,
+) {
+  const { parseDbeaverConfig } = await import("../src/lib/connection-import");
+  const parsed = await parseDbeaverConfig(
+    JSON.stringify({ connections: { one: { provider, driver, name: "one", configuration } } }),
+    null,
+  );
+  return buildExternalCandidates(parsed.connections, [])[0];
+}
+
+describe("finding 1: DBeaver entries with host still read TLS from the url field", () => {
+  const rows: Array<[string, Record<string, unknown>, string, number]> = [
+    [
+      "elasticsearch host + https url, empty port uses the tool default 9200",
+      { host: "es", user: "u", url: "jdbc:es://https://es" },
+      "elasticsearch://u@es:9200?ssl=true",
+      9200,
+    ],
+    [
+      "elasticsearch host + http url stays plain",
+      { host: "es", user: "u", url: "jdbc:es://http://es" },
+      "elasticsearch://u@es:9200?ssl=false",
+      9200,
+    ],
+    [
+      "clickhouse host + https url uses the TLS field default 8443",
+      { host: "ch", user: "u", database: "db", url: "jdbc:clickhouse:https://ch/db" },
+      "clickhouse://u@ch:8443/db?secure=1",
+      8443,
+    ],
+    [
+      "clickhouse host + http url stays on 8123",
+      { host: "ch", user: "u", database: "db", url: "jdbc:clickhouse:http://ch/db" },
+      "clickhouse://u@ch:8123/db?secure=0",
+      8123,
+    ],
+  ];
+  for (const [name, configuration, url, remote] of rows)
+    test(name, async () => {
+      const provider = String(configuration.url).includes("clickhouse")
+        ? "clickhouse"
+        : "elasticsearch";
+      const candidate = await dbeaverRow(provider, provider, {
+        ...configuration,
+        handlers: {
+          ssh_tunnel: { type: "TUNNEL", enabled: true, properties: { host: "jump", user: "ops" } },
+        },
+      });
+      expect(candidate.profile?.connectionString).toBe(url);
+      expect(candidate.profile?.ssh?.remotePort).toBe(remote);
+      expect(candidate.endpoint.split("|")[2]).toBe(String(remote));
+    });
+});
+
+describe("finding 2 + 7: DynamoDB custom endpoints keep credentials (aws.rs:66-90)", () => {
+  const rows: Array<[string, Partial<ExternalConnection>, string, string | null]> = [
+    [
+      "VPC endpoint on amazonaws.com keeps profile",
+      { host: "vpce-1.dynamodb.eu-west-1.vpce.amazonaws.com", params: [["profile", "prod"]] },
+      "dynamodb://eu-west-1?profile=prod&endpoint=https%3A%2F%2Fvpce-1.dynamodb.eu-west-1.vpce.amazonaws.com",
+      null,
+    ],
+    [
+      "China region host is standard AWS",
+      { host: "dynamodb.cn-north-1.amazonaws.com.cn", params: [["profile", "cn"]] },
+      "dynamodb://cn-north-1?profile=cn",
+      null,
+    ],
+    [
+      "dual-stack api.aws host is standard AWS",
+      { host: "dynamodb.eu-central-1.api.aws", params: [["profile", "p"]] },
+      "dynamodb://eu-central-1?profile=p",
+      null,
+    ],
+    [
+      "https custom host keeps credentials and omits the port (443)",
+      {
+        host: "ddb.example.com",
+        urlScheme: "https",
+        user: "AKIA",
+        password: "s",
+        params: [["region", "eu-west-1"]],
+      },
+      "dynamodb://AKIA@eu-west-1?endpoint=https%3A%2F%2Fddb.example.com",
+      "s",
+    ],
+    [
+      "non-AWS host on port 8000 keeps source credentials",
+      { host: "ddb.lan", port: 8000, user: "AKIA", password: "s" },
+      "dynamodb://AKIA@us-east-1?endpoint=http%3A%2F%2Fddb.lan%3A8000",
+      "s",
+    ],
+    [
+      "non-AWS http host without port does not get 8000",
+      { host: "ddb.lan", params: [["profile", "x"]] },
+      "dynamodb://us-east-1?profile=x&endpoint=http%3A%2F%2Fddb.lan",
+      null,
+    ],
+    [
+      "loopback without credentials gets local defaults",
+      { host: "127.0.0.1" },
+      "dynamodb://local@us-east-1?endpoint=http%3A%2F%2F127.0.0.1%3A8000",
+      "local",
+    ],
+    [
+      "loopback with credentials keeps them",
+      { host: "localhost", port: 4566, user: "test", password: "pw" },
+      "dynamodb://test@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A4566",
+      "pw",
+    ],
+    [
+      "https loopback without port uses 443",
+      { host: "localhost", urlScheme: "https" },
+      "dynamodb://local@us-east-1?endpoint=https%3A%2F%2Flocalhost",
+      "local",
+    ],
+  ];
+  for (const [name, fields, url, password] of rows)
+    test(name, () => {
+      const [candidate] = buildExternalCandidates([cloud("dynamodb", fields)], []);
+      expect(candidate.profile?.connectionString).toBe(url);
+      expect(candidate.password).toBe(password);
+    });
+
+  test("non-loopback custom endpoints warn about a defaulted region", () => {
+    const [candidate] = buildExternalCandidates(
+      [cloud("dynamodb", { host: "ddb.lan", port: 8000, user: "A", password: "s" })],
+      [],
+    );
+    expect(candidate.warnings.join(" ")).toContain("Region prüfen");
+  });
+});
+
+describe("finding 3 + 6: duplicate keys use the canonical kind (provider.rs:449-457)", () => {
+  const same: Array<[DatabaseKind, string, string]> = [
+    ["clickhouse", "https://u@ch/db", "clickhouse://u@ch:8443/db?secure=1"],
+    ["clickhouse", "http://u@ch/db", "clickhouse://u@ch:8123/db"],
+    ["elasticsearch", "opensearch://u@os:9200", "elasticsearch://u@os:9200"],
+    ["elasticsearch", "https://u@es", "elasticsearch://u@es:443?ssl=true"],
+    ["influxdb", "http://token@i:8086/b", "influxdb://token@i/b"],
+    ["redis", "valkey://db:6379/0", "redis://db/0"],
+    ["postgres", "postgres://u@db/app", "postgresql://u@db:5432/app?sslmode=prefer"],
+  ];
+  for (const [kind, left, right] of same)
+    test(`${kind}: ${left} equals ${right}`, () => {
+      expect(endpointKey(kind, left)).toBe(endpointKey(kind, right));
+    });
+  const different: Array<[DatabaseKind, string, string]> = [
+    ["clickhouse", "https://u@ch:8443/db", "http://u@ch:8443/db"],
+    ["redis", "rediss://db:6379/0", "redis://db:6379/0"],
+    ["mongodb", "mongodb+srv://u@cluster.example.com/app", "mongodb://u@cluster.example.com/app"],
+  ];
+  for (const [kind, left, right] of different)
+    test(`${kind}: ${left} differs from ${right}`, () => {
+      expect(endpointKey(kind, left)).not.toBe(endpointKey(kind, right));
+    });
+  test("mongodb+srv keys carry no default port", () => {
+    expect(endpointKey("mongodb", "mongodb+srv://u@cluster.example.com/app")?.split("|")[2]).toBe(
+      "",
+    );
+  });
+});
+
+describe("finding 4: identity params follow the adapter URL reads", () => {
+  const rows: Array<[DatabaseKind, string, string, string]> = [
+    [
+      "snowflake",
+      "snowflake.rs:336",
+      "snowflake://U@acme?database=A",
+      "snowflake://U@acme?database=B",
+    ],
+    ["snowflake", "snowflake.rs:336", "snowflake://U@acme?db=A", "snowflake://U@acme?db=B"],
+    [
+      "snowflake",
+      "snowflake.rs:337",
+      "snowflake://U@acme/DB?schema=A",
+      "snowflake://U@acme/DB?schema=B",
+    ],
+    [
+      "snowflake",
+      "snowflake.rs:341",
+      "snowflake://U@acme?endpoint=https%3A%2F%2Fa",
+      "snowflake://U@acme?endpoint=https%3A%2F%2Fb",
+    ],
+    ["bigquery", "bigquery.rs:309", "bigquery://p?project=a", "bigquery://p?project=b"],
+    ["bigquery", "bigquery.rs:311", "bigquery://p?endpoint=a", "bigquery://p?api_endpoint=b"],
+    ["bigquery", "bigquery.rs:312", "bigquery://p?key_file=a", "bigquery://p?credentials_file=b"],
+    ["influxdb", "influxdb.rs:425", "influxdb://h/b?org=a", "influxdb://h/b?orgID=b"],
+    ["influxdb", "influxdb.rs:409", "influxdb://h?bucket=a", "influxdb://h?db=b"],
+    ["influxdb", "influxdb.rs:411", "influxdb://h/b?version=2", "influxdb://h/b?version=3"],
+    ["cassandra", "cassandra.rs:278", "cassandra://h/ks?nodes=a", "cassandra://h/ks?hosts=b"],
+    ["mssql", "mssql.rs:534", "mssql://u@h/db?instance=A", "mssql://u@h/db?instance=B"],
+    [
+      "postgres",
+      "connection.rs:286",
+      "postgresql://u@h/db?hostaddr=10.0.0.1",
+      "postgresql://u@h/db?hostaddr=10.0.0.2",
+    ],
+    ["oracle", "oracle.rs:895", "oracle://u@h/?connect_string=A", "oracle://u@h/?tns=B"],
+    ["athena", "athena.rs:222", "athena://r/C?schema=a", "athena://r/C?schema=b"],
+    ["dynamodb", "aws.rs:81", "dynamodb://r?profile=a", "dynamodb://r?profile=b"],
+  ];
+  for (const [kind, cite, left, right] of rows)
+    test(`${kind} (${cite}): ${left} differs from ${right}`, () => {
+      expect(endpointKey(kind, left)).not.toBe(endpointKey(kind, right));
+    });
+  test("aliases resolve to the same identity", () => {
+    expect(endpointKey("snowflake", "snowflake://U@acme?db=A")).toBe(
+      endpointKey("snowflake", "snowflake://U@acme?database=A"),
+    );
+    expect(endpointKey("influxdb", "influxdb://h/b?orgID=x")).toBe(
+      endpointKey("influxdb", "influxdb://h/b?org=x"),
+    );
+  });
+});
+
+describe("finding 5: per-driver precedence from the adapter table (mysql.rs:408)", () => {
+  const rows: Array<[string, Array<[string, string]>, string]> = [
+    [
+      "useSSL=false overrides requireSSL=true",
+      [
+        ["requireSSL", "true"],
+        ["useSSL", "false"],
+      ],
+      "disable",
+    ],
+    [
+      "useSSL=true with requireSSL=false still uses TLS",
+      [
+        ["useSSL", "true"],
+        ["requireSSL", "false"],
+      ],
+      "require",
+    ],
+    ["requireSSL alone enables TLS", [["requireSSL", "true"]], "require"],
+    [
+      "sslMode beats useSSL",
+      [
+        ["useSSL", "false"],
+        ["sslMode", "VERIFY_IDENTITY"],
+      ],
+      "verify-full",
+    ],
+  ];
+  for (const [name, params, mode] of rows)
+    test(name, () => {
+      const connection = emptyExternalConnection("p", name);
+      connection.kind = "mysql";
+      connection.host = "db";
+      connection.user = "u";
+      connection.database = "app";
+      connection.params = params;
+      const [candidate] = buildExternalCandidates([connection], []);
+      expect(candidate.profile?.connectionString).toBe(`mysql://u@db:3306/app?sslmode=${mode}`);
+    });
+  test("flags the adapter does not read are ignored (mssql.rs:508)", () => {
+    const connection = emptyExternalConnection("p", "mssql");
+    connection.kind = "mssql";
+    connection.host = "db";
+    connection.user = "u";
+    connection.database = "app";
+    connection.params = [["ssl", "true"]];
+    const [candidate] = buildExternalCandidates([connection], []);
+    expect(candidate.profile?.connectionString).toBe("mssql://u@db:1433/app?sslmode=prefer");
+  });
+});
+
+test("finding 8: a kind without adapter facts is skipped, not thrown", () => {
+  const connection = emptyExternalConnection("x", "s3");
+  connection.kind = "s3";
+  connection.host = "bucket";
+  const ok = emptyExternalConnection("y", "pg");
+  ok.kind = "postgres";
+  ok.host = "db";
+  ok.user = "u";
+  ok.database = "app";
+  const candidates = buildExternalCandidates([connection, ok], []);
+  expect(candidates[0].skipReason).toContain("Import-Zuordnung");
+  expect(candidates[0].profile).toBeNull();
+  expect(candidates[1].skipReason).toBeNull();
 });

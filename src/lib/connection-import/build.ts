@@ -158,7 +158,21 @@ function toCandidate(
     connection.kind && CLOUD_KINDS.includes(connection.kind) && !sourceSkip
       ? cloudTarget(connection)
       : null;
-  const skipReason = sourceSkip ?? cloud?.skipReason ?? null;
+  const transport =
+    !sourceSkip && connection.kind && !cloud && !FILE_KINDS.includes(connection.kind)
+      ? resolveTransport(connection.kind, {
+          params: connection.params,
+          sslMode: connection.sslMode,
+          urlScheme: connection.urlScheme,
+          portFromUrl: connection.portFromUrl,
+          port: connection.port,
+        })
+      : null;
+  const missingAdapter =
+    !sourceSkip && connection.kind && !cloud && !FILE_KINDS.includes(connection.kind) && !transport
+      ? `Für den Typ „${connection.kind}“ fehlt die Import-Zuordnung.`
+      : null;
+  const skipReason = sourceSkip ?? cloud?.skipReason ?? missingAdapter;
   if (skipReason)
     return {
       ...base,
@@ -187,15 +201,6 @@ function toCandidate(
     warnings.push("Dateipfad ist relativ oder enthält Platzhalter, bitte prüfen.");
   if (!passwordless && !connection.user && ["postgres", "mysql", "mssql", "oracle"].includes(kind))
     warnings.push("Benutzer fehlt.");
-  const transport =
-    FILE_KINDS.includes(kind) || cloud
-      ? null
-      : resolveTransport(kind, {
-          params: connection.params,
-          sslMode: connection.sslMode,
-          urlScheme: connection.urlScheme,
-          port: connection.port,
-        });
   if (transport) warnings.push(...transport.warnings);
   if (transport?.stripped.length)
     warnings.push(
