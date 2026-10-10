@@ -88,12 +88,11 @@ function targetRef(dataset: Dataset, field: CrossField, kind: DatabaseKind | nul
       ) ?? null
     );
   }
-  const sources = field.table ? [field.table] : (field.tables ?? []);
-  if (!sources.length) return null;
+  if (!field.table) return null;
   const s = dataset.simple;
-  if (sources.some((table) => sameTable(tableKey(s.schema, s.table), table))) return field.column;
+  if (sameTable(tableKey(s.schema, s.table), field.table)) return field.column;
   const join = datasetJoins(s).find((j) =>
-    sources.some((table) => sameTable(tableKey(j.schema, j.table), table)),
+    sameTable(tableKey(j.schema, j.table), field.table ?? ""),
   );
   return join?.id ? joinRef(join.id, field.column) : null;
 }

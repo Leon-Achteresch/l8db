@@ -49,6 +49,7 @@ export function variableLiteral(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return "NULL";
     return kind === "oracle" ? `DATE '${trimmed}'` : `'${trimmed}'`;
   }
+  if (kind === "odbc" && trimmed.includes("\\")) return "NULL";
   return quoteString(trimmed, kind ?? undefined);
 }
 

@@ -2349,4 +2349,6 @@ fn image_blocks_keep_alt_text_and_limits_match_the_frontend() {
     assert!(check_href(&json!("https://example.com/?q=a")).is_ok());
     assert!(check_href(&json!("https://example.com/?q=\"a\"")).is_err());
     assert!(check_href(&json!("https://example.com/<x>")).is_err());
+    assert!(check_href(&json!("HTTPS://example.com/")).is_ok());
+    assert!(check_href(&json!("http://example.com/")).is_err());
 }
