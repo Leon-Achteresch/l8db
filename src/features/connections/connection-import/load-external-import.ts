@@ -27,7 +27,7 @@ export interface LoadedExternalImport {
 }
 
 async function fromDbeaver(workspace: DbeaverWorkspace): Promise<LoadedExternalImport> {
-  const credentials = workspace.credentials ? Uint8Array.from(workspace.credentials) : null;
+  const credentials = workspace.credentials ? base64ToBytes(workspace.credentials) : null;
   const result = await parseDbeaverConfig(workspace.data_sources, credentials);
   const name = fileName(workspace.data_sources_path);
   return {
@@ -36,6 +36,13 @@ async function fromDbeaver(workspace: DbeaverWorkspace): Promise<LoadedExternalI
     dataGripFiles: [],
     needsSshConfigs: false,
   };
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function selectedPaths(picked: string | string[] | null): string[] {
@@ -82,7 +89,7 @@ export async function addDataGripSshConfigs(
     }),
   );
   if (!paths.length) return null;
-  return loadDataGripFiles([...current, ...(await readPicked(paths))], false);
+  return loadDataGripFiles([...(await readPicked(paths)), ...current], false);
 }
 
 export async function pickExternalImport(

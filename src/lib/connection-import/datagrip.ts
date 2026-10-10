@@ -72,7 +72,7 @@ function sshAuthOf(value: string, keyFile: string): SshAuth {
 function collectSshConfigs(root: XmlElement, into: Map<string, XmlElement>) {
   for (const config of findElements(root, "sshConfig")) {
     const id = attribute(config, "id");
-    if (id) into.set(id, config);
+    if (id && !into.has(id)) into.set(id, config);
   }
 }
 

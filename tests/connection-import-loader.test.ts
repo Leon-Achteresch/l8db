@@ -35,12 +35,8 @@ const { addDataGripSshConfigs, detectDbeaverImport, pickExternalImport } = await
   "../src/features/connections/connection-import/load-external-import"
 );
 
-const CREDENTIALS = Array.from(
-  Buffer.from(
-    "AAECAwQFBgcICQoLDA0ODz5TPlgh6DpNnKqkJUAkSBOS3K7zn7EuJ6cGXtL3R55eTLeaO9c+g6TvUWHehtWfUDpn66kbIhIvepYGCBjrYNuu/LegynTpu+aKkGMd9as0ZX58VY93b5+DJ/7jrSnaST9CalfRi6G0jdP4aUpOZCvmepH1A+nNUoPuIuKdf6Q8nq0Q2yLAkjb52uAnP3ncZ3N8oAqWi77ubCsPqmAv/alBJSN6M7/dqaFvG0dc7ntenB++8ypU0G52WAOP1G7TCVwRiwNKi7JYCeMyCUNi6cePMywVK0eHOEAeFSMcRhlR",
-    "base64",
-  ),
-);
+const CREDENTIALS =
+  "AAECAwQFBgcICQoLDA0ODz5TPlgh6DpNnKqkJUAkSBOS3K7zn7EuJ6cGXtL3R55eTLeaO9c+g6TvUWHehtWfUDpn66kbIhIvepYGCBjrYNuu/LegynTpu+aKkGMd9as0ZX58VY93b5+DJ/7jrSnaST9CalfRi6G0jdP4aUpOZCvmepH1A+nNUoPuIuKdf6Q8nq0Q2yLAkjb52uAnP3ncZ3N8oAqWi77ubCsPqmAv/alBJSN6M7/dqaFvG0dc7ntenB++8ypU0G52WAOP1G7TCVwRiwNKi7JYCeMyCUNi6cePMywVK0eHOEAeFSMcRhlR";
 
 const DATA_SOURCES = JSON.stringify({
   connections: {
@@ -126,6 +122,7 @@ test("lets the user add sshConfigs.xml from a second directory when detection fi
   picked = ["/elsewhere/options/sshConfigs.xml"];
   const second = await addDataGripSshConfigs(first?.dataGripFiles ?? []);
   expect(second?.needsSshConfigs).toBe(false);
+  expect(second?.files[0]).toBe("sshConfigs.xml");
   expect(second?.result.connections[0].ssh).toMatchObject({ host: "bastion", auth: "password" });
   expect(calls.filter((call) => call.command === "detect_jetbrains_ssh_configs")).toHaveLength(1);
 });
