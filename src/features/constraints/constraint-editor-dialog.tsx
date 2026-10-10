@@ -1,13 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -15,6 +7,15 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ColumnMultiSelect } from "@/features/constraints/column-multi-select";
 import { ForeignKeyFields } from "@/features/constraints/foreign-key-fields";
 import { useForeignKeyTarget } from "@/features/constraints/use-foreign-key-target";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/features/shell/workbench-dialog";
 import {
   CONSTRAINT_KIND_LABEL,
   type ColumnRef,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/constraint-designer";
 import type { DatabaseKind, TableConstraintSpec } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { WorkbenchContext } from "@/lib/workbench-context";
 
 const SqlEditor = lazy(() =>
   import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
@@ -52,7 +54,7 @@ function withDefaults(spec: TableConstraintSpec, schema: string): TableConstrain
     : spec;
 }
 
-export function ConstraintEditorDialog({
+function ConstraintEditorDialogContent({
   open,
   onOpenChange,
   kind,
@@ -136,7 +138,7 @@ export function ConstraintEditorDialog({
   const columnNames = columns.map((c) => c.name);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={submitting} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-sm">
@@ -270,4 +272,19 @@ export function ConstraintEditorDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+const ConstraintEditorTab = asWorkbenchTab(
+  ConstraintEditorDialogContent,
+  (props) => `Constraint-Editor · ${props.schema}.${props.table}`,
+);
+
+export function ConstraintEditorDialog(props: ConstraintEditorDialogProps) {
+  if (props.isNewTable)
+    return (
+      <WorkbenchContext.Provider value="inline-constraint">
+        <ConstraintEditorDialogContent {...props} />
+      </WorkbenchContext.Provider>
+    );
+  return <ConstraintEditorTab {...props} />;
 }

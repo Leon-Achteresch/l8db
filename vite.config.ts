@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
@@ -18,6 +19,15 @@ export default defineConfig(async () => ({
           return;
         this.environment.hot.send({ type: "full-reload" });
         return [];
+      },
+    } satisfies Plugin,
+    {
+      name: "dev-logo",
+      configureServer(server) {
+        server.middlewares.use("/logo.png", (_req, res) => {
+          res.setHeader("Content-Type", "image/png");
+          res.end(readFileSync(path.resolve(import.meta.dirname, "src-tauri/icons/dev/icon.png")));
+        });
       },
     } satisfies Plugin,
     tanstackRouter({ target: "react", autoCodeSplitting: true }),

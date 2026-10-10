@@ -3,7 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronsUpDownIcon, LayersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import { SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Label } from "@/components/ui/label";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { ConnectionPicker } from "@/features/connections/connection-picker";
 import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listSchemas, previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
@@ -29,7 +29,11 @@ interface CopyToSchemaDialogProps {
   onClose: () => void;
 }
 
-export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps) {
+function CopyToSchemaContent({
+  target,
+  onOpenChange,
+}: CopyToSchemaDialogProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const onClose = () => onOpenChange(false);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const connections = useConnectionsStore((state) => state.connections);
@@ -47,6 +51,7 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
   }, [target, connection?.id]);
 
   const targetConnection = connections.find((entry) => entry.id === targetConnectionId) ?? null;
+  const sameConnection = targetConnectionId === connection?.id;
   const { data: schemas } = useQuery({
     queryKey: ["schemas-target", targetConnectionId, database],
     queryFn: async () => {
@@ -62,20 +67,28 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
         current.id === connection?.id ? (database ?? undefined) : undefined,
       );
     },
-    select: (list) => visibleSchemas(targetConnection, list),
+    select: (list) =>
+      visibleSchemas(targetConnection, list).filter(
+        (entry) => !(sameConnection && entry === target?.schema),
+      ),
     enabled: Boolean(targetConnection && target),
   });
 
   useEffect(() => {
     if (schemas?.length && !schemas.includes(targetSchema)) setTargetSchema(schemas[0]);
   }, [schemas, targetSchema]);
-  const schema = targetSchema.trim();
-  const enabled = Boolean(connection && target && schema);
+  const schema = schemas?.includes(targetSchema) ? targetSchema.trim() : "";
+  const enabled = Boolean(connection && target && targetConnection && schema);
 
   const ddlQuery = useQuery({
-    queryKey: ["schema-copy-preview", connection?.id, database, target, schema],
-    queryFn: () =>
-      previewSchemaObjectCopy(
+    queryKey: ["schema-copy-preview", connection?.id, database, target, targetConnectionId, schema],
+    queryFn: () => {
+      const destination = sameConnection
+        ? undefined
+        : useConnectionsStore
+            .getState()
+            .connections.find((entry) => entry.id === targetConnectionId);
+      return previewSchemaObjectCopy(
         connection!.kind,
         effectiveConnectionString(connection!),
         target!.schema,
@@ -83,7 +96,9 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
         target!.objectType,
         target!.name,
         database ?? undefined,
-      ),
+        destination ? { connectionString: effectiveConnectionString(destination) } : undefined,
+      );
+    },
     enabled,
     retry: false,
   });
@@ -180,5 +195,19 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
         </div>
       </div>
     </DdlPreviewDialog>
+  );
+}
+
+const CopyToSchemaTab = asWorkbenchTab(CopyToSchemaContent, "DDL-Vorschau · Kopie erstellen");
+
+export function CopyToSchemaDialog(props: CopyToSchemaDialogProps) {
+  return (
+    <CopyToSchemaTab
+      {...props}
+      open={props.target !== null}
+      onOpenChange={(open) => {
+        if (!open) props.onClose();
+      }}
+    />
   );
 }

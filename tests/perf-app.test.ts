@@ -321,6 +321,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
   async () => {
     const app = await open("/monitor", '[data-tour="monitor"]');
     try {
+      await app.page.getByRole("button", { name: "Weitere Monitor-Aktionen" }).click();
+      await app.page.getByRole("menuitem", { name: "Query-Verlauf" }).click();
+      await app.page.getByText("Noch keine Laufzeitdaten vorhanden.").waitFor();
       expect(await app.page.getByText("Noch keine Laufzeitdaten vorhanden.").count()).toBe(1);
       expect(
         await app.page.evaluate(() =>
@@ -353,6 +356,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         );
       });
       await app.page.reload();
+      await app.page.getByRole("button", { name: "Weitere Monitor-Aktionen" }).click();
+      await app.page.getByRole("menuitem", { name: "Query-Verlauf" }).click();
       await app.page.locator('[data-slot="chart"]').waitFor();
       expect(
         await app.page.evaluate(() =>
@@ -367,6 +372,88 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     }
   },
   60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Live-Monitor bleibt bei 1000 Sessions begrenzt und fragt nur im Intervall ab",
+  async () => {
+    const app = await open("/", 'a[data-name="table_0000"]');
+    try {
+      await app.page.evaluate(() => localStorage.setItem("l8db.perf.sessions", "1000"));
+      const started = Date.now();
+      await app.page.goto(app.page.url().replace(/\/$/, "/monitor"));
+      await app.page.getByText("Aktive Sessions (1000)").waitFor({ timeout: 30000 });
+      const ready = Date.now() - started;
+      await app.page.locator('[data-slot="chart"]').waitFor({ timeout: 20000 });
+      const before = await app.page.evaluate(
+        () => (window as unknown as { __liveMetricsCalls?: number }).__liveMetricsCalls ?? 0,
+      );
+      await app.page.waitForTimeout(10500);
+      const after = await app.page.evaluate(
+        () => (window as unknown as { __liveMetricsCalls?: number }).__liveMetricsCalls ?? 0,
+      );
+      const dom = await app.page.evaluate(() => ({
+        rows: document.querySelectorAll('[role="tabpanel"][data-state="active"] tbody tr').length,
+        nodes: document.querySelectorAll("*").length,
+      }));
+      const durations: number[] = [];
+      for (let index = 0; index < 9; index++) {
+        const clickStarted = performance.now();
+        await app.page
+          .locator("tbody tr")
+          .nth(index + 1)
+          .click();
+        await app.page
+          .getByText(`PID ${8001 + index}`, { exact: true })
+          .first()
+          .waitFor();
+        durations.push(performance.now() - clickStarted);
+      }
+      durations.sort((a, b) => a - b);
+      await app.page.getByRole("button", { name: "Aktualisierung pausieren" }).click();
+      const paused = await app.page.evaluate(
+        () => (window as unknown as { __liveMetricsCalls?: number }).__liveMetricsCalls ?? 0,
+      );
+      await app.page.waitForTimeout(6000);
+      const idle = await app.page.evaluate(
+        () => (window as unknown as { __liveMetricsCalls?: number }).__liveMetricsCalls ?? 0,
+      );
+      const limits = {
+        readyMs: 15000,
+        rows: 200,
+        nodes: 9000,
+        requestsPer10s: 3,
+        selectMedianMs: 250,
+        selectP95Ms: 600,
+        requestsWhilePaused: 0,
+      };
+      console.log(
+        `performance live-monitor-browser: ${JSON.stringify({
+          sessions: 1000,
+          readyMs: ready,
+          rows: dom.rows,
+          nodes: dom.nodes,
+          requestsPer10s: after - before,
+          selectMedianMs: durations[4],
+          selectP95Ms: durations[8],
+          requestsWhilePaused: idle - paused,
+          limits,
+        })}`,
+      );
+      expect(ready).toBeLessThan(limits.readyMs);
+      expect(dom.rows).toBeLessThanOrEqual(limits.rows);
+      expect(dom.nodes).toBeLessThan(limits.nodes);
+      expect(after - before).toBeLessThanOrEqual(limits.requestsPer10s);
+      expect(after - before).toBeGreaterThanOrEqual(1);
+      expect(durations[4]).toBeLessThan(limits.selectMedianMs);
+      expect(durations[8]).toBeLessThan(limits.selectP95Ms);
+      expect(idle - paused).toBe(limits.requestsWhilePaused);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  90000,
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
@@ -559,7 +646,10 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       await app.page.locator(".monaco-editor .view-lines").first().click();
       await app.page.keyboard.type("select 'perf wide'");
-      await app.page.getByRole("button", { name: "Statement ausführen", exact: true }).first().click();
+      await app.page
+        .getByRole("button", { name: "Statement ausführen", exact: true })
+        .first()
+        .click();
       await app.page.waitForSelector('tbody tr[data-index="0"]');
       const scroll = await measure("wide-query-result-scroll", app.page, () =>
         app.page.evaluate(async () => {

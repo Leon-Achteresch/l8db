@@ -33,7 +33,7 @@ test("markiert Entwurfszeilen nach ihrer Herkunft aus Quelle oder Ziel", () => {
   const draft = "a\nsource\nb\ntarget\nmanual\nc";
   expect(
     draftLineOrigins(definitionHunks(source, draft), definitionHunks(target, draft), 6),
-  ).toEqual([null, "source", null, "target", null, null]);
+  ).toEqual([null, "source", null, "target", "manual", null]);
 });
 
 test("findet in großen Definitionen nur die tatsächlich geänderten Zeilen", () => {

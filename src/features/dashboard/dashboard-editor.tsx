@@ -1,80 +1,65 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  CheckIcon,
-  ChevronRightIcon,
-  DatabaseIcon,
-  EllipsisIcon,
-  FolderOpenIcon,
-  LayoutDashboardIcon,
-  LibraryIcon,
-  PencilIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  TimerIcon,
-  TimerOffIcon,
-} from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { XIcon } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useStore } from "zustand";
-import {
-  IconMenu,
-  IconMenuContent,
-  IconMenuItem,
-  IconMenuRadioItem,
-  IconMenuSeparator,
-  IconMenuSubContent,
-  IconMenuSubTrigger,
-} from "@/components/icon-menu";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { type DashboardDesign, DEFAULT_DASHBOARD_DESIGN } from "@/lib/dashboard-design";
 import {
-  DropdownMenuRadioGroup,
-  DropdownMenuSub,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { UndoRedoControls } from "@/components/undo-redo-controls";
-import { useActiveConnection } from "@/lib/connections";
-import { fileLabel } from "@/lib/dashboard-file";
-import {
+  addPage,
+  type BlockKind,
+  blockWidget,
   CHARTS,
   type ChartTab,
   clearDashboardHistory,
   createId,
   type Dashboard,
+  type DashboardTheme,
+  dashboardPages,
   emptyDataset,
-  redoDashboards,
+  type Period,
+  pageOf,
+  paletteStyle,
+  removePage,
+  sanitizeTheme,
   settle,
-  undoDashboards,
+  staleFilter,
+  themeCss,
+  themeShowsHeader,
   useChartTabsStore,
+  useCrossFilterStore,
+  useDashboardPalette,
   useDashboardsStore,
   useVariableValuesStore,
+  widgetsOnPage,
 } from "@/lib/dashboards";
 import { useDbSelectionStore } from "@/lib/db-selection";
 import { useHasNewFeatures } from "@/lib/new-features";
+import { cn } from "@/lib/utils";
 import { type ChartDraft, preferredChart } from "./chart-draft";
 import { ChartLibraryDrawer } from "./chart-library-drawer";
+import { DashboardBrandHeader } from "./dashboard-brand-header";
 import { DashboardCanvas } from "./dashboard-canvas";
+import { DashboardCrossFilterBar } from "./dashboard-cross-filter-bar";
+import { DashboardDesignStyle } from "./dashboard-design-style";
 import { useDashboardFileReload } from "./dashboard-editor/use-dashboard-file-reload";
+import { DashboardInteractionContext } from "./dashboard-interaction";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
+import { DashboardPageNav } from "./dashboard-page-nav";
+import { DashboardPeriodContext } from "./dashboard-period";
 import { DashboardScopeContext } from "./dashboard-scope";
 import { DashboardTabStrip } from "./dashboard-tab-strip";
+import { DashboardToolbar } from "./dashboard-toolbar";
 import { DashboardVariablesBar } from "./dashboard-variables-bar";
-
-const REFRESH_OPTIONS = [
-  ["30", "30s", "Alle 30 s"],
-  ["60", "1m", "Jede Minute"],
-  ["300", "5m", "Alle 5 Minuten"],
-] as const;
+import { usePresentation } from "./use-presentation";
+import { useSqlDialect } from "./use-sql-dialect";
+import { WidgetDetailsDialog } from "./widget-details-dialog";
 
 const ChartStudio = lazy(() =>
   import("./chart-studio/chart-studio").then((module) => ({ default: module.ChartStudio })),
+);
+
+const DashboardDesignPanel = lazy(() =>
+  import("./dashboard-design-panel").then((module) => ({ default: module.DashboardDesignPanel })),
 );
 
 export function DashboardEditor({
@@ -89,10 +74,52 @@ export function DashboardEditor({
   database: string | null;
 }) {
   const store = useDashboardsStore();
-  const connection = useActiveConnection();
+  const scopeId = useId();
+  const [designDraft, setDesignDraft] = useState<DashboardDesign | null>(null);
+  const [themeDraft, setThemeDraft] = useState<DashboardTheme | null>(null);
+  const [pageId, setPageId] = useState<string | null>(null);
+  const presentation = usePresentation();
+  const pages = useMemo(() => dashboardPages(dashboard), [dashboard]);
+  const activePage = pages.some((page) => page.id === pageId) ? (pageId as string) : pages[0].id;
+  const theme = themeDraft ?? dashboard.theme ?? null;
+  const [designError, setDesignError] = useState("");
+  const [designSuspended, setDesignSuspended] = useState(false);
+  const savedDesign = dashboard.design ?? DEFAULT_DASHBOARD_DESIGN;
+  const selectedDesign = designDraft ?? savedDesign;
+  const activeDesign = useMemo(() => {
+    const own = selectedDesign.enabled && !designSuspended ? selectedDesign.css : "";
+    return { css: `${themeCss(theme)}${own}`, enabled: true };
+  }, [selectedDesign, designSuspended, theme]);
+  const interaction = useMemo(
+    () => ({
+      dashboardId: dashboard.id,
+      presenting: presentation.presenting,
+      goToPage: (id: string) => setPageId(id),
+    }),
+    [dashboard.id, presentation.presenting],
+  );
+  useEffect(() => () => useCrossFilterStore.getState().clear(dashboard.id), [dashboard.id]);
+  const dialect = useSqlDialect();
+  useEffect(() => {
+    useCrossFilterStore
+      .getState()
+      .retain(dashboard.id, (filter) => !staleFilter(filter, dashboard, dialect));
+  }, [dashboard, dialect]);
+  useEffect(() => {
+    const recover = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.code !== "KeyD") return;
+      event.preventDefault();
+      setDesignSuspended(true);
+      setDesignDraft((draft) => draft ?? { ...(dashboard.design ?? DEFAULT_DASHBOARD_DESIGN) });
+    };
+    window.addEventListener("keydown", recover);
+    return () => window.removeEventListener("keydown", recover);
+  }, [dashboard.design]);
   const queryClient = useQueryClient();
   const hasNew = useHasNewFeatures("dashboard");
   const [drawer, setDrawer] = useState<"dashboards" | "charts" | null>(null);
+  const [period, setPeriod] = useState<Period | null>(null);
+  const paletteMode = useDashboardPalette((s) => s.mode);
   const allTabs = useChartTabsStore((s) => s.tabs);
   const chartTabs = useMemo(
     () => allTabs.filter((t) => t.dashboardId === dashboard.id),
@@ -107,7 +134,7 @@ export function DashboardEditor({
     () => ({ variables: dashboard.variables ?? [], values: variableValues ?? {} }),
     [dashboard.variables, variableValues],
   );
-  const editing = !dashboard.locked;
+  const editing = !dashboard.locked && !presentation.presenting;
   const canUndo = useStore(useDashboardsStore.temporal, (state) => state.pastStates.length > 0);
   const canRedo = useStore(useDashboardsStore.temporal, (state) => state.futureStates.length > 0);
 
@@ -137,33 +164,42 @@ export function DashboardEditor({
         datasetId: dataset.id,
         title: "",
         period: "all",
+        page: dashboard.pages?.length ? activePage : undefined,
         x: 0,
         y: 0,
         w: CHARTS.column.w,
         h: CHARTS.column.h,
       },
-      dashboard.widgets,
+      widgetsOnPage(dashboard.widgets, pages, activePage),
     );
     useChartTabsStore.getState().open({ dashboardId: dashboard.id, widget, dataset, isNew: true });
-  }, [dashboard.datasets, dashboard.widgets, dashboard.id]);
+  }, [dashboard.datasets, dashboard.widgets, dashboard.id, dashboard.pages, pages, activePage]);
 
+  const addBlock = (type: BlockKind) =>
+    update((d) => {
+      const list = dashboardPages(d);
+      const widget = blockWidget(type, activePage, d.widgets, list);
+      return { widgets: [...d.widgets, d.pages?.length ? widget : { ...widget, page: undefined }] };
+    });
+
+  const dashboardId = dashboard.id;
   const startEdit = useCallback(
     (widgetId: string) => {
-      const current =
-        useDashboardsStore.getState().dashboards.find((d) => d.id === dashboard.id) ?? dashboard;
-      const widget = current.widgets.find((w) => w.id === widgetId);
-      if (!widget) return;
+      const current = useDashboardsStore.getState().dashboards.find((d) => d.id === dashboardId);
+      const widget = current?.widgets.find((w) => w.id === widgetId);
+      if (!current || !widget) return;
       const dataset =
         current.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
       useChartTabsStore.getState().open({
-        dashboardId: dashboard.id,
+        dashboardId,
         widget: structuredClone(widget),
         dataset: structuredClone(dataset),
         isNew: false,
       });
     },
-    [dashboard],
+    [dashboardId],
   );
+  const openCharts = useCallback(() => setDrawer("charts"), []);
 
   const saveDraft = (tab: ChartTab, next: ChartDraft, close: boolean) => {
     const persisted = persistDraft(tab.isNew, next);
@@ -178,7 +214,7 @@ export function DashboardEditor({
           ...d.widgets,
           settle(
             { ...next.widget, w: CHARTS[next.widget.chart].w, h: CHARTS[next.widget.chart].h },
-            d.widgets,
+            widgetsOnPage(d.widgets, dashboardPages(d), pageOf(next.widget, dashboardPages(d))),
           ),
         ],
         datasets: [...d.datasets, next.dataset],
@@ -225,7 +261,7 @@ export function DashboardEditor({
           id: createId(),
           title: `${draft.widget.title || draft.dataset.name || "Chart"} (Kopie)`,
         },
-        d.widgets,
+        widgetsOnPage(d.widgets, dashboardPages(d), pageOf(draft.widget, dashboardPages(d))),
       );
       const dataset = { ...structuredClone(draft.dataset), id: createId() };
       copy.datasetId = dataset.id;
@@ -233,189 +269,112 @@ export function DashboardEditor({
     });
   };
 
+  const showHeader = themeShowsHeader(theme);
+  const sidebarNav = theme?.nav === "sidebar";
+  const pageNav = (
+    <DashboardPageNav
+      pages={pages}
+      active={activePage}
+      editing={editing}
+      vertical={sidebarNav}
+      onSelect={setPageId}
+      onChange={(next) => update({ pages: next })}
+      onAdd={() => {
+        const current = useDashboardsStore.getState().dashboards.find((d) => d.id === dashboard.id);
+        if (!current) return;
+        const base = dashboardPages(current);
+        const next = addPage(current, "");
+        const added = next[next.length - 1];
+        const first = base[0].id;
+        update((d) => ({
+          pages: next,
+          widgets: d.pages?.length
+            ? d.widgets
+            : d.widgets.map((w) => (w.page ? w : { ...w, page: first })),
+        }));
+        setPageId(added.id);
+      }}
+      onRemove={(id) => {
+        update((d) => removePage(d, id));
+        if (id === activePage) setPageId(null);
+      }}
+    />
+  );
+
   return (
     <DashboardScopeContext.Provider value={scope}>
-      <div className="flex min-h-0 flex-1 flex-col bg-background">
-        <header
-          className={
-            activeTab || chartTabs.length
-              ? "shrink-0 px-5 pt-4 pb-3 sm:px-7"
-              : "shrink-0 px-5 pt-4 pb-4 sm:px-7"
-          }
-        >
-          <nav
-            aria-label="Dashboard-Auswahl"
-            className="mb-3 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+      <DashboardInteractionContext.Provider value={interaction}>
+        <DashboardPeriodContext.Provider value={period}>
+          <DashboardDesignStyle scopeId={scopeId} design={activeDesign} onError={setDesignError} />
+          <WidgetDetailsDialog />
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 overflow-hidden",
+              presentation.presenting && "fixed inset-0 z-50 bg-background",
+            )}
           >
-            <LayoutDashboardIcon className="size-3.5 shrink-0" />
-            <span>Dashboards</span>
-            <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
-            <span className="max-w-40 truncate">{connection?.name}</span>
-            <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
-            <span className="inline-flex items-center gap-1 truncate">
-              <DatabaseIcon className="size-3.5 shrink-0" />
-              {database || "Aktive Datenbank"}
-            </span>
-            <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
-            <Select
-              value={dashboard.id}
-              onValueChange={(id) => {
-                const target = siblings.find((item) => item.id === id);
-                if (target?.database)
-                  useDbSelectionStore.getState().setDatabase(connectionId, target.database);
-                store.setActive(connectionId, id);
-              }}
+            <div
+              id={`dashboard-design-${scopeId}`}
+              data-dashboard-design={scopeId}
+              data-presenting={presentation.presenting || undefined}
+              className="dashboard-surface relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+              style={paletteStyle(paletteMode)}
             >
-              <SelectTrigger
-                size="sm"
-                className="h-6 max-w-48 gap-1 border-transparent bg-transparent px-1.5 text-xs text-foreground/80 shadow-none hover:bg-muted dark:bg-transparent"
-                aria-label="Dashboard auswählen"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {siblings.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Neues Dashboard"
-              onClick={() => store.add(connectionId, database)}
-            >
-              <PlusIcon />
-            </Button>
-          </nav>
-          {!activeTab && (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                {editing ? (
-                  <Input
-                    className="h-9 w-64 max-w-full border-transparent bg-transparent px-0 text-2xl! font-semibold tracking-tight shadow-none hover:border-border focus-visible:px-2 dark:bg-transparent"
-                    aria-label="Dashboard-Name"
-                    value={dashboard.name}
-                    onChange={(e) => update({ name: e.target.value })}
-                  />
-                ) : (
-                  <h1 className="truncate text-2xl font-semibold tracking-tight">
-                    {dashboard.name}
-                  </h1>
-                )}
-                {path && (
-                  <span
-                    title={path}
-                    className="max-w-56 truncate rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
-                  >
-                    {fileLabel(path)}
-                  </span>
-                )}
-                {dashboard.mcpId && (
-                  <span
-                    title="Über den l8db-MCP von einem KI-Assistenten angelegt. Änderungen werden in beide Richtungen synchronisiert."
-                    className="rounded-full border border-primary/40 px-2 py-0.5 text-[10px] font-medium text-primary"
-                  >
-                    MCP
-                  </span>
-                )}
-                {dashboard.refreshSec > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <TimerIcon className="size-3.5" />
-                    {dashboard.refreshSec} s
-                  </span>
-                )}
-                <div className="ml-auto flex items-center gap-1.5">
-                  {editing && (
-                    <UndoRedoControls
-                      enabled={!activeTab}
-                      canUndo={canUndo}
-                      canRedo={canRedo}
-                      onUndo={undoDashboards}
-                      onRedo={redoDashboards}
-                    />
-                  )}
-                  <Button variant="outline" size="sm" onClick={() => setDrawer("charts")}>
-                    <LibraryIcon /> Gespeicherte Charts
-                  </Button>
-                  {editing && (
-                    <Button size="sm" onClick={startNewChart}>
-                      <PlusIcon /> Chart erstellen
-                      {hasNew && <NewBadge />}
-                    </Button>
-                  )}
-                  <Button
-                    variant={editing ? "outline" : "default"}
-                    size="sm"
-                    aria-label={editing ? "Zur Ansicht wechseln" : "Dashboard bearbeiten"}
-                    onClick={() => update({ locked: editing })}
-                  >
-                    {editing ? <CheckIcon /> : <PencilIcon />}
-                    {editing ? "Fertig" : "Bearbeiten"}
-                    {!editing && hasNew && <NewBadge />}
-                  </Button>
-                  <IconMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label="Weitere Dashboard-Aktionen"
-                      >
-                        <EllipsisIcon />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <IconMenuContent>
-                      <IconMenuItem
-                        icon={<RefreshCwIcon />}
-                        label="Jetzt neu laden"
-                        onSelect={() => {
-                          void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
-                          void reloadFile(false);
-                        }}
-                      />
-                      <DropdownMenuSub>
-                        <IconMenuSubTrigger icon={<TimerIcon />} label="Automatisch neu laden" />
-                        <IconMenuSubContent>
-                          <DropdownMenuRadioGroup
-                            className="flex gap-0.5"
-                            value={String(dashboard.refreshSec)}
-                            onValueChange={(v) => update({ refreshSec: Number(v) })}
-                          >
-                            <IconMenuRadioItem value="0" icon={<TimerOffIcon />} label="Aus" />
-                            {REFRESH_OPTIONS.map(([value, short, label]) => (
-                              <IconMenuRadioItem
-                                key={value}
-                                value={value}
-                                label={label}
-                                icon={
-                                  <span className="text-[10px] font-semibold tabular-nums">
-                                    {short}
-                                  </span>
-                                }
-                              />
-                            ))}
-                          </DropdownMenuRadioGroup>
-                        </IconMenuSubContent>
-                      </DropdownMenuSub>
-                      <IconMenuSeparator />
-                      <IconMenuItem
-                        icon={<FolderOpenIcon />}
-                        label="Dashboards verwalten"
-                        onSelect={() => setDrawer("dashboards")}
-                      />
-                      <IconMenuItem
-                        icon={<LibraryIcon />}
-                        label="Gespeicherte Charts"
-                        onSelect={() => setDrawer("charts")}
-                      />
-                    </IconMenuContent>
-                  </IconMenu>
-                </div>
-              </div>
-              {(editing || variables.length > 0) && (
-                <div className="mt-3">
+              {presentation.presenting ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="absolute top-3 right-3 z-20 h-7 opacity-60 hover:opacity-100"
+                  onClick={presentation.stop}
+                >
+                  <XIcon /> Präsentation beenden
+                </Button>
+              ) : (
+                <DashboardToolbar
+                  dashboard={dashboard}
+                  siblings={siblings}
+                  database={database}
+                  editing={editing}
+                  compact={Boolean(activeTab)}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  hasNew={hasNew}
+                  period={period}
+                  onPeriod={setPeriod}
+                  onSelect={(id) => {
+                    const target = siblings.find((item) => item.id === id);
+                    if (target?.database)
+                      useDbSelectionStore.getState().setDatabase(connectionId, target.database);
+                    store.setActive(connectionId, id);
+                  }}
+                  onCreate={() => store.add(connectionId, database)}
+                  onUpdate={update}
+                  onNewChart={startNewChart}
+                  onAddBlock={addBlock}
+                  onPresent={() => {
+                    useChartTabsStore.getState().focus(dashboard.id, null);
+                    setDesignDraft(null);
+                    setThemeDraft(null);
+                    presentation.start();
+                  }}
+                  onReload={() => {
+                    void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+                    void reloadFile(false);
+                  }}
+                  onDesign={() => {
+                    setDesignSuspended(false);
+                    setDesignDraft({ ...savedDesign });
+                    setThemeDraft({ ...(dashboard.theme ?? {}) });
+                  }}
+                  onDrawer={setDrawer}
+                />
+              )}
+              {!activeTab && showHeader && theme && (
+                <DashboardBrandHeader theme={theme} fallbackName={dashboard.name} />
+              )}
+              {!activeTab && !sidebarNav && pageNav}
+              {!activeTab && (editing || variables.length > 0) && (
+                <div className="dashboard-filters shrink-0 border-b px-3 py-2">
                   <DashboardVariablesBar
                     dashboardId={dashboard.id}
                     variables={variables}
@@ -424,66 +383,96 @@ export function DashboardEditor({
                   />
                 </div>
               )}
-            </>
-          )}
-        </header>
-        <DashboardTabStrip
-          dashboardName={dashboard.name}
-          tabs={chartTabs}
-          active={activeTab?.id ?? null}
-          onFocus={(id) => useChartTabsStore.getState().focus(dashboard.id, id)}
-          onClose={(tab) => {
-            if (tab.dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
-            useChartTabsStore.getState().close(tab.id);
-          }}
-        />
-        <DashboardLibraryDrawer
-          open={drawer === "dashboards"}
-          onOpenChange={(open) => setDrawer(open ? "dashboards" : null)}
-          dashboard={dashboard}
-          dashboards={siblings}
-          connectionId={connectionId}
-          database={database}
-        />
-        <ChartLibraryDrawer
-          open={drawer === "charts"}
-          onOpenChange={(open) => setDrawer(open ? "charts" : null)}
-          dashboard={dashboard}
-          onLoaded={(id) => {
-            update({ locked: false });
-            startEdit(id);
-          }}
-        />
-        {activeTab ? (
-          <Suspense fallback={null}>
-            <ChartStudio
-              key={activeTab.id}
-              tab={activeTab}
-              variablesBar={
-                <DashboardVariablesBar
+              {!activeTab && <DashboardCrossFilterBar dashboardId={dashboard.id} />}
+              <DashboardTabStrip
+                dashboardName={dashboard.name}
+                tabs={chartTabs}
+                active={activeTab?.id ?? null}
+                onFocus={(id) => useChartTabsStore.getState().focus(dashboard.id, id)}
+                onClose={(tab) => {
+                  if (tab.dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+                  useChartTabsStore.getState().close(tab.id);
+                }}
+              />
+              <DashboardLibraryDrawer
+                open={drawer === "dashboards"}
+                onOpenChange={(open) => setDrawer(open ? "dashboards" : null)}
+                dashboard={dashboard}
+                dashboards={siblings}
+                connectionId={connectionId}
+                database={database}
+              />
+              <ChartLibraryDrawer
+                open={drawer === "charts"}
+                onOpenChange={(open) => setDrawer(open ? "charts" : null)}
+                dashboard={dashboard}
+                pageId={activePage}
+                onLoaded={(id) => {
+                  update({ locked: false });
+                  startEdit(id);
+                }}
+              />
+              {activeTab ? (
+                <Suspense fallback={null}>
+                  <ChartStudio
+                    key={activeTab.id}
+                    tab={activeTab}
+                    variablesBar={
+                      <DashboardVariablesBar
+                        dashboardId={dashboard.id}
+                        variables={variables}
+                        editing
+                        onChange={(next) => update({ variables: next })}
+                      />
+                    }
+                    onSave={(next, close) => saveDraft(activeTab, next, close)}
+                    onDelete={activeTab.isNew ? undefined : () => deleteDraft(activeTab)}
+                    onDuplicate={activeTab.isNew ? undefined : () => duplicateDraft(activeTab)}
+                    onClose={() => useChartTabsStore.getState().close(activeTab.id)}
+                  />
+                </Suspense>
+              ) : (
+                <div className="flex min-h-0 flex-1">
+                  {sidebarNav && pageNav}
+                  <DashboardCanvas
+                    key={activePage}
+                    dashboardId={dashboard.id}
+                    pageId={activePage}
+                    onEdit={editing ? startEdit : undefined}
+                    onAdd={editing ? startNewChart : undefined}
+                    onOpenCharts={editing ? openCharts : undefined}
+                  />
+                </div>
+              )}
+            </div>
+            {designDraft && !presentation.presenting && (
+              <Suspense fallback={null}>
+                <DashboardDesignPanel
                   dashboardId={dashboard.id}
-                  variables={variables}
-                  editing
-                  onChange={(next) => update({ variables: next })}
+                  design={designDraft}
+                  theme={themeDraft ?? {}}
+                  error={designError}
+                  onChange={(next) => {
+                    setDesignSuspended(false);
+                    setDesignDraft(next);
+                  }}
+                  onThemeChange={setThemeDraft}
+                  onClose={() => {
+                    setDesignDraft(null);
+                    setThemeDraft(null);
+                  }}
+                  onSave={() => {
+                    update({ design: designDraft, theme: sanitizeTheme(themeDraft) });
+                    setDesignSuspended(false);
+                    setDesignDraft(null);
+                    setThemeDraft(null);
+                  }}
                 />
-              }
-              onSave={(next, close) => saveDraft(activeTab, next, close)}
-              onDelete={activeTab.isNew ? undefined : () => deleteDraft(activeTab)}
-              onDuplicate={activeTab.isNew ? undefined : () => duplicateDraft(activeTab)}
-              onClose={() => useChartTabsStore.getState().close(activeTab.id)}
-            />
-          </Suspense>
-        ) : (
-          <div className="relative min-h-0 flex-1 overflow-y-auto">
-            <DashboardCanvas
-              dashboardId={dashboard.id}
-              onEdit={editing ? startEdit : undefined}
-              onAdd={editing ? startNewChart : undefined}
-              onOpenCharts={editing ? () => setDrawer("charts") : undefined}
-            />
+              </Suspense>
+            )}
           </div>
-        )}
-      </div>
+        </DashboardPeriodContext.Provider>
+      </DashboardInteractionContext.Provider>
     </DashboardScopeContext.Provider>
   );
 }

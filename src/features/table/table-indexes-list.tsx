@@ -5,6 +5,14 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -56,9 +64,23 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
       </div>
 
       {!indexes || indexes.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">Keine Indexes gefunden.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <LayersIcon />
+            </EmptyMedia>
+            <EmptyTitle>Keine Indexes</EmptyTitle>
+            <EmptyDescription>
+              Ein Index beschleunigt Abfragen, die nach bestimmten Spalten filtern oder sortieren.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+              <PlusIcon data-icon="inline-start" />
+              Index anlegen
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <section>

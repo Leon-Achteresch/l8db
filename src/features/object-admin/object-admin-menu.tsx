@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ObjectDropDialog } from "@/features/object-admin/object-drop-dialog";
-import { ObjectRenameDialog } from "@/features/object-admin/object-rename-dialog";
+import { ObjectRenameInput } from "@/features/object-admin/object-rename-input";
 import { useActiveConnection } from "@/lib/connections";
 import type { ObjectAdminType } from "@/lib/db";
 import { supports } from "@/lib/providers";
@@ -90,14 +90,15 @@ export function ObjectAdminMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <ObjectRenameDialog
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
-        schema={schema}
-        name={name}
-        objectType={objectType}
-        onRenamed={handleRenamed}
-      />
+      {renameOpen && (
+        <ObjectRenameInput
+          schema={schema}
+          name={name}
+          objectType={objectType}
+          onClose={() => setRenameOpen(false)}
+          onRenamed={handleRenamed}
+        />
+      )}
       <ObjectDropDialog
         open={dropOpen}
         onOpenChange={setDropOpen}

@@ -1,14 +1,19 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import type { NewFeatureId } from "@/lib/new-features";
+import type { PaletteHistory } from "@/lib/palette-history";
 
 export type CommandItem = {
   id: string;
   label: string;
   group?: string;
+  kind?: "command" | "setting" | "object" | "connection";
+  context?: string;
   hint?: string;
   keywords?: string[];
   icon?: LucideIcon;
   badge?: ReactNode;
+  featureId?: NewFeatureId;
   onSelect: () => void;
 };
 
@@ -21,5 +26,11 @@ export interface CommandPaletteProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   maxVisible?: number;
+  lockDocumentScroll?: boolean;
+  featureId?: NewFeatureId;
   queryItem?: (query: string) => CommandItem;
+  initialQuery?: string;
+  commandFeatureId?: NewFeatureId;
+  history?: PaletteHistory;
+  onSelectItem?: (item: CommandItem) => void;
 }

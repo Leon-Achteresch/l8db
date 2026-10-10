@@ -11,6 +11,7 @@ export function useQueryExecutionState() {
   const [result, setResultState] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [executedSql, setExecutedSql] = useState("");
+  const [viewSource, setViewSource] = useState<{ text: string; runId: string } | null>(null);
   const [errorSource, setErrorSource] = useState<{ text: string; base: number } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
@@ -41,6 +42,8 @@ export function useQueryExecutionState() {
     setResultState,
     executedSql,
     setExecutedSql,
+    viewSource,
+    setViewSource,
     error,
     setError,
     setErrorSource,

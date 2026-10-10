@@ -1,29 +1,35 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { DownloadIcon, PlayIcon, SearchIcon, Trash2Icon, UploadIcon } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { DownloadIcon, SearchIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { firstLine } from "@/features/query/query-history-panel/format";
 import { HistoryEntryItem } from "@/features/query/query-history-panel/history-entry-item";
+import { SavedQueryItem } from "@/features/query/query-history-panel/saved-query-item";
 import { SavedQueriesExportDialog } from "@/features/query/saved-queries-export-dialog";
 import { SavedQueriesImportDialog } from "@/features/query/saved-queries-import-dialog";
+import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
+import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 
 interface QueryHistoryPanelProps {
   connectionId: string | null;
   onLoad: (sql: string, mode?: "new" | "replace") => void;
+  searchRef?: RefObject<HTMLInputElement | null>;
 }
 
-export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelProps) {
+export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHistoryPanelProps) {
   const [tab, setTab] = useState<"history" | "saved">("history");
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const importTriggerRef = useRef<HTMLButtonElement>(null);
   const entries = useQueryHistoryStore((state) => state.entries);
   const removeEntry = useQueryHistoryStore((state) => state.removeEntry);
   const clearForConnection = useQueryHistoryStore((state) => state.clearForConnection);
@@ -31,25 +37,31 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
   const deleteQuery = useSavedQueriesStore((state) => state.deleteQuery);
   const limit = useQueryHistoryStore((state) => state.retentionLimit);
   const restore = useQueryHistoryStore((state) => state.restore);
-  const undoableRemove = (id: string) => {
-    const entry = entries.find((item) => item.id === id);
-    if (!entry) return;
-    removeEntry(id);
-    toast("Verlaufseintrag entfernt", {
-      action: { label: "Rückgängig", onClick: () => restore([entry]) },
-    });
-  };
-  const undoableDelete = (id: string) => {
-    const entry = savedQueries.find((item) => item.id === id);
-    if (!entry) return;
-    deleteQuery(id);
-    toast("Query entfernt", {
-      action: {
-        label: "Rückgängig",
-        onClick: () => useSavedQueriesStore.getState().importQueries([entry]),
-      },
-    });
-  };
+  const undoableRemove = useCallback(
+    (id: string) => {
+      const entry = entries.find((item) => item.id === id);
+      if (!entry) return;
+      removeEntry(id);
+      toast("Verlaufseintrag entfernt", {
+        action: { label: "Rückgängig", onClick: () => restore([entry]) },
+      });
+    },
+    [entries, removeEntry, restore],
+  );
+  const undoableDelete = useCallback(
+    (id: string) => {
+      const entry = savedQueries.find((item) => item.id === id);
+      if (!entry) return;
+      deleteQuery(id);
+      toast("Query entfernt", {
+        action: {
+          label: "Rückgängig",
+          onClick: () => useSavedQueriesStore.getState().importQueries([entry]),
+        },
+      });
+    },
+    [savedQueries, deleteQuery],
+  );
 
   const history = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -69,6 +81,7 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
   }, [savedQueries, search]);
 
   const visibleEntries = tab === "history" ? history : saved;
+  const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
   const getItemKey = useCallback(
     (index: number) => `${tab}:${visibleEntries[index].id}`,
     [tab, visibleEntries],
@@ -76,9 +89,15 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
   const virtualizer = useVirtualizer({
     count: visibleEntries.length,
     getScrollElement: () => scrollRef.current,
+    scrollToFn,
     estimateSize: () => 64,
+    measureElement: measureVirtualItem,
+    observeElementRect: observeVirtualScrollRect,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
     getItemKey,
-    overscan: 10,
+    overscan: 3,
+    initialRect: { width: 480, height: 600 },
   });
 
   return (
@@ -102,6 +121,7 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
+            ref={searchRef}
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
@@ -144,6 +164,7 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
             size="sm"
             className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
             onClick={() => setImportOpen(true)}
+            ref={importTriggerRef}
           >
             <UploadIcon className="size-3" />
             Importieren
@@ -153,6 +174,7 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
             size="sm"
             className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
             onClick={() => setExportOpen(true)}
+            ref={exportTriggerRef}
             disabled={savedQueries.length === 0}
           >
             <DownloadIcon className="size-3" />
@@ -164,6 +186,7 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto"
         data-slot="query-history-list"
+        style={{ contain: "strict" }}
       >
         {visibleEntries.length === 0 ? (
           <p className="px-4 py-8 text-center text-xs text-muted-foreground">
@@ -190,39 +213,11 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
                     undoableRemove={undoableRemove}
                   />
                 ) : (
-                  <div className="group px-3 py-2 hover:bg-muted/40">
-                    <button
-                      type="button"
-                      className="block w-full text-left"
-                      onClick={() => onLoad(saved[virtualRow.index].sql, "new")}
-                      title="In neuem SQL-Tab öffnen"
-                    >
-                      <p className="truncate text-xs font-medium">{saved[virtualRow.index].name}</p>
-                      <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                        {firstLine(saved[virtualRow.index].sql)}
-                      </p>
-                    </button>
-                    <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 gap-1 px-1.5 text-[11px]"
-                        onClick={() => onLoad(saved[virtualRow.index].sql, "new")}
-                      >
-                        <PlayIcon className="size-3" />
-                        Neuer Tab
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-                        onClick={() => undoableDelete(saved[virtualRow.index].id)}
-                      >
-                        <Trash2Icon className="size-3" />
-                        Löschen
-                      </Button>
-                    </div>
-                  </div>
+                  <SavedQueryItem
+                    entry={saved[virtualRow.index]}
+                    onLoad={onLoad}
+                    onDelete={undoableDelete}
+                  />
                 )}
               </div>
             ))}
@@ -230,12 +225,27 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
         )}
       </div>
 
-      <SavedQueriesExportDialog
-        open={exportOpen}
-        queries={savedQueries}
-        onOpenChange={setExportOpen}
-      />
-      <SavedQueriesImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      {exportOpen && (
+        <SavedQueriesExportDialog
+          open={exportOpen}
+          queries={savedQueries}
+          onOpenChange={setExportOpen}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            exportTriggerRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
+      {importOpen && (
+        <SavedQueriesImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            importTriggerRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
     </div>
   );
 }

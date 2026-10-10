@@ -1,13 +1,49 @@
 import { CHARTS } from "./charts";
-import { refLabel } from "./joins";
-import { AGG_LABEL, type ChartKind, type Dataset, type Widget, type WidgetOptions } from "./model";
+import { calcOf, refLabel } from "./joins";
+import {
+  AGG_LABEL,
+  type Agg,
+  type ChartKind,
+  type Dataset,
+  type Widget,
+  type WidgetOptions,
+} from "./model";
 import { DIM_KEY, DIM2_KEY, metricKey } from "./sql";
 
 export interface DatasetShape {
   dimension: string | null;
   dimension2: string | null;
-  metrics: { key: string; label: string }[];
+  metrics: { key: string; label: string; agg?: Agg }[];
   hasDate: boolean;
+}
+
+export function additive(metric: { agg?: Agg }): boolean {
+  return metric.agg === undefined || metric.agg === "sum" || metric.agg === "count";
+}
+
+export function combinable(metric: { agg?: Agg }): boolean {
+  return additive(metric) || metric.agg === "min" || metric.agg === "max";
+}
+
+export function combineTotal(metric: { agg?: Agg } | undefined, values: unknown[]): number | null {
+  if (!metric || !combinable(metric)) return null;
+  let result: number | null = null;
+  for (const value of values) {
+    const number =
+      typeof value === "number"
+        ? value
+        : typeof value === "bigint"
+          ? Number(value)
+          : typeof value === "string" && value.trim()
+            ? Number(value)
+            : Number.NaN;
+    if (!Number.isFinite(number)) continue;
+    if (result === null) result = number;
+    else if (metric.agg === "min") result = Math.min(result, number);
+    else if (metric.agg === "max") result = Math.max(result, number);
+    else result += number;
+  }
+  return result;
 }
 
 export function datasetShape(ds: Dataset): DatasetShape {
@@ -25,6 +61,7 @@ export function datasetShape(ds: Dataset): DatasetShape {
     dimension2: s.dimension2 ? DIM2_KEY : null,
     metrics: metrics.map((m, i) => ({
       key: metricKey(i),
+      agg: m.column && calcOf(m.column, s)?.aggregate ? "avg" : m.agg,
       label:
         m.label || (m.column ? `${AGG_LABEL[m.agg]} ${refLabel(m.column, s)}` : AGG_LABEL[m.agg]),
     })),
@@ -67,28 +104,59 @@ export function chartFits(kind: ChartKind, shape: DatasetShape): string | null {
   return null;
 }
 
+export function widgetFits(kind: ChartKind, shape: DatasetShape): string | null {
+  if (kind === "kpi" && !shape.dimension && !shape.hasDate)
+    return "Braucht eine Datumsspalte oder eine Aufteilung nach Zeit für den Verlauf";
+  return chartFits(kind, shape);
+}
+
 export const ROW_COUNT_FIELD = "__l8db_row_count__";
+
+export const MAX_SERIES = 8;
+export const OTHER_LABEL = "Weitere";
+
+export function seriesGroups(shape: DatasetShape, rows: Record<string, unknown>[]): string[] {
+  if (!shape.dimension2) return [];
+  const key = shape.metrics[0]?.key ?? "";
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const group = toLabel(row[shape.dimension2]);
+    totals.set(group, (totals.get(group) ?? 0) + Math.abs(toNumber(row[key])));
+  }
+  if (totals.size <= MAX_SERIES) return [...totals.keys()];
+  const top = new Set(
+    [...totals]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_SERIES - 1)
+      .map(([group]) => group),
+  );
+  return [...[...totals.keys()].filter((group) => top.has(group)), OTHER_LABEL];
+}
 
 export function colorSeries(
   kind: ChartKind,
   shape: DatasetShape,
   rows: Record<string, unknown>[],
+  fixedGroups?: string[],
 ): { shape: DatasetShape; rows: Record<string, unknown>[] } {
   if (!shape.dimension2 || !["column", "line", "area", "radar"].includes(kind))
     return { shape, rows };
-  const groups = [...new Set(rows.map((r) => toLabel(r[shape.dimension2 as string])))];
+  const groups = fixedGroups ?? seriesGroups(shape, rows);
   const metrics = groups.flatMap((group, index) =>
     shape.metrics.map((metric, m) => ({
       key: `series_${index}_${m}`,
       label: shape.metrics.length > 1 ? `${group} · ${metric.label}` : group,
     })),
   );
+  const other = groups.indexOf(OTHER_LABEL);
   const result = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
     const dim = shape.dimension ? row[shape.dimension] : "Gesamt";
     const key = JSON.stringify(dim);
     const target = result.get(key) ?? { [shape.dimension ?? "dim"]: dim };
-    const group = groups.indexOf(toLabel(row[shape.dimension2]));
+    const found = groups.indexOf(toLabel(row[shape.dimension2]));
+    const group = found < 0 ? other : found;
+    if (group < 0) continue;
     shape.metrics.forEach((m, i) => {
       const k = `series_${group}_${i}`;
       target[k] = toNumber(target[k]) + toNumber(row[m.key]);
@@ -133,15 +201,4 @@ export function toLabel(value: unknown): string {
     return iso ? iso[1] : value;
   }
   return String(value);
-}
-
-const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-const full = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
-
-export function fmtCompact(value: number): string {
-  return compact.format(value);
-}
-
-export function fmtNumber(value: number): string {
-  return full.format(value);
 }

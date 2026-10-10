@@ -1,33 +1,13 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ChartColumnIcon, CheckIcon, CircleAlertIcon, Table2Icon } from "lucide-react";
-import { useMemo } from "react";
-import { AnimatedNumber } from "@/components/animated-number";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryErrorMessage } from "@/lib/connection-url";
-import {
-  applyOptions,
-  CHARTS,
-  chartFits,
-  colorSeries,
-  type Dataset,
-  datasetShape,
-  type Widget,
-  widgetOptions,
-} from "@/lib/dashboards";
+import { autoSubtitle, CHARTS, type Dataset, type Widget } from "@/lib/dashboards";
 import type { QueryResult } from "@/lib/db";
-import { cn } from "@/lib/utils";
 import { ChartPreviewTable } from "./chart-preview-table";
-import {
-  CHART_RENDERERS,
-  ChartHeadline,
-  deltaFor,
-  headlineValue,
-  LegendCards,
-  legendFor,
-} from "./charts";
-
-const EMPTY_ROWS: Record<string, unknown>[] = [];
+import { CHART_RENDERERS, ChartHeadline, ChartLegend } from "./charts";
+import { useWidgetData } from "./use-widget-data";
 
 export function ChartBuilderPreview({
   widget,
@@ -40,30 +20,22 @@ export function ChartBuilderPreview({
   query: UseQueryResult<QueryResult>;
   updating: boolean;
 }) {
-  const rawShape = useMemo(() => datasetShape(dataset), [dataset]);
-  const options = useMemo(() => widgetOptions(widget), [widget]);
-  const rawRows = query.data?.rows ?? EMPTY_ROWS;
-  const applied = useMemo(
-    () => applyOptions(rawShape, rawRows, options),
-    [rawShape, rawRows, options],
-  );
-  const colored = useMemo(
-    () => colorSeries(widget.chart, applied.shape, applied.rows),
-    [applied, widget.chart],
-  );
-  const { shape, rows } = colored;
-  const problem = chartFits(widget.chart, shape);
-  const legend = useMemo(
-    () => (!problem && options.showLegend ? legendFor(widget.chart, rows, shape, options) : []),
-    [problem, options, widget.chart, rows, shape],
-  );
-  const isTime =
-    (dataset.mode === "simple" &&
-      Boolean(dataset.simple.dimension) &&
-      dataset.simple.dimension?.bucket !== "none") ||
-    /^\d{4}-\d{2}/.test(String(rows[0]?.[shape.dimension ?? ""] ?? ""));
-  const delta =
-    options.showDelta && options.sortBy === "none" ? deltaFor(rows, shape, isTime) : null;
+  const {
+    options,
+    shape,
+    rows,
+    problem,
+    chartPending,
+    chartError,
+    compare,
+    summary,
+    legend,
+    bucket,
+    summaryPending,
+    margin,
+  } = useWidgetData({ widget, dataset, period: widget.period, query, debounceMs: 500 });
+  const subtitle =
+    widget.subtitle ?? autoSubtitle(bucket, shape?.hasDate ? widget.period : null, options.unit);
   const Renderer = CHART_RENDERERS[widget.chart];
   const noSource = dataset.mode === "simple" ? !dataset.simple.table : !dataset.sql.trim();
   const loading = query.isFetching || updating;
@@ -90,34 +62,24 @@ export function ChartBuilderPreview({
           )}
         </span>
       </div>
-      <div className="flex min-h-64 flex-1 shrink-0 flex-col overflow-hidden rounded-xl border bg-card p-4">
+      <div className="flex min-h-80 flex-1 shrink-0 flex-col overflow-hidden rounded-xl border bg-card p-4">
         <div className="mb-4 shrink-0">
-          <p className="text-xs font-medium text-muted-foreground">
+          <p className="truncate text-sm font-medium">
             {widget.title || dataset.name || CHARTS[widget.chart].label}
           </p>
-          {!noSource && !problem && options.showValue && query.isSuccess && !updating && (
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-3xl font-semibold tracking-tight tabular-nums">
-                <ChartHeadline headline={headlineValue(widget.chart, rows, shape)} />
-              </span>
-              {delta !== null && (
-                <span
-                  className={cn(
-                    "rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                    delta >= 0 ? "bg-lime-300/70 text-lime-950" : "bg-rose-200/80 text-rose-950",
-                  )}
-                >
-                  <AnimatedNumber
-                    value={delta}
-                    format={{
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                      signDisplay: "exceptZero",
-                    }}
-                    suffix="%"
-                  />
-                </span>
-              )}
+          {subtitle && <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>}
+          {!noSource && !problem && !updating && query.isSuccess && (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+              {options.showValue &&
+                summary &&
+                (summaryPending ? (
+                  <Skeleton className="h-8 w-28" />
+                ) : (
+                  (summary.value !== null || summary.text) && (
+                    <ChartHeadline summary={summary} options={options} />
+                  )
+                ))}
+              <ChartLegend items={legend} className="ml-auto justify-end" />
             </div>
           )}
         </div>
@@ -129,15 +91,15 @@ export function ChartBuilderPreview({
                 Wähle eine Datenquelle. Deine Vorschau entsteht aus den Feldern, die du zuweist.
               </p>
             </div>
-          ) : query.isError ? (
+          ) : query.isError || chartError ? (
             <p role="alert" className="text-xs leading-relaxed text-destructive">
-              {queryErrorMessage(query.error)}
+              {queryErrorMessage(query.error ?? chartError)}
             </p>
-          ) : problem ? (
+          ) : problem || !shape ? (
             <div className="grid h-full place-items-center px-5 text-center text-xs leading-relaxed text-muted-foreground">
               {problem}
             </div>
-          ) : query.isPending || updating ? (
+          ) : query.isPending || chartPending || updating ? (
             <Skeleton className="h-full min-h-48 w-full rounded-lg" />
           ) : rows.length === 0 ? (
             <div className="grid h-full place-items-center text-xs text-muted-foreground">
@@ -148,17 +110,19 @@ export function ChartBuilderPreview({
               label="Die Chart-Vorschau"
               source="dashboard-chart-builder"
               compact
-              resetKeys={[rows, shape, options, widget.chart]}
+              resetKeys={[rows, shape, options, widget.chart, compare]}
             >
-              <Renderer rows={rows} shape={shape} options={options} />
+              <Renderer
+                rows={rows}
+                shape={shape}
+                options={options}
+                compare={compare}
+                period={shape.hasDate ? widget.period : undefined}
+                totals={margin}
+              />
             </PanelErrorBoundary>
           )}
         </div>
-        {legend.length > 0 && !updating && (
-          <div className="mt-4 shrink-0">
-            <LegendCards items={legend} columns={2} />
-          </div>
-        )}
       </div>
       <section
         aria-label="Datenvorschau"

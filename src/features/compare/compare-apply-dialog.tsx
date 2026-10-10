@@ -104,7 +104,8 @@ export function CompareApplyDialog({
     <>
       <Button
         size="sm"
-        className="h-7 text-xs"
+        variant="ghost"
+        className="h-6 gap-1 px-2 text-xs"
         disabled={
           disabled ||
           !connection ||
@@ -115,7 +116,7 @@ export function CompareApplyDialog({
         }
         onClick={() => void check()}
       >
-        <CheckIcon className="size-3.5" />
+        <CheckIcon className="size-3" />
         {targetLabel} prüfen
       </Button>
       <Dialog

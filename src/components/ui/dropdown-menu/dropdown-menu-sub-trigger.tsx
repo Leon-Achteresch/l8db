@@ -18,13 +18,13 @@ export function DropdownMenuSubTrigger({
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-xl px-2 py-1.5 text-sm first:rounded-t-xl last:rounded-b-xl outline-hidden select-none focus:bg-accent focus:text-accent-foreground [&:not([data-variant=destructive]):focus_*]:text-accent-foreground data-inset:pl-8 data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group/dropdown-menu-item flex cursor-default items-center gap-2 pr-2 rounded-[5px] py-0.75 pl-2.5 text-[13px] leading-5 outline-hidden select-none focus:bg-(--menu-highlight) focus:text-white [&:focus_*]:text-white data-inset:pl-8 data-open:not-focus:bg-foreground/6 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto" />
+      <ChevronRightIcon className="ml-auto size-3.5 text-muted-foreground group-focus/dropdown-menu-item:opacity-75" />
     </DropdownMenuPrimitive.SubTrigger>
   );
 }

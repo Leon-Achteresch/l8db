@@ -24,6 +24,7 @@ import { jumpHostDraft, useNetworkDraft } from "./use-network-draft";
 export function useConnectionEditor({
   connection,
   template,
+  initialUrl,
   onSaved,
 }: Omit<ConnectionEditorProps, "onCancel">) {
   const queryClient = useQueryClient();
@@ -33,15 +34,21 @@ export function useConnectionEditor({
   const extensionHost = useExtensionHost();
   const vault = usePasswordManager();
   const [storeInVault, setStoreInVault] = useState(connection ? Boolean(connection.vault) : true);
-  const [value, setValue] = useState(connection?.connectionString ?? "");
+  const [value, setValue] = useState(connection?.connectionString ?? initialUrl ?? "");
   const [provider, setProvider] = useState(
-    seed ? detectProvider(seed.connectionString, seed.kind) : "postgres",
+    seed
+      ? detectProvider(seed.connectionString, seed.kind)
+      : initialUrl
+        ? detectProvider(initialUrl)
+        : "postgres",
   );
   const info = providers.find((entry) => entry.id === provider) ?? providers[0];
   const kind = info.kind;
   const caps = info.capabilities;
   const initial = seedFields(seed, info, Boolean(template) && !connection);
-  const [mode, setMode] = useState<Mode>(() => seedMode(seed, info));
+  const [mode, setMode] = useState<Mode>(() =>
+    initialUrl !== undefined ? "string" : seedMode(seed, info),
+  );
   const [ssl, setSsl] = useState<SslMode>(() =>
     initialSslMode(
       value,
@@ -75,7 +82,7 @@ export function useConnectionEditor({
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const guided = !seed;
-  const [step, setStep] = useState<1 | 2>(guided ? 1 : 2);
+  const [step, setStep] = useState<1 | 2>(guided && initialUrl === undefined ? 1 : 2);
   const reduce = useReducedMotion();
   const setPreview = useDbThemeStore((state) => state.setPreview);
   const [tags, setTags] = useState(seed?.tags?.map((tag) => tag.name).join(", ") ?? "");

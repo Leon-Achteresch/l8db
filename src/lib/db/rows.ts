@@ -1,6 +1,6 @@
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
-import type { QueryResult, RowCount, TableData, TableInfo } from "./types";
+import type { QueryColumnSource, QueryResult, RowCount, TableData, TableInfo } from "./types";
 
 export type TableRowSort = {
   column: string;
@@ -124,6 +124,7 @@ export async function executeQuery(
     sql,
     options,
     ...(options?.session ? { session: options.session } : {}),
+    ...(options?.pooled ? { pooled: true } : {}),
   });
 }
 
@@ -190,8 +191,9 @@ export async function listViews(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<TableInfo[]> {
-  return invoke("list_views", { kind, connectionString, database, schema });
+  return invoke("list_views", { kind, connectionString, database, schema, options });
 }
 
 export async function getTableDdl(
@@ -244,4 +246,13 @@ export async function updateViewDefinition(
     body,
     dryRun,
   });
+}
+
+export async function describeQueryColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  database?: string,
+): Promise<QueryColumnSource[]> {
+  return invoke("describe_query_columns", { kind, connectionString, database, sql });
 }

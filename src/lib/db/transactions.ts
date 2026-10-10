@@ -1,6 +1,6 @@
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
-import type { ExtensionInfo, FunctionInfo, QueryResult } from "./types";
+import type { ExtensionInfo, FunctionInfo, PackageMemberInfo, QueryResult } from "./types";
 
 export async function beginTransaction(
   kind: DatabaseKind,
@@ -25,6 +25,23 @@ export async function executeInTransactionWithParams(
   options?: QueryExecutionOptions,
 ): Promise<QueryResult> {
   return invoke("execute_in_transaction_with_params", { txId, sql, params, options });
+}
+
+export interface TransactionTableChanges {
+  schema: string;
+  table: string;
+  key_columns: string[];
+  added: Record<string, unknown>[];
+  removed: Record<string, unknown>[];
+  note: string | null;
+}
+
+export async function transactionDatabaseChanges(txId: string): Promise<TransactionTableChanges[]> {
+  return invoke("transaction_database_changes", { txId });
+}
+
+export async function transactionServerOutput(txId: string): Promise<string[]> {
+  return invoke("transaction_server_output", { txId });
 }
 
 export async function updateRowInTransaction(
@@ -81,8 +98,18 @@ export async function listFunctions(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<FunctionInfo[]> {
-  return invoke("list_functions", { kind, connectionString, database, schema });
+  return invoke("list_functions", { kind, connectionString, database, schema, options });
+}
+
+export async function listPackageMembers(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<PackageMemberInfo[]> {
+  return invoke("list_package_members", { kind, connectionString, database, schema });
 }
 
 export async function getFunctionDefinition(
@@ -144,8 +171,9 @@ export async function listProcedures(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<FunctionInfo[]> {
-  return invoke("list_procedures", { kind, connectionString, database, schema });
+  return invoke("list_procedures", { kind, connectionString, database, schema, options });
 }
 
 export async function compileObject(

@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { startTransition, useDeferredValue, useRef, useState } from "react";
+import { startTransition, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
@@ -27,6 +27,7 @@ import { useAutoAssessment } from "./query-view/use-auto-assessment";
 import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
 import { useEditorStateSync } from "./query-view/use-editor-state-sync";
 import { useExplainPlan } from "./query-view/use-explain-plan";
+import { useLastResultSync } from "./query-view/use-last-result-sync";
 import { useQueryExecutionState } from "./query-view/use-query-execution-state";
 import { useQueryFileActions } from "./query-view/use-query-file-actions";
 import { useQueryRegistry } from "./query-view/use-query-registry";
@@ -48,10 +49,14 @@ interface QueryViewProps {
 
 export function QueryView({ tabId }: QueryViewProps) {
   const workspace = useQueryWorkspace();
-  const deferredNavigatorVisible = useDeferredValue(workspace.navigatorVisible, false);
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
-  useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus);
+  const [resultFocus, setResultFocus] = useState(false);
+  const toggleResultFocus = () => {
+    setEditorFocus(false);
+    setResultFocus((focus) => !focus);
+  };
+  useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus || resultFocus);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const { sql, updateQuerySql, markQueryTabExecuted, filePath, fileDirty, externalChange } =
@@ -65,6 +70,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const exec = useQueryExecutionState();
   const exportState = useResultExport(exec.result);
+  useLastResultSync(tabId, connection?.id ?? null, exec.executedSql, exec.result);
   const cursor = useEditorCursorState(sql);
   const bookmarks = useQueryTabBookmarks(tabId);
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
@@ -84,6 +90,13 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const caps = useCapabilities(connection?.kind);
   const schema = useQueryRegistry(connection, database, caps);
+  const errorNames = useMemo(
+    () => ({
+      columns: schema.registry.columns.map((column) => column.name),
+      tables: schema.registry.tables.map((table) => table.name),
+    }),
+    [schema.registry.columns, schema.registry.tables],
+  );
   const sessionViews = useSessionViews(connection?.id, database);
   const output = useServerOutput(connection, database, caps);
 
@@ -166,6 +179,7 @@ export function QueryView({ tabId }: QueryViewProps) {
       connected={Boolean(connection)}
       onToggleOutput={() => output.setOutputOpen((open) => !open)}
       exportState={exportState}
+      sql={exec.executedSql ?? undefined}
     />
   );
 
@@ -199,7 +213,12 @@ export function QueryView({ tabId }: QueryViewProps) {
             analysisOpen={analysis.open}
             onOpenAnalysis={() => analysis.openAnalysis(caps.explain ? "plan" : "perf")}
             editorFocus={editorFocus}
-            onEditorFocusChange={setEditorFocus}
+            onEditorFocusChange={(focus) => {
+              setEditorFocus(focus);
+              if (focus) setResultFocus(false);
+            }}
+            resultFocus={resultFocus && !editorFocus}
+            onResultFocusChange={toggleResultFocus}
             toolsMenu={
               <QueryToolsMenu
                 editorApiRef={editorApiRef}
@@ -242,9 +261,9 @@ export function QueryView({ tabId }: QueryViewProps) {
           workspace={workspace}
           workspaceGroup={workspaceGroup}
           editorFocus={editorFocus}
+          resultFocus={resultFocus && !editorFocus}
           navigator={
             workspace.navigatorVisible &&
-            deferredNavigatorVisible &&
             isSql &&
             connection && (
               <QuerySchemaBrowser
@@ -291,11 +310,26 @@ export function QueryView({ tabId }: QueryViewProps) {
               statusText={statusText}
               actions={resultActions}
               chart={chart}
+              tables={schema.registry.tables}
+              maximized={resultFocus && !editorFocus}
+              onToggleMaximized={toggleResultFocus}
+              sql={sql}
+              names={errorNames}
+              onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
               onRevealError={(marker) => {
                 const prefix = sql.slice(0, marker.start);
                 const line = prefix.split("\n").length;
                 const column = prefix.length - prefix.lastIndexOf("\n");
                 editorApiRef.current?.revealMatch(line, column, marker.end - marker.start);
+              }}
+              onReplaceSql={(start, end, text) => {
+                updateQuerySql(tabId, sql.slice(0, start) + text + sql.slice(end));
+                const prefix = sql.slice(0, start);
+                const line = prefix.split("\n").length;
+                const column = prefix.length - prefix.lastIndexOf("\n");
+                requestAnimationFrame(() =>
+                  editorApiRef.current?.revealMatch(line, column, text.length),
+                );
               }}
             />
           }

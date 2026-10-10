@@ -7,7 +7,7 @@ import type {
   Table,
   VisibilityState,
 } from "@tanstack/react-table";
-import { type CSSProperties, type Dispatch, memo, type SetStateAction } from "react";
+import { type CSSProperties, type Dispatch, memo, type SetStateAction, useCallback } from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
@@ -32,7 +32,10 @@ export type DataTableRowProps = {
   isContextMenuTarget?: boolean;
   toggleRowMarker: (row: TableRow) => void;
   columnWindow: ColumnWindowItem[];
-  measureElement: (element: HTMLTableRowElement | null) => void;
+  measureElement: (
+    element: HTMLTableRowElement | null,
+    dynamicHeight: boolean,
+  ) => undefined | (() => void);
   editingCell: EditingCell | null;
   activeCell: GridCellRef | null;
   activeMatch: GridCellRef | null;
@@ -96,19 +99,24 @@ export const DataTableRow = memo(function DataTableRow({
   const rowIndex = row.index;
   const rowCtid = row.original.__ctid__ as string | undefined;
   const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
+  const dynamicHeight = isRowEditing || customCellColumns.size > 0;
+  const measureRow = useCallback(
+    (element: HTMLTableRowElement | null) => measureElement(element, dynamicHeight),
+    [measureElement, dynamicHeight],
+  );
   const ruleBackground =
     ruleColor && !isMarked && !isRowEditing
       ? `color-mix(in oklab, ${ruleColor} 18%, var(--background))`
       : undefined;
   return (
     <tr
-      ref={measureElement}
+      ref={measureRow}
       data-index={rowIndex}
       data-row-index={rowIndex}
       data-ctid={rowCtid}
       data-marked={isMarked || undefined}
       data-context-menu-target={isContextMenuTarget || undefined}
-      data-dynamic-height={isRowEditing || customCellColumns.size > 0 || undefined}
+      data-dynamic-height={dynamicHeight || undefined}
       style={
         ruleBackground
           ? ({ "--row-bg": ruleBackground, backgroundColor: ruleBackground } as CSSProperties)

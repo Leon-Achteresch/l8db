@@ -1,4 +1,4 @@
-import { invoke } from "./core";
+import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 import type { ColumnInfo, TableInfo } from "./types";
 
@@ -22,8 +22,9 @@ export async function listTables(
   connectionString: string,
   database?: string,
   schema?: string,
+  options?: QueryExecutionOptions,
 ): Promise<TableInfo[]> {
-  return invoke("list_tables", { kind, connectionString, database, schema });
+  return invoke("list_tables", { kind, connectionString, database, schema, options });
 }
 
 export async function listAllColumns(

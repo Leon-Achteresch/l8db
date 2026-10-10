@@ -39,11 +39,25 @@ export interface FunctionInfo {
   oid: string;
 }
 
+export interface PackageMemberInfo {
+  schema: string;
+  package: string;
+  name: string;
+}
+
 export interface ExtensionInfo {
   name: string;
   version: string | null;
   schema: string | null;
   description: string | null;
+}
+
+export interface QueryColumnSource {
+  name: string;
+  data_type: string;
+  schema: string | null;
+  table: string | null;
+  column: string | null;
 }
 
 export interface ForeignKeyInfo {

@@ -1,10 +1,11 @@
-import { ChevronRight } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { type ApprovalAnswers, ApprovalCard } from "@/components/primitives/approval-card";
+import { RecommendationCard } from "@/components/primitives/recommendation-card";
+import { Button } from "@/components/ui/button";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
 import { type AiEvent, aiApprove, aiRespond } from "@/lib/db/ai";
 import { AiSchemaField } from "./ai-schema-field";
-import { ApprovalCard, type ApprovalCardAnswers } from "./beui/agents/approval-card";
-import { ToolApproval } from "./beui/agents/tool-approval";
 
 interface Props {
   event: AiEvent;
@@ -13,7 +14,6 @@ interface Props {
   onError: (message: string) => void;
 }
 export function AiApproval({ event, runId, onResolved, onError }: Props) {
-  const [answers, setAnswers] = useState<ApprovalCardAnswers>({});
   const [content, setContent] = useState<Record<string, unknown>>({});
   const [advanced, setAdvanced] = useState("");
   const [pending, setPending] = useState(false);
@@ -46,7 +46,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       const value = content[key] ?? properties[key]?.default;
       return value === undefined || value === "";
     });
-  const act = async (allow: boolean, submitted = answers) => {
+  const act = async (allow: boolean, submitted: ApprovalAnswers = {}) => {
     setPending(true);
     try {
       if (schema) {
@@ -92,16 +92,30 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
     typeof data.details === "string"
       ? data.details
       : String(details.message ?? details.description ?? details.command ?? details.sql ?? "");
+  const extra = !questionInput && Object.keys(details).some((key) => key !== "requestedSchema") && (
+    <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+      {JSON.stringify(details, null, 2)}
+    </pre>
+  );
+  const actions = (
+    <>
+      <Button size="xs" variant="ghost" disabled={pending} onClick={() => void act(false)}>
+        Ablehnen
+      </Button>
+      <Button size="xs" disabled={pending || missing} onClick={() => void act(true)}>
+        {schema && Object.keys(properties).length ? "Antwort senden" : "Erlauben"}
+      </Button>
+    </>
+  );
   return (
     <fieldset
       ref={region}
       tabIndex={-1}
       aria-label="Agent benötigt eine Entscheidung"
-      className="space-y-2 outline-none"
+      className="outline-none"
     >
       {questionInput ? (
         <ApprovalCard
-          title={title}
           questions={questions.map((question, index) => ({
             id: String(question.id ?? question.question ?? index),
             title: String(question.question ?? question.header ?? "Deine Antwort"),
@@ -114,39 +128,38 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
                   const label = String(option.label ?? option.name ?? option.value);
                   return {
                     value: label,
-                    label: label + (option.description ? ` · ${option.description}` : ""),
+                    label,
+                    hint: typeof option.description === "string" ? option.description : undefined,
                   };
                 })
               : undefined,
             multiple: Boolean(question.multiSelect ?? question.multiple),
-            allowCustom: true,
-            autoAdvance: false,
-            customPlaceholder: "Eigene Antwort …",
           }))}
-          answers={answers}
-          onAnswersChange={setAnswers}
-          status={pending ? "submitting" : "pending"}
+          pending={pending}
           onSubmit={(values) => void act(true, values)}
-          submitLabel="Antwort senden"
-          className="rounded-xl border bg-muted/20 text-xs"
         />
-      ) : schema ? (
-        <ApprovalCard
+      ) : (
+        <RecommendationCard
           title={title}
-          description={description}
-          status={pending ? "submitting" : "pending"}
-          approveLabel={Object.keys(properties).length ? "Antwort senden" : "Erlauben"}
-          approveDisabled={missing}
-          onApprove={() => void act(true)}
-          onReject={() => void act(false)}
-          className="rounded-xl border bg-muted/20 text-xs"
+          meta={
+            <>
+              <ShieldAlert className="size-3.5 shrink-0 text-amber-500" />
+              <span className="truncate font-mono">
+                {String(data.name ?? details.tool ?? "Agent-Aktion")}
+              </span>
+            </>
+          }
+          details={extra || undefined}
+          detailsLabel="Details"
+          actions={actions}
         >
+          {description && <p className="whitespace-pre-wrap">{description}</p>}
           {summary.length > 0 && (
-            <dl className="mb-3 space-y-2 rounded-lg bg-background p-3 text-xs">
+            <dl className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
               {summary.map((entry) => (
                 <div key={`${entry.label}-${entry.value}`}>
                   <dt className="text-[10px] text-muted-foreground">{entry.label}</dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed">
+                  <dd className="mt-0.5 whitespace-pre-wrap break-words text-foreground/90">
                     {entry.value}
                   </dd>
                 </div>
@@ -165,7 +178,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
             />
           ))}
           {Object.keys(properties).length > 0 && (
-            <details className="mt-3 text-xs text-muted-foreground">
+            <details className="mt-3">
               <summary className="min-h-8 cursor-pointer py-1.5">Erweitert: JSON-Antwort</summary>
               <textarea
                 aria-label="Antwort als JSON"
@@ -176,34 +189,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
               />
             </details>
           )}
-        </ApprovalCard>
-      ) : (
-        <ToolApproval
-          tool={String(data.name ?? details.tool ?? "Agent-Aktion")}
-          title={title}
-          description={description}
-          parameters={summary.map((entry, index) => ({
-            id: String(index),
-            label: entry.label,
-            value: <span className="whitespace-pre-wrap break-words">{entry.value}</span>,
-          }))}
-          defaultOpen={true}
-          status={pending ? "approving" : "pending"}
-          onApprove={() => void act(true)}
-          onDeny={() => void act(false)}
-          className="rounded-xl text-xs"
-        />
-      )}
-      {!questionInput && Object.keys(details).some((key) => key !== "requestedSchema") && (
-        <details className="px-3 text-xs text-muted-foreground">
-          <summary className="group/details flex min-h-8 cursor-pointer list-none items-center gap-1 py-1.5 [&::-webkit-details-marker]:hidden">
-            <ChevronRight className="size-3 transition-transform group-open/details:rotate-90" />
-            Vollständige Aktionsdetails
-          </summary>
-          <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/20 p-3 text-[11px]">
-            {JSON.stringify(details, null, 2)}
-          </pre>
-        </details>
+        </RecommendationCard>
       )}
     </fieldset>
   );

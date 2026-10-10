@@ -170,10 +170,10 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
       await page.getByText("1–100 von 257", { exact: true }).waitFor();
       await page.locator('[data-tour="sidebar-table"]').click({ button: "right" });
-      expect(await page.getByRole("menuitem", { name: "Alter Table", exact: true }).count()).toBe(
-        0,
-      );
-      await page.getByRole("menuitem", { name: "Im Editor öffnen", exact: true }).click();
+      expect(
+        await page.getByRole("menuitem", { name: "Struktur bearbeiten…", exact: true }).count(),
+      ).toBe(0);
+      await page.getByRole("menuitem", { name: /^Neue Abfrage für / }).click();
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("257 Zeilen", { exact: false }).first().waitFor();
       await page.getByText('{"value":0}', { exact: true }).first().waitFor();
@@ -215,7 +215,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("button", { name: "Collection erstellen", exact: true }).click();
       await page.getByText("Keine Daten.", { exact: true }).waitFor();
       await page.locator(`[data-name="${collectionName}"]`).click({ button: "right" });
-      await page.getByRole("menuitem", { name: "Drop Table", exact: true }).click();
+      await page.getByRole("menuitem", { name: /^Tabelle löschen…/ }).click();
       await page
         .getByRole("alertdialog")
         .getByRole("button", { name: "Drop Table", exact: true })

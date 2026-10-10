@@ -13,6 +13,7 @@ interface Props<T extends string> {
 export function SegmentedControl<T extends string>({ value, onChange, options, label }: Props<T>) {
   const id = useId();
   const reduce = useReducedMotion();
+  const selectedIndex = options.findIndex((option) => option.value === value);
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>, index: number) {
     let next = index;
     if (event.key === "ArrowRight" || event.key === "ArrowDown")
@@ -30,12 +31,20 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
     buttons?.[next]?.focus();
   }
   return (
-    <motion.div
-      layoutRoot
+    <div
       role="radiogroup"
       aria-label={label}
-      className="flex rounded-xl bg-muted p-1"
+      className="relative isolate flex rounded-xl bg-muted p-1"
     >
+      {selectedIndex >= 0 && (
+        <motion.span
+          initial={false}
+          animate={{ x: `${selectedIndex * 100}%` }}
+          transition={reduce ? { duration: 0 } : SPRING}
+          style={{ width: `calc((100% - 0.5rem) / ${options.length})` }}
+          className="absolute inset-y-1 left-1 -z-10 rounded-xl bg-card shadow-sm ring-1 ring-border/60"
+        />
+      )}
       {options.map((option, index) => (
         <label
           key={option.value}
@@ -55,16 +64,9 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
             onKeyDown={(event) => onKeyDown(event, index)}
             className="sr-only"
           />
-          {value === option.value && (
-            <motion.span
-              layoutId={reduce ? undefined : id}
-              transition={reduce ? { duration: 0 } : SPRING}
-              className="absolute inset-0 -z-10 rounded-xl bg-card shadow-sm ring-1 ring-border/60"
-            />
-          )}
           {option.label}
         </label>
       ))}
-    </motion.div>
+    </div>
   );
 }

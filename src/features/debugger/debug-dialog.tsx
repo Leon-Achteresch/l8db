@@ -1,7 +1,13 @@
 import { Bug, CircleDot, Code2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/features/shell/workbench-dialog";
 import {
   type DebugAction,
   type DebugAvailability,
@@ -46,8 +52,12 @@ function initialCall(props: DebugButtonProps, context: DebugContext): string {
   return `${props.objectType === "function" ? "SELECT" : "CALL"} ${name}();`;
 }
 
-export function DebugDialog(
-  props: DebugButtonProps & { context: DebugContext; onClose: () => void },
+function DebugDialogContent(
+  props: DebugButtonProps & {
+    context: DebugContext;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  },
 ) {
   const [context] = useState(props.context);
   const [availability, setAvailability] = useState<DebugAvailability>();
@@ -157,7 +167,7 @@ export function DebugDialog(
     run(async () => {
       if (session.current) await debugStop(context, session.current);
       session.current = undefined;
-      props.onClose();
+      props.onOpenChange(false);
     });
 
   const paused = snapshot?.status === "paused" && !busy;
@@ -167,6 +177,7 @@ export function DebugDialog(
 
   return (
     <Dialog
+      busy={busy}
       open
       onOpenChange={(open) => {
         if (!open) void close();
@@ -320,3 +331,8 @@ export function DebugDialog(
     </Dialog>
   );
 }
+
+export const DebugDialog = asWorkbenchTab(
+  DebugDialogContent,
+  (props) => `Debugger · ${props.schema}.${props.name}`,
+);

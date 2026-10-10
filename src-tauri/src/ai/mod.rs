@@ -3,12 +3,14 @@ mod byok;
 #[cfg(test)]
 mod byok_e2e_tests;
 mod cli;
+pub mod complete;
 mod context;
 mod files;
 mod integrations;
 pub mod knowledge;
 mod rpc;
 mod runtime;
+mod tools;
 mod types;
 
 pub use runtime::AiState;
@@ -362,11 +364,7 @@ pub async fn ai_run(
         return Err("Arbeitsordner ist kein Verzeichnis".into());
     }
     let config = context::scoped_config(&request, crate::mcp::config::load())?;
-    let instructions = format!(
-        "{}{}",
-        context::instructions(&request),
-        skill_context(&request)?
-    );
+    let instructions = context::instructions_with_skills(&request, &skill_context(&request)?);
     let key = format!("{}:{}", window.label(), request.run_id);
     let (cancel, mut cancelled) = tokio::sync::watch::channel(false);
     {
@@ -478,6 +476,13 @@ pub fn close_window(window: &tauri::Window) {
     if let Some(state) = window.try_state::<Arc<AiState>>() {
         if let Ok(runs) = state.runs.lock() {
             for (key, cancel) in runs.iter() {
+                if key.starts_with(&format!("{}:", window.label())) {
+                    let _ = cancel.send(true);
+                }
+            }
+        }
+        if let Ok(completions) = state.completions.lock() {
+            for (key, cancel) in completions.iter() {
                 if key.starts_with(&format!("{}:", window.label())) {
                     let _ = cancel.send(true);
                 }

@@ -1,22 +1,23 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@/features/shell/workbench-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { quoteIdent } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 
-export function CreateEnumDialog({
+function CreateEnumDialogContent({
   open,
   onOpenChange,
   onSuccess,
@@ -61,7 +62,7 @@ export function CreateEnumDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={saving} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">Neuer Enum-Typ</DialogTitle>
@@ -112,3 +113,5 @@ export function CreateEnumDialog({
     </Dialog>
   );
 }
+
+export const CreateEnumDialog = asWorkbenchTab(CreateEnumDialogContent, "Enum-Editor");

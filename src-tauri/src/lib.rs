@@ -4,6 +4,7 @@ mod automation;
 mod baas_file;
 mod branching;
 mod check_cli;
+mod cli;
 mod community_extensions;
 mod convex;
 mod db;
@@ -16,6 +17,7 @@ mod mcp;
 mod pocketbase;
 mod process;
 mod supabase;
+mod updates;
 mod versioning;
 mod windows;
 
@@ -53,6 +55,9 @@ pub fn run() {
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if cli::wants(&args) {
+        std::process::exit(cli::main(&args));
+    }
     if args.iter().any(|arg| arg == "--check") {
         std::process::exit(check_cli::cli(&args));
     }
@@ -95,12 +100,12 @@ pub fn run() {
     }
     builder
         .setup(move |app| {
+            desktop::install_logger(app.handle())?;
             windows::install_quick_menu(app.handle());
             windows::handle_args(app.handle(), &args, false);
             automation::init(app.handle());
             Ok(())
         })
-        .plugin(desktop::log_plugin())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(
@@ -144,6 +149,8 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_approve,
             ai::ai_respond,
+            ai::complete::ai_complete,
+            ai::complete::ai_complete_cancel,
             ai::knowledge::ai_knowledge_get,
             ai::knowledge::ai_knowledge_set,
             desktop::set_crash_reporting,
@@ -303,6 +310,7 @@ pub fn run() {
             extension_process::extension_process_stop,
             file_open::take_pending_open_files,
             file_open::resolve_open_files,
+            updates::check_update,
             windows::open_app_window,
             windows::set_dock_recents,
             windows::set_window_connection,
@@ -320,6 +328,9 @@ pub fn run() {
             mcp::clients::mcp_clients,
             mcp::clients::mcp_register,
             mcp::clients::mcp_server_command,
+            cli::install::cli_status,
+            cli::install::cli_install,
+            cli::install::cli_uninstall,
             db::commands::list_providers,
             db::s3::commands::s3_list_buckets,
             db::s3::commands::s3_create_bucket,
@@ -378,6 +389,7 @@ pub fn run() {
             db::commands::cancel_execution,
             db::commands::configure_execution_defaults,
             db::commands::execute_query_with_params,
+            db::commands::describe_query_columns,
             db::commands::list_views,
             db::commands::get_view_definition,
             db::commands::get_table_ddl,
@@ -385,6 +397,8 @@ pub fn run() {
             db::commands::begin_transaction,
             db::commands::execute_in_transaction,
             db::commands::execute_in_transaction_with_params,
+            db::commands::transaction_database_changes,
+            db::commands::transaction_server_output,
             db::commands::update_row_in_transaction,
             db::commands::insert_row_in_transaction,
             db::commands::duplicate_row_in_transaction,
@@ -393,6 +407,7 @@ pub fn run() {
             db::commands::rollback_transaction,
             db::commands::list_transactions,
             db::commands::list_functions,
+            db::commands::list_package_members,
             db::commands::get_function_definition,
             db::commands::list_procedures,
             db::commands::compile_object,
@@ -497,6 +512,7 @@ pub fn run() {
             db::commands::cancel_session,
             db::commands::terminate_session,
             db::commands::list_locks,
+            db::commands::live_metrics,
             db::commands::list_enums,
             db::commands::create_schema,
             db::commands::drop_schema,

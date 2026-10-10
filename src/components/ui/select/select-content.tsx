@@ -3,6 +3,7 @@
 import { SearchIcon } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";
 import * as React from "react";
+import { usePortalContainer } from "@/lib/portal-container";
 import { cn } from "@/lib/utils";
 import { SelectScrollDownButton } from "./select-scroll-down-button";
 import { SelectScrollUpButton } from "./select-scroll-up-button";
@@ -17,6 +18,7 @@ export function SelectContent({
   onFocusCapture,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content> & { searchable?: boolean }) {
+  const portalContainer = usePortalContainer();
   const [query, setQuery] = React.useState("");
   const [autoSearchable, setAutoSearchable] = React.useState(false);
   const viewportRef = React.useRef<HTMLDivElement>(null);
@@ -76,7 +78,7 @@ export function SelectContent({
   }, [closedValue]);
 
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={portalContainer}>
       <SelectPrimitive.Content
         data-slot="select-content"
         data-align-trigger={contentPosition === "item-aligned"}

@@ -4,12 +4,17 @@ import {
   formatIslandDuration,
   greetingMoment,
   greetingName,
+  ISLAND_QUEUE_LIMIT,
+  type IslandMoment,
   productionQuip,
+  showIslandMoment,
   takeVersionChange,
   taskMoment,
+  useIslandStore,
 } from "@/lib/dynamic-island";
 
 beforeEach(() => {
+  useIslandStore.setState({ queue: [] });
   window.localStorage.removeItem("l8db.island.version");
   window.localStorage.removeItem("l8db.island.queries");
 });
@@ -71,12 +76,27 @@ describe("Island-Momente", () => {
   });
 
   test("meldet nur spürbar lange Aufgaben", () => {
-    const base = { id: "t", title: "SQL-Abfrage", startedAt: 1_000, cancellable: false };
+    const base = { id: "t", title: "CSV-Export", startedAt: 1_000, cancellable: false };
     expect(taskMoment({ ...base, status: "success", finishedAt: 1_200 })).toBeNull();
     const done = taskMoment({ ...base, status: "success", finishedAt: 3_400 });
     expect(done?.glyph.kind).toBe("check");
     expect(done?.detail).toBe("2,4 s");
     expect(taskMoment({ ...base, status: "error", finishedAt: 3_400 })?.glyph.kind).toBe("cross");
+  });
+
+  test("überlässt SQL-Abfragen und Skripte dem Footer", () => {
+    for (const title of ["SQL-Abfrage", "SQL-Skript"])
+      for (const status of ["success", "error", "cancelled"] as const)
+        expect(
+          taskMoment({
+            id: "q",
+            title,
+            startedAt: 0,
+            finishedAt: 5_000,
+            cancellable: false,
+            status,
+          }),
+        ).toBeNull();
   });
 
   test("kommentiert Produktion nur freitags und nachts", () => {
@@ -97,5 +117,29 @@ describe("Island-Momente", () => {
     expect(countQuery()).toBeNull();
     expect(countQuery()).toBe(100);
     expect(countQuery()).toBeNull();
+  });
+});
+
+describe("showIslandMoment", () => {
+  const moment = (key: string): IslandMoment => ({
+    key,
+    glyph: { kind: "check" },
+    title: key,
+    duration: 1000,
+  });
+  const keys = () => useIslandStore.getState().queue.map((entry) => entry.key);
+
+  test("begrenzt die Queue und behält den sichtbaren Moment", () => {
+    for (let i = 0; i < 50; i++) showIslandMoment(moment(`m${i}`));
+    expect(keys()).toHaveLength(ISLAND_QUEUE_LIMIT);
+    expect(keys()[0]).toBe("m0");
+    expect(keys().slice(1)).toEqual(["m45", "m46", "m47", "m48", "m49"]);
+  });
+
+  test("ersetzt Momente mit gleichem Key statt sie zu stapeln", () => {
+    showIslandMoment(moment("a"));
+    showIslandMoment(moment("b"));
+    for (let i = 0; i < 10; i++) showIslandMoment(moment("b"));
+    expect(keys()).toEqual(["a", "b"]);
   });
 });

@@ -51,6 +51,7 @@ export function ConnectionsView() {
   } | null>(null);
   const [editorId, setEditorId] = useState<string | null>(null);
   const [template, setTemplate] = useState<SavedConnection | null>(null);
+  const [initialUrl, setInitialUrl] = useState<string | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [query, setQuery] = useState("");
@@ -123,6 +124,7 @@ export function ConnectionsView() {
   const activeGroupKey = activeConnection ? groupKey(activeConnection, hostGroupRules) : null;
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
+    setInitialUrl(undefined);
     setTemplate(from);
     setEditorId(id);
   }
@@ -216,54 +218,60 @@ export function ConnectionsView() {
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
       <div className="relative flex h-full min-h-0 w-full flex-col p-4 md:p-6">
-        <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
-              {editorId ? (selected ? "Verbindung bearbeiten" : "Neue Verbindung") : "Verbindungen"}
-            </h1>
-            {!editorId && (
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {totalConnections === 0
-                  ? "Starte mit einer neuen Verbindung oder importiere bestehende Profile."
-                  : `${totalConnections} ${totalConnections === 1 ? "Verbindung" : "Verbindungen"}${grouped ? ` auf ${allGroups.length} ${allGroups.length === 1 ? "Host" : "Hosts"}` : ""}${activeConnection ? ` · ${activeConnection.name} aktiv` : ""}`}
-              </p>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {editorId && connections.length === 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setImportOpen(true)}
-                aria-label="Verbindungen importieren"
-              >
-                <Upload className="size-4" />
-                Import
-              </Button>
-            )}
-            {!editorId && (
-              <ConnectionsToolbar
-                connections={connections}
-                query={query}
-                setQuery={setQuery}
-                favoritesOnly={favoritesOnly}
-                setFavoritesOnly={setFavoritesOnly}
-                openEditor={openEditor}
-                setImportOpen={setImportOpen}
-                setExportOpen={setExportOpen}
-                setRulesDialog={setRulesDialog}
-              />
-            )}
-            {connections.length > 0 && editorId && (
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/">
-                  <ArrowLeft className="size-4" />
-                  Arbeitsplatz
-                </Link>
-              </Button>
-            )}
-          </div>
-        </header>
+        {(editorId || totalConnections > 0) && (
+          <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                {editorId
+                  ? selected
+                    ? "Verbindung bearbeiten"
+                    : "Neue Verbindung"
+                  : "Verbindungen"}
+              </h1>
+              {!editorId && (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {totalConnections === 0
+                    ? "Starte mit einer neuen Verbindung oder importiere bestehende Profile."
+                    : `${totalConnections} ${totalConnections === 1 ? "Verbindung" : "Verbindungen"}${grouped ? ` auf ${allGroups.length} ${allGroups.length === 1 ? "Host" : "Hosts"}` : ""}${activeConnection ? ` · ${activeConnection.name} aktiv` : ""}`}
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {editorId && connections.length === 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setImportOpen(true)}
+                  aria-label="Verbindungen importieren"
+                >
+                  <Upload className="size-4" />
+                  Import
+                </Button>
+              )}
+              {!editorId && (
+                <ConnectionsToolbar
+                  connections={connections}
+                  query={query}
+                  setQuery={setQuery}
+                  favoritesOnly={favoritesOnly}
+                  setFavoritesOnly={setFavoritesOnly}
+                  openEditor={openEditor}
+                  setImportOpen={setImportOpen}
+                  setExportOpen={setExportOpen}
+                  setRulesDialog={setRulesDialog}
+                />
+              )}
+              {connections.length > 0 && editorId && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/">
+                    <ArrowLeft className="size-4" />
+                    Arbeitsplatz
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </header>
+        )}
 
         <div className="flex min-h-0 flex-1 flex-col">
           {editorId ? (
@@ -271,11 +279,19 @@ export function ConnectionsView() {
               key={`${editorId}:${template?.id ?? ""}`}
               connection={selected}
               template={template ?? undefined}
+              initialUrl={initialUrl}
               onSaved={() => openEditor(null)}
               onCancel={() => openEditor(null)}
             />
           ) : totalConnections === 0 ? (
-            <ConnectionsEmptyState openEditor={openEditor} setImportOpen={setImportOpen} />
+            <ConnectionsEmptyState
+              openEditor={openEditor}
+              setImportOpen={setImportOpen}
+              onPasteUrl={(url) => {
+                openEditor("new");
+                setInitialUrl(url);
+              }}
+            />
           ) : favoritesOnly && filtered.length === 0 ? (
             <ConnectionsNoFavoritesState setFavoritesOnly={setFavoritesOnly} />
           ) : filtered.length === 0 && baasCards.length === 0 ? (

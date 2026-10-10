@@ -26,6 +26,12 @@ const SCHEMA_COPY_PLACEHOLDER: &str = "\u{1}";
 
 pub(crate) const READ_ONLY_BEGIN: &str = "BEGIN TRANSACTION READ ONLY; SELECT 1";
 
+type IdleClients = std::sync::Mutex<Vec<(tokio_postgres::Client, std::time::SystemTime)>>;
+
+const IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+const MAX_IDLE: usize = 8;
+
 const EMPTY_SEARCH_PATH: &str = "SET LOCAL search_path = ''";
 
 const PG_CRON_MISSING: &str =
@@ -349,6 +355,17 @@ pub(crate) fn ends_transaction(sql: &str) -> bool {
                 [first, second, ..] => first == "prepare" && second == "transaction",
                 _ => false,
             })
+    })
+}
+
+fn single_read_statement(sql: &str) -> bool {
+    [false, true].into_iter().all(|backslash_quotes| {
+        let heads = statement_heads(sql, backslash_quotes);
+        let mut statements = heads.iter().filter(|words| !words.is_empty());
+        let first = statements.next().and_then(|words| words.first());
+        statements.next().is_none()
+            && first
+                .is_some_and(|word| matches!(word.as_str(), "select" | "with" | "values" | "table"))
     })
 }
 
@@ -1706,6 +1723,57 @@ impl DatabaseAdapter for PostgresAdapter {
         outcome
     }
 
+    async fn execute_pooled_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if self.session.is_some() || self.read_only || !single_read_statement(sql) {
+            return self.execute_query(sql).await;
+        }
+        let idle = self
+            .pool_state
+            .shared(&format!("{}#dashboard", self.pool_key), || async {
+                Ok::<IdleClients, String>(Default::default())
+            })
+            .await?;
+        let reused = {
+            let mut clients = idle.lock().unwrap_or_else(|e| e.into_inner());
+            clients.retain(|(client, since)| {
+                !client.is_closed() && since.elapsed().is_ok_and(|age| age < IDLE_TTL)
+            });
+            clients.pop().map(|(client, _)| client)
+        };
+        let fresh = reused.is_none();
+        let conn = match reused {
+            Some(conn) => conn,
+            None => super::execution::connect_postgres(&self.config, &self.ssl).await?,
+        };
+        let (begin, outcome) = tokio::join!(
+            conn.simple_query(READ_ONLY_BEGIN),
+            self.controlled(&conn, run_simple_query(&conn, sql)),
+        );
+        if begin.is_err() && conn.is_closed() && !fresh {
+            return self.execute_query(sql).await;
+        }
+        if begin.is_ok() && !conn.is_closed() && !super::execution::interrupted() {
+            let _ = futures_util::FutureExt::now_or_never(conn.simple_query("ROLLBACK"));
+            let mut clients = idle.lock().unwrap_or_else(|e| e.into_inner());
+            if clients.len() < MAX_IDLE {
+                clients.push((conn, std::time::SystemTime::now()));
+                let idle = std::sync::Arc::downgrade(&idle);
+                tokio::spawn(async move {
+                    tokio::time::sleep(IDLE_TTL).await;
+                    if let Some(idle) = idle.upgrade() {
+                        idle.lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .retain(|(_, since)| since.elapsed().is_ok_and(|age| age < IDLE_TTL));
+                    }
+                });
+            }
+        }
+        match outcome {
+            Err(error) if error.contains("SQLSTATE 25006") => self.execute_query(sql).await,
+            outcome => outcome,
+        }
+    }
+
     async fn execute_query_with_params(
         &self,
         sql: &str,
@@ -2634,6 +2702,77 @@ impl DatabaseAdapter for PostgresAdapter {
                 result = guarded_transaction(&mut conn, &[&temp_sql], true, false).await;
             }
             result.map_err(map_pg_err)
+        })
+        .await
+    }
+
+    async fn describe_query_columns(
+        &self,
+        sql: &str,
+    ) -> Result<Vec<super::QueryColumnSource>, String> {
+        let trimmed = sql.trim().trim_end_matches(';').trim();
+        if trimmed.is_empty() {
+            return Err("Leere Abfrage".to_string());
+        }
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let statement = conn.prepare(trimmed).await.map_err(map_pg_err)?;
+            let oids: Vec<u32> = statement
+                .columns()
+                .iter()
+                .filter_map(|column| column.table_oid())
+                .collect();
+            let mut origins = std::collections::HashMap::new();
+            if !oids.is_empty() {
+                for row in conn
+                    .query(
+                        "SELECT c.oid, n.nspname, c.relname, a.attnum, a.attname \
+                         FROM pg_class c \
+                         JOIN pg_namespace n ON n.oid = c.relnamespace \
+                         JOIN pg_attribute a ON a.attrelid = c.oid \
+                         WHERE c.oid = ANY($1) AND a.attnum > 0 AND NOT a.attisdropped",
+                        &[&oids],
+                    )
+                    .await
+                    .map_err(map_pg_err)?
+                {
+                    let oid: u32 = row.get(0);
+                    let attnum: i16 = row.get(3);
+                    origins.insert(
+                        (oid, attnum),
+                        (
+                            row.get::<_, String>(1),
+                            row.get::<_, String>(2),
+                            row.get::<_, String>(4),
+                        ),
+                    );
+                }
+            }
+            let names = super::unique_column_names(
+                statement
+                    .columns()
+                    .iter()
+                    .map(|column| column.name().to_string())
+                    .collect(),
+            );
+            Ok(statement
+                .columns()
+                .iter()
+                .zip(names)
+                .map(|(column, name)| {
+                    let origin = column
+                        .table_oid()
+                        .zip(column.column_id())
+                        .and_then(|key| origins.get(&key));
+                    super::QueryColumnSource {
+                        name,
+                        data_type: column.type_().name().to_string(),
+                        schema: origin.map(|origin| origin.0.clone()),
+                        table: origin.map(|origin| origin.1.clone()),
+                        column: origin.map(|origin| origin.2.clone()),
+                    }
+                })
+                .collect())
         })
         .await
     }
@@ -4190,8 +4329,10 @@ impl DatabaseAdapter for PostgresAdapter {
         self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
-                        state, COALESCE(left(query, 500), ''), query_start::text, xact_start::text, \
-                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid) \
+                        state, COALESCE(left(query, 4000), ''), query_start::text, xact_start::text, \
+                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid), client_port, \
+                        backend_start::text, state_change::text, backend_xid::text, \
+                        wait_event_type, backend_type \
                  FROM pg_stat_activity WHERE datname IS NOT NULL \
                  ORDER BY query_start NULLS LAST",
                 &[],
@@ -4213,6 +4354,12 @@ impl DatabaseAdapter for PostgresAdapter {
                         wait_event: row.get(9),
                         is_self: row.get(10),
                         blocked_by: row.get(11),
+                        client_port: row.get(12),
+                        backend_start: row.get(13),
+                        state_change: row.get(14),
+                        backend_xid: row.get(15),
+                        wait_event_type: row.get(16),
+                        backend_type: row.get(17),
                     })
                     .collect()
             })
@@ -4363,6 +4510,176 @@ impl DatabaseAdapter for PostgresAdapter {
         let suffix = if cascade { " CASCADE" } else { "" };
         let sql = format!("DROP SCHEMA {}{suffix}", quote_ident(name));
         self.run_ddl(&[sql], true).await
+    }
+
+    async fn live_metrics(&self, include_details: bool) -> Result<super::LiveMetrics, String> {
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let base = conn.query_one(
+                "SELECT \
+                    (SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend')::bigint, \
+                    current_setting('max_connections')::bigint, \
+                    (SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend' \
+                        AND state = 'active' AND pid <> pg_backend_pid())::bigint, \
+                    (SELECT count(*) FROM pg_locks WHERE NOT granted)::bigint, \
+                    COALESCE(d.xact_commit, 0)::bigint, COALESCE(d.xact_rollback, 0)::bigint, \
+                    COALESCE(d.tup_returned, 0)::bigint, \
+                    COALESCE(d.tup_inserted + d.tup_updated + d.tup_deleted, 0)::bigint, \
+                    COALESCE(d.blks_read, 0)::bigint, COALESCE(d.blks_hit, 0)::bigint, \
+                    d.temp_bytes::bigint, d.deadlocks::bigint, \
+                    current_setting('server_version'), \
+                    EXTRACT(EPOCH FROM now() - pg_postmaster_start_time())::bigint, \
+                    current_setting('TimeZone'), current_setting('default_transaction_isolation'), \
+                    pg_is_in_recovery(), \
+                    CASE WHEN pg_is_in_recovery() \
+                        THEN (EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp()) * 1000)::float8 END \
+                 FROM (SELECT 1) one \
+                 LEFT JOIN pg_stat_database d ON d.datname = current_database()",
+                &[],
+            );
+            let size = async {
+                if !include_details {
+                    return None;
+                }
+                conn.query_one("SELECT pg_database_size(current_database())::bigint", &[])
+                    .await
+                    .ok()
+                    .map(|row| row.get::<_, i64>(0))
+            };
+            let cpu = async {
+                conn.query_one(
+                    "SELECT CASE WHEN (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) \
+                        OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pg_read_server_files' \
+                            AND pg_has_role(current_user, oid, 'MEMBER')) \
+                     THEN pg_read_file('/proc/stat', 0, 512, true) END",
+                    &[],
+                )
+                .await
+                .ok()
+                .and_then(|row| row.get::<_, Option<String>>(0))
+                .and_then(|text| super::parse_proc_stat_cpu(&text))
+            };
+            let queries = async {
+                let available: bool = conn
+                    .query_one(
+                        "SELECT to_regclass('pg_stat_statements') IS NOT NULL \
+                            AND current_setting('shared_preload_libraries') LIKE '%pg_stat_statements%'",
+                        &[],
+                    )
+                    .await
+                    .ok()?
+                    .get(0);
+                if !available {
+                    return None;
+                }
+                conn.query_one(
+                    "SELECT \
+                        COALESCE(sum(calls) FILTER (WHERE query ~* '^\\s*(select|with|table|values|show)\\M'), 0)::bigint, \
+                        COALESCE(sum(calls) FILTER (WHERE query ~* '^\\s*(insert|update|delete|merge|copy)\\M'), 0)::bigint, \
+                        COALESCE(sum(calls), 0)::bigint \
+                     FROM pg_stat_statements \
+                     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())",
+                    &[],
+                )
+                .await
+                .ok()
+                .map(|row| {
+                    let read: i64 = row.get(0);
+                    let write: i64 = row.get(1);
+                    let total: i64 = row.get(2);
+                    (read, write, (total - read - write).max(0))
+                })
+            };
+            let replication = async {
+                conn.query(
+                    "SELECT COALESCE(NULLIF(application_name, ''), client_addr::text, pid::text), \
+                        client_addr::text, COALESCE(state, ''), sync_state, \
+                        (EXTRACT(EPOCH FROM write_lag) * 1000)::float8, \
+                        (EXTRACT(EPOCH FROM flush_lag) * 1000)::float8, \
+                        (EXTRACT(EPOCH FROM replay_lag) * 1000)::float8, \
+                        CASE WHEN pg_is_in_recovery() THEN NULL \
+                            ELSE (pg_current_wal_lsn() - replay_lsn)::bigint END \
+                     FROM pg_stat_replication ORDER BY 1",
+                    &[],
+                )
+                .await
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| super::ReplicationStat {
+                            name: row.get(0),
+                            client_addr: row.get(1),
+                            state: row.get(2),
+                            sync_state: row.get(3),
+                            write_lag_ms: row.get(4),
+                            flush_lag_ms: row.get(5),
+                            replay_lag_ms: row.get(6),
+                            lag_bytes: row.get(7),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+            };
+            let table_io = async {
+                if !include_details {
+                    return Vec::new();
+                }
+                conn.query(
+                    "SELECT schemaname || '.' || relname, \
+                        COALESCE(heap_blks_read, 0)::bigint, COALESCE(heap_blks_hit, 0)::bigint, \
+                        COALESCE(idx_blks_read, 0)::bigint, COALESCE(idx_blks_hit, 0)::bigint \
+                     FROM pg_statio_user_tables \
+                     ORDER BY COALESCE(heap_blks_read, 0) + COALESCE(idx_blks_read, 0) DESC, \
+                        COALESCE(heap_blks_hit, 0) + COALESCE(idx_blks_hit, 0) DESC \
+                     LIMIT 10",
+                    &[],
+                )
+                .await
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| super::TableIoStat {
+                            name: row.get(0),
+                            heap_read: row.get(1),
+                            heap_hit: row.get(2),
+                            idx_read: row.get(3),
+                            idx_hit: row.get(4),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+            };
+            let (base, size, cpu, queries, replication, table_io) =
+                tokio::join!(base, size, cpu, queries, replication, table_io);
+            let row = base.map_err(map_pg_err)?;
+            Ok(super::LiveMetrics {
+                connections: row.get(0),
+                max_connections: Some(row.get(1)),
+                active_sessions: row.get(2),
+                waiting_locks: row.get(3),
+                database_size_bytes: size,
+                commits: row.get(4),
+                rollbacks: row.get(5),
+                queries_read: queries.map(|q| q.0),
+                queries_write: queries.map(|q| q.1),
+                queries_other: queries.map(|q| q.2),
+                rows_read: row.get(6),
+                rows_written: row.get(7),
+                blocks_read: row.get(8),
+                blocks_hit: row.get(9),
+                temp_bytes: row.get(10),
+                deadlocks: row.get(11),
+                cpu_busy: cpu.map(|c| c.0),
+                cpu_total: cpu.map(|c| c.1),
+                server_version: row.get(12),
+                uptime_seconds: row.get(13),
+                timezone: row.get(14),
+                default_isolation: row.get(15),
+                in_recovery: row.get(16),
+                replay_delay_ms: row.get(17),
+                replication,
+                table_io,
+            })
+        })
+        .await
     }
 
     async fn get_database_overview(&self) -> Result<super::DatabaseOverview, String> {
@@ -5117,7 +5434,8 @@ mod tests {
     use super::{
         bind_row, bind_wrapped_sql, capped_count, ends_transaction, escape_string_literal,
         infer_view_foreign_keys, like_pattern, read_only_batch_guard, requalify_outside_literals,
-        routine_ddl_in_pg_temp, session_guards, source_snippet, PostgresAdapter, SimpleResult,
+        routine_ddl_in_pg_temp, session_guards, single_read_statement, source_snippet,
+        PostgresAdapter, SimpleResult,
     };
     use crate::db::RowCount;
 
@@ -5240,6 +5558,31 @@ mod tests {
         }
         assert!(read_only_batch_guard("SELECT 1; COMMIT").is_err());
         assert!(read_only_batch_guard("SELECT 'COMMIT'; SELECT 2").is_ok());
+    }
+
+    #[test]
+    fn only_single_read_statements_use_pooled_connections() {
+        for sql in [
+            "SELECT 1",
+            "  -- c\n with t as (select 1) select * from t;",
+            "VALUES (1)",
+            "TABLE x",
+            "SELECT 'a; SET x = 1'",
+        ] {
+            assert!(single_read_statement(sql), "{sql}");
+        }
+        for sql in [
+            "SET search_path = x",
+            "SELECT 1; SET search_path = x",
+            "BEGIN; SELECT 1",
+            "EXPLAIN SELECT 1",
+            "",
+        ] {
+            assert!(!single_read_statement(sql), "{sql}");
+        }
+        for sql in LEXER_HIDDEN_COMMITS {
+            assert!(!single_read_statement(sql), "{sql}");
+        }
     }
 
     const LEXER_HIDDEN_COMMITS: [&str; 12] = [
@@ -6528,6 +6871,30 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_metrics_reports_monotonic_counters() {
+        let adapter = lab_adapter();
+        let first = adapter.live_metrics(true).await.expect("metrics");
+        assert!(first.connections >= 1);
+        assert!(first.max_connections.unwrap_or(0) >= first.connections);
+        assert!(first.database_size_bytes.unwrap_or(0) > 0);
+        assert!(!first.server_version.is_empty());
+        assert!(first.default_isolation.is_some());
+        lab_execute(&adapter, "SELECT 1").await;
+        let started = std::time::Instant::now();
+        let second = adapter.live_metrics(false).await.expect("metrics");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(second.database_size_bytes.is_none());
+        assert!(second.table_io.is_empty());
+        assert!(second.commits >= first.commits);
+        assert!(second.blocks_hit >= first.blocks_hit);
+        let sessions = adapter.list_sessions().await.expect("sessions");
+        let own = sessions.iter().find(|s| s.is_self).expect("own session");
+        assert!(own.backend_start.is_some());
+        assert_eq!(own.backend_type.as_deref(), Some("client backend"));
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn sessions_and_locks() {
         let adapter = lab_adapter();
         let sessions = adapter.list_sessions().await.expect("sessions");
@@ -6696,6 +7063,77 @@ mod tests {
         }
         reader.set_server_output(false).await.unwrap();
         lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_batch").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn pooled_dashboard_queries_reuse_a_clean_connection() {
+        use crate::db::execution::{self, ExecutionOptions};
+        let adapter = lab_adapter();
+        lab_execute(
+            &adapter,
+            "DROP TABLE IF EXISTS l8db_pooled; CREATE TABLE l8db_pooled (id int)",
+        )
+        .await;
+        let first = adapter
+            .execute_pooled_query("SELECT pg_backend_pid() AS pid")
+            .await
+            .unwrap();
+        assert_eq!(first.rows_affected, Some(1));
+        adapter
+            .execute_pooled_query("SELECT set_config('search_path', 'pg_catalog', false)")
+            .await
+            .unwrap();
+        assert!(adapter
+            .execute_pooled_query("SELECT * FROM l8db_missing_table")
+            .await
+            .is_err());
+        let reused = adapter
+            .execute_pooled_query(
+                "SELECT pg_backend_pid() AS pid, current_setting('search_path') AS path",
+            )
+            .await
+            .unwrap();
+        assert_eq!(reused.rows[0]["pid"], first.rows[0]["pid"]);
+        assert_ne!(reused.rows[0]["path"], "pg_catalog");
+        let cancel = async {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert!(execution::cancel("pg-pooled-cancel").unwrap());
+        };
+        let query = execution::run(
+            Some(ExecutionOptions {
+                job_id: Some("pg-pooled-cancel".into()),
+                ..Default::default()
+            }),
+            true,
+            adapter.execute_pooled_query("SELECT pg_sleep(10)"),
+        );
+        let (result, _) = tokio::join!(query, cancel);
+        assert!(result.unwrap_err().contains("vom Server abgebrochen"));
+        let after = adapter
+            .execute_pooled_query("SELECT pg_backend_pid() AS pid")
+            .await
+            .unwrap();
+        assert_ne!(after.rows[0]["pid"], first.rows[0]["pid"]);
+        let written = adapter
+            .execute_pooled_query(
+                "WITH w AS (INSERT INTO l8db_pooled VALUES (1) RETURNING id) SELECT id FROM w",
+            )
+            .await
+            .unwrap();
+        assert_eq!(written.rows[0]["id"], "1");
+        assert!(lab_read_only_adapter()
+            .execute_pooled_query(
+                "WITH w AS (INSERT INTO l8db_pooled VALUES (2) RETURNING id) SELECT id FROM w",
+            )
+            .await
+            .is_err());
+        let count = adapter
+            .execute_pooled_query("SELECT count(*) AS c FROM l8db_pooled")
+            .await
+            .unwrap();
+        assert_eq!(count.rows[0]["c"], "1");
+        lab_execute(&adapter, "DROP TABLE l8db_pooled").await;
     }
 
     #[tokio::test]

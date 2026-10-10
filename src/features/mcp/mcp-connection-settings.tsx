@@ -1,9 +1,18 @@
-import { AlertTriangle, Lock, MoreHorizontal, Shield, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  ListOrdered,
+  Lock,
+  MoreHorizontal,
+  Shield,
+  ShieldAlert,
+} from "lucide-react";
 import { useId } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { McpConnection } from "@/lib/mcp";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +24,7 @@ export function McpConnectionSettings({
   onUpdate: (patch: Partial<McpConnection>) => void;
 }) {
   const titleId = useId();
+  const scripts = useNewFeatureVisibility<HTMLDivElement>("mcp.scripts");
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -99,6 +109,31 @@ export function McpConnectionSettings({
               disabled={connection.readOnly}
               onCheckedChange={(allowDdl) => onUpdate({ allowDdl })}
               aria-label={`${connection.name} DDL erlauben`}
+            />
+          </div>
+
+          <div ref={scripts.ref} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <ListOrdered
+                className={cn(
+                  "size-4",
+                  connection.allowScripts ? "text-amber-500" : "text-muted-foreground",
+                )}
+              />
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  Skripte erlauben
+                  {scripts.isNew ? <NewBadge /> : null}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Mehrere Statements und SQL*Plus in einer Transaktion
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={connection.allowScripts}
+              onCheckedChange={(allowScripts) => onUpdate({ allowScripts })}
+              aria-label={`${connection.name} Skripte erlauben`}
             />
           </div>
 

@@ -13,6 +13,7 @@ import type { DatabaseKind } from "@/lib/db";
 import { buildMigrationScript, migrationFileName } from "@/lib/migration-script";
 import type { SchemaSnapshot, SnapshotDiffEntry } from "@/lib/schema-snapshot";
 import { useTableTabs } from "@/lib/table-tabs";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 const SQL_FILTERS = [{ name: "SQL", extensions: ["sql"] }];
 
@@ -40,7 +41,7 @@ export function MigrationScriptPanel({ kind, base, current, entries }: Migration
   const handleCopy = async () => {
     try {
       await copyText(script.sql);
-      toast.success("Migrationsskript kopiert");
+      showCopiedMessage("Migrationsskript kopiert");
     } catch (error) {
       setStatus(`Kopieren fehlgeschlagen: ${errorMessage(error)}`);
       toast.error("Kopieren fehlgeschlagen");

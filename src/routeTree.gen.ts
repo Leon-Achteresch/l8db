@@ -19,7 +19,6 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DriversRouteImport } from './routes/drivers'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AppPlainRouteImport } from './routes/_app._plain'
 import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppAiRouteImport } from './routes/_app.ai'
@@ -43,8 +42,10 @@ import { Route as AppWorkspaceSavedPlanRouteImport } from './routes/_app._worksp
 import { Route as AppWorkspaceSchemaCompareRouteImport } from './routes/_app._workspace.schema-compare'
 import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._workspace.sequences'
 import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
+import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app._workspace.settings'
 import { Route as AppWorkspaceTransferRouteImport } from './routes/_app._workspace.transfer'
 import { Route as AppWorkspaceVersioningRouteImport } from './routes/_app._workspace.versioning'
+import { Route as AppWorkspaceWorkbenchRouteImport } from './routes/_app._workspace.workbench'
 import { Route as AppWorkspaceBucketsBucketRouteImport } from './routes/_app._workspace.buckets.$bucket'
 import { Route as AppWorkspaceExtensionsNameRouteImport } from './routes/_app._workspace.extensions.$name'
 import { Route as AppWorkspaceQueryIndexRouteImport } from './routes/_app._workspace.query.index'
@@ -107,11 +108,6 @@ const McpRoute = McpRouteImport.update({
 const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
   id: '/release-notes',
   path: '/release-notes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppPlainRoute = AppPlainRouteImport.update({
@@ -231,6 +227,11 @@ const AppWorkspaceSessionsRoute = AppWorkspaceSessionsRouteImport.update({
   path: '/sessions',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
+const AppWorkspaceSettingsRoute = AppWorkspaceSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
 const AppWorkspaceTransferRoute = AppWorkspaceTransferRouteImport.update({
   id: '/transfer',
   path: '/transfer',
@@ -239,6 +240,11 @@ const AppWorkspaceTransferRoute = AppWorkspaceTransferRouteImport.update({
 const AppWorkspaceVersioningRoute = AppWorkspaceVersioningRouteImport.update({
   id: '/versioning',
   path: '/versioning',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceWorkbenchRoute = AppWorkspaceWorkbenchRouteImport.update({
+  id: '/workbench',
+  path: '/workbench',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceBucketsBucketRoute =
@@ -334,7 +340,6 @@ export interface FileRoutesByFullPath {
   '/drivers': typeof DriversRoute
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
-  '/settings': typeof SettingsRoute
   '/ai': typeof AppAiRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/automation': typeof AppWorkspaceAutomationRoute
@@ -355,8 +360,10 @@ export interface FileRoutesByFullPath {
   '/schema-compare': typeof AppWorkspaceSchemaCompareRoute
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
+  '/settings': typeof AppWorkspaceSettingsRoute
   '/transfer': typeof AppWorkspaceTransferRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
+  '/workbench': typeof AppWorkspaceWorkbenchRoute
   '/buckets/$bucket': typeof AppWorkspaceBucketsBucketRoute
   '/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
   '/query/$id': typeof AppWorkspaceQueryIdRoute
@@ -383,7 +390,6 @@ export interface FileRoutesByTo {
   '/drivers': typeof DriversRoute
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
-  '/settings': typeof SettingsRoute
   '/ai': typeof AppAiRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/automation': typeof AppWorkspaceAutomationRoute
@@ -403,8 +409,10 @@ export interface FileRoutesByTo {
   '/schema-compare': typeof AppWorkspaceSchemaCompareRoute
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
+  '/settings': typeof AppWorkspaceSettingsRoute
   '/transfer': typeof AppWorkspaceTransferRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
+  '/workbench': typeof AppWorkspaceWorkbenchRoute
   '/buckets/$bucket': typeof AppWorkspaceBucketsBucketRoute
   '/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
   '/query/$id': typeof AppWorkspaceQueryIdRoute
@@ -432,7 +440,6 @@ export interface FileRoutesById {
   '/drivers': typeof DriversRoute
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
-  '/settings': typeof SettingsRoute
   '/_app/_plain': typeof AppPlainRouteWithChildren
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
   '/_app/ai': typeof AppAiRoute
@@ -455,8 +462,10 @@ export interface FileRoutesById {
   '/_app/_workspace/schema-compare': typeof AppWorkspaceSchemaCompareRoute
   '/_app/_workspace/sequences': typeof AppWorkspaceSequencesRoute
   '/_app/_workspace/sessions': typeof AppWorkspaceSessionsRoute
+  '/_app/_workspace/settings': typeof AppWorkspaceSettingsRoute
   '/_app/_workspace/transfer': typeof AppWorkspaceTransferRoute
   '/_app/_workspace/versioning': typeof AppWorkspaceVersioningRoute
+  '/_app/_workspace/workbench': typeof AppWorkspaceWorkbenchRoute
   '/_app/_workspace/': typeof AppWorkspaceIndexRoute
   '/_app/_workspace/buckets/$bucket': typeof AppWorkspaceBucketsBucketRoute
   '/_app/_workspace/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
@@ -486,7 +495,6 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/mcp'
     | '/release-notes'
-    | '/settings'
     | '/ai'
     | '/available-extensions'
     | '/automation'
@@ -507,8 +515,10 @@ export interface FileRouteTypes {
     | '/schema-compare'
     | '/sequences'
     | '/sessions'
+    | '/settings'
     | '/transfer'
     | '/versioning'
+    | '/workbench'
     | '/buckets/$bucket'
     | '/extensions/$name'
     | '/query/$id'
@@ -535,7 +545,6 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/mcp'
     | '/release-notes'
-    | '/settings'
     | '/ai'
     | '/available-extensions'
     | '/automation'
@@ -555,8 +564,10 @@ export interface FileRouteTypes {
     | '/schema-compare'
     | '/sequences'
     | '/sessions'
+    | '/settings'
     | '/transfer'
     | '/versioning'
+    | '/workbench'
     | '/buckets/$bucket'
     | '/extensions/$name'
     | '/query/$id'
@@ -583,7 +594,6 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/mcp'
     | '/release-notes'
-    | '/settings'
     | '/_app/_plain'
     | '/_app/_workspace'
     | '/_app/ai'
@@ -606,8 +616,10 @@ export interface FileRouteTypes {
     | '/_app/_workspace/schema-compare'
     | '/_app/_workspace/sequences'
     | '/_app/_workspace/sessions'
+    | '/_app/_workspace/settings'
     | '/_app/_workspace/transfer'
     | '/_app/_workspace/versioning'
+    | '/_app/_workspace/workbench'
     | '/_app/_workspace/'
     | '/_app/_workspace/buckets/$bucket'
     | '/_app/_workspace/extensions/$name'
@@ -636,7 +648,6 @@ export interface RootRouteChildren {
   DriversRoute: typeof DriversRoute
   McpRoute: typeof McpRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
-  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -709,13 +720,6 @@ declare module '@tanstack/react-router' {
       path: '/release-notes'
       fullPath: '/release-notes'
       preLoaderRoute: typeof ReleaseNotesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/_plain': {
@@ -879,6 +883,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSessionsRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/settings': {
+      id: '/_app/_workspace/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppWorkspaceSettingsRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/transfer': {
       id: '/_app/_workspace/transfer'
       path: '/transfer'
@@ -891,6 +902,13 @@ declare module '@tanstack/react-router' {
       path: '/versioning'
       fullPath: '/versioning'
       preLoaderRoute: typeof AppWorkspaceVersioningRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/workbench': {
+      id: '/_app/_workspace/workbench'
+      path: '/workbench'
+      fullPath: '/workbench'
+      preLoaderRoute: typeof AppWorkspaceWorkbenchRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/buckets/$bucket': {
@@ -1038,8 +1056,10 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceSchemaCompareRoute: typeof AppWorkspaceSchemaCompareRoute
   AppWorkspaceSequencesRoute: typeof AppWorkspaceSequencesRoute
   AppWorkspaceSessionsRoute: typeof AppWorkspaceSessionsRoute
+  AppWorkspaceSettingsRoute: typeof AppWorkspaceSettingsRoute
   AppWorkspaceTransferRoute: typeof AppWorkspaceTransferRoute
   AppWorkspaceVersioningRoute: typeof AppWorkspaceVersioningRoute
+  AppWorkspaceWorkbenchRoute: typeof AppWorkspaceWorkbenchRoute
   AppWorkspaceIndexRoute: typeof AppWorkspaceIndexRoute
   AppWorkspaceBucketsBucketRoute: typeof AppWorkspaceBucketsBucketRoute
   AppWorkspaceExtensionsNameRoute: typeof AppWorkspaceExtensionsNameRoute
@@ -1074,8 +1094,10 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceSchemaCompareRoute: AppWorkspaceSchemaCompareRoute,
   AppWorkspaceSequencesRoute: AppWorkspaceSequencesRoute,
   AppWorkspaceSessionsRoute: AppWorkspaceSessionsRoute,
+  AppWorkspaceSettingsRoute: AppWorkspaceSettingsRoute,
   AppWorkspaceTransferRoute: AppWorkspaceTransferRoute,
   AppWorkspaceVersioningRoute: AppWorkspaceVersioningRoute,
+  AppWorkspaceWorkbenchRoute: AppWorkspaceWorkbenchRoute,
   AppWorkspaceIndexRoute: AppWorkspaceIndexRoute,
   AppWorkspaceBucketsBucketRoute: AppWorkspaceBucketsBucketRoute,
   AppWorkspaceExtensionsNameRoute: AppWorkspaceExtensionsNameRoute,
@@ -1123,7 +1145,6 @@ const rootRouteChildren: RootRouteChildren = {
   DriversRoute: DriversRoute,
   McpRoute: McpRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,
-  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

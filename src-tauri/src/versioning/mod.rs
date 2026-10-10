@@ -492,6 +492,26 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 .await?
             ))
         }
+        "release-commits" => {
+            if revision(&root, "HEAD").await.is_err() {
+                return Ok(json!(""));
+            }
+            Ok(json!(
+                git(
+                    &root,
+                    &[
+                        "log",
+                        "--all",
+                        "--diff-filter=A",
+                        "--format=%x00%H",
+                        "--name-only",
+                        "--",
+                        "database/releases/",
+                    ],
+                )
+                .await?
+            ))
+        }
         "delete-branch" => {
             let name = request.name.ok_or("Branchname fehlt")?;
             if name.starts_with('-') || !seeds::allowed_branch(&name) {

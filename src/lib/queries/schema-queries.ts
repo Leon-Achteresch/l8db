@@ -3,6 +3,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useState } from "react";
 import { useActiveConnection, visibleSchemas } from "@/lib/connections";
 import {
+  cancelExecution,
   getViewDefinition,
   listAllColumns,
   listDatabases,
@@ -20,6 +21,7 @@ import { supports } from "@/lib/providers";
 import { isConnectionQuery } from "@/lib/query-client";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTransactionStore } from "@/lib/transactions";
+import { loadSharedSchemaObjects, runSchemaMetadataRequest } from "./schema-object-loading";
 
 export function useRefreshConnection() {
   const connection = useActiveConnection();
@@ -111,25 +113,71 @@ export function useViewsQuery(enabled = true) {
 export function useAllSchemaObjectsQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const client = useQueryClient();
   return useQuery({
     queryKey: ["all-objects", connection?.id, database],
-    queryFn: async () => {
-      const kind = connection!.kind;
-      const connectionString = effectiveConnectionString(connection!);
+    queryFn: ({ signal }) => {
+      if (!connection) throw new Error("Keine Verbindung aktiv.");
+      const kind = connection.kind;
+      const connectionString = effectiveConnectionString(connection);
       const db = database ?? undefined;
-      const [tables, views, functions, procedures] = await Promise.all([
-        listTables(kind, connectionString, db),
-        supports(connection, "views") ? listViews(kind, connectionString, db) : Promise.resolve([]),
-        supports(connection, "functions")
-          ? listFunctions(kind, connectionString, db)
-          : Promise.resolve([]),
-        supports(connection, "procedures")
-          ? listProcedures(kind, connectionString, db)
-          : Promise.resolve([]),
-      ]);
-      return { tables, views, functions, procedures };
+      const cancel = (jobId: string) =>
+        supports(connection, "query_cancel") ? cancelExecution(jobId) : Promise.resolve(false);
+      return loadSharedSchemaObjects(client, signal, {
+        tables: {
+          queryKey: ["all-tables", connection.id, database],
+          queryFn: ({ signal }) =>
+            runSchemaMetadataRequest(
+              client,
+              connection.id,
+              signal,
+              (jobId) => listTables(kind, connectionString, db, undefined, { jobId }),
+              cancel,
+            ),
+        },
+        views: {
+          queryKey: ["all-views", connection.id, database],
+          queryFn: ({ signal }) =>
+            supports(connection, "views")
+              ? runSchemaMetadataRequest(
+                  client,
+                  connection.id,
+                  signal,
+                  (jobId) => listViews(kind, connectionString, db, undefined, { jobId }),
+                  cancel,
+                )
+              : Promise.resolve([]),
+        },
+        functions: {
+          queryKey: ["functions", connection.id, database, undefined],
+          queryFn: ({ signal }) =>
+            supports(connection, "functions")
+              ? runSchemaMetadataRequest(
+                  client,
+                  connection.id,
+                  signal,
+                  (jobId) => listFunctions(kind, connectionString, db, undefined, { jobId }),
+                  cancel,
+                )
+              : Promise.resolve([]),
+        },
+        procedures: {
+          queryKey: ["procedures", connection.id, database, undefined],
+          queryFn: ({ signal }) =>
+            supports(connection, "procedures")
+              ? runSchemaMetadataRequest(
+                  client,
+                  connection.id,
+                  signal,
+                  (jobId) => listProcedures(kind, connectionString, db, undefined, { jobId }),
+                  cancel,
+                )
+              : Promise.resolve([]),
+        },
+      });
     },
     enabled: enabled && Boolean(connection),
+    subscribed: enabled && Boolean(connection),
     staleTime: 60 * 1000,
   });
 }

@@ -1,16 +1,11 @@
+import { CopyAsMenu } from "@/components/copy-as-menu";
 import {
-  CopyIcon,
-  DownloadIcon,
-  ExternalLinkIcon,
-  FolderInputIcon,
-  FolderOpenIcon,
-  LinkIcon,
-  PencilIcon,
-  TextCursorInputIcon,
-  TrashIcon,
-} from "lucide-react";
-import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
-import { copyText } from "@/lib/clipboard";
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+} from "@/components/ui/context-menu";
+import { copyWithToast } from "@/lib/clipboard";
+import { formatMenuShortcut, MENU_KEYS } from "@/lib/hotkeys";
 import { previewKind } from "@/lib/storage/s3";
 import type { BrowserRow } from "./use-object-listing";
 
@@ -47,57 +42,56 @@ export function ObjectRowMenu({
     <>
       {!multi && (
         <ContextMenuItem onSelect={() => actions.open(row)}>
-          <FolderOpenIcon /> {row.kind === "folder" ? "Öffnen" : "Details"}
+          {row.kind === "folder" ? "Öffnen" : "Details"}
+        </ContextMenuItem>
+      )}
+      {isObject && !multi && (
+        <ContextMenuItem onSelect={() => actions.openExternally(row)}>
+          Im Browser öffnen
         </ContextMenuItem>
       )}
       {(isObject || row.kind === "folder") && (
         <ContextMenuItem onSelect={() => actions.download(targets)}>
-          <DownloadIcon /> Herunterladen{multi ? ` (${targets.length})` : ""}
+          Herunterladen{multi ? ` (${targets.length})` : ""}
         </ContextMenuItem>
-      )}
-      {isObject && !multi && (
-        <>
-          <ContextMenuItem onSelect={() => actions.presign(row)}>
-            <LinkIcon /> Presigned URL kopieren
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => actions.openExternally(row)}>
-            <ExternalLinkIcon /> Im Browser öffnen
-          </ContextMenuItem>
-        </>
       )}
       {!multi && (
         <>
-          <ContextMenuItem onSelect={() => void copyText(row.key)}>
-            <CopyIcon /> Schlüssel kopieren
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => void copyText(`s3://${bucket}/${row.key}`)}>
-            <CopyIcon /> S3-URI kopieren
-          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <CopyAsMenu name={row.name || row.key}>
+            <ContextMenuItem onSelect={() => void copyWithToast(row.key, "Schlüssel")}>
+              Schlüssel
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => void copyWithToast(`s3://${bucket}/${row.key}`, "S3-URI")}
+            >
+              S3-URI
+            </ContextMenuItem>
+            {isObject && (
+              <ContextMenuItem onSelect={() => actions.presign(row)}>Presigned URL</ContextMenuItem>
+            )}
+          </CopyAsMenu>
         </>
       )}
       {!readOnly && (
         <>
           <ContextMenuSeparator />
           {editable && !multi && (
-            <ContextMenuItem onSelect={() => actions.edit(row)}>
-              <PencilIcon /> Inhalt bearbeiten
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => actions.edit(row)}>Inhalt bearbeiten</ContextMenuItem>
           )}
           {!multi && !row.versionId && (
-            <ContextMenuItem onSelect={() => actions.rename(row)}>
-              <TextCursorInputIcon /> Umbenennen
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => actions.rename(row)}>Umbenennen…</ContextMenuItem>
           )}
-          <ContextMenuItem onSelect={() => actions.copy(targets)}>
-            <CopyIcon /> Kopieren nach…
-          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => actions.copy(targets)}>Kopieren nach…</ContextMenuItem>
           {!row.versionId && (
             <ContextMenuItem onSelect={() => actions.move(targets)}>
-              <FolderInputIcon /> Verschieben nach…
+              Verschieben nach…
             </ContextMenuItem>
           )}
+          <ContextMenuSeparator />
           <ContextMenuItem variant="destructive" onSelect={() => actions.remove(targets)}>
-            <TrashIcon /> Löschen{multi ? ` (${targets.length})` : ""}
+            Löschen{multi ? ` (${targets.length})` : ""}…
+            <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.drop)}</ContextMenuShortcut>
           </ContextMenuItem>
         </>
       )}

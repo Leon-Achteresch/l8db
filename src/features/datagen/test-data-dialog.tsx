@@ -1,12 +1,4 @@
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -19,6 +11,15 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/features/shell/workbench-dialog";
 import type { SavedConnection } from "@/lib/connections";
 import type { DatagenLocale } from "@/lib/db";
 import { useCapabilities } from "@/lib/providers";
@@ -43,7 +44,7 @@ function numeric(text: string, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
-export function TestDataDialog({
+function TestDataDialogContent({
   connection,
   database,
   schema,
@@ -59,7 +60,11 @@ export function TestDataDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(next) => !state.running && setOpen(next)}>
+      <Dialog
+        busy={state.running}
+        open={open}
+        onOpenChange={(next) => !state.running && setOpen(next)}
+      >
         <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Testdaten · {[schema, table].filter(Boolean).join(".")}</DialogTitle>
@@ -255,3 +260,8 @@ export function TestDataDialog({
     </>
   );
 }
+
+export const TestDataDialog = asWorkbenchTab(
+  TestDataDialogContent,
+  (props) => `Testdaten · ${props.schema}.${props.table}`,
+);

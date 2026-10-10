@@ -1,8 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCwIcon, StethoscopeIcon } from "lucide-react";
+import { CircleCheckIcon, RefreshCwIcon, StethoscopeIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
@@ -132,6 +139,21 @@ export function HealthView() {
             </div>
           )}
           {report.isError && <p className="text-sm text-destructive">{String(report.error)}</p>}
+          {report.isSuccess && visible.length === 0 && (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <CircleCheckIcon />
+                </EmptyMedia>
+                <EmptyTitle>Keine Prüfergebnisse</EmptyTitle>
+                <EmptyDescription>
+                  {category
+                    ? `In der Kategorie ${CATEGORY_LABEL[category]} gibt es nichts zu melden.`
+                    : "Für diese Datenbank liegen keine Prüfungen vor."}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
           {visible.map((check) => (
             <HealthCheckItem key={check.id} check={check} />
           ))}

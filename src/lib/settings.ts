@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type SqlKeywordCase = "upper" | "lower" | "preserve";
@@ -12,6 +13,7 @@ export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
 export type SidebarObjectNav = "tabs" | "select";
+export type UpdateChannel = "stable" | "canary";
 
 export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
@@ -42,7 +44,10 @@ export interface SettingsState {
   setCrashReports: (value: boolean) => void;
   usageMetrics: boolean;
   setUsageMetrics: (value: boolean) => void;
+  localUsageStats: boolean;
+  setLocalUsageStats: (value: boolean) => void;
   autoUpdateInstall: boolean;
+  updateChannel: UpdateChannel;
   skippedUpdateVersion: string | null;
   tourFinished: boolean;
   onboardingDone: boolean;
@@ -83,6 +88,7 @@ export interface SettingsState {
   hideOwnSchemaSelect: boolean;
   sidebarObjectNav: SidebarObjectNav;
   searchIncludeColumns: boolean;
+  searchIncludePackageMembers: boolean;
   uiDensity: UiDensity;
   uiScale: number;
   sidebarExtraCompact: boolean;
@@ -90,6 +96,7 @@ export interface SettingsState {
   dynamicIsland: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
+  tableStyle: TableStyle;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -100,6 +107,7 @@ export interface SettingsState {
   setTransactionsPerTable: (v: boolean) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
+  setUpdateChannel: (v: UpdateChannel) => void;
   setSkippedUpdateVersion: (v: string | null) => void;
   setTourFinished: (v: boolean) => void;
   setOnboardingDone: (v: boolean) => void;
@@ -140,6 +148,7 @@ export interface SettingsState {
   setHideOwnSchemaSelect: (value: boolean) => void;
   setSidebarObjectNav: (value: SidebarObjectNav) => void;
   setSearchIncludeColumns: (v: boolean) => void;
+  setSearchIncludePackageMembers: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setUiScale: (v: number) => void;
   resetAppearance: () => void;
@@ -148,6 +157,7 @@ export interface SettingsState {
   setDynamicIsland: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
+  setTableStyle: (value: TableStyle) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -169,7 +179,7 @@ export function normalizeUiDensity(value: unknown): UiDensity {
   return value === "compact" || value === "spacious" ? value : "normal";
 }
 
-const DEFAULT_SETTINGS = {
+export const DEFAULT_SETTINGS = {
   easyMode: false,
   hiddenTableDetailTabs: [] as TableDetailTab[],
   rowLimit: 100,
@@ -182,7 +192,9 @@ const DEFAULT_SETTINGS = {
   autoUpdateCheck: true,
   crashReports: false,
   usageMetrics: false,
+  localUsageStats: false,
   autoUpdateInstall: false,
+  updateChannel: "stable" as UpdateChannel,
   skippedUpdateVersion: null,
   tourFinished: false,
   onboardingDone: false,
@@ -223,6 +235,7 @@ const DEFAULT_SETTINGS = {
   hideOwnSchemaSelect: true,
   sidebarObjectNav: "tabs" as SidebarObjectNav,
   searchIncludeColumns: true,
+  searchIncludePackageMembers: true,
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
   sidebarExtraCompact: false,
@@ -230,6 +243,7 @@ const DEFAULT_SETTINGS = {
   dynamicIsland: true,
   fitColumnsToHeader: true,
   monochromeCells: true,
+  tableStyle: "classic" as TableStyle,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -259,8 +273,10 @@ export const useSettingsStore = create<SettingsState>()(
           autoUpdateInstall: autoUpdateCheck ? state.autoUpdateInstall : false,
         })),
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
+      setUpdateChannel: (updateChannel) => set({ updateChannel }),
       setCrashReports: (crashReports) => set({ crashReports }),
       setUsageMetrics: (usageMetrics) => set({ usageMetrics }),
+      setLocalUsageStats: (localUsageStats) => set({ localUsageStats }),
       setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
       setTourFinished: (tourFinished) => set({ tourFinished }),
       setOnboardingDone: (onboardingDone) => set({ onboardingDone }),
@@ -308,6 +324,8 @@ export const useSettingsStore = create<SettingsState>()(
       setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
       setSidebarObjectNav: (sidebarObjectNav) => set({ sidebarObjectNav }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
+      setSearchIncludePackageMembers: (searchIncludePackageMembers) =>
+        set({ searchIncludePackageMembers }),
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
@@ -315,6 +333,7 @@ export const useSettingsStore = create<SettingsState>()(
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
+      setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       resetAppearance: () =>
         set({
           uiScale: 100,
@@ -324,6 +343,7 @@ export const useSettingsStore = create<SettingsState>()(
           dynamicIsland: true,
           fitColumnsToHeader: true,
           monochromeCells: true,
+          tableStyle: "classic",
         }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -351,6 +371,7 @@ export const useSettingsStore = create<SettingsState>()(
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,
           usageMetrics: saved?.usageMetrics === true,
+          localUsageStats: saved?.localUsageStats === true,
           translateFilterOperators: saved?.translateFilterOperators !== false,
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),
@@ -360,7 +381,9 @@ export const useSettingsStore = create<SettingsState>()(
           dynamicIsland: saved?.dynamicIsland !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
+          tableStyle: normalizeTableStyle(saved?.tableStyle),
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
+          updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
         };
       },
     },

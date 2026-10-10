@@ -1,0 +1,41 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index c124f821a68f7070647a5a04441d0caa53689662..bc9120c036258fb2e837bbccb50f47669b3a36c8 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1017,6 +1017,7 @@ const Toaster = /*#__PURE__*/ React.forwardRef(function Toaster(props, ref) {
+         });
+     }, []);
+     React.useEffect(()=>{
++        const pending = [];
+         return ToastState.subscribe((toast)=>{
+             if (toast.dismiss) {
+                 // Prevent batching of other state updates
+@@ -1028,10 +1029,12 @@ const Toaster = /*#__PURE__*/ React.forwardRef(function Toaster(props, ref) {
+                 });
+                 return;
+             }
+-            // Prevent batching, temp solution.
++            pending.push(toast);
++            if (pending.length > 1) return;
+             setTimeout(()=>{
++                const batch = pending.splice(0);
+                 ReactDOM.flushSync(()=>{
+-                    setToasts((toasts)=>{
++                    setToasts((current)=>batch.reduce((toasts, toast)=>{
+                         const indexOfExistingToast = toasts.findIndex((t)=>t.id === toast.id);
+                         // Update the toast if it already exists
+                         if (indexOfExistingToast !== -1) {
+@@ -1044,11 +1047,12 @@ const Toaster = /*#__PURE__*/ React.forwardRef(function Toaster(props, ref) {
+                                 ...toasts.slice(indexOfExistingToast + 1)
+                             ];
+                         }
++                        if (ToastState.dismissedToasts.has(toast.id)) return toasts;
+                         return [
+                             toast,
+                             ...toasts
+                         ];
+-                    });
++                    }, current));
+                 });
+             });
+         });

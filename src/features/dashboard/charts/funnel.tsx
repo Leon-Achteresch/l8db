@@ -1,53 +1,64 @@
-import { fmtCompact } from "@/lib/dashboards";
-import { type ChartProps, categories } from "./chart-utils";
+import { fmtShare, fmtValueCompact } from "@/lib/dashboards";
+import { CategoryRow } from "./category-row";
+import { accent, type ChartProps, categories, change, dimAttr, goodness } from "./chart-utils";
+import { DeltaBadge } from "./delta-badge";
 
-export function Funnel({ rows, shape, options }: ChartProps) {
-  const items = categories(rows, shape, options.colorOffset);
+export function Funnel({ rows, shape, options, compare, interactive = false }: ChartProps) {
+  const items = categories(rows, shape);
   if (!items.length) return null;
   const max = Math.max(1, ...items.map((i) => i.value));
-  const n = items.length;
-  const segW = 100 / n;
-  const bridge = Math.min(12, segW * 0.28);
-  const heights = items.map((i) => Math.max(8, (i.value / max) * 100));
-  const paths = items.map((_, i) => {
-    const h = heights[i];
-    const x0 = i * segW;
-    const x1 = x0 + segW;
-    const top = 50 - h / 2;
-    const bottom = 50 + h / 2;
-    const prev = i > 0 ? heights[i - 1] : h;
-    const ptop = 50 - prev / 2;
-    const pbottom = 50 + prev / 2;
-    const c = x0 + bridge / 2;
-    return `M ${x0} ${ptop} C ${c} ${ptop} ${c} ${top} ${x0 + bridge} ${top} L ${x1} ${top} L ${x1} ${bottom} L ${x0 + bridge} ${bottom} C ${c} ${bottom} ${c} ${pbottom} ${x0} ${pbottom} Z`;
-  });
+  const fill = accent(options);
   return (
-    <div className="relative h-full w-full">
-      <svg
-        className="h-full w-full"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Funnel"
+    <div className="h-full overflow-y-auto">
+      <div
+        className="grid min-h-full content-center items-center gap-x-3 gap-y-1 text-xs"
+        style={{
+          gridTemplateColumns: `minmax(48px,max-content) 1fr auto${options.showPercent ? " auto" : ""}${compare ? " auto" : ""}`,
+        }}
       >
-        {paths.map((d, i) => (
-          <g key={items[i].name}>
-            <path d={d} fill={items[i].color} opacity={0.18} transform="translate(0 0)" />
-            <path d={d} fill={items[i].color} transform="scale(1 0.8) translate(0 12.5)" />
-          </g>
-        ))}
-      </svg>
-      {items.map((item, i) => (
-        <span
-          key={item.name}
-          className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-card px-2 py-0.5 text-[11px] font-semibold shadow-sm ring-1 ring-border/60"
-          style={{ left: `${i * segW + segW / 2}%`, top: "50%" }}
-        >
-          {options.showPercent
-            ? `${Math.round((item.value / max) * 100)}%`
-            : fmtCompact(item.value)}
-        </span>
-      ))}
+        {items.map((item, i) => {
+          const delta = compare ? change(item.value, compare.values[i]) : null;
+          return (
+            <CategoryRow
+              key={item.name}
+              interactive={interactive}
+              dim={dimAttr(item.raw)}
+              className="col-span-full grid grid-cols-subgrid items-center"
+            >
+              <span className="max-w-44 truncate text-right text-muted-foreground">
+                {item.name}
+              </span>
+              <div className="flex h-7 items-center">
+                <div
+                  className="h-full rounded-[4px] transition-[width] duration-500"
+                  style={{
+                    width: `${Math.max(0.5, (Math.max(0, item.value) / max) * 100)}%`,
+                    background: fill,
+                  }}
+                />
+              </div>
+              <span className="text-right font-medium tabular-nums">
+                {fmtValueCompact(item.value, options)}
+              </span>
+              {options.showPercent && (
+                <span
+                  className="w-12 text-right tabular-nums text-muted-foreground"
+                  title="Anteil an der Vorstufe"
+                >
+                  {i === 0 ? "" : fmtShare(item.value, items[i - 1].value)}
+                </span>
+              )}
+              {compare && (
+                <span className="w-14 text-right">
+                  {delta !== null && (
+                    <DeltaBadge delta={delta} good={goodness(delta, options.invertDelta)} />
+                  )}
+                </span>
+              )}
+            </CategoryRow>
+          );
+        })}
+      </div>
     </div>
   );
 }

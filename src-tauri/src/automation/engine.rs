@@ -1370,10 +1370,12 @@ pub(crate) mod tests {
                 kind,
                 connection_string: url.into(),
                 read_only: false,
+                production_locked: false,
                 environment: None,
                 tags: vec!["lab".into()],
                 ssh: None,
                 proxy: None,
+                command_tunnel: None,
                 vault: false,
             });
             services.store.replace_connections(list).await.unwrap();

@@ -9,6 +9,7 @@ import {
   setAutomationTasksEnabled,
   type TaskSummary,
 } from "@/lib/db/automation";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -60,7 +61,7 @@ export function useTaskActions() {
     try {
       const command = await automationCliCommand(summary.task.id);
       await navigator.clipboard.writeText(command);
-      toast.success("Befehl kopiert", { description: command });
+      showCopiedMessage("Befehl kopiert");
     } catch (error) {
       toast.error(message(error));
     }

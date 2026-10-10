@@ -83,7 +83,7 @@ export function applyDefinitionHunk(source: string, draft: string, hunk: Definit
   return lines.join("\n");
 }
 
-export type DraftLineOrigin = "source" | "target";
+export type DraftLineOrigin = "source" | "target" | "manual";
 
 export function draftLineOrigins(
   sourceHunks: DefinitionHunk[],
@@ -97,6 +97,12 @@ export function draftLineOrigins(
   };
   const fromTarget = differs(sourceHunks);
   return differs(targetHunks).map((fromSource, line) =>
-    fromSource === fromTarget[line] ? null : fromSource ? "source" : "target",
+    fromSource && fromTarget[line]
+      ? "manual"
+      : fromSource
+        ? "source"
+        : fromTarget[line]
+          ? "target"
+          : null,
   );
 }

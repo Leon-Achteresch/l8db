@@ -155,6 +155,30 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       await page.getByRole("menuitem", { name: "Neu laden" }).click();
       await waitForHeader();
       expect(await readRows(page, "original")).toEqual(left);
+
+      await page.getByRole("button", { name: "Vergleichsoptionen" }).click();
+      await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).click();
+      await hidden.first().waitFor({ state: "attached" });
+      await page.getByRole("button", { name: "Entwurf", exact: true }).click();
+      await page.locator(".merge-draft-editor .minimap").waitFor({ state: "visible" });
+      expect(await page.locator(".definition-diff-editor .diffOverview").isVisible()).toBe(true);
+      expect((await readRows(page, "original")).filter((row) => row.startsWith("red "))).toEqual([
+        "red o.created_at",
+      ]);
+      expect((await readRows(page, "modified")).filter((row) => row.startsWith("green "))).toEqual([
+        "green o.inserted_col,",
+        "green o.created_at,",
+        "green o.updated_at",
+      ]);
+      await page.locator(".merge-draft-editor .view-lines").click();
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.keyboard.insertText("SELECT 'manual draft';");
+      await page.getByRole("button", { name: "Entwurf", exact: true }).click();
+      await page.getByRole("button", { name: "Vergleichsoptionen" }).click();
+      await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).click();
+      await hidden.first().waitFor({ state: "detached" });
+      expect(await readRows(page, "original")).toEqual(left);
+      expect(await readRows(page, "modified")).toEqual(right);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

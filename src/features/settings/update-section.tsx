@@ -2,13 +2,14 @@ import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
-import { useSettingsStore } from "@/lib/settings";
-import { checkForUpdates, getAppVersion, presentUpdate } from "@/lib/updater";
+import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
+import { checkForUpdates, getAppVersion, presentUpdate, setPendingUpdate } from "@/lib/updater";
 
 type Status =
   | { kind: "idle" }
@@ -28,6 +29,8 @@ export function UpdateSection() {
     useSettingsStore();
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
   const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
+  const updateChannel = useSettingsStore((s) => s.updateChannel);
+  const setUpdateChannel = useSettingsStore((s) => s.setUpdateChannel);
   const autoFeatureVideos = useSettingsStore((s) => s.autoFeatureVideos);
   const setAutoFeatureVideos = useSettingsStore((s) => s.setAutoFeatureVideos);
   const isSkipped = Boolean(pending && skippedUpdateVersion === pending.version);
@@ -67,6 +70,12 @@ export function UpdateSection() {
     }
   }
 
+  function onChannelChange(channel: UpdateChannel) {
+    setUpdateChannel(channel);
+    setPendingUpdate(null);
+    void onCheck();
+  }
+
   function onShowSkipped() {
     if (!pending) return;
     setSkippedUpdateVersion(null);
@@ -89,20 +98,31 @@ export function UpdateSection() {
           <span>{status.kind === "checking" ? "Prüfe …" : "Nach Updates suchen"}</span>
         </Button>
       </SettingsRow>
-      <SettingsRow
-        title="Automatisch nach Updates suchen"
-        description="Beim Start und danach alle 6 Stunden im Hintergrund nach neuen Versionen suchen."
-      >
+      <SettingsRow settingId="update-channel" featureId="settings.about.update-channel">
+        <SegmentedControl
+          value={updateChannel}
+          onChange={onChannelChange}
+          label="Update-Kanal"
+          options={[
+            { value: "stable", label: "Stable" },
+            { value: "canary", label: "Canary" },
+          ]}
+        />
+      </SettingsRow>
+      {updateChannel === "stable" && version?.includes("-canary.") ? (
+        <SettingsRow
+          title="Canary-Version installiert"
+          description={`l8db ${version} bleibt installiert, bis eine neuere stabile Version erscheint.`}
+        />
+      ) : null}
+      <SettingsRow settingId="updates">
         <Switch
           checked={autoUpdateCheck}
           onCheckedChange={setAutoUpdateCheck}
           aria-label="Automatisch nach Updates suchen"
         />
       </SettingsRow>
-      <SettingsRow
-        title="Updates automatisch installieren"
-        description="Gefundene Updates ohne Rückfrage installieren und neu starten."
-      >
+      <SettingsRow settingId="auto-update-install">
         <Switch
           checked={autoUpdateInstall}
           disabled={!autoUpdateCheck}
@@ -110,23 +130,20 @@ export function UpdateSection() {
           aria-label="Updates automatisch installieren"
         />
       </SettingsRow>
-      <SettingsRow
-        title="Neue Features als Video"
-        description="Wichtige Neuerungen unten rechts automatisch stumm zeigen. Jederzeit schließbar."
-      >
+      <SettingsRow settingId="feature-videos">
         <Switch
           checked={autoFeatureVideos}
           onCheckedChange={setAutoFeatureVideos}
           aria-label="Neue Features automatisch zeigen"
         />
       </SettingsRow>
-      <SettingsRow title="Release Notes" description="Änderungen aller veröffentlichten Versionen.">
+      <SettingsRow settingId="release-notes">
         <Button variant="outline" asChild>
           <Link to="/release-notes">Anzeigen</Link>
         </Button>
       </SettingsRow>
       {status.kind === "current" ? (
-        <SettingsRow title="Updates" description="Du nutzt die aktuelle Version.">
+        <SettingsRow settingId="update-status">
           <span className="text-xs text-muted-foreground">Aktuell</span>
         </SettingsRow>
       ) : null}

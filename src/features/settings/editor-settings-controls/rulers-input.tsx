@@ -10,11 +10,7 @@ export function RulersInput({ store, compact }: { store: Store; compact: boolean
     setText(formatRulers(store.editorRulers));
   }, [store.editorRulers]);
   return (
-    <Row
-      title="Lineale"
-      description="Vertikale Hilfslinien bei Spalten, z. B. 80, 120. Leer lassen zum Deaktivieren."
-      compact={compact}
-    >
+    <Row settingId="rulers" compact={compact}>
       <Input
         value={text}
         onChange={(event) => setText(event.target.value)}

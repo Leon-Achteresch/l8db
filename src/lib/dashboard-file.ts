@@ -1,6 +1,8 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, stat, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { Dashboard } from "@/lib/dashboards";
+import { validateDashboardDesign } from "@/lib/dashboard-design";
+import type { Dashboard, DashboardPage } from "@/lib/dashboards/model";
+import { sanitizeTheme } from "@/lib/dashboards/theme";
 
 export type DashboardFile = Omit<
   Dashboard,
@@ -11,7 +13,30 @@ export function parseDashboard(text: string): DashboardFile {
   const parsed = JSON.parse(text) as DashboardFile;
   if (!Array.isArray(parsed.widgets) || !Array.isArray(parsed.datasets))
     throw new Error("Ungültiges Dashboard-Format");
+  if (parsed.design != null) validateDashboardDesign(parsed.design);
+  else delete parsed.design;
+  const theme = sanitizeTheme(parsed.theme);
+  if (theme) parsed.theme = theme;
+  else delete parsed.theme;
+  const pages = sanitizePages(parsed.pages);
+  if (pages.length) parsed.pages = pages;
+  else delete parsed.pages;
   return parsed;
+}
+
+export function sanitizePages(value: unknown): DashboardPage[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const pages: DashboardPage[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const { id, name, hidden } = entry as Record<string, unknown>;
+    if (typeof id !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(id) || seen.has(id)) continue;
+    if (typeof name !== "string" || !name.trim()) continue;
+    seen.add(id);
+    pages.push({ id, name: name.trim().slice(0, 60), ...(hidden === true ? { hidden } : {}) });
+  }
+  return pages.slice(0, 30);
 }
 
 export function dashboardSqlParts(dashboard: Pick<Dashboard, "datasets" | "variables">): string[] {
@@ -41,8 +66,9 @@ export function confirmExpertSql(dashboard: DashboardFile): boolean {
 }
 
 export function serializeDashboard(dashboard: Dashboard): string {
-  const { name, datasets, widgets, variables, refreshSec, locked } = dashboard;
-  return `${JSON.stringify({ name, datasets, widgets, ...(variables?.length ? { variables } : {}), refreshSec, locked }, null, 2)}\n`;
+  const { name, datasets, widgets, variables, refreshSec, locked, design, pages, theme } =
+    dashboard;
+  return `${JSON.stringify({ name, datasets, widgets, ...(variables?.length ? { variables } : {}), ...(pages?.length ? { pages } : {}), ...(theme ? { theme } : {}), refreshSec, locked, ...(design ? { design } : {}) }, null, 2)}\n`;
 }
 
 export async function fileStamp(path: string): Promise<string> {

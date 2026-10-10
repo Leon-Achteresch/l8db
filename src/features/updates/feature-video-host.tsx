@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSonner } from "sonner";
+import { toast } from "sonner";
 import { FeatureVideoCard } from "@/features/updates/feature-video-card";
 import { useFeatureVideoStore } from "@/lib/feature-videos/store";
 import { useFeatureVideos } from "@/lib/feature-videos/use-feature-videos";
@@ -12,11 +12,12 @@ export function FeatureVideoHost() {
   const enabled = useSettingsStore((s) => s.autoFeatureVideos);
   const onboardingDone = useSettingsStore((s) => s.onboardingDone);
   const tourActive = useTourStore((s) => s.active || s.offerOpen);
-  const { toasts } = useSonner();
-  const urgent = toasts.some(
-    (toast) => !toast.delete && (toast.type === "error" || toast.type === "warning"),
-  );
-  const [environment, setEnvironment] = useState({ blocked: true, idle: false, ready: false });
+  const [environment, setEnvironment] = useState({
+    blocked: true,
+    idle: false,
+    ready: false,
+    urgent: false,
+  });
   const watching =
     Boolean(activeId) ||
     (enabled &&
@@ -45,11 +46,15 @@ export function FeatureVideoHost() {
           Date.now() - lastInput > 2500 &&
           !document.activeElement?.matches('input, textarea, [contenteditable="true"]'),
         ready: Date.now() - start >= 10_000,
+        urgent: toast
+          .getToasts()
+          .some((entry) => "type" in entry && (entry.type === "error" || entry.type === "warning")),
       };
       setEnvironment((previous) =>
         previous.blocked === next.blocked &&
         previous.idle === next.idle &&
-        previous.ready === next.ready
+        previous.ready === next.ready &&
+        previous.urgent === next.urgent
           ? previous
           : next,
       );
@@ -67,7 +72,7 @@ export function FeatureVideoHost() {
     };
   }, [watching]);
 
-  const suspended = environment.blocked || !onboardingDone || tourActive || urgent;
+  const suspended = environment.blocked || !onboardingDone || tourActive || environment.urgent;
   useEffect(() => {
     if (!enabled && activeId && !manual) close();
     if (

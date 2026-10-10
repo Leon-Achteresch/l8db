@@ -1,10 +1,10 @@
 import { CheckCircle2Icon, CopyIcon, TriangleAlertIcon } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { copyText } from "@/lib/clipboard";
 import { formatXml, parseXml } from "@/lib/value-viewers/xml";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { XmlTreeNode } from "./xml-tree-node";
 
 export function XmlValueViewer({ text }: { text: string }) {
@@ -45,7 +45,7 @@ export function XmlValueViewer({ text }: { text: string }) {
           size="sm"
           onClick={async () => {
             await copyText(formatted);
-            toast.success("Formatiertes XML kopiert");
+            showCopiedMessage("Formatiertes XML kopiert");
           }}
         >
           <CopyIcon className="size-3.5" />

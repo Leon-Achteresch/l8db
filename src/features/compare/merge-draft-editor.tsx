@@ -1,28 +1,36 @@
 import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import { nextDiffLine } from "@/features/compare/diff-navigation";
 import type { DraftLineOrigin } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
-import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
+import {
+  joinScrollSyncGroup,
+  type ScrollSyncGroup,
+  withoutScrollSync,
+} from "@/lib/monaco/scroll-sync";
 import "./merge-reference-editor.css";
 
 export interface MergeDraftApi {
-  goToLine: (line: number) => void;
+  goToChange: (lines: readonly number[], direction: 1 | -1) => void;
 }
 
 interface Props {
   value: string;
   origins: (DraftLineOrigin | null)[];
   onChange: (value: string) => void;
+  onActivate?: () => void;
   ref?: Ref<MergeDraftApi>;
   scrollSync?: ScrollSyncGroup;
 }
 
-export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: Props) {
+export function MergeDraftEditor({ value, origins, onChange, onActivate, ref, scrollSync }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const callback = useRef(onChange);
   const syncing = useRef(false);
+  const activateRef = useRef(onActivate);
+  activateRef.current = onActivate;
   const { resolvedTheme } = useTheme();
   callback.current = onChange;
 
@@ -33,7 +41,7 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
       model,
       theme: "l8db-light",
       automaticLayout: true,
-      minimap: { enabled: false },
+      minimap: { enabled: true, renderCharacters: false },
       scrollBeyondLastLine: false,
       fontSize: 13,
       lineHeight: 22,
@@ -50,13 +58,15 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
     const subscription = model.onDidChangeContent(() => {
       if (!syncing.current) callback.current(model.getValue());
     });
-    const leaveScrollSync = scrollSync && joinScrollSyncGroup(scrollSync, instance);
+    const focus = instance.onDidFocusEditorWidget(() => activateRef.current?.());
+    const leaveScrollSync = scrollSync && joinScrollSyncGroup(scrollSync, instance, "result");
     editor.current = instance;
     decorations.current = instance.createDecorationsCollection();
     return () => {
       leaveScrollSync?.();
       decorations.current = null;
       subscription.dispose();
+      focus.dispose();
       instance.dispose();
       model.dispose();
       editor.current = null;
@@ -67,9 +77,9 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
     const model = editor.current?.getModel();
     if (!model || model.getValue() === value) return;
     syncing.current = true;
-    model.setValue(value);
+    withoutScrollSync(scrollSync, () => model.setValue(value));
     syncing.current = false;
-  }, [value]);
+  }, [value, scrollSync]);
 
   useEffect(() => {
     decorations.current?.set(
@@ -92,10 +102,16 @@ export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: 
   }, [resolvedTheme]);
 
   useImperativeHandle(ref, () => ({
-    goToLine(line) {
+    goToChange(lines, direction) {
       const instance = editor.current;
       if (!instance) return;
-      const position = Math.min(Math.max(line, 1), instance.getModel()?.getLineCount() ?? 1);
+      const position = nextDiffLine(
+        lines,
+        instance.getPosition()?.lineNumber ?? 1,
+        direction,
+        instance.getModel()?.getLineCount() ?? 1,
+      );
+      if (position === null) return;
       instance.revealLineInCenter(position);
       instance.setPosition({ lineNumber: position, column: 1 });
       instance.focus();

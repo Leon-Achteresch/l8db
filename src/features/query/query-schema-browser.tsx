@@ -5,9 +5,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ColumnInfo, DatabaseKind, TableInfo } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
+import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
+import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
 import { parsePlsqlMembers } from "@/lib/plsql";
+import { QueryStatementOutlineCache } from "@/lib/query-statement-outline";
 import type { SessionView } from "@/lib/session-views";
-import { splitSqlStatements, summarizeStatement } from "@/lib/sql-statements";
+import { measureVirtualItem } from "@/lib/virtual-item-measurement";
+
+const sortedTableCache = new WeakMap<TableInfo[], TableInfo[]>();
+const columnIndexCache = new WeakMap<ColumnInfo[], Map<string, Map<string, ColumnInfo[]>>>();
+
+function sortedTablesFor(tables: TableInfo[]) {
+  let sorted = sortedTableCache.get(tables);
+  if (!sorted) {
+    sorted = [...tables].sort(
+      (a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name),
+    );
+    sortedTableCache.set(tables, sorted);
+  }
+  return sorted;
+}
+
+function columnsFor(columns: ColumnInfo[]) {
+  let index = columnIndexCache.get(columns);
+  if (!index) {
+    index = new Map();
+    for (const column of columns) {
+      let schema = index.get(column.schema);
+      if (!schema) {
+        schema = new Map();
+        index.set(column.schema, schema);
+      }
+      const list = schema.get(column.table) ?? [];
+      list.push(column);
+      schema.set(column.table, list);
+    }
+    columnIndexCache.set(columns, index);
+  }
+  return index;
+}
 
 interface QuerySchemaBrowserProps {
   tables: TableInfo[];
@@ -44,6 +80,10 @@ export function QuerySchemaBrowser({
   const schemaScrollRef = useRef<HTMLDivElement>(null);
   const statementScrollRef = useRef<HTMLDivElement>(null);
   const memberScrollRef = useRef<HTMLDivElement>(null);
+  const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
+  const outlineCache = useRef<QueryStatementOutlineCache | null>(null);
+  if (!outlineCache.current) outlineCache.current = new QueryStatementOutlineCache();
+  outlineCache.current.invalidate(sql, kind);
   const [memberQuery, setMemberQuery] = useState("");
   const [activeMember, setActiveMember] = useState<string | undefined>(undefined);
   const members = useMemo(() => parsePlsqlMembers(sql), [sql]);
@@ -55,7 +95,12 @@ export function QuerySchemaBrowser({
   const memberVirtualizer = useVirtualizer({
     count: visibleMembers.length,
     getScrollElement: () => memberScrollRef.current,
+    scrollToFn,
     estimateSize: () => 28,
+    measureElement: measureVirtualItem,
+    observeElementRect: observeVirtualScrollRect,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
     getItemKey: useCallback(
       (index: number) => {
         const member = visibleMembers[index];
@@ -63,72 +108,61 @@ export function QuerySchemaBrowser({
       },
       [visibleMembers],
     ),
-    overscan: 10,
+    overscan: 3,
     initialRect: { width: 300, height: 600 },
   });
   const term = useDeferredValue(search).trim().toLocaleLowerCase();
   const style = identifierStyleForKind(kind);
   const quote = (name: string) => quoteIdentifier(name, style);
-  const columnMap = useMemo(() => {
-    const map = new Map<string, ColumnInfo[]>();
-    for (const column of columns) {
-      const key = JSON.stringify([column.schema, column.table]);
-      const list = map.get(key) ?? [];
-      list.push(column);
-      map.set(key, list);
-    }
-    return map;
-  }, [columns]);
+  const needsColumns = tab === "schema" && members.length === 0 && (!!term || expanded.size > 0);
+  const columnMap = useMemo(
+    () => (needsColumns ? columnsFor(columns) : null),
+    [columns, needsColumns],
+  );
+  const sortedTables = useMemo(() => sortedTablesFor(tables), [tables]);
   const visible = useMemo(() => {
     if (members.length > 0 || tab !== "schema") return [];
-    return tables
-      .filter(
-        (table) =>
-          `${table.schema}.${table.name}`.toLocaleLowerCase().includes(term) ||
-          columnMap
-            .get(JSON.stringify([table.schema, table.name]))
-            ?.some((column) => column.name.toLocaleLowerCase().includes(term)),
-      )
-      .sort((a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name));
-  }, [tables, term, columnMap, members.length, tab]);
+    if (!term) return sortedTables;
+    return sortedTables.filter(
+      (table) =>
+        `${table.schema}.${table.name}`.toLocaleLowerCase().includes(term) ||
+        columnMap
+          ?.get(table.schema)
+          ?.get(table.name)
+          ?.some((column) => column.name.toLocaleLowerCase().includes(term)),
+    );
+  }, [sortedTables, term, columnMap, members.length, tab]);
   const schemaVirtualizer = useVirtualizer({
     count: visible.length,
     getScrollElement: () => schemaScrollRef.current,
+    scrollToFn,
     estimateSize: () => 40,
+    measureElement: measureVirtualItem,
+    observeElementRect: observeVirtualScrollRect,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
     getItemKey: useCallback(
       (index: number) => JSON.stringify([visible[index].schema, visible[index].name]),
       [visible],
     ),
-    overscan: 10,
+    overscan: 3,
     initialRect: { width: 300, height: 600 },
   });
   const statements = useMemo(() => {
     if (tab !== "outline" || members.length > 0) return [];
-    let cursor = 0;
-    let line = 1;
-    let lastNewline = -1;
-    return splitSqlStatements(sql, kind).statements.map((statement) => {
-      let newline = sql.indexOf("\n", cursor);
-      while (newline >= 0 && newline < statement.start) {
-        line += 1;
-        lastNewline = newline;
-        cursor = newline + 1;
-        newline = sql.indexOf("\n", cursor);
-      }
-      return {
-        start: statement.start,
-        summary: summarizeStatement(statement.text),
-        line,
-        column: statement.start - lastNewline,
-      };
-    });
+    return outlineCache.current?.read(sql, kind) ?? [];
   }, [sql, kind, tab, members.length]);
   const statementVirtualizer = useVirtualizer({
     count: statements.length,
     getScrollElement: () => statementScrollRef.current,
+    scrollToFn,
     estimateSize: () => 57,
+    measureElement: measureVirtualItem,
+    observeElementRect: observeVirtualScrollRect,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
     getItemKey: useCallback((index: number) => statements[index].start, [statements]),
-    overscan: 8,
+    overscan: 3,
     initialRect: { width: 300, height: 600 },
   });
   if (members.length > 0) {
@@ -167,6 +201,7 @@ export function QuerySchemaBrowser({
           ref={memberScrollRef}
           className="min-h-0 flex-1 overflow-auto p-1.5"
           data-slot="query-member-list"
+          style={{ contain: "strict" }}
         >
           {visibleMembers.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-foreground">Keine Treffer.</p>
@@ -262,6 +297,7 @@ export function QuerySchemaBrowser({
             ref={schemaScrollRef}
             className="min-h-0 flex-1 overflow-auto p-2"
             data-slot="query-schema-list"
+            style={{ contain: "strict" }}
           >
             {error && (
               <p role="alert" className="p-2 text-xs text-destructive">
@@ -317,7 +353,7 @@ export function QuerySchemaBrowser({
                 const key = JSON.stringify([table.schema, table.name]);
                 const isOpen = Boolean(term) || expanded.has(key);
                 const qualified = [table.schema, table.name].filter(Boolean).map(quote).join(".");
-                const fields = columnMap.get(JSON.stringify([table.schema, table.name])) ?? [];
+                const fields = columnMap?.get(table.schema)?.get(table.name) ?? [];
                 return (
                   <div
                     key={virtualRow.key}
@@ -399,6 +435,7 @@ export function QuerySchemaBrowser({
           ref={statementScrollRef}
           className="min-h-0 flex-1 overflow-auto p-2"
           data-slot="query-statement-list"
+          style={{ contain: "strict" }}
         >
           {!statements.length && (
             <p className="p-2 text-xs text-muted-foreground">

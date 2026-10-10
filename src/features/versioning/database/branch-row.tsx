@@ -16,14 +16,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatBytes } from "@/lib/backup";
 import {
   branchUrl,
@@ -41,6 +36,7 @@ import {
 } from "@/lib/branching/model";
 import { branchingRun, branchingSnapshot } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import type { BranchPreset } from "./branch-create-dialog";
 import { BranchSettingsDialog } from "./branch-settings-dialog";
 import { NameConfirmDialog } from "./name-confirm-dialog";
@@ -106,7 +102,7 @@ export function BranchRow({
       return;
     }
     await navigator.clipboard.writeText(url);
-    toast.success("Verbindungs-URL ohne Passwort kopiert.");
+    showCopiedMessage("Verbindungs-URL ohne Passwort kopiert.");
   };
   const snapshot = () =>
     void workspace.job(
@@ -207,7 +203,7 @@ export function BranchRow({
             Öffnen
           </Button>
         )}
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -217,78 +213,72 @@ export function BranchRow({
               <MoreHorizontalIcon className="size-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="vcs-surface w-56 rounded-xl">
+          <IconMenuContent>
             {!disposable && !working && (
-              <DropdownMenuItem
+              <IconMenuItem
+                icon={<GitBranchPlusIcon />}
+                label="Branch davon erstellen"
                 disabled={!writable}
                 onSelect={() => onCreate({ source: database.name, snapshot: null })}
-              >
-                <GitBranchPlusIcon className="size-3.5" />
-                Branch davon erstellen
-              </DropdownMenuItem>
+              />
             )}
             {!disposable && !working && (
-              <DropdownMenuItem
+              <IconMenuItem
+                icon={<ArchiveIcon />}
+                label="Sicherung erstellen"
                 disabled={workspace.busy || isMasked(database) || !overview.vault.ready}
                 onSelect={snapshot}
-              >
-                <ArchiveIcon className="size-3.5" />
-                Sicherung erstellen
-              </DropdownMenuItem>
+              />
             )}
             {!isRoot && (
-              <DropdownMenuItem
+              <IconMenuItem
+                icon={<FileDiffIcon />}
+                label={`Schema mit ${branch?.parent ?? root} vergleichen`}
                 onSelect={() =>
                   onCompare(`live:${branch?.parent ?? root}`, `live:${database.name}`)
                 }
-              >
-                <FileDiffIcon className="size-3.5" />
-                Schema mit {branch?.parent ?? root} vergleichen
-              </DropdownMenuItem>
+              />
             )}
             {isRoot && latest && (
-              <DropdownMenuItem
+              <IconMenuItem
+                icon={<FileDiffIcon />}
+                label="Mit letzter Sicherung vergleichen"
                 onSelect={() => onCompare(`snapshot:${latest.id}`, `live:${database.name}`)}
-              >
-                <FileDiffIcon className="size-3.5" />
-                Mit letzter Sicherung vergleichen
-              </DropdownMenuItem>
+              />
             )}
-            <DropdownMenuItem onSelect={() => void copyUrl()}>
-              <CopyIcon className="size-3.5" />
-              Verbindungs-URL kopieren
-            </DropdownMenuItem>
+            <IconMenuItem
+              icon={<CopyIcon />}
+              label="Verbindungs-URL kopieren"
+              onSelect={() => void copyUrl()}
+            />
             {branch && !disposable && !working && (
               <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
+                <IconMenuSeparator />
+                <IconMenuItem
+                  icon={<RotateCcwIcon />}
+                  label="Auf Ursprung zurücksetzen…"
                   disabled={!writable || !owner}
                   onSelect={() => setDialog("reset")}
-                >
-                  <RotateCcwIcon className="size-3.5" />
-                  Auf Ursprung zurücksetzen…
-                </DropdownMenuItem>
-                <DropdownMenuItem
+                />
+                <IconMenuItem
+                  icon={<Settings2Icon />}
+                  label="Einstellungen…"
                   disabled={!writable || !owner}
                   onSelect={() => setDialog("settings")}
-                >
-                  <Settings2Icon className="size-3.5" />
-                  Einstellungen…
-                </DropdownMenuItem>
+                />
               </>
             )}
             {branch && (
-              <DropdownMenuItem
+              <IconMenuItem
+                icon={<TrashIcon />}
+                label="Löschen…"
                 disabled={!writable || !owner}
                 variant="destructive"
                 onSelect={() => setDialog("delete")}
-              >
-                <TrashIcon className="size-3.5" />
-                Löschen…
-              </DropdownMenuItem>
+              />
             )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </IconMenuContent>
+        </IconMenu>
       </div>
       {dialog === "delete" && (
         <NameConfirmDialog

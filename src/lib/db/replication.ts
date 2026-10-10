@@ -168,6 +168,12 @@ export interface SessionInfo {
   wait_event: string | null;
   is_self: boolean;
   blocked_by: number[];
+  client_port?: number | null;
+  backend_start?: string | null;
+  state_change?: string | null;
+  backend_xid?: string | null;
+  wait_event_type?: string | null;
+  backend_type?: string | null;
 }
 
 export async function listSessions(
@@ -210,6 +216,63 @@ export async function listLocks(
   database?: string,
 ): Promise<LockInfo[]> {
   return invoke("list_locks", { kind, connectionString, database });
+}
+
+export interface ReplicationStat {
+  name: string;
+  client_addr: string | null;
+  state: string;
+  sync_state: string | null;
+  write_lag_ms: number | null;
+  flush_lag_ms: number | null;
+  replay_lag_ms: number | null;
+  lag_bytes: number | null;
+}
+
+export interface TableIoStat {
+  name: string;
+  heap_read: number;
+  heap_hit: number;
+  idx_read: number;
+  idx_hit: number;
+}
+
+export interface LiveMetrics {
+  connections: number;
+  max_connections: number | null;
+  active_sessions: number;
+  waiting_locks: number;
+  database_size_bytes: number | null;
+  commits: number;
+  rollbacks: number;
+  queries_read: number | null;
+  queries_write: number | null;
+  queries_other: number | null;
+  rows_read: number;
+  rows_written: number;
+  blocks_read: number;
+  blocks_hit: number;
+  temp_bytes: number | null;
+  deadlocks: number | null;
+  cpu_busy: number | null;
+  cpu_total: number | null;
+  server_version: string;
+  uptime_seconds: number | null;
+  timezone: string | null;
+  default_isolation: string | null;
+  in_recovery: boolean;
+  replay_delay_ms: number | null;
+  replication: ReplicationStat[];
+  table_io: TableIoStat[];
+}
+
+export async function getLiveMetrics(
+  kind: DatabaseKind,
+  connectionString: string,
+  includeDetails: boolean,
+  database?: string,
+): Promise<LiveMetrics> {
+  return invoke("live_metrics", { kind, connectionString, database, includeDetails });
 }
 
 export interface EnumInfo {

@@ -54,7 +54,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       });
       await page.goto(`http://localhost:${server.port}/compare`);
       await page.getByRole("button", { name: "Vergleich einrichten", exact: true }).click();
-      const setup = page.getByRole("dialog", { name: "Vergleich einrichten", exact: true });
+      const setup = page.getByRole("region", { name: "Vergleich einrichten", exact: true });
       const password = page.getByRole("dialog", { name: "Passwort erforderlich", exact: true });
       const selectTarget = async () => {
         await setup.getByText("Verbindung wählen", { exact: true }).click();

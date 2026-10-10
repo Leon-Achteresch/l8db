@@ -13,6 +13,7 @@ export function nextQueryTitle(tabs: Tab[]): string {
 const MAX_RECENTLY_CLOSED = 100;
 
 export function pushRecentlyClosed(current: ClosedTab[], closed: Tab[]): ClosedTab[] {
+  closed = closed.filter((tab) => !(tab.kind === "tool" && tab.tool === "workbench"));
   if (closed.length === 0) return current;
   const { connections, activeId } = useConnectionsStore.getState();
   const connection = connections.find((entry) => entry.id === activeId);

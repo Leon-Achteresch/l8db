@@ -299,6 +299,15 @@ pub struct SchedulerJobInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct QueryColumnSource {
+    pub name: String,
+    pub data_type: String,
+    pub schema: Option<String>,
+    pub table: Option<String>,
+    pub column: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ForeignKeyInfo {
     pub constraint_name: String,
     pub from_schema: String,
@@ -326,6 +335,13 @@ pub struct FunctionInfo {
     pub return_type: String,
     pub language: String,
     pub oid: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PackageMemberInfo {
+    pub schema: String,
+    pub package: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -478,6 +494,9 @@ pub trait TxSession: Send {
     async fn execute(&mut self, sql: &str) -> Result<QueryResult, String>;
     async fn commit(&mut self) -> Result<(), String>;
     async fn rollback(&mut self) -> Result<(), String>;
+    async fn server_output(&mut self) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
 }
 
 #[async_trait]
@@ -541,6 +560,9 @@ pub trait DatabaseAdapter: Send + Sync {
         Err(unsupported("Direkte Zeilenänderung"))
     }
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
+    async fn execute_pooled_query(&self, sql: &str) -> Result<QueryResult, String> {
+        self.execute_query(sql).await
+    }
     async fn execute_query_with_params(
         &self,
         sql: &str,
@@ -580,6 +602,13 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
         let _ = schema;
         Err(unsupported("Funktionen"))
+    }
+    async fn list_package_members(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<PackageMemberInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Package-Funktionen"))
     }
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let _ = oid;
@@ -779,6 +808,10 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Fremdschlüssel"))
+    }
+    async fn describe_query_columns(&self, sql: &str) -> Result<Vec<QueryColumnSource>, String> {
+        let _ = sql;
+        Err(unsupported("Spaltenherkunft"))
     }
     async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String> {
         let mut tables = Vec::new();
@@ -1056,6 +1089,10 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn list_locks(&self) -> Result<Vec<LockInfo>, String> {
         Err(unsupported("Sperren"))
     }
+    async fn live_metrics(&self, include_details: bool) -> Result<LiveMetrics, String> {
+        let _ = include_details;
+        Err(unsupported("Live-Monitor"))
+    }
     async fn list_enums(&self, schema: Option<&str>) -> Result<Vec<EnumInfo>, String> {
         let _ = schema;
         Err(unsupported("Enums"))
@@ -1118,6 +1155,18 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = object_type;
         let _ = name;
         Err(unsupported("Schema-Kopie"))
+    }
+    async fn preview_schema_object_copy_into(
+        &self,
+        target: &dyn DatabaseAdapter,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let _ = target;
+        self.preview_schema_object_copy(source_schema, target_schema, object_type, name)
+            .await
     }
     async fn execute_schema_object_copy(
         &self,
@@ -1401,7 +1450,7 @@ pub struct CreateSubscriptionRequest {
     pub connect: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct SessionInfo {
     pub pid: i32,
     pub user: String,
@@ -1415,6 +1464,79 @@ pub struct SessionInfo {
     pub wait_event: Option<String>,
     pub is_self: bool,
     pub blocked_by: Vec<i32>,
+    pub client_port: Option<i32>,
+    pub backend_start: Option<String>,
+    pub state_change: Option<String>,
+    pub backend_xid: Option<String>,
+    pub wait_event_type: Option<String>,
+    pub backend_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ReplicationStat {
+    pub name: String,
+    pub client_addr: Option<String>,
+    pub state: String,
+    pub sync_state: Option<String>,
+    pub write_lag_ms: Option<f64>,
+    pub flush_lag_ms: Option<f64>,
+    pub replay_lag_ms: Option<f64>,
+    pub lag_bytes: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TableIoStat {
+    pub name: String,
+    pub heap_read: i64,
+    pub heap_hit: i64,
+    pub idx_read: i64,
+    pub idx_hit: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct LiveMetrics {
+    pub connections: i64,
+    pub max_connections: Option<i64>,
+    pub active_sessions: i64,
+    pub waiting_locks: i64,
+    pub database_size_bytes: Option<i64>,
+    pub commits: i64,
+    pub rollbacks: i64,
+    pub queries_read: Option<i64>,
+    pub queries_write: Option<i64>,
+    pub queries_other: Option<i64>,
+    pub rows_read: i64,
+    pub rows_written: i64,
+    pub blocks_read: i64,
+    pub blocks_hit: i64,
+    pub temp_bytes: Option<i64>,
+    pub deadlocks: Option<i64>,
+    pub cpu_busy: Option<i64>,
+    pub cpu_total: Option<i64>,
+    pub server_version: String,
+    pub uptime_seconds: Option<i64>,
+    pub timezone: Option<String>,
+    pub default_isolation: Option<String>,
+    pub in_recovery: bool,
+    pub replay_delay_ms: Option<f64>,
+    pub replication: Vec<ReplicationStat>,
+    pub table_io: Vec<TableIoStat>,
+}
+
+pub fn parse_proc_stat_cpu(text: &str) -> Option<(i64, i64)> {
+    let line = text.lines().find(|line| line.starts_with("cpu "))?;
+    let values: Vec<i64> = line
+        .split_whitespace()
+        .skip(1)
+        .take(8)
+        .map(|value| value.parse().ok())
+        .collect::<Option<_>>()?;
+    if values.len() < 4 {
+        return None;
+    }
+    let total: i64 = values.iter().sum();
+    let idle = values[3] + values.get(4).copied().unwrap_or(0);
+    Some((total - idle, total))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1483,6 +1605,8 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
             msg.push_str("\nSQLSTATE 57014");
         } else if code == &tokio_postgres::error::SqlState::UNSAFE_NEW_ENUM_VALUE_USAGE {
             msg.push_str("\nSQLSTATE 55P04");
+        } else if code == &tokio_postgres::error::SqlState::READ_ONLY_SQL_TRANSACTION {
+            msg.push_str("\nSQLSTATE 25006");
         }
         msg
     } else {
@@ -1572,14 +1696,6 @@ where
     tokio::time::timeout(execution::query_duration(), future)
         .await
         .map_err(|_| execution::timeout_message())?
-}
-
-pub(crate) fn create_table_sql(
-    req: &CreateTableRequest,
-    quote: fn(&str) -> String,
-    qualify_schema: bool,
-) -> String {
-    render_create_table(req, quote, qualify_schema, &[])
 }
 
 pub(crate) fn create_table_ddl(
@@ -1680,18 +1796,27 @@ fn skip_until(chars: &[char], start: usize, close: &[char]) -> usize {
 }
 
 pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) -> String {
+    requalify_schema_folding(sql, from_schema, to_schema, str::to_string)
+}
+
+pub(crate) fn requalify_schema_folding(
+    sql: &str,
+    from_schema: &str,
+    to_schema: &str,
+    fold: fn(&str) -> String,
+) -> String {
     if from_schema.is_empty() || from_schema == to_schema {
         return sql.to_string();
     }
     let chars: Vec<char> = sql.chars().collect();
     let quoted_from: Vec<char> = format!("\"{from_schema}\".").chars().collect();
-    let bare_from: Vec<char> = format!("{from_schema}.").chars().collect();
     let target = format!("\"{to_schema}\".");
     let word_boundary = |i: usize| {
         !i.checked_sub(1)
             .and_then(|prev| chars.get(prev))
             .is_some_and(|&c| c.is_alphanumeric() || c == '_' || c == '$')
     };
+    let ident_char = |c: char| c.is_alphanumeric() || matches!(c, '_' | '$' | '#');
     let mut out = String::with_capacity(sql.len());
     let mut i = 0;
     while i < chars.len() {
@@ -1701,7 +1826,11 @@ pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) ->
             skip_until(&chars, i, &['\n'])
         } else if ch == '/' && next == Some('*') {
             skip_until(&chars, i + 2, &['*', '/'])
-        } else if matches!(ch, 'q' | 'Q') && next == Some('\'') && word_boundary(i) {
+        } else if matches!(ch, 'q' | 'Q')
+            && next == Some('\'')
+            && (word_boundary(i)
+                || (i > 0 && matches!(chars[i - 1], 'n' | 'N') && word_boundary(i - 1)))
+        {
             skip_q_quoted(&chars, i)
         } else if matches!(ch, 'e' | 'E') && next == Some('\'') && word_boundary(i) {
             skip_quoted(&chars, i + 1, '\'', true)
@@ -1716,10 +1845,17 @@ pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) ->
             continue;
         } else if ch == '"' {
             skip_quoted(&chars, i, '"', false)
-        } else if chars_start_with(&chars, i, &bare_from) && schema_qualifier_boundary(&chars, i) {
-            out.push_str(&target);
-            i += bare_from.len();
-            continue;
+        } else if (ch.is_alphabetic() || ch == '_') && schema_qualifier_boundary(&chars, i) {
+            let ident_end = (i..chars.len())
+                .find(|&j| !ident_char(chars[j]))
+                .unwrap_or(chars.len());
+            let ident: String = chars[i..ident_end].iter().collect();
+            if chars.get(ident_end) == Some(&'.') && fold(&ident) == from_schema {
+                out.push_str(&target);
+                i = ident_end + 1;
+                continue;
+            }
+            i + 1
         } else {
             i + 1
         };
@@ -2018,6 +2154,27 @@ pub fn build_object_ddl(req: &ObjectDdlRequest) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parse_proc_stat_cpu_counts_idle_and_iowait_as_free() {
+        let text = "cpu  100 5 50 800 20 3 2 0 0 0\ncpu0 50 2 25 400 10 1 1 0 0 0\n";
+        assert_eq!(super::parse_proc_stat_cpu(text), Some((160, 980)));
+        assert_eq!(super::parse_proc_stat_cpu("intr 1 2 3"), None);
+        assert_eq!(super::parse_proc_stat_cpu("cpu  1 x 3 4"), None);
+    }
+
+    #[test]
+    fn parse_proc_stat_cpu_handles_large_inputs_quickly() {
+        let mut text = String::from("cpu  123456 789 34567 9876543 1234 0 567 0 0 0\n");
+        for index in 0..256 {
+            text.push_str(&format!("cpu{index} 1 2 3 4 5 6 7 8 0 0\n"));
+        }
+        let started = std::time::Instant::now();
+        for _ in 0..10_000 {
+            assert!(super::parse_proc_stat_cpu(&text).is_some());
+        }
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+    }
+
     #[test]
     fn unique_column_names_suffixes_duplicates() {
         let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();

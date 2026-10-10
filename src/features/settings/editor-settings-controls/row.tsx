@@ -1,20 +1,37 @@
 import type { ReactNode } from "react";
 import { SettingsRow } from "@/features/settings/settings-row";
+import type { NewFeatureId } from "@/lib/new-features";
+import { SETTINGS_BY_ID } from "@/lib/settings-catalog";
 
 export function Row({
-  title,
-  description,
+  settingId,
+  featureId,
+  title: fallbackTitle,
+  description: fallbackDescription,
   compact,
+  stacked,
   children,
 }: {
-  title: string;
-  description: string;
+  settingId?: string;
+  featureId?: NewFeatureId;
+  title?: string;
+  description?: string;
   compact: boolean;
+  stacked?: boolean;
   children: ReactNode;
 }) {
+  const setting = settingId ? SETTINGS_BY_ID.get(settingId) : undefined;
+  const title = setting?.title ?? fallbackTitle ?? "";
+  const description = setting?.description ?? fallbackDescription ?? "";
   if (!compact) {
     return (
-      <SettingsRow title={title} description={description}>
+      <SettingsRow
+        settingId={settingId}
+        featureId={featureId}
+        title={title}
+        description={description}
+        stacked={stacked}
+      >
         {children}
       </SettingsRow>
     );

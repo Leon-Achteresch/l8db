@@ -1,10 +1,10 @@
 import { CopyIcon, EyeOffIcon, KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBytes } from "@/lib/backup";
 import { branchingRecoveryImport, branchingRecoveryKey } from "@/lib/db";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { VersioningIconButton } from "../versioning-icon-button";
 import { NameConfirmDialog } from "./name-confirm-dialog";
 import type { BranchingWorkspace } from "./use-branching";
@@ -58,7 +58,9 @@ export function VaultSettings({ workspace }: { workspace: BranchingWorkspace }) 
                 onClick={() =>
                   void navigator.clipboard
                     .writeText(key)
-                    .then(() => toast.success("Schlüssel kopiert. Zwischenablage danach leeren."))
+                    .then(() =>
+                      showCopiedMessage("Schlüssel kopiert. Zwischenablage danach leeren."),
+                    )
                 }
               />
               <VersioningIconButton

@@ -1,5 +1,5 @@
 import { Maximize2, Minimize2 } from "lucide";
-import { GaugeIcon, PanelLeftIcon } from "lucide-react";
+import { GaugeIcon, PanelBottomIcon, PanelLeftIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import type { ReactNode } from "react";
 
@@ -15,6 +15,8 @@ interface ToolbarViewControlsProps {
   onOpenAnalysis: () => void;
   editorFocus: boolean;
   onEditorFocusChange: (focus: boolean) => void;
+  resultFocus: boolean;
+  onResultFocusChange: () => void;
   toolsMenu: ReactNode;
 }
 
@@ -25,6 +27,8 @@ export function ToolbarViewControls({
   onOpenAnalysis,
   editorFocus,
   onEditorFocusChange,
+  resultFocus,
+  onResultFocusChange,
   toolsMenu,
 }: ToolbarViewControlsProps) {
   return (
@@ -61,6 +65,16 @@ export function ToolbarViewControls({
         onClick={() => onEditorFocusChange(!editorFocus)}
       >
         <MorphIcon icon={editorFocus ? Minimize2 : Maximize2} className="size-3.5" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant={resultFocus ? "secondary" : "ghost"}
+        title="Ergebnis vergrößern umschalten"
+        aria-label="Ergebnis vergrößern umschalten"
+        aria-pressed={resultFocus}
+        onClick={onResultFocusChange}
+      >
+        <PanelBottomIcon className="size-3.5" />
       </Button>
       <QueryEditorSettingsPopover />
       {toolsMenu}

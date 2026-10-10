@@ -1,7 +1,21 @@
 import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
+export const NEXT_FEATURE_VERSION = "0.14.0";
+
 export const NEW_FEATURES = {
+  "settings.general.workspace-tab": "0.9.1",
+  "settings.statistics.overview": NEXT_FEATURE_VERSION,
+  "settings.cli.install": NEXT_FEATURE_VERSION,
+  "workspace.inline-tabs": "0.9.1",
+  "workspace.status.branch": "0.9.1",
+  "workspace.status.query": "0.9.1",
+  "sidebar.rename-inline": "0.9.1",
+  "sidebar.object-menu": "0.14.0",
+  "sidebar.packages.member-search": "0.14.0",
+  "search.fuzzy": "0.10.0",
+  "search.commands": "0.9.1",
+  "search.commands.new-compare": "0.14.0",
   "ai.workspace": "0.8.0",
   "ai.chat": "0.8.0",
   "ai.chat.approval": "0.8.0",
@@ -19,6 +33,14 @@ export const NEW_FEATURES = {
   "ai.chat.plus.attachments": "0.10.0",
   "ai.chat.plus.knowledge": "0.10.0",
   "ai.providers.local": "0.10.0",
+  "workspace.status.ai-checkpoints": NEXT_FEATURE_VERSION,
+  "settings.editor.ai": NEXT_FEATURE_VERSION,
+  "settings.editor.ai-metrics": NEXT_FEATURE_VERSION,
+  "ai.chat.context-mentions": NEXT_FEATURE_VERSION,
+  "ai.chat.editor-edits": NEXT_FEATURE_VERSION,
+  "ai.chat.editor-context": NEXT_FEATURE_VERSION,
+  "ai.chat.plus.knowledge.rules": NEXT_FEATURE_VERSION,
+  "query.result.ask-ai": NEXT_FEATURE_VERSION,
   "automation.tasks": "0.10.0",
   "automation.schedules": "0.10.0",
   "automation.notifications": "0.10.0",
@@ -26,17 +48,27 @@ export const NEW_FEATURES = {
   "automation.alerts": "0.10.0",
   "automation.background": "0.10.0",
   "mcp.workflows": "0.10.0",
+  "mcp.scripts": "0.14.0",
   "health.advisor": "0.10.0",
+  "monitor.live": NEXT_FEATURE_VERSION,
   "home.customize": "0.8.0",
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",
   "dashboard.studio": "0.13.0",
   "dashboard.studio.joins": "0.13.0",
   "dashboard.studio.formulas": "0.13.0",
+  "dashboard.studio.compare": "0.14.0",
   "dashboard.filters": "0.13.0",
+  "dashboard.design.css": NEXT_FEATURE_VERSION,
+  "dashboard.database-sharing": NEXT_FEATURE_VERSION,
+  "dashboard.pages": NEXT_FEATURE_VERSION,
+  "dashboard.blocks": NEXT_FEATURE_VERSION,
+  "dashboard.present": NEXT_FEATURE_VERSION,
+  "dashboard.design.theme": NEXT_FEATURE_VERSION,
+  "dashboard.studio.pivot": NEXT_FEATURE_VERSION,
+  "dashboard.studio.interactions": NEXT_FEATURE_VERSION,
   "er-diagram.clusters": "0.8.0",
   "er-diagram.text-export": "0.10.0",
-  "versioning.overview": "0.8.0",
   "versioning.branches.swimlanes": "0.8.0",
   "versioning.releases.generate": "0.8.0",
   "versioning.targets.customers": "0.8.0",
@@ -47,18 +79,22 @@ export const NEW_FEATURES = {
   "versioning.database.anonymized": "0.10.0",
   "versioning.database.policies": "0.10.0",
   "versioning.reviews": "0.10.0",
-  "versioning.delivery": "0.10.0",
+  "versioning.pipeline": NEXT_FEATURE_VERSION,
+  "versioning.working-copy": NEXT_FEATURE_VERSION,
   "table.pagination.keyboard": "0.7.0",
   "table.filter.rules": "0.10.0",
   "table.cell.json-editor": "0.10.0",
   "table.extensions.table-json-viewer": "0.10.0",
   "query.select-row-limit": "0.7.0",
+  "query.result-view": "0.14.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",
   "settings.about.usage-metrics": "0.7.0",
   "settings.about.open-source-licenses": "0.8.0",
+  "settings.about.update-channel": "0.14.0",
   "connections.baas": "0.7.0",
+  "connections.welcome": "0.14.0",
   "connections.open-window": "0.8.0",
   "connections.editor.command-tunnel": "0.10.0",
   "connections.editor.cloud-auth": "0.10.0",
@@ -105,7 +141,10 @@ export const NEW_FEATURES = {
   "settings.general.hide-own-schema": "0.8.0",
   "settings.general.dynamic-island": "0.10.0",
   "settings.general.sidebar-object-nav": "0.10.0",
+  "settings.appearance.table-style": "0.14.0",
   "query.transaction.changes": "0.7.0",
+  "query.transaction.database-diff": "0.14.0",
+  "settings.editor.parameter-hints": NEXT_FEATURE_VERSION,
   "compare.scroll-sync": "0.7.0",
   "compare.draft-toggle": "0.11.0",
   "split.pane-tables": "0.8.0",
@@ -125,8 +164,14 @@ export function featureStorageKey(id: NewFeatureId): string {
   return `${STORAGE_PREFIX}:${NEW_FEATURES[id]}:${id}`;
 }
 
+function releaseOf(version: string): string {
+  return version.replace(/-.*$/, "");
+}
+
 function currentFeatureIds(version: string): NewFeatureId[] {
-  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter((id) => NEW_FEATURES[id] === version);
+  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter(
+    (id) => NEW_FEATURES[id] === releaseOf(version),
+  );
 }
 
 export function hasNewFeatures(
@@ -137,18 +182,21 @@ export function hasNewFeatures(
   if (!scope) return false;
   return (Object.entries(NEW_FEATURES) as [NewFeatureId, string][]).some(
     ([id, introducedIn]) =>
-      introducedIn === version && !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)),
+      introducedIn === releaseOf(version) &&
+      !seen.has(id) &&
+      (id === scope || id.startsWith(`${scope}.`)),
   );
 }
 
 export function createNewFeatureStore(storage: FeatureStorage | null, version = appVersion) {
+  const release = releaseOf(version);
   const listeners = new Set<() => void>();
 
   const readSeen = () => {
     const result = new Set<NewFeatureId>();
     if (!storage) return result;
     for (const [id, introducedIn] of Object.entries(NEW_FEATURES) as [NewFeatureId, string][]) {
-      if (introducedIn !== version) continue;
+      if (introducedIn !== release) continue;
       try {
         if (storage.getItem(featureStorageKey(id)) === "1") result.add(id);
       } catch {
@@ -176,7 +224,7 @@ export function createNewFeatureStore(storage: FeatureStorage | null, version = 
       return () => listeners.delete(listener);
     },
     markSeen: (id: NewFeatureId) => {
-      if (NEW_FEATURES[id] !== version || snapshot.has(id)) return;
+      if (NEW_FEATURES[id] !== release || snapshot.has(id)) return;
       try {
         storage?.setItem(featureStorageKey(id), "1");
       } catch {

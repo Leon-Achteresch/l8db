@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use async_trait::async_trait;
 
 use super::{
-    rows_to_objects, timed, where_clause, AddColumnRequest, AlterColumnRequest, ColumnInfo,
+    rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest, ColumnInfo,
     CreateTableRequest, DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, FunctionInfo,
     QueryResult, SchemaSize, TableData, TableInfo,
 };
@@ -156,39 +156,84 @@ impl ClickhouseAdapter {
         sql: &str,
         extra: &[(&str, &str)],
     ) -> Result<(String, Option<serde_json::Value>), String> {
-        timed(async {
-            let response = http()
-                .post(&self.base)
-                .timeout(super::execution::query_duration())
-                .query(&[
-                    ("database", self.database.as_str()),
-                    ("default_format", "JSONCompact"),
-                    ("output_format_json_quote_64bit_integers", "1"),
-                    ("output_format_json_quote_decimals", "1"),
-                ])
-                .query(extra)
-                .header("X-ClickHouse-User", &self.user)
-                .header("X-ClickHouse-Key", &self.password)
-                .body(sql.to_string())
-                .send()
-                .await
-                .map_err(|e| format!("ClickHouse nicht erreichbar: {e}"))?;
-            let summary = response
-                .headers()
-                .get("X-ClickHouse-Summary")
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| serde_json::from_str(s).ok());
-            let status = response.status();
-            let body = response
-                .text()
-                .await
-                .map_err(|e| format!("Antwort konnte nicht gelesen werden: {e}"))?;
-            if !status.is_success() {
-                return Err(format!("ClickHouse {}: {}", status.as_u16(), body.trim()));
-            }
-            Ok((body, summary))
+        let query_id = format!("l8db-{:032x}", rand::random::<u128>());
+        let cancel = super::execution::cancellation_token();
+        if cancel.is_cancelled() {
+            return Err("Abfrage abgebrochen, bevor sie gestartet wurde.".into());
+        }
+        let timed_out = tokio::select! {
+            biased;
+            answer = self.send(sql, extra, &query_id) => return answer,
+            _ = cancel.cancelled() => false,
+            _ = tokio::time::sleep(super::execution::query_duration()) => true,
+        };
+        let reason = if timed_out {
+            format!(
+                "Query-Timeout nach {} Sekunden: ",
+                super::execution::query_duration().as_secs()
+            )
+        } else {
+            String::new()
+        };
+        Err(match self.kill(&query_id).await {
+            Ok(()) => format!("{reason}Abfrage vom Server abgebrochen."),
+            Err(error) => format!("{reason}{error}"),
         })
-        .await
+    }
+
+    async fn send(
+        &self,
+        sql: &str,
+        extra: &[(&str, &str)],
+        query_id: &str,
+    ) -> Result<(String, Option<serde_json::Value>), String> {
+        let response = http()
+            .post(&self.base)
+            .query(&[
+                ("database", self.database.as_str()),
+                ("query_id", query_id),
+                ("default_format", "JSONCompact"),
+                ("output_format_json_quote_64bit_integers", "1"),
+                ("output_format_json_quote_decimals", "1"),
+            ])
+            .query(extra)
+            .header("X-ClickHouse-User", &self.user)
+            .header("X-ClickHouse-Key", &self.password)
+            .body(sql.to_string())
+            .send()
+            .await
+            .map_err(|e| format!("ClickHouse nicht erreichbar: {e}"))?;
+        let summary = response
+            .headers()
+            .get("X-ClickHouse-Summary")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| serde_json::from_str(s).ok());
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Antwort konnte nicht gelesen werden: {e}"))?;
+        if !status.is_success() {
+            return Err(format!("ClickHouse {}: {}", status.as_u16(), body.trim()));
+        }
+        Ok((body, summary))
+    }
+
+    async fn kill(&self, query_id: &str) -> Result<(), String> {
+        http()
+            .post(&self.base)
+            .timeout(super::execution::connection_duration())
+            .header("X-ClickHouse-User", &self.user)
+            .header("X-ClickHouse-Key", &self.password)
+            .body(format!(
+                "KILL QUERY WHERE query_id = {} ASYNC",
+                lit(query_id)
+            ))
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map(|_| ())
+            .map_err(|e| format!("Abbruch nicht bestätigt: {e}. Serverzustand prüfen."))
     }
 
     async fn query(
@@ -787,16 +832,48 @@ mod tests {
         );
     }
 
-    async fn slow_server(delay: std::time::Duration) -> String {
+    type Seen = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+    async fn slow_server(delay: std::time::Duration) -> (String, Seen) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
+        let seen = Seen::default();
+        let log = seen.clone();
         tokio::spawn(async move {
             while let Ok((mut socket, _)) = listener.accept().await {
+                let log = log.clone();
                 tokio::spawn(async move {
+                    let mut request = Vec::new();
                     let mut buf = [0u8; 4096];
-                    let _ = socket.read(&mut buf).await;
-                    tokio::time::sleep(delay).await;
+                    loop {
+                        let n = socket.read(&mut buf).await.unwrap_or(0);
+                        request.extend_from_slice(&buf[..n]);
+                        let text = String::from_utf8_lossy(&request).to_string();
+                        let Some((head, body)) = text.split_once("\r\n\r\n") else {
+                            if n == 0 {
+                                return;
+                            }
+                            continue;
+                        };
+                        let length = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if body.len() < length && n > 0 {
+                            continue;
+                        }
+                        let line = head.lines().next().unwrap_or("").to_string();
+                        log.lock().unwrap().push(format!("{line} {body}"));
+                        if !body.starts_with("KILL") {
+                            tokio::time::sleep(delay).await;
+                        }
+                        break;
+                    }
                     let _ = socket
                         .write_all(
                             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
@@ -805,29 +882,80 @@ mod tests {
                 });
             }
         });
-        format!("http://{addr}/")
+        (format!("http://{addr}/"), seen)
     }
 
-    async fn raw_with_timeout(url: &str, seconds: u64) -> Result<String, String> {
+    async fn raw_with_options(
+        url: &str,
+        options: super::super::execution::ExecutionOptions,
+    ) -> Result<String, String> {
         let adapter = ClickhouseAdapter::new(url, None).unwrap();
-        let options = super::super::execution::ExecutionOptions {
-            query_timeout: Some(seconds),
-            ..Default::default()
-        };
         super::super::execution::run(Some(options), true, async {
             adapter.raw("SELECT 1").await.map(|(body, _)| body)
         })
         .await
     }
 
+    async fn raw_with_timeout(url: &str, seconds: u64) -> Result<String, String> {
+        raw_with_options(
+            url,
+            super::super::execution::ExecutionOptions {
+                query_timeout: Some(seconds),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    fn killed_query_id(seen: &Seen) -> bool {
+        let seen = seen.lock().unwrap();
+        let id = seen
+            .iter()
+            .find_map(|r| r.split("query_id=").nth(1))
+            .and_then(|rest| rest.split('&').next())
+            .unwrap_or("missing");
+        seen.iter()
+            .any(|r| r.contains(&format!("KILL QUERY WHERE query_id = '{id}' ASYNC")))
+    }
+
     #[tokio::test]
     async fn http_timeout_follows_each_query_timeout() {
-        let slow = slow_server(std::time::Duration::from_secs(7)).await;
+        let (slow, seen) = slow_server(std::time::Duration::from_secs(7)).await;
         let started = std::time::Instant::now();
         let short = raw_with_timeout(&slow, 5).await;
-        assert!(short.is_err());
+        assert!(short.unwrap_err().contains("Query-Timeout"));
         assert!(started.elapsed() < std::time::Duration::from_millis(6500));
-        let medium = slow_server(std::time::Duration::from_secs(6)).await;
+        assert!(killed_query_id(&seen));
+        let (medium, seen) = slow_server(std::time::Duration::from_secs(6)).await;
         assert_eq!(raw_with_timeout(&medium, 8).await.unwrap(), "ok");
+        assert!(!seen.lock().unwrap().iter().any(|r| r.contains("KILL")));
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_job_kills_its_server_query() {
+        let (slow, seen) = slow_server(std::time::Duration::from_secs(30)).await;
+        let job = format!("clickhouse-cancel-{:x}", rand::random::<u64>());
+        let cancel = {
+            let job = job.clone();
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                super::super::execution::cancel(&job)
+            }
+        };
+        let started = std::time::Instant::now();
+        let (result, cancelled) = tokio::join!(
+            raw_with_options(
+                &slow,
+                super::super::execution::ExecutionOptions {
+                    job_id: Some(job),
+                    ..Default::default()
+                },
+            ),
+            cancel
+        );
+        assert_eq!(cancelled, Ok(true));
+        assert!(result.unwrap_err().contains("abgebrochen"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(killed_query_id(&seen));
     }
 }

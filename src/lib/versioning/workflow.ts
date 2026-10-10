@@ -3,20 +3,40 @@ import { changedFiles } from "./status";
 import type { DatabaseRelease, DatabaseTarget, RepositoryStatus } from "./types";
 
 export type VersioningArea =
-  | "overview"
+  | "pipeline"
+  | "history"
   | "development"
   | "branches"
   | "releases"
   | "targets"
   | "reviews"
-  | "delivery"
   | "seeds"
   | "activity";
+
+export function progressIndex(releases: DatabaseRelease[], status: RepositoryStatus | null) {
+  const changes = changedFiles(status?.changes ?? "");
+  const available = new Map(
+    releases
+      .filter((release) => status?.head && !changes.has(releasePath(release.id)))
+      .map((release) => [release.id, release]),
+  );
+  const children = new Map<string, DatabaseRelease[]>();
+  for (const release of available.values()) {
+    if (!release.parent) continue;
+    const siblings = children.get(release.parent);
+    if (siblings) siblings.push(release);
+    else children.set(release.parent, [release]);
+  }
+  return { available, children, pending: new Map<string, number>() };
+}
+
+export type ProgressIndex = ReturnType<typeof progressIndex>;
 
 export function targetProgress(
   target: DatabaseTarget,
   releases: DatabaseRelease[],
   status: RepositoryStatus | null,
+  index: ProgressIndex = progressIndex(releases, status),
 ) {
   if (target.history.some((event) => event.status === "running" || event.status === "failed"))
     return { label: "Stand abgleichen", pending: 0, state: "blocked" as const };
@@ -24,45 +44,49 @@ export function targetProgress(
     return { label: "Lokales Profil zuordnen", pending: 0, state: "blocked" as const };
   if (!target.release) return { label: "Baseline prüfen", pending: 0, state: "baseline" as const };
   if (target.paused) return { label: "Updates pausiert", pending: 0, state: "paused" as const };
-  const changes = changedFiles(status?.changes ?? "");
-  const available = new Map(
-    releases
-      .filter((release) => status?.head && !changes.has(releasePath(release.id)))
-      .map((release) => [release.id, release]),
-  );
-  const allowed = new Set<string>();
-  let pinned = target.pinnedRelease;
-  while (pinned && !allowed.has(pinned)) {
-    allowed.add(pinned);
-    pinned = available.get(pinned)?.parent;
-  }
-  let pending = 0;
-  for (const release of available.values()) {
-    if (
-      releaseTrack(release) !== (target.track ?? "main") ||
-      (target.pinnedRelease && !allowed.has(release.id))
-    )
-      continue;
-    const seen = new Set<string>();
-    let next: string | null = release.id;
-    let steps = 0;
-    while (next && !seen.has(next)) {
-      if (next === target.release.id) {
-        pending = Math.max(pending, steps);
-        break;
-      }
-      seen.add(next);
-      const entry = available.get(next);
-      if (!entry) break;
-      next = entry.parent;
-      steps++;
-    }
+  const { available, children } = index;
+  const track = target.track ?? "main";
+  const key = `${target.release.id}\0${track}\0${target.pinnedRelease ?? ""}`;
+  let pending = index.pending.get(key);
+  if (pending === undefined) {
+    pending = pendingUpdates(target.release.id, track, target.pinnedRelease, available, children);
+    index.pending.set(key, pending);
   }
   return {
     label: pending ? `${pending} ${pending === 1 ? "Update" : "Updates"} offen` : "Aktuell",
     pending,
     state: pending ? ("pending" as const) : ("current" as const),
   };
+}
+
+function pendingUpdates(
+  from: string,
+  track: string,
+  pinnedRelease: string | null | undefined,
+  available: ProgressIndex["available"],
+  children: ProgressIndex["children"],
+) {
+  const allowed = new Set<string>();
+  let pinned: string | null | undefined = pinnedRelease;
+  while (pinned && !allowed.has(pinned)) {
+    allowed.add(pinned);
+    pinned = available.get(pinned)?.parent;
+  }
+  let pending = 0;
+  const seen = new Set<string>([from]);
+  let level = children.get(from) ?? [];
+  for (let depth = 1; level.length; depth++) {
+    const next: DatabaseRelease[] = [];
+    for (const release of level) {
+      if (seen.has(release.id)) continue;
+      seen.add(release.id);
+      if (releaseTrack(release) === track && (!pinnedRelease || allowed.has(release.id)))
+        pending = depth;
+      next.push(...(children.get(release.id) ?? []));
+    }
+    level = next;
+  }
+  return pending;
 }
 
 export function customerGroups(targets: DatabaseTarget[]) {

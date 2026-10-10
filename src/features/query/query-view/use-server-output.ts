@@ -1,8 +1,15 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
+import { transactionServerOutput } from "@/lib/db";
+import {
+  collectServerOutput,
+  isServerOutputEnabled,
+  toggleServerOutput,
+  useServerOutputStore,
+} from "@/lib/server-output";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { getQueryTransaction } from "@/lib/transactions";
 
 import type { QueryViewCapabilities, QueryViewConnection } from "./types";
 
@@ -20,6 +27,17 @@ export function useServerOutput(
   const collectOutput = useCallback(async () => {
     if (!connection || !caps.server_output) return;
     try {
+      const tx = connection.kind === "oracle" && getQueryTransaction(connection.id, database);
+      if (tx) {
+        const lines = await transactionServerOutput(tx.txId);
+        if (isServerOutputEnabled(connection.id))
+          useServerOutputStore.getState().append(
+            connection.id,
+            database,
+            lines.map((message) => ({ level: "OUTPUT", message })),
+          );
+        return;
+      }
       await collectServerOutput(
         connection.kind,
         effectiveConnectionString(connection),

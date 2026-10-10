@@ -1,18 +1,29 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { CircleCheck, CircleHelp, CircleX, LoaderCircle } from "lucide";
-import { ListPlus, Plus, Settings2, SquarePen, X } from "lucide-react";
+import { Download, ListPlus, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
+import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
+import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
+import {
+  type ChatContextItem,
+  contextSuggestions,
+  resolveChatContext,
+} from "@/lib/ai/chat-context";
+import { chatWireMessages, summarizeChat } from "@/lib/ai/chat-history";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
 import { setAiDropHandler } from "@/lib/ai/drop-target";
+import { handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
+import { editorAiController } from "@/lib/ai/editor/controller";
+import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AiFigureContext } from "@/lib/ai/figures";
 import { AI_KNOWLEDGE_PROMPT } from "@/lib/ai/prompts";
 import { aiFigures, aiThreadMarkdown } from "@/lib/ai/result";
@@ -31,15 +42,19 @@ import {
   aiCancel,
   aiEnvironment,
   aiModels,
+  aiRespond,
   aiRun,
   aiSkills,
   aiStatus,
 } from "@/lib/db/ai";
-import { useDbSelectionStore } from "@/lib/db-selection";
+import type { TableInfo } from "@/lib/db/types";
+import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { isProduction, isProductionLocked } from "@/lib/environments";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { IMPORT_FILE_EXTENSIONS } from "@/lib/import-file";
 import { useHasNewFeatures } from "@/lib/new-features";
+import { useQueryHistoryStore } from "@/lib/query-history";
+import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { type AiAccessLevel, AiAccessStrip } from "./ai-access-strip";
 import { AiApproval } from "./ai-approval";
@@ -47,6 +62,7 @@ import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
+import { AiContextChips } from "./ai-context-chips";
 import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
 import { AiOnboarding } from "./ai-onboarding";
 import { AiPanelHeader } from "./ai-panel-header";
@@ -58,12 +74,12 @@ import { AiSettings } from "./ai-settings";
 import { AiSuggestions } from "./ai-suggestions";
 import { AiTranscript } from "./ai-transcript";
 import { AiUsage } from "./ai-usage";
-import { AISidebar } from "./beui/agents/ai-sidebar";
 import { ChatApp } from "./beui/agents/chat-app";
 import { PromptInput } from "./beui/agents/prompt-input";
 
 export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const state = useAiStore();
   const profile = state.profiles.find((entry) => entry.id === state.profileId) ?? state.profiles[0];
   const connections = useConnectionsStore((value) => value.connections);
@@ -88,13 +104,35 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
   const [mentioned, setMentioned] = useState<string[]>([]);
+  const [contextItems, setContextItems] = useState<ChatContextItem[]>([]);
+  const [editorContext, setEditorContext] = useState(true);
+  const editorTabId = useRouterState({
+    select: (routerState) => /^\/query\/([^/]+)/.exec(routerState.location.pathname)?.[1],
+  });
+  const editorTabTitle = useTableTabs((tabsState) => {
+    const id = editorTabId ? decodeURIComponent(editorTabId) : null;
+    const tab = tabsState.tabs.find((entry) => entry.kind === "query" && entry.id === id);
+    return tab?.kind === "query" ? tab.title || "Abfrage" : null;
+  });
+  const editorTab: ChatContextItem | null =
+    editorContext && editorTabTitle !== null
+      ? { id: "tab", kind: "tab", label: `Editor: ${editorTabTitle}` }
+      : null;
+  const contextFeature = useNewFeatureVisibility<HTMLDivElement>(
+    contextItems.length
+      ? "ai.chat.context-mentions"
+      : editorTab
+        ? "ai.chat.editor-context"
+        : undefined,
+  );
+
   const [allowWrites, setAllowWrites] = useState(false);
   const [allowDdl, setAllowDdl] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<AiEvent[]>([]);
-  const [queue, setQueue] = useState<{ id: string; text: string; attachments: AiAttachment[] }[]>(
-    [],
-  );
+  const [queue, setQueue] = useState<
+    { id: string; text: string; attachments: AiAttachment[]; context: ChatContextItem[] }[]
+  >([]);
   const [attachments, setAttachments] = useState<AiAttachment[]>([]);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -239,6 +277,35 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       discovery.current++;
     };
   }, [discoveryProfile, cwd, state.open, fullPage]);
+  const modelScoped = Boolean(
+    models.configOptions?.some(
+      (option) =>
+        option &&
+        typeof option === "object" &&
+        ((option as Record<string, unknown>).category === "model" ||
+          (option as Record<string, unknown>).id === "model"),
+    ),
+  );
+  const probedModel = useRef("");
+  useEffect(() => {
+    if (loading) probedModel.current = "";
+    if (loading || !modelScoped || run.current || probedModel.current === profile.model) return;
+    const model = profile.model;
+    let live = true;
+    const timer = setTimeout(() => {
+      void aiModels({ ...discoveryProfile, model }, cwd)
+        .then((result) => {
+          if (!live || !Array.isArray(result.configOptions)) return;
+          probedModel.current = model;
+          setModels((current) => ({ ...current, configOptions: result.configOptions }));
+        })
+        .catch(() => undefined);
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [loading, modelScoped, profile.model, discoveryProfile, cwd]);
   useEffect(() => {
     if ((state.open || fullPage) && view === "chat") input.current?.focus();
   }, [state.open, view, fullPage]);
@@ -246,6 +313,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setSelectedSkills([]);
     setSelectedServers([]);
     setMentioned([]);
+    setContextItems([]);
     setApprovals([]);
     setUsage({});
     setAllowWrites(false);
@@ -360,13 +428,26 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       usageRef.current = {};
       liveSession.current = { ...next, usage: {}, usageModel: profile.model };
       setRunStatus("Startet …");
+      const wire = chatWireMessages(turn, base.summary);
+      if (wire.summarizeUpTo) {
+        const sessionId = next.id;
+        void summarizeChat(turn, wire.summarizeUpTo, profile)
+          .then((summary) => {
+            const stored = useAiStore.getState().sessions.find((entry) => entry.id === sessionId);
+            if (!summary || !stored) return;
+            if (liveSession.current?.id === sessionId)
+              liveSession.current = { ...liveSession.current, summary };
+            state.saveSession({ ...stored, summary, updatedAt: Date.now() });
+          })
+          .catch(() => undefined);
+      }
       await aiRun(
         {
           runId: id,
           profile,
           cwd,
           sessionId: resume,
-          messages: turn.map(({ role, text }) => ({ role, text })),
+          messages: wire.messages,
           connections: selected,
           activeId: current.activeId,
           skills: selectedSkills.filter((path) => skills.some((skill) => skill.path === path)),
@@ -405,6 +486,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             afterTool.current = true;
             if (event.data.name === "import_file" && event.data.status === "completed")
               void queryClient.invalidateQueries({ queryKey: ["tables"] });
+          } else if (event.kind === "editor") {
+            const requestId = String(event.data.id);
+            void handleChatEditorRequest(event.data.details, editorTarget())
+              .catch((reason) => ({ ok: false, text: String(reason) }))
+              .then((answer) => aiRespond(id, requestId, answer))
+              .catch(() => undefined);
           } else if (event.kind === "approval" || event.kind === "input") {
             approvalTitles.current.set(
               String(event.data.id),
@@ -491,47 +578,131 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       input.current?.focus();
     }
   };
-  const send = (text = prompt, files = attachments) => {
+  const currentQueryTab = () => {
+    const match = /^\/query\/([^/]+)/.exec(router.state.location.pathname);
+    const tab = match
+      ? useTableTabs
+          .getState()
+          .tabs.find((entry) => entry.kind === "query" && entry.id === decodeURIComponent(match[1]))
+      : undefined;
+    return tab?.kind === "query" ? tab : null;
+  };
+  const currentTabSql = () => {
+    const tab = currentQueryTab();
+    return tab ? (editorAiController(tab.id)?.text() ?? tab.sql) : null;
+  };
+  const editorTarget = () => {
+    const tab = currentQueryTab();
+    return {
+      controller: tab ? editorAiController(tab.id) : undefined,
+      title: tab?.title ?? "",
+      storedSql: tab ? tab.sql : null,
+      openTab: (sql: string, title: string) => {
+        const tabId = useTableTabs.getState().openQueryTabWithSql(sql, title.slice(0, 40));
+        void navigate({ to: "/query/$id", params: { id: tabId } });
+      },
+    };
+  };
+  const withContext = async (items: ChatContextItem[]) => {
+    if (!items.length) return {};
+    const current = useConnectionsStore.getState();
+    const connection = current.connections.find((entry) => entry.id === current.activeId) ?? null;
+    const selection = useDbSelectionStore.getState();
+    const context = await resolveChatContext(items, {
+      queryClient,
+      connection,
+      database: connection
+        ? (selection.databaseByConnection[connection.id] ??
+          databaseFromConnectionString(connection.connectionString))
+        : null,
+      defaultSchema: connection ? (selection.schemaByConnection[connection.id] ?? null) : null,
+      tabSql: currentTabSql(),
+      tabTitle: currentQueryTab()?.title,
+      tabSelection: (() => {
+        const tab = currentQueryTab();
+        return tab ? (editorAiController(tab.id)?.selectionLabel() ?? null) : null;
+      })(),
+      recentContext: thread.slice(-4).flatMap((message) => message.context ?? []),
+      history: useQueryHistoryStore.getState().entries,
+      shareValues: useEditorAiSettings.getState().shareValues,
+    }).catch(() => "");
+    return context ? { context, contextLabels: items.map((item) => `@${item.label}`) } : {};
+  };
+  const send = (text = prompt, files = attachments, items = contextItems) => {
     if (!text.trim()) return;
     if (run.current) {
       setQueue((entries) => [
         ...entries,
-        { id: crypto.randomUUID(), text: text.trim(), attachments: files },
+        { id: crypto.randomUUID(), text: text.trim(), attachments: files, context: items },
       ]);
       setPrompt("");
       setAttachments([]);
+      setContextItems([]);
       return;
     }
-    void runTurn(
-      thread,
-      {
-        id: crypto.randomUUID(),
-        parentId: thread.at(-1)?.id ?? null,
-        role: "user",
-        text: text.trim(),
-        createdAt: Date.now(),
-        ...(files.length ? { attachments: files } : {}),
-      },
-      () => {
-        setPrompt("");
-        setAttachments([]);
-      },
+    const trimmed = text.trim();
+    if (editorTab && !items.some((item) => item.kind === "tab")) items = [...items, editorTab];
+    void withContext(items).then((extra) =>
+      runTurn(
+        thread,
+        {
+          id: crypto.randomUUID(),
+          parentId: thread.at(-1)?.id ?? null,
+          role: "user",
+          text: trimmed,
+          createdAt: Date.now(),
+          ...(files.length ? { attachments: files } : {}),
+          ...extra,
+        },
+        () => {
+          setPrompt("");
+          setAttachments([]);
+          setContextItems([]);
+        },
+      ),
     );
   };
-  const ask = (text: string) => send(text, []);
+  const ask = (text: string) => send(text, [], []);
   useEffect(() => {
     if (runId || !queue.length) return;
     setQueue(queue.slice(1));
-    send(queue[0].text, queue[0].attachments);
+    send(queue[0].text, queue[0].attachments, queue[0].context);
   });
   const pending = state.pendingPrompt;
   useEffect(() => {
     if (!pending || loading || runId || !(state.open || fullPage)) return;
-    useAiStore.setState({ pendingPrompt: "" });
+    const context = state.pendingContext;
+    useAiStore.setState({ pendingPrompt: "", pendingContext: [] });
     setView("chat");
-    if (setupNeeded) setPrompt(pending);
-    else send(pending, []);
+    if (setupNeeded) {
+      setPrompt(pending);
+      setContextItems(context);
+    } else send(pending, [], context);
   });
+  const attached = state.pendingContext;
+  useEffect(() => {
+    if (!attached.length || state.pendingPrompt || !(state.open || fullPage)) return;
+    useAiStore.setState({ pendingContext: [] });
+    setView("chat");
+    setContextItems((items) => [
+      ...items.filter((item) => !attached.some((entry) => entry.id === item.id)),
+      ...attached,
+    ]);
+    requestAnimationFrame(() => input.current?.focus());
+  }, [attached, state.pendingPrompt, state.open, fullPage]);
+  const draft = state.pendingDraft;
+  useEffect(() => {
+    if (!draft || !(state.open || fullPage)) return;
+    useAiStore.setState({ pendingDraft: "" });
+    setView("chat");
+    setPrompt((current) => (current.trim() ? `${current}\n\n${draft}` : draft));
+    requestAnimationFrame(() => {
+      const element = input.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(element.value.length, element.value.length);
+    });
+  }, [draft, state.open, fullPage]);
   const edit = (message: AiMessage, text: string) => {
     const index = thread.indexOf(message);
     if (index < 0 || !text.trim()) return;
@@ -542,6 +713,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       text: text.trim(),
       createdAt: Date.now(),
       ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(message.context
+        ? { context: message.context, contextLabels: message.contextLabels }
+        : {}),
     });
   };
   const retry = (message: AiMessage) => {
@@ -554,9 +728,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   };
   const newChat = () => {
     state.selectSession(null);
+    setEditorContext(true);
     setAllowWrites(false);
     setAllowDdl(false);
     setMentioned([]);
+    setContextItems([]);
     setApprovals([]);
     setQueue([]);
     setUsage({});
@@ -592,113 +768,126 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           !mentioned.includes(connection.id),
       )
     : [];
+  const mentionTables = (): TableInfo[] => {
+    if (!mentionMatch || !active) return [];
+    const database =
+      useDbSelectionStore.getState().databaseByConnection[active.id] ??
+      databaseFromConnectionString(active.connectionString);
+    const objects = queryClient.getQueryData<{ tables?: TableInfo[]; views?: TableInfo[] }>([
+      "all-objects",
+      active.id,
+      database,
+    ]);
+    return objects?.tables
+      ? [...objects.tables, ...(objects.views ?? [])]
+      : (queryClient.getQueryData<TableInfo[]>(["all-tables", active.id, database]) ?? []);
+  };
+  const contextMatches =
+    mentionMatch && activeId
+      ? contextSuggestions(mentionMatch[1], mentionTables(), contextItems, 6)
+      : [];
+  const mentionCount = suggestions.length + contextMatches.length;
+  const replaceMention = (label: string) => {
+    if (!mentionMatch) return;
+    setPrompt(`${prompt.slice(0, prompt.length - mentionMatch[1].length - 1)}@${label} `);
+    input.current?.focus();
+  };
   const selectMention = (id: string) => {
     const connection = connections.find((entry) => entry.id === id);
     if (!connection || !mentionMatch) return;
     setMentioned((ids) => [...ids, id]);
-    setPrompt(`${prompt.slice(0, prompt.length - mentionMatch[1].length - 1)}@${connection.name} `);
-    input.current?.focus();
+    replaceMention(connection.name);
   };
-  const historyList = (
-    <>
-      <AISidebar
-        ariaLabel="Gesprächsverlauf"
-        items={sessions
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-          .map((entry) => ({ id: entry.id, label: entry.title, kind: "file" as const }))}
-        activeId={state.sessionId}
-        renderIcon={(item) => {
-          const live = runId && liveSession.current?.id === item.id;
-          const failed = state.sessions.find((session) => session.id === item.id)?.failed;
-          const [icon, label, tone] = live
-            ? approvals.length
-              ? [CircleHelp, "Wartet auf Eingabe", "text-amber-500"]
-              : [LoaderCircle, "Arbeitet", "animate-spin text-primary"]
-            : failed
-              ? [CircleX, "Fehlgeschlagen", "text-destructive"]
-              : [CircleCheck, "Fertig", "text-emerald-500"];
-          return (
-            <span title={label} className="grid">
-              <MorphIcon icon={icon} className={`size-4 ${tone}`} />
+  const selectContext = (item: ChatContextItem) => {
+    setContextItems((items) => [...items, item]);
+    replaceMention(item.label);
+  };
+  const pickSession = (id: string) => {
+    if (runId) return;
+    const entry = state.sessions.find((session) => session.id === id);
+    if (!entry) return;
+    resetContext();
+    if (entry.profileId !== profile.id) state.selectProfile(entry.profileId);
+    state.selectSession(entry.id);
+    setCwd(entry.cwd);
+    setPanelTab("chat");
+    setMentioned(
+      entry.connectionIds.filter(
+        (id) => id !== activeId && connections.some((connection) => connection.id === id),
+      ),
+    );
+    setView("chat");
+  };
+  const history = {
+    label: "Gesprächsverlauf",
+    items: sessions
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((entry) => {
+        const live = runId && liveSession.current?.id === entry.id;
+        const [icon, label, tone] = live
+          ? approvals.length
+            ? [CircleHelp, "Wartet auf Eingabe", "text-amber-500"]
+            : [LoaderCircle, "Arbeitet", "animate-spin text-primary"]
+          : entry.failed
+            ? [CircleX, "Fehlgeschlagen", "text-destructive"]
+            : [CircleCheck, "Fertig", "text-emerald-500"];
+        return {
+          id: entry.id,
+          label: entry.title,
+          icon: (
+            <span title={label} className="grid shrink-0">
+              <MorphIcon icon={icon} className={`size-3.5 ${tone}`} />
             </span>
-          );
-        }}
-        onActiveChange={(id) => {
-          if (runId) return;
-          const entry = state.sessions.find((session) => session.id === id);
-          if (!entry) return;
-          resetContext();
-          if (entry.profileId !== profile.id) state.selectProfile(entry.profileId);
-          state.selectSession(entry.id);
-          setCwd(entry.cwd);
-          setPanelTab("chat");
-          setMentioned(
-            entry.connectionIds.filter(
-              (id) => id !== activeId && connections.some((connection) => connection.id === id),
-            ),
-          );
-          setView("chat");
-        }}
-        onRename={(item, title) => {
-          const entry = state.sessions.find((session) => session.id === item.id);
-          if (entry && !runId && title.trim())
-            state.saveSession({
-              ...entry,
-              title: title.trim().slice(0, 70),
-              updatedAt: Date.now(),
-            });
-        }}
-        renderMenu={(item, controls) => (
-          <div className="space-y-1">
-            <button
-              type="button"
-              disabled={Boolean(runId)}
-              className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
-              onClick={controls.rename}
-            >
-              Umbenennen
-            </button>
-            <button
-              type="button"
-              className="block min-h-8 w-full rounded-md px-2 text-left text-xs hover:bg-muted"
-              onClick={() => {
-                exportSession(item.id);
-                controls.close();
-              }}
-            >
-              Als Markdown exportieren
-            </button>
-            <button
-              type="button"
-              disabled={Boolean(runId)}
-              aria-label={`${item.label} löschen`}
-              className="block min-h-8 w-full rounded-md px-2 text-left text-xs text-destructive hover:bg-muted"
-              onClick={() => {
-                const entry = state.sessions.find((session) => session.id === item.id);
-                if (entry)
-                  state.saveSession({
-                    ...entry,
-                    deleted: true,
-                    messages: [],
-                    usage: undefined,
-                    usageModel: undefined,
-                    usageRequestedModel: undefined,
-                    updatedAt: Date.now(),
-                  });
-                controls.close();
-              }}
-            >
-              Löschen
-            </button>
-          </div>
-        )}
-        className="text-xs"
-      />
-      {!sessions.length && (
-        <p className="px-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
-      )}
-    </>
-  );
+          ),
+        };
+      }),
+    activeId: state.sessionId,
+    busy: Boolean(runId),
+    empty: (
+      <p className="px-2 py-1 text-xs text-muted-foreground">Deine Gespräche erscheinen hier.</p>
+    ),
+    onPick: pickSession,
+    onRename: (id: string, title: string) => {
+      const entry = state.sessions.find((session) => session.id === id);
+      if (entry && !runId)
+        state.saveSession({ ...entry, title: title.slice(0, 70), updatedAt: Date.now() });
+    },
+    menu: (item: { id: string; label: string }, rename: () => void) => (
+      <>
+        <IconMenuItem
+          icon={<Pencil />}
+          label="Umbenennen"
+          disabled={Boolean(runId)}
+          onSelect={rename}
+        />
+        <IconMenuItem
+          icon={<Download />}
+          label="Als Markdown exportieren"
+          onSelect={() => exportSession(item.id)}
+        />
+        <IconMenuSeparator />
+        <IconMenuItem
+          icon={<Trash2 />}
+          label={`${item.label} löschen`}
+          variant="destructive"
+          disabled={Boolean(runId)}
+          onSelect={() => {
+            const entry = state.sessions.find((session) => session.id === item.id);
+            if (entry)
+              state.saveSession({
+                ...entry,
+                deleted: true,
+                messages: [],
+                usage: undefined,
+                usageModel: undefined,
+                usageRequestedModel: undefined,
+                updatedAt: Date.now(),
+              });
+          }}
+        />
+      </>
+    ),
+  };
   const onboarding = (
     <AiOnboarding
       onDone={(id) => {
@@ -801,12 +990,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           </p>
         </div>
       )}
-      {suggestions.length > 0 && (
+      {mentionCount > 0 && (
         <div
           role="listbox"
-          aria-label="Verbindung erwähnen"
-          className="mb-2 max-h-36 overflow-auto rounded-xl border bg-popover p-1 shadow-sm"
+          aria-label="Kontext oder Verbindung erwähnen"
+          className="mb-2 max-h-48 overflow-auto rounded-xl border bg-popover p-1 shadow-sm"
         >
+          {contextMatches.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => selectContext(item)}
+            >
+              <span className="min-w-0 flex-1 truncate">@{item.label}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {item.kind === "table" ? item.schema || "Tabelle" : "Kontext"}
+              </span>
+            </button>
+          ))}
           {suggestions.map((connection) => (
             <button
               key={connection.id}
@@ -819,6 +1023,23 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               @{connection.name}
             </button>
           ))}
+        </div>
+      )}
+      {(contextItems.length > 0 || editorTab) && (
+        <div ref={contextFeature.ref} className="mb-2">
+          <AiContextChips
+            items={
+              editorTab && !contextItems.some((item) => item.kind === "tab")
+                ? [editorTab, ...contextItems]
+                : contextItems
+            }
+            isNew={contextFeature.isNew}
+            disabled={busy}
+            onRemove={(id) => {
+              if (id === "tab") setEditorContext(false);
+              setContextItems((items) => items.filter((item) => item.id !== id));
+            }}
+          />
         </div>
       )}
       {mentioned.length > 0 && (
@@ -918,10 +1139,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               event.key === "Enter" &&
               !event.shiftKey &&
               !event.nativeEvent.isComposing &&
-              suggestions.length
+              mentionCount
             ) {
               event.preventDefault();
-              selectMention(suggestions[0].id);
+              if (contextMatches.length) selectContext(contextMatches[0]);
+              else selectMention(suggestions[0].id);
             }
           }}
           leadingAction={
@@ -1132,8 +1354,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           </div>
         </div>
       ) : view === "history" ? (
-        <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto p-3">
-          {historyList}
+        <div ref={historyFeature.ref} className="min-h-0 flex-1 px-1 pb-1">
+          <SidebarNav {...history} />
         </div>
       ) : (
         chat
@@ -1186,27 +1408,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             onboarding
           ) : fullPage ? (
             <>
-              <nav
-                aria-label="Gespräche"
-                className="flex w-60 shrink-0 flex-col border-r bg-sidebar/50"
-              >
-                <div className="flex h-12 shrink-0 items-center gap-0.5 border-b pr-2 pl-4">
-                  <h2 className="mr-auto text-[13px] font-semibold">Gespräche</h2>
-                  <IconButton
-                    size="icon"
-                    variant="ghost"
-                    aria-label="Neues Gespräch"
-                    disabled={busy}
-                    onClick={newChat}
-                  >
-                    <SquarePen className="size-4" />
-                  </IconButton>
-                  {settingsButton}
-                </div>
-                <div ref={historyFeature.ref} className="min-h-0 flex-1 overflow-auto px-2 py-2">
-                  {historyList}
-                </div>
-              </nav>
+              <div ref={historyFeature.ref} className="flex border-r bg-sidebar/50">
+                <SidebarNav
+                  {...history}
+                  title="Gespräche"
+                  collapsible
+                  onNew={newChat}
+                  headerActions={settingsButton}
+                />
+              </div>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">{main}</div>
               {shelf && view === "chat" && (
                 <div className="flex w-[25rem] shrink-0 flex-col border-l bg-muted/25">

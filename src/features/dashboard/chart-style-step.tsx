@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { IconButton } from "@/components/icon-button";
+import { NewBadge } from "@/components/new-badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
+  ACCENT,
   CHARTS,
   type DatasetShape,
   PALETTE,
@@ -17,19 +19,80 @@ import {
   type WidgetOptions,
   widgetOptions,
 } from "@/lib/dashboards";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 import { ChartKindPicker } from "./chart-kind-picker";
 import { ChartMetricPicker } from "./chart-metric-picker";
 
 const OPTION_TEXT: Partial<Record<keyof WidgetOptions, string>> = {
   showValue: "Große Zahl oben zeigen",
-  showDelta: "Veränderung zum vorherigen Wert zeigen",
+  showDelta: "Veränderung zeigen",
+  invertDelta: "Rückgang ist gut (z. B. Kosten, Ladezeit)",
   showLegend: "Legende zeigen",
   showGrid: "Hilfslinien zeigen",
   showPercent: "Prozentwerte zeigen",
   labels: "Werte direkt am Chart zeigen",
   stacked: "Reihen stapeln",
   horizontal: "Liegender Chart (Balken nach rechts)",
+  crossFilter: "Klick filtert die anderen Charts",
+  drill: "Klick zeigt die Detailzeilen",
+  totals: "Summen anzeigen",
+  dataBars: "Datenbalken und Farbskala",
+};
+
+const SELECTS: Partial<
+  Record<keyof WidgetOptions, { label: string; width: string; items: [string, string][] }>
+> = {
+  compare: {
+    label: "Vergleichen mit",
+    width: "w-32",
+    items: [
+      ["none", "Nichts"],
+      ["previous", "Vorperiode"],
+      ["year", "Vorjahr"],
+    ],
+  },
+  headline: {
+    label: "Große Zahl zeigt",
+    width: "w-32",
+    items: [
+      ["auto", "Automatisch"],
+      ["total", "Summe"],
+      ["last", "Letzten Wert"],
+      ["average", "Durchschnitt"],
+      ["max", "Höchstwert"],
+      ["min", "Tiefstwert"],
+    ],
+  },
+  decimals: {
+    label: "Nachkommastellen",
+    width: "w-32",
+    items: [
+      ["auto", "Automatisch"],
+      ["0", "0"],
+      ["1", "1"],
+      ["2", "2"],
+      ["3", "3"],
+      ["4", "4"],
+    ],
+  },
+  curve: {
+    label: "Linienform",
+    width: "w-28",
+    items: [
+      ["monotone", "Weich"],
+      ["linear", "Gerade"],
+    ],
+  },
+  sortBy: {
+    label: "Sortierung im Chart",
+    width: "w-32",
+    items: [
+      ["none", "Wie geladen"],
+      ["desc", "Größte zuerst"],
+      ["asc", "Kleinste zuerst"],
+    ],
+  },
 };
 
 export function ChartStyleStep({
@@ -42,6 +105,9 @@ export function ChartStyleStep({
   onChange: (patch: Partial<Widget>) => void;
 }) {
   const titleId = useId();
+  const subtitleId = useId();
+  const compareFeature = useNewFeatureVisibility<HTMLDivElement>("dashboard.studio.compare");
+  const interactFeature = useNewFeatureVisibility<HTMLDivElement>("dashboard.studio.interactions");
   const options = widgetOptions(widget);
   const setOption = <K extends keyof WidgetOptions>(key: K, value: WidgetOptions[K]) =>
     onChange({ options: { ...widget.options, [key]: value } });
@@ -66,6 +132,17 @@ export function ChartStyleStep({
           className="h-9 text-sm"
         />
       </label>
+      <label htmlFor={subtitleId} className="block max-w-md space-y-1.5 text-xs font-medium">
+        <span>Untertitel</span>
+        <Input
+          id={subtitleId}
+          aria-label="Chart-Untertitel"
+          value={widget.subtitle ?? ""}
+          onChange={(e) => onChange({ subtitle: e.target.value || undefined })}
+          placeholder="Automatisch, z. B. Monatlich · in €"
+          className="h-9 text-sm"
+        />
+      </label>
       <ChartKindPicker
         value={widget.chart}
         shape={shape}
@@ -77,43 +154,87 @@ export function ChartStyleStep({
         <div className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
           {CHARTS[widget.chart].options.map((key) => {
             if (key === "metricKeys" || key === "colorOffset" || key === "showPeriod") return null;
-            if (key === "curve")
+            if (key === "compare" && !shape.hasDate) return null;
+            if (key === "target")
               return (
                 <div key={key} className="flex items-center justify-between gap-2 text-xs">
-                  <span>Linienform</span>
-                  <Select
-                    value={options.curve}
-                    onValueChange={(v) => setOption("curve", v as WidgetOptions["curve"])}
-                  >
-                    <SelectTrigger aria-label="Linienform" size="sm" className="h-7 w-28 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monotone">Weich</SelectItem>
-                      <SelectItem value="linear">Gerade</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <span>Zielwert (Linie)</span>
+                  <Input
+                    aria-label="Zielwert"
+                    type="number"
+                    value={options.target ?? ""}
+                    onChange={(e) => {
+                      const next = e.target.value.trim() === "" ? null : Number(e.target.value);
+                      setOption("target", next !== null && Number.isFinite(next) ? next : null);
+                    }}
+                    placeholder="kein Ziel"
+                    className="h-7 w-32 text-xs"
+                  />
                 </div>
               );
-            if (key === "sortBy")
+            if (key === "targetLabel")
+              return options.target === null ? null : (
+                <div key={key} className="flex items-center justify-between gap-2 text-xs">
+                  <span>Beschriftung Ziel</span>
+                  <Input
+                    aria-label="Beschriftung Ziel"
+                    value={options.targetLabel}
+                    maxLength={40}
+                    onChange={(e) => setOption("targetLabel", e.target.value)}
+                    placeholder="z. B. Plan 2026"
+                    className="h-7 w-32 text-xs"
+                  />
+                </div>
+              );
+            if (key === "unit")
               return (
                 <div key={key} className="flex items-center justify-between gap-2 text-xs">
-                  <span>Sortierung im Chart</span>
+                  <span>Einheit</span>
+                  <Input
+                    aria-label="Einheit"
+                    value={options.unit}
+                    maxLength={8}
+                    onChange={(e) => setOption("unit", e.target.value.trimStart())}
+                    onBlur={(e) => setOption("unit", e.target.value.trim())}
+                    placeholder="€, ms, %"
+                    className="h-7 w-32 text-xs"
+                  />
+                </div>
+              );
+            const select = SELECTS[key];
+            if (select)
+              return (
+                <div
+                  key={key}
+                  ref={key === "compare" ? compareFeature.ref : undefined}
+                  className="flex items-center justify-between gap-2 text-xs"
+                >
+                  <span className="flex items-center gap-1.5">
+                    {select.label}
+                    {key === "compare" && compareFeature.isNew && <NewBadge />}
+                  </span>
                   <Select
-                    value={options.sortBy}
-                    onValueChange={(v) => setOption("sortBy", v as WidgetOptions["sortBy"])}
+                    value={String(options[key] ?? "auto")}
+                    onValueChange={(v) =>
+                      setOption(
+                        key,
+                        (key === "decimals" ? (v === "auto" ? null : Number(v)) : v) as never,
+                      )
+                    }
                   >
                     <SelectTrigger
-                      aria-label="Sortierung im Chart"
+                      aria-label={select.label}
                       size="sm"
-                      className="h-7 w-32 text-xs"
+                      className={cn("h-7 text-xs", select.width)}
                     >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Wie geladen</SelectItem>
-                      <SelectItem value="desc">Größte zuerst</SelectItem>
-                      <SelectItem value="asc">Kleinste zuerst</SelectItem>
+                      {select.items.map(([value, text]) => (
+                        <SelectItem key={value} value={value}>
+                          {text}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -121,8 +242,15 @@ export function ChartStyleStep({
             const label = OPTION_TEXT[key];
             if (!label) return null;
             return (
-              <div key={key} className="flex items-center justify-between gap-2 text-xs">
-                <span>{label}</span>
+              <div
+                key={key}
+                ref={key === "crossFilter" ? interactFeature.ref : undefined}
+                className="flex items-center justify-between gap-2 text-xs"
+              >
+                <span className="flex items-center gap-1.5">
+                  {label}
+                  {key === "crossFilter" && interactFeature.isNew && <NewBadge />}
+                </span>
                 <Switch
                   aria-label={label}
                   checked={Boolean(options[key])}
@@ -136,10 +264,10 @@ export function ChartStyleStep({
           <div className="flex items-center justify-between gap-2 border-t pt-3 text-xs">
             <span>Farben</span>
             <div className="flex gap-1.5">
-              {PALETTE.map((color, index) => (
+              {[ACCENT, ...PALETTE.slice(1)].map((color, index) => (
                 <IconButton
                   key={color}
-                  aria-label={`Farbe ${index + 1}`}
+                  aria-label={index === 0 ? "Akzentfarbe der Verbindung" : `Farbe ${index + 1}`}
                   aria-pressed={options.colorOffset === index}
                   variant="ghost"
                   size="icon-xs"

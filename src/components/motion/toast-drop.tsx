@@ -1,14 +1,16 @@
-import { type Easing, motion, useReducedMotion } from "motion/react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { EASE_IN_OUT, EASE_OUT } from "@/lib/ease";
 
-type Anchor = "start" | "mid" | "end";
+type Phase = "idle" | "swell" | "fall" | "open" | "full";
 type Drop = {
   key: number;
-  leaving: boolean;
+  from: "idle" | "full";
+  phase: Phase;
   toast: HTMLElement;
   box: { left: number; top: number; width: number; height: number };
   center: number;
+  edge: number;
   radius: number;
   background: string;
   border: string;
@@ -17,45 +19,14 @@ type Drop = {
 
 const TOAST = "[data-sonner-toast]";
 const PAD = 24;
-const NECK = 10;
-const FLAT = 0.001;
-const FULL = "translate(0px, 0px) scale(1, 1)";
-const SWELL = 0.16;
-const FALL = 0.22;
-const ENTER = SWELL + FALL + 0.4;
-const ENTER_TIMES = [0, SWELL / ENTER, (SWELL + FALL) / ENTER, 1];
-const ENTER_EASE = [EASE_OUT, EASE_IN_OUT, EASE_OUT];
-const NECK_TIMES = [
-  ...ENTER_TIMES.slice(0, 3),
-  (SWELL + FALL + 0.08) / ENTER,
-  (SWELL + FALL + 0.23) / ENTER,
-  1,
-];
-const NECK_FRAMES = [
-  `scale(1, ${FLAT})`,
-  `scale(1, ${FLAT})`,
-  "scale(1, 1)",
-  "scale(1, 1)",
-  `scale(${FLAT}, 1)`,
-  `scale(${FLAT}, 1)`,
-];
-const NECK_EASE: Easing[] = ["linear", EASE_IN_OUT, "linear", EASE_OUT, "linear"];
-const RISE = { duration: 0.18, ease: EASE_OUT };
-const PIECES: [Anchor, Anchor][] = [
-  ["mid", "mid"],
-  ["mid", "start"],
-  ["mid", "end"],
-  ["start", "mid"],
-  ["end", "mid"],
-  ["start", "start"],
-  ["end", "start"],
-  ["start", "end"],
-  ["end", "end"],
-];
-
-function settle(toast: HTMLElement) {
-  toast.setAttribute("data-dropped", "");
-}
+const INSTANT = { duration: 0 };
+const SWELL = { duration: 0.2, ease: EASE_OUT };
+const SINK = { duration: 0.4, ease: EASE_IN_OUT };
+const INFLATE = { type: "spring", duration: 0.5, bounce: 0.2 } as const;
+const REVEAL_DELAY = 200;
+const SAFETY_MS = 1600;
+const BURST_MS = 1000;
+const NEXT: Partial<Record<Phase, Phase>> = { swell: "fall", fall: "open" };
 
 function measure(toast: HTMLElement) {
   const origin = document.querySelector("[data-toast-origin]")?.getBoundingClientRect();
@@ -64,13 +35,13 @@ function measure(toast: HTMLElement) {
   const style = getComputedStyle(toast);
   const center = origin.left + origin.width / 2;
   const left = Math.min(center - 40, target.left) - PAD;
-  const top = origin.bottom;
+  const top = origin.bottom - PAD;
   const right = Math.max(center + 40, target.right) + PAD;
-  const radius = Number.parseFloat(style.borderTopLeftRadius) || 14;
   return {
     box: { left, top, width: right - left, height: target.bottom + PAD - top },
     center: center - left,
-    radius: Math.max(1, Math.min(radius, target.width / 2 - 1, target.height / 2 - 1)),
+    edge: PAD,
+    radius: Number.parseFloat(style.borderTopLeftRadius) || 14,
     background: style.backgroundColor,
     border: style.borderTopColor,
     target: {
@@ -82,28 +53,24 @@ function measure(toast: HTMLElement) {
   };
 }
 
-function span(anchor: Anchor, start: number, size: number, radius: number): [number, number] {
-  if (anchor === "start") return [start, radius + 1];
-  if (anchor === "end") return [start + size - radius - 1, radius + 1];
-  return [start + radius, size - 2 * radius];
-}
-
-function fold(anchor: Anchor, start: number, size: number, at: number, radius: number, k: number) {
-  if (anchor === "mid") return { offset: at - start, scale: FLAT };
-  if (anchor === "start") return { offset: at - radius * k - start, scale: k };
-  return { offset: at + radius * k - size * k - start, scale: k };
-}
-
 export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
   const reduce = useReducedMotion();
   const [drop, setDrop] = useState<Drop | null>(null);
   const current = useRef<Drop | null>(null);
   const sequence = useRef(0);
+  const lastEnter = useRef(Number.NEGATIVE_INFINITY);
+  const timers = useRef(new Map<HTMLElement, number>());
+  const reveal = useCallback((toast: HTMLElement) => {
+    window.clearTimeout(timers.current.get(toast));
+    timers.current.delete(toast);
+    toast.setAttribute("data-dropped", "");
+  }, []);
 
   useEffect(() => {
     const container = root.current;
     if (!container) return;
-    container.querySelectorAll<HTMLElement>(TOAST).forEach(settle);
+    const pending = timers.current;
+    container.querySelectorAll<HTMLElement>(TOAST).forEach(reveal);
     current.current = null;
     setDrop(null);
 
@@ -113,31 +80,41 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
     };
 
     const enter = (toast: HTMLElement) => {
-      if (toast.dataset.front !== "true" || toast.dataset.yPosition !== "top") return settle(toast);
+      if (toast.dataset.front !== "true" || toast.dataset.yPosition !== "top") return reveal(toast);
       const previous = current.current?.toast;
-      if (previous && previous !== toast) settle(previous);
-      const geometry = reduce ? null : measure(toast);
+      if (previous && previous !== toast) reveal(previous);
+      const now = performance.now();
+      const burst = now - lastEnter.current < BURST_MS;
+      lastEnter.current = now;
+      const geometry = reduce || burst ? null : measure(toast);
       if (!geometry) {
         start(null);
-        return settle(toast);
+        return reveal(toast);
       }
-      toast.setAttribute("data-dropped", "drop");
+      pending.set(
+        toast,
+        window.setTimeout(() => reveal(toast), SAFETY_MS),
+      );
       sequence.current += 1;
-      start({ key: sequence.current, leaving: false, toast, ...geometry });
+      start({ key: sequence.current, from: "idle", phase: "swell", toast, ...geometry });
     };
 
     const leave = (toast: HTMLElement) => {
       if (toast.dataset.yPosition !== "top") return;
       if (current.current && current.current.toast !== toast) return;
-      if (!toast.hasAttribute("data-dropped")) {
-        settle(toast);
+      if (
+        !toast.hasAttribute("data-dropped") ||
+        performance.now() - lastEnter.current < BURST_MS ||
+        container.querySelector(`${TOAST}:not([data-removed="true"])`)
+      ) {
+        reveal(toast);
         start(null);
         return;
       }
       const geometry = reduce ? null : measure(toast);
       if (!geometry) return;
       sequence.current += 1;
-      start({ key: sequence.current, leaving: true, toast, ...geometry });
+      start({ key: sequence.current, from: "full", phase: "idle", toast, ...geometry });
     };
 
     const observer = new MutationObserver((records) => {
@@ -149,7 +126,7 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
             else node.querySelectorAll<HTMLElement>(TOAST).forEach(enter);
           }
           if (current.current && !current.current.toast.isConnected) {
-            settle(current.current.toast);
+            reveal(current.current.toast);
             start(null);
           }
           continue;
@@ -165,81 +142,115 @@ export function ToastDrop({ root }: { root: RefObject<HTMLElement | null> }) {
       attributes: true,
       attributeFilter: ["data-removed"],
     });
-    return () => observer.disconnect();
-  }, [root, reduce]);
+    return () => {
+      observer.disconnect();
+      pending.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      pending.clear();
+    };
+  }, [root, reduce, reveal]);
+
+  useEffect(() => {
+    if (drop?.phase !== "open") return;
+    const timer = window.setTimeout(() => reveal(drop.toast), REVEAL_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [drop, reveal]);
 
   if (!drop) return null;
-  const { center, radius, target, background, border, leaving } = drop;
-  const drip = target.y + radius + 4;
-  const finish = () => {
-    if (current.current?.key !== drop.key) return;
-    if (!leaving) settle(drop.toast);
-    current.current = null;
-    setDrop(null);
+  const { center, edge, radius, target } = drop;
+  const full = {
+    x: target.x,
+    y: target.y,
+    width: target.width,
+    height: target.height,
+    borderRadius: radius,
   };
+  const top = target.y + 4;
 
   return (
-    <div
+    <motion.div
       key={drop.key}
+      data-toast-drop={drop.from === "full" ? "leave" : "enter"}
       aria-hidden="true"
-      className="pointer-events-none fixed z-[999999998] overflow-hidden"
-      style={drop.box}
+      initial={drop.from}
+      animate={drop.phase}
+      onAnimationComplete={(label) => {
+        const state = current.current;
+        if (!state || state.key !== drop.key || state.phase !== label) return;
+        if (state.phase === "open") reveal(state.toast);
+        const next = NEXT[state.phase];
+        current.current = next ? { ...state, phase: next } : null;
+        setDrop(current.current);
+      }}
+      className="pointer-events-none fixed z-[999999998]"
+      style={{
+        ...drop.box,
+        filter: "url(#l8-toast-goo)",
+        clipPath: `inset(${edge}px 0 0 0)`,
+      }}
     >
-      {leaving ? null : (
-        <motion.div
-          className="absolute top-0 border-x border-solid"
-          style={{
-            left: center - NECK / 2,
-            width: NECK,
-            height: drip,
-            background,
-            borderColor: border,
-            transformOrigin: "50% 0",
-          }}
-          initial={{ transform: NECK_FRAMES[0] }}
-          animate={{ transform: NECK_FRAMES }}
-          transition={{ duration: ENTER, times: NECK_TIMES, ease: NECK_EASE }}
-        />
-      )}
-      {PIECES.map(([x, y], index) => {
-        const [left, width] = span(x, target.x, target.width, radius);
-        const [top, height] = span(y, target.y, target.height, radius);
-        const folded = (at: number, k: number) => {
-          const across = fold(x, left, width, center, radius, k);
-          const down = fold(y, top, height, at, radius, k);
-          return `translate(${across.offset}px, ${down.offset}px) scale(${across.scale}, ${down.scale})`;
-        };
-        const hidden = folded(-radius, 0.8);
-        return (
-          <motion.div
-            key={`${x}-${y}`}
-            className="absolute border-solid"
-            style={{
-              left,
-              top,
-              width,
-              height,
-              background,
-              borderColor: border,
-              borderLeftWidth: x === "start" ? 1 : 0,
-              borderRightWidth: x === "end" ? 1 : 0,
-              borderTopWidth: y === "start" ? 1 : 0,
-              borderBottomWidth: y === "end" ? 1 : 0,
-              borderTopLeftRadius: x === "start" && y === "start" ? radius : 0,
-              borderTopRightRadius: x === "end" && y === "start" ? radius : 0,
-              borderBottomLeftRadius: x === "start" && y === "end" ? radius : 0,
-              borderBottomRightRadius: x === "end" && y === "end" ? radius : 0,
-              transformOrigin: "0 0",
-            }}
-            initial={{ transform: leaving ? FULL : hidden }}
-            animate={{
-              transform: leaving ? hidden : [hidden, folded(2, 0.9), folded(drip, 1), FULL],
-            }}
-            transition={leaving ? RISE : { duration: ENTER, times: ENTER_TIMES, ease: ENTER_EASE }}
-            onAnimationComplete={index === 0 ? finish : undefined}
-          />
-        );
-      })}
-    </div>
+      <svg aria-hidden="true" className="absolute size-0">
+        <filter id="l8-toast-goo" colorInterpolationFilters="sRGB">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="5" />
+          <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 16 -7.5" result="goo" />
+          <feMorphology operator="dilate" radius="1" result="grown" />
+          <feFlood style={{ floodColor: drop.border }} />
+          <feComposite in2="grown" operator="in" result="rim" />
+          <feComposite in="goo" in2="rim" operator="over" />
+        </filter>
+      </svg>
+      <div
+        className="absolute h-3 w-[60px] rounded-full"
+        style={{ left: center - 30, top: edge - 13, background: drop.background }}
+      />
+      <motion.div
+        className="absolute top-0 left-0 rounded-full"
+        style={{ background: drop.background }}
+        variants={{
+          idle: { x: center - 5, y: edge - 6, width: 10, height: 0, transition: INSTANT },
+          swell: { x: center - 5, y: edge - 6, width: 10, height: 0, transition: INSTANT },
+          fall: { x: center - 5, width: 10, height: top + 21 - edge, transition: SINK },
+          open: {
+            x: center,
+            width: 0,
+            transition: { duration: 0.22, ease: EASE_OUT, delay: 0.12 },
+          },
+          full: { width: 0, height: 0, transition: INSTANT },
+        }}
+      />
+      <motion.div
+        className="absolute top-0 left-0"
+        style={{ background: drop.background }}
+        variants={{
+          idle: {
+            x: center - 12,
+            y: edge - 22,
+            width: 24,
+            height: 16,
+            borderRadius: 15,
+            transition: { duration: 0.3, ease: EASE_OUT },
+          },
+          swell: {
+            x: center - 14,
+            y: edge - 14,
+            width: 28,
+            height: 30,
+            borderRadius: 15,
+            transition: SWELL,
+          },
+          fall: {
+            x: center - 15,
+            y: top,
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            transition: SINK,
+          },
+          open: { ...full, transition: INFLATE },
+          full: { ...full, transition: INSTANT },
+        }}
+      />
+    </motion.div>
   );
 }

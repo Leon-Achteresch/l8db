@@ -3,6 +3,7 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
 import { lazy, Suspense, startTransition, useEffect, useState } from "react";
 import { WindowCloseGuard } from "@/features/shell/window-close-guard";
+import { WorkbenchHost } from "@/features/shell/workbench-host";
 import "../index.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
@@ -40,6 +41,7 @@ function RootComponent() {
     <MotionConfig reducedMotion="user">
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
         <DbThemeRoot className="h-dvh">
+          <WorkbenchHost />
           <AppHotkeys />
           <SqlFileDrop />
           <AppHeader />
