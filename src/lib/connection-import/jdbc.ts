@@ -225,6 +225,33 @@ export function parseJdbcUrl(url: string): JdbcTarget | null {
     target.database = rest.split("?")[0] ?? "";
     return target;
   }
-  const inner = rest.replace(/^(loadbalance|replication|aurora|http|https|ch):/i, "");
+  if (KEY_VALUE_SUBPROTOCOLS.has(subprotocol)) return parseKeyValueUrl(rest, target);
+  let inner = rest.replace(/^(loadbalance|replication|aurora|ch):/i, "");
+  const transport = /^(?:\/\/)?(https?):(?=\/\/)/i.exec(inner);
+  if (transport) {
+    if (transport[1].toLowerCase() === "https") target.params.push(["ssl", "true"]);
+    inner = inner.slice(transport[0].length);
+  }
   return parseAuthorityUrl(inner, target);
+}
+
+const KEY_VALUE_SUBPROTOCOLS = new Set(["awsathena", "bigquery"]);
+
+function parseKeyValueUrl(rest: string, target: JdbcTarget): JdbcTarget {
+  const body = rest.replace(/^\/\//, "");
+  const parts = body.split(";");
+  const first = parts[0] ?? "";
+  if (first && !first.includes("=")) {
+    const address = first.replace(/^https?:\/\//i, "");
+    const { host, port } = splitHostPort(address.split("/")[0] ?? "");
+    target.host = host;
+    target.port = port;
+    parts.shift();
+  }
+  for (const part of parts) {
+    const equals = part.indexOf("=");
+    if (equals > 0)
+      absorbParam(target, part.slice(0, equals).trim(), part.slice(equals + 1).trim());
+  }
+  return target;
 }
