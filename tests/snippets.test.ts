@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { createJSONStorage } from "zustand/middleware";
 
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, "window", {
@@ -24,6 +25,7 @@ const {
 
 type Snippet = ReturnType<typeof useSnippetsStore.getState>["snippets"][number];
 
+useSnippetsStore.persist.setOptions({ storage: createJSONStorage(() => window.localStorage) });
 await useSnippetsStore.persist.rehydrate();
 
 function snippet(partial: Partial<Snippet>): Snippet {

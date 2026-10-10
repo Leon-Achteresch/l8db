@@ -22,7 +22,7 @@ const { CHAT_CONTEXT_KEYWORDS, contextSuggestions, resolveChatContext } = await 
 );
 const { CHAT_HISTORY_CHARS, chatWireMessages, wireMessage } = await import("@/lib/ai/chat-history");
 const { clearLastResult, lastResult, setLastResult } = await import("@/lib/ai/last-result");
-const { useProvidersStore } = await import("@/lib/providers");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
 
 import type { ChatContextDeps, ChatContextItem } from "@/lib/ai/chat-context";
 import type { SavedConnection } from "@/lib/connections";
@@ -30,7 +30,7 @@ import type { AiMessage } from "@/lib/db/ai";
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from "@/lib/db/types";
 import type { QueryHistoryEntry } from "@/lib/query-history";
 
-useProvidersStore.setState({ loaded: true });
+useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
 
 const connection: SavedConnection = {
   id: "conn-1",
