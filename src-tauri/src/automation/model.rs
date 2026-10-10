@@ -1040,6 +1040,8 @@ pub struct AutomationConnection {
     #[serde(default)]
     pub read_only: bool,
     #[serde(default)]
+    pub production_locked: bool,
+    #[serde(default)]
     pub environment: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,

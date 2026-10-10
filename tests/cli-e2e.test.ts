@@ -296,6 +296,35 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     );
   });
 
+  test("guards cannot be bypassed via --where, --yes or Ctrl+C", () => {
+    saveConnections([
+      connection("c-shop", "Shop"),
+      connection("c-prod", "Produktion", { environment: "production" }),
+      connection("c-lock", "Gesperrt", { environment: "production", productionLocked: true }),
+    ]);
+    for (const args of [
+      ["table", "rows", "kunde", "--where", "1=0; delete from kunde"],
+      ["table", "count", "kunde", "--where", "1=1 -- x"],
+      ["table", "rows", "kunde", "--where", "1=0 union select * from kunde"],
+    ]) {
+      const injected = cli(["-c", "Shop", ...args]);
+      expect(injected.code).toBe(1);
+      expect(injected.err).toContain("--where darf nur eine Bedingung enthalten");
+    }
+    expect(cli(["-c", "Shop", "table", "count", "kunde"]).out).toBe("250\n");
+    const locked = cli(["-c", "Gesperrt", "q", "--yes", "delete from kunde"]);
+    expect(locked.code).toBe(1);
+    expect(locked.err).toContain("schreibgeschützt");
+    expect(cli(["-c", "Gesperrt", "conn", "show"]).out).toContain("Produktionssperre");
+    expect(cli(["-c", "Gesperrt", "q", "select count(*) as n from kunde"]).out).toBe("n\n250\n");
+    const started = performance.now();
+    const interrupted = tty(["-c", "Produktion", "q", "delete from kunde"], "\x03");
+    expect(interrupted.code).toBe(130);
+    expect(interrupted.out).toContain("Abgebrochen");
+    expect(performance.now() - started).toBeLessThan(4000);
+    expect(cli(["-c", "Shop", "table", "count", "kunde"]).out).toBe("250\n");
+  });
+
   test("scripts stop at the first error", () => {
     const file = join(dir, "skript.sql");
     writeFileSync(file, "insert into kunde (name) values ('Neu');\nselect * from fehlt;\n");
@@ -347,6 +376,39 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     const broken = cli(["--url", PG, "q", "-n", "3", "select * from gibt_es_nicht"]);
     expect(broken.code).toBe(1);
     expect(broken.err).toContain("gibt_es_nicht");
+  });
+
+  test.skipIf(!PG)("postgres: writing functions in a select commit and need confirmation", () => {
+    const url = ["--url", PG];
+    const setup = join(dir, "pg-fn.sql");
+    writeFileSync(
+      setup,
+      "drop table if exists cli_e2e_fn;\ncreate table cli_e2e_fn (id int);\ncreate or replace function cli_e2e_bump() returns int language sql as $$ insert into cli_e2e_fn values (1) returning 1 $$;\n",
+    );
+    expect(cli([...url, "q", "-f", setup]).code).toBe(0);
+    const bumped = cli([...url, "q", "select cli_e2e_bump() as b"]);
+    expect(bumped.code).toBe(0);
+    expect(bumped.out).toBe("b\n1\n");
+    const count = () => cli([...url, "q", "select count(*) as n from cli_e2e_fn"]).out;
+    expect(count()).toBe("n\n1\n");
+    saveConnections([
+      connection("pg-prod", "PG Produktion", {
+        kind: "postgres",
+        connectionString: PG,
+        environment: "production",
+      }),
+    ]);
+    const blocked = cli(["-c", "PG Produktion", "q", "select cli_e2e_bump()"]);
+    expect(blocked.code).toBe(1);
+    expect(blocked.err).toContain("--yes");
+    expect(count()).toBe("n\n1\n");
+    expect(cli(["-c", "PG Produktion", "q", "--yes", "select cli_e2e_bump()"]).code).toBe(0);
+    expect(count()).toBe("n\n2\n");
+    const reads = cli(["-c", "PG Produktion", "q", "-n", "1", "select id from cli_e2e_fn"]);
+    expect(reads.code).toBe(0);
+    expect(reads.out).toBe("id\n1\n");
+    writeFileSync(setup, "drop function cli_e2e_bump();\ndrop table cli_e2e_fn;\n");
+    expect(cli([...url, "q", "-f", setup]).code).toBe(0);
   });
 
   test.skipIf(!PG)("postgres: Ctrl+C cancels the running statement on the server", async () => {

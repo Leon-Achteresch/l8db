@@ -5,6 +5,7 @@ export interface CliStatus {
   command: string;
   location: string | null;
   target: string;
+  pathHint: string | null;
 }
 
 export function cliStatus(): Promise<CliStatus> {

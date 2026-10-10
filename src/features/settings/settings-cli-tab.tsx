@@ -85,6 +85,12 @@ export function SettingsCliTab() {
               : `Ohne Installation: „${status.target}“ direkt aufrufen.`}
           </p>
         ) : null}
+        {status?.installed && status.pathHint ? (
+          <CliCommandList
+            title="Der Ordner fehlt noch im PATH. In ~/.profile eintragen, dann neu anmelden:"
+            examples={[{ command: status.pathHint, description: "PATH ergänzen" }]}
+          />
+        ) : null}
 
         <SettingsRow settingId="cli-cheatsheet" stacked>
           <div className="w-full space-y-3">
