@@ -1,7 +1,9 @@
 import { create } from "zustand";
+import type { DatabaseKind } from "@/lib/db";
 import { CALC_PREFIX, datasetJoins, joinRef, parseRef } from "./joins";
 import { CROSS_WHERE, type CrossCondition, type Dataset, type TimeBucket } from "./model";
 import { DIM_KEY, DIM2_KEY } from "./sql";
+import { readsTable } from "./sql-tables";
 
 export interface CrossField {
   table: string | null;
@@ -51,99 +53,10 @@ export function ownCondition(dataset: Dataset, key: string, value: unknown): Cro
   return { ref, bucket: key === DIM_KEY ? (s.dimension?.bucket ?? "none") : "none", value };
 }
 
-const SQL_TOKEN =
-  /'(?:[^']|'')*'|\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$|--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|`(?:[^`]|``)*`|\[[^\]]*\]|[A-Za-z_][\w$]*|[(),.]/g;
-const ENDS_FROM = new Set([
-  "where",
-  "group",
-  "order",
-  "having",
-  "limit",
-  "offset",
-  "fetch",
-  "union",
-  "intersect",
-  "except",
-  "returning",
-  "window",
-  "qualify",
-  "select",
-  "into",
-  "set",
-  "values",
-]);
-
-interface SqlToken {
-  word: string | null;
-  ident: string | null;
-  mark: string | null;
-}
-
-function sqlTokens(sql: string): SqlToken[] {
-  const tokens: SqlToken[] = [];
-  for (const [token] of sql.matchAll(SQL_TOKEN)) {
-    const first = token[0];
-    if (first === "'" || first === "$" || token.startsWith("--") || token.startsWith("/*"))
-      continue;
-    if (token.length === 1 && "(),.".includes(token)) {
-      tokens.push({ word: null, ident: null, mark: token });
-      continue;
-    }
-    const quoted =
-      first === '"'
-        ? token.slice(1, -1).replace(/""/g, '"')
-        : first === "`"
-          ? token.slice(1, -1).replace(/``/g, "`")
-          : first === "["
-            ? token.slice(1, -1)
-            : null;
-    tokens.push({
-      word: quoted === null ? token.toLowerCase() : null,
-      ident: (quoted ?? token).toLowerCase(),
-      mark: null,
-    });
-  }
-  return tokens;
-}
-
-function mentionsTable(sql: string, table: string): boolean {
-  const name = table.slice(table.lastIndexOf(".") + 1).toLowerCase();
-  if (!name) return false;
-  const tokens = sqlTokens(sql);
-  const stack = [{ from: false, expect: false }];
-  for (let index = 0; index < tokens.length; index++) {
-    const token = tokens[index];
-    const state = stack[stack.length - 1];
-    if (token.mark === "(") {
-      state.expect = false;
-      stack.push({ from: false, expect: false });
-    } else if (token.mark === ")") {
-      if (stack.length > 1) stack.pop();
-    } else if (token.mark === ",") {
-      if (state.from) state.expect = true;
-    } else if (token.mark === ".") {
-    } else if (token.word === "from" || token.word === "join") {
-      state.from = true;
-      state.expect = true;
-    } else if (token.word !== null && ENDS_FROM.has(token.word)) {
-      state.from = false;
-      state.expect = false;
-    } else if (token.word === "on" || token.word === "using") {
-      state.expect = false;
-    } else if (state.expect && (token.word === "only" || token.word === "lateral")) {
-    } else if (state.expect && token.ident !== null) {
-      if (tokens[index + 1]?.mark === ".") continue;
-      if (token.ident === name) return true;
-      state.expect = false;
-    }
-  }
-  return false;
-}
-
-function targetRef(dataset: Dataset, field: CrossField): string | null {
+function targetRef(dataset: Dataset, field: CrossField, kind: DatabaseKind | null): string | null {
   if (dataset.mode === "expert") {
     if (field.bucket !== "none") return null;
-    if (field.table && !mentionsTable(dataset.sql, field.table)) return null;
+    if (field.table && !readsTable(dataset.sql, field.table, kind)) return null;
     const { dimension, dimension2 } = dataset.mapping;
     return (
       [dimension, dimension2].find(
@@ -158,11 +71,16 @@ function targetRef(dataset: Dataset, field: CrossField): string | null {
   return join?.id ? joinRef(join.id, field.column) : null;
 }
 
-export function crossConditions(dataset: Dataset, filters: CrossFilter[], widgetId: string) {
+export function crossConditions(
+  dataset: Dataset,
+  filters: CrossFilter[],
+  widgetId: string,
+  kind: DatabaseKind | null = null,
+) {
   const conditions: CrossCondition[] = [];
   for (const filter of filters) {
     if (filter.widgetId === widgetId) continue;
-    const ref = targetRef(dataset, filter.field);
+    const ref = targetRef(dataset, filter.field, kind);
     if (ref) conditions.push({ ref, bucket: filter.field.bucket, value: filter.value });
   }
   return conditions;
@@ -172,17 +90,22 @@ export function applyCrossFilters(
   dataset: Dataset,
   filters: CrossFilter[],
   widgetId: string,
+  kind: DatabaseKind | null = null,
 ): Dataset {
   if (!filters.length) return dataset;
-  const conditions = crossConditions(dataset, filters, widgetId);
+  const conditions = crossConditions(dataset, filters, widgetId, kind);
   if (!conditions.length) return dataset;
   return dataset.mode === "simple"
     ? { ...dataset, simple: { ...dataset.simple, [CROSS_WHERE]: conditions } }
     : { ...dataset, [CROSS_WHERE]: conditions };
 }
 
-export function crossFilterReaches(dataset: Dataset, filter: CrossFilter): boolean {
-  return targetRef(dataset, filter.field) !== null;
+export function crossFilterReaches(
+  dataset: Dataset,
+  filter: CrossFilter,
+  kind: DatabaseKind | null = null,
+): boolean {
+  return targetRef(dataset, filter.field, kind) !== null;
 }
 
 interface CrossFilterState {
