@@ -22,7 +22,8 @@ export function SyncSecurityRow() {
         <p className="text-muted-foreground">
           Die Passphrase wird nur im Schlüsselbund dieses Rechners gespeichert und nie übertragen.
           Geht sie verloren, lassen sich verschlüsselte Sync-Daten nicht wiederherstellen. Auf jedem
-          Rechner muss dieselbe Passphrase hinterlegt werden.
+          Rechner muss dieselbe Passphrase hinterlegt werden. Beim ersten Abgleich eines Rechners
+          übernimmt l8db die Passwörter vom Server.
         </p>
         <div className="flex items-center gap-2">
           <Switch

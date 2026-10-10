@@ -773,3 +773,23 @@ describe("second review regressions", () => {
     expect(b.base.get("savedQueries:q")?.[0]).toBe(hashData({ id: "q", name: "X", sql: "1" }));
   });
 });
+
+describe("third review regressions", () => {
+  test("a device without encryption never silently downgrades an encrypted remote", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Geheim", sql: "1" } }];
+    const encrypted = { includeSecrets: true, encryptAll: true };
+    await sync(a, "sync", encrypted);
+    b.collections.snippets = [
+      { id: "s", data: { id: "s", name: "Notiz", body: "x", shortcut: "s" }, updatedAt: 1 },
+    ];
+    await sync(b);
+    expect(JSON.parse(remote.content as string)).toHaveProperty("encrypted");
+    expect(remote.content).not.toContain("Geheim");
+    await sync(a, "sync", encrypted);
+    await sync(a, "sync", {});
+    expect(remote.content).toContain("Geheim");
+  });
+});

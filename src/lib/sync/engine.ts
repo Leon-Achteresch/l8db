@@ -149,6 +149,17 @@ export class SyncRemoteChangedError extends Error {
 
 export const MAX_SYNC_ATTEMPTS = 3;
 
+export function keepsEncryption(
+  settings: SyncSettings,
+  memory: Pick<SyncMemory, "lastMode">,
+  remoteEncrypted: boolean,
+  mode: SyncMode,
+): boolean {
+  if (settings.encryptAll) return true;
+  if (!remoteEncrypted || mode === "upload") return false;
+  return memory.lastMode !== "encrypted";
+}
+
 export function modeTag(settings: SyncSettings): string {
   return settings.encryptAll ? "encrypted" : "plain";
 }
@@ -483,11 +494,12 @@ async function attemptSync(
   const hash = await contentHash(merged, secretsFingerprint, extra);
   outcome.contentHash = hash;
   outcome.version = remoteFile?.version ?? null;
-  const tag = modeTag(settings);
-  outcome.mode = tag;
+  const encrypt = keepsEncryption(settings, memory, remoteEncrypted, mode);
+  const tag = encrypt ? "encrypted" : "plain";
+  outcome.mode = modeTag(settings);
   const modeSwitched =
     remoteDocument !== null &&
-    remoteEncrypted !== settings.encryptAll &&
+    remoteEncrypted !== encrypt &&
     (memory.lastMode === null || memory.lastMode !== tag);
   const unchanged =
     mode === "sync" &&
@@ -504,7 +516,7 @@ async function attemptSync(
       extra,
     });
     let body = serializeDocument(document);
-    if (settings.encryptAll) {
+    if (encrypt) {
       const wrapped = await abortable(deps.transport.encrypt(body, outcome.salt), signal);
       check();
       outcome.salt = wrapped.salt;
