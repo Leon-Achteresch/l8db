@@ -225,6 +225,24 @@ describe("resolveChatContext", () => {
     expect(none).toContain("no query tab open");
   });
 
+  test("sql section carries only the captured statement, redacted and capped", async () => {
+    const text = await resolveChatContext(
+      [
+        {
+          id: "sql:3-4",
+          kind: "sql",
+          label: "SQL Z. 3–4",
+          sql: `select dblink('postgres://u:hunter2@h/db')\n${"s".repeat(20_000)}`,
+        },
+      ],
+      deps({ tabSql: "select other_statement" }),
+    );
+    expect(text).toContain("SQL from the editor (SQL Z. 3–4):\n```sql\nselect dblink(");
+    expect(text).not.toContain("hunter2");
+    expect(text).not.toContain("other_statement");
+    expect(text.length).toBeLessThan(6_300);
+  });
+
   test("result section hides values unless sharing is allowed", async () => {
     setLastResult({
       owner: "owner-1",

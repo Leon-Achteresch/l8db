@@ -614,11 +614,25 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const pending = state.pendingPrompt;
   useEffect(() => {
     if (!pending || loading || runId || !(state.open || fullPage)) return;
-    useAiStore.setState({ pendingPrompt: "" });
+    const context = state.pendingContext;
+    useAiStore.setState({ pendingPrompt: "", pendingContext: [] });
     setView("chat");
-    if (setupNeeded) setPrompt(pending);
-    else send(pending, [], []);
+    if (setupNeeded) {
+      setPrompt(pending);
+      setContextItems(context);
+    } else send(pending, [], context);
   });
+  const attached = state.pendingContext;
+  useEffect(() => {
+    if (!attached.length || state.pendingPrompt || !(state.open || fullPage)) return;
+    useAiStore.setState({ pendingContext: [] });
+    setView("chat");
+    setContextItems((items) => [
+      ...items.filter((item) => !attached.some((entry) => entry.id === item.id)),
+      ...attached,
+    ]);
+    requestAnimationFrame(() => input.current?.focus());
+  }, [attached, state.pendingPrompt, state.open, fullPage]);
   const draft = state.pendingDraft;
   useEffect(() => {
     if (!draft || !(state.open || fullPage)) return;

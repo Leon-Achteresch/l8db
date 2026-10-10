@@ -18,7 +18,13 @@ export function AiContextChips({
       {items.map((item) => (
         <li
           key={item.id}
-          title={item.kind === "table" ? `${item.schema}.${item.table}` : undefined}
+          title={
+            item.kind === "table"
+              ? `${item.schema}.${item.table}`
+              : item.kind === "sql"
+                ? item.sql?.slice(0, 600)
+                : undefined
+          }
           className="flex items-center gap-1 rounded-md border bg-card py-0.5 pr-0.5 pl-1.5 text-[11px] text-muted-foreground"
         >
           <AtSign className="size-3 shrink-0" />
