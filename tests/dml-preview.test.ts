@@ -4,9 +4,95 @@ const invocations: { command: string; args: Record<string, unknown> }[] = [];
 let pendingQuery: (() => void) | null = null;
 const failing = { savepoint: false, count: false };
 
+interface FakeSession {
+  inBlock: boolean;
+  aborted: boolean;
+  searchPath: string[];
+  temp: Set<string>;
+  savepoints: Set<string>;
+  timeoutNext: boolean;
+  log: string[];
+}
+
+function fakeSession(): FakeSession {
+  return {
+    inBlock: false,
+    aborted: false,
+    searchPath: ["public"],
+    temp: new Set(),
+    savepoints: new Set(),
+    timeoutNext: false,
+    log: [],
+  };
+}
+
+const pg = { active: false, editor: fakeSession(), pooled: fakeSession() };
+const TABLE_ROWS: Record<string, number> = {
+  "public.orders": 3,
+  "tenant_x.orders": 7,
+  "My Schema.orders": 11,
+};
+
+function splitPath(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .map((part) =>
+      part.startsWith('"') ? part.slice(1, -1).replace(/""/g, '"') : part.toLowerCase(),
+    );
+}
+
+function runFakePg(session: FakeSession, sql: string) {
+  session.log.push(sql.replace(/l8db_preview_[0-9a-f]{32}/g, "SP"));
+  const fail = (message: string): never => {
+    if (session.inBlock) session.aborted = true;
+    throw new Error(message);
+  };
+  if (/^BEGIN$/i.test(sql)) {
+    session.inBlock = true;
+    return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
+  }
+  const savepoint = /^(SAVEPOINT|ROLLBACK TO SAVEPOINT|RELEASE SAVEPOINT) (\w+)$/i.exec(sql);
+  if (savepoint) {
+    const [, verb, name] = savepoint;
+    if (!session.inBlock)
+      throw new Error("ERROR: SAVEPOINT can only be used in transaction blocks (SQLSTATE 25P01)");
+    if (verb.startsWith("ROLLBACK")) session.aborted = false;
+    else if (session.aborted) fail("current transaction is aborted (SQLSTATE 25P02)");
+    else if (verb === "SAVEPOINT") session.savepoints.add(name);
+    else session.savepoints.delete(name);
+    return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
+  }
+  const setPath = /^SET\s+search_path\s*(?:=|\s+TO\s+)\s*(.+)$/i.exec(sql);
+  if (setPath) {
+    session.searchPath = splitPath(setPath[1]);
+    return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
+  }
+  if (session.aborted) fail("current transaction is aborted (SQLSTATE 25P02)");
+  if (session.timeoutNext) {
+    session.timeoutNext = false;
+    fail("Query-Timeout nach 10 Sekunden.");
+  }
+  const table = /FROM\s+(\w+)/i.exec(sql)?.[1] ?? "";
+  const resolved = session.temp.has(table)
+    ? 5
+    : session.searchPath.map((schema) => TABLE_ROWS[`${schema}.${table}`]).find((n) => n);
+  if (resolved === undefined) fail(`relation "${table}" does not exist (SQLSTATE 42P01)`);
+  if (sql.startsWith("SELECT COUNT(*)"))
+    return {
+      columns: ["affected_rows"],
+      rows: [{ affected_rows: String(resolved) }],
+      rows_affected: null,
+      execution_time_ms: 1,
+    };
+  return { columns: ["id"], rows: [{ id: 1 }], rows_affected: null, execution_time_ms: 1 };
+}
+
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
     invocations.push({ command, args });
+    if (pg.active && command === "execute_query")
+      return runFakePg(args.pooled ? pg.pooled : pg.editor, String(args.sql));
     if (command === "cancel_execution") {
       pendingQuery?.();
       return true;
@@ -46,12 +132,11 @@ const {
   normalizeDmlPreviewMode,
   runDmlPreview,
   hasBindParameters,
-  previewReleased,
 } = await import("../src/lib/dml-preview");
-const { recordEditorSql } = await import("../src/lib/dml-preview/search-path");
+const { createPreviewLifecycle } = await import("../src/lib/dml-preview/lifecycle");
 const { useServerOutputStore } = await import("../src/lib/server-output");
 const { editorBindParams } = await import("../src/lib/bind-params");
-const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewConnectionString, previewSavepoint } =
+const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewSavepoint, previewSession } =
   await import("../src/lib/dml-preview/executor");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
@@ -647,29 +732,216 @@ describe("second review fixes", () => {
     expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(1);
   });
 
-  test("the pooled preview applies the editor search_path only for a persistent session", () => {
-    recordEditorSql(connection.id, "app", "SET search_path TO tenant_a, public;", "postgres");
-    expect(previewConnectionString(connection, "app")).toBe(connection.connectionString);
-    useServerOutputStore.getState().setEnabled(connection.id, true);
-    expect(previewConnectionString(connection, "app")).toBe(
-      `${connection.connectionString}?schema=tenant_a%2C%20public`,
-    );
-    recordEditorSql(connection.id, "app", "RESET search_path", "postgres");
-    expect(previewConnectionString(connection, "app")).toBe(connection.connectionString);
-    useServerOutputStore.getState().setEnabled(connection.id, false);
-  });
-
-  test("the confirmed run waits only while a savepoint is held", async () => {
-    const settled = new Promise<void>(() => undefined);
-    expect(previewReleased({ holdsTransaction: () => false }, settled)).toBeNull();
-    expect(previewReleased(null, settled)).toBeNull();
-    expect(previewReleased({ holdsTransaction: () => true }, settled)).toBe(settled);
-  });
-
   test("editor and preview share one bind parameter detection", () => {
     expect(editorBindParams("UPDATE t SET a = :new WHERE id = :id").map((ref) => ref.name)).toEqual(
       ["id"],
     );
     expect(hasBindParameters("UPDATE t SET a = :new")).toBe(false);
+  });
+});
+
+describe("preview session handling", () => {
+  const connection = {
+    id: "dml-preview-session",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@session.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+  const withEditorSession = async (setup: (session: FakeSession) => void, sql: string) => {
+    pg.active = true;
+    pg.editor = fakeSession();
+    pg.pooled = fakeSession();
+    setup(pg.editor);
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    try {
+      const executor = dmlPreviewExecutor(connection, "app", 10);
+      const outcome = await runDmlPreview(ready(sql, "postgres"), executor).catch(
+        (error: unknown) => error,
+      );
+      return { outcome, executor };
+    } finally {
+      useServerOutputStore.getState().setEnabled(connection.id, false);
+      pg.active = false;
+    }
+  };
+
+  test("only a persistent editor session or a transaction leaves the pool", () => {
+    expect(previewSession(connection, "app")).toBe("pooled");
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    expect(previewSession(connection, "app")).toBe("editor-session");
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+  });
+
+  test("temporary tables of the editor session are visible to the preview", async () => {
+    const { outcome } = await withEditorSession(
+      (session) => session.temp.add("scratch"),
+      "DELETE FROM scratch WHERE id > 1",
+    );
+    expect((outcome as { count: number }).count).toBe(5);
+    expect(pg.pooled.log).toEqual([]);
+  });
+
+  test("search_path set without spaces and with quoted schemas is honoured", async () => {
+    const compact = await withEditorSession(
+      (session) => runFakePg(session, "SET search_path=tenant_x"),
+      "DELETE FROM orders WHERE id > 1",
+    );
+    expect((compact.outcome as { count: number }).count).toBe(7);
+    const quoted = await withEditorSession(
+      (session) => runFakePg(session, 'SET search_path TO "My Schema", public'),
+      "DELETE FROM orders WHERE id > 1",
+    );
+    expect((quoted.outcome as { count: number }).count).toBe(11);
+  });
+
+  test("in autocommit the savepoint probe fails harmlessly and nothing is rolled back", async () => {
+    const { outcome, executor } = await withEditorSession(
+      () => undefined,
+      "DELETE FROM orders WHERE id > 1",
+    );
+    expect((outcome as { count: number }).count).toBe(3);
+    expect(pg.editor.log.map((sql) => sql.split(" ")[0])).toEqual([
+      "SAVEPOINT",
+      "SELECT",
+      "SELECT",
+    ]);
+    expect(executor.holdsTransaction?.()).toBe(false);
+  });
+
+  test("a manual BEGIN stays healthy after a failing preview", async () => {
+    const { outcome } = await withEditorSession(
+      (session) => runFakePg(session, "BEGIN"),
+      "DELETE FROM missing_table WHERE id > 1",
+    );
+    expect(String(outcome)).toContain("does not exist");
+    expect(pg.editor.log).toEqual([
+      "BEGIN",
+      "SAVEPOINT SP",
+      expect.stringContaining("SELECT COUNT(*)"),
+      "ROLLBACK TO SAVEPOINT SP",
+      "RELEASE SAVEPOINT SP",
+    ]);
+    expect(pg.editor).toMatchObject({ inBlock: true, aborted: false });
+    expect(pg.editor.savepoints.size).toBe(0);
+  });
+
+  test("a manual BEGIN stays healthy after a preview timeout", async () => {
+    const { outcome } = await withEditorSession((session) => {
+      runFakePg(session, "BEGIN");
+      session.timeoutNext = true;
+    }, "DELETE FROM orders WHERE id > 1");
+    expect(String(outcome)).toContain("Query-Timeout");
+    expect(pg.editor).toMatchObject({ inBlock: true, aborted: false });
+    pg.active = true;
+    expect(() => runFakePg(pg.editor, "SELECT COUNT(*) FROM orders")).not.toThrow();
+    pg.active = false;
+  });
+});
+
+describe("preview lifecycle ordering", () => {
+  const plan = { countSql: "SELECT COUNT(*) FROM t", sampleSql: "SELECT * FROM t", limit: 10 };
+  function deferredVoid() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  function fakeExecutor(name: string, log: string[], closeGate?: Promise<void>) {
+    let holding = false;
+    return {
+      holdsTransaction: () => holding,
+      open: async () => {
+        holding = true;
+        log.push(`${name}:SAVEPOINT`);
+      },
+      close: async () => {
+        await closeGate;
+        log.push(`${name}:RELEASE`);
+        holding = false;
+      },
+      execute: async (sql: string) => {
+        log.push(`${name}:${sql.startsWith("SELECT COUNT") ? "COUNT" : "SAMPLE"}`);
+        return {
+          columns: ["n"],
+          rows: [{ n: 1 }],
+          rows_affected: null,
+          execution_time_ms: 0,
+        };
+      },
+      cancel: async () => false,
+    };
+  }
+
+  test("a new preview sends its savepoint only after the previous release finished", async () => {
+    const log: string[] = [];
+    const gate = deferredVoid();
+    const lifecycle = createPreviewLifecycle();
+    const first = lifecycle.start(plan, fakeExecutor("a", log, gate.promise));
+    const second = lifecycle.start(plan, fakeExecutor("b", log));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(log).toEqual(["a:SAVEPOINT", "a:COUNT", "a:SAMPLE"]);
+    gate.resolve();
+    await Promise.all([first, second]);
+    expect(log).toEqual([
+      "a:SAVEPOINT",
+      "a:COUNT",
+      "a:SAMPLE",
+      "a:RELEASE",
+      "b:SAVEPOINT",
+      "b:COUNT",
+      "b:SAMPLE",
+      "b:RELEASE",
+    ]);
+  });
+
+  test("the confirmed run waits until the release completed", async () => {
+    const log: string[] = [];
+    const gate = deferredVoid();
+    const lifecycle = createPreviewLifecycle();
+    void lifecycle.start(plan, fakeExecutor("a", log, gate.promise));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const settlement = lifecycle.settle(true);
+    expect(settlement.wait).toBe(true);
+    let decided: boolean | null = null;
+    void settlement.decision.then((value) => {
+      decided = value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(decided).toBeNull();
+    gate.resolve();
+    await settlement.decision;
+    expect(decided).toBe(true);
+    expect(log.at(-1)).toBe("a:RELEASE");
+    expect(lifecycle.holding()).toBe(false);
+    expect(lifecycle.settle(true).wait).toBe(false);
+  });
+
+  test("a stale finish cannot run after a newer dialog opened", async () => {
+    const gate = deferredVoid();
+    const lifecycle = createPreviewLifecycle();
+    lifecycle.next();
+    void lifecycle.start(plan, fakeExecutor("a", [], gate.promise));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const stale = lifecycle.settle(true);
+    lifecycle.next();
+    gate.resolve();
+    expect(await stale.decision).toBe(false);
+  });
+
+  test("closing the tab resolves pending runs with false and starts nothing new", async () => {
+    const log: string[] = [];
+    const gate = deferredVoid();
+    const lifecycle = createPreviewLifecycle();
+    void lifecycle.start(plan, fakeExecutor("a", log, gate.promise));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const pending = lifecycle.settle(true);
+    lifecycle.dispose();
+    const late = lifecycle.start(plan, fakeExecutor("b", log)).catch((error: unknown) => error);
+    gate.resolve();
+    expect(await pending.decision).toBe(false);
+    expect(isDmlPreviewCancelled(await late)).toBe(true);
+    expect(log.some((entry) => entry.startsWith("b:"))).toBe(false);
   });
 });

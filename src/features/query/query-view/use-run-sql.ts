@@ -10,7 +10,6 @@ import {
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
-import { recordEditorSql } from "@/lib/dml-preview/search-path";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
@@ -158,7 +157,6 @@ export function useRunSql({
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
         setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
-        recordEditorSql(connection.id, database ?? null, sql, connection.kind);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
         const message = String(err);

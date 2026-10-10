@@ -23,10 +23,10 @@ const {
   startMultiTargetRun,
   TARGET_COLUMN,
 } = await import("../src/lib/multi-target");
-const { multiTargetExecutor, schemaScopedConnectionString, targetStatements } = await import(
+const { multiTargetExecutor, schemaScopedConnectionString } = await import(
   "../src/lib/multi-target/executor"
 );
-const { LATE_CANCEL_NOTICE, UNSUPPORTED_CANCEL_NOTICE } = await import(
+const { FAILED_AFTER_CANCEL_NOTICE, LATE_CANCEL_NOTICE } = await import(
   "../src/lib/multi-target/run"
 );
 const { OTHER_FAMILY_REASON } = await import("../src/lib/multi-target/safety");
@@ -149,7 +149,6 @@ describe("run orchestration", () => {
           return result(["n"], [{ n: 1 }]);
         },
         cancel: async () => false,
-        canCancel: () => false,
       },
       onUpdate: (run) => updates.set(run.id, run),
     });
@@ -185,7 +184,6 @@ describe("run orchestration", () => {
           pending.set(jobId, entry);
           return entry.promise;
         },
-        canCancel: () => true,
         cancel: async (_target, jobId) => {
           cancelled.push(jobId);
           pending.get(jobId)?.reject(new Error("canceling statement due to user request"));
@@ -221,7 +219,6 @@ describe("run orchestration", () => {
           gates.set(target.id, entry);
           return entry.promise;
         },
-        canCancel: () => true,
         cancel: async () => {
           gates.get(targets[1].id)?.reject(new Error("abgebrochen"));
           return true;
@@ -257,7 +254,6 @@ describe("run orchestration", () => {
           return result(["n"], []);
         },
         cancel: async () => false,
-        canCancel: () => false,
       },
       onUpdate: (run) => updates.set(run.id, run),
     }).done;
@@ -478,53 +474,6 @@ describe("review fixes", () => {
     expect(gate.rejected).toEqual([{ target: multiTarget("pg"), reason: OTHER_FAMILY_REASON }]);
   });
 
-  test("a cancel that cannot stop the statement reports the real outcome", async () => {
-    for (const supported of [false, true]) {
-      const updates = new Map<string, TargetRun>();
-      const gate = deferred<QueryResult>();
-      const target = multiTarget("c1", "db");
-      const handle = startMultiTargetRun({
-        targets: [target],
-        sql: "UPDATE t SET a = 1",
-        concurrency: 1,
-        perServerLimit: 1,
-        timeoutSeconds: 30,
-        maxRows: 10,
-        executor: {
-          execute: () => gate.promise,
-          cancel: async () => supported,
-          canCancel: () => supported,
-        },
-        onUpdate: (run) => updates.set(run.id, run),
-      });
-      await tick();
-      handle.cancelAll();
-      gate.resolve({ ...result([], []), rows_affected: 4 });
-      await handle.done;
-      expect(updates.get(target.id)).toMatchObject({
-        status: "done",
-        rowsAffected: 4,
-        notice: supported ? LATE_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE,
-      });
-    }
-  });
-
-  test("Oracle scripts are split into one call per statement on every target", async () => {
-    const ora = connection("ora", { kind: "oracle", connectionString: "oracle://app@ora:1521/XE" });
-    useConnectionsStore.setState({ connections: [ora] });
-    expect(targetStatements("UPDATE a SET x = 1;\nUPDATE b SET y = 2;", "oracle")).toHaveLength(2);
-    expect(targetStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", "postgres")).toHaveLength(1);
-    invocations.length = 0;
-    await multiTargetExecutor(true, async () => ora).execute({
-      target: multiTarget("ora"),
-      sql: "UPDATE a SET x = 1;\nUPDATE b SET y = 2;",
-      jobId: "job-ora",
-      timeoutSeconds: 10,
-      maxRows: 10,
-    });
-    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(2);
-  });
-
   test("the merged view waits for the run to finish before merging", () => {
     const items = [{ id: "a", label: "A" }];
     const runs = {
@@ -574,47 +523,46 @@ describe("second review fixes", () => {
     expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(0);
   });
 
-  test("split Oracle statements share one session and report partial progress", async () => {
+  test("Oracle scripts go to the backend as one call; its adapter splits them on one session", async () => {
     useConnectionsStore.setState({ connections: [ora] });
     invocations.length = 0;
-    const updates = new Map<string, TargetRun>();
-    const target = multiTarget("ora2");
-    await startMultiTargetRun({
-      targets: [target],
-      sql: "UPDATE a SET x = 1;\nUPDATE FAIL SET y = 2;\nUPDATE c SET z = 3;",
-      concurrency: 1,
-      perServerLimit: 1,
+    const script = "UPDATE a SET x = 1;\nUPDATE b SET y = 2;";
+    await multiTargetExecutor(true, async () => ora).execute({
+      target: multiTarget("ora2"),
+      sql: script,
+      jobId: "job-ora",
       timeoutSeconds: 10,
       maxRows: 10,
-      executor: multiTargetExecutor(true, async () => ora),
-      onUpdate: (run) => updates.set(run.id, run),
-    }).done;
-    const calls = invocations.filter((entry) => entry.command === "execute_query");
-    expect(calls).toHaveLength(2);
-    const sessions = new Set(calls.map((entry) => entry.args.session));
-    expect(sessions.size).toBe(1);
-    expect([...sessions][0]).toBeString();
-    expect(updates.get(target.id)).toMatchObject({
-      status: "error",
-      partial: { applied: 1, total: 3 },
     });
-    expect(updates.get(target.id)?.notice).toContain("1 von 3");
+    const calls = invocations.filter((entry) => entry.command === "execute_query");
+    expect(calls.map((entry) => entry.args.sql)).toEqual([script]);
+    expect(calls[0].args.session).toBeUndefined();
   });
 
-  test("cancel support comes from the capability, not from the cancel answer", async () => {
-    const pg = connection("pg2");
-    const my = connection("my2", { kind: "mysql", connectionString: "mysql://app@my2/app" });
-    useConnectionsStore.setState({ connections: [pg, my] });
-    const executor = multiTargetExecutor(false, async (id) => (id === "pg2" ? pg : my));
-    expect(executor.canCancel(multiTarget("pg2"))).toBe(true);
-    expect(executor.canCancel(multiTarget("my2"))).toBe(false);
-    for (const supported of [true, false]) {
+  test("a target counts as cancelled only when the cancel took effect", async () => {
+    const cases = [
+      { requested: true, accepted: true, message: "network reset", expected: "cancelled" },
+      {
+        requested: true,
+        accepted: false,
+        message: "ERROR: canceling statement due to user request (SQLSTATE 57014)",
+        expected: "cancelled",
+      },
+      { requested: true, accepted: false, message: "deadlock detected", expected: "error" },
+      {
+        requested: false,
+        accepted: false,
+        message: "ORA-01013: user requested cancel of current operation",
+        expected: "error",
+      },
+    ] as const;
+    for (const entry of cases) {
       const updates = new Map<string, TargetRun>();
       const gate = deferred<QueryResult>();
       const target = multiTarget("c9");
       const handle = startMultiTargetRun({
         targets: [target],
-        sql: "SELECT pg_sleep(10)",
+        sql: "UPDATE t SET a = 1",
         concurrency: 1,
         perServerLimit: 1,
         timeoutSeconds: 30,
@@ -622,17 +570,45 @@ describe("second review fixes", () => {
         executor: {
           execute: () => gate.promise,
           cancel: async () => {
-            gate.reject(new Error("canceling statement due to user request"));
-            return undefined;
+            gate.reject(new Error(entry.message));
+            return entry.accepted;
           },
-          canCancel: () => supported,
         },
         onUpdate: (run) => updates.set(run.id, run),
       });
       await tick();
-      handle.cancelAll();
+      if (entry.requested) handle.cancelAll();
+      else gate.reject(new Error(entry.message));
       await handle.done;
-      expect(updates.get(target.id)?.status).toBe(supported ? "cancelled" : "error");
+      const run = updates.get(target.id);
+      expect(run?.status).toBe(entry.expected);
+      if (entry.requested && entry.expected === "error")
+        expect(run?.notice).toBe(FAILED_AFTER_CANCEL_NOTICE);
     }
+  });
+
+  test("a statement that finished despite the cancel is reported as done", async () => {
+    const updates = new Map<string, TargetRun>();
+    const gate = deferred<QueryResult>();
+    const target = multiTarget("c8");
+    const handle = startMultiTargetRun({
+      targets: [target],
+      sql: "UPDATE t SET a = 1",
+      concurrency: 1,
+      perServerLimit: 1,
+      timeoutSeconds: 30,
+      maxRows: 10,
+      executor: { execute: () => gate.promise, cancel: async () => false },
+      onUpdate: (run) => updates.set(run.id, run),
+    });
+    await tick();
+    handle.cancelAll();
+    gate.resolve({ ...result([], []), rows_affected: 4 });
+    await handle.done;
+    expect(updates.get(target.id)).toMatchObject({
+      status: "done",
+      rowsAffected: 4,
+      notice: LATE_CANCEL_NOTICE,
+    });
   });
 });

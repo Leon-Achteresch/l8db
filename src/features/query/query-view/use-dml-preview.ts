@@ -3,17 +3,15 @@ import { toast } from "sonner";
 import {
   autoPreviewApplies,
   type DmlPreviewDerivation,
-  type DmlPreviewExecutor,
   type DmlPreviewOutcome,
   type DmlPreviewPhase,
   deriveDmlPreview,
   hasBindParameters,
   isDmlPreviewCancelled,
   needsDmlPreview,
-  previewReleased,
-  runDmlPreview,
 } from "@/lib/dml-preview";
 import { dmlPreviewExecutor } from "@/lib/dml-preview/executor";
+import { createPreviewLifecycle, type PreviewLifecycle } from "@/lib/dml-preview/lifecycle";
 import { isProduction } from "@/lib/environments";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -42,8 +40,9 @@ export function useDmlPreview(
   const [state, setState] = useState<DmlPreviewState | null>(null);
   const resolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const settledRef = useRef<Promise<void>>(Promise.resolve());
-  const executorRef = useRef<DmlPreviewExecutor | null>(null);
+  const lifecycleRef = useRef<PreviewLifecycle | null>(null);
+  lifecycleRef.current ??= createPreviewLifecycle();
+  const lifecycle = lifecycleRef.current;
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -52,31 +51,30 @@ export function useDmlPreview(
 
   const finish = useCallback(
     (accepted: boolean) => {
-      const pending = previewReleased(executorRef.current, settledRef.current);
+      const token = lifecycle.current();
+      const settlement = lifecycle.settle(accepted);
       abort();
       const resolve = resolverRef.current;
       resolverRef.current = null;
-      if (!pending) {
-        setState(null);
-        resolve?.(accepted);
-        return;
-      }
-      setState((current) => (current ? { ...current, phase: null, closing: true } : current));
-      void pending.then(() => {
-        setState(null);
-        resolve?.(accepted);
+      if (settlement.wait)
+        setState((current) => (current ? { ...current, phase: null, closing: true } : current));
+      else setState(null);
+      void settlement.decision.then((decision) => {
+        if (settlement.wait && lifecycle.current() === token) setState(null);
+        resolve?.(decision);
       });
     },
-    [abort],
+    [abort, lifecycle],
   );
 
   useEffect(
     () => () => {
+      lifecycle.dispose();
       abortRef.current?.abort();
       resolverRef.current?.(false);
       resolverRef.current = null;
     },
-    [],
+    [lifecycle],
   );
 
   const open = useCallback(
@@ -101,6 +99,8 @@ export function useDmlPreview(
           : derived;
       abort();
       resolverRef.current?.(false);
+      resolverRef.current = null;
+      lifecycle.next();
       const ready = derivation.status === "ready";
       setState({
         derivation,
@@ -117,17 +117,12 @@ export function useDmlPreview(
         const controller = new AbortController();
         abortRef.current = controller;
         const executor = dmlPreviewExecutor(connection, database, settings.dmlPreviewTimeout);
-        executorRef.current = executor;
-        const running = runDmlPreview(derivation, executor, {
+        const running = lifecycle.start(derivation, executor, {
           signal: controller.signal,
           onPhase: (phase) =>
             !controller.signal.aborted &&
             setState((current) => (current ? { ...current, phase } : current)),
         });
-        settledRef.current = running.then(
-          () => undefined,
-          () => undefined,
-        );
         running.then(
           (outcome) => {
             if (controller.signal.aborted) return;
@@ -151,7 +146,7 @@ export function useDmlPreview(
         resolverRef.current = resolve;
       });
     },
-    [connection, database, abort],
+    [connection, database, abort, lifecycle],
   );
 
   const confirmBeforeRun = useCallback(
