@@ -515,7 +515,9 @@ fn check_href(value: &Value) -> Result<String, String> {
     let href = value.as_str().map(str::trim).unwrap_or("");
     let ok = href.len() > "https://".len()
         && href.len() <= MAX_HREF
-        && href.starts_with("https://")
+        && href
+            .get(.."https://".len())
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
         && !href
             .chars()
             .any(|c| c.is_whitespace() || c.is_control() || "\"'<>".contains(c));

@@ -23,6 +23,7 @@ import {
   datasetMarginSql,
   datasetSql,
   datasetTotalsSql,
+  datasetTrendSql,
   emptyDataset,
   interpolateText,
   joinId,
@@ -37,6 +38,7 @@ import {
   themeCss,
   themeShowsHeader,
   useCrossFilterStore,
+  variableLiteral,
   type Widget,
   widgetsOnPage,
 } from "../src/lib/dashboards";
@@ -1070,5 +1072,50 @@ describe("Verwaiste Filter und Oracle-Sitzungsformat", () => {
       "all",
     );
     expect(sql).toContain(`"created_at" = '2024-03-01 10:30:00'`);
+  });
+});
+
+describe("Zweite Abschlussrunde", () => {
+  test("Expertenauswahlen erreichen keine Baukasten-Charts über Aliase", () => {
+    const source = expert(
+      "SELECT region AS r, COUNT(*) AS umsatz FROM orders GROUP BY region",
+      "r",
+    );
+    const field = crossField(source, DIM_KEY);
+    if (!field) throw new Error("Feld fehlt");
+    const builder = simple("orders", "status");
+    const filter: CrossFilter = { widgetId: "a", key: DIM_KEY, field, value: "EU", label: "x" };
+    expect(applyCrossFilters(builder, [filter], "b")).toBe(builder);
+  });
+
+  test("SQL Server: Trend über CTE und ORDER BY sowie UNION mit ORDER BY", () => {
+    const dataset = expert("WITH x AS (SELECT d, n FROM t) SELECT d, n FROM x ORDER BY d", "d");
+    dataset.mapping = { dimension: null, dimension2: null, metrics: ["n"], dateColumn: "d" };
+    const trend = datasetTrendSql(dataset, "mssql", "30d");
+    expect(trend.startsWith("WITH x AS (SELECT d, n FROM t),\nl8db_q AS (")).toBe(true);
+    expect(trend).toContain("l8db_t AS (\nSELECT * FROM l8db_q AS q WHERE");
+    expect(trend).not.toContain("FROM (\nWITH");
+    const ordered = expert("SELECT d, n FROM t ORDER BY d", "d");
+    ordered.mapping = { dimension: null, dimension2: null, metrics: ["n"], dateColumn: "d" };
+    expect(datasetTrendSql(ordered, "mssql", "all")).toContain(
+      "SELECT TOP 2147483647 d, n FROM t ORDER BY d",
+    );
+    const union = expert("SELECT a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
+    expect(datasetDetailSql(union, [], "mssql", "all")).toContain(
+      "SELECT TOP 2147483647 * FROM (\nSELECT a FROM t UNION ALL SELECT a FROM u\n) AS l8db_u ORDER BY a",
+    );
+  });
+
+  test("DSN-ODBC setzt Backslash-Werte aus Filtern und Variablen nie ein", () => {
+    const dataset = simple("orders", "region");
+    dataset.simple.filters = [
+      { id: "f", column: "status", operator: "eq", value: "x\\' OR 1=1 -- " },
+    ];
+    const sql = datasetSql(dataset, "odbc", "all");
+    expect(sql).toContain("1 = 0");
+    expect(sql).not.toContain("OR 1=1");
+    const variable = { id: "v", name: "q", label: "q", type: "text" as const, defaultValue: "" };
+    expect(variableLiteral(variable, "x\\' OR 1=1 -- ", "odbc")).toBe("NULL");
+    expect(variableLiteral(variable, "Nord", "odbc")).toBe("'Nord'");
   });
 });

@@ -371,6 +371,7 @@ export function buildSimpleSql(
       const name = filterVariable(f.value);
       const value = name === null ? f.value : scopeValue(scope, name);
       if (value === null || (name !== null && !value.trim())) return null;
+      if (kind === "odbc" && value.includes("\\")) return "1 = 0";
       return compileConditionExpression(
         refExpr(f.column, ds, style),
         f.operator,
@@ -614,5 +615,11 @@ export function datasetTrendSql(
   const q = (name: string) => quoteIdentifier(name, style);
   const dim = bucketExpr(`t.${q(date)}`, bucket, kind);
   const metrics = ds.mapping.metrics.map((m) => `SUM(t.${q(m)}) AS ${q(m)}`);
-  return `SELECT ${dim} AS ${q(DIM_KEY)}, ${metrics.join(", ")} FROM (\n${base}\n) ${kind === "oracle" ? "" : "AS "}t GROUP BY ${dim} ORDER BY 1`;
+  const select = `SELECT ${dim} AS ${q(DIM_KEY)}, ${metrics.join(", ")}`;
+  if (kind === "mssql") {
+    const parts = serverSqlParts(base);
+    const head = parts.ctes ? `${parts.ctes},\n` : "WITH ";
+    return `${head}l8db_t AS (\n${parts.body}\n)\n${select} FROM l8db_t AS t GROUP BY ${dim} ORDER BY 1`;
+  }
+  return `${select} FROM (\n${base}\n) ${kind === "oracle" ? "" : "AS "}t GROUP BY ${dim} ORDER BY 1`;
 }
