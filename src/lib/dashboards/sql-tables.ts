@@ -3,7 +3,7 @@ import type { DatabaseKind } from "@/lib/db";
 interface TableToken {
   word: string | null;
   ident: string | null;
-  mark: "(" | ")" | "," | "." | null;
+  mark: "(" | ")" | "," | "." | "[" | "]" | "number" | null;
 }
 
 const ENDS_FROM = new Set([
@@ -32,9 +32,27 @@ const BACKSLASH_KINDS = new Set<DatabaseKind>(["mysql", "clickhouse", "bigquery"
 const NESTED_COMMENT_KINDS = new Set<DatabaseKind>(["postgres", "mssql", "duckdb", "clickhouse"]);
 const HASH_COMMENT_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
 const STRING_DOUBLE_QUOTE_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
-const SUBSCRIPT_BEFORE = /[\p{L}\p{M}\p{N}_$\])]/u;
-const KEYWORD_BEFORE =
-  /(?:^|[^\p{L}\p{M}\p{N}_$.]|(?<![\p{L}\p{M}_$"`\]])\.)(?:from|join|as|on|into|update|table|select)$/iu;
+const BRACKET_KEYWORDS = new Set([
+  "from",
+  "join",
+  "as",
+  "on",
+  "into",
+  "update",
+  "table",
+  "select",
+  "where",
+  "and",
+  "or",
+  "by",
+  "distinct",
+  "top",
+  "case",
+  "when",
+  "then",
+  "else",
+]);
+const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
@@ -61,10 +79,15 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const brackets = kind === null || BRACKET_KINDS.has(kind);
   const arrays = kind === null || kind === "odbc";
   const escapedIdentifiers = kind !== null && ESCAPED_IDENTIFIER_KINDS.has(kind);
-  const subscript = (at: number) =>
-    arrays &&
-    SUBSCRIPT_BEFORE.test(sql[at - 1] ?? "") &&
-    !KEYWORD_BEFORE.test(sql.slice(Math.max(0, at - 12), at));
+  const subscript = (at: number) => {
+    if (!arrays || /\s/.test(sql[at - 1] ?? " ")) return false;
+    const last = tokens[tokens.length - 1];
+    if (!last) return false;
+    if (last.mark === ")" || last.mark === "]") return true;
+    if (last.ident === null) return false;
+    const field = tokens[tokens.length - 2]?.mark === ".";
+    return field || last.word === null || !BRACKET_KEYWORDS.has(last.word);
+  };
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
@@ -108,9 +131,13 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
         .join(close);
       tokens.push({ word: null, ident: text.toLowerCase(), mark: null });
       i = end;
-    } else if (c === "(" || c === ")" || c === "," || c === ".") {
+    } else if (c === "(" || c === ")" || c === "," || c === "." || c === "[" || c === "]") {
       tokens.push({ word: null, ident: null, mark: c });
       i++;
+    } else if (/\d/.test(c)) {
+      const length = sql.slice(i, i + 64).match(NUMBER)?.[0].length || 1;
+      tokens.push({ word: null, ident: null, mark: "number" });
+      i += length;
     } else if (WORD_START.test(c)) {
       const start = i++;
       while (i < sql.length && WORD_PART.test(sql[i])) i++;

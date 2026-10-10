@@ -49,7 +49,8 @@ before the dashboard's own CSS.
   names and parenthesized join lists; comments (nested for PostgreSQL, SQL Server, DuckDB
   and ClickHouse, `#` for MySQL and BigQuery), string literals (double-quoted strings
   for MySQL and BigQuery, backslash escapes for MySQL, ClickHouse, BigQuery and
-  Snowflake; brackets directly after a name or `)` are array subscripts), Oracle q-quoted and dollar-quoted literals are ignored).
+  Snowflake; for ODBC and unknown dialects a bracket directly after a name, a field access, `)` or
+  `]` is an array subscript, after a keyword it is a bracket identifier), Oracle q-quoted and dollar-quoted literals are ignored).
   Tokens are cached for the 64 most recently used statements. List-valued dimension values are
   not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.
@@ -81,8 +82,8 @@ widgets, a 60 × 40 pivot, a theme with a 512 KiB logo, 1,000 selection toggles 
 query count of exact pivot totals (60 pivots over 12 datasets: 48 distinct queries,
 p95 2 ms to build) and source-table detection in 12.7 KB of expert SQL with 800
 references (cold median 0.9 ms / p95 1.1 ms, cached median 0.08 ms; the earlier regex
-version needed 316 ms). The ODBC subscript path grows linearly (11 KB median 2.6 ms,
-47 KB median 10.6 ms, growth 4.1× for 4.2× input) and the token cache stays at 64
+version needed 316 ms). The ODBC subscript path grows linearly (11 KB median 1.8 ms,
+47 KB median 4.3 ms / p95 13.9 ms for 4.2× input) and the token cache stays at 64
 statements.
 Measured on Linux x86_64 (QEMU VM, 8 vCPU, 15 GB RAM, Bun 1.3.10): fan-out median
 1.7 ms / p95 2.5 ms with 40 of 60 queries rebuilt and 20 untouched; pivot render median
