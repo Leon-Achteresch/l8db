@@ -75,6 +75,9 @@ export interface ChatContextDeps {
   database: string | null;
   defaultSchema: string | null;
   tabSql: string | null;
+  tabTitle?: string;
+  tabSelection?: string | null;
+  recentContext?: string[];
   history: QueryHistoryEntry[];
   shareValues: boolean;
 }
@@ -133,6 +136,18 @@ function historyLines(entries: QueryHistoryEntry[], connectionId: string | null)
     .join("\n");
 }
 
+function editorTabSection(deps: ChatContextDeps): string {
+  if (deps.tabSql === null) return "Current editor tab: no query tab open.";
+  const title = deps.tabTitle ? ` "${deps.tabTitle}"` : "";
+  const where = deps.tabSelection ? `, ${deps.tabSelection}` : "";
+  const head = `Current editor tab${title}${where}. The user works in this tab; apply SQL changes there with the editor tool.`;
+  if (!deps.tabSql.trim()) return `${head}\nThe tab is empty.`;
+  const body = `\`\`\`sql\n${cap(redactSecrets(deps.tabSql))}\n\`\`\``;
+  if (deps.recentContext?.some((context) => context.includes(body)))
+    return `${head}\nIts SQL is unchanged since an earlier message in this conversation.`;
+  return `${head}\n${body}`;
+}
+
 export async function resolveChatContext(
   items: ChatContextItem[],
   deps: ChatContextDeps,
@@ -167,11 +182,7 @@ export async function resolveChatContext(
         )}`,
       );
     } else if (item.kind === "tab") {
-      sections.push(
-        deps.tabSql?.trim()
-          ? `Current editor tab:\n\`\`\`sql\n${cap(redactSecrets(deps.tabSql))}\n\`\`\``
-          : "Current editor tab: no query tab open.",
-      );
+      sections.push(editorTabSection(deps));
     } else if (item.kind === "sql" && item.sql?.trim()) {
       sections.push(
         `SQL from the editor (${item.label}):\n\`\`\`sql\n${cap(redactSecrets(item.sql.trim()))}\n\`\`\``,
