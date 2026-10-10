@@ -6,6 +6,7 @@ export interface DmlPreviewExecutor {
   cancel: (jobId: string) => Promise<unknown>;
   open?: () => Promise<void>;
   close?: (failed: boolean) => Promise<void>;
+  holdsTransaction?: () => boolean;
   note?: string | null;
 }
 
@@ -99,4 +100,11 @@ function finished(
     },
     requests,
   };
+}
+
+export function previewReleased(
+  executor: Pick<DmlPreviewExecutor, "holdsTransaction"> | null,
+  settled: Promise<void>,
+): Promise<void> | null {
+  return executor?.holdsTransaction?.() ? settled : null;
 }

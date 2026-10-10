@@ -1,46 +1,31 @@
 import type { SavedConnection } from "@/lib/connections";
 import { cancelExecution } from "@/lib/db/core";
-import type { DatabaseKind } from "@/lib/db/providers";
 import { executeQuery } from "@/lib/db/rows";
 import { executeInTransaction } from "@/lib/db/transactions";
 import { runManagedOperation } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
+import { schemaScopedConnectionString } from "@/lib/schema-scoped-url";
+import { useServerOutputStore } from "@/lib/server-output";
 import { expandSessionViews, sessionViewsFor } from "@/lib/session-views";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { type TransactionSavepoint, transactionSavepoint } from "@/lib/transaction-sql-changes";
 import { getQueryTransaction } from "@/lib/transactions";
 import type { DmlPreviewExecutor } from "./run";
-
-const SAVEPOINT = "l8db_preview";
+import { editorSearchPath } from "./search-path";
 
 export const OUTSIDE_TRANSACTION_NOTE =
   "Die Vorschau läuft außerhalb der offenen Transaktion und sieht deren noch nicht festgeschriebene Änderungen nicht.";
 
-export interface PreviewSavepoint {
-  begin: string;
-  rollback: string;
-  release: string | null;
+export function previewSavepoint(kind: SavedConnection["kind"]): TransactionSavepoint | null {
+  return transactionSavepoint(kind, "l8db_preview");
 }
 
-export function previewSavepoint(kind: DatabaseKind): PreviewSavepoint | null {
-  if (["postgres", "mysql", "sqlite", "sqlite_http", "duckdb"].includes(kind))
-    return {
-      begin: `SAVEPOINT ${SAVEPOINT}`,
-      rollback: `ROLLBACK TO SAVEPOINT ${SAVEPOINT}`,
-      release: `RELEASE SAVEPOINT ${SAVEPOINT}`,
-    };
-  if (kind === "oracle")
-    return {
-      begin: `SAVEPOINT ${SAVEPOINT}`,
-      rollback: `ROLLBACK TO SAVEPOINT ${SAVEPOINT}`,
-      release: null,
-    };
-  if (kind === "mssql")
-    return {
-      begin: `SAVE TRANSACTION ${SAVEPOINT}`,
-      rollback: `ROLLBACK TRANSACTION ${SAVEPOINT}`,
-      release: null,
-    };
-  return null;
+export function previewConnectionString(connection: SavedConnection, database: string | null) {
+  const url = effectiveConnectionString(connection);
+  if (!supports(connection, "multi_target_schemas")) return url;
+  if (!useServerOutputStore.getState().enabled[connection.id]) return url;
+  const path = editorSearchPath(connection.id, database);
+  return path ? schemaScopedConnectionString(url, path) : url;
 }
 
 export function dmlPreviewExecutor(
@@ -57,42 +42,58 @@ export function dmlPreviewExecutor(
   });
   const views = sessionViewsFor(connection.id, database);
   const expand = (sql: string) => expandSessionViews(sql, views, connection.kind);
-  const transaction = getQueryTransaction(connection.id, database);
-  const savepoint = transaction ? previewSavepoint(connection.kind) : null;
-  let inTransaction = Boolean(transaction && savepoint);
-  const inTx = (sql: string) =>
-    transaction
-      ? runManagedOperation(transaction.txId, () =>
-          executeInTransaction(transaction.txId, sql, options(crypto.randomUUID())),
-        )
-      : Promise.reject(new Error("Keine Transaktion offen."));
+  let txId: string | null = null;
+  let savepoint: TransactionSavepoint | null = null;
+  let opening = false;
+  const internal = (id: string, sql: string, jobId: string = crypto.randomUUID()) =>
+    runManagedOperation(id, () => executeInTransaction(id, sql, options(jobId)), {
+      recordError: false,
+    });
+  const stillOpen = (id: string) => getQueryTransaction(connection.id, database)?.txId === id;
   const executor: DmlPreviewExecutor = {
-    note: transaction && !savepoint ? OUTSIDE_TRANSACTION_NOTE : null,
+    note: null,
+    holdsTransaction: () => opening || savepoint !== null,
     open: async () => {
-      if (!inTransaction || !savepoint) return;
-      try {
-        await inTx(savepoint.begin);
-      } catch {
-        inTransaction = false;
+      const transaction = getQueryTransaction(connection.id, database);
+      if (!transaction) return;
+      const statements = previewSavepoint(connection.kind);
+      if (!statements) {
         executor.note = OUTSIDE_TRANSACTION_NOTE;
+        return;
+      }
+      opening = true;
+      try {
+        await internal(transaction.txId, statements.begin);
+        txId = transaction.txId;
+        savepoint = statements;
+      } catch {
+        executor.note = OUTSIDE_TRANSACTION_NOTE;
+      } finally {
+        opening = false;
       }
     },
     close: async (failed) => {
-      if (!inTransaction || !savepoint) return;
-      if (failed) await inTx(savepoint.rollback).catch(() => undefined);
-      if (savepoint.release) await inTx(savepoint.release).catch(() => undefined);
+      const id = txId;
+      const statements = savepoint;
+      txId = null;
+      savepoint = null;
+      if (!id || !statements || !stillOpen(id)) return;
+      if (failed) await internal(id, statements.rollback).catch(() => undefined);
+      if (statements.release) await internal(id, statements.release).catch(() => undefined);
     },
     execute: (sql, jobId) => {
-      if (inTransaction && transaction)
-        return runManagedOperation(transaction.txId, () =>
-          executeInTransaction(transaction.txId, expand(sql), options(jobId)),
-        );
+      if (txId && savepoint && !stillOpen(txId)) {
+        txId = null;
+        savepoint = null;
+        executor.note = OUTSIDE_TRANSACTION_NOTE;
+      }
+      if (txId && savepoint) return internal(txId, expand(sql), jobId);
       return executeQuery(
         connection.kind,
-        effectiveConnectionString(connection),
+        previewConnectionString(connection, database),
         expand(sql),
         database ?? undefined,
-        options(jobId),
+        { ...options(jobId), pooled: true },
       );
     },
     cancel: (jobId) =>

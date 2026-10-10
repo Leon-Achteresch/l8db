@@ -5,6 +5,8 @@ const invocations: { command: string; args: Record<string, unknown> }[] = [];
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
     invocations.push({ command, args });
+    if (command === "execute_query" && String(args.sql).includes("FAIL"))
+      throw new Error("ORA-00942: table or view does not exist");
     if (command === "execute_query")
       return { columns: ["n"], rows: [{ n: 1 }], rows_affected: null, execution_time_ms: 1 };
     if (command === "cancel_execution") return true;
@@ -147,6 +149,7 @@ describe("run orchestration", () => {
           return result(["n"], [{ n: 1 }]);
         },
         cancel: async () => false,
+        canCancel: () => false,
       },
       onUpdate: (run) => updates.set(run.id, run),
     });
@@ -182,6 +185,7 @@ describe("run orchestration", () => {
           pending.set(jobId, entry);
           return entry.promise;
         },
+        canCancel: () => true,
         cancel: async (_target, jobId) => {
           cancelled.push(jobId);
           pending.get(jobId)?.reject(new Error("canceling statement due to user request"));
@@ -217,6 +221,7 @@ describe("run orchestration", () => {
           gates.set(target.id, entry);
           return entry.promise;
         },
+        canCancel: () => true,
         cancel: async () => {
           gates.get(targets[1].id)?.reject(new Error("abgebrochen"));
           return true;
@@ -252,6 +257,7 @@ describe("run orchestration", () => {
           return result(["n"], []);
         },
         cancel: async () => false,
+        canCancel: () => false,
       },
       onUpdate: (run) => updates.set(run.id, run),
     }).done;
@@ -484,7 +490,11 @@ describe("review fixes", () => {
         perServerLimit: 1,
         timeoutSeconds: 30,
         maxRows: 10,
-        executor: { execute: () => gate.promise, cancel: async () => supported },
+        executor: {
+          execute: () => gate.promise,
+          cancel: async () => supported,
+          canCancel: () => supported,
+        },
         onUpdate: (run) => updates.set(run.id, run),
       });
       await tick();
@@ -539,5 +549,90 @@ describe("review fixes", () => {
     );
     expect(waiting).toContain("sobald alle Ziele fertig sind");
     expect(waiting).not.toContain("data-multi-target-grid");
+  });
+});
+
+describe("second review fixes", () => {
+  const ora = connection("ora2", { kind: "oracle", connectionString: "oracle://app@ora2:1521/XE" });
+
+  test("a cancel during connect never runs the first statement", async () => {
+    useConnectionsStore.setState({ connections: [ora] });
+    invocations.length = 0;
+    const controller = new AbortController();
+    const connecting = deferred<SavedConnection>();
+    const running = multiTargetExecutor(true, () => connecting.promise).execute({
+      target: multiTarget("ora2"),
+      sql: "UPDATE a SET x = 1",
+      jobId: "job-connect",
+      timeoutSeconds: 10,
+      maxRows: 10,
+      signal: controller.signal,
+    });
+    controller.abort();
+    connecting.resolve(ora);
+    expect(isMultiTargetCancelled(await running.catch((error: unknown) => error))).toBe(true);
+    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(0);
+  });
+
+  test("split Oracle statements share one session and report partial progress", async () => {
+    useConnectionsStore.setState({ connections: [ora] });
+    invocations.length = 0;
+    const updates = new Map<string, TargetRun>();
+    const target = multiTarget("ora2");
+    await startMultiTargetRun({
+      targets: [target],
+      sql: "UPDATE a SET x = 1;\nUPDATE FAIL SET y = 2;\nUPDATE c SET z = 3;",
+      concurrency: 1,
+      perServerLimit: 1,
+      timeoutSeconds: 10,
+      maxRows: 10,
+      executor: multiTargetExecutor(true, async () => ora),
+      onUpdate: (run) => updates.set(run.id, run),
+    }).done;
+    const calls = invocations.filter((entry) => entry.command === "execute_query");
+    expect(calls).toHaveLength(2);
+    const sessions = new Set(calls.map((entry) => entry.args.session));
+    expect(sessions.size).toBe(1);
+    expect([...sessions][0]).toBeString();
+    expect(updates.get(target.id)).toMatchObject({
+      status: "error",
+      partial: { applied: 1, total: 3 },
+    });
+    expect(updates.get(target.id)?.notice).toContain("1 von 3");
+  });
+
+  test("cancel support comes from the capability, not from the cancel answer", async () => {
+    const pg = connection("pg2");
+    const my = connection("my2", { kind: "mysql", connectionString: "mysql://app@my2/app" });
+    useConnectionsStore.setState({ connections: [pg, my] });
+    const executor = multiTargetExecutor(false, async (id) => (id === "pg2" ? pg : my));
+    expect(executor.canCancel(multiTarget("pg2"))).toBe(true);
+    expect(executor.canCancel(multiTarget("my2"))).toBe(false);
+    for (const supported of [true, false]) {
+      const updates = new Map<string, TargetRun>();
+      const gate = deferred<QueryResult>();
+      const target = multiTarget("c9");
+      const handle = startMultiTargetRun({
+        targets: [target],
+        sql: "SELECT pg_sleep(10)",
+        concurrency: 1,
+        perServerLimit: 1,
+        timeoutSeconds: 30,
+        maxRows: 10,
+        executor: {
+          execute: () => gate.promise,
+          cancel: async () => {
+            gate.reject(new Error("canceling statement due to user request"));
+            return undefined;
+          },
+          canCancel: () => supported,
+        },
+        onUpdate: (run) => updates.set(run.id, run),
+      });
+      await tick();
+      handle.cancelAll();
+      await handle.done;
+      expect(updates.get(target.id)?.status).toBe(supported ? "cancelled" : "error");
+    }
   });
 });

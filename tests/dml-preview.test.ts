@@ -46,10 +46,13 @@ const {
   normalizeDmlPreviewMode,
   runDmlPreview,
   hasBindParameters,
+  previewReleased,
 } = await import("../src/lib/dml-preview");
-const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewSavepoint } = await import(
-  "../src/lib/dml-preview/executor"
-);
+const { recordEditorSql } = await import("../src/lib/dml-preview/search-path");
+const { useServerOutputStore } = await import("../src/lib/server-output");
+const { editorBindParams } = await import("../src/lib/bind-params");
+const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewConnectionString, previewSavepoint } =
+  await import("../src/lib/dml-preview/executor");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
 type QueryResult = import("../src/lib/db/types").QueryResult;
@@ -449,7 +452,7 @@ describe("executor", () => {
     const queries = invocations.filter((entry) => entry.command === "execute_query");
     expect(queries.map((entry) => entry.args.sql)).toEqual([plan.countSql, plan.sampleSql]);
     for (const entry of queries) {
-      expect(entry.args.pooled).toBeUndefined();
+      expect(entry.args.pooled).toBe(true);
       expect(entry.args.database).toBe("app");
       expect((entry.args.options as Record<string, unknown>).queryTimeout).toBe(7);
       expect(typeof (entry.args.options as Record<string, unknown>).jobId).toBe("string");
@@ -509,7 +512,9 @@ describe("review fixes", () => {
       ],
     });
   const sqlOf = (command: string) =>
-    invocations.filter((entry) => entry.command === command).map((entry) => String(entry.args.sql));
+    invocations
+      .filter((entry) => entry.command === command)
+      .map((entry) => String(entry.args.sql).replace(/l8db_preview_[0-9a-f]{32}/g, "SP"));
 
   test("inside an open transaction the preview is wrapped in a savepoint", async () => {
     openTransaction();
@@ -517,10 +522,10 @@ describe("review fixes", () => {
     const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
     await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10));
     expect(sqlOf("execute_in_transaction")).toEqual([
-      "SAVEPOINT l8db_preview",
+      "SAVEPOINT SP",
       plan.countSql,
       plan.sampleSql,
-      "RELEASE SAVEPOINT l8db_preview",
+      "RELEASE SAVEPOINT SP",
     ]);
     expect(sqlOf("execute_query")).toEqual([]);
     useTransactionStore.setState({ transactions: [] });
@@ -537,10 +542,10 @@ describe("review fixes", () => {
     failing.count = false;
     expect(String(error)).toContain("aborted");
     expect(sqlOf("execute_in_transaction")).toEqual([
-      "SAVEPOINT l8db_preview",
+      "SAVEPOINT SP",
       plan.countSql,
-      "ROLLBACK TO SAVEPOINT l8db_preview",
-      "RELEASE SAVEPOINT l8db_preview",
+      "ROLLBACK TO SAVEPOINT SP",
+      "RELEASE SAVEPOINT SP",
     ]);
     useTransactionStore.setState({ transactions: [] });
   });
@@ -553,9 +558,11 @@ describe("review fixes", () => {
     await runDmlPreview(ready("DELETE FROM t WHERE id > 1", "postgres"), executor);
     failing.savepoint = false;
     expect(executor.note).toBe(OUTSIDE_TRANSACTION_NOTE);
-    expect(sqlOf("execute_in_transaction")).toEqual(["SAVEPOINT l8db_preview"]);
+    expect(sqlOf("execute_in_transaction")).toEqual(["SAVEPOINT SP"]);
     expect(sqlOf("execute_query")).toHaveLength(2);
-    expect(previewSavepoint("mssql")?.begin).toBe("SAVE TRANSACTION l8db_preview");
+    expect(previewSavepoint("mssql")?.begin).toMatch(
+      /^SAVE TRANSACTION l8db_preview_[0-9a-f]{32}$/,
+    );
     expect(previewSavepoint("oracle")?.release).toBeNull();
     expect(previewSavepoint("dynamodb")).toBeNull();
     useTransactionStore.setState({ transactions: [] });
@@ -584,5 +591,85 @@ describe("review fixes", () => {
     expect(hasBindParameters("UPDATE t SET a = $1 WHERE id = $2")).toBe(true);
     expect(hasBindParameters("DELETE FROM t WHERE note = ':id'")).toBe(false);
     expect(hasBindParameters("DELETE FROM t WHERE id = 1")).toBe(false);
+  });
+});
+
+describe("second review fixes", () => {
+  const connection = {
+    id: "dml-preview-tx2",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@tx2.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+  const transaction = (txId: string) => ({
+    txId,
+    connectionId: connection.id,
+    connectionName: "PG",
+    database: "app",
+    scope: { type: "query" as const },
+    changes: [],
+    startedAt: 0,
+  });
+
+  test("a failing preview does not mark the user's transaction as failed", async () => {
+    useTransactionStore.setState({ transactions: [transaction("tx-2")], panelOpen: false });
+    failing.count = true;
+    await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+    ).catch(() => undefined);
+    failing.count = false;
+    const state = useTransactionStore.getState();
+    expect(state.transactions[0].lastError).toBeUndefined();
+    expect(state.panelOpen).toBe(false);
+    useTransactionStore.setState({ transactions: [] });
+  });
+
+  test("DuckDB and sqlite_http have no preview savepoint, names are unique", () => {
+    expect(previewSavepoint("duckdb")).toBeNull();
+    expect(previewSavepoint("sqlite_http")).toBeNull();
+    expect(previewSavepoint("postgres")?.name).not.toBe(previewSavepoint("postgres")?.name);
+  });
+
+  test("a commit during the preview switches to running outside without rollback", async () => {
+    useTransactionStore.setState({ transactions: [transaction("tx-3")] });
+    invocations.length = 0;
+    const executor = dmlPreviewExecutor(connection, "app", 10);
+    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
+    await executor.open?.();
+    useTransactionStore.setState({ transactions: [] });
+    await executor.execute(plan.countSql, "job-a");
+    await executor.close?.(true);
+    expect(executor.note).toBe(OUTSIDE_TRANSACTION_NOTE);
+    const tx = invocations.filter((entry) => entry.command === "execute_in_transaction");
+    expect(tx).toHaveLength(1);
+    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(1);
+  });
+
+  test("the pooled preview applies the editor search_path only for a persistent session", () => {
+    recordEditorSql(connection.id, "app", "SET search_path TO tenant_a, public;", "postgres");
+    expect(previewConnectionString(connection, "app")).toBe(connection.connectionString);
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    expect(previewConnectionString(connection, "app")).toBe(
+      `${connection.connectionString}?schema=tenant_a%2C%20public`,
+    );
+    recordEditorSql(connection.id, "app", "RESET search_path", "postgres");
+    expect(previewConnectionString(connection, "app")).toBe(connection.connectionString);
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+  });
+
+  test("the confirmed run waits only while a savepoint is held", async () => {
+    const settled = new Promise<void>(() => undefined);
+    expect(previewReleased({ holdsTransaction: () => false }, settled)).toBeNull();
+    expect(previewReleased(null, settled)).toBeNull();
+    expect(previewReleased({ holdsTransaction: () => true }, settled)).toBe(settled);
+  });
+
+  test("editor and preview share one bind parameter detection", () => {
+    expect(editorBindParams("UPDATE t SET a = :new WHERE id = :id").map((ref) => ref.name)).toEqual(
+      ["id"],
+    );
+    expect(hasBindParameters("UPDATE t SET a = :new")).toBe(false);
   });
 });

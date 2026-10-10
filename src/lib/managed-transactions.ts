@@ -71,7 +71,11 @@ export function ensureManagedTransaction(
   return pending;
 }
 
-export async function runManagedOperation<T>(txId: string, op: () => Promise<T>): Promise<T> {
+export async function runManagedOperation<T>(
+  txId: string,
+  op: () => Promise<T>,
+  options: { recordError?: boolean } = {},
+): Promise<T> {
   if (useTransactionStore.getState().finalizingTransactions.includes(txId)) {
     throw new Error("Die Transaktion wird gerade abgeschlossen.");
   }
@@ -84,6 +88,7 @@ export async function runManagedOperation<T>(txId: string, op: () => Promise<T>)
   try {
     return await op();
   } catch (error) {
+    if (options.recordError === false) throw error;
     useTransactionStore.setState((state) => ({
       panelOpen: true,
       transactions: state.transactions.map((tx) =>

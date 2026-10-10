@@ -1,4 +1,4 @@
-import { detectBindParams } from "@/lib/bind-params";
+import { editorBindParams } from "@/lib/bind-params";
 import type { DatabaseKind } from "@/lib/db/providers";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
@@ -858,7 +858,7 @@ export function dmlKindOf(statement: string, dialect: string): DmlKind | "cte" |
 }
 
 export function hasBindParameters(sql: string): boolean {
-  return detectBindParams(sql).some((ref) => !/^(new|old)$/i.test(ref.name));
+  return editorBindParams(sql).length > 0;
 }
 
 export function needsDmlPreview(sql: string, dialect: string): boolean {

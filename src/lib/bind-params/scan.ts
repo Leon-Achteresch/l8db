@@ -155,3 +155,7 @@ export function detectBindParams(sql: string): BindParamRef[] {
   const namedRefs = named.map((name) => ({ name, named: true, label: `:${name}` }));
   return [...positionalRefs, ...namedRefs];
 }
+
+export function editorBindParams(sql: string): BindParamRef[] {
+  return detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
+}

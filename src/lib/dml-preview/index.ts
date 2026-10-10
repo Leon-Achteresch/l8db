@@ -21,5 +21,6 @@ export {
   type DmlPreviewOutcome,
   type DmlPreviewPhase,
   isDmlPreviewCancelled,
+  previewReleased,
   runDmlPreview,
 } from "./run";
