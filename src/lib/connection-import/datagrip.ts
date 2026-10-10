@@ -17,6 +17,13 @@ export interface DataGripFile {
 export const DATAGRIP_PASSWORD_HINT =
   "DataGrip speichert Passwörter im JetBrains-Schlüsselbund. Bitte nach dem Import neu eingeben.";
 
+export const DATAGRIP_MISSING_SSH =
+  "SSH-Konfiguration nicht gefunden. Bitte sshConfigs.xml aus dem IDE-Ordner options hinzufügen.";
+
+export function needsDataGripSshConfigs(result: ExternalParseResult): boolean {
+  return result.connections.some((connection) => connection.sshIssue === DATAGRIP_MISSING_SSH);
+}
+
 interface Fragment {
   uuid: string;
   name: string;
@@ -83,8 +90,7 @@ function resolveSsh(
   if (configId && !config)
     return {
       ssh: null,
-      issue:
-        "SSH-Konfiguration nicht gefunden. Bitte sshConfigs.xml aus dem IDE-Ordner options mit auswählen.",
+      issue: DATAGRIP_MISSING_SSH,
     };
   const host = config
     ? attribute(config, "host")

@@ -3,16 +3,22 @@ export {
   endpointKey,
   externalConnectionString,
   persistImportedSecrets,
+  prepareParams,
   resolveExternalImport,
 } from "./build";
-export { decryptDbeaverCredentials, decryptNavicatPassword, hexToBytes } from "./crypto";
+export { decryptDbeaverCredentials, decryptNavicatPassword } from "./crypto";
 export type { DataGripFile } from "./datagrip";
-export { DATAGRIP_PASSWORD_HINT, parseDataGripConfig } from "./datagrip";
+export {
+  DATAGRIP_MISSING_SSH,
+  DATAGRIP_PASSWORD_HINT,
+  needsDataGripSshConfigs,
+  parseDataGripConfig,
+} from "./datagrip";
 export { DBEAVER_CREDENTIALS, DBEAVER_DATA_SOURCES, parseDbeaverConfig } from "./dbeaver";
 export { parseJdbcUrl } from "./jdbc";
 export type { LegacyDecryptor } from "./navicat";
 export { parseNavicatExport } from "./navicat";
-export { dbeaverWorkspaceDirs, fileName, siblingPath } from "./paths";
+export { fileName } from "./paths";
 export { matchProduct, resolveProduct } from "./products";
 export type {
   ExternalConnection,
@@ -21,4 +27,5 @@ export type {
   ExternalImportSummary,
   ExternalParseResult,
   ResolvedExternalImport,
+  SecretAccounts,
 } from "./types";

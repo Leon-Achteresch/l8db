@@ -1,6 +1,11 @@
 import type { ExportedConnection } from "@/lib/connection-export";
-import type { ConnectionEnvironment, SavedConnection, SshAuth } from "@/lib/connections";
-import type { DatabaseKind } from "@/lib/db";
+import type {
+  ConnectionEnvironment,
+  NetworkProxy,
+  SavedConnection,
+  SshAuth,
+} from "@/lib/connections";
+import type { DatabaseKind, SslMode } from "@/lib/db";
 
 export type ExternalImportSource = "dbeaver" | "datagrip" | "navicat";
 
@@ -32,6 +37,9 @@ export interface ExternalConnection {
   srv: boolean;
   ssh: ExternalSsh | null;
   sshIssue: string | null;
+  proxy: NetworkProxy | null;
+  proxySecret: string | null;
+  sslMode: SslMode | null;
   environment: ConnectionEnvironment | null;
   readOnly: boolean;
   issue: string | null;
@@ -53,6 +61,7 @@ export interface ExternalImportCandidate {
   profile: ExportedConnection | null;
   password: string | null;
   sshSecret: string | null;
+  proxySecret: string | null;
   skipReason: string | null;
   warnings: string[];
   missingPassword: boolean;
@@ -63,6 +72,12 @@ export interface ImportedConnectionSecrets {
   id: string;
   password: string | null;
   sshSecret: string | null;
+  proxySecret: string | null;
+}
+
+export interface SecretAccounts {
+  ssh: (id: string) => string;
+  proxy: (id: string) => string;
 }
 
 export interface ExternalImportSummary {
@@ -97,6 +112,9 @@ export function emptyExternalConnection(sourceId: string, name: string): Externa
     srv: false,
     ssh: null,
     sshIssue: null,
+    proxy: null,
+    proxySecret: null,
+    sslMode: null,
     environment: null,
     readOnly: false,
     issue: null,

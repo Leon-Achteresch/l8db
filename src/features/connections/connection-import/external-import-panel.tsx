@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, FileSearch, FolderSearch, Info } from "lucide-react";
+import { AlertTriangle, FilePlus, FileSearch, FolderSearch, Info } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { DialogFooter } from "@/components/ui/dialog";
 import type { DuplicateStrategy } from "@/lib/connection-export";
 import {
   buildExternalCandidates,
+  type DataGripFile,
   type ExternalImportCandidate,
   type ExternalImportSource,
   persistImportedSecrets,
@@ -15,11 +16,12 @@ import {
 } from "@/lib/connection-import";
 import { useConnectionsStore } from "@/lib/connections";
 import { storeSecret } from "@/lib/secrets";
-import { sshSecretAccount } from "@/lib/ssh";
+import { proxySecretAccount, sshSecretAccount } from "@/lib/ssh";
 import { DuplicateStrategyField } from "./duplicate-strategy-field";
 import { ExternalImportRow } from "./external-import-row";
 import { ExternalImportSummary } from "./external-import-summary";
 import {
+  addDataGripSshConfigs,
   detectDbeaverImport,
   type LoadedExternalImport,
   pickExternalImport,
@@ -39,6 +41,8 @@ const PICK_LABEL: Record<ExternalImportSource, string> = {
 export function ExternalImportPanel({ source, onClose }: Props) {
   const [candidates, setCandidates] = useState<ExternalImportCandidate[] | null>(null);
   const [files, setFiles] = useState<string[]>([]);
+  const [dataGripFiles, setDataGripFiles] = useState<DataGripFile[]>([]);
+  const [needsSshConfigs, setNeedsSshConfigs] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -74,6 +78,8 @@ export function ExternalImportPanel({ source, onClose }: Props) {
       return;
     }
     setFiles(loaded.files);
+    setDataGripFiles(loaded.dataGripFiles);
+    setNeedsSshConfigs(loaded.needsSshConfigs);
     setNotice(loaded.result.notice);
     setError(loaded.result.error);
     if (loaded.result.error) {
@@ -119,11 +125,10 @@ export function ExternalImportPanel({ source, onClose }: Props) {
     setBusy(true);
     try {
       const resolved = resolveExternalImport(candidates, selected, strategy);
-      const failures = await persistImportedSecrets(
-        resolved.secrets,
-        storeSecret,
-        sshSecretAccount,
-      );
+      const failures = await persistImportedSecrets(resolved.secrets, storeSecret, {
+        ssh: sshSecretAccount,
+        proxy: proxySecretAccount,
+      });
       if (resolved.connections.length)
         useConnectionsStore.getState().addImported(resolved.connections);
       if (!resolved.connections.length) toast.info("Keine Verbindungen übernommen.");
@@ -173,6 +178,17 @@ export function ExternalImportPanel({ source, onClose }: Props) {
             <FileSearch className="size-4" />
             {PICK_LABEL[source]}
           </Button>
+          {source === "datagrip" && needsSshConfigs && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void run(() => addDataGripSshConfigs(dataGripFiles))}
+            >
+              <FilePlus className="size-4" />
+              sshConfigs.xml hinzufügen
+            </Button>
+          )}
           {files.length > 0 && (
             <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
               {files.join(", ")}

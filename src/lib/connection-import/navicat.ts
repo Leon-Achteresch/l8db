@@ -1,4 +1,5 @@
 import type { SshAuth } from "@/lib/connections";
+import type { SslMode } from "@/lib/db";
 import { decryptNavicatPassword } from "./crypto";
 import { parsePort } from "./jdbc";
 import {
@@ -35,6 +36,22 @@ function productOf(connType: string, serviceProvider: string): ProductMatch | nu
   if (!refined) return base;
   if (refined.kind !== base.kind) return /oceanbase/i.test(serviceProvider) ? null : base;
   return refined;
+}
+
+const PG_SSL_MODES: Record<string, SslMode> = {
+  disable: "disable",
+  allow: "prefer",
+  prefer: "prefer",
+  require: "require",
+  "verify-ca": "verify-ca",
+  "verify-full": "verify-full",
+};
+
+function navicatSslMode(element: XmlElement): SslMode {
+  const pg = PG_SSL_MODES[attribute(element, "SSL_PGSSLMode").toLowerCase().replace(/_/g, "-")];
+  if (pg) return pg;
+  const verify = attribute(element, "SSL_VerifyServerCert", "SSL_VerifyCA", "SSL_VerifyCert");
+  return verify && !truthy(verify) ? "require" : "verify-full";
 }
 
 interface PendingSecret {
@@ -86,9 +103,19 @@ function readConnection(element: XmlElement, index: number, pending: PendingSecr
     }
     connection.oracleSid = attribute(element, "OraServiceNameType").toUpperCase() === "SID";
   }
-  if (truthy(attribute(element, "SSL")) && connection.kind === "postgres") {
-    const mode = attribute(element, "SSL_PGSSLMode").toLowerCase();
-    if (mode) connection.params.push(["sslmode", mode]);
+  if (connection.kind === "mssql") {
+    const instance = connection.host.indexOf("\\");
+    if (instance >= 0) {
+      const name = connection.host.slice(instance + 1).trim();
+      connection.host = connection.host.slice(0, instance).trim();
+      if (name) connection.params.push(["instance", name]);
+    }
+  }
+  if (truthy(attribute(element, "SSL"))) connection.sslMode = navicatSslMode(element);
+  if (truthy(attribute(element, "HTTP"))) {
+    connection.sshIssue =
+      "Navicat-HTTP-Tunnel (ntunnel-Skript) wird nicht unterstützt. Bitte SSH oder einen Proxy einrichten.";
+    return connection;
   }
   if (truthy(attribute(element, "SSH"))) {
     const host = attribute(element, "SSH_Host");
