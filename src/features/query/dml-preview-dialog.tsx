@@ -125,6 +125,10 @@ export function DmlPreviewDialog({
 
           {plan?.note && <p className="text-xs text-muted-foreground">{plan.note}</p>}
 
+          {state?.note && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">{state.note}</p>
+          )}
+
           {plan?.assignments
             .filter((assignment) => !assignment.previewed)
             .map((assignment) => (

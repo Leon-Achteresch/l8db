@@ -4,6 +4,9 @@ import type { DmlPreviewPlan } from "./derive";
 export interface DmlPreviewExecutor {
   execute: (sql: string, jobId: string) => Promise<QueryResult>;
   cancel: (jobId: string) => Promise<unknown>;
+  open?: () => Promise<void>;
+  close?: (failed: boolean) => Promise<void>;
+  note?: string | null;
 }
 
 export type DmlPreviewPhase = "count" | "sample";
@@ -61,18 +64,38 @@ export async function runDmlPreview(
       signal?.removeEventListener("abort", abort);
     }
   };
-  onPhase?.("count");
-  const counted = await step(plan.countSql);
-  const count = countOf(counted);
-  if (count === 0) return { count, sample: emptySample(counted), requests };
-  onPhase?.("sample");
-  const sample = await step(plan.sampleSql);
+  if (signal?.aborted) throw new DmlPreviewCancelled();
+  await executor.open?.();
+  let failed = true;
+  try {
+    onPhase?.("count");
+    const counted = await step(plan.countSql);
+    const count = countOf(counted);
+    if (count === 0) {
+      failed = false;
+      return { count, sample: emptySample(counted), requests };
+    }
+    onPhase?.("sample");
+    const sample = await step(plan.sampleSql);
+    failed = false;
+    return finished(count, sample, plan.limit, requests);
+  } finally {
+    await executor.close?.(failed);
+  }
+}
+
+function finished(
+  count: number | null,
+  sample: QueryResult,
+  limit: number,
+  requests: number,
+): DmlPreviewOutcome {
   return {
     count,
     sample: {
       ...sample,
-      truncated: Boolean(sample.truncated) || sample.rows.length > plan.limit,
-      rows: sample.rows.length > plan.limit ? sample.rows.slice(0, plan.limit) : sample.rows,
+      truncated: Boolean(sample.truncated) || sample.rows.length > limit,
+      rows: sample.rows.length > limit ? sample.rows.slice(0, limit) : sample.rows,
     },
     requests,
   };

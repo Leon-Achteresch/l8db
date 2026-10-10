@@ -21,6 +21,7 @@ export interface QueryExecutionOptions {
   pooled?: boolean;
   queryTimeout?: number;
   maxRows?: number;
+  connectionId?: string;
 }
 
 const SQL_COMMANDS = new Set([

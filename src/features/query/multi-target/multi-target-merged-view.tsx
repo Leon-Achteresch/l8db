@@ -14,21 +14,36 @@ interface MultiTargetMergedViewProps {
   runs: Record<string, TargetRun>;
   kind?: DatabaseKind;
   sql: string | null;
+  running: boolean;
 }
 
-export function MultiTargetMergedView({ items, runs, kind, sql }: MultiTargetMergedViewProps) {
+export function MultiTargetMergedView({
+  items,
+  runs,
+  kind,
+  sql,
+  running,
+}: MultiTargetMergedViewProps) {
   const merged = useMemo(
     () =>
-      mergeResults(
-        items.flatMap((item) => {
-          const result = runs[item.id]?.result;
-          return result ? [{ label: item.label, result }] : [];
-        }),
-      ),
-    [items, runs],
+      running
+        ? null
+        : mergeResults(
+            items.flatMap((item) => {
+              const result = runs[item.id]?.result;
+              return result ? [{ label: item.label, result }] : [];
+            }),
+          ),
+    [items, runs, running],
   );
-  const result = merged.ok ? merged.result : null;
+  const result = merged?.ok ? merged.result : null;
   const exportState = useResultExport(result);
+  if (!merged)
+    return (
+      <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
+        Die Zusammenführung wird erstellt, sobald alle Ziele fertig sind.
+      </div>
+    );
   if (!merged.ok)
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">

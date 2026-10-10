@@ -3,7 +3,7 @@ import { isProduction, isProductionLocked } from "@/lib/environments";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTransactionStore } from "@/lib/transactions";
 
-const IGNORED_PARAMS = new Set(["options", "schema", "search_path", "currentSchema"]);
+const IGNORED_PARAMS = new Set(["options"]);
 
 function connectionIdentity(value: string): string | null {
   let url: URL;
@@ -35,6 +35,13 @@ function guardRank(connection: SavedConnection): number {
   return 3;
 }
 
+function scopedConnectionId(args: Record<string, unknown>): string | null {
+  const options = args.options as { connectionId?: unknown } | null | undefined;
+  return typeof options?.connectionId === "string" && options.connectionId
+    ? options.connectionId
+    : null;
+}
+
 export function operationConnections(
   args: Record<string, unknown>,
   match: "identity" | "exact" = "identity",
@@ -42,8 +49,10 @@ export function operationConnections(
   const tx = useTransactionStore.getState().transactions.find((entry) => entry.txId === args.txId);
   const { connections } = useConnectionsStore.getState();
   if (tx) return connections.filter((entry) => entry.id === tx.connectionId);
+  const scopedId = scopedConnectionId(args);
+  const scoped = scopedId ? connections.filter((entry) => entry.id === scopedId) : [];
   const connectionString = args.connectionString;
-  if (typeof connectionString !== "string" || !connectionString) return [];
+  if (typeof connectionString !== "string" || !connectionString) return scoped;
   const candidates = connections.map((entry) => ({ entry, effective: effectiveOrNull(entry) }));
   const exact = candidates.filter((candidate) => candidate.effective === connectionString);
   const identity = connectionIdentity(connectionString);
@@ -57,9 +66,9 @@ export function operationConnections(
               candidate.effective !== null &&
               identity === connectionIdentity(candidate.effective)),
         );
-  return matches
-    .map((candidate) => candidate.entry)
-    .sort((left, right) => guardRank(left) - guardRank(right));
+  return [...new Set([...scoped, ...matches.map((candidate) => candidate.entry)])].sort(
+    (left, right) => guardRank(left) - guardRank(right),
+  );
 }
 
 export function operationContext(args: Record<string, unknown>) {

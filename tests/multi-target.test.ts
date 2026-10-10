@@ -21,8 +21,18 @@ const {
   startMultiTargetRun,
   TARGET_COLUMN,
 } = await import("../src/lib/multi-target");
-const { multiTargetExecutor, schemaScopedConnectionString } = await import(
+const { multiTargetExecutor, schemaScopedConnectionString, targetStatements } = await import(
   "../src/lib/multi-target/executor"
+);
+const { LATE_CANCEL_NOTICE, UNSUPPORTED_CANCEL_NOTICE } = await import(
+  "../src/lib/multi-target/run"
+);
+const { OTHER_FAMILY_REASON } = await import("../src/lib/multi-target/safety");
+const { renderToStaticMarkup } = await import("react-dom/server");
+const { createElement } = await import("react");
+const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+const { MultiTargetMergedView } = await import(
+  "../src/features/query/multi-target/multi-target-merged-view"
 );
 const { MULTI_TARGET_GROUP_LIMITS, useMultiTargetGroups } = await import(
   "../src/lib/multi-target/groups"
@@ -175,6 +185,7 @@ describe("run orchestration", () => {
         cancel: async (_target, jobId) => {
           cancelled.push(jobId);
           pending.get(jobId)?.reject(new Error("canceling statement due to user request"));
+          return true;
         },
       },
       onUpdate: (run) => updates.set(run.id, run),
@@ -206,7 +217,10 @@ describe("run orchestration", () => {
           gates.set(target.id, entry);
           return entry.promise;
         },
-        cancel: async () => gates.get(targets[1].id)?.reject(new Error("abgebrochen")),
+        cancel: async () => {
+          gates.get(targets[1].id)?.reject(new Error("abgebrochen"));
+          return true;
+        },
       },
       onUpdate: (run) => updates.set(run.id, run),
     });
@@ -335,9 +349,11 @@ describe("executor", () => {
     useConnectionsStore.setState({ connections: [prod] });
     const scoped = schemaScopedConnectionString(prod.connectionString, "tenant_7");
     expect(new URL(scoped).searchParams.get("schema")).toBe("tenant_7");
-    expect(operationConnections({ connectionString: scoped }).map((entry) => entry.id)).toEqual([
-      "prod",
-    ]);
+    expect(
+      operationConnections({ connectionString: scoped, options: { connectionId: "prod" } }).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["prod"]);
   });
 
   test("reads use pooled clients, writes do not; both pass limits and prepare once", async () => {
@@ -403,5 +419,125 @@ describe("saved target groups", () => {
     expect(window.localStorage.getItem("l8db.multi-target-groups")).toContain("Viele");
     useMultiTargetGroups.getState().remove(replaced?.id ?? "");
     expect(useMultiTargetGroups.getState().groups.map((group) => group.name)).toEqual(["Viele"]);
+  });
+});
+
+describe("review fixes", () => {
+  test("schema scoping keeps every other parameter byte for byte", () => {
+    const base =
+      "postgresql://app:p%20w@db:5432/app?sslmode=require&options=-c%20default_transaction_read_only%3Don&application_name=l8db%20app&search_path=old";
+    const scoped = schemaScopedConnectionString(base, "tenant 7");
+    expect(scoped).toBe(
+      "postgresql://app:p%20w@db:5432/app?sslmode=require&options=-c%20default_transaction_read_only%3Don&application_name=l8db%20app&schema=tenant%207",
+    );
+    expect(scoped).not.toContain("+");
+    expect(schemaScopedConnectionString("postgresql://db/app", "s")).toBe(
+      "postgresql://db/app?schema=s",
+    );
+  });
+
+  test("connections that differ only by schema keep separate guards", () => {
+    const dev = connection("dev", {
+      connectionString: "postgresql://app@shared.example.test:5432/app?schema=dev",
+    });
+    const prod = connection("prod", {
+      environment: "production",
+      connectionString: "postgresql://app@shared.example.test:5432/app?schema=prod",
+    });
+    useConnectionsStore.setState({ connections: [dev, prod] });
+    expect(
+      operationConnections({ connectionString: dev.connectionString }).map((entry) => entry.id),
+    ).toEqual(["dev"]);
+    const scopedProd = schemaScopedConnectionString(prod.connectionString, "tenant");
+    expect(operationConnections({ connectionString: scopedProd })).toEqual([]);
+    expect(
+      operationConnections({ connectionString: scopedProd, options: { connectionId: "prod" } }).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["prod"]);
+  });
+
+  test("targets of another database family are rejected", () => {
+    const pg = connection("pg");
+    const my = connection("my", { kind: "mysql", connectionString: "mysql://app@my/app" });
+    const gate = multiTargetGate(
+      "SELECT 1",
+      [
+        { target: multiTarget("pg"), connection: pg },
+        { target: multiTarget("my"), connection: my },
+      ],
+      "mysql",
+    );
+    expect(gate.allowed.map((target) => target.connectionId)).toEqual(["my"]);
+    expect(gate.rejected).toEqual([{ target: multiTarget("pg"), reason: OTHER_FAMILY_REASON }]);
+  });
+
+  test("a cancel that cannot stop the statement reports the real outcome", async () => {
+    for (const supported of [false, true]) {
+      const updates = new Map<string, TargetRun>();
+      const gate = deferred<QueryResult>();
+      const target = multiTarget("c1", "db");
+      const handle = startMultiTargetRun({
+        targets: [target],
+        sql: "UPDATE t SET a = 1",
+        concurrency: 1,
+        perServerLimit: 1,
+        timeoutSeconds: 30,
+        maxRows: 10,
+        executor: { execute: () => gate.promise, cancel: async () => supported },
+        onUpdate: (run) => updates.set(run.id, run),
+      });
+      await tick();
+      handle.cancelAll();
+      gate.resolve({ ...result([], []), rows_affected: 4 });
+      await handle.done;
+      expect(updates.get(target.id)).toMatchObject({
+        status: "done",
+        rowsAffected: 4,
+        notice: supported ? LATE_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE,
+      });
+    }
+  });
+
+  test("Oracle scripts are split into one call per statement on every target", async () => {
+    const ora = connection("ora", { kind: "oracle", connectionString: "oracle://app@ora:1521/XE" });
+    useConnectionsStore.setState({ connections: [ora] });
+    expect(targetStatements("UPDATE a SET x = 1;\nUPDATE b SET y = 2;", "oracle")).toHaveLength(2);
+    expect(targetStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", "postgres")).toHaveLength(1);
+    invocations.length = 0;
+    await multiTargetExecutor(true, async () => ora).execute({
+      target: multiTarget("ora"),
+      sql: "UPDATE a SET x = 1;\nUPDATE b SET y = 2;",
+      jobId: "job-ora",
+      timeoutSeconds: 10,
+      maxRows: 10,
+    });
+    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(2);
+  });
+
+  test("the merged view waits for the run to finish before merging", () => {
+    const items = [{ id: "a", label: "A" }];
+    const runs = {
+      a: {
+        id: "a",
+        status: "done" as const,
+        durationMs: 1,
+        rowCount: 1,
+        rowsAffected: null,
+        truncated: false,
+        error: null,
+        notice: null,
+        result: result(["n"], [{ n: 1 }]),
+      },
+    };
+    const waiting = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(MultiTargetMergedView, { items, runs, sql: "SELECT 1", running: true }),
+      ),
+    );
+    expect(waiting).toContain("sobald alle Ziele fertig sind");
+    expect(waiting).not.toContain("data-multi-target-grid");
   });
 });

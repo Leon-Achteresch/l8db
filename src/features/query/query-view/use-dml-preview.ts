@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-
 import {
   autoPreviewApplies,
   type DmlPreviewDerivation,
   type DmlPreviewOutcome,
   type DmlPreviewPhase,
   deriveDmlPreview,
+  hasBindParameters,
   isDmlPreviewCancelled,
   needsDmlPreview,
   runDmlPreview,
@@ -25,6 +25,7 @@ export interface DmlPreviewState {
   outcome: DmlPreviewOutcome | null;
   error: string | null;
   stopped: boolean;
+  note: string | null;
 }
 
 const BOUND_REASON =
@@ -38,6 +39,7 @@ export function useDmlPreview(
   const [state, setState] = useState<DmlPreviewState | null>(null);
   const resolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const settledRef = useRef<Promise<void>>(Promise.resolve());
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -50,7 +52,7 @@ export function useDmlPreview(
       const resolve = resolverRef.current;
       resolverRef.current = null;
       setState(null);
-      resolve?.(accepted);
+      void settledRef.current.then(() => resolve?.(accepted));
     },
     [abort],
   );
@@ -95,27 +97,37 @@ export function useDmlPreview(
         outcome: null,
         error: null,
         stopped: false,
+        note: null,
       });
       if (derivation.status === "ready") {
         const controller = new AbortController();
         abortRef.current = controller;
         const executor = dmlPreviewExecutor(connection, database, settings.dmlPreviewTimeout);
-        void runDmlPreview(derivation, executor, {
+        const running = runDmlPreview(derivation, executor, {
           signal: controller.signal,
           onPhase: (phase) =>
             !controller.signal.aborted &&
             setState((current) => (current ? { ...current, phase } : current)),
-        }).then(
+        });
+        settledRef.current = running.then(
+          () => undefined,
+          () => undefined,
+        );
+        running.then(
           (outcome) => {
             if (controller.signal.aborted) return;
             abortRef.current = null;
-            setState((current) => (current ? { ...current, phase: null, outcome } : current));
+            setState((current) =>
+              current ? { ...current, phase: null, outcome, note: executor.note ?? null } : current,
+            );
           },
           (error: unknown) => {
             if (isDmlPreviewCancelled(error) && controller.signal.aborted) return;
             abortRef.current = null;
             setState((current) =>
-              current ? { ...current, phase: null, error: String(error) } : current,
+              current
+                ? { ...current, phase: null, error: String(error), note: executor.note ?? null }
+                : current,
             );
           },
         );
@@ -138,7 +150,13 @@ export function useDmlPreview(
     [connection, caps.dml_preview, open],
   );
 
-  const preview = useCallback((sql: string) => open(sql, true, false), [open]);
+  const preview = useCallback(
+    (sql: string) => {
+      const bound = caps.query_language === "sql" && hasBindParameters(sql);
+      return open(sql, true, bound);
+    },
+    [open, caps.query_language],
+  );
 
   const stop = useCallback(() => {
     abort();

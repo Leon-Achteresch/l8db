@@ -97,6 +97,11 @@ export function MultiTargetResultRow({
           Abbrechen
         </Button>
       </div>
+      {run?.notice && (
+        <p className="px-11 pb-2 text-xs text-amber-700 dark:text-amber-400" title={run.notice}>
+          {run.notice}
+        </p>
+      )}
       {run?.error && !expanded && (
         <p className="truncate px-11 pb-2 text-xs text-destructive" title={run.error}>
           {run.error}

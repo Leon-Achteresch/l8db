@@ -6,6 +6,7 @@ export {
   type DmlPreviewUnavailable,
   deriveDmlPreview,
   dmlKindOf,
+  hasBindParameters,
   needsDmlPreview,
 } from "./derive";
 export {
