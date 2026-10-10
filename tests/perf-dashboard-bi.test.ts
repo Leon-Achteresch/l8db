@@ -14,6 +14,7 @@ import {
   datasetMarginSql,
   datasetSql,
   datasetTotalsSql,
+  datasetTrendSql,
   emptyDataset,
   joinId,
   sanitizeTheme,
@@ -378,4 +379,52 @@ test("expert-source cross filters and stale-filter pruning stay cheap across 60 
   expect(reached).toBe(39);
   expect(stale).toBe(0);
   expect(timing.p95Ms).toBeLessThan(25);
+});
+
+test("SQL Server trend queries over CTE expert datasets stay cheap and linear", async () => {
+  const build = (ctes: number, index: number) => {
+    const list = Array.from(
+      { length: ctes },
+      (_, i) => `c${i} AS (SELECT d, n FROM t${i} WHERE x = ${index})`,
+    ).join(",\n");
+    const union = Array.from({ length: ctes }, (_, i) => `SELECT d, n FROM c${i}`).join(
+      " UNION ALL ",
+    );
+    const dataset = {
+      ...emptyDataset(`e${index}`),
+      mode: "expert" as const,
+      sql: `WITH ${list} -- note\n${union} ORDER BY d`,
+      mapping: { dimension: null, dimension2: null, metrics: ["n"], dateColumn: "d" },
+    };
+    return dataset;
+  };
+  const measure = async (ctes: number) => {
+    const datasets = Array.from({ length: 60 }, (_, i) => build(ctes, i));
+    let valid = 0;
+    let run = 0;
+    const timing = await measureScenario(() => {
+      run++;
+      valid = 0;
+      for (const dataset of datasets) {
+        const sql = datasetTrendSql(
+          { ...dataset, sql: `${dataset.sql} -- ${run}` },
+          "mssql",
+          "30d",
+        );
+        if (sql.includes("l8db_t AS (") && !sql.includes("FROM (\nWITH")) valid++;
+      }
+    }, 9);
+    return { ...timing, valid, sqlBytes: datasets[0].sql.length };
+  };
+  const small = await measure(10);
+  const large = await measure(40);
+  await reportScenario("dashboard-mssql-trend", {
+    small,
+    large,
+    growth: large.medianMs / Math.max(small.medianMs, 0.05),
+  });
+  expect(small.valid).toBe(60);
+  expect(large.valid).toBe(60);
+  expect(large.p95Ms).toBeLessThan(150);
+  expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(10);
 });

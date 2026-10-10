@@ -293,17 +293,20 @@ export interface ServerSqlParts {
   body: string;
 }
 
+const QUALIFIER = /(?:\[[^\]]*\]|"[^"]*"|[\p{L}_][\p{L}\p{M}\p{N}_$]*)\s*\.\s*(?=\[|"|[\p{L}_])/gu;
+
 export function serverSqlParts(sql: string): ServerSqlParts {
   const tokens = tokensOf(sql, "mssql");
   const { body } = cteList(tokens);
   const bodyToken = tokens[body];
-  const ctes = body > 0 && bodyToken ? sql.slice(0, bodyToken.start).trimEnd() : "";
+  const ctes = body > 0 && bodyToken ? sql.slice(0, tokens[body - 1].end).trimEnd() : "";
   let text = ctes ? sql.slice(bodyToken.start) : sql;
   const offset = ctes ? bodyToken.start : 0;
   let depth = 0;
   let select = -1;
   let ordered = false;
-  let limited = false;
+  let top = false;
+  let paged = false;
   let combined = false;
   let orderStart = -1;
   for (let index = Math.max(body, 0); index < tokens.length; index++) {
@@ -314,17 +317,19 @@ export function serverSqlParts(sql: string): ServerSqlParts {
     if (token.word === "select" && select < 0) {
       const next = tokens[index + 1];
       select = next?.word === "distinct" || next?.word === "all" ? index + 1 : index;
-      if (tokens[select + 1]?.word === "top") limited = true;
+      if (tokens[select + 1]?.word === "top") top = true;
     } else if (token.word === "union" || token.word === "except" || token.word === "intersect")
       combined = true;
     else if (token.word === "order" && tokens[index + 1]?.word === "by") {
       ordered = true;
       orderStart = token.start - offset;
-    } else if (ordered && (token.word === "offset" || token.word === "fetch")) limited = true;
+    } else if (ordered && (token.word === "offset" || token.word === "fetch")) paged = true;
   }
+  const limited = paged || (top && !combined);
   if (ordered && !limited && combined && orderStart > 0) {
     const set = text.slice(0, orderStart).trimEnd();
-    text = `SELECT TOP 2147483647 * FROM (\n${set}\n) AS l8db_u ${text.slice(orderStart)}`;
+    const order = text.slice(orderStart).replace(QUALIFIER, "");
+    text = `SELECT TOP 2147483647 * FROM (\n${set}\n) AS l8db_u ${order}`;
   } else if (ordered && !limited && select >= 0) {
     const at = tokens[select].end - offset;
     text = `${text.slice(0, at)} TOP 2147483647${text.slice(at)}`;

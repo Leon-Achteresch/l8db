@@ -131,10 +131,7 @@ export function useWidgetInteractions({
       target.getAttribute("data-dim") ?? target.getAttribute("data-active-dim"),
     );
     const dim2 = parseAttr(target.getAttribute("data-dim2"));
-    const scalar = (value: unknown) =>
-      value === null ||
-      (typeof value !== "object" &&
-        !(kind === "odbc" && typeof value === "string" && value.includes("\\")));
+    const scalar = (value: unknown) => value === null || typeof value !== "object";
     const clicked: Pick[] = [
       ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
       ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),

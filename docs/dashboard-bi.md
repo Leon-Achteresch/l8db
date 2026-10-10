@@ -44,13 +44,17 @@ before the dashboard's own CSS.
   (base table or a join) get `column = value`; time buckets compare the bucketed
   expression. Expert SQL charts are wrapped when their mapped dimension has the same
   name and the SQL reads the source table; a selection made in an expert chart carries
-  the tables its SQL reads and only reaches charts that share one of them (builder
-  charts included). Schema-qualified names must match, CTE names never count as
+  the tables its SQL reads and only reaches other expert charts that share one of them
+  (builder charts are not filtered by expert selections, because the expert output
+  column may be an alias). Schema-qualified names must match, CTE names never count as
   tables. On SQL Server, expert SQL with a `WITH` clause is extended by an extra CTE
   instead of being nested, and a top-level `ORDER BY` without `TOP`/`OFFSET` gets
-  `TOP 2147483647` so it is valid inside the wrapper. All dashboard SQL (literals,
+  `TOP 2147483647` so it is valid inside the wrapper; ordered UNION/EXCEPT/INTERSECT
+  queries are wrapped with the ORDER BY outside and its qualifiers removed, and trend
+  queries reuse the same CTE form. All dashboard SQL (literals,
   identifiers, functions) uses the dialect detected for ODBC connections; on DSN-only
-  ODBC a clicked value containing a backslash is never inlined. Oracle values without
+  ODBC backslashes in values are doubled, which is correct for MySQL-style backends and
+  harmless (never injectable) for ANSI backends. Oracle values without
   a time bucket are compared in the adapter's session format (`YYYY-MM-DD HH24:MI:SS`).
   Selections are dropped automatically when their source chart is deleted, its cross
   filter is switched off or its dimension changes. A linear tokenizer finds table positions
