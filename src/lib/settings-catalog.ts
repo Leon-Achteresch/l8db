@@ -853,6 +853,38 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: ["export", "import", "übertragen", "backup"],
   },
   {
+    id: "sync",
+    tabId: "general",
+    title: "Synchronisation",
+    description:
+      "Verbindungen, Abfragen, Snippets und Einstellungen per WebDAV oder GitHub Gist zwischen Rechnern abgleichen.",
+    keywords: [
+      "sync",
+      "cloud",
+      "webdav",
+      "nextcloud",
+      "gist",
+      "github",
+      "abgleich",
+      "synchronisieren",
+    ],
+  },
+  {
+    id: "sync-secrets",
+    tabId: "general",
+    title: "Passwörter synchronisieren",
+    description:
+      "Verbindungspasswörter nur Ende-zu-Ende-verschlüsselt mit einer eigenen Sync-Passphrase übertragen.",
+    keywords: ["passphrase", "verschlüsselung", "passwort", "e2e", "sync"],
+  },
+  {
+    id: "sync-auto",
+    tabId: "general",
+    title: "Automatisch synchronisieren",
+    description: "Optional in festen Abständen und beim Start synchronisieren.",
+    keywords: ["auto", "intervall", "sync", "start"],
+  },
+  {
     id: "keychain",
     tabId: "security",
     title: "OS-Schlüsselbund & Secrets",
