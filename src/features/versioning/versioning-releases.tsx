@@ -1,4 +1,11 @@
-import { ArrowLeftIcon, FileDiffIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  FileDiffIcon,
+  PlusIcon,
+  TagIcon,
+  Trash2Icon,
+  Undo2Icon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -19,10 +26,11 @@ import {
   validateReleaseGraph,
 } from "@/lib/versioning/model";
 import { encode, saveFile } from "@/lib/versioning/repository";
+import { restoreReleaseFiles, rollbackBases } from "@/lib/versioning/rollback";
 import { defaultSafety } from "@/lib/versioning/safety";
 import { workingSnapshot } from "@/lib/versioning/sources";
 import { changedFiles } from "@/lib/versioning/status";
-import type { DatabaseRelease, ObjectSnapshot } from "@/lib/versioning/types";
+import type { DatabaseRelease, ManagedObject, ObjectSnapshot } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningSafetyEditor } from "./versioning-safety-editor";
@@ -35,7 +43,7 @@ export function VersioningReleases({
   workspace: VersioningWorkspace;
   onRollout: (id: string) => void;
 }) {
-  const { repo, project, releases, run, refresh } = workspace;
+  const { repo, project, projectText, releases, run, refresh } = workspace;
   const feature = useNewFeatureVisibility<HTMLDivElement>("versioning.releases.generate");
   const [creating, setCreating] = useState(false);
   const [migration, setMigration] = useState<MigrationDraft | null>(null);
@@ -47,7 +55,12 @@ export function VersioningReleases({
   const [sql, setSql] = useState("");
   const [track, setTrack] = useState("main");
   const [safety, setSafety] = useState(defaultSafety);
-  const [selected, setSelected] = useState<DatabaseRelease | null>(null);
+  const [selected, setSelected] = useState<DatabaseRelease | null>(
+    () => releases.find((release) => release.id === workspace.requestedRollbackId) ?? null,
+  );
+  useEffect(() => {
+    if (workspace.requestedRollbackId) workspace.setRequestedRollbackId("");
+  }, [workspace.requestedRollbackId, workspace.setRequestedRollbackId]);
   useEffect(() => {
     workspace.setDirty(
       Boolean(
@@ -58,19 +71,21 @@ export function VersioningReleases({
       ),
     );
   }, [id, sql, track, safety, workspace.setDirty]);
-  const snapshots = async (): Promise<ObjectSnapshot[]> => {
-    if (!project?.objects.length) throw new Error("Zuerst mindestens ein Objekt aufnehmen.");
+  const snapshots = async (
+    objects: ManagedObject[] = project?.objects ?? [],
+  ): Promise<ObjectSnapshot[]> => {
+    if (!objects.length) throw new Error("Zuerst mindestens ein Objekt aufnehmen.");
     const result: ObjectSnapshot[] = [];
-    for (const object of project.objects) {
+    for (const object of objects) {
       result.push(await workingSnapshot(repo, object));
     }
     return result;
   };
-  const generate = async (predecessor = parent) => {
+  const generate = async (predecessor = parent, objects?: ManagedObject[]) => {
     if (!project) return;
     const before = releases.find((release) => release.id === predecessor);
     if (!before) throw new Error("Für einen Migrationsentwurf einen Vorgänger auswählen.");
-    const current = await snapshots();
+    const current = await snapshots(objects);
     const result = generateMigration(project.kind, before, current, allowDrops);
     setMigration(result);
     setManualReviewed(false);
@@ -81,12 +96,31 @@ export function VersioningReleases({
         "Keine Schemaänderungen. Datenmigrationen können als SQL ergänzt werden.",
       );
   };
-  const prepare = async () => {
-    const latest = releases.filter((release) => releaseTrack(release) === "main").at(-1);
+  const prepare = async (line = "main") => {
+    const latest = releases.filter((release) => releaseTrack(release) === line).at(-1);
     setParent(latest?.id ?? "");
+    setTrack(line);
     setId(latest ? "" : `baseline-${new Date().toISOString().slice(0, 10)}`);
     setCreating(true);
     if (latest) await generate(latest.id);
+  };
+  const rollback = async (release: DatabaseRelease, tip: DatabaseRelease) => {
+    if (!project) return;
+    const open = [...changedFiles(workspace.status?.changes ?? "").keys()].filter((path) =>
+      path.startsWith("database/"),
+    );
+    if (open.length)
+      throw new Error("Offene Änderungen unter database/ zuerst committen oder verwerfen.");
+    const head = workspace.status?.head;
+    if (!head || changedFiles(workspace.status?.changes ?? "").has(releasePath(release.id)))
+      throw new Error("Zurückgenommen wird nur auf einen committeten Release.");
+    const restored = await restoreReleaseFiles(repo, project, projectText, release, head);
+    await refresh();
+    setParent(tip.id);
+    setTrack(releaseTrack(tip));
+    setId(`${tip.id}-revert`);
+    setCreating(true);
+    await generate(tip.id, restored.objects);
   };
   const create = async (commit: boolean) => {
     if (!project) return;
@@ -188,6 +222,10 @@ export function VersioningReleases({
   };
   const chosen = selected ?? releases.at(-1);
   const changes = changedFiles(workspace.status?.changes ?? "");
+  const revertFrom =
+    chosen && workspace.status?.head && !changes.has(releasePath(chosen.id))
+      ? rollbackBases(releases, chosen).filter((tip) => !changes.has(releasePath(tip.id)))
+      : [];
   return (
     <div ref={feature.ref} className="space-y-5">
       <div className="flex items-center gap-2">
@@ -497,6 +535,34 @@ export function VersioningReleases({
                   Rollout für {chosen.id} planen
                 </Button>
               )}
+              {revertFrom.map((tip) => (
+                <div key={tip.id} className="flex items-start gap-3 rounded-lg bg-muted/30 p-3">
+                  <Undo2Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1 text-[11px] leading-relaxed">
+                    <p className="font-medium">
+                      {tip.id} auf den Stand von {chosen.id} zurücknehmen
+                    </p>
+                    <p className="text-muted-foreground">
+                      Setzt die Definitionen auf {chosen.id} zurück und bereitet auf der Linie{" "}
+                      {releaseTrack(tip)} einen neuen Release nach {tip.id} mit dem passenden SQL
+                      vor. Ausgerollt wird er wie jeder Release, zuerst auf Test.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px]"
+                    onClick={() =>
+                      void run(
+                        () => rollback(chosen, tip),
+                        `Rücknahme von ${tip.id} vorbereitet. SQL prüfen und committen.`,
+                      )
+                    }
+                  >
+                    Zurücknehmen…
+                  </Button>
+                </div>
+              ))}
               {chosen.safety && (
                 <details className="text-xs">
                   <summary className="cursor-pointer">Betriebsplan · {chosen.safety.phase}</summary>

@@ -1,4 +1,4 @@
-import { ArrowRightIcon, PlusIcon, WorkflowIcon } from "lucide-react";
+import { ArrowRightIcon, PlusIcon, Undo2Icon, WorkflowIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -90,11 +90,28 @@ export function VersioningPipeline({
           ))}
         </div>
       )}
-      <VersioningPipelineStages
-        tip={pipeline.tip}
-        committed={pipeline.committed}
-        stages={pipeline.stages}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <VersioningPipelineStages
+          tip={pipeline.tip}
+          committed={pipeline.committed}
+          stages={pipeline.stages}
+        />
+        {pipeline.committed && pipeline.tip?.parent && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 text-[11px]"
+            title={`${pipeline.tip.id} mit einem neuen Release auf ${pipeline.tip.parent} zurücknehmen`}
+            onClick={() => {
+              workspace.setRequestedRollbackId(pipeline.tip?.parent ?? "");
+              onNavigate("releases");
+            }}
+          >
+            <Undo2Icon className="size-3.5" />
+            Zurücknehmen…
+          </Button>
+        )}
+      </div>
       {next && (
         <div className="flex items-center gap-3 rounded-xl bg-primary/5 px-3 py-2.5">
           <div className="min-w-0 flex-1">
