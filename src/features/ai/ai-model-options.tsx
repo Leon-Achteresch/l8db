@@ -1,6 +1,6 @@
 import { Check, PenLine } from "lucide-react";
 import { useState } from "react";
-import { bypassAiPermissions, modeOptions } from "@/lib/ai/context";
+import { bypassAiPermissions, modeOptions, thoughtLevel } from "@/lib/ai/context";
 import { useAiStore } from "@/lib/ai/store";
 import type { AiModels, AiProfile } from "@/lib/db/ai";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,10 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
     Boolean(
       option &&
         typeof option === "object" &&
-        !("category" in option && ["model", "mode"].includes(String(option.category))) &&
+        !(
+          "category" in option &&
+          ["model", "mode", "thought_level"].includes(String(option.category))
+        ) &&
         !("id" in option && ["model", "mode"].includes(String(option.id))),
     ),
   );
@@ -56,7 +59,9 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
               disabled={disabled}
               onClick={() => {
                 setCustom(false);
-                saveProfile({ ...profile, model: model.id, effort: "" });
+                const level = thoughtLevel(models)?.id;
+                const { [level ?? ""]: _, ...config } = profile.config ?? {};
+                saveProfile({ ...profile, model: model.id, effort: "", config });
               }}
               className={cn(
                 "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted",

@@ -233,7 +233,7 @@ pub async fn models(profile: &Profile, cwd: Option<&str>) -> Result<Value, Strin
         "claude" => {
             let result = claude_init(&mut rpc).await?;
             Ok(
-                json!({"models": result["models"].as_array().into_iter().flatten().map(|model| json!({"id": model["value"], "name": model["displayName"]})).collect::<Vec<_>>(), "commands": result["commands"]}),
+                json!({"models": result["models"].as_array().into_iter().flatten().map(|model| json!({"id": model["value"], "name": model["displayName"], "efforts": model["supportedEffortLevels"]})).collect::<Vec<_>>(), "commands": result["commands"]}),
             )
         }
         _ => {
@@ -244,8 +244,30 @@ pub async fn models(profile: &Profile, cwd: Option<&str>) -> Result<Value, Strin
                 json!({"cwd": cwd, "mcpServers": []}),
             )
             .await?;
+            let mut config = result["configOptions"].clone();
+            let model_option = config
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|option| {
+                    !profile.model.is_empty()
+                        && (option["category"] == "model" || option["id"] == "model")
+                        && option_contains(&option["options"], &json!(profile.model))
+                })
+                .cloned();
+            if let Some(option) = model_option {
+                let changed = probe_request(
+                    &mut rpc,
+                    "session/set_config_option",
+                    json!({"sessionId": result["sessionId"], "configId": option["id"], "value": profile.model}),
+                )
+                .await?;
+                if changed["configOptions"].is_array() {
+                    config = changed["configOptions"].clone();
+                }
+            }
             Ok(
-                json!({"models": session_models(&result), "modes": session_modes(&result), "configOptions": result["configOptions"], "customModel": profile.provider == "copilot" && session_models(&result).is_empty(), "capabilities": initialized["agentCapabilities"]}),
+                json!({"models": session_models(&result), "modes": session_modes(&result), "configOptions": config, "customModel": profile.provider == "copilot" && session_models(&result).is_empty(), "capabilities": initialized["agentCapabilities"]}),
             )
         }
     }
@@ -672,7 +694,7 @@ async fn acp(
     if resume {
         parameters["sessionId"] = json!(request.session_id);
     }
-    let session = native_request(
+    let mut session = native_request(
         &mut rpc,
         if resume {
             resume_method.unwrap_or("session/load")
@@ -685,12 +707,14 @@ async fn acp(
     )
     .await?;
     let id = if resume {
-        request.session_id.as_deref().unwrap_or("")
+        request.session_id.clone().unwrap_or_default()
     } else {
         session["sessionId"]
             .as_str()
             .ok_or("CLI-Sitzungs-ID fehlt")?
+            .to_string()
     };
+    let id = id.as_str();
     run.emit("session", json!({"sessionId": id}));
     run.emit("metadata", session.clone());
     let mut permission_result = Value::Null;
@@ -721,7 +745,7 @@ async fn acp(
                     && option_contains(&option["options"], &json!(request.profile.model))
             });
         if let Some(option) = model_option {
-            native_request(
+            let changed = native_request(
                 &mut rpc,
                 "session/set_config_option",
                 json!({"sessionId": id, "configId": option["id"], "value": request.profile.model}),
@@ -729,6 +753,9 @@ async fn acp(
                 true,
             )
             .await?;
+            if changed["configOptions"].is_array() {
+                session["configOptions"] = changed["configOptions"].clone();
+            }
         } else if session_models(&session)
             .iter()
             .any(|model| model["id"] == request.profile.model)
@@ -795,6 +822,9 @@ async fn acp(
                 "CLI-Konfigurationsoption ist nicht mehr verfügbar. Modellliste aktualisieren.",
             )?;
         if !option_contains(&option["options"], value) {
+            if option["category"] == "thought_level" {
+                continue;
+            }
             return Err("CLI-Konfigurationswert ist nicht verfügbar".into());
         }
         let permission_id = if option["category"] == "mode" {

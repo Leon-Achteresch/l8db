@@ -90,6 +90,11 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
 
   const label = snapshot.action === "edit" || chat ? "" : EDITOR_AI_ACTION_LABELS[snapshot.action];
   const usage = tokens(snapshot.usage);
+  const asked =
+    snapshot.instruction.length > 80
+      ? `${snapshot.instruction.slice(0, 80)}…`
+      : snapshot.instruction;
+  const runningHint = `${snapshot.status || "Denkt nach …"}${asked ? ` „${asked}“` : ""}`;
   const footer = Boolean(
     label ||
       phase !== "input" ||
@@ -123,17 +128,19 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
             <textarea
               ref={input}
               rows={1}
-              value={value}
+              value={running ? "" : value}
               disabled={running}
               onChange={(event) => setValue(event.target.value)}
               onKeyDown={onKeyDown}
               placeholder={
-                review
-                  ? "Weiter anpassen … (Enter ohne Text übernimmt alles)"
-                  : snapshot.placeholder
+                running
+                  ? runningHint
+                  : review
+                    ? "Weiter anpassen … (Enter ohne Text übernimmt alles)"
+                    : snapshot.placeholder
               }
               aria-label="Anweisung an die KI"
-              className="min-h-6 flex-1 resize-none bg-transparent py-1 text-[13px] leading-5 outline-none! placeholder:text-muted-foreground/70 disabled:opacity-60"
+              className="min-h-6 flex-1 resize-none bg-transparent py-1 text-[13px] leading-5 outline-none! placeholder:text-muted-foreground/70 disabled:placeholder:animate-pulse"
             />
           )}
           {chat ? null : running ? (
