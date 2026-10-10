@@ -353,6 +353,10 @@ fn rollback_message_only_promises_what_the_database_keeps() {
     assert!(rollback_note(DatabaseKind::Postgres, &ddl).contains("Nichts geändert"));
     assert!(rollback_note(DatabaseKind::Mysql, &ddl).contains("sofort fest"));
     assert!(rollback_note(DatabaseKind::Oracle, &ddl).contains("sofort fest"));
-    let own = ran(&["insert into t values (1)", "commit", "insert into t values (2)"]);
+    let own = ran(&[
+        "insert into t values (1)",
+        "commit",
+        "insert into t values (2)",
+    ]);
     assert!(rollback_note(DatabaseKind::Postgres, &own).contains("BEGIN/COMMIT"));
 }
