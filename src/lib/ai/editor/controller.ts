@@ -123,6 +123,23 @@ export class EditorAiController {
     return this.editor.getModel() === model;
   }
 
+  text(): string {
+    return this.editor.getModel()?.getValue() ?? "";
+  }
+
+  async chatEdit(next: string, label: string): Promise<string> {
+    const current = this.session?.getSnapshot();
+    if (current?.phase === "running")
+      return current.action === "chat"
+        ? "Die vorige Änderung wird noch geschrieben."
+        : "Die Editor-KI arbeitet gerade in diesem Tab. Später erneut versuchen.";
+    if (current?.action !== "chat" || current.phase !== "review")
+      this.open({ action: "chat", start: 0, end: this.text().length, instruction: label });
+    const session = this.session as InlineEditSession | null;
+    if (!session) return "Der Editor ist nicht verfügbar.";
+    return session.applyChat(next, label);
+  }
+
   restoreCheckpoint(id: string): boolean {
     const model = this.model();
     const checkpoint = useEditorCheckpoints

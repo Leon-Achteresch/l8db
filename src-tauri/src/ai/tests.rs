@@ -1500,3 +1500,80 @@ async fn byok_discovery_and_failure_recovery_preserve_real_query_results() {
     assert!(events.iter().any(|event| event["kind"] == "tool"
         && event["data"]["result"]["content"][0]["text"] == "value\n42\n(1 rows)"));
 }
+
+#[tokio::test]
+async fn editor_tool_round_trips_to_the_frontend_without_a_decision_block() {
+    let server = tokio::sync::Mutex::new(Server {
+        pool: crate::db::pool::create_pool_state(),
+        columns: HashMap::new(),
+    });
+    let config = McpConfig::default();
+    let (run, events) = run(None);
+    let state = run.state.clone();
+    let respond = async {
+        loop {
+            let entry = state.approvals.lock().unwrap().drain().next();
+            if let Some((key, sender)) = entry {
+                assert!(key.starts_with("fixture-window:fixture-run:"));
+                sender
+                    .send(json!({"ok": true, "text": "Im Editor angewendet."}))
+                    .unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let args = json!({"action": "edit", "sql": "select 2", "summary": "Zwei"});
+    let (result, _) = tokio::join!(
+        context::call(&server, &config, &run, "editor", args.clone()),
+        respond
+    );
+    assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(result["content"][0]["text"], "Im Editor angewendet.");
+    let kinds: Vec<Value> = events
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|event| event["kind"].clone())
+        .collect();
+    assert_eq!(kinds, vec![json!("tool"), json!("editor"), json!("tool")]);
+    assert_eq!(events.lock().unwrap()[1]["data"]["details"], args);
+
+    let (mut planned, planned_events) = super::tests::run(None);
+    planned.plan_only = true;
+    let blocked = context::call(
+        &server,
+        &config,
+        &planned,
+        "editor",
+        json!({"action": "edit", "sql": "x"}),
+    )
+    .await;
+    assert_eq!(blocked["isError"], true);
+    assert!(planned_events
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|event| event["kind"] != "editor"));
+
+    let failing = async {
+        loop {
+            let entry = state.approvals.lock().unwrap().drain().next();
+            if let Some((_, sender)) = entry {
+                sender
+                    .send(json!({"ok": false, "text": "SEARCH-Block 1 wurde nicht gefunden"}))
+                    .unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let (failed, _) = tokio::join!(
+        context::call(&server, &config, &run, "editor", json!({"action": "read"})),
+        failing
+    );
+    assert_eq!(failed["isError"], true);
+    assert!(context::tool_definitions()
+        .iter()
+        .any(|tool| tool["name"] == "editor"));
+}

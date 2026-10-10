@@ -1,8 +1,10 @@
 import { ArrowUp, Check, LoaderCircle, RotateCcw, Sparkles, Square, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import type { EditSnapshot, InlineEditSession } from "@/lib/ai/editor/inline-edit";
 import { EDITOR_AI_ACTION_LABELS } from "@/lib/ai/editor/metrics";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { formatHotkeyDisplay } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +26,10 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
   const { phase } = snapshot;
   const running = phase === "running";
   const review = phase === "review";
+  const chat = snapshot.action === "chat";
+  const feature = useNewFeatureVisibility<HTMLSpanElement>(
+    chat ? "ai.chat.editor-edits" : undefined,
+  );
 
   useLayoutEffect(() => {
     const element = root.current;
@@ -35,7 +41,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
   }, [session]);
 
   useEffect(() => {
-    if (running) return;
+    if (running || chat) return;
     const element = input.current;
     if (!element) return;
     const focus = () => {
@@ -45,7 +51,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
     focus();
     const frame = requestAnimationFrame(focus);
     return () => cancelAnimationFrame(frame);
-  }, [running]);
+  }, [running, chat]);
 
   useEffect(() => {
     if (review) setValue("");
@@ -82,7 +88,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
     }
   };
 
-  const label = snapshot.action === "edit" ? "" : EDITOR_AI_ACTION_LABELS[snapshot.action];
+  const label = snapshot.action === "edit" || chat ? "" : EDITOR_AI_ACTION_LABELS[snapshot.action];
   const usage = tokens(snapshot.usage);
   const footer = Boolean(
     label ||
@@ -105,20 +111,32 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
       >
         <div className="flex items-start gap-2 px-2.5 pt-2 pb-1.5">
           <Sparkles className="mt-1.5 size-3.5 shrink-0 text-primary" aria-hidden />
-          <textarea
-            ref={input}
-            rows={1}
-            value={value}
-            disabled={running}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={
-              review ? "Weiter anpassen … (Enter ohne Text übernimmt alles)" : snapshot.placeholder
-            }
-            aria-label="Anweisung an die KI"
-            className="min-h-6 flex-1 resize-none bg-transparent py-1 text-[13px] leading-5 outline-none! placeholder:text-muted-foreground/70 disabled:opacity-60"
-          />
-          {running ? (
+          {chat ? (
+            <span
+              ref={feature.ref}
+              className="flex min-h-6 flex-1 items-center gap-1.5 truncate py-1 text-[13px] leading-5"
+            >
+              {snapshot.instruction}
+              {feature.isNew && <NewBadge />}
+            </span>
+          ) : (
+            <textarea
+              ref={input}
+              rows={1}
+              value={value}
+              disabled={running}
+              onChange={(event) => setValue(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={
+                review
+                  ? "Weiter anpassen … (Enter ohne Text übernimmt alles)"
+                  : snapshot.placeholder
+              }
+              aria-label="Anweisung an die KI"
+              className="min-h-6 flex-1 resize-none bg-transparent py-1 text-[13px] leading-5 outline-none! placeholder:text-muted-foreground/70 disabled:opacity-60"
+            />
+          )}
+          {chat ? null : running ? (
             <Button
               type="button"
               size="icon-xs"
@@ -143,16 +161,18 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
               <ArrowUp />
             </Button>
           )}
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Schließen"
-            title="Schließen"
-            onClick={() => (review ? session.rejectAll() : session.close())}
-          >
-            <X />
-          </Button>
+          {!(chat && running) && (
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Schließen"
+              title="Schließen"
+              onClick={() => (review ? session.rejectAll() : session.close())}
+            >
+              <X />
+            </Button>
+          )}
         </div>
         {footer && (
           <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 px-2.5 py-1 text-[11px] text-muted-foreground">

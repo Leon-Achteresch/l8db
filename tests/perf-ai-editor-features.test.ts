@@ -459,3 +459,66 @@ test("chatWireMessages compacts a 200-message 2 MB history", async () => {
   expect(summarized.medianMs).toBeLessThan(5);
   expect(retained).toBeLessThan(2_000_000);
 });
+
+test("chat editor edits on a 5000-statement script stay fast and never touch the backend", async () => {
+  const { handleChatEditorRequest } = await import("@/lib/ai/editor/chat-edit");
+  const sql = Array.from(
+    { length: 5000 },
+    (_, index) => `select id, total from orders_${index} where id > ${index};`,
+  ).join("\n");
+  const edits = Array.from({ length: 20 }, (_, index) => ({
+    search: `select id, total from orders_${index * 250} where id > ${index * 250};`,
+    replace: `select id, total, created_at\nfrom orders_${index * 250}\nwhere id > ${index * 250}\nlimit 100;`,
+  }));
+  let text = sql;
+  let applied = 0;
+  const controller = {
+    text: () => text,
+    chatEdit: async (next: string) => {
+      applied++;
+      text = next;
+      return "";
+    },
+    getSession: () => ({ getSnapshot: () => ({ pending: 20 }) }),
+  };
+  const target = {
+    controller: controller as never,
+    title: "Perf",
+    storedSql: sql,
+    openTab: () => {},
+  };
+  const before = invokeCalls.length;
+  const durations: number[] = [];
+  for (let run = 0; run < 21; run++) {
+    text = sql;
+    const start = performance.now();
+    const answer = await handleChatEditorRequest({ action: "edit", edits }, target);
+    durations.push(performance.now() - start);
+    expect(answer.ok).toBe(true);
+  }
+  const edit = percentiles(durations.slice(1));
+  const readDurations: number[] = [];
+  let readLength = 0;
+  for (let run = 0; run < 21; run++) {
+    const start = performance.now();
+    readLength = (await handleChatEditorRequest({ action: "read" }, target)).text.length;
+    readDurations.push(performance.now() - start);
+  }
+  const read = percentiles(readDurations.slice(1));
+  await reportScenario("ai-chat-editor-edit", {
+    statements: 5000,
+    chars: sql.length,
+    blocks: edits.length,
+    edit,
+    read,
+    readChars: readLength,
+    backendRequests: invokeCalls.length - before,
+  });
+  expect(applied).toBe(21);
+  expect(text.split("\n")).toHaveLength(5000 + 60);
+  expect(readLength).toBeLessThan(40_200);
+  expect(invokeCalls.length - before).toBe(0);
+  expect(edit.medianMs).toBeLessThan(40);
+  expect(edit.p95Ms).toBeLessThan(80);
+  expect(read.p95Ms).toBeLessThan(10);
+});

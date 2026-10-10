@@ -52,6 +52,8 @@ const {
 const { editRequest, forgetEditorKnowledge, inlineRequest, summaryRequest } = await import(
   "@/lib/ai/editor/context"
 );
+const { handleChatEditorRequest } = await import("@/lib/ai/editor/chat-edit");
+const { applyEditBlocks } = await import("@/lib/ai/editor/edit-format");
 const { cleanCompletion, fromCache, shouldRequest, singleLineIfNeeded } = await import(
   "@/lib/ai/editor/ghost-text"
 );
@@ -940,5 +942,134 @@ describe("lensOffsets", () => {
     const many = "select 1;\n".repeat(MAX_LENS_STATEMENTS + 50);
     expect(lensOffsets(many)).toHaveLength(MAX_LENS_STATEMENTS);
     expect(lensOffsets(many, undefined, 3)).toEqual([0, 10, 20]);
+  });
+});
+
+describe("chat editor tool", () => {
+  function fakeController(initial: string, pendingAfter = 1) {
+    const state = { text: initial, edits: [] as { next: string; label: string }[], problem: "" };
+    const controller = {
+      text: () => state.text,
+      chatEdit: async (next: string, label: string) => {
+        state.edits.push({ next, label });
+        if (state.problem) return state.problem;
+        state.text = next;
+        return "";
+      },
+      getSession: () => ({ getSnapshot: () => ({ pending: pendingAfter }) }),
+    };
+    return { state, controller: controller as never };
+  }
+
+  function target(controller: unknown, storedSql: string | null = "") {
+    const opened: { sql: string; title: string }[] = [];
+    return {
+      opened,
+      value: {
+        controller: controller as never,
+        title: "Bestellungen",
+        storedSql,
+        openTab: (sql: string, title: string) => opened.push({ sql, title }),
+      },
+    };
+  }
+
+  test("applyEditBlocks applies blocks in order, appends on empty search and keeps CRLF", () => {
+    expect(
+      applyEditBlocks("select *\nfrom orders;", [
+        { search: "select *", replace: "select id, total" },
+        { search: "", replace: "select 2;" },
+      ]),
+    ).toEqual({ ok: true, mode: "blocks", text: "select id, total\nfrom orders;\nselect 2;" });
+    const crlf = applyEditBlocks("select 1\r\nfrom a", [{ search: "from a", replace: "from b" }]);
+    expect(crlf).toEqual({ ok: true, mode: "blocks", text: "select 1\r\nfrom b" });
+    expect(applyEditBlocks("a\na", [{ search: "a", replace: "b" }]).ok).toBe(false);
+    expect(applyEditBlocks("a", [{ search: "zzz", replace: "b" }]).ok).toBe(false);
+  });
+
+  test("read returns the editor text with title and line count, capped", async () => {
+    const { controller } = fakeController("select 1\nfrom orders");
+    const read = await handleChatEditorRequest({ action: "read" }, target(controller).value);
+    expect(read).toEqual({
+      ok: true,
+      text: 'Tab "Bestellungen", 2 Zeilen:\nselect 1\nfrom orders',
+    });
+    const big = fakeController("x".repeat(50_000)).controller;
+    const capped = await handleChatEditorRequest({ action: "read" }, target(big).value);
+    expect(capped.text.length).toBeLessThan(40_200);
+    expect(capped.text).toContain("gekürzt, 50000 Zeichen");
+    const none = await handleChatEditorRequest({ action: "read" }, target(undefined, null).value);
+    expect(none.ok).toBe(false);
+  });
+
+  test("edit applies search/replace through the controller with a labelled change", async () => {
+    const { state, controller } = fakeController("select *\nfrom orders;", 2);
+    const answer = await handleChatEditorRequest(
+      {
+        action: "edit",
+        summary: "Spalten auswählen",
+        edits: [{ search: "select *", replace: "select id,\n       total" }],
+      },
+      target(controller).value,
+    );
+    expect(state.edits).toEqual([
+      { next: "select id,\n       total\nfrom orders;", label: "KI-Chat: Spalten auswählen" },
+    ]);
+    expect(answer.ok).toBe(true);
+    expect(answer.text).toContain("2 Änderung(en) warten");
+  });
+
+  test("edit with sql replaces everything, unchanged text skips the editor", async () => {
+    const { state, controller } = fakeController("select 1");
+    await handleChatEditorRequest({ action: "edit", sql: "select 2" }, target(controller).value);
+    expect(state.edits.map((edit) => edit.next)).toEqual(["select 2"]);
+    const same = await handleChatEditorRequest(
+      { action: "edit", sql: "select 2" },
+      target(controller).value,
+    );
+    expect(same.text).toContain("Keine Änderung");
+    expect(state.edits).toHaveLength(1);
+  });
+
+  test("invalid arguments, missing matches and busy editors report errors to the model", async () => {
+    const { state, controller } = fakeController("select 1");
+    const run = (args: unknown) => handleChatEditorRequest(args, target(controller).value);
+    expect((await run({ action: "drop" })).ok).toBe(false);
+    expect((await run({ action: "edit" })).ok).toBe(false);
+    expect((await run({ action: "edit", edits: [] })).ok).toBe(false);
+    expect((await run({ action: "edit", edits: [{ search: 1, replace: "x" }] })).ok).toBe(false);
+    const missing = await run({ action: "edit", edits: [{ search: "nope", replace: "x" }] });
+    expect(missing).toEqual({
+      ok: false,
+      text: 'SEARCH-Block 1 wurde nicht gefunden: "nope" Mit action "read" neu lesen.',
+    });
+    state.problem = "Die Editor-KI arbeitet gerade in diesem Tab. Später erneut versuchen.";
+    expect(await run({ action: "edit", sql: "select 3" })).toEqual({
+      ok: false,
+      text: state.problem,
+    });
+  });
+
+  test("without an open query tab, sql opens a new tab and edits are refused", async () => {
+    const empty = target(undefined, null);
+    const opened = await handleChatEditorRequest(
+      { action: "edit", sql: "select 1", summary: "Umsatz" },
+      empty.value,
+    );
+    expect(opened.ok).toBe(true);
+    expect(empty.opened).toEqual([{ sql: "select 1", title: "Umsatz" }]);
+    const refused = await handleChatEditorRequest(
+      { action: "edit", edits: [{ search: "a", replace: "b" }] },
+      empty.value,
+    );
+    expect(refused.ok).toBe(false);
+    const hidden = await handleChatEditorRequest(
+      { action: "edit", sql: "select 1" },
+      target(undefined, "select 0").value,
+    );
+    expect(hidden).toEqual({
+      ok: false,
+      text: "Der Editor dieses Tabs ist gerade nicht sichtbar.",
+    });
   });
 });
