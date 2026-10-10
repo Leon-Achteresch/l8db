@@ -10,6 +10,7 @@ import {
   applyCrossFilters,
   blockWidget,
   type CrossFilter,
+  combineTotal,
   crossField,
   type Dashboard,
   type Dataset,
@@ -517,8 +518,7 @@ describe("Exakte Summen", () => {
     const fallback = renderToStaticMarkup(
       createElement(PivotTable, { rows: [{ dim: "Nord", dim2: "A", m0: 10 }], shape, options }),
     );
-    expect(fallback).toContain("Summe");
-    expect(fallback).not.toContain("Gesamt");
+    expect(fallback).toContain("Gesamt (geladen)");
     expect(fallback.match(/>–</g)?.length).toBe(3);
     const table = renderToStaticMarkup(
       createElement(DataTable, {
@@ -653,5 +653,45 @@ describe("Letzte Review-Runde", () => {
     );
     expect(sql).toContain(`"tags" = '["a","b"]'`);
     expect(sql).not.toContain(" IN (");
+  });
+});
+
+describe("Vierte Review-Runde", () => {
+  test("NULL-Gruppen zählen bei Minimum und Maximum nicht als 0", () => {
+    expect(combineTotal({ agg: "min" }, [5, null, 7])).toBe(5);
+    expect(combineTotal({ agg: "max" }, [-3, null, -1])).toBe(-1);
+    expect(combineTotal({ agg: "max" }, [null, null])).toBeNull();
+    expect(combineTotal({ agg: "avg" }, [1, 2])).toBeNull();
+    expect(combineTotal(undefined, [1])).toBeNull();
+    expect(
+      combineTotal(
+        { agg: "max" },
+        Array.from({ length: 200_000 }, (_, i) => i),
+      ),
+    ).toBe(199_999);
+  });
+
+  test("Tabellen werden nur an Tabellenpositionen erkannt", () => {
+    const source = simple("customers", "customer_id");
+    const literal = expert("SELECT customer_id, 'a--b' AS umsatz FROM customers", "customer_id");
+    expect(applyCrossFilters(literal, [filterFrom(source, 1)], "t")).not.toBe(literal);
+    const orders = simple("orders", "customer_id");
+    const column = expert(
+      "SELECT customer_id, count(*) AS orders FROM invoices GROUP BY customer_id",
+      "customer_id",
+    );
+    expect(applyCrossFilters(column, [filterFrom(orders, 1)], "t")).toBe(column);
+    const only = expert(
+      "SELECT customer_id, 1 AS umsatz FROM ONLY public.customers",
+      "customer_id",
+    );
+    expect(applyCrossFilters(only, [filterFrom(source, 1)], "t")).not.toBe(only);
+    const lateral = expert(
+      "SELECT x.customer_id, 1 AS umsatz FROM invoices i, LATERAL (SELECT * FROM customers) x",
+      "customer_id",
+    );
+    expect(applyCrossFilters(lateral, [filterFrom(source, 1)], "t")).not.toBe(lateral);
+    const selectList = expert("SELECT a, customers FROM invoices", "customer_id");
+    expect(applyCrossFilters(selectList, [filterFrom(source, 1)], "t")).toBe(selectList);
   });
 });
