@@ -1,6 +1,6 @@
 import type { NetworkProxy, SshConnection } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
-import { ADAPTERS, SCHEME_ALIASES } from "./adapters";
+import { ADAPTERS, TLS_SCHEMES } from "./adapters";
 import { FILE_KINDS } from "./products";
 import { implicitPort } from "./transport";
 
@@ -23,7 +23,7 @@ function searchParam(url: URL, name: string): string {
 }
 
 function urlTls(url: URL, scheme: string): boolean {
-  if (scheme === "rediss") return true;
+  if (TLS_SCHEMES.includes(scheme)) return true;
   if (
     ["secure", "ssl", "tls"].some((key) =>
       TRUE_VALUES.includes(searchParam(url, key).toLowerCase()),
@@ -33,6 +33,15 @@ function urlTls(url: URL, scheme: string): boolean {
   return ["require", "verify-ca", "verify-full"].includes(
     searchParam(url, "sslmode").toLowerCase(),
   );
+}
+
+function identityValue(url: URL, group: string): string {
+  const aliases = group.split("|");
+  for (const alias of aliases) {
+    const value = searchParam(url, alias);
+    if (value) return `${aliases[0]}=${value}`;
+  }
+  return `${aliases[0]}=`;
 }
 
 export function endpointKey(
@@ -48,18 +57,20 @@ export function endpointKey(
   if (!value.includes("://")) return null;
   try {
     const url = new URL(value);
-    const raw = url.protocol.slice(0, -1).toLowerCase();
-    const scheme = SCHEME_ALIASES[raw] ?? raw;
-    const port = url.port || String(implicitPort(kind, urlTls(url, raw)) ?? "");
-    const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
-    const identity = (ADAPTERS[kind]?.identity ?? [])
-      .map((name) => `${name}=${searchParam(url, name)}`)
-      .join(",");
+    const scheme = url.protocol.slice(0, -1).toLowerCase();
+    const facts = ADAPTERS[kind];
+    const tls = urlTls(url, scheme);
+    const srv = scheme === "mongodb+srv";
+    const family = [kind, srv ? "srv" : "", facts?.tlsInKey && tls ? "tls" : ""]
+      .filter(Boolean)
+      .join("+");
+    const port = srv ? "" : url.port || String(implicitPort(kind, tls) ?? "");
+    const identity = (facts?.identity ?? []).map((group) => identityValue(url, group)).join(",");
     return [
-      scheme,
+      family,
       url.hostname.replace(/^\[|\]$/g, "").toLowerCase(),
       port,
-      database,
+      decodeURIComponent(url.pathname.replace(/^\//, "")),
       decodeURIComponent(url.username),
       networkKey(ssh, proxy),
       identity,

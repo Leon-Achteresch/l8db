@@ -41,7 +41,8 @@ function awsRegion(connection: ExternalConnection): string {
   if (explicit) return explicit.toLowerCase();
   const host = connection.host.toLowerCase();
   if (AWS_REGION.test(host)) return host;
-  return /\.([a-z]{2}(?:-gov)?-[a-z]+-\d)\.amazonaws\.com$/.exec(host)?.[1] ?? "";
+  if (!AWS_HOST.test(host)) return "";
+  return /(?:^|\.)([a-z]{2}(?:-gov)?-[a-z]+-\d)(?:\.|$)/.exec(host)?.[1] ?? "";
 }
 
 function awsCredentials(connection: ExternalConnection, warnings: string[]) {
@@ -135,48 +136,68 @@ function athena(connection: ExternalConnection): CloudTarget {
   };
 }
 
-const LOCAL_REGION = "us-east-1";
+const DEFAULT_REGION = "us-east-1";
 
-function localEndpoint(connection: ExternalConnection): string {
-  const host = connection.host.trim().replace(/^https?:\/\//i, "");
-  if (!host || /(^|\.)amazonaws\.com$/i.test(host) || AWS_REGION.test(host)) return "";
-  const secure =
-    connection.urlScheme === "https" ||
-    ["true", "1"].includes(param(connection, "ssl", "tls").toLowerCase());
-  const address = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  return `${secure ? "https" : "http"}://${address}:${connection.port ?? 8000}`;
+const AWS_HOST = /(^|\.)(amazonaws\.com(\.cn)?|api\.aws)$/;
+
+const STANDARD_DYNAMODB_HOST = /^dynamodb\.[a-z0-9-]+\.(amazonaws\.com(\.cn)?|api\.aws)$/;
+
+const LOOPBACK = ["localhost", "127.0.0.1", "::1"];
+
+interface DynamoEndpoint {
+  url: string;
+  loopback: boolean;
+  defaultedRegion: boolean;
 }
 
-function dynamodbLocal(
-  connection: ExternalConnection,
-  endpoint: string,
-  region: string,
-): CloudTarget {
-  const user = connection.user || "local";
-  const password = connection.user && connection.password ? connection.password : "local";
+function dynamoHost(connection: ExternalConnection): string {
+  return connection.host
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+}
+
+function dynamoEndpoint(connection: ExternalConnection, region: string): DynamoEndpoint | null {
+  const configured = param(connection, "endpoint", "Endpoint");
+  const host = dynamoHost(connection);
+  const loopback = LOOPBACK.includes(host) || host.endsWith(".local");
+  if (configured)
+    return /^https?:\/\//i.test(configured)
+      ? { url: configured, loopback, defaultedRegion: !region }
+      : null;
+  if (!host || AWS_REGION.test(host) || STANDARD_DYNAMODB_HOST.test(host)) return null;
+  const aws = AWS_HOST.test(host);
+  const secure =
+    connection.urlScheme === "https" ||
+    ["true", "1"].includes(param(connection, "ssl", "tls").toLowerCase()) ||
+    (aws && connection.urlScheme !== "http");
+  const local = loopback || (!aws && !secure && connection.port === 8000);
+  const port = connection.port ?? (!secure && local ? 8000 : null);
+  const address = host.includes(":") ? `[${host}]` : host;
   return {
-    connectionString: `dynamodb://${encodeURIComponent(user)}@${region}${query([["endpoint", endpoint]])}`,
-    user,
-    password,
-    warnings: [],
-    credentialsMissing: false,
-    skipReason: null,
+    url: `${secure ? "https" : "http"}://${address}${port ? `:${port}` : ""}`,
+    loopback,
+    defaultedRegion: !region,
   };
 }
 
 function dynamodb(connection: ExternalConnection): CloudTarget {
-  const configured = param(connection, "endpoint", "Endpoint");
-  const local = configured ? "" : localEndpoint(connection);
-  const region = awsRegion(connection) || (local ? LOCAL_REGION : "");
-  if (local) return dynamodbLocal(connection, local, region);
-  if (!region) return skip("AWS-Region für DynamoDB fehlt.");
+  const region = awsRegion(connection);
+  const endpoint = dynamoEndpoint(connection, region);
+  if (!region && !endpoint) return skip("AWS-Region für DynamoDB fehlt.");
   const warnings: string[] = [];
-  const credentials = awsCredentials(connection, warnings);
+  const loopbackDefaults = endpoint?.loopback && !(connection.user && connection.password);
+  const credentials = loopbackDefaults
+    ? { user: connection.user || "local", password: "local", profile: "", missing: false }
+    : awsCredentials(connection, warnings);
+  if (endpoint?.defaultedRegion && !endpoint.loopback)
+    warnings.push(`Region prüfen: ohne Angabe in der Quelle gilt ${DEFAULT_REGION}.`);
   return {
-    connectionString: `dynamodb://${credentials.user ? `${encodeURIComponent(credentials.user)}@` : ""}${region}${query(
+    connectionString: `dynamodb://${credentials.user ? `${encodeURIComponent(credentials.user)}@` : ""}${region || DEFAULT_REGION}${query(
       [
         ["profile", credentials.profile],
-        ["endpoint", /^https?:\/\//i.test(configured) ? configured : ""],
+        ["endpoint", endpoint?.url ?? ""],
       ],
     )}`,
     user: credentials.user,

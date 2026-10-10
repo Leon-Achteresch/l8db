@@ -238,7 +238,8 @@ function parseEntry(id: string, raw: Json, credentials: Json): ExternalConnectio
       "SID";
   connection.oracleDescriptor = target?.oracleDescriptor ?? "";
   connection.srv = target?.srv ?? false;
-  connection.urlScheme = text(configuration.host) ? null : (target?.transport ?? null);
+  connection.urlScheme = target?.transport ?? null;
+  connection.portFromUrl = !text(configuration.host);
   applyHandlers(connection, configuration, stored);
   return connection;
 }
