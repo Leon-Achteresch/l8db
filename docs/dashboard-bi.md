@@ -44,24 +44,25 @@ before the dashboard's own CSS.
   (base table or a join) get `column = value`; time buckets compare the bucketed
   expression. Expert SQL charts are wrapped when their mapped dimension has the same
   name and the SQL reads the source table. A linear tokenizer finds table positions
-  (after FROM, JOIN, ONLY, LATERAL or a comma in a FROM list, per parenthesis level,
-  with "", `` and [] identifiers (brackets for SQL Server, SQLite and ODBC), Unicode
-  names and parenthesized join lists; comments (nested for PostgreSQL, SQL Server, DuckDB
-  and ClickHouse, `#` for MySQL and BigQuery), string literals (double-quoted strings
-  for MySQL and BigQuery, backslash escapes for MySQL, ClickHouse, BigQuery and
-  Snowflake; for ODBC and unknown dialects a bracket directly after a name, a field access, `)` or
-  `]` is an array subscript, after a keyword, operator or numeric literal it is a
-  bracket identifier, and after whitespace or a comment it is a subscript when it closes as a
-  quote-aware index whose quotes do not touch words and the name reading would leave
-  unbalanced quotes). For ODBC the dialect is taken from the connection's `Driver=`
-  (raw `Driver={...};` or URL `odbc://…?Driver=…`, including driver library paths;
-  PostgreSQL, SQL Server, MySQL, SQLite, Oracle, ClickHouse, Snowflake, DuckDB,
-  BigQuery), so these heuristics only apply to DSN-only ODBC connections. There a
-  spaced escape-string index containing `]` (`data [E'x]']`) is read as a bracket name,
-  because the same text is a valid alias such as `[Team E's]`., Oracle q-quoted and dollar-quoted literals are ignored).
-  Tokens are cached for the 64 most recently used statements. List-valued dimension values are
-  not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
-  query again.
+  after FROM, JOIN, ONLY, LATERAL or a comma in a FROM list, per parenthesis level. It
+  understands "", `` and [] identifiers (brackets for SQL Server, SQLite and ODBC),
+  Unicode names and parenthesized join lists. Comments are skipped (nested for PostgreSQL,
+  SQL Server, DuckDB and ClickHouse, `#` for MySQL and BigQuery), and so are string
+  literals (double-quoted strings for MySQL and BigQuery, backslash escapes for MySQL,
+  ClickHouse, BigQuery and Snowflake), Oracle q-quoted and dollar-quoted literals.
+  For ODBC the dialect is taken from the connection's `Driver=` (raw `Driver={...};`
+  or URL `odbc://…?Driver=…`, including driver library paths; PostgreSQL, SQL Server,
+  MySQL, SQLite, Oracle, ClickHouse, Snowflake, DuckDB, BigQuery). Only DSN-only ODBC
+  connections keep a heuristic for brackets: directly after a name, a field access,
+  `)` or `]` a bracket is an array subscript; after a keyword, operator or numeric
+  literal it is a bracket identifier; after whitespace or a comment it is a subscript
+  when it closes as a quote-aware index whose quotes do not touch words and the name
+  reading would leave unbalanced quotes. There a spaced escape-string index containing
+  `]` (`data [E'x]']`) is read as a bracket name, because the same text is a valid
+  alias such as `[Team E's]`. Tokens are cached for the 64 most recently used
+  statements. List-valued dimension values are not offered for filtering, and
+  drill-through needs every clicked axis to be scalar. Charts that do not share the
+  column are untouched and do not query again.
   Selections live in memory per dashboard and are shown as removable chips.
 - **Drill-through** (`options.drill`, default on): "Details anzeigen" loads up to 200
   underlying rows (with joins only the base table's columns) with the chart's filters,
