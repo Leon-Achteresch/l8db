@@ -773,3 +773,22 @@ describe("Dialektregeln der Tabellenerkennung", () => {
     expect(readsTable("SELECT r FROM käse", "käse")).toBe(true);
   });
 });
+
+describe("Weitere Dialektregeln", () => {
+  test("ClickHouse verschachtelt Kommentare, BigQuery kennt # und doppelte Anführungszeichen", () => {
+    expect(
+      readsTable(
+        "/* a /* b */ SELECT r FROM orders */ SELECT r FROM events",
+        "orders",
+        "clickhouse",
+      ),
+    ).toBe(false);
+    expect(readsTable("# it's\nSELECT r FROM orders", "orders", "bigquery")).toBe(true);
+    expect(readsTable('SELECT "a\\"b" AS x, r FROM orders', "orders", "bigquery")).toBe(true);
+  });
+
+  test("Array-Indizes sind keine Klammerbezeichner", () => {
+    expect(readsTable("SELECT ARRAY[']'] AS a, r FROM orders", "orders", "odbc")).toBe(true);
+    expect(readsTable("SELECT a[1], r FROM [orders]", "orders", "odbc")).toBe(true);
+  });
+});

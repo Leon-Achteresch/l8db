@@ -29,7 +29,10 @@ const ENDS_FROM = new Set([
 const WORD_START = /[\p{L}_]/u;
 const WORD_PART = /[\p{L}\p{M}\p{N}_$]/u;
 const BACKSLASH_KINDS = new Set<DatabaseKind>(["mysql", "clickhouse", "bigquery", "snowflake"]);
-const NESTED_COMMENT_KINDS = new Set<DatabaseKind>(["postgres", "mssql", "duckdb"]);
+const NESTED_COMMENT_KINDS = new Set<DatabaseKind>(["postgres", "mssql", "duckdb", "clickhouse"]);
+const HASH_COMMENT_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
+const STRING_DOUBLE_QUOTE_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
+const SUBSCRIPT_BEFORE = /[\p{L}\p{M}\p{N}_$\])]/u;
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
 const cache = new Map<string, TableToken[]>();
@@ -48,14 +51,15 @@ function skipQuoted(sql: string, start: number, close: string, backslash: boolea
 
 function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const tokens: TableToken[] = [];
-  const mysql = kind === "mysql";
+  const hash = kind !== null && HASH_COMMENT_KINDS.has(kind);
+  const doubleQuoteStrings = kind !== null && STRING_DOUBLE_QUOTE_KINDS.has(kind);
   const backslash = kind !== null && BACKSLASH_KINDS.has(kind);
   const nested = kind === null || NESTED_COMMENT_KINDS.has(kind);
   const brackets = kind === null || BRACKET_KINDS.has(kind);
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
-    if (sql.startsWith("--", i) || (mysql && c === "#")) {
+    if (sql.startsWith("--", i) || (hash && c === "#")) {
       const end = sql.indexOf("\n", i);
       i = end < 0 ? sql.length : end + 1;
     } else if (sql.startsWith("/*", i)) {
@@ -84,11 +88,15 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
       const escapes =
         backslash || (/[eE]/.test(sql[i - 1] ?? "") && !/[\w$]/.test(sql[i - 2] ?? ""));
       i = skipQuoted(sql, i, "'", escapes);
-    } else if (c === '"' && mysql) {
+    } else if (c === '"' && doubleQuoteStrings) {
       i = skipQuoted(sql, i, '"', true);
-    } else if (c === '"' || c === "`" || (c === "[" && brackets)) {
+    } else if (
+      c === '"' ||
+      c === "`" ||
+      (c === "[" && brackets && !SUBSCRIPT_BEFORE.test(sql[i - 1] ?? ""))
+    ) {
       const close = c === "[" ? "]" : c;
-      const end = skipQuoted(sql, i, close, false);
+      const end = skipQuoted(sql, i, close, c !== "[" && backslash);
       const text = sql
         .slice(i + 1, end - 1)
         .split(close + close)
@@ -125,8 +133,8 @@ function tokensOf(sql: string, kind: DatabaseKind | null): TableToken[] {
   return tokens;
 }
 
-export function tableTokenCacheSize(): number {
-  return cache.size;
+export function tableTokenCacheKeys(): string[] {
+  return [...cache.keys()];
 }
 
 export function readsTable(sql: string, table: string, kind: DatabaseKind | null = null): boolean {
