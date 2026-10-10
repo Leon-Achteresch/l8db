@@ -25,11 +25,18 @@ export function combinable(metric: { agg?: Agg }): boolean {
   return additive(metric) || metric.agg === "min" || metric.agg === "max";
 }
 
-export function combineTotal(metric: { agg?: Agg }, values: number[]): number | null {
-  if (!values.length || !combinable(metric)) return null;
-  if (metric.agg === "min") return Math.min(...values);
-  if (metric.agg === "max") return Math.max(...values);
-  return values.reduce((sum, value) => sum + value, 0);
+export function combineTotal(metric: { agg?: Agg } | undefined, values: unknown[]): number | null {
+  if (!metric || !combinable(metric)) return null;
+  let result: number | null = null;
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = toNumber(value);
+    if (result === null) result = number;
+    else if (metric.agg === "min") result = Math.min(result, number);
+    else if (metric.agg === "max") result = Math.max(result, number);
+    else result += number;
+  }
+  return result;
 }
 
 export function datasetShape(ds: Dataset): DatasetShape {

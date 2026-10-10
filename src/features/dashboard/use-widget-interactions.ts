@@ -134,7 +134,8 @@ export function useWidgetInteractions({
       ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
       ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),
     ];
-    if (!picks.length) return false;
+    if (!picks.length || picks.some((p) => p.value !== null && typeof p.value === "object"))
+      return false;
     const canFilter = options.crossFilter && picks.some((p) => crossField(dataset, p.key));
     const canDrill = options.drill && picks.some((p) => ownCondition(dataset, p.key, p.value));
     if (!canFilter && !canDrill) return false;

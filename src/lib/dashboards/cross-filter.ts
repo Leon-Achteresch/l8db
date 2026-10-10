@@ -51,16 +51,30 @@ export function ownCondition(dataset: Dataset, key: string, value: unknown): Cro
   return { ref, bucket: key === DIM_KEY ? (s.dimension?.bucket ?? "none") : "none", value };
 }
 
+const NOISE = /'(?:[^']|'')*'|\$\$[\s\S]*?\$\$|--[^\n]*|\/\*[\s\S]*?\*\//g;
+const CLAUSE =
+  /\b(select|from|join|where|group|order|having|on|using|limit|union|returning|set|values)\b/gi;
+const TABLE_START = /\b(?:from|join|only|lateral)\s*$/i;
+
 function mentionsTable(sql: string, table: string): boolean {
   const name = table.slice(table.lastIndexOf(".") + 1);
   if (!name) return false;
-  const code = sql
-    .replace(/--[^\n]*/g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/'(?:[^']|'')*'/g, "''")
-    .replace(/\b(?:order|group|partition)\s+by\b/gi, " ");
+  const code = sql.replace(NOISE, " ");
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`, "i").test(code);
+  const token = new RegExp(`(^|[^\\w$])(["\`\\[]?)${escaped}\\2(?![\\w$])`, "gi");
+  for (const match of code.matchAll(token)) {
+    const before = code
+      .slice(0, (match.index ?? 0) + match[1].length)
+      .replace(/(?:["`[]?[\w$]+["`\]]?\s*\.\s*)+$/, "")
+      .trimEnd();
+    if (TABLE_START.test(before)) return true;
+    if (before.endsWith(",")) {
+      const clauses = [...before.matchAll(CLAUSE)];
+      const last = clauses.at(-1)?.[1].toLowerCase();
+      if (last === "from" || last === "join") return true;
+    }
+  }
+  return false;
 }
 
 function targetRef(dataset: Dataset, field: CrossField): string | null {

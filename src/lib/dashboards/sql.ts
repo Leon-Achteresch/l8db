@@ -514,7 +514,6 @@ export function datasetMarginSql(
   const visible: CrossCondition = {
     ref: dimension.column,
     bucket: dimension.bucket,
-    value: null,
     oneOf: values,
   };
   return buildSimpleSql(

@@ -130,20 +130,18 @@ export function useWidgetData({
     };
     return { rows: unique(baseShape.dimension), columns: unique(baseShape.dimension2) };
   }, [pivotMargins, baseShape, rawRows]);
-  const grandSql = useDebounced(
-    dataset && exactNeeded ? datasetTotalsSql(dataset, kind, period, scope) : "",
-    debounceMs,
-  );
-  const rowMarginSql = useDebounced(
-    dataset && visible ? datasetMarginSql(dataset, "rows", visible.rows, kind, period, scope) : "",
-    debounceMs,
-  );
-  const columnMarginSql = useDebounced(
+  const grandWanted = dataset && exactNeeded ? datasetTotalsSql(dataset, kind, period, scope) : "";
+  const rowWanted =
+    dataset && visible ? datasetMarginSql(dataset, "rows", visible.rows, kind, period, scope) : "";
+  const columnWanted =
     dataset && visible
       ? datasetMarginSql(dataset, "columns", visible.columns, kind, period, scope)
-      : "",
-    debounceMs,
-  );
+      : "";
+  const grandSql = useDebounced(grandWanted, debounceMs);
+  const rowMarginSql = useDebounced(rowWanted, debounceMs);
+  const columnMarginSql = useDebounced(columnWanted, debounceMs);
+  const settling =
+    grandSql !== grandWanted || rowMarginSql !== rowWanted || columnMarginSql !== columnWanted;
   const grandQuery = useSqlQuery(grandSql, refreshMs);
   const rowMargins = useSqlQuery(rowMarginSql, refreshMs);
   const columnMargins = useSqlQuery(columnMarginSql, refreshMs);
@@ -231,10 +229,11 @@ export function useWidgetData({
     if (!margins || failed) return null;
     if (!exactNeeded)
       return { complete: true, pending: false, grand: null, rows: null, columns: null };
-    if (!grandSql) return null;
+    if (!grandWanted) return null;
     return {
       complete: false,
       pending:
+        settling ||
         grandQuery.isPending ||
         (Boolean(rowMarginSql) && rowMargins.isPending) ||
         (Boolean(columnMarginSql) && columnMargins.isPending),
@@ -246,7 +245,8 @@ export function useWidgetData({
     margins,
     failed,
     exactNeeded,
-    grandSql,
+    grandWanted,
+    settling,
     rowMarginSql,
     columnMarginSql,
     grandQuery.isPending,
