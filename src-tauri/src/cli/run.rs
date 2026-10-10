@@ -1064,7 +1064,7 @@ async fn open_in_app(global: &Global, name: Option<&str>) -> Result<(), String> 
         return Err("open braucht eine gespeicherte Verbindung, keine --url.".into());
     };
     let exe = std::env::current_exe().map_err(|e| format!("Programmpfad unbekannt: {e}"))?;
-    let mut command = std::process::Command::new(exe);
+    let mut command = crate::process::std_command(exe);
     command
         .arg(format!("--menu=dock.connection:{}", target.id))
         .stdin(std::process::Stdio::null())
