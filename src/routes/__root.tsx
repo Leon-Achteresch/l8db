@@ -28,6 +28,12 @@ const FeatureVideoHost = lazy(() =>
   })),
 );
 
+const AutoSyncHost = lazy(() =>
+  import("@/features/shell/auto-sync-host").then(({ AutoSyncHost }) => ({
+    default: AutoSyncHost,
+  })),
+);
+
 function RootComponent() {
   const activeFeatureVideo = useFeatureVideoStore((state) => state.activeId);
   const [backgroundReady, setBackgroundReady] = useState(false);
@@ -54,6 +60,11 @@ function RootComponent() {
         <WindowCloseGuard />
         <AppTourHost />
         <OnboardingHost />
+        {backgroundReady && (
+          <Suspense fallback={null}>
+            <AutoSyncHost />
+          </Suspense>
+        )}
         {(backgroundReady || activeFeatureVideo) && (
           <Suspense fallback={null}>
             <FeatureVideoHost />

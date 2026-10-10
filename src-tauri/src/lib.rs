@@ -18,6 +18,7 @@ mod mcp;
 mod pocketbase;
 mod process;
 mod supabase;
+mod sync;
 mod updates;
 mod versioning;
 mod windows;
@@ -126,6 +127,7 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 ai::close_window(window);
                 windows::forget(window);
+                sync::forget_window(window);
             }
             #[cfg(target_os = "windows")]
             if let tauri::WindowEvent::Focused(focused) = event {
@@ -311,6 +313,7 @@ pub fn run() {
             extension_process::extension_process_stop,
             file_open::take_pending_open_files,
             connection_import::decrypt_navicat_legacy_passwords,
+            connection_import::detect_jetbrains_ssh_configs,
             file_open::resolve_open_files,
             updates::check_update,
             windows::open_app_window,
@@ -484,6 +487,21 @@ pub fn run() {
             db::secrets::store_secret,
             db::secrets::load_secret,
             db::secrets::delete_secret,
+            sync::sync_test,
+            sync::sync_fetch,
+            sync::sync_store,
+            sync::sync_cancel,
+            sync::sync_encrypt,
+            sync::sync_decrypt,
+            sync::sync_seal_secrets,
+            sync::sync_open_secrets,
+            sync::sync_claim_leader,
+            sync::sync_release_leader,
+            sync::sync_begin,
+            sync::sync_end,
+            sync::sync_backup_save,
+            sync::sync_backup_list,
+            sync::sync_backup_load,
             db::ssh::open_ssh_tunnel,
             db::ssh::open_proxy_tunnel,
             db::ssh::open_command_tunnel,

@@ -109,6 +109,7 @@ mod backend {
 }
 
 pub use backend::get as read_secret;
+pub use backend::set as write_secret;
 
 async fn blocking<T, F>(f: F) -> Result<T, String>
 where

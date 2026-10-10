@@ -16,6 +16,10 @@ export async function rememberSecret(account: string, secret: string): Promise<v
   await removeSecret(account);
 }
 
+export function forgetSessionSecret(account: string): void {
+  sessionSecrets.delete(account);
+}
+
 export function peekSecret(account: string): string | null {
   return sessionSecrets.get(account) ?? null;
 }

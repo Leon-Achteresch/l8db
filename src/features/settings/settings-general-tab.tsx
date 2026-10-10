@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-panel";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
+import { SyncPanel } from "@/features/settings/sync-panel";
 import { TourSection } from "@/features/settings/tour-section";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -88,6 +89,8 @@ export function SettingsGeneralTab() {
         <TourSection />
 
         <PortableWorkspacePanel />
+
+        <SyncPanel />
 
         <SettingsRow settingId="reset">
           <Button variant="outline" size="sm" onClick={handleReset}>
