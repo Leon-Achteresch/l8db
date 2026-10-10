@@ -959,8 +959,7 @@ describe("Abschluss-Review", () => {
       "odbc",
       "all",
     );
-    expect(unknown).toContain("1 = 0");
-    expect(unknown).not.toContain("OR 1=1");
+    expect(unknown).toContain(`"region" = '\\\\'' OR 1=1 -- '`);
   });
 
   test("Filter aus Expertenabfragen erreichen nur Abfragen auf denselben Tabellen", () => {
@@ -1112,10 +1111,30 @@ describe("Zweite Abschlussrunde", () => {
       { id: "f", column: "status", operator: "eq", value: "x\\' OR 1=1 -- " },
     ];
     const sql = datasetSql(dataset, "odbc", "all");
-    expect(sql).toContain("1 = 0");
-    expect(sql).not.toContain("OR 1=1");
+    expect(sql).toContain(`"status" = 'x\\\\'' OR 1=1 -- '`);
+    expect(sql).not.toContain("1 = 0");
     const variable = { id: "v", name: "q", label: "q", type: "text" as const, defaultValue: "" };
-    expect(variableLiteral(variable, "x\\' OR 1=1 -- ", "odbc")).toBe("NULL");
+    expect(variableLiteral(variable, "x\\' OR 1=1 -- ", "odbc")).toBe("'x\\\\'' OR 1=1 --'");
+    expect(variableLiteral(variable, "C:\\data", "odbc")).toBe("'C:\\\\data'");
     expect(variableLiteral(variable, "Nord", "odbc")).toBe("'Nord'");
+  });
+});
+
+describe("Dritte Abschlussrunde", () => {
+  test("SQL Server: Kommentar nach CTEs, TOP im ersten UNION-Zweig, qualifiziertes ORDER BY", () => {
+    const commented = expert("WITH x AS (SELECT 1 AS a) -- note\nSELECT a FROM x ORDER BY a", "a");
+    commented.mapping = { dimension: null, dimension2: null, metrics: ["a"], dateColumn: "a" };
+    const trend = datasetTrendSql(commented, "mssql", "all");
+    expect(trend.startsWith("WITH x AS (SELECT 1 AS a),\nl8db_t AS (")).toBe(true);
+    expect(trend).not.toContain("-- note");
+    const topUnion = expert("SELECT TOP 5 a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
+    expect(datasetDetailSql(topUnion, [], "mssql", "all")).toContain(") AS l8db_u ORDER BY a");
+    const qualified = expert(
+      "SELECT t.a FROM t UNION ALL SELECT u.a FROM u ORDER BY t.a DESC, [dbo].[t].[b]",
+      "a",
+    );
+    expect(datasetDetailSql(qualified, [], "mssql", "all")).toContain(
+      ") AS l8db_u ORDER BY a DESC, [b]",
+    );
   });
 });

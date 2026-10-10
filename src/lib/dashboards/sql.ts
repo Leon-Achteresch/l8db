@@ -18,6 +18,7 @@ import { serverSqlParts } from "./sql-tables";
 import {
   EMPTY_SCOPE,
   filterVariable,
+  neutralBackslashes,
   scopeValue,
   substituteVariables,
   type VariableScope,
@@ -251,14 +252,13 @@ export function crossLiteral(
   if (typeof value === "boolean")
     return kind === "mssql" || kind === "oracle" ? (value ? "1" : "0") : String(value);
   const text = typeof value === "string" ? value : JSON.stringify(value);
-  if (kind === "odbc" && text.includes("\\")) return null;
   if (kind === "oracle" && temporal && ISO_DATE.test(text)) {
     const time = text.slice(11, 19);
     return time && time !== "00:00:00" && time.length === 8
       ? `TIMESTAMP '${text.slice(0, 10)} ${time}'`
       : `DATE '${text.slice(0, 10)}'`;
   }
-  return quoteString(text, kind ?? undefined);
+  return quoteString(neutralBackslashes(text, kind), kind ?? undefined);
 }
 
 function equalsLiteral(expr: string, literal: string | null): string {
@@ -371,11 +371,10 @@ export function buildSimpleSql(
       const name = filterVariable(f.value);
       const value = name === null ? f.value : scopeValue(scope, name);
       if (value === null || (name !== null && !value.trim())) return null;
-      if (kind === "odbc" && value.includes("\\")) return "1 = 0";
       return compileConditionExpression(
         refExpr(f.column, ds, style),
         f.operator,
-        value,
+        neutralBackslashes(value, kind),
         kind,
         f.dataType,
       );
