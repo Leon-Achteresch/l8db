@@ -52,6 +52,7 @@ export function buildAutomationConnection(connection: SavedConnection): Automati
     kind: connection.kind,
     connectionString: cleanConnectionString(connection, readOnly),
     readOnly,
+    productionLocked: isProductionLocked(connection),
     environment: connectionEnvironment(connection),
     tags: (connection.tags ?? []).map((tag) => tag.name),
     ssh: ssh

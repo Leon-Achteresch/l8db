@@ -104,14 +104,19 @@ fn block_on(global: &Global, command: Command) -> i32 {
                 }
             },
             _ = tokio::signal::ctrl_c() => {
-                let _ = execution::cancel(&job);
-                let _ = tokio::time::timeout(std::time::Duration::from_secs(3), &mut work).await;
+                if matches!(execution::cancel(&job), Ok(true)) {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), &mut work).await;
+                }
                 eprintln!("\nAbgebrochen.");
                 CANCELLED
             }
         }
     });
-    runtime.shutdown_timeout(std::time::Duration::from_secs(2));
+    if code == CANCELLED {
+        runtime.shutdown_background();
+    } else {
+        runtime.shutdown_timeout(std::time::Duration::from_secs(2));
+    }
     code
 }
 
@@ -322,6 +327,17 @@ async fn table(
 ) -> Result<(), String> {
     let kind = session.target.kind;
     let adapter = &session.adapter;
+    let filter = match &command {
+        TableCommand::Rows { filter, .. } | TableCommand::Count { filter, .. } => filter.clone(),
+        _ => None,
+    };
+    if let Some(filter) = filter.filter(|_| is_sql(kind)) {
+        db::validate_table_filter(&filter)
+            .map_err(|_| "--where darf nur eine Bedingung enthalten (ohne ; -- /* UNION INTO RETURNING).\n  Für eigenes SQL: l8db q \"select … where …\"".to_string())?;
+        if writes(kind, &filter) {
+            allow_write(&session.target, false).await?;
+        }
+    }
     match command {
         TableCommand::List { schema } => {
             let tables = guarded(job, kind, 60, adapter.list_tables(schema.as_deref())).await?;
@@ -376,7 +392,7 @@ async fn table(
                     order_by.as_deref(),
                     desc,
                     false,
-                    true,
+                    false,
                 ),
             )
             .await?;
@@ -399,7 +415,7 @@ async fn table(
                 job,
                 kind,
                 300,
-                adapter.count_rows(&schema, &name, filter.as_deref(), true),
+                adapter.count_rows(&schema, &name, filter.as_deref(), false),
             )
             .await?;
             match format {
@@ -415,8 +431,16 @@ async fn table(
     }
 }
 
-fn read_sql(args: &QueryArgs) -> Result<String, String> {
-    let sql = match (&args.sql, &args.file) {
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn read_sql(sql: Option<String>, file: Option<std::path::PathBuf>) -> Result<String, String> {
+    let sql = match (&sql, &file) {
         (_, Some(path)) => {
             std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?
         }
@@ -496,20 +520,23 @@ pub(super) fn writes(kind: DatabaseKind, statement: &str) -> bool {
     }
 }
 
-fn confirm_production(target: &Target, yes: bool) -> Result<(), String> {
+async fn confirm_production(target: &Target, yes: bool) -> Result<(), String> {
     if yes {
         return Ok(());
     }
+    let name = target.name.clone();
+    blocking(move || ask_production(&name)).await
+}
+
+fn ask_production(name: &str) -> Result<(), String> {
     let stdin = std::io::stdin();
     if !stdin.is_terminal() || !std::io::stderr().is_terminal() {
         return Err(format!(
-            "„{}“ ist eine Produktionsverbindung und das SQL schreibt.\n  Zum Bestätigen --yes anhängen.",
-            target.name
+            "„{name}“ ist eine Produktionsverbindung und das SQL schreibt.\n  Zum Bestätigen --yes anhängen."
         ));
     }
     eprint!(
-        "⚠ „{}“ ist Produktion und das SQL schreibt.\n  Zum Ausführen den Verbindungsnamen eintippen: ",
-        target.name
+        "⚠ „{name}“ ist Produktion und das SQL schreibt.\n  Zum Ausführen den Verbindungsnamen eintippen: "
     );
     let _ = std::io::stderr().flush();
     let mut answer = String::new();
@@ -517,7 +544,7 @@ fn confirm_production(target: &Target, yes: bool) -> Result<(), String> {
         .lock()
         .read_line(&mut answer)
         .map_err(|e| e.to_string())?;
-    if answer.trim() == target.name {
+    if answer.trim() == name {
         Ok(())
     } else {
         Err("Nicht bestätigt, nichts ausgeführt.".into())
@@ -531,7 +558,8 @@ async fn query(
     job: &str,
     out: &mut impl Write,
 ) -> Result<(), String> {
-    let sql = read_sql(&args)?;
+    let (sql, file) = (args.sql.clone(), args.file.clone());
+    let sql = blocking(move || read_sql(sql, file)).await?;
     let source = resolve(global, None).await?;
     let target = source.target();
     let parts = statements(target.kind, &sql);
@@ -539,14 +567,8 @@ async fn query(
         return Err("Das SQL enthält keine Anweisung.".into());
     }
     let writing = parts.iter().any(|statement| writes(target.kind, statement));
-    if writing && target.read_only {
-        return Err(format!(
-            "„{}“ ist schreibgeschützt, das SQL würde schreiben.\n  Schreibschutz oder Produktionssperre lassen sich nur in der App ändern.",
-            target.name
-        ));
-    }
-    if writing && target.production {
-        confirm_production(target, args.yes)?;
+    if writing {
+        allow_write(target, args.yes).await?;
     }
     let session = connect::open(source, global.database.as_deref()).await?;
     let kind = session.target.kind;
@@ -570,10 +592,12 @@ async fn query(
         (kind, parts.as_slice(), writing, limit.rows())
     {
         let started = Instant::now();
-        if let Some(result) =
-            postgres_cursor(&session, statement, rows, global, job, args.timeout).await?
-        {
-            return print_result(out, format, &result, limit, started, false);
+        match postgres_cursor(&session, statement, rows, global, job, args.timeout).await? {
+            Cursor::Done(result) => {
+                return print_result(out, format, &result, limit, started, false)
+            }
+            Cursor::Writes => allow_write(&session.target, args.yes).await?,
+            Cursor::Skip => {}
         }
     }
     let total = parts.len();
@@ -609,8 +633,7 @@ async fn query(
                 };
                 if let Some(mut tx) = transaction.take() {
                     let _ = tx.rollback().await;
-                    message
-                        .push_str("\n  Nichts geändert: das Skript wurde komplett zurückgerollt.");
+                    message.push_str(rollback_note(kind, &parts[..=index]));
                 } else if index > 0 && writing {
                     message.push_str(&format!(
                         "\n  Die {index} Anweisung(en) davor sind bereits ausgeführt."
@@ -628,6 +651,47 @@ async fn query(
     Ok(())
 }
 
+async fn allow_write(target: &Target, yes: bool) -> Result<(), String> {
+    if target.read_only {
+        return Err(format!(
+            "„{}“ ist schreibgeschützt, das SQL würde schreiben.\n  Schreibschutz oder Produktionssperre lassen sich nur in der App ändern.",
+            target.name
+        ));
+    }
+    if target.production {
+        confirm_production(target, yes).await?;
+    }
+    Ok(())
+}
+
+pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String]) -> &'static str {
+    let controls = ran.iter().any(|statement| {
+        redact::sql_words(statement).first().is_some_and(|word| {
+            matches!(
+                word.as_str(),
+                "begin" | "start" | "commit" | "end" | "rollback" | "savepoint" | "release"
+            )
+        })
+    });
+    let implicit = matches!(kind, DatabaseKind::Mysql | DatabaseKind::Oracle)
+        && ran.iter().any(|statement| redact::is_ddl(statement));
+    if controls {
+        "\n  Transaktion zurückgerollt. Achtung: Das Skript steuert Transaktionen selbst (BEGIN/COMMIT), bereits festgeschriebene Teile bleiben bestehen."
+    } else if implicit {
+        "\n  Transaktion zurückgerollt. Achtung: CREATE/ALTER/DROP schreibt diese Datenbank sofort fest, solche Anweisungen davor bleiben bestehen."
+    } else {
+        "\n  Nichts geändert: das Skript wurde komplett zurückgerollt."
+    }
+}
+
+enum Cursor {
+    Done(QueryResult),
+    Writes,
+    Skip,
+}
+
+const READ_ONLY_VIOLATION: &str = "SQLSTATE 25006";
+
 fn cursor_safe(statement: &str) -> bool {
     redact::sql_words(statement)
         .first()
@@ -641,9 +705,9 @@ async fn postgres_cursor(
     global: &Global,
     job: &str,
     timeout: u64,
-) -> Result<Option<QueryResult>, String> {
+) -> Result<Cursor, String> {
     if !cursor_safe(statement) {
-        return Ok(None);
+        return Ok(Cursor::Skip);
     }
     let Ok(mut tx) = db::import::open_session(
         DatabaseKind::Postgres,
@@ -653,8 +717,12 @@ async fn postgres_cursor(
     )
     .await
     else {
-        return Ok(None);
+        return Ok(Cursor::Skip);
     };
+    if tx.execute("SET TRANSACTION READ ONLY").await.is_err() {
+        let _ = tx.rollback().await;
+        return Ok(Cursor::Skip);
+    }
     let body = statement.trim().trim_end_matches(';');
     let declared = guarded(
         job,
@@ -665,7 +733,7 @@ async fn postgres_cursor(
     .await;
     if let Err(error) = declared {
         let _ = tx.rollback().await;
-        return Err(error);
+        return read_only_violation(error);
     }
     let fetched = guarded(
         job,
@@ -678,10 +746,21 @@ async fn postgres_cursor(
     )
     .await;
     let _ = tx.rollback().await;
-    let mut result = fetched?;
+    let mut result = match fetched {
+        Ok(result) => result,
+        Err(error) => return read_only_violation(error),
+    };
     result.truncated |= result.rows.len() > rows;
     result.rows.truncate(rows);
-    Ok(Some(result))
+    Ok(Cursor::Done(result))
+}
+
+fn read_only_violation(error: String) -> Result<Cursor, String> {
+    if error.contains(READ_ONLY_VIOLATION) {
+        Ok(Cursor::Writes)
+    } else {
+        Err(error)
+    }
 }
 
 async fn limited<F>(limit: Limit, future: F) -> Result<QueryResult, String>
@@ -835,6 +914,7 @@ fn kind_name(kind: DatabaseKind) -> String {
 fn notes(connection: &AutomationConnection) -> String {
     [
         connection.read_only.then_some("schreibgeschützt"),
+        (connection.production_locked && !connection.read_only).then_some("Produktionssperre"),
         connection
             .vault
             .then_some("Passwortmanager, nur in der App"),
@@ -853,7 +933,7 @@ fn describe(connection: &AutomationConnection, is_default: bool) -> Value {
         "environment": connection.environment,
         "address": address(&connection.connection_string),
         "tunnel": tunnel(connection),
-        "readOnly": connection.read_only,
+        "readOnly": connection.read_only || connection.production_locked,
         "tags": connection.tags,
         "default": is_default,
     })
@@ -962,6 +1042,10 @@ async fn show_connection(
         ("Tunnel", dash(tunnel(connection))),
         ("Tags", dash(connection.tags.join(", "))),
         ("Schreibgeschützt", yes_no(connection.read_only).into()),
+        (
+            "Produktionssperre",
+            yes_no(connection.production_locked).into(),
+        ),
         ("Standard", yes_no(details["default"] == json!(true)).into()),
     ];
     let width = fields

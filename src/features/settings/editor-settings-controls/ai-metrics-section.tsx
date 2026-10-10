@@ -23,7 +23,12 @@ export function EditorAiMetricsSection() {
   const cost = rows.reduce((total, [, stats]) => total + stats.cost, 0);
 
   return (
-    <Row settingId="editor-ai-metrics" featureId="settings.editor.ai-metrics" compact={false}>
+    <Row
+      settingId="editor-ai-metrics"
+      featureId="settings.editor.ai-metrics"
+      compact={false}
+      stacked
+    >
       <div className="flex w-full min-w-0 flex-col items-end gap-2">
         {rows.length ? (
           <div className="w-full overflow-x-auto rounded-lg border border-border/70">
