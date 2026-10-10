@@ -112,4 +112,15 @@ mod tests {
         assert!(start(&mut state, "main", now, |_| true));
         assert!(start(&mut state, "win-1", now, |label| label != "main"));
     }
+
+    #[test]
+    fn closing_a_window_releases_its_lease_and_leadership() {
+        let mut state = Coordinator::default();
+        let now = Instant::now();
+        assert!(claim(&mut state, "win-1", |_| true));
+        assert!(start(&mut state, "win-1", now, |_| true));
+        forget(&mut state, "win-1");
+        assert!(start(&mut state, "main", now, |_| true));
+        assert!(claim(&mut state, "main", |_| true));
+    }
 }

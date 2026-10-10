@@ -108,6 +108,7 @@ mod backend {
     }
 }
 
+pub use backend::delete as remove_secret;
 pub use backend::get as read_secret;
 pub use backend::set as write_secret;
 

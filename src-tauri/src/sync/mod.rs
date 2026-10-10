@@ -1,6 +1,7 @@
 mod coordinator;
 mod crypto;
 mod remote;
+mod secrets;
 
 use remote::{Gist, Precondition, RemoteFile, StoreResult, WebDav, GITHUB_API};
 use serde::{Deserialize, Serialize};
@@ -76,117 +77,118 @@ async fn secret(account: &'static str) -> Result<String, String> {
     Ok(value.unwrap_or_default())
 }
 
-async fn test_target(target: &SyncTarget) -> Result<String, String> {
-    let client = remote::client()?;
-    match target {
-        SyncTarget::Webdav {
-            url,
-            username,
-            path,
-            allow_insecure,
-        } => {
-            let password = secret(WEBDAV_ACCOUNT).await?;
-            WebDav {
-                url,
-                username,
-                password: &password,
-                path,
-                allow_insecure: *allow_insecure,
-            }
-            .test(&client)
-            .await
-        }
-        SyncTarget::Gist { gist_id } => {
-            let token = secret(GITHUB_ACCOUNT).await?;
-            Gist {
-                api: GITHUB_API,
-                token: &token,
-                gist_id: gist_id.as_deref().filter(|id| !id.is_empty()),
-            }
-            .test(&client)
-            .await
-        }
-    }
+enum Provider {
+    Webdav {
+        url: String,
+        username: String,
+        path: String,
+        allow_insecure: bool,
+        password: Zeroizing<String>,
+    },
+    Gist {
+        token: Zeroizing<String>,
+        gist_id: Option<String>,
+    },
 }
 
-async fn fetch_target(target: &SyncTarget) -> Result<RemoteFile, String> {
-    let client = remote::client()?;
-    match target {
-        SyncTarget::Webdav {
-            url,
-            username,
-            path,
-            allow_insecure,
-        } => {
-            let password = secret(WEBDAV_ACCOUNT).await?;
-            WebDav {
+impl Provider {
+    async fn resolve(target: &SyncTarget) -> Result<Self, String> {
+        Ok(match target {
+            SyncTarget::Webdav {
                 url,
                 username,
-                password: &password,
+                path,
+                allow_insecure,
+            } => Self::Webdav {
+                url: url.clone(),
+                username: username.clone(),
+                path: path.clone(),
+                allow_insecure: *allow_insecure,
+                password: Zeroizing::new(secret(WEBDAV_ACCOUNT).await?),
+            },
+            SyncTarget::Gist { gist_id } => Self::Gist {
+                token: Zeroizing::new(secret(GITHUB_ACCOUNT).await?),
+                gist_id: gist_id.clone().filter(|id| !id.is_empty()),
+            },
+        })
+    }
+
+    fn webdav(&self) -> Option<WebDav<'_>> {
+        match self {
+            Self::Webdav {
+                url,
+                username,
+                path,
+                allow_insecure,
+                password,
+            } => Some(WebDav {
+                url,
+                username,
+                password,
                 path,
                 allow_insecure: *allow_insecure,
-            }
-            .fetch(&client)
-            .await
-        }
-        SyncTarget::Gist { gist_id } => {
-            let token = secret(GITHUB_ACCOUNT).await?;
-            Gist {
-                api: GITHUB_API,
-                token: &token,
-                gist_id: gist_id.as_deref().filter(|id| !id.is_empty()),
-            }
-            .fetch(&client)
-            .await
+            }),
+            Self::Gist { .. } => None,
         }
     }
-}
 
-async fn store_target(
-    target: &SyncTarget,
-    content: &str,
-    precondition: Precondition,
-) -> Result<StoreResult, String> {
-    let client = remote::client()?;
-    match target {
-        SyncTarget::Webdav {
-            url,
-            username,
-            path,
-            allow_insecure,
-        } => {
-            let password = secret(WEBDAV_ACCOUNT).await?;
-            WebDav {
-                url,
-                username,
-                password: &password,
-                path,
-                allow_insecure: *allow_insecure,
-            }
-            .store(&client, content, precondition)
-            .await
-        }
-        SyncTarget::Gist { gist_id } => {
-            let token = secret(GITHUB_ACCOUNT).await?;
-            Gist {
+    fn gist(&self) -> Option<Gist<'_>> {
+        match self {
+            Self::Gist { token, gist_id } => Some(Gist {
                 api: GITHUB_API,
-                token: &token,
-                gist_id: gist_id.as_deref().filter(|id| !id.is_empty()),
-            }
-            .store(&client, content)
-            .await
+                token,
+                gist_id: gist_id.as_deref(),
+            }),
+            Self::Webdav { .. } => None,
+        }
+    }
+
+    async fn test(&self) -> Result<String, String> {
+        let client = remote::client()?;
+        match (self.webdav(), self.gist()) {
+            (Some(dav), _) => dav.test(client).await,
+            (_, Some(gist)) => gist.test(client).await,
+            _ => unreachable!(),
+        }
+    }
+
+    async fn fetch(&self) -> Result<RemoteFile, String> {
+        let client = remote::client()?;
+        match (self.webdav(), self.gist()) {
+            (Some(dav), _) => dav.fetch(client).await,
+            (_, Some(gist)) => gist.fetch(client).await,
+            _ => unreachable!(),
+        }
+    }
+
+    async fn store(
+        &self,
+        content: &str,
+        precondition: Precondition,
+    ) -> Result<StoreResult, String> {
+        let client = remote::client()?;
+        match (self.webdav(), self.gist()) {
+            (Some(dav), _) => dav.store(client, content, precondition).await,
+            (_, Some(gist)) => gist.store(client, content, precondition).await,
+            _ => unreachable!(),
         }
     }
 }
 
 #[tauri::command]
 pub async fn sync_test(target: SyncTarget, op_id: String) -> Result<String, String> {
-    cancellable(&op_id, test_target(&target)).await
+    cancellable(&op_id, async {
+        Provider::resolve(&target).await?.test().await
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn sync_fetch(target: SyncTarget, op_id: String) -> Result<RemoteFile, String> {
-    cancellable(&op_id, fetch_target(&target)).await
+    cancellable(&op_id, async {
+        Provider::resolve(&target).await?.fetch().await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -202,7 +204,13 @@ pub async fn sync_store(
         (_, true) => Precondition::Absent,
         _ => Precondition::None,
     };
-    cancellable(&op_id, store_target(&target, &content, precondition)).await
+    cancellable(&op_id, async {
+        Provider::resolve(&target)
+            .await?
+            .store(&content, precondition)
+            .await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -245,113 +253,32 @@ pub async fn sync_decrypt(envelope: String) -> Result<String, String> {
         .map_err(|e| format!("Entschlüsselung fehlgeschlagen: {e}"))?
 }
 
-const SECRET_SUFFIXES: [&str; 5] = ["", ":ssh", ":ssh-jumps", ":proxy", ":params"];
-const MAX_SECRET_ACCOUNTS: usize = 50_000;
-
-fn valid_secret_account(account: &str) -> bool {
-    SECRET_SUFFIXES.iter().any(|suffix| {
-        account.strip_suffix(suffix).is_some_and(|id| {
-            !id.is_empty()
-                && id.len() <= 128
-                && id
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        })
-    })
-}
-
-fn checked_accounts(accounts: Vec<String>) -> Result<Vec<String>, String> {
-    if accounts.len() > MAX_SECRET_ACCOUNTS {
-        return Err("Zu viele Secrets für die Synchronisierung.".into());
-    }
-    if let Some(bad) = accounts
-        .iter()
-        .find(|account| !valid_secret_account(account))
-    {
-        return Err(format!("Ungültiges Secret-Konto: {bad}"));
-    }
-    Ok(accounts)
-}
-
-fn collect_secrets(
-    accounts: &[String],
-    read: impl Fn(&str) -> Result<Option<String>, String>,
-) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let mut found = std::collections::BTreeMap::new();
-    for account in accounts {
-        if let Some(secret) = read(account)? {
-            if !secret.is_empty() {
-                found.insert(account.clone(), secret);
-            }
-        }
-    }
-    Ok(found)
-}
-
-fn restore_secrets(
-    plaintext: &str,
-    allowed: &[String],
-    read: impl Fn(&str) -> Result<Option<String>, String>,
-    write: impl Fn(&str, &str) -> Result<(), String>,
-) -> Result<Vec<String>, String> {
-    let secrets: std::collections::BTreeMap<String, String> = serde_json::from_str(plaintext)
-        .map_err(|_| "Synchronisierte Secrets sind beschädigt.".to_string())?;
-    let allowed: std::collections::HashSet<&str> = allowed.iter().map(String::as_str).collect();
-    let mut updated = Vec::new();
-    for (account, secret) in secrets {
-        if !allowed.contains(account.as_str()) || !valid_secret_account(&account) {
-            continue;
-        }
-        if read(&account)?.as_deref() != Some(secret.as_str()) {
-            write(&account, &secret)?;
-            updated.push(account);
-        }
-    }
-    Ok(updated)
-}
-
 #[tauri::command]
-pub async fn sync_seal_secrets(
+pub async fn sync_merge_secrets(
+    envelope: Option<String>,
     accounts: Vec<String>,
+    base: std::collections::BTreeMap<String, secrets::BaseEntry>,
+    mode: secrets::Mode,
+    now: u64,
     salt: Option<String>,
-) -> Result<Option<crypto::Sealed>, String> {
-    let accounts = checked_accounts(accounts)?;
-    let passphrase = secret(PASSPHRASE_ACCOUNT).await?;
+) -> Result<secrets::SecretMerge, String> {
+    let passphrase = Zeroizing::new(secret(PASSPHRASE_ACCOUNT).await?);
+    if passphrase.is_empty() {
+        return Err("Keine Sync-Passphrase hinterlegt.".into());
+    }
     tokio::task::spawn_blocking(move || {
-        let found = collect_secrets(&accounts, crate::db::secrets::read_secret)?;
-        if found.is_empty() {
-            return Ok(None);
-        }
-        let plaintext = Zeroizing::new(serde_json::to_string(&found).map_err(|e| e.to_string())?);
-        crypto::seal(
+        secrets::run(
             &passphrase,
-            &plaintext,
-            crypto::kdf_for_salt(salt.as_deref()),
-        )
-        .map(Some)
-    })
-    .await
-    .map_err(|e| format!("Secrets konnten nicht verschlüsselt werden: {e}"))?
-}
-
-#[tauri::command]
-pub async fn sync_open_secrets(
-    envelope: String,
-    accounts: Vec<String>,
-) -> Result<Vec<String>, String> {
-    let accounts = checked_accounts(accounts)?;
-    let passphrase = secret(PASSPHRASE_ACCOUNT).await?;
-    tokio::task::spawn_blocking(move || {
-        let plaintext = Zeroizing::new(crypto::open(&passphrase, &envelope)?);
-        restore_secrets(
-            &plaintext,
-            &accounts,
-            crate::db::secrets::read_secret,
-            crate::db::secrets::write_secret,
+            envelope.as_deref(),
+            accounts,
+            base,
+            mode,
+            now,
+            salt.as_deref(),
         )
     })
     .await
-    .map_err(|e| format!("Secrets konnten nicht übernommen werden: {e}"))?
+    .map_err(|e| format!("Secrets konnten nicht synchronisiert werden: {e}"))?
 }
 
 #[tauri::command]
@@ -531,60 +458,6 @@ mod tests {
             serde_json::from_value(serde_json::json!({"provider": "gist", "gistId": null}))
                 .unwrap();
         assert!(matches!(gist, SyncTarget::Gist { gist_id: None }));
-    }
-
-    #[test]
-    fn secret_accounts_are_restricted_to_connection_secrets() {
-        assert!(valid_secret_account("3f1c-uuid"));
-        assert!(valid_secret_account("3f1c-uuid:ssh-jumps"));
-        assert!(!valid_secret_account("l8db-sync:passphrase"));
-        assert!(!valid_secret_account("automation:smtp:x"));
-        assert!(!valid_secret_account(":ssh"));
-        assert!(checked_accounts(vec!["a:params".into(), "l8db-sync:github".into()]).is_err());
-    }
-
-    #[test]
-    fn secrets_round_trip_only_touches_allowed_changed_accounts() {
-        let store = Mutex::new(std::collections::BTreeMap::from([
-            ("a".to_string(), "pw-a".to_string()),
-            ("a:ssh".to_string(), "ssh-a".to_string()),
-            ("b".to_string(), "pw-b".to_string()),
-        ]));
-        let read = |account: &str| Ok(store.lock().unwrap().get(account).cloned());
-        let accounts = vec![
-            "a".to_string(),
-            "a:ssh".to_string(),
-            "b".to_string(),
-            "c".to_string(),
-        ];
-        let found = collect_secrets(&accounts, read).unwrap();
-        assert_eq!(found.len(), 3);
-        let mut incoming = found.clone();
-        incoming.insert("b".into(), "pw-b-neu".into());
-        incoming.insert("c".into(), "pw-c".into());
-        incoming.insert("l8db-sync:github".into(), "boese".into());
-        let plaintext = serde_json::to_string(&incoming).unwrap();
-        let writes = Mutex::new(Vec::new());
-        let updated = restore_secrets(
-            &plaintext,
-            &[
-                "a".into(),
-                "a:ssh".into(),
-                "b".into(),
-                "l8db-sync:github".into(),
-            ],
-            |account| Ok(store.lock().unwrap().get(account).cloned()),
-            |account, secret| {
-                writes
-                    .lock()
-                    .unwrap()
-                    .push((account.to_string(), secret.to_string()));
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert_eq!(updated, vec!["b".to_string()]);
-        assert_eq!(writes.lock().unwrap().len(), 1);
     }
 
     #[test]

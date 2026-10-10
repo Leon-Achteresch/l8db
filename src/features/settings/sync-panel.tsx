@@ -4,7 +4,7 @@ import {
   CloudUploadIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,9 +24,10 @@ import { SyncPreviewDialog } from "@/features/settings/sync-preview-dialog";
 import { SyncProviderForm } from "@/features/settings/sync-provider-form";
 import { SyncSecurityRow } from "@/features/settings/sync-security-row";
 import { errorMessage, performSync } from "@/lib/sync/controller";
-import type { SyncDecider, SyncDecision, SyncMode } from "@/lib/sync/engine";
-import type { ConflictStrategy, SyncConflict } from "@/lib/sync/merge";
-import { syncTarget, useSyncStore } from "@/lib/sync/store";
+import type { SyncDecision, SyncMode } from "@/lib/sync/engine";
+import { createInteractiveDecider, type InteractiveDecider } from "@/lib/sync/interactive-decider";
+import type { SyncConflict } from "@/lib/sync/merge";
+import { syncTarget, targetKey, useSyncStore } from "@/lib/sync/store";
 
 type Preview = Extract<SyncDecision, { kind: "preview" }>;
 
@@ -46,32 +47,31 @@ export function SyncPanel() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmUpload, setConfirmUpload] = useState(false);
   const [backupsOpen, setBackupsOpen] = useState(false);
-  const resolveConflicts = useRef<((strategy: ConflictStrategy | null) => void) | null>(null);
-  const resolvePreview = useRef<((accepted: boolean) => void) | null>(null);
+  const interactive = useRef<InteractiveDecider | null>(null);
+  interactive.current ??= createInteractiveDecider({
+    conflicts: setConflicts,
+    preview: setPreview,
+  });
+  const decisions = interactive.current;
   const controller = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      controller.current?.abort();
+      interactive.current?.dispose();
+    },
+    [],
+  );
   const ready = syncTarget(state) !== null;
   const blocked =
     state.provider === "webdav" &&
     /^http:\/\//i.test(state.webdavUrl.trim()) &&
     !state.webdavAllowInsecure;
-  const decider: SyncDecider = {
-    conflicts: (list) =>
-      new Promise((resolve) => {
-        resolveConflicts.current = resolve;
-        setConflicts(list);
-      }),
-    preview: (decision) =>
-      new Promise((resolve) => {
-        resolvePreview.current = resolve;
-        setPreview(decision);
-      }),
-  };
   const run = async (mode: SyncMode) => {
     const abort = new AbortController();
     controller.current = abort;
     setRunning(true);
     try {
-      const outcome = await performSync(mode, decider, abort.signal);
+      const outcome = await performSync(mode, decisions.decider, abort.signal);
       if (outcome.status === "ok" || outcome.status === "skipped")
         toast.success(useSyncStore.getState().lastMessage ?? "Synchronisiert");
     } catch (error) {
@@ -87,7 +87,7 @@ export function SyncPanel() {
     <>
       <SettingsRow settingId="sync" featureId="settings.general.sync" stacked>
         <div className="space-y-3">
-          <SyncProviderForm />
+          <SyncProviderForm key={targetKey(state)} />
           {state.provider && (
             <>
               <p className="text-xs text-muted-foreground">
@@ -157,19 +157,11 @@ export function SyncPanel() {
       {state.provider && <SyncAutoRow />}
       <SyncConflictDialog
         conflicts={conflicts}
-        onResolve={(strategy) => {
-          setConflicts(null);
-          resolveConflicts.current?.(strategy);
-          resolveConflicts.current = null;
-        }}
+        onResolve={(strategy) => decisions.resolveConflicts(strategy)}
       />
       <SyncPreviewDialog
         decision={preview}
-        onDecide={(accepted) => {
-          setPreview(null);
-          resolvePreview.current?.(accepted);
-          resolvePreview.current = null;
-        }}
+        onDecide={(accepted) => decisions.resolvePreview(accepted)}
       />
       <SyncBackupsDialog open={backupsOpen} onOpenChange={setBackupsOpen} />
       <Dialog open={confirmUpload} onOpenChange={setConfirmUpload}>

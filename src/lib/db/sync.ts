@@ -27,6 +27,7 @@ export interface SyncStoreResult {
   version: string | null;
   gistId: string | null;
   conflict: boolean;
+  warning: string | null;
 }
 
 export interface SyncSealed {
@@ -76,15 +77,25 @@ export function syncDecrypt(envelope: string): Promise<string> {
   return invoke<string>("sync_decrypt", { envelope });
 }
 
-export function syncSealSecrets(
-  accounts: string[],
-  salt: string | null,
-): Promise<SyncSealed | null> {
-  return invoke<SyncSealed | null>("sync_seal_secrets", { accounts, salt });
+export type SyncSecretBase = Record<string, [string, number]>;
+
+export interface SecretMergeRequest {
+  envelope: string | null;
+  accounts: string[];
+  base: SyncSecretBase;
+  mode: "sync" | "upload" | "download";
+  now: number;
+  salt: string | null;
 }
 
-export function syncOpenSecrets(envelope: string, accounts: string[]): Promise<string[]> {
-  return invoke<string[]>("sync_open_secrets", { envelope, accounts });
+export interface SyncSecretMerge {
+  sealed: SyncSealed | null;
+  base: SyncSecretBase;
+  updated: string[];
+}
+
+export function syncMergeSecrets(request: SecretMergeRequest): Promise<SyncSecretMerge> {
+  return invoke<SyncSecretMerge>("sync_merge_secrets", { ...request });
 }
 
 export function syncClaimLeader(): Promise<boolean> {

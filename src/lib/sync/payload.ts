@@ -59,10 +59,22 @@ export interface SyncDocument {
   deviceId: string;
   updatedAt: number;
   contentHash: string;
-  items: Partial<Record<SyncCollection, Record<string, { updatedAt: number; data: unknown }>>>;
+  items: Partial<Record<SyncCollection, Record<string, DocumentItem>>>;
   tombstones: Partial<Record<SyncCollection, Record<string, number>>>;
   secrets: string | null;
   hints: { devicePaths: DevicePathHint[] };
+  extra?: SyncExtra;
+}
+
+export interface DocumentItem {
+  updatedAt: number;
+  data: unknown;
+  h?: string;
+}
+
+export interface SyncExtra {
+  items: Record<string, unknown>;
+  tombstones: Record<string, unknown>;
 }
 
 export interface EncryptedSyncDocument {
@@ -175,20 +187,29 @@ export async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function contentSource(snapshot: SyncSnapshot, secretsFingerprint: string | null): string {
+export function contentSource(
+  snapshot: SyncSnapshot,
+  secretsFingerprint: string | null,
+  mode = "",
+  extra?: SyncExtra,
+): string {
   const lines: string[] = [];
   for (const [key, entry] of snapshot.items) lines.push(`${key}\t${entry.hash}`);
   for (const key of snapshot.tombstones.keys()) lines.push(`${key}\t${DELETED}`);
   lines.sort();
   lines.push(`secrets\t${secretsFingerprint ?? ""}`);
+  lines.push(`mode\t${mode}`);
+  if (extra) lines.push(`extra\t${hashText(canonicalJson(extra))}`);
   return lines.join("\n");
 }
 
 export function contentHash(
   snapshot: SyncSnapshot,
   secretsFingerprint: string | null,
+  mode = "",
+  extra?: SyncExtra,
 ): Promise<string> {
-  return sha256Hex(contentSource(snapshot, secretsFingerprint));
+  return sha256Hex(contentSource(snapshot, secretsFingerprint, mode, extra));
 }
 
 const FILE_KINDS = new Set(["sqlite", "duckdb"]);
@@ -227,6 +248,7 @@ export function toDocument(
     contentHash: string;
     secrets: string | null;
     include?: Iterable<SyncCollection>;
+    extra?: SyncExtra;
   },
 ): SyncDocument {
   const items: SyncDocument["items"] = {};
@@ -235,7 +257,7 @@ export function toDocument(
     const { collection, id } = splitKey(key);
     const bucket = items[collection] ?? {};
     items[collection] = bucket;
-    bucket[id] = { updatedAt: entry.updatedAt, data: entry.data };
+    bucket[id] = { updatedAt: entry.updatedAt, h: entry.hash, data: entry.data };
   }
   const tombstones: SyncDocument["tombstones"] = {};
   for (const [key, deletedAt] of snapshot.tombstones) {
@@ -254,7 +276,18 @@ export function toDocument(
     tombstones,
     secrets: meta.secrets,
     hints: { devicePaths: devicePathHints(snapshot) },
+    ...(meta.extra ? { extra: meta.extra } : {}),
   };
+}
+
+export function serializeDocument(document: SyncDocument): string {
+  const { extra, ...rest } = document;
+  if (!extra) return JSON.stringify(rest);
+  return JSON.stringify({
+    ...rest,
+    items: { ...extra.items, ...rest.items },
+    tombstones: { ...extra.tombstones, ...rest.tombstones },
+  });
 }
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
@@ -288,8 +321,11 @@ const ITEM_CHECKS: Record<SyncCollection, (data: Record<string, unknown>, id: st
     workspace: () => true,
   };
 
+const DEVICE_ONLY_FIELDS = ["tunnelPort", "temporary", "commandTunnel"];
+const HASH_PATTERN = /^[0-9a-z]{1,12}\.[0-9a-z]{1,12}$/;
+
 function sanitizeData(collection: SyncCollection, data: Record<string, unknown>) {
-  if (collection !== "connections") return data;
+  if (collection !== "connections" || !DEVICE_ONLY_FIELDS.some((key) => key in data)) return data;
   const { tunnelPort: _port, temporary: _temporary, commandTunnel: _command, ...rest } = data;
   return rest;
 }
@@ -322,16 +358,31 @@ function parseDocumentValue(value: Record<string, unknown>): SyncDocument {
     throw new Error("Die Remote-Datei ist beschädigt.");
   const items: SyncDocument["items"] = {};
   const tombstones: SyncDocument["tombstones"] = {};
+  const known = new Set<string>(SYNC_COLLECTIONS);
+  const extraItems = Object.fromEntries(
+    Object.entries(value.items).filter(([collection]) => !known.has(collection)),
+  );
+  const extraTombstones = Object.fromEntries(
+    Object.entries(value.tombstones).filter(([collection]) => !known.has(collection)),
+  );
+  const extra =
+    Object.keys(extraItems).length + Object.keys(extraTombstones).length > 0
+      ? { items: extraItems, tombstones: extraTombstones }
+      : undefined;
   for (const collection of SYNC_COLLECTIONS) {
     const bucket = value.items[collection];
     if (isRecord(bucket)) {
-      const clean: Record<string, { updatedAt: number; data: unknown }> = {};
+      const clean: Record<string, DocumentItem> = {};
       for (const [id, entry] of Object.entries(bucket)) {
         if (!isRecord(entry) || !num(entry.updatedAt) || !isRecord(entry.data)) continue;
         if (!ITEM_CHECKS[collection](entry.data, id)) continue;
+        const data = sanitizeData(collection, entry.data);
         clean[id] = {
           updatedAt: entry.updatedAt as number,
-          data: sanitizeData(collection, entry.data),
+          data,
+          ...(data === entry.data && typeof entry.h === "string" && HASH_PATTERN.test(entry.h)
+            ? { h: entry.h }
+            : {}),
         };
       }
       items[collection] = clean;
@@ -360,6 +411,7 @@ function parseDocumentValue(value: Record<string, unknown>): SyncDocument {
             )
           : [],
     },
+    ...(extra ? { extra } : {}),
   };
 }
 
@@ -368,7 +420,7 @@ export function documentSnapshot(document: SyncDocument): SyncSnapshot {
   for (const collection of SYNC_COLLECTIONS) {
     for (const [id, entry] of Object.entries(document.items[collection] ?? {}))
       snapshot.items.set(itemKey(collection, id), {
-        hash: hashData(entry.data),
+        hash: entry.h ?? hashData(entry.data),
         updatedAt: entry.updatedAt,
         data: entry.data,
       });

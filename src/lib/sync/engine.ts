@@ -1,7 +1,10 @@
 import type {
+  SecretMergeRequest,
   SyncBackupInfo,
   SyncRemoteFile,
   SyncSealed,
+  SyncSecretBase,
+  SyncSecretMerge,
   SyncStoreResult,
   SyncTarget,
 } from "@/lib/db/sync";
@@ -29,6 +32,7 @@ import {
   type SyncCollection,
   type SyncDocument,
   type SyncSnapshot,
+  serializeDocument,
   snapshotBase,
   snapshotCollections,
   splitKey,
@@ -52,8 +56,7 @@ export interface SyncTransport {
   cancel(opId: string): Promise<boolean>;
   encrypt(plaintext: string, salt: string | null): Promise<SyncSealed>;
   decrypt(envelope: string): Promise<string>;
-  sealSecrets(accounts: string[], salt: string | null): Promise<SyncSealed | null>;
-  openSecrets(envelope: string, accounts: string[]): Promise<string[]>;
+  mergeSecrets(request: SecretMergeRequest): Promise<SyncSecretMerge>;
   backup(content: string, reason: string): Promise<SyncBackupInfo>;
 }
 
@@ -69,6 +72,8 @@ export interface SyncDeps {
   local: SyncLocal;
   readBase(): SyncBase;
   writeBase(base: SyncBase): void;
+  readSecretBase(): SyncSecretBase;
+  writeSecretBase(base: SyncSecretBase): void;
   now(): number;
 }
 
@@ -110,6 +115,8 @@ export interface SyncOutcome {
   salt: string | null;
   conflicts: number;
   secretsUpdated: number;
+  attempts: number;
+  warning: string | null;
 }
 
 export class SyncAbortedError extends Error {
@@ -133,6 +140,40 @@ export class SyncRemoteChangedError extends Error {
     );
     this.name = "SyncRemoteChangedError";
   }
+}
+
+export const MAX_SYNC_ATTEMPTS = 3;
+
+export function modeTag(settings: SyncSettings): string {
+  return `${settings.encryptAll ? "encrypted" : "plain"}|${settings.includeSecrets ? "secrets" : "nosecrets"}`;
+}
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new SyncAbortedError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new SyncAbortedError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function onlyIncluded(snapshot: SyncSnapshot, include: ReadonlySet<SyncCollection>): SyncSnapshot {
+  const result = emptySnapshot();
+  for (const [key, entry] of snapshot.items)
+    if (include.has(splitKey(key).collection)) result.items.set(key, entry);
+  for (const [key, deletedAt] of snapshot.tombstones)
+    if (include.has(splitKey(key).collection)) result.tombstones.set(key, deletedAt);
+  return result;
 }
 
 export function includedCollections(settings: SyncSettings): Set<SyncCollection> {
@@ -214,14 +255,53 @@ export async function runSync(
     signal?: AbortSignal;
   },
 ): Promise<SyncOutcome> {
-  const { mode, target, settings, memory, decider, signal } = options;
+  const { mode, target, signal } = options;
   const opId = opIdentifier(deps.now());
+  const onAbort = () => void deps.transport.cancel(opId).catch(() => false);
+  if (signal?.aborted) throw new SyncAbortedError();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  let leased = false;
+  try {
+    leased = await abortable(deps.transport.begin(), signal);
+    if (!leased) throw new SyncBusyError();
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const outcome = await attemptSync(deps, options, opId, attempt);
+        return outcome;
+      } catch (error) {
+        if (
+          !(error instanceof SyncRemoteChangedError) ||
+          mode !== "sync" ||
+          attempt >= MAX_SYNC_ATTEMPTS
+        )
+          throw error;
+        if (signal?.aborted) throw new SyncAbortedError();
+        if (target.provider === "gist" && !target.gistId) throw error;
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (leased) await deps.transport.end().catch(() => undefined);
+  }
+}
+
+async function attemptSync(
+  deps: SyncDeps,
+  options: {
+    mode: SyncMode;
+    target: SyncTarget;
+    settings: SyncSettings;
+    memory: SyncMemory;
+    decider: SyncDecider;
+    signal?: AbortSignal;
+  },
+  opId: string,
+  attempt: number,
+): Promise<SyncOutcome> {
+  const { mode, target, settings, memory, decider, signal } = options;
   const check = () => {
     if (signal?.aborted) throw new SyncAbortedError();
   };
-  const onAbort = () => void deps.transport.cancel(opId).catch(() => false);
-  check();
-  signal?.addEventListener("abort", onAbort, { once: true });
   const outcome: SyncOutcome = {
     status: "ok",
     uploaded: false,
@@ -233,126 +313,146 @@ export async function runSync(
     salt: memory.lastSalt,
     conflicts: 0,
     secretsUpdated: 0,
+    attempts: attempt,
+    warning: null,
   };
-  let leased = false;
-  try {
-    leased = await deps.transport.begin();
-    if (!leased) throw new SyncBusyError();
+  const include = includedCollections(settings);
+  const base = deps.readBase();
+  const now = deps.now();
+  const local = buildSnapshot(
+    deps.local.collect(settings.includeHistory),
+    restrict(base, include),
+    now,
+  );
+  const ownLocal = onlyIncluded(local, include);
+  let remoteFile: SyncRemoteFile | null = null;
+  let remoteDocument: SyncDocument | null = null;
+  let remote: SyncSnapshot = emptySnapshot();
+  if (mode !== "upload") {
+    remoteFile = await abortable(deps.transport.fetch(target, opId), signal);
     check();
-    const include = includedCollections(settings);
-    const base = deps.readBase();
-    const now = deps.now();
-    const local = buildSnapshot(
-      deps.local.collect(settings.includeHistory),
-      restrict(base, include),
-      now,
-    );
-    let remoteFile: SyncRemoteFile | null = null;
-    let remoteDocument: SyncDocument | null = null;
-    let remote: SyncSnapshot = emptySnapshot();
-    if (mode !== "upload") {
-      remoteFile = await deps.transport.fetch(target, opId);
+    if (remoteFile.gistId) outcome.gistId = remoteFile.gistId;
+    if (remoteFile.content) {
+      const decoded = await abortable(decodeRemote(deps.transport, remoteFile.content), signal);
       check();
-      if (remoteFile.gistId) outcome.gistId = remoteFile.gistId;
-      if (remoteFile.content) {
-        const decoded = await decodeRemote(deps.transport, remoteFile.content);
-        check();
-        remoteDocument = decoded.document;
-        outcome.salt = decoded.salt ?? outcome.salt;
-        remote = documentSnapshot(remoteDocument);
-      }
-      passThrough(local, remote, include);
+      remoteDocument = decoded.document;
+      outcome.salt = decoded.salt ?? outcome.salt;
+      remote = documentSnapshot(remoteDocument);
     }
-    let merged: SyncSnapshot;
-    if (mode === "download") {
-      if (!remoteDocument) throw new Error("Auf dem Server liegen noch keine Sync-Daten.");
-      merged = remote;
-    } else if (mode === "upload") {
-      merged = local;
-    } else {
-      const result = mergeSnapshots(local, remote, base);
-      outcome.conflicts = result.conflicts.length;
-      if (result.conflicts.length > 0) {
-        const strategy = await decider.conflicts(result.conflicts);
-        check();
-        if (!strategy) return { ...outcome, status: "conflict" };
-        merged = resolveConflicts(result, strategy, now);
-      } else merged = result.merged;
-    }
-    const summary = diffSnapshots(local, merged);
-    for (const collection of SYNC_COLLECTIONS)
-      if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
-    if (summaryTotal(summary) > 0) {
-      const accepted = await decider.preview({
+    passThrough(local, remote, include);
+  }
+  let merged: SyncSnapshot;
+  if (mode === "download") {
+    if (!remoteDocument) throw new Error("Auf dem Server liegen noch keine Sync-Daten.");
+    merged = remote;
+  } else if (mode === "upload") {
+    merged = local;
+  } else {
+    const result = mergeSnapshots(local, remote, base);
+    outcome.conflicts = result.conflicts.length;
+    if (result.conflicts.length > 0) {
+      const strategy = await abortable(decider.conflicts(result.conflicts), signal);
+      check();
+      if (!strategy) return { ...outcome, status: "conflict" };
+      merged = resolveConflicts(result, strategy, now);
+    } else merged = result.merged;
+  }
+  const summary = diffSnapshots(local, merged);
+  for (const collection of SYNC_COLLECTIONS)
+    if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
+  if (summaryTotal(summary) > 0) {
+    const accepted = await abortable(
+      decider.preview({
         kind: "preview",
         mode,
         summary,
         devicePaths: changedPathHints(merged, local, remoteDocument?.hints.devicePaths ?? []),
         remoteDevice: remoteDocument?.deviceId ?? null,
         remoteUpdatedAt: remoteDocument?.updatedAt ?? null,
-      });
-      check();
-      if (!accepted) return { ...outcome, status: "cancelled" };
-      const snapshotDocument = toDocument(local, {
-        deviceId: memory.deviceId,
-        updatedAt: now,
-        contentHash: "",
-        secrets: null,
-        include,
-      });
-      outcome.backup = await deps.transport.backup(JSON.stringify(snapshotDocument), mode);
-      check();
-      deps.local.apply(snapshotCollections(merged), include);
-      outcome.applied = summary;
-    }
-    const accounts = settings.includeSecrets
-      ? deps.local.secretAccounts(connectionItems(merged))
-      : [];
-    if (settings.includeSecrets && remoteDocument?.secrets && mode !== "upload") {
-      const updated = await deps.transport.openSecrets(remoteDocument.secrets, accounts);
-      deps.local.forgetSecrets(updated);
-      outcome.secretsUpdated = updated.length;
-      check();
-    }
-    if (mode === "download") {
-      outcome.contentHash = remoteDocument?.contentHash ?? null;
-      outcome.version = remoteFile?.version ?? null;
-      deps.writeBase(snapshotBase(merged));
-      return outcome;
-    }
-    const sealed =
-      settings.includeSecrets && accounts.length > 0
-        ? await deps.transport.sealSecrets(accounts, outcome.salt)
-        : null;
+      }),
+      signal,
+    );
     check();
+    if (!accepted) return { ...outcome, status: "cancelled" };
+    const snapshotDocument = toDocument(ownLocal, {
+      deviceId: memory.deviceId,
+      updatedAt: now,
+      contentHash: "",
+      secrets: null,
+      include,
+    });
+    outcome.backup = await abortable(
+      deps.transport.backup(JSON.stringify(snapshotDocument), mode),
+      signal,
+    );
+    check();
+    deps.local.apply(snapshotCollections(merged), include);
+    outcome.applied = summary;
+  }
+  const accounts = settings.includeSecrets
+    ? deps.local.secretAccounts(connectionItems(merged))
+    : [];
+  let secretBase: SyncSecretBase | null = null;
+  let sealed: SyncSealed | null = null;
+  if (settings.includeSecrets && accounts.length > 0) {
+    const secrets = await abortable(
+      deps.transport.mergeSecrets({
+        envelope: mode === "upload" ? null : (remoteDocument?.secrets ?? null),
+        accounts,
+        base: deps.readSecretBase(),
+        mode,
+        now,
+        salt: outcome.salt,
+      }),
+      signal,
+    );
+    check();
+    deps.local.forgetSecrets(secrets.updated);
+    outcome.secretsUpdated = secrets.updated.length;
+    secretBase = secrets.base;
+    sealed = secrets.sealed;
     if (sealed) outcome.salt = sealed.salt;
-    const hash = await contentHash(merged, sealed?.fingerprint ?? null);
-    outcome.contentHash = hash;
+  }
+  const commit = () => {
+    deps.writeBase(snapshotBase(merged));
+    if (secretBase) deps.writeSecretBase(secretBase);
+  };
+  const extra = remoteDocument?.extra;
+  if (mode === "download") {
+    outcome.contentHash = remoteDocument?.contentHash ?? null;
     outcome.version = remoteFile?.version ?? null;
-    const unchanged =
-      mode === "sync" && remoteDocument !== null && remoteDocument.contentHash === hash;
-    if (!unchanged) {
-      const document = toDocument(merged, {
-        deviceId: memory.deviceId,
-        updatedAt: now,
+    commit();
+    return outcome;
+  }
+  const hash = await contentHash(merged, sealed?.fingerprint ?? null, modeTag(settings), extra);
+  outcome.contentHash = hash;
+  outcome.version = remoteFile?.version ?? null;
+  const unchanged =
+    mode === "sync" && remoteDocument !== null && remoteDocument.contentHash === hash;
+  if (!unchanged) {
+    const document = toDocument(merged, {
+      deviceId: memory.deviceId,
+      updatedAt: now,
+      contentHash: hash,
+      secrets: sealed?.envelope ?? null,
+      extra,
+    });
+    let body = serializeDocument(document);
+    if (settings.encryptAll) {
+      const wrapped = await abortable(deps.transport.encrypt(body, outcome.salt), signal);
+      check();
+      outcome.salt = wrapped.salt;
+      body = JSON.stringify({
+        format: document.format,
+        schemaVersion: document.schemaVersion,
+        deviceId: document.deviceId,
+        updatedAt: document.updatedAt,
         contentHash: hash,
-        secrets: sealed?.envelope ?? null,
+        encrypted: wrapped.envelope,
       });
-      let body = JSON.stringify(document);
-      if (settings.encryptAll) {
-        const wrapped = await deps.transport.encrypt(body, outcome.salt);
-        check();
-        outcome.salt = wrapped.salt;
-        body = JSON.stringify({
-          format: document.format,
-          schemaVersion: document.schemaVersion,
-          deviceId: document.deviceId,
-          updatedAt: document.updatedAt,
-          contentHash: hash,
-          encrypted: wrapped.envelope,
-        });
-      }
-      const stored = await deps.transport.store(
+    }
+    const stored = await abortable(
+      deps.transport.store(
         target.provider === "gist" && outcome.gistId
           ? { ...target, gistId: outcome.gistId }
           : target,
@@ -360,16 +460,15 @@ export async function runSync(
         mode === "sync" ? (remoteFile?.version ?? null) : null,
         mode === "sync" && !remoteFile?.content,
         opId,
-      );
-      if (stored.conflict) throw new SyncRemoteChangedError();
-      outcome.uploaded = true;
-      outcome.version = stored.version;
-      if (stored.gistId) outcome.gistId = stored.gistId;
-    } else if (outcome.applied === null) outcome.status = "skipped";
-    deps.writeBase(snapshotBase(merged));
-    return outcome;
-  } finally {
-    signal?.removeEventListener("abort", onAbort);
-    if (leased) await deps.transport.end().catch(() => undefined);
-  }
+      ),
+      signal,
+    );
+    if (stored.conflict) throw new SyncRemoteChangedError();
+    outcome.uploaded = true;
+    outcome.version = stored.version;
+    outcome.warning = stored.warning;
+    if (stored.gistId) outcome.gistId = stored.gistId;
+  } else if (outcome.applied === null && outcome.secretsUpdated === 0) outcome.status = "skipped";
+  commit();
+  return outcome;
 }

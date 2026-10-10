@@ -7,8 +7,7 @@ import {
   syncEncrypt,
   syncEnd,
   syncFetch,
-  syncOpenSecrets,
-  syncSealSecrets,
+  syncMergeSecrets,
   syncStore,
 } from "@/lib/db/sync";
 import {
@@ -27,11 +26,19 @@ import {
   parseDocument,
   SYNC_COLLECTIONS,
   type SyncCollection,
+  type SyncDocument,
   snapshotCollections,
   summaryTotal,
   toDocument,
 } from "./payload";
-import { readSyncBase, syncTarget, useSyncStore, writeSyncBase } from "./store";
+import {
+  readSecretBase,
+  readSyncBase,
+  syncTarget,
+  useSyncStore,
+  writeSecretBase,
+  writeSyncBase,
+} from "./store";
 
 export const syncDeps: SyncDeps = {
   transport: {
@@ -42,8 +49,7 @@ export const syncDeps: SyncDeps = {
     cancel: syncCancel,
     encrypt: syncEncrypt,
     decrypt: syncDecrypt,
-    sealSecrets: syncSealSecrets,
-    openSecrets: syncOpenSecrets,
+    mergeSecrets: syncMergeSecrets,
     backup: syncBackupSave,
   },
   local: {
@@ -54,6 +60,8 @@ export const syncDeps: SyncDeps = {
   },
   readBase: readSyncBase,
   writeBase: writeSyncBase,
+  readSecretBase: readSecretBase,
+  writeSecretBase: writeSecretBase,
   now: () => Date.now(),
 };
 
@@ -72,8 +80,8 @@ function describe(outcome: SyncOutcome, mode: SyncMode): string {
     parts.push(`${summaryTotal(outcome.applied)} lokale Änderung(en) übernommen`);
   if (outcome.uploaded) parts.push(mode === "upload" ? "hochgeladen" : "Remote aktualisiert");
   if (outcome.secretsUpdated) parts.push(`${outcome.secretsUpdated} Secret(s) aktualisiert`);
-  if (parts.length === 0) return "Keine Änderungen.";
-  return `${parts.join(", ")}.`;
+  const summary = parts.length === 0 ? "Keine Änderungen." : `${parts.join(", ")}.`;
+  return outcome.warning ? `${summary} ${outcome.warning}` : summary;
 }
 
 export function errorMessage(error: unknown): string {
@@ -141,11 +149,18 @@ export const autoDecider: SyncDecider = {
   preview: async () => true,
 };
 
+export function restoreScope(document: SyncDocument, includeHistory: boolean): Set<SyncCollection> {
+  return new Set<SyncCollection>(
+    SYNC_COLLECTIONS.filter(
+      (collection) =>
+        document.items[collection] !== undefined && (collection !== "history" || includeHistory),
+    ),
+  );
+}
+
 export async function restoreBackup(id: string): Promise<ChangeSummary> {
   const document = parseDocument(await syncBackupLoad(id));
-  const include = new Set<SyncCollection>(
-    SYNC_COLLECTIONS.filter((collection) => document.items[collection] !== undefined),
-  );
+  const include = restoreScope(document, useSyncStore.getState().includeHistory);
   const snapshot = documentSnapshot(document);
   const current = buildSnapshot(collectLocal(include.has("history")), new Map(), Date.now());
   const summary = diffSnapshots(current, snapshot);

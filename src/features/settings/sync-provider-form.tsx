@@ -1,23 +1,53 @@
-import { PlugZapIcon, TriangleAlertIcon } from "lucide-react";
-import { useState } from "react";
+import { CheckIcon, PlugZapIcon, TriangleAlertIcon } from "lucide-react";
+import { type KeyboardEvent, useState } from "react";
 import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SyncSecretField } from "@/features/settings/sync-secret-field";
 import { SYNC_GITHUB_ACCOUNT, SYNC_WEBDAV_ACCOUNT, syncTest } from "@/lib/db/sync";
 import { errorMessage } from "@/lib/sync/controller";
-import { syncTarget, useSyncStore } from "@/lib/sync/store";
+import {
+  type SyncConfig,
+  syncTarget,
+  type TargetField,
+  targetChangeNeedsConfirmation,
+  targetKey,
+  useSyncStore,
+} from "@/lib/sync/store";
 
 type ProviderChoice = "off" | "webdav" | "gist";
+type Draft = Pick<SyncConfig, TargetField>;
 
 export function SyncProviderForm() {
   const state = useSyncStore();
+  const committed: Draft = {
+    provider: state.provider,
+    webdavUrl: state.webdavUrl,
+    webdavPath: state.webdavPath,
+    gistId: state.gistId,
+  };
+  const committedKey = targetKey(committed);
+  const [draft, setDraft] = useState<Draft>(committed);
+  const [pending, setPending] = useState<Draft | null>(null);
   const [testing, setTesting] = useState(false);
-  const choice: ProviderChoice = state.provider ?? "off";
-  const insecure = /^http:\/\//i.test(state.webdavUrl.trim());
+  const dirty = targetKey(draft) !== committedKey;
+  const choice: ProviderChoice = draft.provider ?? "off";
+  const insecure = /^http:\/\//i.test(draft.webdavUrl.trim());
   const target = syncTarget(state);
+  const commit = (next: Draft) => {
+    if (targetChangeNeedsConfirmation(state, next)) setPending(next);
+    else state.commitTarget(next);
+  };
   const test = async () => {
     if (!target) return;
     setTesting(true);
@@ -29,13 +59,21 @@ export function SyncProviderForm() {
       setTesting(false);
     }
   };
+  const edit = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
+  const onEnter = (event: KeyboardEvent) => {
+    if (event.key === "Enter" && dirty) commit(draft);
+  };
   return (
     <div className="space-y-3">
       <div className="w-full max-w-sm">
         <SegmentedControl
           value={choice}
           label="Sync-Anbieter"
-          onChange={(value) => state.configure({ provider: value === "off" ? null : value })}
+          onChange={(value) => {
+            const next = { ...draft, provider: value === "off" ? null : value };
+            setDraft(next);
+            if (value === "off" || targetKey(next) !== committedKey) commit(next);
+          }}
           options={[
             { value: "off", label: "Aus" },
             { value: "webdav", label: "WebDAV" },
@@ -43,13 +81,14 @@ export function SyncProviderForm() {
           ]}
         />
       </div>
-      {state.provider === "webdav" && (
+      {draft.provider === "webdav" && (
         <div className="grid gap-2 @min-[38rem]:grid-cols-2">
           <Input
             aria-label="WebDAV-URL"
             placeholder="https://cloud.example.com/remote.php/dav/files/benutzer"
-            value={state.webdavUrl}
-            onChange={(event) => state.configure({ webdavUrl: event.target.value })}
+            value={draft.webdavUrl}
+            onChange={(event) => edit({ webdavUrl: event.target.value })}
+            onKeyDown={onEnter}
             className="h-8 text-xs @min-[38rem]:col-span-2"
           />
           <Input
@@ -62,8 +101,9 @@ export function SyncProviderForm() {
           <Input
             aria-label="Dateipfad auf dem Server"
             placeholder="/l8db/l8db-sync.json"
-            value={state.webdavPath}
-            onChange={(event) => state.configure({ webdavPath: event.target.value })}
+            value={draft.webdavPath}
+            onChange={(event) => edit({ webdavPath: event.target.value })}
+            onKeyDown={onEnter}
             className="h-8 text-xs"
           />
           <div className="@min-[38rem]:col-span-2">
@@ -95,7 +135,7 @@ export function SyncProviderForm() {
           )}
         </div>
       )}
-      {state.provider === "gist" && (
+      {draft.provider === "gist" && (
         <div className="space-y-2">
           <SyncSecretField
             kind="github"
@@ -106,28 +146,79 @@ export function SyncProviderForm() {
           <Input
             aria-label="Gist-ID"
             placeholder="Bestehende Gist-ID (leer lassen für neuen Secret Gist)"
-            value={state.gistId}
-            onChange={(event) => state.configure({ gistId: event.target.value })}
+            value={draft.gistId}
+            onChange={(event) => edit({ gistId: event.target.value })}
+            onKeyDown={onEnter}
             className="h-8 w-full max-w-sm text-xs"
           />
           <p className="text-xs text-muted-foreground">
             Secret Gists sind nur nicht gelistet, aber nicht privat: Wer die Adresse kennt, kann sie
             lesen. Aktivieren Sie deshalb die vollständige Verschlüsselung, wenn die Daten
-            vertraulich sind.
+            vertraulich sind. GitHub bietet für Gists keine atomaren Schreibbedingungen: l8db prüft
+            die Gist-Version direkt vor dem Speichern, ein Schreibzugriff eines anderen Rechners in
+            den Millisekunden dazwischen kann trotzdem überschrieben werden. Ältere Stände bleiben
+            in der Revisionshistorie des Gists erhalten.
           </p>
         </div>
       )}
-      {state.provider && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!target || testing || (insecure && !state.webdavAllowInsecure)}
-          onClick={() => void test()}
-        >
-          <PlugZapIcon className="size-3.5" />
-          Verbindung testen
-        </Button>
+      {draft.provider && (
+        <div className="flex flex-wrap gap-2">
+          {dirty && (
+            <Button size="sm" onClick={() => commit(draft)}>
+              <CheckIcon className="size-3.5" />
+              Übernehmen
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={dirty || !target || testing || (insecure && !state.webdavAllowInsecure)}
+            onClick={() => void test()}
+          >
+            <PlugZapIcon className="size-3.5" />
+            Verbindung testen
+          </Button>
+        </div>
       )}
+      <Dialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPending(null);
+            setDraft(committed);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sync-Ziel ändern</DialogTitle>
+            <DialogDescription>
+              Mit einem anderen Anbieter, Server oder Dateipfad beginnt der Abgleich neu. Die erste
+              Synchronisierung mit dem neuen Ziel kann Konflikte für alle abweichenden Einträge
+              melden. Lokale Daten bleiben unverändert.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPending(null);
+                setDraft(committed);
+              }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={() => {
+                if (pending) state.commitTarget(pending);
+                setPending(null);
+              }}
+            >
+              Ziel ändern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
