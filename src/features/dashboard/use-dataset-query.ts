@@ -19,6 +19,7 @@ import { runUntilAbandoned } from "@/lib/queries/abandoned-jobs";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useDashboardScope } from "./dashboard-scope";
 import { withQuerySlot } from "./query-slots";
+import { useSqlDialect } from "./use-sql-dialect";
 
 const MEMORY_LIMIT = /MEMORY_LIMIT_EXCEEDED/;
 
@@ -32,9 +33,9 @@ export function useDebounced<T>(value: T, delay = 600): T {
 }
 
 export function useDatasetSql(dataset: Dataset | null, period: Period): string {
-  const connection = useActiveConnection();
+  const kind = useSqlDialect();
   const scope = useDashboardScope();
-  return dataset ? datasetSql(dataset, connection?.kind ?? null, period, scope) : "";
+  return dataset ? datasetSql(dataset, kind, period, scope) : "";
 }
 
 export function useSqlQuery(sql: string, refetchInterval?: number) {

@@ -63,12 +63,16 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       continue;
     }
     if (pending.has(file.id)) continue;
-    let theme: Dashboard["theme"] = null;
     try {
       if (file.design != null) validateDashboardDesign(file.design);
-      theme = sanitizeTheme(file.theme);
     } catch {
       continue;
+    }
+    let theme: Dashboard["theme"] = null;
+    try {
+      theme = sanitizeTheme(file.theme);
+    } catch {
+      theme = current?.theme ?? null;
     }
     if (!approved(file, current)) continue;
     const next = {

@@ -14,6 +14,7 @@ import {
   type SimpleDataset,
   type TimeBucket,
 } from "./model";
+import { serverSqlParts } from "./sql-tables";
 import {
   EMPTY_SCOPE,
   filterVariable,
@@ -240,12 +241,17 @@ export function dateLiteral(iso: string, kind: DatabaseKind | null): string {
 const ISO_DATE =
   /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
 
-export function crossLiteral(value: unknown, kind: DatabaseKind | null, temporal = false): string {
+export function crossLiteral(
+  value: unknown,
+  kind: DatabaseKind | null,
+  temporal = false,
+): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "bigint") return String(value);
   if (typeof value === "boolean")
     return kind === "mssql" || kind === "oracle" ? (value ? "1" : "0") : String(value);
   const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (kind === "odbc" && text.includes("\\")) return null;
   if (kind === "oracle" && temporal && ISO_DATE.test(text)) {
     const time = text.slice(11, 19);
     return time && time !== "00:00:00" && time.length === 8
@@ -253,6 +259,17 @@ export function crossLiteral(value: unknown, kind: DatabaseKind | null, temporal
       : `DATE '${text.slice(0, 10)}'`;
   }
   return quoteString(text, kind ?? undefined);
+}
+
+function equalsLiteral(expr: string, literal: string | null): string {
+  return literal === null ? "1 = 0" : `${expr} = ${literal}`;
+}
+
+function listLiterals(values: unknown[], kind: DatabaseKind | null, temporal: boolean): string[] {
+  const literals = values
+    .map((entry) => crossLiteral(entry, kind, temporal))
+    .filter((literal): literal is string => literal !== null);
+  return literals.length ? [literals.join(", ")] : [];
 }
 
 export function crossListCondition(
@@ -263,7 +280,9 @@ export function crossListCondition(
 ): string {
   const present = values.filter((entry) => entry !== null && entry !== undefined);
   const list = present.length
-    ? `${expr} IN (${present.map((entry) => crossLiteral(entry, kind, temporal)).join(", ")})`
+    ? listLiterals(present, kind, temporal)
+        .map((literals) => `${expr} IN (${literals})`)
+        .join("")
     : "";
   const nulls = present.length < values.length ? `${expr} IS NULL` : "";
   if (list && nulls) return `(${list} OR ${nulls})`;
@@ -289,7 +308,7 @@ export function crossCondition(
 ): string {
   return value === null || value === undefined
     ? `${expr} IS NULL`
-    : `${expr} = ${crossLiteral(value, kind, temporal)}`;
+    : equalsLiteral(expr, crossLiteral(value, kind, temporal));
 }
 
 export const DIM_KEY = "dim";
@@ -394,6 +413,7 @@ export function buildExpertSql(
   period: Period,
   scope: VariableScope = EMPTY_SCOPE,
   range: DateRange = periodRange(period),
+  top: number | null = null,
 ): string {
   const sql = substituteVariables(ds.sql.trim().replace(/;+\s*$/, ""), scope, kind);
   const style = identifierStyleForKind(kind);
@@ -404,8 +424,28 @@ export function buildExpertSql(
     conditions.push(
       ...rangeConditions(`q.${quoteIdentifier(ds.mapping.dateColumn, style)}`, range, kind),
     );
-  if (!sql || !conditions.length) return sql;
-  return `SELECT * FROM (\n${sql}\n) ${kind === "oracle" ? "" : "AS "}q WHERE ${conditions.join(" AND ")}`;
+  return wrapExpert(sql, conditions, kind, top);
+}
+
+function wrapExpert(
+  sql: string,
+  conditions: string[],
+  kind: DatabaseKind | null,
+  top: number | null = null,
+): string {
+  if (!sql || (!conditions.length && top === null)) return sql;
+  const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
+  if (kind === "mssql") {
+    const parts = serverSqlParts(sql);
+    const head = `SELECT ${top === null ? "" : `TOP ${top} `}*`;
+    return parts.ctes
+      ? `${parts.ctes},\nl8db_q AS (\n${parts.body}\n)\n${head} FROM l8db_q AS q${where}`
+      : `${head} FROM (\n${parts.body}\n) AS q${where}`;
+  }
+  const as = kind === "oracle" ? "" : "AS ";
+  const limit =
+    top === null ? "" : kind === "oracle" ? ` FETCH FIRST ${top} ROWS ONLY` : ` LIMIT ${top}`;
+  return `SELECT * FROM (\n${sql}\n) ${as}q${where}${limit}`;
 }
 
 export const DETAIL_LIMIT = 200;
@@ -432,18 +472,14 @@ export function datasetDetailSql(
       ? sql.replace(/^SELECT (TOP \d+ )?\*/, "SELECT $1t1.*")
       : sql;
   }
-  const base = buildExpertSql(
+  return buildExpertSql(
     { ...ds, [CROSS_WHERE]: [...(ds[CROSS_WHERE] ?? []), ...conditions] },
     kind,
     period,
     scope,
+    periodRange(period),
+    DETAIL_LIMIT,
   );
-  if (!base) return "";
-  const as = kind === "oracle" ? "" : "AS ";
-  if (kind === "mssql") return `SELECT TOP ${DETAIL_LIMIT} * FROM (\n${base}\n) ${as}d`;
-  if (kind === "oracle")
-    return `SELECT * FROM (\n${base}\n) d FETCH FIRST ${DETAIL_LIMIT} ROWS ONLY`;
-  return `SELECT * FROM (\n${base}\n) ${as}d LIMIT ${DETAIL_LIMIT}`;
 }
 
 export function datasetSql(

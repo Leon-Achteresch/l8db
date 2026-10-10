@@ -1,6 +1,5 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useActiveConnection } from "@/lib/connections";
 import {
   applyOptions,
   colorSeries,
@@ -37,6 +36,7 @@ import {
 import type { Row } from "./charts/chart-utils";
 import { useDashboardScope } from "./dashboard-scope";
 import { useDebounced, useSqlQuery } from "./use-dataset-query";
+import { useSqlDialect } from "./use-sql-dialect";
 
 const EMPTY_ROWS: Row[] = [];
 const NO_COMPARE = ["gauge", "score"];
@@ -56,9 +56,8 @@ export function useWidgetData({
   refreshMs?: number;
   debounceMs?: number;
 }) {
-  const connection = useActiveConnection();
   const scope = useDashboardScope();
-  const kind = connection?.kind ?? null;
+  const kind = useSqlDialect();
   const options = useMemo(() => widgetOptions(widget), [widget]);
   const baseShape = useMemo(() => (dataset ? datasetShape(dataset) : null), [dataset]);
   const rawRows = query.data?.rows ?? EMPTY_ROWS;

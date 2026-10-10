@@ -1,12 +1,19 @@
 import { create } from "zustand";
 import type { DatabaseKind } from "@/lib/db";
 import { CALC_PREFIX, datasetJoins, joinRef, parseRef } from "./joins";
-import { CROSS_WHERE, type CrossCondition, type Dataset, type TimeBucket } from "./model";
+import {
+  CROSS_WHERE,
+  type CrossCondition,
+  type Dashboard,
+  type Dataset,
+  type TimeBucket,
+} from "./model";
 import { DIM_KEY, DIM2_KEY } from "./sql";
-import { readsTable } from "./sql-tables";
+import { readsTable, tablesRead } from "./sql-tables";
 
 export interface CrossField {
   table: string | null;
+  tables?: string[];
   column: string;
   bucket: TimeBucket;
 }
@@ -25,11 +32,27 @@ function tableKey(schema: string, table: string): string {
   return `${schema}.${table}`.toLowerCase();
 }
 
-export function crossField(dataset: Dataset, key: string): CrossField | null {
+function sameTable(a: string, b: string): boolean {
+  const [left, right] = [a.toLowerCase(), b.toLowerCase()];
+  if (left === right) return true;
+  const name = (value: string) => value.slice(value.lastIndexOf(".") + 1);
+  const qualified = (value: string) => value.includes(".");
+  return name(left) === name(right) && (!qualified(left) || !qualified(right));
+}
+
+export function crossField(
+  dataset: Dataset,
+  key: string,
+  kind: DatabaseKind | null = null,
+): CrossField | null {
   if (dataset.mode === "expert") {
     const column = key === DIM2_KEY ? dataset.mapping.dimension2 : dataset.mapping.dimension;
     const output = key === DIM_KEY || key === DIM2_KEY ? column : key;
-    return output ? { table: null, column: output, bucket: "none" } : null;
+    if (!output) return null;
+    const tables = tablesRead(dataset.sql, kind).map((ref) =>
+      ref.schema ? `${ref.schema}.${ref.name}` : ref.name,
+    );
+    return { table: null, tables: [...new Set(tables)], column: output, bucket: "none" };
   }
   const s = dataset.simple;
   const ref = key === DIM2_KEY ? s.dimension2 : key === DIM_KEY ? s.dimension?.column : null;
@@ -56,7 +79,8 @@ export function ownCondition(dataset: Dataset, key: string, value: unknown): Cro
 function targetRef(dataset: Dataset, field: CrossField, kind: DatabaseKind | null): string | null {
   if (dataset.mode === "expert") {
     if (field.bucket !== "none") return null;
-    if (field.table && !readsTable(dataset.sql, field.table, kind)) return null;
+    const sources = field.table ? [field.table] : (field.tables ?? []);
+    if (!sources.some((table) => readsTable(dataset.sql, table, kind))) return null;
     const { dimension, dimension2 } = dataset.mapping;
     return (
       [dimension, dimension2].find(
@@ -64,10 +88,13 @@ function targetRef(dataset: Dataset, field: CrossField, kind: DatabaseKind | nul
       ) ?? null
     );
   }
-  if (!field.table) return null;
+  const sources = field.table ? [field.table] : (field.tables ?? []);
+  if (!sources.length) return null;
   const s = dataset.simple;
-  if (tableKey(s.schema, s.table) === field.table) return field.column;
-  const join = datasetJoins(s).find((j) => tableKey(j.schema, j.table) === field.table);
+  if (sources.some((table) => sameTable(tableKey(s.schema, s.table), table))) return field.column;
+  const join = datasetJoins(s).find((j) =>
+    sources.some((table) => sameTable(tableKey(j.schema, j.table), table)),
+  );
   return join?.id ? joinRef(join.id, field.column) : null;
 }
 
@@ -112,6 +139,7 @@ interface CrossFilterState {
   filters: Record<string, CrossFilter[]>;
   toggle: (dashboardId: string, filter: CrossFilter) => void;
   select: (dashboardId: string, filters: CrossFilter[]) => void;
+  retain: (dashboardId: string, keep: (filter: CrossFilter) => boolean) => void;
   remove: (dashboardId: string, widgetId: string, key?: string) => void;
   clear: (dashboardId: string) => void;
 }
@@ -144,6 +172,14 @@ export const useCrossFilterStore = create<CrossFilterState>()((set) => ({
       const rest = current.filter((f) => !replaced(f));
       return { filters: { ...state.filters, [dashboardId]: all ? rest : [...rest, ...filters] } };
     }),
+  retain: (dashboardId, keep) =>
+    set((state) => {
+      const current = state.filters[dashboardId] ?? NO_FILTERS;
+      const next = current.filter(keep);
+      return next.length === current.length
+        ? state
+        : { filters: { ...state.filters, [dashboardId]: next } };
+    }),
   remove: (dashboardId, widgetId, key) =>
     set((state) => ({
       filters: {
@@ -161,4 +197,16 @@ export function useCrossFilters(dashboardId: string | null): CrossFilter[] {
   return useCrossFilterStore((state) =>
     dashboardId ? (state.filters[dashboardId] ?? NO_FILTERS) : NO_FILTERS,
   );
+}
+
+export function staleFilter(
+  filter: CrossFilter,
+  dashboard: Pick<Dashboard, "widgets" | "datasets">,
+  kind: DatabaseKind | null,
+): boolean {
+  const widget = dashboard.widgets.find((w) => w.id === filter.widgetId);
+  if (!widget || widget.block || widget.options?.crossFilter === false) return true;
+  const dataset = dashboard.datasets.find((d) => d.id === widget.datasetId);
+  const field = dataset ? crossField(dataset, filter.key, kind) : null;
+  return JSON.stringify(field) !== JSON.stringify(filter.field);
 }
