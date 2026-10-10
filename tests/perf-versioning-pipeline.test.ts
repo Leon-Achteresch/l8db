@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
 import { changeSummary } from "../src/lib/versioning/changes";
 import type { DriftEntry } from "../src/lib/versioning/drift";
+import { historyMarks, parseReleaseCommits } from "../src/lib/versioning/history";
 import { buildPipeline, pipelineNextStep, releaseTracks } from "../src/lib/versioning/pipeline";
 import { rollbackBases } from "../src/lib/versioning/rollback";
 import type {
@@ -188,4 +189,36 @@ test("working copy change summary stays fast for large schemas", () => {
   expect(summary.total).toBe(OBJECTS + OBJECTS / 2);
   expect(median).toBeLessThan(8);
   expect(p95).toBeLessThan(20);
+});
+
+test("history badges stay fast for long release histories and large fleets", () => {
+  const log = releases
+    .map(
+      (entry, index) =>
+        `\0${index.toString(16).padStart(40, "0")}\n\ndatabase/releases/${entry.id}.json\n`,
+    )
+    .join("");
+  const samples: number[] = [];
+  let marked = 0;
+  for (let run = 0; run < RUNS; run++) {
+    const started = performance.now();
+    const marks = historyMarks(releases, targets, parseReleaseCommits(log));
+    marked = marks.size;
+    samples.push(performance.now() - started);
+  }
+  const median = percentile(samples, 0.5);
+  const p95 = percentile(samples, 0.95);
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-history-badges",
+      releases: RELEASES,
+      targets: targets.length,
+      marked,
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+    }),
+  );
+  expect(marked).toBe(RELEASES);
+  expect(median).toBeLessThan(5);
+  expect(p95).toBeLessThan(15);
 });

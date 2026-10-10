@@ -1,4 +1,5 @@
 import { ChevronDownIcon } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import { NewBadge } from "@/components/new-badge";
 import {
   DropdownMenu,
@@ -28,39 +29,62 @@ export function VersioningNav({
   const visible = VERSIONING_SECTIONS.filter((entry) => deploys || !entry.deploy);
   const tools = visible.filter((entry) => entry.tool);
   const activeTool = tools.find((entry) => entry.id === section);
+  const tabs = visible.filter((entry) => !entry.tool);
+  const step = (event: KeyboardEvent<HTMLDivElement>) => {
+    const current = tabs.findIndex((entry) => entry.id === section);
+    const index = current < 0 && event.key === "ArrowLeft" ? 0 : current;
+    const next =
+      event.key === "ArrowRight"
+        ? (index + 1) % tabs.length
+        : event.key === "ArrowLeft"
+          ? (index - 1 + tabs.length) % tabs.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? tabs.length - 1
+              : -1;
+    if (next < 0 || disabled) return;
+    event.preventDefault();
+    onNavigate(tabs[next].id);
+    event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+  };
   return (
     <nav
       aria-label="Bereiche"
       className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-border/60 px-2"
     >
-      <div role="tablist" aria-label="Bereiche" className="flex items-stretch gap-0.5">
-        {visible
-          .filter((entry) => !entry.tool)
-          .map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              disabled={disabled}
-              aria-selected={section === id}
-              onClick={() => onNavigate(id)}
-              className={cn(
-                "relative flex shrink-0 items-center gap-1.5 px-2.5 text-xs transition-colors disabled:opacity-50",
-                section === id
-                  ? "font-medium text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon className="size-3.5 shrink-0" />
-              {label}
-              {counts[id] !== undefined && counts[id] !== 0 && (
-                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
-                  {counts[id]}
-                </span>
-              )}
-              {fresh[id] && section !== id && <NewBadge />}
-            </button>
-          ))}
+      <div
+        role="tablist"
+        aria-label="Bereiche"
+        onKeyDown={step}
+        className="flex items-stretch gap-0.5"
+      >
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            disabled={disabled}
+            aria-selected={section === id}
+            tabIndex={section === id || (activeTool && id === tabs[0]?.id) ? 0 : -1}
+            onClick={() => onNavigate(id)}
+            className={cn(
+              "relative flex shrink-0 items-center gap-1.5 px-2.5 text-xs transition-colors disabled:opacity-50",
+              section === id
+                ? "font-medium text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="size-3.5 shrink-0" />
+            {label}
+            {counts[id] !== undefined && counts[id] !== 0 && (
+              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                {counts[id]}
+              </span>
+            )}
+            {fresh[id] && section !== id && <NewBadge />}
+          </button>
+        ))}
       </div>
       {tools.length > 0 && (
         <DropdownMenu>
