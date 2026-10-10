@@ -45,9 +45,11 @@ before the dashboard's own CSS.
   expression. Expert SQL charts are wrapped when their mapped dimension has the same
   name and the SQL reads the source table. A linear tokenizer finds table positions
   (after FROM, JOIN, ONLY, LATERAL or a comma in a FROM list, per parenthesis level,
-  with "", `` and [] identifiers, Unicode names and parenthesized join lists; nested
-  comments, MySQL `#` comments, string, backslash-escaped, Oracle q-quoted and
-  dollar-quoted literals are ignored). Tokens are cached for the last 64 statements. List-valued dimension values are
+  with "", `` and [] identifiers (brackets for SQL Server, SQLite and ODBC), Unicode
+  names and parenthesized join lists; comments (nested for PostgreSQL, SQL Server and
+  DuckDB, `#` for MySQL), string literals (backslash escapes for MySQL, ClickHouse,
+  BigQuery and Snowflake), Oracle q-quoted and dollar-quoted literals are ignored).
+  Tokens are cached for the 64 most recently used statements. List-valued dimension values are
   not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.
   Selections live in memory per dashboard and are shown as removable chips.

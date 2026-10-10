@@ -27,7 +27,10 @@ const ENDS_FROM = new Set([
 ]);
 
 const WORD_START = /[\p{L}_]/u;
-const WORD_PART = /[\p{L}\p{N}_$]/u;
+const WORD_PART = /[\p{L}\p{M}\p{N}_$]/u;
+const BACKSLASH_KINDS = new Set<DatabaseKind>(["mysql", "clickhouse", "bigquery", "snowflake"]);
+const NESTED_COMMENT_KINDS = new Set<DatabaseKind>(["postgres", "mssql", "duckdb"]);
+const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
 const cache = new Map<string, TableToken[]>();
 
@@ -46,7 +49,9 @@ function skipQuoted(sql: string, start: number, close: string, backslash: boolea
 function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const tokens: TableToken[] = [];
   const mysql = kind === "mysql";
-  const brackets = kind === null || kind === "mssql" || kind === "sqlite";
+  const backslash = kind !== null && BACKSLASH_KINDS.has(kind);
+  const nested = kind === null || NESTED_COMMENT_KINDS.has(kind);
+  const brackets = kind === null || BRACKET_KINDS.has(kind);
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
@@ -57,7 +62,7 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
       let nesting = 1;
       i += 2;
       while (i < sql.length && nesting) {
-        if (sql.startsWith("/*", i)) {
+        if (nested && sql.startsWith("/*", i)) {
           nesting++;
           i += 2;
         } else if (sql.startsWith("*/", i)) {
@@ -76,7 +81,8 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
       const end = sql.indexOf(tag, i + tag.length);
       i = end < 0 ? sql.length : end + tag.length;
     } else if (c === "'") {
-      const escapes = mysql || (/[eE]/.test(sql[i - 1] ?? "") && !/[\w$]/.test(sql[i - 2] ?? ""));
+      const escapes =
+        backslash || (/[eE]/.test(sql[i - 1] ?? "") && !/[\w$]/.test(sql[i - 2] ?? ""));
       i = skipQuoted(sql, i, "'", escapes);
     } else if (c === '"' && mysql) {
       i = skipQuoted(sql, i, '"', true);
@@ -105,7 +111,11 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
 function tokensOf(sql: string, kind: DatabaseKind | null): TableToken[] {
   const key = `${kind ?? ""}\u0000${sql}`;
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached;
+  }
   const tokens = tokenize(sql, kind);
   if (cache.size >= CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
@@ -113,6 +123,10 @@ function tokensOf(sql: string, kind: DatabaseKind | null): TableToken[] {
   }
   cache.set(key, tokens);
   return tokens;
+}
+
+export function tableTokenCacheSize(): number {
+  return cache.size;
 }
 
 export function readsTable(sql: string, table: string, kind: DatabaseKind | null = null): boolean {

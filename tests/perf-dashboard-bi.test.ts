@@ -20,6 +20,7 @@ import {
   themeCss,
   useCrossFilterStore,
 } from "../src/lib/dashboards";
+import { readsTable, tableTokenCacheSize } from "../src/lib/dashboards/sql-tables";
 
 function dataset(table: string, dimension: string, joined = false): Dataset {
   const base = emptyDataset(table);
@@ -217,4 +218,24 @@ test("source table detection stays linear for long expert SQL", async () => {
   expect(coldReached).toBe(true);
   expect(timing.p95Ms).toBeLessThan(15);
   expect(cold.p95Ms).toBeLessThan(15);
+});
+
+test("table token cache stays bounded and keeps recently used statements", async () => {
+  const statements = Array.from(
+    { length: 300 },
+    (_, i) => `SELECT customer_id FROM orders_${i} JOIN customers c ON c.id = ${i}`,
+  );
+  const timing = await measureScenario(() => {
+    for (const sql of statements) readsTable(sql, "customers", "postgres");
+  }, 9);
+  const size = tableTokenCacheSize();
+  readsTable(statements[299], "customers", "postgres");
+  await reportScenario("dashboard-table-token-cache", {
+    ...timing,
+    statements: statements.length,
+    cachedStatements: size,
+  });
+  expect(size).toBeLessThanOrEqual(64);
+  expect(tableTokenCacheSize()).toBe(size);
+  expect(timing.p95Ms).toBeLessThan(50);
 });
