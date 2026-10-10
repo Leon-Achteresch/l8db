@@ -345,7 +345,7 @@ export function serverSqlParts(sql: string): ServerSqlParts {
   }
   const top = branches[0]?.top ?? false;
   const last = tokens[tokens.length - 1];
-  const isolated = combined && branches.some((branch) => branch.top && branch.start < orderStart);
+  const isolated = combined && top;
   const qualifiedOrder = tokens.some((token) => token.start > orderStart && token.mark === ".");
   if (ordered && !paged && isolated && qualifiedOrder) {
     text = text.slice(0, orderStart - offset).trimEnd();
