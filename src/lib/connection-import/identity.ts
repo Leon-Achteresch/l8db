@@ -1,12 +1,10 @@
 import type { NetworkProxy, SshConnection } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
-import { ADAPTERS, TLS_SCHEMES } from "./adapters";
+import { ADAPTERS } from "./adapters";
 import { FILE_KINDS } from "./products";
-import { implicitPort } from "./transport";
+import { adapterTls, implicitPort } from "./transport";
 
 type SshIdentity = Pick<SshConnection, "host" | "port" | "user">;
-
-const TRUE_VALUES = ["1", "true", "yes", "on"];
 
 function networkKey(ssh: SshIdentity | null | undefined, proxy: NetworkProxy | null | undefined) {
   const tunnel = ssh?.host ? `ssh:${ssh.host.toLowerCase()}:${ssh.port}:${ssh.user}` : "direct";
@@ -22,26 +20,37 @@ function searchParam(url: URL, name: string): string {
   return "";
 }
 
-function urlTls(url: URL, scheme: string): boolean {
-  if (TLS_SCHEMES.includes(scheme)) return true;
-  if (
-    ["secure", "ssl", "tls"].some((key) =>
-      TRUE_VALUES.includes(searchParam(url, key).toLowerCase()),
-    )
-  )
-    return true;
-  return ["require", "verify-ca", "verify-full"].includes(
-    searchParam(url, "sslmode").toLowerCase(),
+export function effectiveTls(kind: DatabaseKind, url: URL): boolean {
+  const facts = ADAPTERS[kind];
+  if (!facts) return false;
+  return (
+    adapterTls(facts, facts.flagKeys, {
+      scheme: url.protocol.slice(0, -1),
+      port: url.port ? Number(url.port) : null,
+      params: [...url.searchParams],
+    }) ?? false
   );
 }
 
-function identityValue(url: URL, group: string): string {
-  const aliases = group.split("|");
-  for (const alias of aliases) {
+function aliasValue(url: URL, group: string): string {
+  for (const alias of group.split("|")) {
     const value = searchParam(url, alias);
-    if (value) return `${aliases[0]}=${value}`;
+    if (value) return value;
   }
-  return `${aliases[0]}=`;
+  return "";
+}
+
+function identityValue(url: URL, group: string): string {
+  return `${group.split("|")[0]}=${aliasValue(url, group)}`;
+}
+
+function pathKey(url: URL, pathParams: string[] | undefined): string {
+  const path = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  if (!pathParams) return path;
+  const segments = path.split("/");
+  return pathParams
+    .map((group, index) => aliasValue(url, group) || segments[index] || "")
+    .join("/");
 }
 
 export function endpointKey(
@@ -59,7 +68,7 @@ export function endpointKey(
     const url = new URL(value);
     const scheme = url.protocol.slice(0, -1).toLowerCase();
     const facts = ADAPTERS[kind];
-    const tls = urlTls(url, scheme);
+    const tls = effectiveTls(kind, url);
     const srv = scheme === "mongodb+srv";
     const family = [kind, srv ? "srv" : "", facts?.tlsInKey && tls ? "tls" : ""]
       .filter(Boolean)
@@ -70,7 +79,7 @@ export function endpointKey(
       family,
       url.hostname.replace(/^\[|\]$/g, "").toLowerCase(),
       port,
-      decodeURIComponent(url.pathname.replace(/^\//, "")),
+      pathKey(url, facts?.pathParams),
       decodeURIComponent(url.username),
       networkKey(ssh, proxy),
       identity,

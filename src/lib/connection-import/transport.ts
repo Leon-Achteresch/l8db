@@ -111,33 +111,70 @@ function decisive(mode: SslMode | null): mode is SslMode {
   return mode !== null && mode !== "prefer";
 }
 
+export interface TlsInput {
+  scheme: string | null;
+  port: number | null;
+  params: Array<[string, string]>;
+}
+
+function lookup(params: Array<[string, string]>, key: string): string | undefined {
+  return params.find(([name]) => name.trim().toLowerCase() === key)?.[1];
+}
+
+export function adapterTls(
+  facts: AdapterFacts,
+  flagKeys: string[],
+  input: TlsInput,
+): boolean | null {
+  const rules = facts.tls;
+  const scheme = input.scheme?.toLowerCase() ?? "";
+  const modeOf = (value: string): boolean | null => {
+    const normalized = value.trim().toLowerCase();
+    if (rules.modeOff.includes(normalized)) return false;
+    if (rules.modeOn.includes("*") || rules.modeOn.includes(normalized)) return true;
+    return null;
+  };
+  let tls: boolean | null = rules.tlsSchemes.includes(scheme)
+    ? true
+    : rules.plainSchemes.includes(scheme)
+      ? false
+      : input.port !== null && rules.tlsPorts.includes(input.port)
+        ? true
+        : null;
+  if (rules.order === "sequential") {
+    for (const [rawKey, value] of input.params) {
+      const key = rawKey.trim().toLowerCase();
+      if (rules.modeKeys.includes(key)) tls = modeOf(value) ?? tls;
+      else if (flagKeys.includes(key)) tls = flag(value) ?? false;
+    }
+    return tls;
+  }
+  const mode = rules.modeKeys.map((key) => lookup(input.params, key)).find((value) => value);
+  if (mode !== undefined) tls = modeOf(mode) ?? tls;
+  const deciding = flagKeys.find((key) => lookup(input.params, key) !== undefined);
+  if (deciding) tls = flag(lookup(input.params, deciding) as string) ?? tls;
+  return tls;
+}
+
 function readSignals(facts: AdapterFacts, source: TransportSource): Signals {
   let paramMode: SslMode | null = null;
   let verifyOff = false;
   let verifyOn = false;
-  const flags = new Map<string, boolean>();
   for (const [rawKey, value] of source.params) {
     const key = rawKey.trim().toLowerCase();
     if (MODE_KEYS.includes(key)) paramMode = sslModeOf(value) ?? paramMode;
-    else if (FLAG_KEYS.includes(key)) {
-      const on = flag(value);
-      if (on !== null && !(key === "encrypt" && value.trim().toLowerCase() === "optional"))
-        flags.set(key, on);
-    } else if (INSECURE_KEYS.includes(key) && flag(value) === true) verifyOff = true;
+    else if (INSECURE_KEYS.includes(key) && flag(value) === true) verifyOff = true;
     else if (VERIFY_KEYS.includes(key)) {
       const on = flag(value);
       if (on === false) verifyOff = true;
       if (on === true) verifyOn = true;
     } else if (FACTORY_KEYS.includes(key) && /NonValidatingFactory/i.test(value)) verifyOff = true;
   }
-  const decidingKey = facts.flagKeys.find((key) => flags.has(key));
-  const flagged = decidingKey
-    ? (flags.get(decidingKey) as boolean)
-    : source.urlScheme === "https"
-      ? true
-      : source.urlScheme === "http"
-        ? false
-        : null;
+  const flagged = adapterTls(facts, facts.sourceFlagKeys ?? facts.flagKeys, {
+    scheme: source.urlScheme,
+    port: source.port,
+    params: source.params,
+  });
   const mode = decisive(paramMode)
     ? paramMode
     : decisive(source.sslMode)
@@ -223,7 +260,7 @@ export function resolveTransport(
   const tls = signals.tls === true;
   const port =
     source.port ??
-    (source.urlScheme === "https" && source.portFromUrl
+    (source.urlScheme === "https" && source.portFromUrl && tls
       ? facts.httpsUrlPort
       : tls
         ? facts.fieldTlsPort
