@@ -79,6 +79,8 @@ function nextQuotes(sql: string, quote: string): Int32Array {
   return next;
 }
 
+const WORD_CHAR = /[\p{L}\p{M}\p{N}_]/u;
+
 function bracketedIndexEnd(
   sql: string,
   start: number,
@@ -91,10 +93,11 @@ function bracketedIndexEnd(
     if (c === "]" && --depth === 0) return i + 1;
     if (c === "[") depth++;
     if (c === "'" || c === '"') {
+      if (WORD_CHAR.test(sql[i - 1] ?? "")) return -1;
       const next = c === "'" ? quotes.single : quotes.double;
       let close = next[i + 1];
       while (close >= 0 && sql[close + 1] === c) close = next[close + 2];
-      if (close < 0) return -1;
+      if (close < 0 || WORD_CHAR.test(sql[close + 1] ?? "")) return -1;
       i = close + 1;
       continue;
     }
