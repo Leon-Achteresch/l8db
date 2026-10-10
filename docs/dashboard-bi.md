@@ -82,11 +82,16 @@ before the dashboard's own CSS.
   segments are focusable; Enter or Space opens the same filter/details menu as a click.
 - **Target lines** (`target`, `targetLabel`) on line, area, column, bar and KPI charts.
 - **Presentation mode** hides the editor, switches the window to fullscreen and ends
-  with Esc. Verified in a real Tauri 2.12.1 window (WebKitGTK, Xvfb 1920×1080, no
-  window manager): `setFullscreen(true/false)` from the webview toggles
-  `isFullscreen()` with `core:window:allow-set-fullscreen`, and without it Tauri
-  rejects the call. The full l8db app was not driven end to end in a real window, and
-  macOS/Windows were not tested.
+  with Esc. Verified end to end in the real l8db debug build (WebKitGTK, Linux x86_64,
+  Xvfb 1920×1080 with a minimal EWMH window manager, isolated profile, SQLite data):
+  "Präsentieren" turned the 1280×820 window into 1920×1080 with
+  `_NET_WM_STATE_FULLSCREEN`, link buttons switched pages and Esc restored 1280×820.
+  The same run exercised cross filtering, the point menu, the widget menu, the
+  drill-through dialog and live theme presets. A minimal Tauri 2.12.1 app confirmed
+  that `setFullscreen` is rejected without `core:window:allow-set-fullscreen`.
+  macOS and Windows were not tested; in Playwright's WebKit build (older than the
+  Playwright version expects) clicks occasionally crashed the page, which did not
+  happen in the real WebKitGTK window.
 
 ## Performance
 
