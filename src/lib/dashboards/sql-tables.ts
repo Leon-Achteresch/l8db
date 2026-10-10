@@ -293,125 +293,39 @@ export interface ServerSqlParts {
   body: string;
 }
 
-function splitItems(tokens: TableToken[], from: number, to: number): TableToken[][] {
-  const items: TableToken[][] = [[]];
-  let depth = 0;
-  for (let index = from; index < to; index++) {
-    const token = tokens[index];
-    if (token.mark === "(") depth++;
-    else if (token.mark === ")") depth--;
-    if (token.mark === "," && depth === 0) items.push([]);
-    else items[items.length - 1].push(token);
-  }
-  return items.filter((item) => item.length);
-}
-
-function outputNames(sql: string, tokens: TableToken[], select: number): Set<string> | null {
-  let index = select + 1;
-  if (tokens[index]?.word === "top") {
-    index++;
-    if (tokens[index]?.mark === "(") {
-      let depth = 0;
-      do {
-        if (tokens[index]?.mark === "(") depth++;
-        else if (tokens[index]?.mark === ")") depth--;
-        index++;
-      } while (index < tokens.length && depth > 0);
-    } else index++;
-    if (tokens[index]?.word === "percent") index++;
-    if (tokens[index]?.word === "with" && tokens[index + 1]?.word === "ties") index += 2;
-  }
-  let end = index;
-  let depth = 0;
-  for (; end < tokens.length; end++) {
-    const token = tokens[end];
-    if (token.mark === "(") depth++;
-    else if (token.mark === ")") depth--;
-    if (depth === 0 && (token.word === "from" || token.word === "union" || token.word === "into"))
-      break;
-  }
-  const names = new Set<string>();
-  for (const item of splitItems(tokens, index, end)) {
-    const text = sql.slice(item[0].start, item[item.length - 1].end);
-    if (text.includes("*")) return null;
-    const last = item[item.length - 1];
-    if (!last.ident) return null;
-    names.add(last.ident);
-  }
-  return names;
-}
-
-function movableOrder(
-  sql: string,
-  tokens: TableToken[],
-  order: number,
-  names: Set<string> | null,
-): string | null {
-  const parts: string[] = [];
-  for (const item of splitItems(tokens, order + 2, tokens.length)) {
-    let direction = "";
-    let body = item;
-    const tail = item[item.length - 1].word;
-    if (tail === "asc" || tail === "desc") {
-      direction = ` ${tail.toUpperCase()}`;
-      body = item.slice(0, -1);
-    }
-    if (body.length === 1 && body[0].mark === "number") {
-      parts.push(`${sql.slice(body[0].start, body[0].end)}${direction}`);
-      continue;
-    }
-    const simple = body.every((token, i) =>
-      i % 2 === 0 ? token.ident !== null : token.mark === ".",
-    );
-    if (!simple || body.length % 2 === 0) return null;
-    const column = body[body.length - 1];
-    if (column.ident === null || (names !== null && !names.has(column.ident))) return null;
-    parts.push(`${sql.slice(column.start, column.end)}${direction}`);
-  }
-  return parts.length ? `ORDER BY ${parts.join(", ")}` : null;
-}
-
 export function serverSqlParts(sql: string): ServerSqlParts {
   const tokens = tokensOf(sql, "mssql");
   const { body } = cteList(tokens);
   const bodyToken = tokens[body];
   const ctes = body > 0 && bodyToken ? sql.slice(0, tokens[body - 1].end).trimEnd() : "";
-  let text = ctes ? sql.slice(bodyToken.start) : sql;
   const offset = ctes ? bodyToken.start : 0;
+  let text = ctes ? sql.slice(offset) : sql;
   let depth = 0;
-  let select = -1;
-  let ordered = false;
   let top = false;
+  let selected = false;
+  let ordered = false;
   let paged = false;
   let combined = false;
-  let orderStart = -1;
-  let orderIndex = -1;
   for (let index = Math.max(body, 0); index < tokens.length; index++) {
     const token = tokens[index];
     if (token.mark === "(") depth++;
     else if (token.mark === ")") depth--;
     if (depth !== 0) continue;
-    if (token.word === "select" && select < 0) {
-      const next = tokens[index + 1];
-      select = next?.word === "distinct" || next?.word === "all" ? index + 1 : index;
-      if (tokens[select + 1]?.word === "top") top = true;
+    if (token.word === "select" && !selected) {
+      selected = true;
+      const next =
+        tokens[index + 1]?.word === "distinct" || tokens[index + 1]?.word === "all" ? 2 : 1;
+      if (tokens[index + next]?.word === "top") top = true;
     } else if (token.word === "union" || token.word === "except" || token.word === "intersect")
       combined = true;
-    else if (token.word === "order" && tokens[index + 1]?.word === "by") {
-      ordered = true;
-      orderStart = token.start - offset;
-      orderIndex = index;
-    } else if (ordered && (token.word === "offset" || token.word === "fetch")) paged = true;
+    else if (token.word === "order" && tokens[index + 1]?.word === "by") ordered = true;
+    else if (ordered && (token.word === "offset" || token.word === "fetch" || token.word === "for"))
+      paged = true;
   }
-  const limited = paged || (top && !combined);
-  if (ordered && !limited && combined && orderStart > 0) {
-    const set = text.slice(0, orderStart).trimEnd();
-    const names = select >= 0 ? outputNames(sql, tokens, select) : null;
-    const order = movableOrder(sql, tokens, orderIndex, names);
-    text = order ? `SELECT TOP 2147483647 * FROM (\n${set}\n) AS l8db_u ${order}` : set;
-  } else if (ordered && !limited && select >= 0) {
-    const at = tokens[select].end - offset;
-    text = `${text.slice(0, at)} TOP 2147483647${text.slice(at)}`;
+  const last = tokens[tokens.length - 1];
+  if (ordered && !paged && !(top && !combined) && last) {
+    const at = last.end - offset;
+    text = `${text.slice(0, at)} OFFSET 0 ROWS${text.slice(at)}`;
   }
   return { ctes, body: text };
 }

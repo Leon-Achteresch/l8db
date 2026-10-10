@@ -1022,7 +1022,7 @@ describe("SQL Server mit eigenem SQL", () => {
       "mssql",
       "all",
     );
-    expect(filtered).toContain("SELECT DISTINCT TOP 2147483647 region");
+    expect(filtered).toContain("ORDER BY umsatz DESC OFFSET 0 ROWS");
     expect(filtered).toContain(") AS q WHERE q.[region] = N'Nord'");
     const top = expert("SELECT TOP 5 region, x AS umsatz FROM orders ORDER BY x", "region");
     expect(datasetDetailSql(top, [], "mssql", "all")).toContain("SELECT TOP 5 region");
@@ -1030,12 +1030,12 @@ describe("SQL Server mit eigenem SQL", () => {
       "SELECT region, x AS umsatz FROM orders ORDER BY x OFFSET 0 ROWS",
       "region",
     );
-    expect(datasetDetailSql(offset, [], "mssql", "all")).not.toContain("2147483647");
+    expect(datasetDetailSql(offset, [], "mssql", "all")).not.toContain("OFFSET 0 ROWS OFFSET");
     const nested = expert(
       "SELECT region, (SELECT TOP 1 y FROM z ORDER BY y) AS umsatz FROM orders",
       "region",
     );
-    expect(datasetDetailSql(nested, [], "mssql", "all")).not.toContain("2147483647");
+    expect(datasetDetailSql(nested, [], "mssql", "all")).not.toContain("OFFSET 0 ROWS");
   });
 });
 
@@ -1097,11 +1097,11 @@ describe("Zweite Abschlussrunde", () => {
     const ordered = expert("SELECT d, n FROM t ORDER BY d", "d");
     ordered.mapping = { dimension: null, dimension2: null, metrics: ["n"], dateColumn: "d" };
     expect(datasetTrendSql(ordered, "mssql", "all")).toContain(
-      "SELECT TOP 2147483647 d, n FROM t ORDER BY d",
+      "SELECT d, n FROM t ORDER BY d OFFSET 0 ROWS",
     );
     const union = expert("SELECT a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
     expect(datasetDetailSql(union, [], "mssql", "all")).toContain(
-      "SELECT TOP 2147483647 * FROM (\nSELECT a FROM t UNION ALL SELECT a FROM u\n) AS l8db_u ORDER BY a",
+      "SELECT a FROM t UNION ALL SELECT a FROM u ORDER BY a OFFSET 0 ROWS",
     );
   });
 
@@ -1128,13 +1128,13 @@ describe("Dritte Abschlussrunde", () => {
     expect(trend.startsWith("WITH x AS (SELECT 1 AS a),\nl8db_t AS (")).toBe(true);
     expect(trend).not.toContain("-- note");
     const topUnion = expert("SELECT TOP 5 a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
-    expect(datasetDetailSql(topUnion, [], "mssql", "all")).toContain(") AS l8db_u ORDER BY a");
+    expect(datasetDetailSql(topUnion, [], "mssql", "all")).toContain("ORDER BY a OFFSET 0 ROWS");
     const qualified = expert(
       "SELECT t.a, t.b FROM t UNION ALL SELECT u.a, u.b FROM u ORDER BY t.a DESC, [dbo].[t].[b]",
       "a",
     );
     expect(datasetDetailSql(qualified, [], "mssql", "all")).toContain(
-      ") AS l8db_u ORDER BY a DESC, [b]",
+      "ORDER BY t.a DESC, [dbo].[t].[b] OFFSET 0 ROWS",
     );
   });
 });
@@ -1148,12 +1148,17 @@ describe("Vierte Abschlussrunde", () => {
       "all",
     );
 
-  test("ORDER BY nach UNION wird nur mit sicheren Spaltenbezügen nach außen verschoben", () => {
-    expect(union("ORDER BY x, 2 DESC")).toContain(") AS l8db_u ORDER BY x, 2 DESC");
-    expect(union("ORDER BY t.a")).not.toContain("ORDER BY");
-    expect(union("ORDER BY dbo.fn(t.a)")).not.toContain("ORDER BY");
-    expect(union("ORDER BY CASE WHEN t.b = 'a.b' THEN 1 END")).not.toContain("ORDER BY");
-    expect(union("ORDER BY t.a")).not.toContain("TOP 2147483647");
+  test("ORDER BY bleibt unverändert und wird mit OFFSET 0 ROWS gültig", () => {
+    expect(union("ORDER BY x, 2 DESC")).toContain("ORDER BY x, 2 DESC OFFSET 0 ROWS");
+    expect(union("ORDER BY -t.a")).toContain("ORDER BY -t.a OFFSET 0 ROWS");
+    expect(union("ORDER BY t.b COLLATE Latin1_General_CS_AS")).toContain(
+      "COLLATE Latin1_General_CS_AS OFFSET 0 ROWS",
+    );
+    expect(union("ORDER BY dbo.fn(t.a) -- sort")).toContain(
+      "ORDER BY dbo.fn(t.a) OFFSET 0 ROWS -- sort",
+    );
+    const top = expert("SELECT TOP 5 a, b FROM t ORDER BY a", "a");
+    expect(datasetDetailSql(top, [], "mssql", "all")).not.toContain("OFFSET 0 ROWS");
   });
 
   test("CTE mit Kommentar auch im Wrapper für Details und Filter", () => {
