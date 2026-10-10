@@ -84,6 +84,8 @@ export interface Capabilities {
   object_storage: boolean;
   health_advisor: boolean;
   dml_preview: boolean;
+  multi_target_query: boolean;
+  multi_target_schemas: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

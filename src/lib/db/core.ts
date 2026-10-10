@@ -20,6 +20,7 @@ export interface QueryExecutionOptions {
   session?: string;
   pooled?: boolean;
   queryTimeout?: number;
+  maxRows?: number;
 }
 
 const SQL_COMMANDS = new Set([
@@ -231,6 +232,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     queryTimeout: options.queryTimeout ?? settings.queryTimeout,
     connectionTimeout: settings.connectionTimeout,
     ...(options.jobId ? { jobId: options.jobId } : {}),
+    ...(options.maxRows ? { maxRows: options.maxRows } : {}),
   };
   if (SQL_COMMANDS.has(command)) {
     const { operationContext } = await import("@/lib/operation-context");

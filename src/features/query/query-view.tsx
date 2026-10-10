@@ -3,17 +3,21 @@ import { startTransition, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
+import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
+import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useCapabilities } from "@/lib/providers";
+import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
 import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
+import { MultiTargetButton } from "./query-view/multi-target-button";
 import { QueryEditorContent } from "./query-view/query-editor-content";
 import { QueryResultsContent } from "./query-view/query-results-content";
 import { QueryToolsMenu } from "./query-view/query-tools-menu";
@@ -116,6 +120,8 @@ export function QueryView({ tabId }: QueryViewProps) {
   });
 
   const dmlPreview = useDmlPreview(connection, database, caps);
+  const multiTargetRun = useMultiTargetRun();
+  const [multiTargetOpen, setMultiTargetOpen] = useState(false);
   const dmlPreviewWarnThreshold = useSettingsStore((state) => state.dmlPreviewWarnThreshold);
 
   const { runSql, bind } = useRunSql({
@@ -220,6 +226,13 @@ export function QueryView({ tabId }: QueryViewProps) {
               disabled={exec.isRunning || !connection || !sql.trim()}
               shortcut={shortcutLabel("query.preview")}
               onPreview={() => void actions.handlePreview()}
+            />
+          )}
+          {caps.multi_target_query && (
+            <MultiTargetButton
+              disabled={!connection}
+              running={multiTargetRun.running}
+              onOpen={() => setMultiTargetOpen(true)}
             />
           )}
           {isSql && <SelectRowLimit />}
@@ -381,6 +394,27 @@ export function QueryView({ tabId }: QueryViewProps) {
           onCancel={dmlPreview.cancel}
           onStop={dmlPreview.stop}
         />
+
+        {caps.multi_target_query && (
+          <MultiTargetSheet
+            open={multiTargetOpen}
+            onOpenChange={setMultiTargetOpen}
+            sql={
+              multiTargetOpen
+                ? resolveQueryRunTarget(
+                    sql,
+                    cursor.selectedSql,
+                    cursor.cursorOffset,
+                    workspace.runTarget,
+                    connection?.kind,
+                  )
+                : ""
+            }
+            connection={connection}
+            database={database}
+            run={multiTargetRun}
+          />
+        )}
 
         <QueryViewDrawers
           connection={connection}

@@ -88,6 +88,8 @@ pub struct Capabilities {
     pub object_storage: bool,
     pub health_advisor: bool,
     pub dml_preview: bool,
+    pub multi_target_query: bool,
+    pub multi_target_schemas: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -155,6 +157,8 @@ const NONE: Capabilities = Capabilities {
     object_storage: false,
     health_advisor: false,
     dml_preview: false,
+    multi_target_query: false,
+    multi_target_schemas: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -177,6 +181,7 @@ const SQL_COMMON: Capabilities = Capabilities {
     table_copy: true,
     test_data: true,
     dml_preview: true,
+    multi_target_query: true,
     ..NONE
 };
 
@@ -207,6 +212,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                multi_target_schemas: true,
                 health_advisor: true,
                 backup: true,
                 query_stats: true,
@@ -292,6 +298,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                multi_target_query: true,
                 query_cancel: true,
                 dashboard_parallelism: 2,
                 csv_import: true,
@@ -1040,6 +1047,34 @@ mod tests {
         }
         assert!(!DatabaseKind::Mongodb.capabilities().dml_preview);
         assert!(!DatabaseKind::Clickhouse.capabilities().dml_preview);
+    }
+
+    #[test]
+    fn multi_target_query_is_gated_to_tabular_sql_families() {
+        for kind in DatabaseKind::ALL {
+            let caps = kind.capabilities();
+            if caps.multi_target_query {
+                assert_eq!(caps.query_language, "sql", "{kind:?}");
+            }
+            assert!(
+                !caps.multi_target_schemas || caps.multi_target_query,
+                "{kind:?}"
+            );
+        }
+        for kind in [
+            DatabaseKind::Postgres,
+            DatabaseKind::Mysql,
+            DatabaseKind::Sqlite,
+            DatabaseKind::Mssql,
+            DatabaseKind::Oracle,
+            DatabaseKind::Clickhouse,
+        ] {
+            assert!(kind.capabilities().multi_target_query, "{kind:?}");
+        }
+        assert!(DatabaseKind::Postgres.capabilities().multi_target_schemas);
+        assert!(!DatabaseKind::Mysql.capabilities().multi_target_schemas);
+        assert!(!DatabaseKind::Redis.capabilities().multi_target_query);
+        assert!(!DatabaseKind::Mongodb.capabilities().multi_target_query);
     }
 
     #[test]

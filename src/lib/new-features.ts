@@ -88,6 +88,7 @@ export const NEW_FEATURES = {
   "query.select-row-limit": "0.7.0",
   "query.result-view": "0.14.0",
   "query.dml-preview": NEXT_FEATURE_VERSION,
+  "query.multi-target": NEXT_FEATURE_VERSION,
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",

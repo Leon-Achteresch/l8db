@@ -600,9 +600,9 @@ pub async fn run_scheduler_job(
 
 pub const MAX_RESULT_ROWS: usize = 1000;
 
-fn truncate_rows(mut result: QueryResult) -> QueryResult {
-    result.truncated |= result.rows.len() > MAX_RESULT_ROWS;
-    result.rows.truncate(MAX_RESULT_ROWS);
+fn truncate_rows(mut result: QueryResult, cap: usize) -> QueryResult {
+    result.truncated |= result.rows.len() > cap;
+    result.rows.truncate(cap);
     result
 }
 
@@ -610,9 +610,10 @@ pub(crate) async fn capped_query<F>(future: F) -> Result<QueryResult, String>
 where
     F: std::future::Future<Output = Result<QueryResult, String>>,
 {
-    super::execution::with_row_limit(MAX_RESULT_ROWS + 1, future)
+    let cap = super::execution::result_row_cap(MAX_RESULT_ROWS);
+    super::execution::with_row_limit(cap + 1, future)
         .await
-        .map(truncate_rows)
+        .map(|result| truncate_rows(result, cap))
 }
 
 #[tauri::command]
