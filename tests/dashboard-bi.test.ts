@@ -807,3 +807,11 @@ describe("Klammern und Escapes in Bezeichnern", () => {
     expect(readsTable("SELECT `a\\`b` AS x, r FROM orders", "orders", "clickhouse")).toBe(true);
   });
 });
+
+describe("Schlüsselwörter vor Array-Indizes", () => {
+  test("Spaltennamen, die auf Schlüsselwörter enden, bleiben Array-Zugriffe", () => {
+    expect(readsTable("SELECT cafe\u0301as[']'], r FROM orders", "orders", "odbc")).toBe(true);
+    expect(readsTable("SELECT x.update[']'], r FROM orders", "orders")).toBe(true);
+    expect(readsTable("SELECT * FROM[Order Details]", "Order Details")).toBe(true);
+  });
+});
