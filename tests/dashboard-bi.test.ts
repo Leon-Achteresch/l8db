@@ -1207,3 +1207,14 @@ describe("Fünfte Abschlussrunde", () => {
     );
   });
 });
+
+describe("Sechste Abschlussrunde", () => {
+  test("TOP-Zweig mit qualifiziertem ORDER BY lässt die Sortierung weg statt ungültig zu werden", () => {
+    const dataset = expert("SELECT TOP 5 t.a FROM t UNION ALL SELECT u.a FROM u ORDER BY t.a", "a");
+    const sql = datasetDetailSql(dataset, [], "mssql", "all");
+    expect(sql).toContain("SELECT TOP 5 t.a FROM t UNION ALL SELECT u.a FROM u\n)");
+    expect(sql).not.toContain("ORDER BY");
+    const plain = expert("SELECT TOP 5 a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
+    expect(datasetDetailSql(plain, [], "mssql", "all")).toContain("ORDER BY a OFFSET 0 ROWS");
+  });
+});

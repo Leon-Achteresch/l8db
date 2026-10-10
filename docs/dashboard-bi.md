@@ -50,7 +50,9 @@ before the dashboard's own CSS.
   tables. On SQL Server, expert SQL with a `WITH` clause is extended by an extra CTE
   instead of being nested, and a top-level `ORDER BY` without `TOP`/`OFFSET` (also after a
   UNION) gets `OFFSET 0 ROWS` so it stays unchanged and valid inside the wrapper
-  (SQL Server 2012 or newer); trend queries reuse the same CTE form. All dashboard
+  (SQL Server 2012 or newer). Union branches using `TOP` are put in parentheses; if
+  the ORDER BY then refers to a table-qualified column, it is dropped so the query
+  stays valid. Trend queries reuse the same CTE form. All dashboard
   SQL (literals, identifiers, functions) uses the dialect detected for ODBC
   connections; on DSN-only ODBC backslashes in values are doubled. That is correct for MySQL-style backends and
   never injectable on ANSI backends, but there a value containing a backslash no longer
@@ -114,7 +116,7 @@ before the dashboard's own CSS.
 widgets, a 60 × 40 pivot, a theme with a 512 KiB logo, 1,000 selection toggles and the
 query count of exact pivot totals (60 pivots over 12 datasets: 48 distinct queries,
 p95 2 ms to build) and source-table detection in 12.7 KB of expert SQL with 800
-references (cold median 0.9 ms / p95 1.1 ms, cached median 0.08 ms; the earlier regex
+references (cold median 0.9 ms; 89 KB with 10,000 string literals median 3 ms / p95 1.1 ms, cached median 0.08 ms; the earlier regex
 version needed 316 ms). The ODBC subscript path grows linearly (11 KB median 1.8 ms,
 47 KB median 4.3 ms / p95 13.9 ms for 4.2× input) and the token cache stays at 64
 statements.

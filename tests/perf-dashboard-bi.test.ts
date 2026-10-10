@@ -428,3 +428,31 @@ test("SQL Server trend queries over CTE expert datasets stay cheap and linear", 
   expect(large.p95Ms).toBeLessThan(150);
   expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(10);
 });
+
+test("literal-heavy expert SQL keeps table detection linear and the token cache bounded", async () => {
+  const build = (count: number) =>
+    `SELECT region, COUNT(*) AS n FROM orders WHERE code IN (${Array.from({ length: count }, (_, i) => `'C${i}'`).join(", ")}) GROUP BY region`;
+  const measure = async (count: number) => {
+    const sql = build(count);
+    let run = 0;
+    let reached = false;
+    const timing = await measureScenario(() => {
+      run++;
+      reached = readsTable(`${sql} -- ${count}-${run}`, "orders", "mssql");
+    }, 9);
+    expect(reached).toBe(true);
+    return { ...timing, sqlBytes: sql.length };
+  };
+  const small = await measure(2_500);
+  const large = await measure(10_000);
+  const cached = tableTokenCacheKeys().length;
+  await reportScenario("dashboard-literal-heavy-sql", {
+    small,
+    large,
+    growth: large.medianMs / Math.max(small.medianMs, 0.05),
+    cachedStatements: cached,
+  });
+  expect(large.p95Ms).toBeLessThan(120);
+  expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(8);
+  expect(cached).toBeLessThanOrEqual(64);
+});
