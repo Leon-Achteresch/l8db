@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { startTransition, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
+import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
 import { useActiveConnection } from "@/lib/connections";
@@ -10,6 +11,8 @@ import { SPRING_LAYOUT } from "@/lib/ease";
 import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
+import { useSettingsStore } from "@/lib/settings";
+import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { QueryEditorContent } from "./query-view/query-editor-content";
 import { QueryResultsContent } from "./query-view/query-results-content";
@@ -24,6 +27,7 @@ import { SelectRowLimit } from "./query-view/select-row-limit";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
 import { useAutoAssessment } from "./query-view/use-auto-assessment";
+import { useDmlPreview } from "./query-view/use-dml-preview";
 import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
 import { useEditorStateSync } from "./query-view/use-editor-state-sync";
 import { useExplainPlan } from "./query-view/use-explain-plan";
@@ -111,6 +115,9 @@ export function QueryView({ tabId }: QueryViewProps) {
     collectOutput: output.collectOutput,
   });
 
+  const dmlPreview = useDmlPreview(connection, database, caps);
+  const dmlPreviewWarnThreshold = useSettingsStore((state) => state.dmlPreviewWarnThreshold);
+
   const { runSql, bind } = useRunSql({
     tabId,
     sql,
@@ -123,6 +130,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     setEditorFocus,
     collectOutput: output.collectOutput,
     runMultiStatement: script.runScriptFor,
+    confirmPreview: dmlPreview.confirmBeforeRun,
   });
 
   const actions = useRunActions({
@@ -133,6 +141,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     exec,
     cursor,
     runSql,
+    previewSql: dmlPreview.preview,
     setEditorFocus,
   });
 
@@ -206,6 +215,13 @@ export function QueryView({ tabId }: QueryViewProps) {
             onOpenScript={script.handleOpenScriptDialog}
             shortcutLabel={shortcutLabel}
           />
+          {caps.dml_preview && (
+            <DmlPreviewButton
+              disabled={exec.isRunning || !connection || !sql.trim()}
+              shortcut={shortcutLabel("query.preview")}
+              onPreview={() => void actions.handlePreview()}
+            />
+          )}
           {isSql && <SelectRowLimit />}
           <ToolbarViewControls
             workspace={workspace}
@@ -353,6 +369,17 @@ export function QueryView({ tabId }: QueryViewProps) {
           exportState={exportState}
           analysis={analysis}
           explain={explain}
+        />
+
+        <DmlPreviewDialog
+          state={dmlPreview.state}
+          kind={connection?.kind}
+          connectionName={connection?.name}
+          database={database}
+          warnThreshold={dmlPreviewWarnThreshold}
+          onRun={dmlPreview.run}
+          onCancel={dmlPreview.cancel}
+          onStop={dmlPreview.stop}
         />
 
         <QueryViewDrawers

@@ -70,6 +70,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   backup: true,
   object_storage: false,
   health_advisor: true,
+  dml_preview: true,
   query_language: "sql",
   filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -206,6 +207,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
       migration_script: false,
       csv_import: true,
       table_copy: false,
+      dml_preview: false,
       ssl: false,
       ssh: false,
     },

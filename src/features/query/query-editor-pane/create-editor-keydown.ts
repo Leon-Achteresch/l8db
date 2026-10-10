@@ -13,6 +13,7 @@ interface EditorKeydownHandlers {
   onRunSelection: () => void;
   onRunStatement: () => void;
   onCheck: () => void;
+  onPreview: () => void;
   onSave: () => void;
 }
 
@@ -26,6 +27,7 @@ export function createEditorKeydown({
   onRunSelection,
   onRunStatement,
   onCheck,
+  onPreview,
   onSave,
 }: EditorKeydownHandlers) {
   return (event: KeyboardEvent) => {
@@ -47,6 +49,7 @@ export function createEditorKeydown({
       "query.runSelection": onRunSelection,
       "query.runStatement": onRunStatement,
       "query.check": onCheck,
+      "query.preview": onPreview,
       "query.save": onSave,
       "query.format": () => {
         void editor.getAction("l8db.format-sql")?.run();

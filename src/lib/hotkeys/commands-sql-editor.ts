@@ -55,6 +55,17 @@ export const SQL_EDITOR_COMMANDS: HotkeyCommand[] = [
     origin: "l8db",
   },
   {
+    id: "query.preview",
+    routeScope: "query",
+    label: "DML-Vorschau anzeigen",
+    description:
+      "Zeigt betroffene Zeilen eines UPDATE, DELETE, MERGE oder INSERT … SELECT, ohne auszuführen",
+    area: "SQL-Editor",
+    defaultHotkey: "Mod+Alt+P",
+    requiresConnection: true,
+    origin: "l8db",
+  },
+  {
     id: "query.aiEdit",
     routeScope: "query",
     label: "KI: Inline bearbeiten",

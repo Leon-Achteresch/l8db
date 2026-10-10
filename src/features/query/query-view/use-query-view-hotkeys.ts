@@ -34,52 +34,60 @@ export function useQueryViewHotkeys({
   toggleHistory,
   openCsvExport,
 }: UseQueryViewHotkeysParams) {
-  const { handleRun, handleRunSelection, handleRunStatement, handleCheck } = actions;
+  const { handleRun, handleRunSelection, handleRunStatement, handleCheck, handlePreview } = actions;
   const hotkeyOverrides = useHotkeysStore((state) => state.overrides);
   const shortcutLabel = (id: string) => formatHotkeyDisplay(resolveHotkey(id, hotkeyOverrides));
   const hotkeyFor = (id: string, fallback: string) =>
     (hotkeyOverrides[id] ?? commandById(id)?.defaultHotkey ?? fallback) as never;
 
   useHotkeys(
-    (["query.run", "query.runSelection", "query.runStatement", "query.check"] as const).flatMap(
-      (id) => {
-        const command = commandById(id);
-        if (!command) return [];
-        const runAction =
-          id === "query.run"
-            ? handleRun
-            : id === "query.runSelection"
-              ? handleRunSelection
-              : id === "query.runStatement"
-                ? handleRunStatement
+    (
+      [
+        "query.run",
+        "query.runSelection",
+        "query.runStatement",
+        "query.check",
+        "query.preview",
+      ] as const
+    ).flatMap((id) => {
+      const command = commandById(id);
+      if (!command) return [];
+      const runAction =
+        id === "query.run"
+          ? handleRun
+          : id === "query.runSelection"
+            ? handleRunSelection
+            : id === "query.runStatement"
+              ? handleRunStatement
+              : id === "query.preview"
+                ? handlePreview
                 : handleCheck;
-        const primary = (hotkeyOverrides[id] ?? command.defaultHotkey) as never;
-        const rows = [
-          {
-            hotkey: primary,
-            callback: (event: KeyboardEvent) => {
-              if (isInMonaco(event)) return;
-              if (id === "query.check") void runAction();
+      const primary = (hotkeyOverrides[id] ?? command.defaultHotkey) as never;
+      const rows = [
+        {
+          hotkey: primary,
+          callback: (event: KeyboardEvent) => {
+            if (isInMonaco(event)) return;
+            if (id === "query.check" || id === "query.preview") void runAction();
+            else (runAction as () => void)();
+          },
+          options: { enabled: connected, ignoreInputs: false },
+        },
+      ];
+      if (!hotkeyOverrides[id]) {
+        for (const alias of command.aliases ?? []) {
+          rows.push({
+            hotkey: alias as never,
+            callback: () => {
+              if (id === "query.check" || id === "query.preview") void runAction();
               else (runAction as () => void)();
             },
             options: { enabled: connected, ignoreInputs: false },
-          },
-        ];
-        if (!hotkeyOverrides[id]) {
-          for (const alias of command.aliases ?? []) {
-            rows.push({
-              hotkey: alias as never,
-              callback: () => {
-                if (id === "query.check") void runAction();
-                else (runAction as () => void)();
-              },
-              options: { enabled: connected, ignoreInputs: false },
-            });
-          }
+          });
         }
-        return rows;
-      },
-    ),
+      }
+      return rows;
+    }),
     { preventDefault: true, stopPropagation: true },
   );
 
@@ -143,6 +151,7 @@ export function useQueryViewHotkeys({
   useEffect(() => onHotkeyAction("query.runSelection", handleRunSelection), [handleRunSelection]);
   useEffect(() => onHotkeyAction("query.runStatement", handleRunStatement), [handleRunStatement]);
   useEffect(() => onHotkeyAction("query.check", () => void handleCheck()), [handleCheck]);
+  useEffect(() => onHotkeyAction("query.preview", () => void handlePreview()), [handlePreview]);
   useEffect(() => onHotkeyAction("query.save", () => void handleFileSave(false)), [handleFileSave]);
   useEffect(
     () => onHotkeyAction("query.saveAs", () => void handleFileSave(true)),

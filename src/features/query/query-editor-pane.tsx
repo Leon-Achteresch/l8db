@@ -39,6 +39,7 @@ export function QueryEditorPane({
   onRunSelection,
   onRunStatement,
   onCheck,
+  onPreview,
   onSelectionChange,
   onCursorChange,
   onPositionChange,
@@ -65,6 +66,7 @@ export function QueryEditorPane({
   const onRunSelectionRef = useRef(onRunSelection);
   const onRunStatementRef = useRef(onRunStatement);
   const onCheckRef = useRef(onCheck);
+  const onPreviewRef = useRef(onPreview);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onCursorChangeRef = useRef(onCursorChange);
   const onPositionChangeRef = useRef(onPositionChange);
@@ -80,6 +82,7 @@ export function QueryEditorPane({
   onRunSelectionRef.current = onRunSelection;
   onRunStatementRef.current = onRunStatement;
   onCheckRef.current = onCheck;
+  onPreviewRef.current = onPreview;
   onSelectionChangeRef.current = onSelectionChange;
   onCursorChangeRef.current = onCursorChange;
   onPositionChangeRef.current = onPositionChange;
@@ -184,6 +187,7 @@ export function QueryEditorPane({
       onRunSelection: () => onRunSelectionRef.current?.(),
       onRunStatement: () => onRunStatementRef.current?.(),
       onCheck: () => onCheckRef.current?.(),
+      onPreview: () => onPreviewRef.current?.(),
       onSave: () => onSaveRef.current?.(),
     });
     container.addEventListener("keydown", keydown, true);

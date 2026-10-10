@@ -3,6 +3,7 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { DML_PREVIEW_MODES, type DmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type SslDefaultMode, useSettingsStore } from "@/lib/settings";
 
 export function SettingsSecurityTab() {
@@ -16,6 +17,14 @@ export function SettingsSecurityTab() {
     setProductionReadOnly,
     setProductionConfirmCommit,
     setProductionAutoRollback,
+    dmlPreviewMode,
+    dmlPreviewRowLimit,
+    dmlPreviewTimeout,
+    dmlPreviewWarnThreshold,
+    setDmlPreviewMode,
+    setDmlPreviewRowLimit,
+    setDmlPreviewTimeout,
+    setDmlPreviewWarnThreshold,
     setSshTrustNewHosts,
     setConnectionTimeout,
     setSslDefaultMode,
@@ -61,6 +70,71 @@ export function SettingsSecurityTab() {
             onCheckedChange={setProductionAutoRollback}
             aria-label="Offene Produktions-Transaktionen automatisch zurückrollen"
           />
+        </SettingsRow>
+
+        <SettingsRow settingId="dml-preview">
+          <SegmentedControl
+            value={dmlPreviewMode}
+            onChange={(value) => setDmlPreviewMode(value as DmlPreviewMode)}
+            label="Vorschau vor UPDATE und DELETE"
+            options={DML_PREVIEW_MODES}
+          />
+        </SettingsRow>
+
+        <SettingsRow settingId="dml-preview-limits">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Input
+                type="number"
+                min={10}
+                max={1000}
+                step={1}
+                aria-label="Beispielzeilen der Vorschau"
+                value={dmlPreviewRowLimit}
+                onChange={(event) => {
+                  const value = Number.parseInt(event.target.value, 10);
+                  if (!Number.isNaN(value) && value >= 10 && value <= 1000)
+                    setDmlPreviewRowLimit(value);
+                }}
+                className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              Zeilen
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Input
+                type="number"
+                min={5}
+                max={60}
+                step={1}
+                aria-label="Zeitlimit der Vorschau"
+                value={dmlPreviewTimeout}
+                onChange={(event) => {
+                  const value = Number.parseInt(event.target.value, 10);
+                  if (!Number.isNaN(value) && value >= 5 && value <= 60)
+                    setDmlPreviewTimeout(value);
+                }}
+                className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              Sekunden
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Input
+                type="number"
+                min={1}
+                max={10000000}
+                step={1}
+                aria-label="Warnschwelle betroffener Zeilen"
+                value={dmlPreviewWarnThreshold}
+                onChange={(event) => {
+                  const value = Number.parseInt(event.target.value, 10);
+                  if (!Number.isNaN(value) && value >= 1 && value <= 10000000)
+                    setDmlPreviewWarnThreshold(value);
+                }}
+                className="h-8 w-24 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              Warnung ab
+            </span>
+          </div>
         </SettingsRow>
 
         <SettingsRow settingId="conn-timeout">
