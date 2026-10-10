@@ -832,3 +832,19 @@ describe("Schlüsselwörter vor Array-Indizes", () => {
     }
   });
 });
+
+describe("Klammernamen nach Operatoren", () => {
+  test("Operatoren, Semikolons und Kommentare vor Klammern ergeben Bezeichner", () => {
+    for (const sql of [
+      "SELECT a*[Unit's Price] FROM orders",
+      "SELECT a+[it's] FROM orders",
+      "SELECT a-[it's] FROM orders",
+      "SELECT a FROM t WHERE x=[it's] UNION SELECT * FROM orders",
+      "SELECT a/*c*/[it's] FROM orders",
+      "SELECT a FROM t;[it's] SELECT 1 FROM orders",
+    ]) {
+      expect(readsTable(sql, "orders", "odbc")).toBe(true);
+      expect(readsTable(sql, "orders")).toBe(true);
+    }
+  });
+});
