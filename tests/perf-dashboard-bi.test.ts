@@ -245,3 +245,20 @@ test("table token cache stays bounded and keeps recently used statements", async
   expect(keys.some((key) => key.endsWith(statements[238]))).toBe(true);
   expect(timing.p95Ms).toBeLessThan(50);
 });
+
+test("bracket identifiers keep table detection linear on SQL Server", async () => {
+  const sql = `SELECT ${Array.from({ length: 800 }, (_, i) => `[c].[x${i}]`).join(", ")} FROM [dbo].[Order Details] [c]`;
+  let reached = false;
+  let run = 0;
+  const timing = await measureScenario(() => {
+    run++;
+    reached = readsTable(`${sql} -- ${run}`, "dbo.Order Details", "mssql");
+  }, 21);
+  await reportScenario("dashboard-bracket-table-detection", {
+    ...timing,
+    sqlBytes: sql.length,
+    references: 800,
+  });
+  expect(reached).toBe(true);
+  expect(timing.p95Ms).toBeLessThan(15);
+});
