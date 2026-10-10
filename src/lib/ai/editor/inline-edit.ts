@@ -55,6 +55,18 @@ export interface EditStart {
   autoRun?: boolean;
 }
 
+const TYPE_MS = 600;
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 100);
+    requestAnimationFrame(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 const READ_ONLY_START = /^\s*(select|with|values|table|show|explain)\b/i;
 const WRITE_WORD = /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke)\b/i;
 const BIND_PARAM = /(^|[^:]):[A-Za-z_]\w*|\?|\$\d+|&\w+/;
@@ -254,13 +266,15 @@ export class InlineEditSession {
     const model = this.model();
     const { start, end } = this.regionOffsets();
     const range = monaco.Range.fromPositions(model.getPositionAt(start), model.getPositionAt(end));
-    this.applying = true;
-    try {
-      this.editor.pushUndoStop();
-      this.editor.executeEdits("l8db-ai", [{ range, text, forceMoveMarkers: true }]);
-      this.editor.pushUndoStop();
-    } finally {
-      this.applying = false;
+    if (model.getValueInRange(range) !== text) {
+      this.applying = true;
+      try {
+        this.editor.pushUndoStop();
+        this.editor.executeEdits("l8db-ai", [{ range, text, forceMoveMarkers: true }]);
+        this.editor.pushUndoStop();
+      } finally {
+        this.applying = false;
+      }
     }
     this.region.set([
       {
@@ -386,16 +400,122 @@ export class InlineEditSession {
     }
   }
 
+  async applyChat(next: string, label: string): Promise<string> {
+    if (this.disposed) return "Der Editor wurde geschlossen.";
+    if (this.snapshot.phase === "running") return "Der Editor wird gerade geändert.";
+    if (this.snapshot.phase === "review") this.clearReview();
+    else this.base = this.regionText();
+    this.saveCheckpoint(label);
+    this.set({ phase: "running", instruction: label, status: "KI-Chat schreibt …", error: "" });
+    const readOnly = this.editor.getOption(monaco.editor.EditorOption.readOnly);
+    this.editor.updateOptions({ readOnly: true });
+    let completed = false;
+    try {
+      completed = await this.typeIn(next);
+    } finally {
+      if (!this.disposed) this.editor.updateOptions({ readOnly });
+    }
+    if (this.disposed) return "Der Editor wurde während der Änderung geschlossen.";
+    if (!completed) {
+      this.close();
+      return 'Der Text wurde während der Änderung von außen geändert. Mit action "read" neu lesen.';
+    }
+    if (next === this.base) {
+      this.close();
+      return "";
+    }
+    this.enterReview(next, "");
+    return "";
+  }
+
+  private async typeIn(next: string): Promise<boolean> {
+    const current = this.regionText();
+    const limit = Math.min(current.length, next.length);
+    let prefix = 0;
+    while (prefix < limit && current[prefix] === next[prefix]) prefix++;
+    let suffix = 0;
+    while (
+      suffix < limit - prefix &&
+      current[current.length - 1 - suffix] === next[next.length - 1 - suffix]
+    )
+      suffix++;
+    while (suffix > 0 && current[current.length - suffix - 1] !== "\n") suffix--;
+    const insert = next.slice(prefix, next.length - suffix);
+    const model = this.model();
+    const at = this.regionOffsets().start + prefix;
+    let shown = current.length - prefix - suffix;
+    let typed = 0;
+    const began = performance.now();
+    let version = model.getVersionId();
+    model.pushStackElement();
+    while (!this.disposed && model.getVersionId() === version) {
+      const target = Math.min(
+        insert.length,
+        Math.ceil((insert.length * (performance.now() - began)) / TYPE_MS),
+      );
+      const from = model.getPositionAt(at + typed);
+      const to = model.getPositionAt(at + shown);
+      this.applying = true;
+      try {
+        model.pushEditOperations(
+          [],
+          [
+            {
+              range: monaco.Range.fromPositions(from, to),
+              text: insert.slice(typed, target),
+              forceMoveMarkers: true,
+            },
+          ],
+          () => null,
+        );
+      } finally {
+        this.applying = false;
+      }
+      typed = target;
+      shown = target;
+      version = model.getVersionId();
+      const caret = model.getPositionAt(at + typed);
+      this.added.set([
+        {
+          range: monaco.Range.fromPositions(model.getPositionAt(at), caret),
+          options: { className: "l8db-ai-typing" },
+        },
+      ]);
+      this.editor.revealPositionInCenterIfOutsideViewport(caret);
+      if (typed >= insert.length) break;
+      await nextFrame();
+    }
+    model.pushStackElement();
+    this.added.clear();
+    if (this.disposed) return false;
+    this.region.set([
+      {
+        range: monaco.Range.fromPositions(
+          model.getPositionAt(this.regionOffsets().start),
+          model.getPositionAt(model.getValueLength()),
+        ),
+        options: {
+          stickiness: monaco.editor.TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+        },
+      },
+    ]);
+    return typed >= insert.length;
+  }
+
+  private saveCheckpoint(label: string) {
+    if (!this.checkpoint)
+      this.checkpoint = useEditorCheckpoints.getState().add(this.editorId, {
+        label,
+        before: this.model().getValue(),
+      });
+  }
+
   private enterReview(next: string, warning: string) {
     if (next === this.base) {
       this.set({ phase: "input", status: "", warning: "Die KI hat keine Änderung vorgeschlagen." });
       return;
     }
-    if (!this.checkpoint)
-      this.checkpoint = useEditorCheckpoints.getState().add(this.editorId, {
-        label: this.snapshot.instruction || EDITOR_AI_ACTION_LABELS[this.start.action],
-        before: this.model().getValue(),
-      });
+    this.saveCheckpoint(this.snapshot.instruction || EDITOR_AI_ACTION_LABELS[this.start.action]);
     this.hunks = diffLines(this.base, next);
     this.decisions = this.hunks.map(() => "pending");
     this.replaceRegion(next);

@@ -21,6 +21,8 @@ import {
 import { chatWireMessages, summarizeChat } from "@/lib/ai/chat-history";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
 import { setAiDropHandler } from "@/lib/ai/drop-target";
+import { handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
+import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AiFigureContext } from "@/lib/ai/figures";
 import { AI_KNOWLEDGE_PROMPT } from "@/lib/ai/prompts";
@@ -40,6 +42,7 @@ import {
   aiCancel,
   aiEnvironment,
   aiModels,
+  aiRespond,
   aiRun,
   aiSkills,
   aiStatus,
@@ -436,6 +439,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             afterTool.current = true;
             if (event.data.name === "import_file" && event.data.status === "completed")
               void queryClient.invalidateQueries({ queryKey: ["tables"] });
+          } else if (event.kind === "editor") {
+            const requestId = String(event.data.id);
+            void handleChatEditorRequest(event.data.details, editorTarget())
+              .catch((reason) => ({ ok: false, text: String(reason) }))
+              .then((answer) => aiRespond(id, requestId, answer))
+              .catch(() => undefined);
           } else if (event.kind === "approval" || event.kind === "input") {
             approvalTitles.current.set(
               String(event.data.id),
@@ -522,14 +531,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       input.current?.focus();
     }
   };
-  const currentTabSql = () => {
+  const currentQueryTab = () => {
     const match = /^\/query\/([^/]+)/.exec(router.state.location.pathname);
     const tab = match
       ? useTableTabs
           .getState()
           .tabs.find((entry) => entry.kind === "query" && entry.id === decodeURIComponent(match[1]))
       : undefined;
-    return tab?.kind === "query" ? tab.sql : null;
+    return tab?.kind === "query" ? tab : null;
+  };
+  const currentTabSql = () => currentQueryTab()?.sql ?? null;
+  const editorTarget = () => {
+    const tab = currentQueryTab();
+    return {
+      controller: tab ? editorAiController(tab.id) : undefined,
+      title: tab?.title ?? "",
+      storedSql: tab ? tab.sql : null,
+      openTab: (sql: string, title: string) => {
+        const tabId = useTableTabs.getState().openQueryTabWithSql(sql, title.slice(0, 40));
+        void navigate({ to: "/query/$id", params: { id: tabId } });
+      },
+    };
   };
   const withContext = async (items: ChatContextItem[]) => {
     if (!items.length) return {};
