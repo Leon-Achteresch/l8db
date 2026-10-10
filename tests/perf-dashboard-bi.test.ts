@@ -17,6 +17,7 @@ import {
   emptyDataset,
   joinId,
   sanitizeTheme,
+  staleFilter,
   themeCss,
   useCrossFilterStore,
 } from "../src/lib/dashboards";
@@ -332,4 +333,49 @@ test("ODBC dialect detection stays cheap for every widget render", async () => {
   await reportScenario("dashboard-odbc-dialect", { ...timing, calls: 10_000, resolved });
   expect(resolved).toBe(7_500);
   expect(timing.p95Ms).toBeLessThan(60);
+});
+
+test("expert-source cross filters and stale-filter pruning stay cheap across 60 widgets", async () => {
+  const expert = (index: number) => ({
+    ...emptyDataset(`e${index}`),
+    id: `e${index}`,
+    mode: "expert" as const,
+    sql:
+      index % 3
+        ? "SELECT c.name, SUM(o.total) AS umsatz FROM customers c JOIN orders o ON o.c = c.id GROUP BY c.name"
+        : "SELECT p.name, COUNT(*) AS umsatz FROM products p GROUP BY p.name",
+    mapping: { dimension: "name", dimension2: null, metrics: ["umsatz"], dateColumn: null },
+  });
+  const datasets = Array.from({ length: 60 }, (_, i) => expert(i));
+  const widgets = datasets.map((dataset, i) => ({
+    id: `w${i}`,
+    chart: "column" as const,
+    datasetId: dataset.id,
+    title: "",
+    period: "all" as const,
+    x: 0,
+    y: 0,
+    w: 6,
+    h: 7,
+  }));
+  const field = crossField(datasets[1], DIM_KEY, "postgres");
+  if (!field) throw new Error("field");
+  const filter: CrossFilter = { widgetId: "w1", key: DIM_KEY, field, value: "Acme", label: "x" };
+  let reached = 0;
+  let stale = 0;
+  const timing = await measureScenario(() => {
+    reached = 0;
+    for (const [index, dataset] of datasets.entries())
+      if (applyCrossFilters(dataset, [filter], `w${index}`, "postgres") !== dataset) reached++;
+    stale = staleFilter(filter, { widgets, datasets }, "postgres") ? 1 : 0;
+  }, 21);
+  await reportScenario("dashboard-expert-source-fanout", {
+    ...timing,
+    widgets: 60,
+    reached,
+    stale,
+  });
+  expect(reached).toBe(39);
+  expect(stale).toBe(0);
+  expect(timing.p95Ms).toBeLessThan(25);
 });

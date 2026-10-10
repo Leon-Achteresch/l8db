@@ -33,6 +33,7 @@ import {
   pageOf,
   removePage,
   sanitizeTheme,
+  staleFilter,
   themeCss,
   themeShowsHeader,
   useCrossFilterStore,
@@ -314,7 +315,7 @@ describe("Drill-through", () => {
     const condition = ownCondition(dataset, DIM_KEY, "Nord");
     const sql = datasetDetailSql(dataset, condition ? [condition] : [], "postgres", "all");
     expect(sql).toContain(`q."region" = 'Nord'`);
-    expect(sql.endsWith(`) AS d LIMIT ${DETAIL_LIMIT}`)).toBe(true);
+    expect(sql.endsWith(`) AS q WHERE q."region" = 'Nord' LIMIT ${DETAIL_LIMIT}`)).toBe(true);
     expect(datasetDetailSql(dataset, [], "oracle", "all")).toContain("FETCH FIRST 200 ROWS ONLY");
   });
 
@@ -705,7 +706,8 @@ describe("Tabellenerkennung per Tokenizer", () => {
   };
 
   test("erkennt MSSQL-Klammern, Kommajoins nach Unterabfragen und ON", () => {
-    expect(reached("SELECT customer_id FROM [dbo].[customers]")).toBe(true);
+    expect(reached("SELECT customer_id FROM [public].[customers]")).toBe(true);
+    expect(reached("SELECT customer_id FROM [dbo].[customers]")).toBe(false);
     expect(reached("SELECT customer_id FROM [customers] c")).toBe(true);
     expect(reached("SELECT customer_id FROM (SELECT 1 AS x) t, customers")).toBe(true);
     expect(reached("SELECT customer_id FROM a JOIN b ON a.x = b.x, customers")).toBe(true);
@@ -934,5 +936,139 @@ describe("ODBC-Dialekt aus dem Treiber", () => {
     expect(readsTable("SELECT a [Team E's score] FROM orders WHERE s = ']'", "orders", mssql)).toBe(
       true,
     );
+  });
+});
+
+describe("Abschluss-Review", () => {
+  test("ODBC mit MySQL-Treiber maskiert Backslashes, unbekanntes ODBC setzt sie nie ein", () => {
+    const source = simple("orders", "region");
+    const target = simple("orders", "product");
+    const mysql = tableDialect("odbc", "Driver={MySQL ODBC 8.0 Unicode Driver};Server=h");
+    const injected = "\\' OR 1=1 -- ";
+    const sql = datasetSql(
+      applyCrossFilters(target, [filterFrom(source, injected)], "t", mysql),
+      mysql,
+      "all",
+    );
+    expect(sql).toContain("CHAR(92 USING utf8mb4)");
+    expect(sql).not.toContain("'\\'");
+    const unknown = datasetSql(
+      applyCrossFilters(target, [filterFrom(source, injected)], "t", "odbc"),
+      "odbc",
+      "all",
+    );
+    expect(unknown).toContain("1 = 0");
+    expect(unknown).not.toContain("OR 1=1");
+  });
+
+  test("Filter aus Expertenabfragen erreichen nur Abfragen auf denselben Tabellen", () => {
+    const customers = expert(
+      "SELECT name, COUNT(*) AS umsatz FROM customers GROUP BY name",
+      "name",
+    );
+    const products = expert("SELECT name, COUNT(*) AS umsatz FROM products GROUP BY name", "name");
+    const others = expert(
+      "SELECT c.name, 1 AS umsatz FROM customers c JOIN orders o ON o.c = c.id",
+      "name",
+    );
+    const field = crossField(customers, DIM_KEY);
+    if (!field) throw new Error("Feld fehlt");
+    const filter: CrossFilter = { widgetId: "a", key: DIM_KEY, field, value: "Acme", label: "x" };
+    expect(applyCrossFilters(products, [filter], "b")).toBe(products);
+    expect(applyCrossFilters(others, [filter], "c")).not.toBe(others);
+  });
+
+  test("Schemas und CTE-Namen werden unterschieden", () => {
+    expect(readsTable("SELECT * FROM archive.orders", "sales.orders")).toBe(false);
+    expect(readsTable("SELECT * FROM sales.orders", "sales.orders")).toBe(true);
+    expect(readsTable("SELECT * FROM orders", "sales.orders")).toBe(true);
+    expect(readsTable("WITH orders AS (SELECT 1) SELECT * FROM orders", "sales.orders")).toBe(
+      false,
+    );
+    expect(
+      readsTable(
+        "WITH x AS (SELECT * FROM orders), y (a) AS (SELECT 1) SELECT * FROM x, y",
+        "orders",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("SQL Server mit eigenem SQL", () => {
+  test("CTEs werden angehängt statt verschachtelt", () => {
+    const dataset = expert(
+      "WITH t AS (SELECT region, 1 AS umsatz FROM orders) SELECT region, umsatz FROM t;",
+      "region",
+    );
+    const sql = datasetDetailSql(
+      dataset,
+      [{ ref: "region", bucket: "none", value: "Nord" }],
+      "mssql",
+      "all",
+    );
+    expect(sql).toBe(
+      "WITH t AS (SELECT region, 1 AS umsatz FROM orders),\nl8db_q AS (\nSELECT region, umsatz FROM t\n)\nSELECT TOP 200 * FROM l8db_q AS q WHERE q.[region] = N'Nord'",
+    );
+  });
+
+  test("ORDER BY ohne TOP bekommt ein TOP, vorhandene Begrenzungen bleiben", () => {
+    const ordered = expert(
+      "SELECT DISTINCT region, SUM(x) AS umsatz FROM orders GROUP BY region ORDER BY umsatz DESC",
+      "region",
+    );
+    const filtered = datasetSql(
+      applyCrossFilters(ordered, [filterFrom(simple("orders", "region"), "Nord")], "t", "mssql"),
+      "mssql",
+      "all",
+    );
+    expect(filtered).toContain("SELECT DISTINCT TOP 2147483647 region");
+    expect(filtered).toContain(") AS q WHERE q.[region] = N'Nord'");
+    const top = expert("SELECT TOP 5 region, x AS umsatz FROM orders ORDER BY x", "region");
+    expect(datasetDetailSql(top, [], "mssql", "all")).toContain("SELECT TOP 5 region");
+    const offset = expert(
+      "SELECT region, x AS umsatz FROM orders ORDER BY x OFFSET 0 ROWS",
+      "region",
+    );
+    expect(datasetDetailSql(offset, [], "mssql", "all")).not.toContain("2147483647");
+    const nested = expert(
+      "SELECT region, (SELECT TOP 1 y FROM z ORDER BY y) AS umsatz FROM orders",
+      "region",
+    );
+    expect(datasetDetailSql(nested, [], "mssql", "all")).not.toContain("2147483647");
+  });
+});
+
+describe("Verwaiste Filter und Oracle-Sitzungsformat", () => {
+  test("Filter verfallen, wenn Quelle, Option oder Feld wegfallen", () => {
+    const dataset = { ...simple("orders", "region"), id: "ds-a" };
+    const field = crossField(dataset, DIM_KEY);
+    if (!field) throw new Error("Feld fehlt");
+    const filter: CrossFilter = { widgetId: "a", key: DIM_KEY, field, value: "Nord", label: "x" };
+    const board = { widgets: [widget("a", undefined, { datasetId: "ds-a" })], datasets: [dataset] };
+    expect(staleFilter(filter, board, null)).toBe(false);
+    expect(staleFilter(filter, { ...board, widgets: [] }, null)).toBe(true);
+    expect(
+      staleFilter(
+        filter,
+        {
+          ...board,
+          widgets: [widget("a", undefined, { datasetId: "ds-a", options: { crossFilter: false } })],
+        },
+        null,
+      ),
+    ).toBe(true);
+    const moved = { ...simple("orders", "country"), id: "ds-a" };
+    expect(staleFilter(filter, { ...board, datasets: [moved] }, null)).toBe(true);
+  });
+
+  test("Oracle vergleicht ungebuckelte Datumswerte im Sitzungsformat des Adapters", () => {
+    const source = simple("orders", "created_at");
+    const target = simple("orders", "product");
+    const sql = datasetSql(
+      applyCrossFilters(target, [filterFrom(source, "2024-03-01 10:30:00")], "t"),
+      "oracle",
+      "all",
+    );
+    expect(sql).toContain(`"created_at" = '2024-03-01 10:30:00'`);
   });
 });

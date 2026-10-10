@@ -4,6 +4,7 @@ interface TableToken {
   word: string | null;
   ident: string | null;
   mark: "(" | ")" | "," | "." | "[" | "]" | "number" | null;
+  start: number;
   end: number;
 }
 
@@ -209,20 +210,20 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
         .slice(i + 1, end - 1)
         .split(close + close)
         .join(close);
-      tokens.push({ word: null, ident: text.toLowerCase(), mark: null, end });
+      tokens.push({ word: null, ident: text.toLowerCase(), mark: null, start: i, end });
       i = end;
     } else if (c === "(" || c === ")" || c === "," || c === "." || c === "[" || c === "]") {
-      tokens.push({ word: null, ident: null, mark: c, end: i + 1 });
+      tokens.push({ word: null, ident: null, mark: c, start: i, end: i + 1 });
       i++;
     } else if (/\d/.test(c)) {
       const length = sql.slice(i, i + 64).match(NUMBER)?.[0].length || 1;
-      tokens.push({ word: null, ident: null, mark: "number", end: i + length });
+      tokens.push({ word: null, ident: null, mark: "number", start: i, end: i + length });
       i += length;
     } else if (WORD_START.test(c)) {
       const start = i++;
       while (i < sql.length && WORD_PART.test(sql[i])) i++;
       const text = sql.slice(start, i).toLowerCase();
-      tokens.push({ word: text, ident: text, mark: null, end: i });
+      tokens.push({ word: text, ident: text, mark: null, start, end: i });
     } else i++;
   }
   return tokens;
@@ -249,14 +250,85 @@ export function tableTokenCacheKeys(): string[] {
   return [...cache.keys()];
 }
 
-export function readsTable(sql: string, table: string, kind: DatabaseKind | null = null): boolean {
-  const name = table.slice(table.lastIndexOf(".") + 1).toLowerCase();
-  if (!name) return false;
-  return tokensRead(tokensOf(sql, kind), name);
+export interface TableRef {
+  schema: string | null;
+  name: string;
 }
 
-function tokensRead(tokens: TableToken[], name: string): boolean {
+function cteNames(tokens: TableToken[]): Set<string> {
+  return cteList(tokens).names;
+}
+
+function cteList(tokens: TableToken[]): { names: Set<string>; body: number } {
+  const names = new Set<string>();
+  if (tokens[0]?.word !== "with") return { names, body: 0 };
+  let index = tokens[1]?.word === "recursive" ? 2 : 1;
+  while (index < tokens.length) {
+    const name = tokens[index]?.ident;
+    if (!name) break;
+    names.add(name);
+    index++;
+    const skipGroup = () => {
+      let depth = 0;
+      do {
+        if (tokens[index]?.mark === "(") depth++;
+        else if (tokens[index]?.mark === ")") depth--;
+        index++;
+      } while (index < tokens.length && depth > 0);
+    };
+    if (tokens[index]?.mark === "(") skipGroup();
+    if (tokens[index]?.word !== "as") break;
+    index++;
+    while (tokens[index]?.word === "not" || tokens[index]?.word === "materialized") index++;
+    if (tokens[index]?.mark !== "(") break;
+    skipGroup();
+    if (tokens[index]?.mark !== ",") return { names, body: index };
+    index++;
+  }
+  return { names, body: -1 };
+}
+
+export interface ServerSqlParts {
+  ctes: string;
+  body: string;
+}
+
+export function serverSqlParts(sql: string): ServerSqlParts {
+  const tokens = tokensOf(sql, "mssql");
+  const { body } = cteList(tokens);
+  const bodyToken = tokens[body];
+  const ctes = body > 0 && bodyToken ? sql.slice(0, bodyToken.start).trimEnd() : "";
+  let text = ctes ? sql.slice(bodyToken.start) : sql;
+  const offset = ctes ? bodyToken.start : 0;
+  let depth = 0;
+  let select = -1;
+  let ordered = false;
+  let limited = false;
+  for (let index = Math.max(body, 0); index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.mark === "(") depth++;
+    else if (token.mark === ")") depth--;
+    if (depth !== 0) continue;
+    if (token.word === "select" && select < 0) {
+      const next = tokens[index + 1];
+      select = next?.word === "distinct" || next?.word === "all" ? index + 1 : index;
+      if (tokens[select + 1]?.word === "top") limited = true;
+    } else if (token.word === "order" && tokens[index + 1]?.word === "by") ordered = true;
+    else if (ordered && (token.word === "offset" || token.word === "fetch")) limited = true;
+  }
+  if (ordered && !limited && select >= 0) {
+    const at = tokens[select].end - offset;
+    text = `${text.slice(0, at)} TOP 2147483647${text.slice(at)}`;
+  }
+  return { ctes, body: text };
+}
+
+export function tablesRead(sql: string, kind: DatabaseKind | null = null): TableRef[] {
+  const tokens = tokensOf(sql, kind);
+  const ctes = cteNames(tokens);
+  const found: TableRef[] = [];
   const stack = [{ from: false, expect: false }];
+  let qualifier: string | null = null;
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
     const state = stack[stack.length - 1];
@@ -265,6 +337,7 @@ function tokensRead(tokens: TableToken[], name: string): boolean {
     if (token.mark === "(") {
       stack.push({ from: state.expect, expect: state.expect });
       state.expect = false;
+      qualifier = null;
     } else if (token.mark === ")") {
       if (stack.length > 1) stack.pop();
     } else if (token.mark === ",") {
@@ -272,16 +345,32 @@ function tokensRead(tokens: TableToken[], name: string): boolean {
     } else if (token.word === "from" || token.word === "join") {
       state.from = true;
       state.expect = true;
+      qualifier = null;
     } else if (token.word !== null && ENDS_FROM.has(token.word)) {
       state.from = false;
       state.expect = false;
     } else if (token.word === "on" || token.word === "using") {
       state.expect = false;
     } else if (state.expect && token.ident !== null) {
-      if (tokens[index + 1]?.mark === ".") continue;
-      if (token.ident === name) return true;
+      if (tokens[index + 1]?.mark === ".") {
+        qualifier = token.ident;
+        continue;
+      }
+      if (qualifier !== null || !ctes.has(token.ident))
+        found.push({ schema: qualifier, name: token.ident });
+      qualifier = null;
       state.expect = false;
     }
   }
-  return false;
+  return found;
+}
+
+export function readsTable(sql: string, table: string, kind: DatabaseKind | null = null): boolean {
+  const dot = table.lastIndexOf(".");
+  const name = table.slice(dot + 1).toLowerCase();
+  if (!name) return false;
+  const schema = dot > 0 ? table.slice(0, dot).toLowerCase() : null;
+  return tablesRead(sql, kind).some(
+    (ref) => ref.name === name && (ref.schema === null || schema === null || ref.schema === schema),
+  );
 }

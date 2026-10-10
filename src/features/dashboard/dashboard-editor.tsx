@@ -22,6 +22,7 @@ import {
   removePage,
   sanitizeTheme,
   settle,
+  staleFilter,
   themeCss,
   themeShowsHeader,
   useChartTabsStore,
@@ -50,6 +51,7 @@ import { DashboardTabStrip } from "./dashboard-tab-strip";
 import { DashboardToolbar } from "./dashboard-toolbar";
 import { DashboardVariablesBar } from "./dashboard-variables-bar";
 import { usePresentation } from "./use-presentation";
+import { useSqlDialect } from "./use-sql-dialect";
 import { WidgetDetailsDialog } from "./widget-details-dialog";
 
 const ChartStudio = lazy(() =>
@@ -97,6 +99,12 @@ export function DashboardEditor({
     [dashboard.id, presentation.presenting],
   );
   useEffect(() => () => useCrossFilterStore.getState().clear(dashboard.id), [dashboard.id]);
+  const dialect = useSqlDialect();
+  useEffect(() => {
+    useCrossFilterStore
+      .getState()
+      .retain(dashboard.id, (filter) => !staleFilter(filter, dashboard, dialect));
+  }, [dashboard, dialect]);
   useEffect(() => {
     const recover = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.code !== "KeyD") return;

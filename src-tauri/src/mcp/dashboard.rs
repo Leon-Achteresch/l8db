@@ -25,7 +25,7 @@ const SERIES_KINDS: &[&str] = &[
 ];
 const MAX_PAGES: usize = 30;
 const MAX_PAGE_NAME: usize = 60;
-const MAX_IMAGE_CHARS: usize = 700_000;
+const MAX_IMAGE_CHARS: usize = 699_115;
 const MAX_BLOCK_TEXT: usize = 20_000;
 const MAX_HREF: usize = 2000;
 const MAX_TARGET_LABEL: usize = 40;
@@ -516,7 +516,9 @@ fn check_href(value: &Value) -> Result<String, String> {
     let ok = href.len() > "https://".len()
         && href.len() <= MAX_HREF
         && href.starts_with("https://")
-        && !href.chars().any(|c| c.is_whitespace() || c.is_control());
+        && !href
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || "\"'<>".contains(c));
     if ok {
         Ok(href.to_string())
     } else {
@@ -1824,7 +1826,7 @@ fn text_tokens(body: &str) -> Vec<String> {
 fn block_fields(block: &str) -> &'static [&'static str] {
     match block {
         "text" => &["text", "align", "variant"],
-        "image" => &["src", "fit", "href", "align", "variant"],
+        "image" => &["text", "src", "fit", "href", "align", "variant"],
         "link" => &["text", "href", "page", "align", "variant"],
         _ => &["text", "align", "variant"],
     }

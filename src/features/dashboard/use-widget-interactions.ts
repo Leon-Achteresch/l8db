@@ -25,7 +25,6 @@ import {
   type WidgetOptions,
 } from "@/lib/dashboards";
 import { exportRowsCsv } from "@/lib/dashboards/csv";
-import { tableDialect } from "@/lib/dashboards/sql-tables";
 import type { QueryResult } from "@/lib/db";
 import { applyMasks, resolveMasks } from "@/lib/masking";
 import { connectionMaskRules, useMaskingDisplay } from "@/lib/masking-display";
@@ -33,6 +32,7 @@ import { loadMcpConfig } from "@/lib/mcp";
 import type { ChartPoint } from "./chart-point-menu";
 import { useDashboardInteraction } from "./dashboard-interaction";
 import { useDashboardScope } from "./dashboard-scope";
+import { useSqlDialect } from "./use-sql-dialect";
 import { useWidgetDetailsStore } from "./widget-details-store";
 
 interface Pick {
@@ -104,20 +104,12 @@ export function useWidgetInteractions({
   const queryClient = useQueryClient();
   const scopeId = useId();
   const [point, setPoint] = useState<(ChartPoint & { picks: Pick[] }) | null>(null);
+  const kind = useSqlDialect();
   const effective = useMemo(
-    () =>
-      dataset
-        ? applyCrossFilters(
-            dataset,
-            filters,
-            widget.id,
-            tableDialect(connection?.kind, connection?.connectionString),
-          )
-        : null,
-    [dataset, filters, widget.id, connection?.kind, connection?.connectionString],
+    () => (dataset ? applyCrossFilters(dataset, filters, widget.id, kind) : null),
+    [dataset, filters, widget.id, kind],
   );
   const own = useMemo(() => filters.filter((f) => f.widgetId === widget.id), [filters, widget.id]);
-  const kind = connection?.kind ?? null;
 
   const openDetails = useCallback(
     (conditions: CrossCondition[], subtitle: string) => {
@@ -139,14 +131,17 @@ export function useWidgetInteractions({
       target.getAttribute("data-dim") ?? target.getAttribute("data-active-dim"),
     );
     const dim2 = parseAttr(target.getAttribute("data-dim2"));
-    const scalar = (value: unknown) => value === null || typeof value !== "object";
+    const scalar = (value: unknown) =>
+      value === null ||
+      (typeof value !== "object" &&
+        !(kind === "odbc" && typeof value === "string" && value.includes("\\")));
     const clicked: Pick[] = [
       ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
       ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),
     ];
     const picks = clicked.filter((p) => scalar(p.value));
     if (!picks.length) return false;
-    const filterable = picks.filter((p) => crossField(dataset, p.key));
+    const filterable = picks.filter((p) => crossField(dataset, p.key, kind));
     const canFilter = options.crossFilter && filterable.length > 0;
     const shown = canFilter ? filterable : picks;
     const canDrill =
@@ -193,7 +188,7 @@ export function useWidgetInteractions({
     if (!point || !dashboardId || !dataset) return;
     const next: CrossFilter[] = [];
     for (const p of point.picks) {
-      const field = crossField(dataset, p.key);
+      const field = crossField(dataset, p.key, kind);
       if (!field) continue;
       next.push({
         widgetId: widget.id,

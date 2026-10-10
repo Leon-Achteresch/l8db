@@ -2338,3 +2338,15 @@ fn overlong_colors_are_rejected() {
     assert!(valid_color("#123456"));
     assert!(!valid_color(&format!("rgb({})", "1".repeat(80))));
 }
+
+#[test]
+fn image_blocks_keep_alt_text_and_limits_match_the_frontend() {
+    assert!(block_fields("image").contains(&"text"));
+    let limit = format!("data:image/png;base64,{}", "A".repeat(MAX_IMAGE_CHARS - 22));
+    assert!(check_image(&json!(limit), "src").is_ok());
+    let over = format!("{limit}A");
+    assert!(check_image(&json!(over), "src").is_err());
+    assert!(check_href(&json!("https://example.com/?q=a")).is_ok());
+    assert!(check_href(&json!("https://example.com/?q=\"a\"")).is_err());
+    assert!(check_href(&json!("https://example.com/<x>")).is_err());
+}
