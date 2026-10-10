@@ -30,7 +30,9 @@ Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `c
 
 - Schreibgeschützte Verbindungen (auch Produktion mit „Produktion schreibgeschützt öffnen“) lehnen schreibendes SQL ab, bevor eine Verbindung aufgebaut wird; Postgres erzwingt das zusätzlich serverseitig.
 - Schreibendes SQL auf Produktion verlangt im Terminal das Eintippen des Verbindungsnamens, sonst `--yes`.
-- Mehrere Anweisungen mit Schreibzugriff laufen in einer Transaktion (Postgres, Oracle u. a.); beim ersten Fehler wird zurückgerollt. `--no-transaction` schaltet das ab (z. B. für `CREATE INDEX CONCURRENTLY`).
+- Postgres liest Einzelabfragen mit Limit in einer Read-only-Transaktion; schreibt eine Funktion darin, gelten dieselben Schutzregeln und die Abfrage läuft danach normal mit Commit.
+- `table rows/count --where` nimmt nur eine Bedingung an (kein `;`, `--`, `/* */`, `UNION`, `INTO`, `RETURNING`), wie der einfache Filter in der App. Eigenes SQL gehört in `l8db q`.
+- Mehrere Anweisungen mit Schreibzugriff laufen in einer Transaktion (Postgres, Oracle u. a.); beim ersten Fehler wird zurückgerollt. MySQL und Oracle schreiben DDL sofort fest; die Fehlermeldung sagt dann, dass solche Anweisungen bestehen bleiben. `--no-transaction` schaltet das ab (z. B. für `CREATE INDEX CONCURRENTLY`).
 - `conn list/show` zeigen Adressen ohne Passwort.
 
 ## Grenzen

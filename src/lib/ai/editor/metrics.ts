@@ -178,7 +178,7 @@ export function summarizeEditorAiStats(stats: EditorAiStats) {
     tokensPerRequest: stats.requests
       ? Math.round((stats.input + stats.output) / stats.requests)
       : 0,
-    cacheRate: stats.input ? stats.cached / stats.input : 0,
+    cacheRate: stats.input ? Math.min(1, stats.cached / stats.input) : 0,
     acceptRate: decided ? (stats.accepted + stats.partial / 2) / decided : null,
     medianMs: percentile(stats.latencies, 0.5),
     p95Ms: percentile(stats.latencies, 0.95),

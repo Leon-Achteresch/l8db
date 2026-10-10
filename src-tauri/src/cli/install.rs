@@ -8,6 +8,7 @@ pub struct CliStatus {
     pub command: String,
     pub location: Option<String>,
     pub target: String,
+    pub path_hint: Option<String>,
 }
 
 fn target() -> Result<PathBuf, String> {
@@ -61,16 +62,72 @@ fn extra_dirs() -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-#[tauri::command]
-pub fn cli_status() -> Result<CliStatus, String> {
+#[cfg(target_os = "linux")]
+fn path_hint(location: Option<&Path>) -> Option<String> {
+    let dir = location?.parent()?;
+    let listed = std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|entry| entry == dir));
+    (!listed).then(|| format!("export PATH=\"{}:$PATH\"", dir.display()))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn path_hint(_: Option<&Path>) -> Option<String> {
+    None
+}
+
+fn status() -> Result<CliStatus, String> {
     let target = target()?;
     let location = on_path(&target);
     Ok(CliStatus {
         installed: location.is_some(),
         command: "l8db".into(),
+        path_hint: path_hint(location.as_deref()),
         location: location.map(|p| p.display().to_string()),
         target: target.display().to_string(),
     })
+}
+
+async fn off_main_thread<T: Send + 'static>(work: fn() -> Result<T, String>) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn cli_status() -> Result<CliStatus, String> {
+    off_main_thread(status).await
+}
+
+#[tauri::command]
+pub async fn cli_install() -> Result<CliStatus, String> {
+    off_main_thread(install).await
+}
+
+#[tauri::command]
+pub async fn cli_uninstall() -> Result<CliStatus, String> {
+    off_main_thread(uninstall).await
+}
+
+#[cfg(not(windows))]
+fn ours(link: &Path, target: &Path) -> bool {
+    match std::fs::read_link(link) {
+        Ok(points) => {
+            same(link, target)
+                || (!link.exists() && points.to_string_lossy().to_lowercase().contains("l8db"))
+        }
+        Err(_) => std::fs::symlink_metadata(link).is_err(),
+    }
+}
+
+#[cfg(not(windows))]
+fn foreign(link: &Path) -> String {
+    let what = std::fs::read_link(link)
+        .map(|points| format!("Verweis auf {}", points.display()))
+        .unwrap_or_else(|_| "eine andere Datei".into());
+    format!(
+        "Unter {} liegt schon {what}, nicht von dieser App. Bitte zuerst selbst entfernen.",
+        link.display()
+    )
 }
 
 #[cfg(not(windows))]
@@ -107,10 +164,12 @@ fn as_admin(_: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
-pub fn cli_install() -> Result<CliStatus, String> {
+fn install() -> Result<CliStatus, String> {
     let target = target()?;
     let link = link();
+    if !ours(&link, &target) {
+        return Err(foreign(&link));
+    }
     let direct = link
         .parent()
         .map(std::fs::create_dir_all)
@@ -132,14 +191,16 @@ pub fn cli_install() -> Result<CliStatus, String> {
             shell_quote(&link.display().to_string())
         ))?;
     }
-    cli_status()
+    status()
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
-pub fn cli_uninstall() -> Result<CliStatus, String> {
+fn uninstall() -> Result<CliStatus, String> {
     let link = link();
-    if std::fs::read_link(&link).is_ok() {
+    if std::fs::symlink_metadata(&link).is_ok() {
+        if !ours(&link, &target()?) {
+            return Err(foreign(&link));
+        }
         if let Err(error) = std::fs::remove_file(&link) {
             if error.kind() != std::io::ErrorKind::PermissionDenied {
                 return Err(format!("{}: {error}", link.display()));
@@ -150,7 +211,7 @@ pub fn cli_uninstall() -> Result<CliStatus, String> {
             ))?;
         }
     }
-    cli_status()
+    status()
 }
 
 #[cfg(windows)]
@@ -201,20 +262,18 @@ fn entries() -> Vec<String> {
 }
 
 #[cfg(windows)]
-#[tauri::command]
-pub fn cli_install() -> Result<CliStatus, String> {
+fn install() -> Result<CliStatus, String> {
     let dir = install_dir()?;
     let mut entries = entries();
     if !entries.iter().any(|entry| entry.eq_ignore_ascii_case(&dir)) {
         entries.push(dir);
         set_user_path(&entries)?;
     }
-    cli_status()
+    status()
 }
 
 #[cfg(windows)]
-#[tauri::command]
-pub fn cli_uninstall() -> Result<CliStatus, String> {
+fn uninstall() -> Result<CliStatus, String> {
     let dir = install_dir()?;
     let entries = entries();
     let kept: Vec<String> = entries
@@ -225,7 +284,7 @@ pub fn cli_uninstall() -> Result<CliStatus, String> {
     if kept.len() != entries.len() {
         set_user_path(&kept)?;
     }
-    cli_status()
+    status()
 }
 
 #[cfg(all(test, unix))]
@@ -245,5 +304,26 @@ mod tests {
         let found = find_in(Some(only_other), &exe);
         assert!(found.is_none_or(|p| p.starts_with(link().parent().unwrap())));
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn only_replaces_links_that_belong_to_this_app() {
+        let exe = std::env::current_exe().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let free = dir.path().join("free");
+        assert!(ours(&free, &exe));
+        let mine = dir.path().join("mine");
+        std::os::unix::fs::symlink(&exe, &mine).unwrap();
+        assert!(ours(&mine, &exe));
+        let moved = dir.path().join("moved");
+        std::os::unix::fs::symlink("/Applications/l8db.app/gone/l8db", &moved).unwrap();
+        assert!(ours(&moved, &exe));
+        let other_link = dir.path().join("other-link");
+        std::os::unix::fs::symlink("/bin/sh", &other_link).unwrap();
+        assert!(!ours(&other_link, &exe));
+        let file = dir.path().join("file");
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        assert!(!ours(&file, &exe));
+        assert!(foreign(&other_link).contains("/bin/sh"));
     }
 }

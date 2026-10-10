@@ -20,7 +20,7 @@ impl Target {
             id: connection.id.clone(),
             name: connection.name.clone(),
             kind: connection.kind,
-            read_only: connection.read_only,
+            read_only: connection.read_only || connection.production_locked,
             production: connection.environment.as_deref() == Some("production"),
         }
     }

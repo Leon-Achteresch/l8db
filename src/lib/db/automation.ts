@@ -508,6 +508,7 @@ export interface AutomationConnection {
   kind: DatabaseKind;
   connectionString: string;
   readOnly: boolean;
+  productionLocked: boolean;
   environment: string | null;
   tags: string[];
   ssh: SshDescriptor | null;
