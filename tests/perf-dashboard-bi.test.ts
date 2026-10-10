@@ -20,7 +20,7 @@ import {
   themeCss,
   useCrossFilterStore,
 } from "../src/lib/dashboards";
-import { readsTable, tableTokenCacheSize } from "../src/lib/dashboards/sql-tables";
+import { readsTable, tableTokenCacheKeys } from "../src/lib/dashboards/sql-tables";
 
 function dataset(table: string, dimension: string, joined = false): Dataset {
   const base = emptyDataset(table);
@@ -228,14 +228,20 @@ test("table token cache stays bounded and keeps recently used statements", async
   const timing = await measureScenario(() => {
     for (const sql of statements) readsTable(sql, "customers", "postgres");
   }, 9);
-  const size = tableTokenCacheSize();
-  readsTable(statements[299], "customers", "postgres");
+  const size = tableTokenCacheKeys().length;
+  const kept = statements[236];
+  readsTable(kept, "customers", "postgres");
+  readsTable("SELECT 1 FROM fresh_table", "customers", "postgres");
+  const keys = tableTokenCacheKeys();
   await reportScenario("dashboard-table-token-cache", {
     ...timing,
     statements: statements.length,
     cachedStatements: size,
   });
   expect(size).toBeLessThanOrEqual(64);
-  expect(tableTokenCacheSize()).toBe(size);
+  expect(keys.length).toBe(size);
+  expect(keys.some((key) => key.endsWith(kept))).toBe(true);
+  expect(keys.some((key) => key.endsWith(statements[237]))).toBe(false);
+  expect(keys.some((key) => key.endsWith(statements[238]))).toBe(true);
   expect(timing.p95Ms).toBeLessThan(50);
 });

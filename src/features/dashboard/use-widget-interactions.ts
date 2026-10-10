@@ -138,7 +138,9 @@ export function useWidgetInteractions({
     ];
     const picks = clicked.filter((p) => scalar(p.value));
     if (!picks.length) return false;
-    const canFilter = options.crossFilter && picks.some((p) => crossField(dataset, p.key));
+    const filterable = picks.filter((p) => crossField(dataset, p.key));
+    const canFilter = options.crossFilter && filterable.length > 0;
+    const shown = canFilter ? filterable : picks;
     const canDrill =
       options.drill &&
       picks.length === clicked.length &&
@@ -151,8 +153,10 @@ export function useWidgetInteractions({
     setPoint({
       x: point.x - rect.left,
       y: point.y - rect.top,
-      label: picks.map((p) => toLabel(p.value)).join(" × "),
-      filtered: picks.every((p) => own.some((f) => f.key === p.key && same(f.value, p.value))),
+      label: shown.map((p) => toLabel(p.value)).join(" × "),
+      filtered:
+        canFilter &&
+        filterable.every((p) => own.some((f) => f.key === p.key && same(f.value, p.value))),
       canFilter,
       canDrill,
       picks,
