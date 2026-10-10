@@ -1,4 +1,5 @@
 import { ArrowUpRight, type LucideIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { cn } from "@/lib/utils";
 
 export function WelcomeAction({
@@ -8,6 +9,7 @@ export function WelcomeAction({
   primary,
   disabled,
   dataTour,
+  isNew,
   onClick,
 }: {
   icon: LucideIcon;
@@ -16,6 +18,7 @@ export function WelcomeAction({
   primary?: boolean;
   disabled?: boolean;
   dataTour?: string;
+  isNew?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -34,7 +37,12 @@ export function WelcomeAction({
         className={cn("size-4 shrink-0 text-muted-foreground", primary && "text-primary")}
       />
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-sm font-medium", primary && "text-primary")}>{label}</span>
+        <span
+          className={cn("flex items-center gap-1.5 text-sm font-medium", primary && "text-primary")}
+        >
+          {label}
+          {isNew && <NewBadge />}
+        </span>
         {description && (
           <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
             {description}
