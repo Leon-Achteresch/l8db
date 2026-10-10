@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { CircleCheck, CircleHelp, CircleX, LoaderCircle } from "lucide";
@@ -105,9 +105,27 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
   const [mentioned, setMentioned] = useState<string[]>([]);
   const [contextItems, setContextItems] = useState<ChatContextItem[]>([]);
+  const [editorContext, setEditorContext] = useState(true);
+  const editorTabId = useRouterState({
+    select: (routerState) => /^\/query\/([^/]+)/.exec(routerState.location.pathname)?.[1],
+  });
+  const editorTabTitle = useTableTabs((tabsState) => {
+    const id = editorTabId ? decodeURIComponent(editorTabId) : null;
+    const tab = tabsState.tabs.find((entry) => entry.kind === "query" && entry.id === id);
+    return tab?.kind === "query" ? tab.title || "Abfrage" : null;
+  });
+  const editorTab: ChatContextItem | null =
+    editorContext && editorTabTitle !== null
+      ? { id: "tab", kind: "tab", label: `Editor: ${editorTabTitle}` }
+      : null;
   const contextFeature = useNewFeatureVisibility<HTMLDivElement>(
-    contextItems.length ? "ai.chat.context-mentions" : undefined,
+    contextItems.length
+      ? "ai.chat.context-mentions"
+      : editorTab
+        ? "ai.chat.editor-context"
+        : undefined,
   );
+
   const [allowWrites, setAllowWrites] = useState(false);
   const [allowDdl, setAllowDdl] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
@@ -259,6 +277,35 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       discovery.current++;
     };
   }, [discoveryProfile, cwd, state.open, fullPage]);
+  const modelScoped = Boolean(
+    models.configOptions?.some(
+      (option) =>
+        option &&
+        typeof option === "object" &&
+        ((option as Record<string, unknown>).category === "model" ||
+          (option as Record<string, unknown>).id === "model"),
+    ),
+  );
+  const probedModel = useRef("");
+  useEffect(() => {
+    if (loading) probedModel.current = "";
+    if (loading || !modelScoped || run.current || probedModel.current === profile.model) return;
+    const model = profile.model;
+    let live = true;
+    const timer = setTimeout(() => {
+      void aiModels({ ...discoveryProfile, model }, cwd)
+        .then((result) => {
+          if (!live || !Array.isArray(result.configOptions)) return;
+          probedModel.current = model;
+          setModels((current) => ({ ...current, configOptions: result.configOptions }));
+        })
+        .catch(() => undefined);
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [loading, modelScoped, profile.model, discoveryProfile, cwd]);
   useEffect(() => {
     if ((state.open || fullPage) && view === "chat") input.current?.focus();
   }, [state.open, view, fullPage]);
@@ -540,7 +587,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       : undefined;
     return tab?.kind === "query" ? tab : null;
   };
-  const currentTabSql = () => currentQueryTab()?.sql ?? null;
+  const currentTabSql = () => {
+    const tab = currentQueryTab();
+    return tab ? (editorAiController(tab.id)?.text() ?? tab.sql) : null;
+  };
   const editorTarget = () => {
     const tab = currentQueryTab();
     return {
@@ -567,6 +617,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         : null,
       defaultSchema: connection ? (selection.schemaByConnection[connection.id] ?? null) : null,
       tabSql: currentTabSql(),
+      tabTitle: currentQueryTab()?.title,
+      tabSelection: (() => {
+        const tab = currentQueryTab();
+        return tab ? (editorAiController(tab.id)?.selectionLabel() ?? null) : null;
+      })(),
+      recentContext: thread.slice(-4).flatMap((message) => message.context ?? []),
       history: useQueryHistoryStore.getState().entries,
       shareValues: useEditorAiSettings.getState().shareValues,
     }).catch(() => "");
@@ -585,6 +641,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       return;
     }
     const trimmed = text.trim();
+    if (editorTab && !items.some((item) => item.kind === "tab")) items = [...items, editorTab];
     void withContext(items).then((extra) =>
       runTurn(
         thread,
@@ -671,6 +728,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   };
   const newChat = () => {
     state.selectSession(null);
+    setEditorContext(true);
     setAllowWrites(false);
     setAllowDdl(false);
     setMentioned([]);
@@ -967,13 +1025,20 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           ))}
         </div>
       )}
-      {contextItems.length > 0 && (
+      {(contextItems.length > 0 || editorTab) && (
         <div ref={contextFeature.ref} className="mb-2">
           <AiContextChips
-            items={contextItems}
+            items={
+              editorTab && !contextItems.some((item) => item.kind === "tab")
+                ? [editorTab, ...contextItems]
+                : contextItems
+            }
             isNew={contextFeature.isNew}
             disabled={busy}
-            onRemove={(id) => setContextItems((items) => items.filter((item) => item.id !== id))}
+            onRemove={(id) => {
+              if (id === "tab") setEditorContext(false);
+              setContextItems((items) => items.filter((item) => item.id !== id));
+            }}
           />
         </div>
       )}

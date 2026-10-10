@@ -118,8 +118,26 @@ export function safeEndpoint(value: string): string {
   return url.toString();
 }
 
+const COPILOT_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
+export function thoughtLevel(models: AiModels): { id: string; choices: string[] } | null {
+  for (const entry of models.configOptions ?? []) {
+    if (!entry || typeof entry !== "object") continue;
+    const option = entry as Record<string, unknown>;
+    if (option.category !== "thought_level" || !Array.isArray(option.options)) continue;
+    const choices = option.options.flatMap((item) =>
+      item && typeof item === "object" && typeof item.value === "string" && item.value !== "default"
+        ? [item.value]
+        : [],
+    );
+    return choices.length ? { id: String(option.id), choices } : null;
+  }
+  return null;
+}
+
 export function modelEfforts(profile: AiProfile, models: AiModels, cli: boolean): string[] {
-  const raw = models.models.find((model) => model.id === profile.model)?.efforts ?? [];
+  const raw =
+    models.models.find((model) => model.id === (profile.model || "default"))?.efforts ?? [];
   const efforts = raw.flatMap((value) => {
     if (typeof value === "string") return [value];
     if (
@@ -131,5 +149,7 @@ export function modelEfforts(profile: AiProfile, models: AiModels, cli: boolean)
       return [value.reasoningEffort];
     return [];
   });
-  return !cli && !efforts.length ? ["low", "medium", "high"] : efforts;
+  if (efforts.length) return efforts;
+  if (profile.provider === "copilot") return profile.model ? COPILOT_EFFORTS : [];
+  return cli ? [] : ["low", "medium", "high"];
 }

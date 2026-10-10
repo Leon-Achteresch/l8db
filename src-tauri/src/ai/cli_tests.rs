@@ -224,6 +224,7 @@ def reply(request,value): out({'jsonrpc':'2.0','id':request['id'],'result':value
 claude='--print' in sys.argv
 codex='app-server' in sys.argv
 safe_mode=False
+effort_set=False
 def check_approval(value):
  if isinstance(value,dict):
   assert value['granular']=={'sandbox_approval':False,'rules':False,'mcp_elicitations':True,'request_permissions':False,'skill_approval':True}
@@ -271,17 +272,23 @@ for line in sys.stdin:
   out({'method':'item/completed','params':{'item':{'id':'fixture-message','type':'agentMessage','text':'fixture streamed response','memoryCitation':{'entries':[{'path':'MEMORY.md','lineStart':1,'lineEnd':2,'note':'Native memory source'}]}}}})
   out({'method':'turn/completed','params':{'turn':{'status':'completed'}}})
  elif method in ['session/new','session/load']:
-  reply(request,{'sessionId':'fixture-session','modes':{'currentModeId':'autopilot','availableModes':[{'id':'autopilot'},{'id':'interactive'}]},'configOptions':[{'id':'model','category':'model','options':[{'value':'fixture-model','name':'Fixture'}]}]})
+  reply(request,{'sessionId':'fixture-session','modes':{'currentModeId':'autopilot','availableModes':[{'id':'autopilot'},{'id':'interactive'}]},'configOptions':[{'id':'model','category':'model','options':[{'value':'fixture-model','name':'Fixture'}]},{'id':'effort','category':'thought_level','options':[{'value':'low'}]}]})
  elif method=='session/set_mode':
   assert request['params']['modeId']=='interactive'
   safe_mode=True
   reply(request,{'modes':{'currentModeId':'interactive'}})
  elif method=='session/set_config_option':
-  assert request['params']['configId']=='model'
-  assert request['params']['value']=='fixture-model'
-  reply(request,{})
+  if request['params']['configId']=='effort':
+   assert request['params']['value']=='max'
+   effort_set=True
+   reply(request,{})
+  else:
+   assert request['params']['configId']=='model'
+   assert request['params']['value']=='fixture-model'
+   reply(request,{'configOptions':[{'id':'model','category':'model','options':[{'value':'fixture-model'}]},{'id':'effort','category':'thought_level','options':[{'value':'max'}]}]})
  elif method=='session/prompt':
   assert safe_mode
+  assert effort_set
   out({'jsonrpc':'2.0','method':'session/update','params':{'update':{'sessionUpdate':'plan','entries':[{'content':'Inspect current database','status':'in_progress','priority':'high'}]}}})
   out({'jsonrpc':'2.0','method':'session/update','params':{'update':{'sessionUpdate':'tool_call','toolCallId':'fixture-file','title':'Edit query','kind':'edit','status':'in_progress','rawInput':{'path':'query.sql'},'content':[{'type':'diff','path':'query.sql','oldText':'SELECT 1;','newText':'SELECT 2;'}],'locations':[{'path':'query.sql','line':1}]}}})
   out({'jsonrpc':'2.0','method':'session/update','params':{'update':{'sessionUpdate':'tool_call_update','toolCallId':'fixture-file','status':'completed'}}})
@@ -299,7 +306,7 @@ for line in sys.stdin:
         ("opencode", "", None),
         ("copilot", "", None),
     ] {
-        let request: RunRequest = serde_json::from_value(json!({"runId":"fixture", "profile":{"id":"fixture", "provider":provider, "binary":binary, "model":"fixture-model", "mode":mode}, "cwd":directory.path(), "sessionId":session_id, "messages":[{"role":"user", "text":"fixture input"}], "connections":[], "activeId":null})).unwrap();
+        let request: RunRequest = serde_json::from_value(json!({"runId":"fixture", "profile":{"id":"fixture", "provider":provider, "binary":binary, "model":"fixture-model", "mode":mode, "config":{"effort":"max"}}, "cwd":directory.path(), "sessionId":session_id, "messages":[{"role":"user", "text":"fixture input"}], "connections":[], "activeId":null})).unwrap();
         let events = Arc::new(Mutex::new(Vec::<Value>::new()));
         let captured = events.clone();
         let channel = Channel::new(move |body| {
