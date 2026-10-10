@@ -50,6 +50,13 @@ export const FAILED_AFTER_CANCEL_NOTICE =
 const CANCELLATION_ERROR =
   /\b57014\b|canceling statement|cancell?ed by user|query (?:was )?cancell?ed|ORA-01013|vom Server abgebrochen|Abfrage abgebrochen/i;
 
+const CONNECTION_ERROR =
+  /Verbindungs-Timeout|Verbindung (?:für .* )?fehlgeschlagen|connection refused|could not connect|ECONNREFUSED|password authentication failed|no pg_hba\.conf|Login failed|Access denied for user|ORA-12541|ORA-01017|ORA-12154|Tunnel|Ohne Passwort/i;
+
+export function isConnectionError(error: unknown): boolean {
+  return CONNECTION_ERROR.test(error instanceof Error ? error.message : String(error));
+}
+
 export function isCancellationError(error: unknown): boolean {
   return CANCELLATION_ERROR.test(error instanceof Error ? error.message : String(error));
 }
@@ -62,7 +69,7 @@ export interface MultiTargetRunOptions {
   perServerLimit: number;
   timeoutSeconds: number;
   maxRows: number;
-  scriptStatements?: number;
+  scriptStatements?: number | ((target: MultiTarget) => number);
   executor: MultiTargetExecutor;
   onUpdate: (run: TargetRun) => void;
 }
@@ -127,7 +134,11 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
     let started = 0;
     let cancelAccepted: Promise<boolean> = Promise.resolve(false);
     const supported = options.executor.canCancel?.(target) ?? true;
-    const script = (options.scriptStatements ?? 1) > 1;
+    const statements =
+      typeof options.scriptStatements === "function"
+        ? options.scriptStatements(target)
+        : (options.scriptStatements ?? 1);
+    const script = statements > 1;
     let executing = false;
     const notices = (...entries: (string | false | null)[]) =>
       entries.filter((entry): entry is string => Boolean(entry)).join(" ") || null;
@@ -197,7 +208,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         error: error instanceof Error ? error.message : String(error),
         notice: notices(
           requested && (supported ? FAILED_AFTER_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE),
-          script && executing && PARTIAL_SCRIPT_NOTICE,
+          script && executing && !isConnectionError(error) && PARTIAL_SCRIPT_NOTICE,
         ),
       });
     } finally {

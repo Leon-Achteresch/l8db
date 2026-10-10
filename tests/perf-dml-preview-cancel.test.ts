@@ -1,15 +1,11 @@
 import { expect, mock, test } from "bun:test";
 import { reportScenario } from "../scripts/performance-report";
 
-const session = {
-  inBlock: true,
-  aborted: false,
-  savepoints: new Set<string>(),
-  inFlight: 0,
-};
+const connections = { opened: 0, discarded: 0, closedClean: 0 };
+const statements: string[][] = [];
 const pending = new Map<string, (error: Error) => void>();
-const counts = { queries: 0, cancels: 0 };
-const EMPTY = { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
+const counts = { previews: 0, cancels: 0 };
+let hold = true;
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
@@ -21,78 +17,73 @@ mock.module("@tauri-apps/api/core", () => ({
       reject?.(new Error("ERROR: canceling statement due to user request (SQLSTATE 57014)"));
       return Boolean(reject);
     }
-    if (command !== "execute_query") return null;
-    counts.queries++;
-    const sql = String(args.sql);
-    const savepoint = /^(SAVEPOINT|ROLLBACK TO SAVEPOINT|RELEASE SAVEPOINT) (\w+)$/.exec(sql);
-    if (savepoint) {
-      const [, verb, name] = savepoint;
-      if (verb === "SAVEPOINT") session.savepoints.add(name);
-      else if (verb === "RELEASE SAVEPOINT") session.savepoints.delete(name);
-      else session.aborted = false;
-      return EMPTY;
+    if (command !== "preview_dml") return null;
+    counts.previews++;
+    connections.opened++;
+    const request = args.request as { countSql: string; sampleSql: string };
+    const log = ["BEGIN READ ONLY", "SET LOCAL statement_timeout", request.countSql];
+    statements.push(log);
+    if (hold) {
+      const jobId = String((args.options as Record<string, unknown>).jobId);
+      try {
+        await new Promise<never>((_, reject) => pending.set(jobId, reject));
+      } finally {
+        connections.discarded++;
+      }
     }
-    if (session.aborted) throw new Error("current transaction is aborted (SQLSTATE 25P02)");
-    const jobId = String((args.options as Record<string, unknown>).jobId);
-    session.inFlight++;
-    return new Promise((_, reject) => {
-      pending.set(jobId, (error) => {
-        session.inFlight--;
-        session.aborted = true;
-        reject(error);
-      });
-    });
+    log.push(request.sampleSql, "ROLLBACK");
+    connections.closedClean++;
+    return {
+      count: { columns: ["n"], rows: [{ n: "1" }], rows_affected: null, execution_time_ms: 0 },
+      sample: { columns: ["id"], rows: [{ id: 1 }], rows_affected: null, execution_time_ms: 0 },
+      readOnly: true,
+    };
   },
 }));
 
-const { deriveDmlPreview } = await import("../src/lib/dml-preview");
+const { deriveDmlPreview, runDmlPreview } = await import("../src/lib/dml-preview");
 const { dmlPreviewExecutor } = await import("../src/lib/dml-preview/executor");
-const { createPreviewLifecycle } = await import("../src/lib/dml-preview/lifecycle");
-const { useServerOutputStore } = await import("../src/lib/server-output");
 
 const PREVIEWS = 200;
 const connection = {
-  id: "perf-soft-cancel",
+  id: "perf-isolated-cancel",
   name: "PG",
   kind: "postgres" as const,
   connectionString: "postgresql://app@perf.example.test:5432/app",
   sslMode: "prefer" as const,
 };
 
-const nextTick = () => new Promise<void>((resolve) => setImmediate(resolve));
-
-test("200 previews cancelled mid-flight settle quickly and leave the editor session clean", async () => {
+test("200 previews cancelled mid-flight discard their isolated connections", async () => {
   const plan = deriveDmlPreview("DELETE FROM orders WHERE created < '2026-01-01'", "postgres");
   if (plan?.status !== "ready") throw new Error("not derivable");
-  useServerOutputStore.getState().setEnabled(connection.id, true);
-  const lifecycle = createPreviewLifecycle();
   const latencies: number[] = [];
   const requestsPerPreview: number[] = [];
   for (let index = 0; index < PREVIEWS; index++) {
-    const before = counts.queries + counts.cancels;
+    const before = counts.previews + counts.cancels;
     const controller = new AbortController();
-    const running = lifecycle
-      .start(plan, dmlPreviewExecutor(connection, "app", 10), { signal: controller.signal })
-      .catch(() => undefined);
-    while (session.inFlight === 0) await nextTick();
+    const running = runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10), {
+      signal: controller.signal,
+    }).catch(() => undefined);
+    while (pending.size === 0) await new Promise((resolve) => setImmediate(resolve));
     const started = performance.now();
     controller.abort();
     await running;
-    await lifecycle.idle();
     latencies.push(performance.now() - started);
-    requestsPerPreview.push(counts.queries + counts.cancels - before);
+    requestsPerPreview.push(counts.previews + counts.cancels - before);
   }
-  useServerOutputStore.getState().setEnabled(connection.id, false);
+  hold = false;
+  await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10));
   latencies.sort((left, right) => left - right);
   const median = latencies[Math.floor(latencies.length / 2)];
   const p95 = latencies[Math.ceil(latencies.length * 0.95) - 1];
-  const maxRequests = Math.max(...requestsPerPreview);
 
-  expect(new Set(requestsPerPreview)).toEqual(new Set([5]));
-  expect(session).toMatchObject({ inBlock: true, aborted: false, inFlight: 0 });
-  expect(session.savepoints.size).toBe(0);
+  expect(new Set(requestsPerPreview)).toEqual(new Set([2]));
+  expect(connections.discarded).toBe(PREVIEWS);
+  expect(connections.opened).toBe(PREVIEWS + 1);
+  expect(connections.opened - connections.discarded - connections.closedClean).toBe(0);
   expect(pending.size).toBe(0);
-  expect(lifecycle.holding()).toBe(false);
+  expect(statements.slice(0, PREVIEWS).every((log) => log.length === 3)).toBe(true);
+  expect(statements.at(-1)).toHaveLength(5);
   expect(median).toBeLessThan(10);
   expect(p95).toBeLessThan(25);
 
@@ -115,18 +106,19 @@ test("200 previews cancelled mid-flight settle quickly and leave the editor sess
   }
   expect(timers).toEqual({ timeout: 0, interval: 0 });
 
-  await reportScenario("dml-preview-soft-cancel", {
+  await reportScenario("dml-preview-isolated-cancel", {
     previews: PREVIEWS,
     settleMedianMs: Number(median.toFixed(3)),
     settleP95Ms: Number(p95.toFixed(3)),
-    requestsPerCancelledPreview: maxRequests,
-    requestBreakdown: "SAVEPOINT, COUNT, cancel_execution, ROLLBACK TO, RELEASE",
-    extraRequestsPerCancel: maxRequests - 2,
-    backendDrainProbesMax: 2,
-    leakedSavepoints: session.savepoints.size,
-    leakedInFlight: session.inFlight,
+    requestsPerCancelledPreview: 2,
+    requestBreakdown: "preview_dml, cancel_execution",
+    statementsPerCancelledPreview: 3,
+    statementsPerCompletedPreview: statements.at(-1)?.length,
+    statementSequence: "BEGIN READ ONLY, SET LOCAL statement_timeout, COUNT, sample, ROLLBACK",
+    discardedConnections: connections.discarded,
+    leakedConnections: connections.opened - connections.discarded - connections.closedClean,
     pendingJobs: pending.size,
     idleTimers: timers.timeout + timers.interval,
-    budgets: { settleMedianMs: 10, settleP95Ms: 25, requestsPerCancelledPreview: 5 },
+    budgets: { settleMedianMs: 10, settleP95Ms: 25, discardedConnectionsPerCancel: 1 },
   });
 }, 60_000);

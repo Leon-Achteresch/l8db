@@ -59,7 +59,7 @@ test("DML preview derivation stays fast on large scripts in every dialect", asyn
   });
 }, 60_000);
 
-test("each preview sends exactly one count and one sample request", async () => {
+test("each preview is one isolated request with a bounded statement sequence", async () => {
   const plan = deriveDmlPreview(
     "DELETE FROM sessions WHERE last_seen < '2026-01-01'",
     "postgres",
@@ -68,23 +68,33 @@ test("each preview sends exactly one count and one sample request", async () => 
   if (plan?.status !== "ready") throw new Error("not derivable");
   const sampleRows = Array.from({ length: 1000 }, (_, id) => ({ id, payload: "x".repeat(64) }));
   const requests: string[] = [];
+  let statements: string[] = [];
   const executor = {
-    execute: async (sql: string): Promise<QueryResult> => {
-      requests.push(sql);
+    preview: async (queries: { countSql: string; sampleSql: string; limit: number }) => {
+      requests.push(queries.countSql);
+      statements = [
+        "BEGIN READ ONLY",
+        "SET LOCAL statement_timeout",
+        queries.countSql,
+        queries.sampleSql,
+        "ROLLBACK",
+      ];
       await new Promise((resolve) => setTimeout(resolve, 1));
-      return sql === plan.countSql
-        ? {
-            columns: ["affected_rows"],
-            rows: [{ affected_rows: "250000" }],
-            rows_affected: null,
-            execution_time_ms: 1,
-          }
-        : {
-            columns: ["id", "payload"],
-            rows: sampleRows,
-            rows_affected: null,
-            execution_time_ms: 1,
-          };
+      return {
+        count: {
+          columns: ["affected_rows"],
+          rows: [{ affected_rows: "250000" }],
+          rows_affected: null,
+          execution_time_ms: 1,
+        } as QueryResult,
+        sample: {
+          columns: ["id", "payload"],
+          rows: sampleRows,
+          rows_affected: null,
+          execution_time_ms: 1,
+        } as QueryResult,
+        readOnly: true,
+      };
     },
     cancel: async () => false,
   };
@@ -93,15 +103,17 @@ test("each preview sends exactly one count and one sample request", async () => 
     requests.length = 0;
     const outcome = await runDmlPreview(plan, executor);
     retainedRows = outcome.sample.rows.length;
-    if (requests.length !== 2) throw new Error(`expected 2 requests, saw ${requests.length}`);
+    if (requests.length !== 1) throw new Error(`expected 1 request, saw ${requests.length}`);
   });
-  expect(requests).toEqual([plan.countSql, plan.sampleSql]);
+  expect(requests).toEqual([plan.countSql]);
+  expect(statements).toHaveLength(5);
   expect(retainedRows).toBe(100);
   expect(timing.p95Ms).toBeLessThan(50);
   await reportScenario("dml-preview-requests", {
     ...timing,
-    requestsPerPreview: 2,
-    distinctRequests: new Set(requests).size,
+    requestsPerPreview: 1,
+    serverStatementsPerPreview: statements.length,
+    statementSequence: "BEGIN READ ONLY, SET LOCAL statement_timeout, COUNT, sample, ROLLBACK",
     serverRowsReturned: sampleRows.length,
     retainedSampleRows: retainedRows,
     simulatedLatencyMsPerRequest: 1,
