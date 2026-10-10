@@ -3,9 +3,8 @@ import type { DevelopmentState } from "./use-development";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningActivity } from "./versioning-activity";
 import { VersioningBranches } from "./versioning-branches";
-import { VersioningDelivery } from "./versioning-delivery";
 import { VersioningDevelopment } from "./versioning-development";
-import { VersioningOverview } from "./versioning-overview";
+import { VersioningPipeline } from "./versioning-pipeline";
 import { VersioningReleases } from "./versioning-releases";
 import { VersioningReviews } from "./versioning-reviews";
 import { VersioningSeeds } from "./versioning-seeds";
@@ -27,8 +26,8 @@ export function VersioningSection({
   const branchKey = `${status.repo}:${project.id}:${status.branch}`;
   const projectKey = `${status.repo}:${project.id}`;
   switch (section) {
-    case "overview":
-      return <VersioningOverview workspace={workspace} onNavigate={onNavigate} />;
+    case "pipeline":
+      return <VersioningPipeline workspace={workspace} onNavigate={onNavigate} />;
     case "branches":
       return <VersioningBranches workspace={workspace} />;
     case "seeds":
@@ -48,8 +47,6 @@ export function VersioningSection({
       );
     case "reviews":
       return <VersioningReviews key={projectKey} workspace={workspace} />;
-    case "delivery":
-      return <VersioningDelivery workspace={workspace} onNavigate={onNavigate} />;
     case "targets":
       return <VersioningTargets key={projectKey} workspace={workspace} />;
     case "activity":
