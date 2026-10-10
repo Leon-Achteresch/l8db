@@ -55,7 +55,8 @@ const BRACKET_KEYWORDS = new Set([
 ]);
 const NAME_END = /[\p{L}\p{M}\p{N}_$\])"`]/u;
 const SPACING = /\/\*[\s\S]*?\*\/|--[^\n]*(?:\n|$)|\s+/g;
-const INDEX_START = /^\s*['"\d$:-]/;
+const INDEX_PART = `(?:'(?:[^']|'')*'|"(?:[^"]|"")*"|[-+]?\\d+(?:\\.\\d+)?|\\$\\d+|:[\\p{L}_]\\w*)`;
+const INDEX_VALUE = new RegExp(`^\\s*${INDEX_PART}?\\s*(?::\\s*${INDEX_PART}?\\s*)?\\]`, "u");
 const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
@@ -95,7 +96,7 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
     if (!indexable) return false;
     if (NAME_END.test(sql[at - 1] ?? " ")) return true;
     const gap = sql.slice(last.end, at).replace(SPACING, "");
-    return gap === "" && INDEX_START.test(sql.slice(at + 1, at + 33));
+    return gap === "" && INDEX_VALUE.test(sql.slice(at + 1, at + 257));
   };
   let i = 0;
   while (i < sql.length) {

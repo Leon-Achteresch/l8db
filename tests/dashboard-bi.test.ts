@@ -857,6 +857,15 @@ describe("Array-Indizes nach Kommentaren und Leerzeichen", () => {
       expect(readsTable("SELECT a [1], r FROM orders", "orders", kind)).toBe(true);
       expect(readsTable("SELECT a/*c*/[it's] FROM orders", "orders", kind)).toBe(true);
       expect(readsTable("SELECT a [Unit's Price] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT x [1990's Sales] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT sum(x) [2nd Customer's Name] FROM orders", "orders", kind)).toBe(
+        true,
+      );
+      expect(readsTable("SELECT CASE WHEN a THEN b END [1st's] FROM orders", "orders", kind)).toBe(
+        true,
+      );
+      expect(readsTable("SELECT a /*c*/ [1:2], r FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a /*c*/ [$1], r FROM orders", "orders", kind)).toBe(true);
     }
   });
 });
