@@ -19,6 +19,7 @@ export interface QueryExecutionOptions {
   track?: boolean;
   session?: string;
   pooled?: boolean;
+  queryTimeout?: number;
 }
 
 const SQL_COMMANDS = new Set([
@@ -227,7 +228,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   const options = (args?.options ?? {}) as QueryExecutionOptions;
   let taskId: string | undefined;
   let backendOptions: Record<string, unknown> = {
-    queryTimeout: settings.queryTimeout,
+    queryTimeout: options.queryTimeout ?? settings.queryTimeout,
     connectionTimeout: settings.connectionTimeout,
     ...(options.jobId ? { jobId: options.jobId } : {}),
   };

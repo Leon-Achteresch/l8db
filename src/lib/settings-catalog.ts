@@ -333,6 +333,31 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "productionAutoRollback",
   },
   {
+    id: "dml-preview",
+    tabId: "security",
+    title: "Vorschau vor UPDATE und DELETE",
+    description:
+      "Zeigt vor dem Ausführen, welche und wie viele Zeilen ein UPDATE, DELETE, MERGE oder INSERT … SELECT betrifft. Die Vorschau liest nur und sperrt keine Zeilen.",
+    keywords: [
+      "vorschau",
+      "preview",
+      "update",
+      "delete",
+      "merge",
+      "betroffene zeilen",
+      "produktion",
+    ],
+    key: "dmlPreviewMode",
+  },
+  {
+    id: "dml-preview-limits",
+    tabId: "security",
+    title: "Grenzen der DML-Vorschau",
+    description:
+      "Maximale Beispielzeilen, Zeitlimit der Vorschau-Abfragen und ab wie vielen betroffenen Zeilen deutlich gewarnt wird.",
+    keywords: ["vorschau", "zeilen", "timeout", "warnung", "schwelle", "limit"],
+  },
+  {
     id: "conn-timeout",
     tabId: "security",
     title: "Verbindungs-Timeout",

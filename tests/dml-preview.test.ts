@@ -1,0 +1,473 @@
+import { describe, expect, mock, test } from "bun:test";
+
+const invocations: { command: string; args: Record<string, unknown> }[] = [];
+let pendingQuery: (() => void) | null = null;
+
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: async (command: string, args: Record<string, unknown>) => {
+    invocations.push({ command, args });
+    if (command === "cancel_execution") {
+      pendingQuery?.();
+      return true;
+    }
+    if (command === "execute_query") {
+      if (String(args.sql).startsWith("SELECT COUNT(*)"))
+        return {
+          columns: ["affected_rows"],
+          rows: [{ affected_rows: "3" }],
+          rows_affected: null,
+          execution_time_ms: 1,
+        };
+      return {
+        columns: ["id"],
+        rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        rows_affected: null,
+        execution_time_ms: 1,
+      };
+    }
+    return null;
+  },
+}));
+
+const {
+  autoPreviewApplies,
+  deriveDmlPreview,
+  isDmlPreviewCancelled,
+  needsDmlPreview,
+  normalizeDmlPreviewMode,
+  runDmlPreview,
+} = await import("../src/lib/dml-preview");
+const { dmlPreviewExecutor } = await import("../src/lib/dml-preview/executor");
+type QueryResult = import("../src/lib/db/types").QueryResult;
+
+function ready(sql: string, dialect: string, limit = 100) {
+  const derived = deriveDmlPreview(sql, dialect, limit);
+  if (derived?.status !== "ready") throw new Error(`Not derivable: ${JSON.stringify(derived)}`);
+  return derived;
+}
+
+function unavailable(sql: string, dialect: string) {
+  const derived = deriveDmlPreview(sql, dialect);
+  if (derived?.status !== "unavailable") throw new Error(`Unexpectedly derivable: ${sql}`);
+  return derived;
+}
+
+function compact(sql: string) {
+  return sql.replace(/\s+/g, " ").trim();
+}
+
+describe("PostgreSQL", () => {
+  test("UPDATE … FROM joins the target and shows old and new values", () => {
+    const plan = ready(
+      `UPDATE public.users AS u SET name = 'neu', score = score + 1 FROM teams t WHERE u.team_id = t.id AND t.name = 'A';`,
+      "postgres",
+    );
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM public.users AS u, teams t WHERE u.team_id = t.id AND t.name = 'A'",
+    );
+    expect(compact(plan.sampleSql)).toBe(
+      `SELECT u.name AS "name (alt)", ('neu') AS "name (neu)", u.score AS "score (alt)", (score + 1) AS "score (neu)", u.* FROM public.users AS u, teams t WHERE u.team_id = t.id AND t.name = 'A' LIMIT 100`,
+    );
+    expect(plan.whereMissing).toBe(false);
+    expect(plan.note).toContain("mehrfach");
+    expect(plan.table).toBe("public.users");
+  });
+
+  test("DELETE … USING keeps the joined source", () => {
+    const plan = ready(
+      "DELETE FROM orders o USING customers c WHERE o.customer_id = c.id AND c.blocked",
+      "postgres",
+    );
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM orders o, customers c WHERE o.customer_id = c.id AND c.blocked",
+    );
+    expect(compact(plan.sampleSql)).toBe(
+      "SELECT o.* FROM orders o, customers c WHERE o.customer_id = c.id AND c.blocked LIMIT 100",
+    );
+  });
+
+  test("RETURNING is dropped and sequences are never evaluated", () => {
+    const plan = ready("UPDATE t SET a = nextval('s'), b = 2 WHERE id = 1 RETURNING *", "postgres");
+    expect(plan.countSql).toBe("SELECT COUNT(*) AS affected_rows FROM t WHERE id = 1");
+    expect(plan.sampleSql).not.toContain("nextval");
+    expect(plan.assignments).toEqual([
+      { column: "a", expression: "nextval('s')", previewed: false },
+      { column: "b", expression: "2", previewed: true },
+    ]);
+    expect(unavailable("DELETE FROM t WHERE id = nextval('s')", "postgres").reason).toContain(
+      "NEXTVAL",
+    );
+  });
+
+  test("unknown functions in WHERE fall back instead of running side effects", () => {
+    const fallback = unavailable("DELETE FROM t WHERE audit_and_check(id)", "postgres");
+    expect(fallback.reason).toContain("audit_and_check");
+    expect(
+      ready("DELETE FROM t WHERE lower(name) = 'x' AND created < now()", "postgres").countSql,
+    ).toContain("lower(name)");
+  });
+});
+
+describe("MySQL", () => {
+  test("UPDATE with JOIN, ORDER BY and LIMIT bounds count and sample", () => {
+    const plan = ready(
+      "UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.a = t2.b WHERE t2.c > 3 ORDER BY t1.id LIMIT 10",
+      "mysql",
+    );
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM (SELECT 1 AS l8db_row FROM t1 JOIN t2 ON t1.id = t2.id WHERE t2.c > 3 ORDER BY t1.id LIMIT 10) l8db_preview",
+    );
+    expect(compact(plan.sampleSql)).toBe(
+      "SELECT * FROM (SELECT t1.a AS `a (alt)`, (t2.b) AS `a (neu)`, t1.* FROM t1 JOIN t2 ON t1.id = t2.id WHERE t2.c > 3 ORDER BY t1.id LIMIT 10) l8db_preview LIMIT 100",
+    );
+  });
+
+  test("multi-table DELETE previews the deleted table only", () => {
+    const plan = ready("DELETE t1 FROM t1 JOIN t2 ON t1.id = t2.id WHERE t2.x = 'a'", "mysql");
+    expect(compact(plan.sampleSql)).toBe(
+      "SELECT t1.* FROM t1 JOIN t2 ON t1.id = t2.id WHERE t2.x = 'a' LIMIT 100",
+    );
+    const using = ready("DELETE FROM t1 USING t1 JOIN t2 USING (id) WHERE t2.x = 1", "mysql");
+    expect(using.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM t1 JOIN t2 USING (id) WHERE t2.x = 1",
+    );
+  });
+
+  test("backslash escapes and hash comments do not hide clauses", () => {
+    const plan = ready(
+      String.raw`DELETE FROM logs # WHERE id = 1
+WHERE msg = 'it\'s WHERE x'`,
+      "mysql",
+    );
+    expect(plan.countSql).toBe(
+      String.raw`SELECT COUNT(*) AS affected_rows FROM logs WHERE msg = 'it\'s WHERE x'`,
+    );
+  });
+});
+
+describe("SQL Server", () => {
+  test("UPDATE TOP keeps the bound and strips locking hints", () => {
+    const plan = ready(
+      "UPDATE TOP (10) [dbo].[users] WITH (UPDLOCK) SET [name] = N'x' WHERE id > 5",
+      "mssql",
+    );
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM (SELECT TOP (10) 1 AS l8db_row FROM [dbo].[users] WHERE id > 5) l8db_preview",
+    );
+    expect(plan.sampleSql).toBe(
+      "SELECT TOP (100) * FROM (SELECT TOP (10) [users].[name] AS [name (alt)], (N'x') AS [name (neu)], [users].* FROM [dbo].[users] WHERE id > 5) l8db_preview",
+    );
+    expect(plan.sampleSql).not.toMatch(/UPDLOCK|HOLDLOCK|FOR UPDATE/i);
+  });
+
+  test("DELETE TOP … PERCENT and aliased DELETE … FROM", () => {
+    expect(ready("DELETE TOP (5) PERCENT FROM dbo.t WHERE x = 1", "mssql").countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM (SELECT TOP (5) PERCENT 1 AS l8db_row FROM dbo.t WHERE x = 1) l8db_preview",
+    );
+    const aliased = ready("DELETE a FROM dbo.t a JOIN dbo.x ON a.id = x.id WHERE x.y = 1", "mssql");
+    expect(aliased.sampleSql).toBe(
+      "SELECT TOP (100) a.* FROM dbo.t a JOIN dbo.x ON a.id = x.id WHERE x.y = 1",
+    );
+  });
+
+  test("UPDATE alias FROM uses the FROM clause as source", () => {
+    const plan = ready("UPDATE a SET a.v = x.v FROM dbo.t a JOIN dbo.x x ON a.id = x.id", "mssql");
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM dbo.t a JOIN dbo.x x ON a.id = x.id",
+    );
+    expect(plan.whereMissing).toBe(true);
+    expect(ready("UPDATE dbo.t SET v = 1 FROM dbo.x WHERE dbo.t.id = x.id", "mssql").countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM dbo.t, dbo.x WHERE dbo.t.id = x.id",
+    );
+  });
+});
+
+describe("SQLite", () => {
+  test("UPDATE OR action and INSERT … SELECT … ON CONFLICT", () => {
+    const update = ready("UPDATE OR IGNORE items SET qty = qty - 1 WHERE qty > 0", "sqlite");
+    expect(update.countSql).toBe("SELECT COUNT(*) AS affected_rows FROM items WHERE qty > 0");
+    const insert = ready(
+      "INSERT INTO archive (id) SELECT id FROM log WHERE ts < date('now') ON CONFLICT DO NOTHING",
+      "sqlite",
+    );
+    expect(insert.kind).toBe("insert_select");
+    expect(insert.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM (SELECT id FROM log WHERE ts < date('now')) l8db_preview",
+    );
+    expect(needsDmlPreview("INSERT INTO t VALUES (1)", "sqlite")).toBe(false);
+    expect(needsDmlPreview("INSERT INTO t DEFAULT VALUES", "sqlite")).toBe(false);
+  });
+});
+
+describe("Oracle", () => {
+  test("DELETE without FROM, FETCH FIRST sampling and RETURNING INTO", () => {
+    const plan = ready("DELETE emp e WHERE e.dept = 10", "oracle");
+    expect(compact(plan.sampleSql)).toBe(
+      "SELECT * FROM emp e WHERE e.dept = 10 FETCH FIRST 100 ROWS ONLY",
+    );
+    const update = ready(
+      "UPDATE emp SET sal = sal * 1.1 WHERE dept IN (10, 20) RETURNING sal INTO :v",
+      "oracle",
+    );
+    expect(update.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM emp WHERE dept IN (10, 20)",
+    );
+    expect(
+      unavailable(
+        "UPDATE emp SET id = emp_seq.NEXTVAL WHERE id IS NULL AND emp_seq.NEXTVAL > 0",
+        "oracle",
+      ).reason,
+    ).toContain("NEXTVAL");
+  });
+
+  test("MERGE counts matched target rows", () => {
+    const plan = ready(
+      "MERGE INTO emp e USING (SELECT * FROM bonus) b ON (e.id = b.id) WHEN MATCHED THEN UPDATE SET e.sal = b.sal",
+      "oracle",
+    );
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM emp e INNER JOIN (SELECT * FROM bonus) b ON (e.id = b.id)",
+    );
+    expect(plan.note).toContain("WHEN MATCHED");
+  });
+});
+
+describe("edge cases", () => {
+  test("quoted identifiers named like keywords", () => {
+    const plan = ready(`UPDATE "Where" SET "set" = 1 WHERE "from" = 'x'`, "postgres");
+    expect(plan.countSql).toBe(`SELECT COUNT(*) AS affected_rows FROM "Where" WHERE "from" = 'x'`);
+    expect(plan.sampleSql).toContain(`"Where"."set" AS "set (alt)"`);
+    const mysql = ready("DELETE FROM `order` WHERE `where` = 1", "mysql");
+    expect(mysql.countSql).toBe("SELECT COUNT(*) AS affected_rows FROM `order` WHERE `where` = 1");
+  });
+
+  test("subqueries in WHERE stay intact and do not end the clause", () => {
+    const plan = ready(
+      "DELETE FROM t WHERE id IN (SELECT id FROM x WHERE y = 1 ORDER BY z LIMIT 5) AND EXISTS (SELECT 1 FROM w WHERE w.t = t.id)",
+      "postgres",
+    );
+    expect(plan.countSql).toBe(
+      "SELECT COUNT(*) AS affected_rows FROM t WHERE id IN (SELECT id FROM x WHERE y = 1 ORDER BY z LIMIT 5) AND EXISTS (SELECT 1 FROM w WHERE w.t = t.id)",
+    );
+  });
+
+  test("string literals containing WHERE do not count as filter", () => {
+    const plan = ready("UPDATE t SET note = 'WHERE id = 1'", "postgres");
+    expect(plan.whereMissing).toBe(true);
+    expect(plan.countSql).toBe("SELECT COUNT(*) AS affected_rows FROM t");
+    expect(ready("DELETE FROM t WHERE note = $$WHERE; DELETE$$", "postgres").whereMissing).toBe(
+      false,
+    );
+  });
+
+  test("comments are removed before clauses are appended", () => {
+    const plan = ready(
+      "-- remove old rows\nDELETE /* all? */ FROM t -- WHERE id = 1\n WHERE /* keep */ id > 5 -- trailing",
+      "postgres",
+    );
+    expect(plan.countSql).toBe("SELECT COUNT(*) AS affected_rows FROM t WHERE id > 5");
+    expect(compact(plan.sampleSql)).toBe("SELECT * FROM t WHERE id > 5 LIMIT 100");
+    expect(ready("DELETE FROM t -- WHERE id = 1", "postgres").whereMissing).toBe(true);
+  });
+
+  test("multiple statements fall back with a reason and still flag missing WHERE", () => {
+    const fallback = unavailable("UPDATE t SET a = 1 WHERE id = 1; DELETE FROM t;", "postgres");
+    expect(fallback.reason).toContain("mehrere Anweisungen");
+    expect(fallback.whereMissing).toBe(true);
+    expect(deriveDmlPreview("SELECT 1; SELECT 2", "postgres")).toBeNull();
+  });
+
+  test("CTE-DML, cursors and statements without a table fall back", () => {
+    expect(
+      unavailable("WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d", "postgres").reason,
+    ).toContain("CTE");
+    expect(
+      unavailable(
+        "WITH x AS (SELECT 1 AS id) UPDATE t SET a = 1 FROM x WHERE t.id = x.id",
+        "postgres",
+      ).reason,
+    ).toContain("CTE");
+    expect(unavailable("UPDATE t SET a = 1 WHERE CURRENT OF c", "postgres").reason).toContain(
+      "Cursor",
+    );
+    expect(unavailable("UPDATE SET a = 1", "postgres").reason).toContain("Zieltabelle");
+    expect(unavailable("DELETE FROM WHERE id = 1", "postgres").reason).toContain("Zieltabelle");
+  });
+
+  test("derived queries are always read-only and never lock rows", () => {
+    for (const [sql, dialect] of [
+      ["UPDATE t SET a = 1 WHERE id = 1", "postgres"],
+      ["DELETE FROM t WHERE id = 1", "mysql"],
+      ["UPDATE TOP (1) t SET a = 1", "mssql"],
+      ["DELETE FROM t WHERE id = 1", "oracle"],
+      ["DELETE FROM t WHERE id = 1", "sqlite"],
+    ] as const) {
+      const plan = ready(sql, dialect);
+      for (const query of [plan.countSql, plan.sampleSql]) {
+        expect(query).toMatch(/^SELECT /);
+        expect(query).not.toMatch(/FOR UPDATE|UPDLOCK|HOLDLOCK|XLOCK/i);
+      }
+    }
+  });
+
+  test("the sample limit is bounded", () => {
+    expect(ready("DELETE FROM t", "postgres", 5000).limit).toBe(1000);
+    expect(compact(ready("DELETE FROM t", "postgres", 7).sampleSql)).toBe(
+      "SELECT * FROM t LIMIT 7",
+    );
+  });
+});
+
+describe("policy", () => {
+  test("modes respect the production environment", () => {
+    expect(normalizeDmlPreviewMode("bogus")).toBe("production");
+    expect(autoPreviewApplies("production", true)).toBe(true);
+    expect(autoPreviewApplies("production", false)).toBe(false);
+    expect(autoPreviewApplies("always", false)).toBe(true);
+    expect(autoPreviewApplies("off", true)).toBe(false);
+  });
+});
+
+function result(rows: Record<string, unknown>[], columns: string[]): QueryResult {
+  return { columns, rows, rows_affected: null, execution_time_ms: 1 };
+}
+
+describe("runner", () => {
+  test("one preview issues exactly a count and a sample request", async () => {
+    const plan = ready("DELETE FROM t WHERE id > 1", "postgres", 2);
+    const calls: string[] = [];
+    const outcome = await runDmlPreview(plan, {
+      execute: async (sql) => {
+        calls.push(sql);
+        return sql.startsWith("SELECT COUNT")
+          ? result([{ affected_rows: 5 }], ["affected_rows"])
+          : result([{ id: 1 }, { id: 2 }, { id: 3 }], ["id"]);
+      },
+      cancel: async () => false,
+    });
+    expect(calls).toEqual([plan.countSql, plan.sampleSql]);
+    expect(new Set(calls).size).toBe(2);
+    expect(outcome.requests).toBe(2);
+    expect(outcome.count).toBe(5);
+    expect(outcome.sample.rows).toHaveLength(2);
+    expect(outcome.sample.truncated).toBe(true);
+  });
+
+  test("zero affected rows skip the sample request", async () => {
+    const calls: string[] = [];
+    const outcome = await runDmlPreview(ready("DELETE FROM t WHERE false", "postgres"), {
+      execute: async (sql) => {
+        calls.push(sql);
+        return result([{ affected_rows: "0" }], ["affected_rows"]);
+      },
+      cancel: async () => false,
+    });
+    expect(outcome.count).toBe(0);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("cancelling during the count cancels the job and never starts the sample", async () => {
+    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
+    const controller = new AbortController();
+    const executed: string[] = [];
+    const cancelled: string[] = [];
+    let release: (() => void) | null = null;
+    const running = runDmlPreview(
+      plan,
+      {
+        execute: (sql, jobId) => {
+          executed.push(`${jobId}:${sql}`);
+          return new Promise<QueryResult>((_, reject) => {
+            release = () => reject(new Error("abgebrochen"));
+          });
+        },
+        cancel: async (jobId) => {
+          cancelled.push(jobId);
+          release?.();
+          return true;
+        },
+      },
+      { signal: controller.signal },
+    );
+    await Promise.resolve();
+    controller.abort();
+    const error = await running.catch((reason: unknown) => reason);
+    expect(isDmlPreviewCancelled(error)).toBe(true);
+    expect(executed).toHaveLength(1);
+    expect(cancelled).toEqual([executed[0].split(":")[0]]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(executed).toHaveLength(1);
+  });
+
+  test("an already aborted preview sends no request", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+    const error = await runDmlPreview(
+      ready("DELETE FROM t", "postgres"),
+      {
+        execute: async () => {
+          calls++;
+          return result([], []);
+        },
+        cancel: async () => false,
+      },
+      { signal: controller.signal },
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewCancelled(error)).toBe(true);
+    expect(calls).toBe(0);
+  });
+});
+
+describe("executor", () => {
+  const connection = {
+    id: "dml-preview-pg",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@db.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+
+  test("uses execute_query with a bounded timeout, pooled reads and no confirmation", async () => {
+    invocations.length = 0;
+    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
+    const outcome = await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 7));
+    const queries = invocations.filter((entry) => entry.command === "execute_query");
+    expect(queries.map((entry) => entry.args.sql)).toEqual([plan.countSql, plan.sampleSql]);
+    for (const entry of queries) {
+      expect(entry.args.pooled).toBe(true);
+      expect(entry.args.database).toBe("app");
+      expect((entry.args.options as Record<string, unknown>).queryTimeout).toBe(7);
+      expect(typeof (entry.args.options as Record<string, unknown>).jobId).toBe("string");
+    }
+    expect(outcome.count).toBe(3);
+  });
+
+  test("abort sends cancel_execution for the running job", async () => {
+    invocations.length = 0;
+    const controller = new AbortController();
+    const executor = dmlPreviewExecutor(connection, null, 10);
+    const slow = {
+      ...executor,
+      execute: (sql: string, jobId: string) =>
+        new Promise<QueryResult>((resolve, reject) => {
+          pendingQuery = () => reject(new Error("abgebrochen"));
+          void executor.execute(sql, jobId).then(() => undefined);
+          setTimeout(() => resolve(result([], [])), 1000);
+        }),
+    };
+    const running = runDmlPreview(ready("DELETE FROM t", "postgres"), slow, {
+      signal: controller.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort();
+    expect(isDmlPreviewCancelled(await running.catch((reason: unknown) => reason))).toBe(true);
+    const cancel = invocations.find((entry) => entry.command === "cancel_execution");
+    const query = invocations.find((entry) => entry.command === "execute_query");
+    expect(cancel?.args.jobId).toBe(
+      (query?.args.options as Record<string, unknown> | undefined)?.jobId,
+    );
+    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(1);
+    pendingQuery = null;
+  });
+});

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -83,6 +84,10 @@ export interface SettingsState {
   productionReadOnly: boolean;
   productionConfirmCommit: boolean;
   productionAutoRollback: boolean;
+  dmlPreviewMode: DmlPreviewMode;
+  dmlPreviewRowLimit: number;
+  dmlPreviewTimeout: number;
+  dmlPreviewWarnThreshold: number;
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
   hideOwnSchemaSelect: boolean;
@@ -143,6 +148,10 @@ export interface SettingsState {
   setProductionReadOnly: (v: boolean) => void;
   setProductionConfirmCommit: (v: boolean) => void;
   setProductionAutoRollback: (v: boolean) => void;
+  setDmlPreviewMode: (v: DmlPreviewMode) => void;
+  setDmlPreviewRowLimit: (v: number) => void;
+  setDmlPreviewTimeout: (v: number) => void;
+  setDmlPreviewWarnThreshold: (v: number) => void;
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
   setHideOwnSchemaSelect: (value: boolean) => void;
@@ -230,6 +239,10 @@ export const DEFAULT_SETTINGS = {
   productionReadOnly: true,
   productionConfirmCommit: true,
   productionAutoRollback: false,
+  dmlPreviewMode: "production" as DmlPreviewMode,
+  dmlPreviewRowLimit: 100,
+  dmlPreviewTimeout: 10,
+  dmlPreviewWarnThreshold: 1000,
   highlightNullValues: true,
   translateFilterOperators: true,
   hideOwnSchemaSelect: true,
@@ -319,6 +332,11 @@ export const useSettingsStore = create<SettingsState>()(
       setProductionReadOnly: (productionReadOnly) => set({ productionReadOnly }),
       setProductionConfirmCommit: (productionConfirmCommit) => set({ productionConfirmCommit }),
       setProductionAutoRollback: (productionAutoRollback) => set({ productionAutoRollback }),
+      setDmlPreviewMode: (dmlPreviewMode) =>
+        set({ dmlPreviewMode: normalizeDmlPreviewMode(dmlPreviewMode) }),
+      setDmlPreviewRowLimit: (dmlPreviewRowLimit) => set({ dmlPreviewRowLimit }),
+      setDmlPreviewTimeout: (dmlPreviewTimeout) => set({ dmlPreviewTimeout }),
+      setDmlPreviewWarnThreshold: (dmlPreviewWarnThreshold) => set({ dmlPreviewWarnThreshold }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
@@ -383,6 +401,7 @@ export const useSettingsStore = create<SettingsState>()(
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
+          dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
         };
       },

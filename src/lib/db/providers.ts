@@ -83,6 +83,7 @@ export interface Capabilities {
   backup: boolean;
   object_storage: boolean;
   health_advisor: boolean;
+  dml_preview: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

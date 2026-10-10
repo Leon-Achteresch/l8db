@@ -87,6 +87,7 @@ pub struct Capabilities {
     pub backup: bool,
     pub object_storage: bool,
     pub health_advisor: bool,
+    pub dml_preview: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -153,6 +154,7 @@ const NONE: Capabilities = Capabilities {
     backup: false,
     object_storage: false,
     health_advisor: false,
+    dml_preview: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -174,6 +176,7 @@ const SQL_COMMON: Capabilities = Capabilities {
     import_conflicts: true,
     table_copy: true,
     test_data: true,
+    dml_preview: true,
     ..NONE
 };
 
@@ -1017,6 +1020,26 @@ mod tests {
         assert!(kind_driver_status(DatabaseKind::Postgres)
             .install_command
             .is_none());
+    }
+
+    #[test]
+    fn dml_preview_is_gated_to_sql_families() {
+        for kind in DatabaseKind::ALL {
+            if kind.capabilities().dml_preview {
+                assert_eq!(kind.capabilities().query_language, "sql", "{kind:?}");
+            }
+        }
+        for kind in [
+            DatabaseKind::Postgres,
+            DatabaseKind::Mysql,
+            DatabaseKind::Sqlite,
+            DatabaseKind::Mssql,
+            DatabaseKind::Oracle,
+        ] {
+            assert!(kind.capabilities().dml_preview, "{kind:?}");
+        }
+        assert!(!DatabaseKind::Mongodb.capabilities().dml_preview);
+        assert!(!DatabaseKind::Clickhouse.capabilities().dml_preview);
     }
 
     #[test]

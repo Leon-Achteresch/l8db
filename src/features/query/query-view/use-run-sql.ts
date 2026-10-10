@@ -37,6 +37,7 @@ interface UseRunSqlParams {
   setEditorFocus: (focus: boolean) => void;
   collectOutput: () => Promise<void>;
   runMultiStatement: (text: string) => Promise<void>;
+  confirmPreview: (sql: string, bound?: boolean) => Promise<boolean>;
 }
 
 export function useRunSql({
@@ -51,6 +52,7 @@ export function useRunSql({
   setEditorFocus,
   collectOutput,
   runMultiStatement,
+  confirmPreview,
 }: UseRunSqlParams) {
   const queryClient = useQueryClient();
   const recordHistory = useQueryHistoryStore((state) => state.record);
@@ -73,7 +75,7 @@ export function useRunSql({
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
   const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
+    async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
       if (
@@ -81,6 +83,7 @@ export function useRunSql({
         runsOneStatementPerCall(connection.kind) &&
         splitSqlStatements(sql, connection.kind).statements.length > 1
       ) {
+        if (!previewed && !(await confirmPreview(sql))) return;
         await runMultiStatement(sql);
         return;
       }
@@ -105,6 +108,8 @@ export function useRunSql({
           return;
         }
       }
+      if (!previewed && !(await confirmPreview(sql, Boolean(bound)))) return;
+      if (runningRef.current) return;
       setEditorFocus(false);
       const currentTab = useTableTabs
         .getState()
@@ -192,6 +197,7 @@ export function useRunSql({
       cursorOffsetRef,
       setEditorFocus,
       runMultiStatement,
+      confirmPreview,
     ],
   );
 
