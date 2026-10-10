@@ -3,7 +3,7 @@ import { invoke } from "./core";
 export interface DbeaverWorkspace {
   data_sources_path: string;
   data_sources: string;
-  credentials: number[] | null;
+  credentials: string | null;
 }
 
 export interface ImportFile {

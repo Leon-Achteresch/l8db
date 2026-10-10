@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use base64::Engine;
 use blowfish::cipher::{Array, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use blowfish::Blowfish;
 use serde::Serialize;
@@ -16,7 +17,7 @@ const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
 pub struct DbeaverWorkspace {
     pub data_sources_path: String,
     pub data_sources: String,
-    pub credentials: Option<Vec<u8>>,
+    pub credentials: Option<String>,
 }
 
 fn read_limited(path: &Path) -> Result<Vec<u8>, String> {
@@ -31,15 +32,32 @@ fn read_limited(path: &Path) -> Result<Vec<u8>, String> {
     std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))
 }
 
+pub fn is_dbeaver_data_sources(name: &str) -> bool {
+    name == DBEAVER_DATA_SOURCES
+        || name
+            .strip_prefix("data-sources-")
+            .and_then(|rest| rest.strip_suffix(".json"))
+            .is_some_and(|middle| {
+                !middle.is_empty()
+                    && middle
+                        .chars()
+                        .all(|char| char.is_ascii_alphanumeric() || matches!(char, '-' | '_'))
+            })
+}
+
 pub fn load_dbeaver_workspace(data_sources: &Path) -> Result<DbeaverWorkspace, String> {
-    if data_sources.file_name().and_then(|name| name.to_str()) != Some(DBEAVER_DATA_SOURCES) {
-        return Err("Bitte data-sources.json aus dem DBeaver-Workspace wählen.".to_string());
+    let name = data_sources.file_name().and_then(|name| name.to_str());
+    if !name.is_some_and(is_dbeaver_data_sources) {
+        return Err(
+            "Bitte data-sources.json oder data-sources-*.json aus dem DBeaver-Workspace wählen."
+                .to_string(),
+        );
     }
     let text = String::from_utf8(read_limited(data_sources)?)
         .map_err(|_| "data-sources.json ist kein gültiges UTF-8.".to_string())?;
     let credentials_path = data_sources.with_file_name(DBEAVER_CREDENTIALS);
     let credentials = if credentials_path.is_file() {
-        Some(read_limited(&credentials_path)?)
+        Some(base64::engine::general_purpose::STANDARD.encode(read_limited(&credentials_path)?))
     } else {
         None
     };
@@ -223,32 +241,48 @@ pub fn jetbrains_config_roots(home: &Path, config_dir: Option<&Path>) -> Vec<Pat
     roots
 }
 
+fn version_key(path: &Path) -> Vec<u64> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    name.split(|char: char| !char.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.parse().ok())
+        .collect()
+}
+
 pub fn find_jetbrains_ssh_configs(roots: &[PathBuf]) -> Vec<ImportFile> {
-    let mut files = Vec::new();
+    let mut products: Vec<PathBuf> = Vec::new();
     for root in roots {
         let Ok(entries) = std::fs::read_dir(root) else {
             continue;
         };
-        let mut products: Vec<PathBuf> = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .collect();
-        products.sort();
-        for product in products.into_iter().rev().take(MAX_JETBRAINS_PRODUCTS) {
-            let path = product.join("options").join(JETBRAINS_SSH_CONFIGS);
-            let Ok(bytes) = read_limited(&path) else {
-                continue;
-            };
-            let Ok(text) = String::from_utf8(bytes) else {
-                continue;
-            };
-            files.push(ImportFile {
-                name: JETBRAINS_SSH_CONFIGS.to_string(),
-                path: path.display().to_string(),
-                text,
-            });
+        for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+            if path.is_dir() && !products.contains(&path) {
+                products.push(path);
+            }
         }
+    }
+    products.sort_by(|left, right| {
+        version_key(right)
+            .cmp(&version_key(left))
+            .then_with(|| left.cmp(right))
+    });
+    let mut files = Vec::new();
+    for product in products.into_iter().take(MAX_JETBRAINS_PRODUCTS) {
+        let path = product.join("options").join(JETBRAINS_SSH_CONFIGS);
+        let Ok(bytes) = read_limited(&path) else {
+            continue;
+        };
+        let Ok(text) = String::from_utf8(bytes) else {
+            continue;
+        };
+        files.push(ImportFile {
+            name: JETBRAINS_SSH_CONFIGS.to_string(),
+            path: path.display().to_string(),
+            text,
+        });
     }
     files
 }
@@ -299,7 +333,7 @@ mod tests {
         std::fs::write(workspace.join(DBEAVER_CREDENTIALS), [1u8, 2, 3]).unwrap();
         let found = detect_dbeaver_in(&candidates).unwrap().unwrap();
         assert_eq!(found.data_sources, "{\"connections\":{}}");
-        assert_eq!(found.credentials, Some(vec![1, 2, 3]));
+        assert_eq!(found.credentials.as_deref(), Some("AQID"));
         assert!(found
             .data_sources_path
             .ends_with(".dbeaver/data-sources.json"));
@@ -316,6 +350,20 @@ mod tests {
         std::fs::write(workspace.join("secrets.txt"), "x").unwrap();
         assert!(load_dbeaver_workspace(&workspace.join("secrets.txt")).is_err());
         assert!(load_dbeaver_workspace(&workspace.join("missing/data-sources.json")).is_err());
+        let second = workspace.join("data-sources-2.json");
+        std::fs::write(&second, "{\"connections\":{}}").unwrap();
+        assert_eq!(
+            load_dbeaver_workspace(&second).unwrap().data_sources,
+            "{\"connections\":{}}"
+        );
+        for name in [
+            "data-sources-.json",
+            "data-sources-a/b.json",
+            "data-sources.txt",
+        ] {
+            assert!(!is_dbeaver_data_sources(name), "{name}");
+        }
+        assert!(is_dbeaver_data_sources("data-sources-team_1.json"));
         std::fs::remove_dir_all(home).unwrap();
     }
 
@@ -344,6 +392,23 @@ mod tests {
         std::fs::write(options.join("other.xml"), "<secret/>").unwrap();
         let found = find_jetbrains_ssh_configs(&roots);
         assert_eq!(found.len(), 1);
+        for (product, body) in [
+            ("DataGrip2024.2", "<v2024-2/>"),
+            ("DataGrip2024.10", "<v2024-10/>"),
+            ("IntelliJIdea2023.3", "<v2023-3/>"),
+        ] {
+            let dir = home.join(".config/JetBrains").join(product).join("options");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(JETBRAINS_SSH_CONFIGS), body).unwrap();
+        }
+        let ordered: Vec<String> = find_jetbrains_ssh_configs(&roots)
+            .into_iter()
+            .map(|file| file.text)
+            .collect();
+        assert_eq!(
+            ordered,
+            vec!["<v2024-10/>", "<v2024-2/>", "<application/>", "<v2023-3/>"]
+        );
         assert_eq!(found[0].name, JETBRAINS_SSH_CONFIGS);
         assert_eq!(found[0].text, "<application/>");
         std::fs::remove_dir_all(home).unwrap();

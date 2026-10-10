@@ -5,6 +5,7 @@ export interface CloudTarget {
   user: string;
   password: string | null;
   warnings: string[];
+  credentialsMissing: boolean;
   skipReason: string | null;
 }
 
@@ -25,7 +26,14 @@ function query(entries: Array<[string, string]>): string {
 }
 
 function skip(reason: string): CloudTarget {
-  return { connectionString: "", user: "", password: null, warnings: [], skipReason: reason };
+  return {
+    connectionString: "",
+    user: "",
+    password: null,
+    warnings: [],
+    credentialsMissing: false,
+    skipReason: reason,
+  };
 }
 
 function awsRegion(connection: ExternalConnection): string {
@@ -39,12 +47,13 @@ function awsRegion(connection: ExternalConnection): string {
 function awsCredentials(connection: ExternalConnection, warnings: string[]) {
   const profile = param(connection, "ProfileName", "profile", "AwsProfile");
   const user = connection.user || param(connection, "AccessKeyId", "UID");
-  if (user && connection.password) return { user, password: connection.password, profile };
+  if (user && connection.password)
+    return { user, password: connection.password, profile, missing: false };
   if (!profile)
     warnings.push(
       "Anmeldung ergänzen: Access Key oder AWS-Profil fehlt, sonst gilt die Standard-Anmeldekette.",
     );
-  return { user: "", password: null, profile };
+  return { user: "", password: null, profile, missing: !profile };
 }
 
 function snowflake(connection: ExternalConnection): CloudTarget {
@@ -70,6 +79,7 @@ function snowflake(connection: ExternalConnection): CloudTarget {
     warnings: [
       "Anmeldung ergänzen: Snowflake nutzt Key-Pair, Programmatic Access Token oder OAuth, Passwörter werden nicht übernommen.",
     ],
+    credentialsMissing: true,
     skipReason: null,
   };
 }
@@ -97,6 +107,7 @@ function bigquery(connection: ExternalConnection): CloudTarget {
     user: "",
     password: null,
     warnings,
+    credentialsMissing: !keyFile,
     skipReason: null,
   };
 }
@@ -119,13 +130,40 @@ function athena(connection: ExternalConnection): CloudTarget {
     user: credentials.user,
     password: credentials.password,
     warnings,
+    credentialsMissing: credentials.missing,
+    skipReason: null,
+  };
+}
+
+const LOCAL_REGION = "us-east-1";
+
+function localEndpoint(connection: ExternalConnection): string {
+  const host = connection.host.trim().replace(/^https?:\/\//i, "");
+  if (!host || /amazonaws\.com$/i.test(host) || AWS_REGION.test(host)) return "";
+  const scheme = param(connection, "ssl", "tls").toLowerCase() === "true" ? "https" : "http";
+  const address = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `${scheme}://${address}:${connection.port ?? 8000}`;
+}
+
+function dynamodbLocal(connection: ExternalConnection, endpoint: string): CloudTarget {
+  const user = connection.user || "local";
+  const password = connection.user && connection.password ? connection.password : "local";
+  return {
+    connectionString: `dynamodb://${encodeURIComponent(user)}@${LOCAL_REGION}${query([["endpoint", endpoint]])}`,
+    user,
+    password,
+    warnings: [],
+    credentialsMissing: false,
     skipReason: null,
   };
 }
 
 function dynamodb(connection: ExternalConnection): CloudTarget {
   const region = awsRegion(connection);
-  const endpoint = param(connection, "endpoint", "Endpoint");
+  const configured = param(connection, "endpoint", "Endpoint");
+  const local = !region && !configured ? localEndpoint(connection) : "";
+  const endpoint = configured || local;
+  if (local) return dynamodbLocal(connection, local);
   if (!region) return skip("AWS-Region für DynamoDB fehlt.");
   const warnings: string[] = [];
   const credentials = awsCredentials(connection, warnings);
@@ -139,6 +177,7 @@ function dynamodb(connection: ExternalConnection): CloudTarget {
     user: credentials.user,
     password: credentials.password,
     warnings,
+    credentialsMissing: credentials.missing,
     skipReason: null,
   };
 }

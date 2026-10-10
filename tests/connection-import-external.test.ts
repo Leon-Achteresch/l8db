@@ -1095,3 +1095,167 @@ test("cloud families over SSH and generic JDBC drivers stay skipped", async () =
   ])
     expect(dataGrip(ref, url).skipReason).toContain("Nicht unterstützter Typ");
 });
+
+function dbeaverOne(provider: string, driver: string, configuration: Record<string, unknown>) {
+  return parseDbeaverConfig(
+    JSON.stringify({ connections: { one: { provider, driver, name: "one", configuration } } }),
+    null,
+  ).then((parsed) => buildExternalCandidates(parsed.connections, [])[0]);
+}
+
+const JUMP = { ssh_tunnel: { type: "TUNNEL", enabled: true, properties: { host: "jump" } } };
+
+test("SSH remote port follows the secure ClickHouse default", async () => {
+  const candidate = await dbeaverOne("clickhouse", "com_clickhouse", {
+    url: "jdbc:clickhouse:https://ch.internal/db",
+    user: "u",
+    handlers: JUMP,
+  });
+  expect(candidate.profile?.connectionString).toBe("clickhouse://u@ch.internal:8443/db?secure=1");
+  expect(candidate.profile?.ssh?.remotePort).toBe(8443);
+});
+
+test("HTTP TLS families without a port use the adapter's secure default", async () => {
+  const elastic = await dbeaverOne("elasticsearch", "elasticsearch", {
+    url: "jdbc:es://https://search.internal",
+    user: "elastic",
+    handlers: JUMP,
+  });
+  expect(elastic.profile?.connectionString).toBe(
+    "elasticsearch://elastic@search.internal?ssl=true",
+  );
+  expect(elastic.profile?.ssh?.remotePort).toBe(443);
+  const influx = dataGrip("influxdb", "jdbc:influxdb:https://influx.internal/metrics");
+  expect(influx.profile?.connectionString).toBe("influxdb://influx.internal/metrics?ssl=true");
+  const plain = dataGrip("elasticsearch", "jdbc:es://search.internal", "elastic");
+  expect(plain.profile?.connectionString).toBe("elasticsearch://elastic@search.internal:9200");
+});
+
+test("keeps sslmode for Cassandra and maps TLS for MongoDB and Redis", async () => {
+  const cassandra = dataGrip("cassandra", "jdbc:cassandra://c1:9042/ks?sslmode=verify-full", "u");
+  expect(new URL(cassandra.profile?.connectionString ?? "").searchParams.get("sslmode")).toBe(
+    "verify-full",
+  );
+  const mongo = await dbeaverOne("mongodb", "mongodb", {
+    host: "m1",
+    database: "app",
+    user: "u",
+    handlers: { mongo_ssl: { type: "CONFIG", enabled: true, properties: { sslMode: "require" } } },
+  });
+  const mongoUrl = new URL(mongo.profile?.connectionString ?? "");
+  expect(mongoUrl.searchParams.get("tls")).toBe("true");
+  expect(mongoUrl.searchParams.get("tlsAllowInvalidCertificates")).toBe("true");
+  expect(mongoUrl.searchParams.has("sslmode")).toBe(false);
+  const redis = await parseNavicatExport(
+    `<Connections><Connection ConnectionName="r" ConnType="REDIS" Host="cache" Port="6380" SSL="true"/></Connections>`,
+  );
+  expect(buildExternalCandidates(redis.connections, [])[0].profile?.connectionString).toBe(
+    "rediss://cache:6380",
+  );
+});
+
+test("first DataGrip SSH config wins when ids repeat", () => {
+  const config = (host: string) =>
+    `<application><configs><sshConfig authType="PASSWORD" host="${host}" id="cfg-1" username="ops"/></configs></application>`;
+  const result = parseDataGripConfig([
+    { name: "dataSources.xml", text: DATAGRIP_SHARED },
+    { name: "dataSources.local.xml", text: DATAGRIP_LOCAL.replace("ssh-1", "cfg-1") },
+    { name: "sshConfigs.xml", text: config("newest") },
+    { name: "sshConfigs.xml", text: config("older") },
+  ]);
+  const ssh = result.connections.find((entry) => entry.name === "mysql via ssh")?.ssh;
+  expect(ssh?.host).toBe("newest");
+});
+
+test("maps disabled certificate verification on HTTP TLS families", async () => {
+  const elastic = dataGrip(
+    "elasticsearch",
+    "jdbc:es://https://search.internal:9200?verify_ssl=false",
+    "elastic",
+  );
+  const url = new URL(elastic.profile?.connectionString ?? "");
+  expect(url.searchParams.get("ssl")).toBe("true");
+  expect(url.searchParams.get("insecure")).toBe("true");
+  expect(url.searchParams.has("verify_ssl")).toBe(false);
+  expect(elastic.profile?.sslMode).toBe("require");
+  expect(elastic.warnings.join(" ")).toContain("Zertifikatsprüfung ist aus");
+  const handler = await dbeaverOne("elasticsearch", "elasticsearch", {
+    host: "search.internal",
+    port: "9200",
+    user: "elastic",
+    handlers: {
+      es_ssl: { type: "CONFIG", enabled: true, properties: { "ssl.verify.server": "false" } },
+    },
+  });
+  expect(new URL(handler.profile?.connectionString ?? "").searchParams.get("insecure")).toBe(
+    "true",
+  );
+  const verified = dataGrip("elasticsearch", "jdbc:es://https://search.internal:9200", "e");
+  expect(verified.profile?.connectionString).not.toContain("insecure");
+  expect(verified.profile?.sslMode).toBe("verify-full");
+  const clickhouse = dataGrip(
+    "clickhouse",
+    "jdbc:clickhouse:https://ch.internal:8443/db?skip_verify=true",
+    "u",
+  );
+  expect(clickhouse.profile?.connectionString).toBe("clickhouse://u@ch.internal:8443/db?secure=1");
+  expect(clickhouse.warnings.join(" ")).toContain("Zertifikatsprüfung war in der Quelle aus");
+});
+
+test("cloud duplicate keys include profile, workgroup, endpoint and catalog", () => {
+  const url = "jdbc:awsathena://AwsRegion=eu-central-1;Workgroup=analytics;ProfileName=prod";
+  const candidate = dataGrip("athena", url);
+  const sameUrl = candidate.profile?.connectionString ?? "";
+  const same = buildExternalCandidates(
+    parseDataGripConfig([
+      {
+        name: "dataSources.xml",
+        text: `<project><data-source name="x" uuid="u1"><driver-ref>athena</driver-ref><jdbc-url>${url}</jdbc-url></data-source></project>`,
+      },
+    ]).connections,
+    [existing(sameUrl, "athena")],
+  )[0];
+  expect(same.duplicateOf?.id).toBe("existing-1");
+  for (const other of [
+    sameUrl.replace("workgroup=analytics", "workgroup=etl"),
+    sameUrl.replace("profile=prod", "profile=dev"),
+    `${sameUrl}&endpoint=http%3A%2F%2Flocalhost%3A4566`,
+    sameUrl.replace("/AwsDataCatalog", "/OtherCatalog"),
+  ]) {
+    const result = buildExternalCandidates(
+      parseDataGripConfig([
+        {
+          name: "dataSources.xml",
+          text: `<project><data-source name="x" uuid="u1"><driver-ref>athena</driver-ref><jdbc-url>${url}</jdbc-url></data-source></project>`,
+        },
+      ]).connections,
+      [existing(other, "athena")],
+    )[0];
+    expect(result.duplicateOf).toBeNull();
+  }
+});
+
+test("maps DynamoDB Local host and port to an endpoint with a default region", async () => {
+  const local = await dbeaverOne("dynamodb", "dynamodb", { host: "localhost", port: "8000" });
+  expect(local.skipReason).toBeNull();
+  expect(local.profile?.connectionString).toBe(
+    "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000",
+  );
+  expect(local.password).toBe("local");
+  expect(local.missingPassword).toBe(false);
+  const noHost = await dbeaverOne("dynamodb", "dynamodb", {});
+  expect(noHost.skipReason).toContain("Region");
+});
+
+test("cloud credential state comes from the target, not from warning text", () => {
+  const withKey = dataGrip(
+    "bigquery",
+    "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;ProjectId=p;OAuthPvtKeyPath=/k.json",
+  );
+  const withoutKey = dataGrip(
+    "bigquery",
+    "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;ProjectId=p",
+  );
+  expect(withKey.missingPassword).toBe(false);
+  expect(withoutKey.missingPassword).toBe(true);
+});

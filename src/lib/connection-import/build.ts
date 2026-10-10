@@ -42,7 +42,26 @@ const HTTP_TLS_KINDS: DatabaseKind[] = ["clickhouse", "elasticsearch", "influxdb
 
 const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];
 
-const SSL_PARAM_KINDS: DatabaseKind[] = ["postgres", "mysql", "mssql"];
+const SSL_PARAM_KINDS: DatabaseKind[] = ["postgres", "mysql", "mssql", "cassandra"];
+
+const INSECURE_KEYS = [
+  "insecure",
+  "tls_insecure",
+  "skip_verify",
+  "sslinsecure",
+  "trustallcertificates",
+];
+
+const VERIFY_KEYS = [
+  "verify",
+  "ssl_verify",
+  "sslverify",
+  "verify_ssl",
+  "verifyservercertificate",
+  "verify_server_certificate",
+  "sslverification",
+  "ssl.verify.server",
+];
 
 const SECRET_LIKE =
   /pass(word|phrase)?|pwd|secret|token|credential|api[_-]?key|private[_-]?key|access[_-]?key/i;
@@ -75,7 +94,13 @@ interface PreparedParams {
   params: Array<[string, string]>;
   sslMode: SslMode;
   stripped: string[];
+  secure: boolean | null;
+  warnings: string[];
 }
+
+const SECURE_MODES: SslMode[] = ["require", "verify-ca", "verify-full"];
+
+const CLOUD_KEY_PARAMS = ["profile", "workgroup", "endpoint", "catalog"];
 
 function flag(value: string): boolean | null {
   const normalized = value.trim().toLowerCase();
@@ -171,7 +196,15 @@ export function prepareParams(connection: ExternalConnection): PreparedParams {
   const sslMode = explicit ?? connection.sslMode ?? derived ?? "prefer";
   if (SSL_PARAM_KINDS.includes(kind)) params.push(["sslmode", sslMode]);
   if (HTTP_TLS_KINDS.includes(kind)) return httpTlsParams(kind, params, sslMode, stripped);
-  return { params, sslMode, stripped };
+  const secure = SECURE_MODES.includes(sslMode) ? true : sslMode === "disable" ? false : null;
+  const warnings: string[] = [];
+  if (kind === "mongodb" && secure && !params.some(([key]) => /^(tls|ssl)$/i.test(key))) {
+    params.push(["tls", "true"]);
+    if (sslMode === "require") params.push(["tlsAllowInvalidCertificates", "true"]);
+  }
+  if (kind === "redis" && secure && sslMode === "require")
+    warnings.push("Zertifikatsprüfung war in der Quelle aus, l8db prüft das Zertifikat.");
+  return { params, sslMode, stripped, secure, warnings };
 }
 
 const TLS_KEYS = ["ssl", "secure", "tls", "usessl"];
@@ -182,23 +215,62 @@ function httpTlsParams(
   sslMode: SslMode,
   stripped: string[],
 ): PreparedParams {
-  const kept = params.filter(([key]) => !TLS_KEYS.includes(key.toLowerCase()));
-  const flags = params
-    .filter(([key]) => TLS_KEYS.includes(key.toLowerCase()))
-    .map(([, value]) => flag(value));
+  const keyOf = (key: string) => key.toLowerCase();
+  const kept = params.filter(
+    ([key]) =>
+      !TLS_KEYS.includes(keyOf(key)) &&
+      !INSECURE_KEYS.includes(keyOf(key)) &&
+      !VERIFY_KEYS.includes(keyOf(key)),
+  );
+  const values = (keys: string[]) =>
+    params.filter(([key]) => keys.includes(keyOf(key))).map(([, value]) => flag(value));
+  const flags = values(TLS_KEYS);
   const secure =
-    flags.includes(true) || !["disable", "prefer"].includes(sslMode)
+    flags.includes(true) || SECURE_MODES.includes(sslMode)
       ? true
-      : flags.includes(false)
+      : flags.includes(false) || sslMode === "disable"
         ? false
         : null;
+  const verificationOff =
+    Boolean(secure) &&
+    (sslMode === "require" ||
+      values(INSECURE_KEYS).includes(true) ||
+      values(VERIFY_KEYS).includes(false));
+  const warnings: string[] = [];
   if (secure !== null)
     kept.push(kind === "clickhouse" ? ["secure", secure ? "1" : "0"] : ["ssl", String(secure)]);
+  if (verificationOff && kind === "clickhouse")
+    warnings.push(
+      "Zertifikatsprüfung war in der Quelle aus, l8db prüft das ClickHouse-Zertifikat.",
+    );
+  else if (verificationOff) {
+    kept.push(["insecure", "true"]);
+    warnings.push("Zertifikatsprüfung ist aus, wie in der Quelle eingestellt.");
+  }
   return {
     params: kept,
-    sslMode: secure ? (sslMode === "prefer" ? "require" : sslMode) : sslMode,
+    sslMode: !secure
+      ? sslMode
+      : verificationOff
+        ? "require"
+        : sslMode === "prefer"
+          ? "verify-full"
+          : sslMode,
     stripped,
+    secure,
+    warnings,
   };
+}
+
+export function defaultPort(kind: DatabaseKind, secure: boolean | null): number | null {
+  if (kind === "clickhouse") return secure ? 8443 : 8123;
+  if (secure && HTTP_TLS_KINDS.includes(kind)) return null;
+  return DEFAULT_PORTS[kind] ?? null;
+}
+
+function remotePortOf(connection: ExternalConnection, secure: boolean | null): number {
+  const kind = connection.kind as DatabaseKind;
+  return connection.port ?? defaultPort(kind, secure) ?? (secure ? 443 : 0);
 }
 
 function effectiveUser(connection: ExternalConnection): string {
@@ -228,6 +300,7 @@ function oracleDescriptor(connection: ExternalConnection, port: number): string 
 export function externalConnectionString(
   connection: ExternalConnection,
   params: Array<[string, string]> = connection.params,
+  secure: boolean | null = null,
 ): string {
   const kind = connection.kind as DatabaseKind;
   if (FILE_KINDS.includes(kind)) return connection.database.trim();
@@ -236,13 +309,13 @@ export function externalConnectionString(
       ? "mongodb+srv"
       : kind === "elasticsearch" && connection.product === "OpenSearch"
         ? "opensearch"
-        : SCHEMES[kind];
+        : kind === "redis" && secure
+          ? "rediss"
+          : SCHEMES[kind];
   const user = effectiveUser(connection);
   const passwordOnly = !user && Boolean(connection.password) && kind === "redis";
   const auth = user ? `${encodeURIComponent(user)}@` : passwordOnly ? "@" : "";
-  const secureClickhouse =
-    kind === "clickhouse" && params.some(([key, value]) => key === "secure" && value === "1");
-  const port = connection.port ?? (secureClickhouse ? 8443 : (DEFAULT_PORTS[kind] ?? null));
+  const port = connection.port ?? defaultPort(kind, secure);
   const portPart = port && !connection.srv ? `:${port}` : "";
   const query = new URLSearchParams(params);
   let path = connection.database ? `/${encodeURIComponent(connection.database)}` : "";
@@ -254,7 +327,11 @@ export function externalConnectionString(
   return `${scheme}://${auth}${hostForUrl(connection.host)}${portPart}${path}${search ? `?${search}` : ""}`;
 }
 
-function sshProfile(connection: ExternalConnection, warnings: string[]): ExportedSsh | null {
+function sshProfile(
+  connection: ExternalConnection,
+  warnings: string[],
+  secure: boolean | null,
+): ExportedSsh | null {
   const ssh = connection.ssh;
   if (!ssh) return null;
   const missing: string[] = [];
@@ -269,7 +346,7 @@ function sshProfile(connection: ExternalConnection, warnings: string[]): Exporte
     auth: ssh.auth,
     keyFile: ssh.keyFile,
     remoteHost: connection.host.replace(/^\[|\]$/g, ""),
-    remotePort: connection.port ?? DEFAULT_PORTS[connection.kind as DatabaseKind] ?? 0,
+    remotePort: remotePortOf(connection, secure),
   };
 }
 
@@ -325,18 +402,26 @@ export function endpointKey(
       : null;
   try {
     const url = new URL(value);
-    const port = url.port || String(DEFAULT_PORTS[kind] ?? "");
+    const secure = ["secure", "ssl", "tls"].some((key) =>
+      ["1", "true", "yes"].includes((url.searchParams.get(key) ?? "").toLowerCase()),
+    );
+    const port = url.port || String(defaultPort(kind, secure) ?? (secure ? 443 : ""));
     const database =
       decodeURIComponent(url.pathname.replace(/^\//, "")) ||
       url.searchParams.get("connect_string") ||
       "";
-    return [
+    const parts = [
       url.hostname.replace(/^\[|\]$/g, "").toLowerCase(),
       port,
       database,
       decodeURIComponent(url.username),
       network,
-    ].join("|");
+    ];
+    if (CLOUD_KINDS.includes(kind))
+      parts.push(
+        CLOUD_KEY_PARAMS.map((key) => `${key}=${url.searchParams.get(key) ?? ""}`).join(","),
+      );
+    return parts.join("|");
   } catch {
     return null;
   }
@@ -369,11 +454,12 @@ function toCandidate(
     product: connection.product || connection.driver || "unbekannt",
     kind: connection.kind,
   };
+  const sourceSkip = skipReasonOf(connection);
   const cloud =
-    connection.kind && CLOUD_KINDS.includes(connection.kind) && !skipReasonOf(connection)
+    connection.kind && CLOUD_KINDS.includes(connection.kind) && !sourceSkip
       ? cloudTarget(connection)
       : null;
-  const skipReason = skipReasonOf(connection) ?? cloud?.skipReason ?? null;
+  const skipReason = sourceSkip ?? cloud?.skipReason ?? null;
   if (skipReason)
     return {
       ...base,
@@ -394,7 +480,7 @@ function toCandidate(
   const offered = cloud ? cloud.password : connection.password;
   const password = !passwordless && offered && (user || kind === "redis") ? offered : null;
   const missingPassword = cloud
-    ? warnings.some((warning) => warning.startsWith("Anmeldung ergänzen"))
+    ? cloud.credentialsMissing
     : !passwordless && Boolean(user) && !password;
   if (missingPassword && !cloud)
     warnings.push(connection.passwordHint ?? "Passwort fehlt, bitte nach dem Import ergänzen.");
@@ -402,20 +488,21 @@ function toCandidate(
     warnings.push("Dateipfad ist relativ oder enthält Platzhalter, bitte prüfen.");
   if (!passwordless && !connection.user && ["postgres", "mysql", "mssql", "oracle"].includes(kind))
     warnings.push("Benutzer fehlt.");
-  const prepared =
+  const prepared: PreparedParams =
     FILE_KINDS.includes(kind) || cloud
-      ? { params: [], sslMode: "prefer" as SslMode, stripped: [] }
+      ? { params: [], sslMode: "prefer", stripped: [], secure: null, warnings: [] }
       : prepareParams(connection);
+  warnings.push(...prepared.warnings);
   if (prepared.stripped.length)
     warnings.push(
       `Geheime Parameter nicht übernommen, bitte im Profil ergänzen: ${prepared.stripped.join(", ")}.`,
     );
-  const ssh = sshProfile(connection, warnings);
+  const ssh = sshProfile(connection, warnings, prepared.secure);
   const proxy = connection.proxy ? { ...connection.proxy } : null;
   if (proxy?.username && !connection.proxySecret) warnings.push("Proxy-Passwort fehlt.");
   const connectionString = cloud
     ? cloud.connectionString
-    : externalConnectionString(connection, prepared.params);
+    : externalConnectionString(connection, prepared.params, prepared.secure);
   const endpoint = endpointKey(kind, connectionString, ssh, proxy) ?? "";
   const profile: ExportedConnection = {
     id: createConnectionId(),
