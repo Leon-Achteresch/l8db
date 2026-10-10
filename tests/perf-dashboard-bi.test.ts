@@ -290,3 +290,28 @@ test("subscript checks on ODBC grow linearly with SQL size and keep the cache bo
   expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(8);
   expect(cached).toBeLessThanOrEqual(64);
 });
+
+test("ambiguous spaced brackets on ODBC stay linear", async () => {
+  const build = (count: number) =>
+    `SELECT ${Array.from({ length: count }, (_, i) => (i % 2 ? `x${i} [it's ${i}]` : `d${i} ['k' || ']']`)).join(", ")}, r FROM orders`;
+  const measure = async (count: number) => {
+    const sql = build(count);
+    let run = 0;
+    let reached = false;
+    const timing = await measureScenario(() => {
+      run++;
+      reached = readsTable(`${sql} -- ${count}-${run}`, "orders", "odbc");
+    }, 15);
+    expect(reached).toBe(true);
+    return { ...timing, sqlBytes: sql.length };
+  };
+  const small = await measure(500);
+  const large = await measure(2000);
+  await reportScenario("dashboard-odbc-spaced-brackets", {
+    small,
+    large,
+    growth: large.medianMs / Math.max(small.medianMs, 0.05),
+  });
+  expect(large.p95Ms).toBeLessThan(80);
+  expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(8);
+});

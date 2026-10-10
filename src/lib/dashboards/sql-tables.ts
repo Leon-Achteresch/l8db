@@ -55,8 +55,6 @@ const BRACKET_KEYWORDS = new Set([
 ]);
 const NAME_END = /[\p{L}\p{M}\p{N}_$\])"`]/u;
 const SPACING = /\/\*[\s\S]*?\*\/|--[^\n]*(?:\n|$)|\s+/g;
-const INDEX_PART = `(?:'(?:[^']|'')*'|"(?:[^"]|"")*"|[-+]?\\d+(?:\\.\\d+)?|\\$\\d+|:[\\p{L}_]\\w*)`;
-const INDEX_VALUE = new RegExp(`^\\s*${INDEX_PART}?\\s*(?::\\s*${INDEX_PART}?\\s*)?\\]`, "u");
 const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
@@ -75,6 +73,46 @@ function skipQuoted(sql: string, start: number, close: string, backslash: boolea
   return sql.length;
 }
 
+function nextQuotes(sql: string, quote: string): Int32Array {
+  const next = new Int32Array(sql.length + 1).fill(-1);
+  for (let i = sql.length - 1; i >= 0; i--) next[i] = sql[i] === quote ? i : next[i + 1];
+  return next;
+}
+
+function bracketedIndexEnd(
+  sql: string,
+  start: number,
+  quotes: { single: Int32Array; double: Int32Array },
+): number {
+  let depth = 1;
+  let i = start + 1;
+  while (i < sql.length) {
+    const c = sql[i];
+    if (c === "]" && --depth === 0) return i + 1;
+    if (c === "[") depth++;
+    if (c === "'" || c === '"') {
+      const next = c === "'" ? quotes.single : quotes.double;
+      let close = next[i + 1];
+      while (close >= 0 && sql[close + 1] === c) close = next[close + 2];
+      if (close < 0) return -1;
+      i = close + 1;
+      continue;
+    }
+    i++;
+  }
+  return -1;
+}
+
+function unbalancedQuotes(text: string): boolean {
+  let single = 0;
+  let double = 0;
+  for (const c of text) {
+    if (c === "'") single++;
+    else if (c === '"') double++;
+  }
+  return single % 2 === 1 || double % 2 === 1;
+}
+
 function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const tokens: TableToken[] = [];
   const hash = kind !== null && HASH_COMMENT_KINDS.has(kind);
@@ -84,6 +122,7 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const brackets = kind === null || BRACKET_KINDS.has(kind);
   const arrays = kind === null || kind === "odbc";
   const escapedIdentifiers = kind !== null && ESCAPED_IDENTIFIER_KINDS.has(kind);
+  let quotes: { single: Int32Array; double: Int32Array } | undefined;
   const subscript = (at: number) => {
     if (!arrays) return false;
     const last = tokens[tokens.length - 1];
@@ -96,7 +135,10 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
     if (!indexable) return false;
     if (NAME_END.test(sql[at - 1] ?? " ")) return true;
     const gap = sql.slice(last.end, at).replace(SPACING, "");
-    return gap === "" && INDEX_VALUE.test(sql.slice(at + 1, at + 257));
+    if (gap !== "") return false;
+    quotes ??= { single: nextQuotes(sql, "'"), double: nextQuotes(sql, '"') };
+    if (bracketedIndexEnd(sql, at, quotes) < 0) return false;
+    return unbalancedQuotes(sql.slice(at + 1, skipQuoted(sql, at, "]", false) - 1));
   };
   let i = 0;
   while (i < sql.length) {
