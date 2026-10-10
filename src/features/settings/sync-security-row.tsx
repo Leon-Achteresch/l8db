@@ -1,3 +1,13 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SyncSecretField } from "@/features/settings/sync-secret-field";
@@ -9,6 +19,11 @@ export function SyncSecurityRow() {
   const encryptAll = useSyncStore((state) => state.encryptAll);
   const passphraseStored = useSyncStore((state) => state.storedSecrets.passphrase);
   const configure = useSyncStore((state) => state.configure);
+  const [askPurge, setAskPurge] = useState(false);
+  const disable = (purge: boolean) => {
+    configure({ includeSecrets: false, purgeRemoteSecrets: purge });
+    setAskPurge(false);
+  };
   return (
     <SettingsRow settingId="sync-secrets" stacked>
       <div className="space-y-3 text-xs">
@@ -29,7 +44,10 @@ export function SyncSecurityRow() {
           <Switch
             checked={includeSecrets}
             disabled={!passphraseStored && !includeSecrets}
-            onCheckedChange={(checked) => configure({ includeSecrets: checked })}
+            onCheckedChange={(checked) => {
+              if (checked) configure({ includeSecrets: true });
+              else setAskPurge(true);
+            }}
             aria-label="Verbindungspasswörter verschlüsselt mitsynchronisieren"
           />
           <span>Verbindungspasswörter verschlüsselt mitsynchronisieren</span>
@@ -45,6 +63,29 @@ export function SyncSecurityRow() {
           </div>
         )}
       </div>
+      <Dialog open={askPurge} onOpenChange={setAskPurge}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Passwörter auch vom Server löschen?</DialogTitle>
+            <DialogDescription>
+              Auf dem Server liegen möglicherweise noch verschlüsselte Verbindungspasswörter. Beim
+              nächsten Hochladen können sie entfernt werden. Andere Rechner mit aktivierter
+              Passwort-Synchronisierung laden sie danach erneut hoch.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAskPurge(false)}>
+              Abbrechen
+            </Button>
+            <Button variant="outline" onClick={() => disable(false)}>
+              Auf dem Server behalten
+            </Button>
+            <Button autoFocus onClick={() => disable(true)}>
+              Vom Server löschen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SettingsRow>
   );
 }

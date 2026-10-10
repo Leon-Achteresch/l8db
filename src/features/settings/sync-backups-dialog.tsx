@@ -21,6 +21,7 @@ const REASONS: Record<string, string> = {
   sync: "vor Synchronisierung",
   download: "vor Herunterladen",
   restore: "vor Wiederherstellung",
+  passwoerter: "vor Passwort-Übernahme",
 };
 
 export function SyncBackupsDialog({ open, onOpenChange }: Props) {
@@ -44,11 +45,14 @@ export function SyncBackupsDialog({ open, onOpenChange }: Props) {
       active = false;
     };
   }, [open]);
-  const restore = async (id: string) => {
+  const restore = async (backup: SyncBackupInfo) => {
     setBusy(true);
     try {
-      const summary = await restoreBackup(id);
-      toast.success(`Sicherung wiederhergestellt (${summaryTotal(summary)} Änderungen)`);
+      const result = await restoreBackup(backup);
+      const changes = result.summary ? summaryTotal(result.summary) : 0;
+      toast.success(
+        `Sicherung wiederhergestellt (${changes} Änderungen, ${result.secrets} Passwörter)`,
+      );
       onOpenChange(false);
     } catch (error) {
       toast.error(errorMessage(error));
@@ -63,7 +67,8 @@ export function SyncBackupsDialog({ open, onOpenChange }: Props) {
           <DialogTitle>Lokale Sicherungen</DialogTitle>
           <DialogDescription>
             Vor jedem Überschreiben lokaler Daten legt l8db eine Sicherung an. Die letzten zehn
-            bleiben erhalten. Passwörter sind nicht enthalten.
+            bleiben erhalten. Überschriebene Passwörter werden mit der Sync-Passphrase verschlüsselt
+            gesichert.
           </DialogDescription>
         </DialogHeader>
         {backups === null ? (
@@ -82,14 +87,16 @@ export function SyncBackupsDialog({ open, onOpenChange }: Props) {
                     {new Date(backup.createdAt).toLocaleString("de-DE")}
                   </div>
                   <div className="text-muted-foreground">
-                    {REASONS[backup.reason] ?? backup.reason} · {Math.ceil(backup.size / 1024)} KB
+                    {REASONS[backup.reason] ?? backup.reason}
+                    {backup.hasSecrets ? " · mit verschlüsselten Passwörtern" : ""} ·{" "}
+                    {Math.ceil(backup.size / 1024)} KB
                   </div>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={busy}
-                  onClick={() => void restore(backup.id)}
+                  onClick={() => void restore(backup)}
                 >
                   Wiederherstellen
                 </Button>

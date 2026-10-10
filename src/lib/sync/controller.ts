@@ -1,5 +1,7 @@
 import {
+  type SyncBackupInfo,
   syncBackupLoad,
+  syncBackupRestoreSecrets,
   syncBackupSave,
   syncBegin,
   syncCancel,
@@ -8,6 +10,7 @@ import {
   syncEnd,
   syncFetch,
   syncMergeSecrets,
+  syncProbe,
   syncStore,
 } from "@/lib/db/sync";
 import {
@@ -45,6 +48,7 @@ export const syncDeps: SyncDeps = {
     begin: syncBegin,
     end: syncEnd,
     fetch: syncFetch,
+    probe: syncProbe,
     store: syncStore,
     cancel: syncCancel,
     encrypt: syncEncrypt,
@@ -72,6 +76,8 @@ export function syncInProgress(): boolean {
 }
 
 function describe(outcome: SyncOutcome, mode: SyncMode): string {
+  if (outcome.status === "conflict" && outcome.secretConflicts > 0)
+    return `${outcome.secretConflicts} Passwort-Konflikt(e) offen – bitte manuell synchronisieren und entscheiden.`;
   if (outcome.status === "conflict")
     return `${outcome.conflicts} Konflikt(e) – bitte manuell synchronisieren.`;
   if (outcome.status === "cancelled") return "Abgebrochen.";
@@ -94,6 +100,7 @@ export async function performSync(
   decider: SyncDecider,
   signal?: AbortSignal,
   deps: SyncDeps = syncDeps,
+  allowDowngrade = false,
 ): Promise<SyncOutcome> {
   if (running) throw new Error("Es läuft bereits eine Synchronisierung.");
   const state = useSyncStore.getState();
@@ -107,7 +114,9 @@ export async function performSync(
       includeHistory: state.includeHistory,
       includeSecrets: state.includeSecrets,
       encryptAll: state.encryptAll,
+      purgeRemoteSecrets: state.purgeRemoteSecrets,
     },
+    allowDowngrade,
     memory: { deviceId: state.deviceId, lastSalt: state.lastSalt, lastMode: state.lastMode },
     decider,
     signal,
@@ -127,6 +136,7 @@ export async function performSync(
             lastContentHash: outcome.contentHash,
             lastSalt: outcome.salt,
             lastMode: outcome.mode,
+            ...(outcome.uploaded && state.purgeRemoteSecrets ? { purgeRemoteSecrets: false } : {}),
           }
         : {}),
       ...(outcome.gistId && outcome.gistId !== state.gistId ? { gistId: outcome.gistId } : {}),
@@ -159,26 +169,37 @@ export function restoreScope(document: SyncDocument, includeHistory: boolean): S
   );
 }
 
-export async function restoreBackup(id: string): Promise<ChangeSummary> {
-  const document = parseDocument(await syncBackupLoad(id));
-  const include = restoreScope(document, useSyncStore.getState().includeHistory);
-  const snapshot = documentSnapshot(document);
-  const current = buildSnapshot(collectLocal(include.has("history")), new Map(), Date.now());
-  const summary = diffSnapshots(current, snapshot);
-  for (const collection of SYNC_COLLECTIONS)
-    if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
-  await syncBackupSave(
-    JSON.stringify(
-      toDocument(current, {
-        deviceId: useSyncStore.getState().deviceId,
-        updatedAt: Date.now(),
-        contentHash: "",
-        secrets: null,
-        include,
-      }),
-    ),
-    "restore",
-  );
-  applyLocal(snapshotCollections(snapshot), include);
-  return summary;
+export async function restoreBackup(
+  backup: Pick<SyncBackupInfo, "id" | "hasData" | "hasSecrets">,
+): Promise<{ summary: ChangeSummary | null; secrets: number }> {
+  let summary: ChangeSummary | null = null;
+  if (backup.hasData) {
+    const document = parseDocument(await syncBackupLoad(backup.id));
+    const include = restoreScope(document, useSyncStore.getState().includeHistory);
+    const snapshot = documentSnapshot(document);
+    const current = buildSnapshot(collectLocal(include.has("history")), new Map(), Date.now());
+    summary = diffSnapshots(current, snapshot);
+    for (const collection of SYNC_COLLECTIONS)
+      if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
+    await syncBackupSave(
+      JSON.stringify(
+        toDocument(current, {
+          deviceId: useSyncStore.getState().deviceId,
+          updatedAt: Date.now(),
+          contentHash: "",
+          secrets: null,
+          include,
+        }),
+      ),
+      "restore",
+    );
+    applyLocal(snapshotCollections(snapshot), include);
+  }
+  let secrets = 0;
+  if (backup.hasSecrets) {
+    const restored = await syncBackupRestoreSecrets(backup.id);
+    forgetCachedSecrets(restored);
+    secrets = restored.length;
+  }
+  return { summary, secrets };
 }

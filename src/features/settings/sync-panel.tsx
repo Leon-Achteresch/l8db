@@ -22,9 +22,15 @@ import { SyncBackupsDialog } from "@/features/settings/sync-backups-dialog";
 import { SyncConflictDialog } from "@/features/settings/sync-conflict-dialog";
 import { SyncPreviewDialog } from "@/features/settings/sync-preview-dialog";
 import { SyncProviderForm } from "@/features/settings/sync-provider-form";
+import { SyncSecretConflictDialog } from "@/features/settings/sync-secret-conflict-dialog";
 import { SyncSecurityRow } from "@/features/settings/sync-security-row";
 import { errorMessage, performSync } from "@/lib/sync/controller";
-import type { SyncDecision, SyncMode } from "@/lib/sync/engine";
+import {
+  type SecretConflict,
+  type SyncDecision,
+  SyncDowngradeError,
+  type SyncMode,
+} from "@/lib/sync/engine";
 import { createInteractiveDecider, type InteractiveDecider } from "@/lib/sync/interactive-decider";
 import type { SyncConflict } from "@/lib/sync/merge";
 import { syncTarget, targetKey, useSyncStore } from "@/lib/sync/store";
@@ -46,11 +52,17 @@ export function SyncPanel() {
   const [conflicts, setConflicts] = useState<SyncConflict[] | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmUpload, setConfirmUpload] = useState(false);
+  const [confirmDowngrade, setConfirmDowngrade] = useState(false);
+  const [secretConflicts, setSecretConflicts] = useState<SecretConflict[] | null>(null);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const interactive = useRef<InteractiveDecider | null>(null);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
-    const decisions = createInteractiveDecider({ conflicts: setConflicts, preview: setPreview });
+    const decisions = createInteractiveDecider({
+      conflicts: setConflicts,
+      preview: setPreview,
+      secrets: setSecretConflicts,
+    });
     interactive.current = decisions;
     return () => {
       controller.current?.abort();
@@ -63,18 +75,25 @@ export function SyncPanel() {
     state.provider === "webdav" &&
     /^http:\/\//i.test(state.webdavUrl.trim()) &&
     !state.webdavAllowInsecure;
-  const run = async (mode: SyncMode) => {
+  const run = async (mode: SyncMode, allowDowngrade = false) => {
     const decisions = interactive.current;
     if (!decisions) return;
     const abort = new AbortController();
     controller.current = abort;
     setRunning(true);
     try {
-      const outcome = await performSync(mode, decisions.decider, abort.signal);
+      const outcome = await performSync(
+        mode,
+        decisions.decider,
+        abort.signal,
+        undefined,
+        allowDowngrade,
+      );
       if (outcome.status === "ok" || outcome.status === "skipped")
         toast.success(useSyncStore.getState().lastMessage ?? "Synchronisiert");
     } catch (error) {
-      if (!(error instanceof Error && error.name === "AbortError"))
+      if (error instanceof SyncDowngradeError) setConfirmDowngrade(true);
+      else if (!(error instanceof Error && error.name === "AbortError"))
         toast.error(errorMessage(error));
     } finally {
       controller.current = null;
@@ -154,6 +173,37 @@ export function SyncPanel() {
       </SettingsRow>
       {state.provider && <SyncSecurityRow />}
       {state.provider && <SyncAutoRow />}
+      <SyncSecretConflictDialog
+        conflicts={secretConflicts}
+        onResolve={(resolutions) => interactive.current?.resolveSecrets(resolutions)}
+      />
+      <Dialog open={confirmDowngrade} onOpenChange={setConfirmDowngrade}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Verschlüsselung auf dem Server aufheben?</DialogTitle>
+            <DialogDescription>
+              Die Sync-Datei auf dem Server ist vollständig verschlüsselt. Dieser Rechner hat die
+              Verschlüsselung nicht aktiviert. Wenn Sie fortfahren, wird die Datei unverschlüsselt
+              überschrieben und Verbindungen, Abfragen und Einstellungen sind auf dem Server lesbar.
+              Empfohlen: zuerst die Verschlüsselung aktivieren.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDowngrade(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmDowngrade(false);
+                void run("upload", true);
+              }}
+            >
+              Unverschlüsselt hochladen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <SyncConflictDialog
         conflicts={conflicts}
         onResolve={(strategy) => interactive.current?.resolveConflicts(strategy)}
