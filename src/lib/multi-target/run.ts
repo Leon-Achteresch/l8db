@@ -29,6 +29,7 @@ export interface MultiTargetRequest {
   timeoutSeconds: number;
   maxRows: number;
   signal?: AbortSignal;
+  onExecuting?: () => void;
 }
 
 export interface MultiTargetExecutor {
@@ -127,6 +128,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
     let cancelAccepted: Promise<boolean> = Promise.resolve(false);
     const supported = options.executor.canCancel?.(target) ?? true;
     const script = (options.scriptStatements ?? 1) > 1;
+    let executing = false;
     const notices = (...entries: (string | false | null)[]) =>
       entries.filter((entry): entry is string => Boolean(entry)).join(" ") || null;
     try {
@@ -150,6 +152,9 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
               timeoutSeconds: options.timeoutSeconds,
               maxRows,
               signal: controller.signal,
+              onExecuting: () => {
+                executing = true;
+              },
             });
           } finally {
             controller.signal.removeEventListener("abort", onAbort);
@@ -182,7 +187,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         options.onUpdate({
           ...emptyRun(target.id, "cancelled"),
           durationMs,
-          notice: notices(script && started > 0 && PARTIAL_SCRIPT_NOTICE),
+          notice: notices(script && executing && PARTIAL_SCRIPT_NOTICE),
         });
         return;
       }
@@ -192,7 +197,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         error: error instanceof Error ? error.message : String(error),
         notice: notices(
           requested && (supported ? FAILED_AFTER_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE),
-          script && PARTIAL_SCRIPT_NOTICE,
+          script && executing && PARTIAL_SCRIPT_NOTICE,
         ),
       });
     } finally {

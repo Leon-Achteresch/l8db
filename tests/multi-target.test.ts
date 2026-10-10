@@ -33,6 +33,7 @@ const {
   UNSUPPORTED_CANCEL_NOTICE,
 } = await import("../src/lib/multi-target/run");
 const { OTHER_FAMILY_REASON } = await import("../src/lib/multi-target/safety");
+const { partialRiskStatements } = await import("../src/lib/multi-target/script");
 const { renderToStaticMarkup } = await import("react-dom/server");
 const { createElement } = await import("react");
 const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
@@ -635,7 +636,10 @@ describe("third review fixes", () => {
       timeoutSeconds: 30,
       maxRows: 10,
       executor: {
-        execute: () => gate.promise,
+        execute: ({ onExecuting }) => {
+          onExecuting?.();
+          return gate.promise;
+        },
         cancel: async () => false,
         canCancel: () => options.supported,
       },
@@ -702,5 +706,47 @@ describe("third review fixes", () => {
     const executor = multiTargetExecutor(false, async () => pg);
     expect(executor.canCancel?.(multiTarget("pg3"))).toBe(true);
     expect(executor.canCancel?.(multiTarget("my3"))).toBe(false);
+  });
+});
+
+describe("fourth review fixes", () => {
+  test("the partial notice needs a statement that actually reached the target", async () => {
+    for (const reached of [false, true]) {
+      const updates = new Map<string, TargetRun>();
+      const target = multiTarget("c6");
+      await startMultiTargetRun({
+        targets: [target],
+        sql: "UPDATE a SET x = 1; UPDATE b SET y = 2",
+        scriptStatements: 2,
+        concurrency: 1,
+        perServerLimit: 1,
+        timeoutSeconds: 30,
+        maxRows: 10,
+        executor: {
+          execute: async ({ onExecuting }) => {
+            if (reached) onExecuting?.();
+            throw new Error(reached ? "ORA-00942" : "Ohne Passwort kann nicht verbunden werden.");
+          },
+          cancel: async () => false,
+        },
+        onUpdate: (run) => updates.set(run.id, run),
+      }).done;
+      expect(updates.get(target.id)?.notice).toBe(reached ? PARTIAL_SCRIPT_NOTICE : null);
+    }
+  });
+
+  test("statements are counted like the target backend runs them", () => {
+    expect(
+      partialRiskStatements(
+        "SET SERVEROUTPUT ON\nUPDATE a SET x = 1;\nUPDATE b SET y = 2;",
+        "oracle",
+      ),
+    ).toBe(2);
+    expect(partialRiskStatements("SET SERVEROUTPUT ON\nUPDATE a SET x = 1;", "oracle")).toBe(1);
+    expect(partialRiskStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", "postgres")).toBe(1);
+    expect(
+      partialRiskStatements("UPDATE a SET x = 1; COMMIT; UPDATE b SET y = 2;", "postgres"),
+    ).toBe(3);
+    expect(partialRiskStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", "mysql")).toBe(2);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 
 const invocations: { command: string; args: Record<string, unknown> }[] = [];
 let pendingQuery: (() => void) | null = null;
-const failing = { savepoint: false, count: false };
+const failing = { savepoint: false, count: false, rollback: false };
 
 interface FakeSession {
   inBlock: boolean;
@@ -62,6 +62,8 @@ function runFakePg(session: FakeSession, sql: string) {
     const [, verb, name] = savepoint;
     if (!session.inBlock)
       throw new Error("ERROR: SAVEPOINT can only be used in transaction blocks (SQLSTATE 25P01)");
+    if (verb.startsWith("ROLLBACK") && failing.rollback)
+      throw new Error("canceling statement due to user request (SQLSTATE 57014)");
     if (verb.startsWith("ROLLBACK")) session.aborted = false;
     else if (session.aborted) fail("current transaction is aborted (SQLSTATE 25P02)");
     else if (verb === "SAVEPOINT") session.savepoints.add(name);
@@ -107,6 +109,9 @@ mock.module("@tauri-apps/api/core", () => ({
     if (command === "execute_in_transaction") {
       const sql = String(args.sql);
       if (failing.savepoint && sql.startsWith("SAVEPOINT")) throw new Error("savepoint rejected");
+      if (failing.rollback && sql.startsWith("ROLLBACK TO"))
+        throw new Error("canceling statement due to user request (SQLSTATE 57014)");
+      if (command === "commit_transaction") return null;
       if (failing.count && sql.startsWith("SELECT COUNT(*)"))
         throw new Error("current transaction is aborted");
       if (!sql.startsWith("SELECT"))
@@ -145,8 +150,15 @@ const { attachPreviewLifecycle, createPreviewLifecycle } = await import(
 );
 const { useServerOutputStore } = await import("../src/lib/server-output");
 const { editorBindParams } = await import("../src/lib/bind-params");
-const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewSavepoint, previewSession } =
-  await import("../src/lib/dml-preview/executor");
+const {
+  dmlPreviewExecutor,
+  EDITOR_SESSION_ABORTED_REASON,
+  OUTSIDE_TRANSACTION_NOTE,
+  previewSavepoint,
+  previewSession,
+  TRANSACTION_ABORTED_REASON,
+} = await import("../src/lib/dml-preview/executor");
+const { finishManagedTransaction } = await import("../src/lib/managed-transactions");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
 type QueryResult = import("../src/lib/db/types").QueryResult;
@@ -1026,7 +1038,8 @@ describe("third review fixes", () => {
     const detachFirst = attachPreviewLifecycle(ref);
     const first = ref.current;
     detachFirst();
-    expect(ref.current).toBeNull();
+    expect(ref.current).toBe(first);
+    expect(first?.disposed()).toBe(true);
     const detachSecond = attachPreviewLifecycle(ref);
     expect(ref.current).not.toBe(first);
     const outcome = await ref.current?.start(
@@ -1045,5 +1058,82 @@ describe("third review fixes", () => {
     expect(await ref.current?.settle(true).decision).toBe(true);
     detachSecond();
     expect(await first?.settle(true).decision).toBe(false);
+  });
+});
+
+describe("fourth review fixes", () => {
+  const connection = {
+    id: "dml-preview-r5",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@r5.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+
+  test("a failed rollback to the savepoint in the editor session is reported, not swallowed", async () => {
+    pg.active = true;
+    pg.editor = fakeSession();
+    runFakePg(pg.editor, "BEGIN");
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    failing.rollback = true;
+    const error = await runDmlPreview(
+      ready("DELETE FROM missing_table WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+    ).catch((reason: unknown) => reason);
+    failing.rollback = false;
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+    pg.active = false;
+    expect(String(error)).toContain(EDITOR_SESSION_ABORTED_REASON);
+  });
+
+  test("a failed rollback inside a managed transaction blocks its commit", async () => {
+    useTransactionStore.setState({
+      transactions: [
+        {
+          txId: "tx-r5",
+          connectionId: connection.id,
+          connectionName: "PG",
+          database: "app",
+          scope: { type: "query" },
+          changes: [],
+          startedAt: 0,
+        },
+      ],
+      panelOpen: false,
+    });
+    failing.count = true;
+    failing.rollback = true;
+    invocations.length = 0;
+    const error = await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+    ).catch((reason: unknown) => reason);
+    failing.count = false;
+    failing.rollback = false;
+    expect(String(error)).toContain(TRANSACTION_ABORTED_REASON);
+    const tx = useTransactionStore.getState().transactions[0];
+    expect(tx.abortedReason).toBe(TRANSACTION_ABORTED_REASON);
+    expect(useTransactionStore.getState().panelOpen).toBe(true);
+    await expect(finishManagedTransaction("tx-r5", true)).rejects.toThrow(
+      TRANSACTION_ABORTED_REASON,
+    );
+    expect(invocations.some((entry) => entry.command === "commit_transaction")).toBe(false);
+    useTransactionStore.setState({ transactions: [] });
+  });
+
+  test("an unmounted tab keeps its disposed lifecycle and adopts nothing stale", async () => {
+    const ref: { current: ReturnType<typeof createPreviewLifecycle> | null } = {
+      current: createPreviewLifecycle(),
+    };
+    const early = ref.current;
+    const detach = attachPreviewLifecycle(ref);
+    expect(ref.current).toBe(early);
+    detach();
+    expect(ref.current).toBe(early);
+    expect(await ref.current?.settle(true).decision).toBe(false);
+    const remount = attachPreviewLifecycle(ref);
+    expect(ref.current).not.toBe(early);
+    expect(ref.current?.disposed()).toBe(false);
+    remount();
   });
 });

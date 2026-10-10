@@ -29,6 +29,7 @@ export interface DatabaseChanges {
 
 export interface ActiveTransaction {
   lastError?: string;
+  abortedReason?: string;
   databaseChanges?: DatabaseChanges;
   txId: string;
   connectionId: string;

@@ -2,7 +2,7 @@ import type { SavedConnection } from "@/lib/connections";
 import { cancelExecution } from "@/lib/db/core";
 import { executeQuery } from "@/lib/db/rows";
 import { executeInTransaction } from "@/lib/db/transactions";
-import { runManagedOperation } from "@/lib/managed-transactions";
+import { markTransactionAborted, runManagedOperation } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
 import { isServerOutputEnabled } from "@/lib/server-output";
 import { expandSessionViews, sessionViewsFor } from "@/lib/session-views";
@@ -15,6 +15,11 @@ export const OUTSIDE_TRANSACTION_NOTE =
   "Die Vorschau läuft außerhalb der offenen Transaktion und sieht deren noch nicht festgeschriebene Änderungen nicht.";
 
 export type PreviewSession = "transaction" | "editor-session" | "pooled";
+
+export const TRANSACTION_ABORTED_REASON =
+  "Die Vorschau konnte ihren Sicherungspunkt nicht zurückrollen. Die Transaktion ist abgebrochen: Bitte zurückrollen. Ein Commit ist nicht mehr möglich.";
+export const EDITOR_SESSION_ABORTED_REASON =
+  "Die Vorschau konnte ihren Sicherungspunkt nicht zurückrollen. Die Transaktion der Editor-Sitzung ist abgebrochen: Bitte ROLLBACK ausführen.";
 
 const AUTOCOMMIT_SAVEPOINT = /can only be used in transaction blocks|25P01/i;
 
@@ -105,8 +110,15 @@ export function dmlPreviewExecutor(
       const statements = savepoint;
       try {
         if (!statements || transactionGone()) return;
-        if (failed) await send(statements.rollback).catch(() => undefined);
-        if (statements.release) await send(statements.release).catch(() => undefined);
+        try {
+          if (failed) await send(statements.rollback);
+          if (statements.release) await send(statements.release);
+        } catch (error) {
+          const reason =
+            session === "transaction" ? TRANSACTION_ABORTED_REASON : EDITOR_SESSION_ABORTED_REASON;
+          if (session === "transaction" && txId) markTransactionAborted(txId, reason);
+          throw new Error(`${reason} (${error instanceof Error ? error.message : String(error)})`);
+        }
       } finally {
         savepoint = null;
         holding = false;

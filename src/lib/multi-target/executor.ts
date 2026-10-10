@@ -32,24 +32,20 @@ export function multiTargetExecutor(
     return pending;
   };
   return {
-    execute: async ({ target, sql, jobId, timeoutSeconds, maxRows, signal }) => {
+    execute: async ({ target, sql, jobId, timeoutSeconds, maxRows, signal, onExecuting }) => {
       const connection = await ready(target.connectionId);
       if (signal?.aborted) throw new MultiTargetCancelled();
-      return executeQuery(
-        connection.kind,
-        targetConnectionString(connection, target),
-        sql,
-        target.database ?? undefined,
-        {
-          jobId,
-          confirmed: true,
-          track: false,
-          pooled: !write,
-          queryTimeout: timeoutSeconds,
-          maxRows,
-          connectionId: connection.id,
-        },
-      );
+      const url = targetConnectionString(connection, target);
+      onExecuting?.();
+      return executeQuery(connection.kind, url, sql, target.database ?? undefined, {
+        jobId,
+        confirmed: true,
+        track: false,
+        pooled: !write,
+        queryTimeout: timeoutSeconds,
+        maxRows,
+        connectionId: connection.id,
+      });
     },
     canCancel: (target) =>
       supports(
