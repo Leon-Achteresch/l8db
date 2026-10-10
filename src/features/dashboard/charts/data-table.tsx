@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { additive, DIM_KEY, DIM2_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
+import {
+  combinable,
+  combineTotal,
+  DIM_KEY,
+  DIM2_KEY,
+  fmtValue,
+  toLabel,
+  toNumber,
+} from "@/lib/dashboards";
 import { accent, type ChartProps, change, dimAttr, dimensionLabels, goodness } from "./chart-utils";
 import { DeltaBadge } from "./delta-badge";
 
@@ -47,7 +55,7 @@ export function DataTable({
   );
   const queried = exact && !exact.complete ? exact : null;
   const totals =
-    options.totals && metrics.length && (queried || (rows.length > 1 && metrics.some(additive)))
+    options.totals && metrics.length && (queried || (rows.length > 1 && metrics.some(combinable)))
       ? Object.fromEntries(
           metrics.map((m) => [
             m.key,
@@ -55,9 +63,10 @@ export function DataTable({
               ? queried.grand && queried.grand[m.key] != null
                 ? toNumber(queried.grand[m.key])
                 : null
-              : additive(m)
-                ? rows.reduce((sum, row) => sum + toNumber(row[m.key]), 0)
-                : null,
+              : combineTotal(
+                  m,
+                  rows.map((row) => toNumber(row[m.key])),
+                ),
           ]),
         )
       : null;

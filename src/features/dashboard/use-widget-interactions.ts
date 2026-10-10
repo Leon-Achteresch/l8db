@@ -68,12 +68,12 @@ function sourceColumn(dataset: Dataset, key: string): string | null {
   return crossField(dataset, key)?.column ?? (fieldLabel(dataset, key) || null);
 }
 
-const RAW_AGGS = new Set(["none", "min", "max"]);
+const COUNTING_AGGS = new Set(["count", "count_distinct"]);
 
 function metricSource(dataset: Dataset, index: number): string | null {
   if (dataset.mode === "expert") return dataset.mapping.metrics[index] ?? null;
   const metric = dataset.simple.metrics.filter((m) => m.agg === "count" || m.column)[index];
-  if (!metric?.column || !RAW_AGGS.has(metric.agg)) return null;
+  if (!metric?.column || COUNTING_AGGS.has(metric.agg)) return null;
   if (metric.column.startsWith(CALC_PREFIX)) return refLabel(metric.column, dataset.simple);
   return parseRef(metric.column, dataset.simple).column;
 }

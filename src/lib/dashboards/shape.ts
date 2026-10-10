@@ -21,6 +21,17 @@ export function additive(metric: { agg?: Agg }): boolean {
   return metric.agg === undefined || metric.agg === "sum" || metric.agg === "count";
 }
 
+export function combinable(metric: { agg?: Agg }): boolean {
+  return additive(metric) || metric.agg === "min" || metric.agg === "max";
+}
+
+export function combineTotal(metric: { agg?: Agg }, values: number[]): number | null {
+  if (!values.length || !combinable(metric)) return null;
+  if (metric.agg === "min") return Math.min(...values);
+  if (metric.agg === "max") return Math.max(...values);
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
 export function datasetShape(ds: Dataset): DatasetShape {
   if (ds.mode === "expert")
     return {

@@ -54,10 +54,13 @@ export function ownCondition(dataset: Dataset, key: string, value: unknown): Cro
 function mentionsTable(sql: string, table: string): boolean {
   const name = table.slice(table.lastIndexOf(".") + 1);
   if (!name) return false;
+  const code = sql
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\b(?:order|group|partition)\s+by\b/gi, " ");
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const quoted = `["\`\\[]?${escaped}["\`\\]]?`;
-  const qualifier = `(?:["\`\\[]?[\\w$]+["\`\\]]?\\.)*`;
-  return new RegExp(`\\b(?:from|join)\\s+${qualifier}${quoted}(?![\\w$])`, "i").test(sql);
+  return new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`, "i").test(code);
 }
 
 function targetRef(dataset: Dataset, field: CrossField): string | null {

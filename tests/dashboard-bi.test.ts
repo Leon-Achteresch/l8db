@@ -584,3 +584,74 @@ describe("Re-Review-Korrekturen", () => {
     expect(renderToStaticMarkup(createElement(DataTable, props))).not.toContain("tabindex");
   });
 });
+
+describe("Letzte Review-Runde", () => {
+  test("Minimum und Maximum werden aus vollständig geladenen Zeilen berechnet", () => {
+    const complete = { complete: true, pending: false, grand: null, rows: null, columns: null };
+    const table = renderToStaticMarkup(
+      createElement(DataTable, {
+        rows: [
+          { dim: "Nord", m0: 4, m1: 9 },
+          { dim: "Süd", m0: 6, m1: 2 },
+        ],
+        shape: {
+          dimension: DIM_KEY,
+          dimension2: null,
+          metrics: [
+            { key: "m0", label: "Summe", agg: "sum" as const },
+            { key: "m1", label: "Max", agg: "max" as const },
+          ],
+          hasDate: false,
+        },
+        options: { ...DEFAULT_OPTIONS },
+        totals: complete,
+      }),
+    );
+    expect(table).toContain(">10<");
+    expect(table).toContain(">9<");
+    const pivot = renderToStaticMarkup(
+      createElement(PivotTable, {
+        rows: [
+          { dim: "Nord", dim2: "A", m0: 3 },
+          { dim: "Nord", dim2: "B", m0: 8 },
+          { dim: "Süd", dim2: "A", m0: 5 },
+        ],
+        shape: {
+          dimension: DIM_KEY,
+          dimension2: DIM2_KEY,
+          metrics: [{ key: "m0", label: "Min", agg: "min" as const }],
+          hasDate: false,
+        },
+        options: { ...DEFAULT_OPTIONS },
+        totals: complete,
+      }),
+    );
+    expect(pivot).toContain("Gesamt");
+    expect(pivot.match(/>–</g)?.length).toBe(1);
+    expect(pivot).toContain('text-right font-medium">5<');
+    expect(pivot).toContain(">8</td><td");
+  });
+
+  test("Kommajoins und Kommentare werden bei Expertenabfragen erkannt", () => {
+    const source = simple("customers", "status");
+    const comma = expert("SELECT c.status, 1 AS umsatz FROM orders o, customers c", "status");
+    expect(applyCrossFilters(comma, [filterFrom(source, "x")], "t")).not.toBe(comma);
+    const literal = expert(
+      "SELECT status, 'customers' AS umsatz FROM orders -- customers",
+      "status",
+    );
+    expect(applyCrossFilters(literal, [filterFrom(source, "x")], "t")).toBe(literal);
+  });
+
+  test("Spaltenwerte, die Listen sind, werden exakt verglichen", () => {
+    const source = simple("orders", "tags");
+    const target = simple("orders", "product");
+    const sql = datasetSql(
+      applyCrossFilters(target, [filterFrom(source, ["a", "b"])], "t"),
+      "postgres",
+      "all",
+    );
+    expect(sql).toContain(`"tags" = '["a","b"]'`);
+    expect(sql).not.toContain(" IN (");
+  });
+});

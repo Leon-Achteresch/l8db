@@ -255,21 +255,38 @@ export function crossLiteral(value: unknown, kind: DatabaseKind | null, temporal
   return quoteString(text, kind ?? undefined);
 }
 
+export function crossListCondition(
+  expr: string,
+  values: unknown[],
+  kind: DatabaseKind | null,
+  temporal = false,
+): string {
+  const present = values.filter((entry) => entry !== null && entry !== undefined);
+  const list = present.length
+    ? `${expr} IN (${present.map((entry) => crossLiteral(entry, kind, temporal)).join(", ")})`
+    : "";
+  const nulls = present.length < values.length ? `${expr} IS NULL` : "";
+  if (list && nulls) return `(${list} OR ${nulls})`;
+  return list || nulls || "1 = 0";
+}
+
+function compileCross(
+  expr: string,
+  cross: CrossCondition,
+  kind: DatabaseKind | null,
+  temporal: boolean,
+): string {
+  return cross.oneOf
+    ? crossListCondition(expr, cross.oneOf, kind, temporal)
+    : crossCondition(expr, cross.value, kind, temporal);
+}
+
 export function crossCondition(
   expr: string,
   value: unknown,
   kind: DatabaseKind | null,
   temporal = false,
 ): string {
-  if (Array.isArray(value)) {
-    const present = value.filter((entry) => entry !== null && entry !== undefined);
-    const list = present.length
-      ? `${expr} IN (${present.map((entry) => crossLiteral(entry, kind, temporal)).join(", ")})`
-      : "";
-    const nulls = present.length < value.length ? `${expr} IS NULL` : "";
-    if (list && nulls) return `(${list} OR ${nulls})`;
-    return list || nulls || "1 = 0";
-  }
   return value === null || value === undefined
     ? `${expr} IS NULL`
     : `${expr} = ${crossLiteral(value, kind, temporal)}`;
@@ -346,9 +363,9 @@ export function buildSimpleSql(
     .filter((part): part is string => part !== null);
   for (const cross of ds[CROSS_WHERE] ?? [])
     where.push(
-      crossCondition(
+      compileCross(
         bucketExpr(refExpr(cross.ref, ds, style), cross.bucket, kind),
-        cross.value,
+        cross,
         kind,
         cross.bucket !== "none",
       ),
@@ -381,7 +398,7 @@ export function buildExpertSql(
   const sql = substituteVariables(ds.sql.trim().replace(/;+\s*$/, ""), scope, kind);
   const style = identifierStyleForKind(kind);
   const conditions = (ds[CROSS_WHERE] ?? []).map((cross) =>
-    crossCondition(`q.${quoteIdentifier(cross.ref, style)}`, cross.value, kind),
+    compileCross(`q.${quoteIdentifier(cross.ref, style)}`, cross, kind, false),
   );
   if (ds.mapping.dateColumn && (range.start || range.end))
     conditions.push(
@@ -497,7 +514,8 @@ export function datasetMarginSql(
   const visible: CrossCondition = {
     ref: dimension.column,
     bucket: dimension.bucket,
-    value: values,
+    value: null,
+    oneOf: values,
   };
   return buildSimpleSql(
     {

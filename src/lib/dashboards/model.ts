@@ -177,6 +177,7 @@ export interface CrossCondition {
   ref: string;
   bucket: TimeBucket;
   value: unknown;
+  oneOf?: unknown[];
 }
 
 export interface SimpleDataset {
