@@ -4,6 +4,7 @@ interface TableToken {
   word: string | null;
   ident: string | null;
   mark: "(" | ")" | "," | "." | "[" | "]" | "number" | null;
+  end: number;
 }
 
 const ENDS_FROM = new Set([
@@ -53,6 +54,8 @@ const BRACKET_KEYWORDS = new Set([
   "else",
 ]);
 const NAME_END = /[\p{L}\p{M}\p{N}_$\])"`]/u;
+const SPACING = /\/\*[\s\S]*?\*\/|--[^\n]*(?:\n|$)|\s+/g;
+const INDEX_START = /^\s*['"\d$:-]/;
 const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
@@ -81,13 +84,18 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const arrays = kind === null || kind === "odbc";
   const escapedIdentifiers = kind !== null && ESCAPED_IDENTIFIER_KINDS.has(kind);
   const subscript = (at: number) => {
-    if (!arrays || !NAME_END.test(sql[at - 1] ?? " ")) return false;
+    if (!arrays) return false;
     const last = tokens[tokens.length - 1];
     if (!last) return false;
-    if (last.mark === ")" || last.mark === "]") return true;
-    if (last.ident === null) return false;
     const field = tokens[tokens.length - 2]?.mark === ".";
-    return field || last.word === null || !BRACKET_KEYWORDS.has(last.word);
+    const indexable =
+      last.mark === ")" ||
+      last.mark === "]" ||
+      (last.ident !== null && (field || last.word === null || !BRACKET_KEYWORDS.has(last.word)));
+    if (!indexable) return false;
+    if (NAME_END.test(sql[at - 1] ?? " ")) return true;
+    const gap = sql.slice(last.end, at).replace(SPACING, "");
+    return gap === "" && INDEX_START.test(sql.slice(at + 1, at + 33));
   };
   let i = 0;
   while (i < sql.length) {
@@ -130,20 +138,20 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
         .slice(i + 1, end - 1)
         .split(close + close)
         .join(close);
-      tokens.push({ word: null, ident: text.toLowerCase(), mark: null });
+      tokens.push({ word: null, ident: text.toLowerCase(), mark: null, end });
       i = end;
     } else if (c === "(" || c === ")" || c === "," || c === "." || c === "[" || c === "]") {
-      tokens.push({ word: null, ident: null, mark: c });
+      tokens.push({ word: null, ident: null, mark: c, end: i + 1 });
       i++;
     } else if (/\d/.test(c)) {
       const length = sql.slice(i, i + 64).match(NUMBER)?.[0].length || 1;
-      tokens.push({ word: null, ident: null, mark: "number" });
+      tokens.push({ word: null, ident: null, mark: "number", end: i + length });
       i += length;
     } else if (WORD_START.test(c)) {
       const start = i++;
       while (i < sql.length && WORD_PART.test(sql[i])) i++;
       const text = sql.slice(start, i).toLowerCase();
-      tokens.push({ word: text, ident: text, mark: null });
+      tokens.push({ word: text, ident: text, mark: null, end: i });
     } else i++;
   }
   return tokens;
