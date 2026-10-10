@@ -201,6 +201,20 @@ test("source table detection stays linear for long expert SQL", async () => {
     sqlBytes: sql.length,
     references: 800,
   });
+  let run = 0;
+  let coldReached = false;
+  const cold = await measureScenario(() => {
+    run++;
+    coldReached =
+      applyCrossFilters({ ...target, sql: `${sql} -- ${run}` }, [filter], "t") !== target;
+  }, 21);
+  await reportScenario("dashboard-expert-table-detection-cold", {
+    ...cold,
+    sqlBytes: sql.length,
+    references: 800,
+  });
   expect(reached).toBe(true);
+  expect(coldReached).toBe(true);
   expect(timing.p95Ms).toBeLessThan(15);
+  expect(cold.p95Ms).toBeLessThan(15);
 });
