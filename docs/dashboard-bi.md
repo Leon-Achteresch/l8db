@@ -52,7 +52,8 @@ before the dashboard's own CSS.
   Snowflake; for ODBC and unknown dialects a bracket directly after a name, a field access, `)` or
   `]` is an array subscript, after a keyword, operator or numeric literal it is a
   bracket identifier, and after whitespace or a comment it is a subscript only when its
-  content starts with a quote, digit, `$`, `:` or `-`), Oracle q-quoted and dollar-quoted literals are ignored).
+  whole content is one index value (string, number, `$n` parameter or `:name`,
+  optionally a `a:b` slice), so aliases like `[1990's Sales]` stay identifiers), Oracle q-quoted and dollar-quoted literals are ignored).
   Tokens are cached for the 64 most recently used statements. List-valued dimension values are
   not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.
