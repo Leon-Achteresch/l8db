@@ -111,7 +111,6 @@ export function useMultiTargetRun() {
                 truncated: false,
                 error: reason,
                 notice: null,
-                partial: null,
                 result: null,
               },
             ]),

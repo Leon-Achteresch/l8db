@@ -1,25 +1,7 @@
-export interface PartialProgress {
-  applied: number;
-  total: number;
-}
-
 export class MultiTargetCancelled extends Error {
-  readonly partial: PartialProgress | null;
-
-  constructor(partial: PartialProgress | null = null) {
+  constructor() {
     super("Abgebrochen.");
     this.name = "MultiTargetCancelled";
-    this.partial = partial;
-  }
-}
-
-export class MultiTargetStatementError extends Error {
-  readonly partial: PartialProgress;
-
-  constructor(message: string, partial: PartialProgress) {
-    super(message);
-    this.name = "MultiTargetStatementError";
-    this.partial = partial;
   }
 }
 

@@ -62,7 +62,6 @@ async function runAll() {
         return RESULTS[index];
       },
       cancel: async () => false,
-      canCancel: () => false,
     },
     onUpdate: (run) => runs.set(run.id, run),
   });
@@ -158,7 +157,6 @@ test("cancel stops new requests immediately and idle runs leave no background wo
         );
       },
       cancel: async () => true,
-      canCancel: () => true,
     },
     onUpdate: () => undefined,
   });

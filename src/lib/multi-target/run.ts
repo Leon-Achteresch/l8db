@@ -1,5 +1,5 @@
 import type { QueryResult } from "@/lib/db/types";
-import { createLimiter, isMultiTargetCancelled, type PartialProgress } from "./limiter";
+import { createLimiter, isMultiTargetCancelled } from "./limiter";
 
 export interface MultiTarget {
   id: string;
@@ -19,7 +19,6 @@ export interface TargetRun {
   truncated: boolean;
   error: string | null;
   notice: string | null;
-  partial: PartialProgress | null;
   result: QueryResult | null;
 }
 
@@ -34,23 +33,20 @@ export interface MultiTargetRequest {
 
 export interface MultiTargetExecutor {
   execute: (request: MultiTargetRequest) => Promise<QueryResult>;
-  cancel: (target: MultiTarget, jobId: string) => Promise<unknown>;
-  canCancel: (target: MultiTarget) => boolean;
-}
-
-export function partialNotice(partial: PartialProgress, status: "cancelled" | "error"): string {
-  return `${status === "cancelled" ? "Abgebrochen" : "Fehler"} nach ${partial.applied} von ${partial.total} Anweisungen; die bereits ausgeführten bleiben bestehen.`;
-}
-
-function partialOf(error: unknown): PartialProgress | null {
-  const partial = (error as { partial?: PartialProgress | null } | null)?.partial;
-  return partial && typeof partial.applied === "number" ? partial : null;
+  cancel: (target: MultiTarget, jobId: string) => Promise<boolean>;
 }
 
 export const LATE_CANCEL_NOTICE =
   "Abbruch kam zu spät: Die Anweisung wurde auf diesem Ziel vollständig ausgeführt.";
-export const UNSUPPORTED_CANCEL_NOTICE =
-  "Dieser Treiber kann laufende Anweisungen nicht abbrechen. Das Ergebnis zeigt den tatsächlichen Ausgang.";
+export const FAILED_AFTER_CANCEL_NOTICE =
+  "Der Abbruch kam zu spät oder wird von diesem Treiber nicht unterstützt. Angezeigt wird der tatsächliche Fehler.";
+
+const CANCELLATION_ERROR =
+  /\b57014\b|canceling statement|cancell?ed by user|query (?:was )?cancell?ed|ORA-01013|vom Server abgebrochen|Abfrage abgebrochen/i;
+
+export function isCancellationError(error: unknown): boolean {
+  return CANCELLATION_ERROR.test(error instanceof Error ? error.message : String(error));
+}
 
 export interface MultiTargetRunOptions {
   targets: MultiTarget[];
@@ -97,7 +93,6 @@ export function emptyRun(id: string, status: TargetStatus = "queued"): TargetRun
     truncated: false,
     error: null,
     notice: null,
-    partial: null,
     result: null,
   };
 }
@@ -123,14 +118,19 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
     controllers.set(target.id, controller);
     const jobId = crypto.randomUUID();
     let started = 0;
-    const supported = options.executor.canCancel(target);
+    let cancelAccepted: Promise<boolean> = Promise.resolve(false);
     try {
       const result = await limiter.run(
         target.connectionId,
         async () => {
           started = performance.now();
           options.onUpdate({ ...emptyRun(target.id, "running") });
-          const onAbort = () => void options.executor.cancel(target, jobId).catch(() => false);
+          const onAbort = () => {
+            cancelAccepted = options.executor.cancel(target, jobId).then(
+              (accepted) => accepted === true,
+              () => false,
+            );
+          };
           controller.signal.addEventListener("abort", onAbort, { once: true });
           try {
             return await options.executor.execute({
@@ -155,36 +155,24 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         rowsAffected: result.rows_affected,
         truncated: Boolean(result.truncated),
         error: null,
-        partial: null,
-        notice: controller.signal.aborted
-          ? supported
-            ? LATE_CANCEL_NOTICE
-            : UNSUPPORTED_CANCEL_NOTICE
-          : null,
+        notice: controller.signal.aborted ? LATE_CANCEL_NOTICE : null,
         result,
       });
     } catch (error) {
       const durationMs = started ? Math.round(performance.now() - started) : null;
-      const partial = partialOf(error);
-      if (isMultiTargetCancelled(error) || (controller.signal.aborted && supported)) {
-        options.onUpdate({
-          ...emptyRun(target.id, "cancelled"),
-          durationMs,
-          partial,
-          notice: partial ? partialNotice(partial, "cancelled") : null,
-        });
+      const requested = controller.signal.aborted;
+      const cancelled =
+        isMultiTargetCancelled(error) ||
+        (requested && ((await cancelAccepted) || isCancellationError(error)));
+      if (cancelled) {
+        options.onUpdate({ ...emptyRun(target.id, "cancelled"), durationMs });
         return;
       }
       options.onUpdate({
         ...emptyRun(target.id, "error"),
         durationMs,
-        partial,
         error: error instanceof Error ? error.message : String(error),
-        notice: partial
-          ? partialNotice(partial, "error")
-          : controller.signal.aborted
-            ? UNSUPPORTED_CANCEL_NOTICE
-            : null,
+        notice: requested ? FAILED_AFTER_CANCEL_NOTICE : null,
       });
     } finally {
       controllers.delete(target.id);

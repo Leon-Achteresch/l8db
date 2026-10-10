@@ -359,7 +359,7 @@ async function executeSnapshotChanges(
   executeOriginal: () => Promise<QueryResult>,
 ): Promise<{ result: QueryResult; changes: Change[] }> {
   const kind = connection.kind;
-  if (!["mysql", "sqlite", "mssql", "oracle"].includes(kind)) {
+  if (kind === "postgres" || !SAVEPOINT_KINDS.includes(kind)) {
     return { result: await executeOriginal(), changes: [] };
   }
   const internal = (sql: string) =>

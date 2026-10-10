@@ -101,10 +101,3 @@ function finished(
     requests,
   };
 }
-
-export function previewReleased(
-  executor: Pick<DmlPreviewExecutor, "holdsTransaction"> | null,
-  settled: Promise<void>,
-): Promise<void> | null {
-  return executor?.holdsTransaction?.() ? settled : null;
-}

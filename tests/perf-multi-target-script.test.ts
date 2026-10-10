@@ -1,26 +1,20 @@
 import { expect, mock, test } from "bun:test";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 
-const sessions = new Map<string, number>();
 let inFlight = 0;
 let peak = 0;
-let sessionPeak = 0;
 let requests = 0;
-const sessionsSeen = new Set<string>();
+const scripts = new Set<string>();
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
     if (command !== "execute_query") return null;
     requests++;
-    const session = String(args.session ?? "");
-    sessionsSeen.add(session);
-    sessions.set(session, (sessions.get(session) ?? 0) + 1);
-    sessionPeak = Math.max(sessionPeak, sessions.get(session) ?? 0);
+    scripts.add(String(args.sql));
     inFlight++;
     peak = Math.max(peak, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 2));
     inFlight--;
-    sessions.set(session, (sessions.get(session) ?? 1) - 1);
     return { columns: [], rows: [], rows_affected: 1, execution_time_ms: 2 };
   },
 }));
@@ -56,7 +50,7 @@ const SCRIPT = Array.from(
   (_, index) => `UPDATE t${index} SET v = v + 1 WHERE id = ${index};`,
 ).join("\n");
 
-test("split Oracle scripts send one bounded, sequential request per statement and session", async () => {
+test("multi-statement Oracle scripts send exactly one request per target", async () => {
   const connections: SavedConnection[] = Array.from({ length: TARGETS }, (_, index) => ({
     id: `ora-${index}`,
     name: `ORA ${index}`,
@@ -70,8 +64,7 @@ test("split Oracle scripts send one bounded, sequential request per statement an
   const runAll = async () => {
     requests = 0;
     peak = 0;
-    sessionPeak = 0;
-    sessionsSeen.clear();
+    scripts.clear();
     runs = new Map();
     await startMultiTargetRun({
       targets: connections.map((entry) => multiTarget(entry.id)),
@@ -85,21 +78,18 @@ test("split Oracle scripts send one bounded, sequential request per statement an
     }).done;
   };
   const timing = await measureScenario(runAll, 5);
-  expect(requests).toBe(TARGETS * STATEMENTS);
-  expect(sessionsSeen.size).toBe(TARGETS);
-  expect(sessionPeak).toBe(1);
+  expect(requests).toBe(TARGETS);
+  expect(scripts.size).toBe(1);
+  expect([...scripts][0]).toBe(SCRIPT);
   expect(peak).toBeLessThanOrEqual(CONCURRENCY);
-  expect([...runs.values()].every((run) => run.status === "done" && run.rowsAffected === 3)).toBe(
-    true,
-  );
+  expect([...runs.values()].every((run) => run.status === "done")).toBe(true);
   expect(timing.p95Ms).toBeLessThan(250);
-  await reportScenario("multi-target-oracle-split", {
+  await reportScenario("multi-target-oracle-script", {
     targets: TARGETS,
     statementsPerTarget: STATEMENTS,
     requestsPerTarget: requests / TARGETS,
     extraRequestsPerTarget: requests / TARGETS - 1,
-    sessions: sessionsSeen.size,
-    peakInFlightPerSession: sessionPeak,
+    baselineRequestsPerTargetBeforeSimplification: STATEMENTS,
     peakInFlight: peak,
     concurrencyLimit: CONCURRENCY,
     simulatedLatencyMsPerRequest: 2,
@@ -129,7 +119,6 @@ test("the merged view is built once per run, not on every target update", async 
         truncated: false,
         error: null,
         notice: null,
-        partial: null,
         result,
       };
     return renderToStaticMarkup(

@@ -26,8 +26,6 @@ export {
   isMultiTargetCancelled,
   type Limiter,
   MultiTargetCancelled,
-  MultiTargetStatementError,
-  type PartialProgress,
 } from "./limiter";
 export { type MergeOutcome, mergeResults, TARGET_COLUMN } from "./merge";
 export {
@@ -41,7 +39,6 @@ export {
   type MultiTargetRequest,
   type MultiTargetRunHandle,
   multiTarget,
-  partialNotice,
   startMultiTargetRun,
   type TargetRun,
   type TargetStatus,
