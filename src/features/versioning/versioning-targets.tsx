@@ -29,8 +29,10 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { control } from "@/lib/versioning/control";
+import { targetStage } from "@/lib/versioning/delivery";
 import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
+import { snapshotTargets } from "@/lib/versioning/rollout-snapshot";
 import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
@@ -69,6 +71,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = targets?.targets.find((entry) => entry.id === editingId);
   const [waveLimit, setWaveLimit] = useState("1");
+  const [snapshot, setSnapshot] = useState(true);
   const [confirmation, setConfirmation] = useState("");
   const selectedConnection = connections.find((entry) => entry.id === connectionId);
   const sourceSchema = [
@@ -178,7 +181,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
     try {
       if (preflight.some((item) => item.error))
         throw new Error("Alle ausgewählten Ziele müssen die Vorprüfung bestehen.");
-      await deployFleet(
+      const snapshots = await deployFleet(
         repo,
         project,
         plans,
@@ -186,9 +189,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
         releaseId,
         workspace.setMessage,
         Number(waveLimit),
+        snapshot,
       );
       workspace.setMessage(
-        "Welle abgeschlossen. Betrieb prüfen und verbleibende Ziele neu planen.",
+        `Welle abgeschlossen${snapshots.length ? ` · ${snapshots.length} ${snapshots.length === 1 ? "Sicherung" : "Sicherungen"} vorher erstellt` : ""}. Betrieb prüfen und verbleibende Ziele neu planen.`,
       );
     } finally {
       setPlans([]);
@@ -836,6 +840,35 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             Nach jeder Welle Anwendung und Betrieb prüfen. Verbleibende Ziele anschließend neu
             planen und ausdrücklich starten.
           </p>
+          {snapshotTargets(
+            project,
+            plans.filter((item) => item.releases.length).map((item) => item.target),
+          ).length > 0 && (
+            <label className="flex items-start gap-2 text-xs leading-relaxed">
+              <input
+                type="checkbox"
+                checked={snapshot}
+                onChange={(event) => setSnapshot(event.target.checked)}
+              />
+              <span>
+                Vorher eine Sicherung jedes Produktivsystems erstellen
+                <span className="block text-[11px] text-muted-foreground">
+                  Verschlüsselt mit pg_dump im Tresor unter Datenbank → Sicherungen. Schlägt sie
+                  fehl, startet der Rollout nicht. Große Datenbanken brauchen entsprechend Zeit und
+                  Platz.
+                </span>
+              </span>
+            </label>
+          )}
+          {project.kind === "oracle" &&
+            plans.some(
+              (item) => item.releases.length && targetStage(item.target) === "production",
+            ) && (
+              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                Für Oracle erstellt l8db keine Sicherung. Vor dem Rollout auf Produktion eine eigene
+                Sicherung anlegen, etwa per RMAN, Flashback oder Export der Packages.
+              </p>
+            )}
           <label className="text-xs leading-relaxed" htmlFor="versioning-deploy-confirmation">
             Release-ID zur Bestätigung eingeben
             <Input
