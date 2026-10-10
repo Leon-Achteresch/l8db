@@ -59,12 +59,28 @@ const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
-interface TableScan {
-  tokens: TableToken[];
-  ambiguous: boolean;
-}
+const cache = new Map<string, TableToken[]>();
 
-const cache = new Map<string, TableScan>();
+const ODBC_DIALECTS: [RegExp, DatabaseKind][] = [
+  [/postgres|psql|redshift/i, "postgres"],
+  [/sql ?server|mssql|freetds|azure sql/i, "mssql"],
+  [/mysql|maria/i, "mysql"],
+  [/sqlite/i, "sqlite"],
+  [/oracle/i, "oracle"],
+  [/clickhouse/i, "clickhouse"],
+  [/snowflake/i, "snowflake"],
+  [/duckdb/i, "duckdb"],
+  [/bigquery|simba google/i, "bigquery"],
+];
+
+export function tableDialect(
+  kind: DatabaseKind | null | undefined,
+  connectionString?: string | null,
+): DatabaseKind | null {
+  if (kind !== "odbc") return kind ?? null;
+  const driver = /(?:^|;)\s*driver\s*=\s*\{?([^};]+)/i.exec(connectionString ?? "")?.[1] ?? "";
+  return ODBC_DIALECTS.find(([pattern]) => pattern.test(driver))?.[1] ?? "odbc";
+}
 
 function skipQuoted(sql: string, start: number, close: string, backslash: boolean): number {
   let i = start + 1;
@@ -85,13 +101,6 @@ function nextQuotes(sql: string, quote: string): Int32Array {
 }
 
 const WORD_CHAR = /[\p{L}\p{M}\p{N}_$]/u;
-const STRING_PREFIX = /[eEnNbBxX]/;
-
-function wordBeforeQuote(sql: string, at: number): boolean {
-  const before = sql[at - 1] ?? "";
-  if (!WORD_CHAR.test(before)) return false;
-  return !(STRING_PREFIX.test(before) && !WORD_CHAR.test(sql[at - 2] ?? ""));
-}
 
 function bracketedIndexEnd(
   sql: string,
@@ -105,7 +114,7 @@ function bracketedIndexEnd(
     if (c === "]" && --depth === 0) return i + 1;
     if (c === "[") depth++;
     if (c === "'" || c === '"') {
-      if (wordBeforeQuote(sql, i)) return -1;
+      if (WORD_CHAR.test(sql[i - 1] ?? "")) return -1;
       const next = c === "'" ? quotes.single : quotes.double;
       let close = next[i + 1];
       while (close >= 0 && sql[close + 1] === c) close = next[close + 2];
@@ -128,8 +137,7 @@ function unbalancedQuotes(text: string): boolean {
   return single % 2 === 1 || double % 2 === 1;
 }
 
-function tokenize(sql: string, kind: DatabaseKind | null, preferIndex: boolean): TableScan {
-  let ambiguous = false;
+function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const tokens: TableToken[] = [];
   const hash = kind !== null && HASH_COMMENT_KINDS.has(kind);
   const doubleQuoteStrings = kind !== null && STRING_DOUBLE_QUOTE_KINDS.has(kind);
@@ -154,10 +162,7 @@ function tokenize(sql: string, kind: DatabaseKind | null, preferIndex: boolean):
     if (gap !== "") return false;
     quotes ??= { single: nextQuotes(sql, "'"), double: nextQuotes(sql, '"') };
     if (bracketedIndexEnd(sql, at, quotes) < 0) return false;
-    if (preferIndex) return true;
-    if (unbalancedQuotes(sql.slice(at + 1, skipQuoted(sql, at, "]", false) - 1))) return true;
-    ambiguous = true;
-    return false;
+    return unbalancedQuotes(sql.slice(at + 1, skipQuoted(sql, at, "]", false) - 1));
   };
   let i = 0;
   while (i < sql.length) {
@@ -216,24 +221,24 @@ function tokenize(sql: string, kind: DatabaseKind | null, preferIndex: boolean):
       tokens.push({ word: text, ident: text, mark: null, end: i });
     } else i++;
   }
-  return { tokens, ambiguous };
+  return tokens;
 }
 
-function scanOf(sql: string, kind: DatabaseKind | null, preferIndex: boolean): TableScan {
-  const key = `${kind ?? ""}\u0000${preferIndex ? "i" : "n"}\u0000${sql}`;
+function tokensOf(sql: string, kind: DatabaseKind | null): TableToken[] {
+  const key = `${kind ?? ""}\u0000${sql}`;
   const cached = cache.get(key);
   if (cached) {
     cache.delete(key);
     cache.set(key, cached);
     return cached;
   }
-  const scan = tokenize(sql, kind, preferIndex);
+  const tokens = tokenize(sql, kind);
   if (cache.size >= CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
-  cache.set(key, scan);
-  return scan;
+  cache.set(key, tokens);
+  return tokens;
 }
 
 export function tableTokenCacheKeys(): string[] {
@@ -243,9 +248,7 @@ export function tableTokenCacheKeys(): string[] {
 export function readsTable(sql: string, table: string, kind: DatabaseKind | null = null): boolean {
   const name = table.slice(table.lastIndexOf(".") + 1).toLowerCase();
   if (!name) return false;
-  const named = scanOf(sql, kind, false);
-  if (tokensRead(named.tokens, name)) return true;
-  return named.ambiguous && tokensRead(scanOf(sql, kind, true).tokens, name);
+  return tokensRead(tokensOf(sql, kind), name);
 }
 
 function tokensRead(tokens: TableToken[], name: string): boolean {
