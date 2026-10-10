@@ -151,7 +151,7 @@ export function useWidgetInteractions({
     setPoint({
       x: point.x - rect.left,
       y: point.y - rect.top,
-      label: clicked.map((p) => toLabel(p.value)).join(" × "),
+      label: picks.map((p) => toLabel(p.value)).join(" × "),
       filtered: picks.every((p) => own.some((f) => f.key === p.key && same(f.value, p.value))),
       canFilter,
       canDrill,

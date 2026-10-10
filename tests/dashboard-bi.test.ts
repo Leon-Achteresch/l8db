@@ -758,3 +758,18 @@ describe("Tabellenerkennung mit Dialekten", () => {
     expect(combineTotal({ agg: "sum" }, [1n, "2", 3])).toBe(6);
   });
 });
+
+describe("Dialektregeln der Tabellenerkennung", () => {
+  test("Kommentare verschachteln nur, wo der Dialekt es tut", () => {
+    expect(readsTable("/* a /* b */ SELECT r FROM customers", "customers", "mysql")).toBe(true);
+    expect(readsTable("/* a /* b */ SELECT r FROM customers */", "customers", "postgres")).toBe(
+      false,
+    );
+  });
+
+  test("Backslash-Escapes, ODBC-Klammern und kombinierende Zeichen", () => {
+    expect(readsTable("SELECT 'it\\'s' t, r FROM orders", "orders", "clickhouse")).toBe(true);
+    expect(readsTable("SELECT r FROM [Order Details]", "Order Details", "odbc")).toBe(true);
+    expect(readsTable("SELECT r FROM käse", "käse")).toBe(true);
+  });
+});
