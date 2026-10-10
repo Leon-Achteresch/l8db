@@ -116,8 +116,9 @@ before the dashboard's own CSS.
 widgets, a 60 × 40 pivot, a theme with a 512 KiB logo, 1,000 selection toggles and the
 query count of exact pivot totals (60 pivots over 12 datasets: 48 distinct queries,
 p95 2 ms to build) and source-table detection in 12.7 KB of expert SQL with 800
-references (cold median 0.9 ms; 89 KB with 10,000 string literals median 3 ms / p95 1.1 ms, cached median 0.08 ms; the earlier regex
-version needed 316 ms). The ODBC subscript path grows linearly (11 KB median 1.8 ms,
+references (cold median 0.9 ms / p95 1.1 ms, cached median 0.08 ms; the earlier regex
+version needed 316 ms). Expert SQL with 10,000 string literals (89 KB) takes median 3 ms
+/ p95 7.6 ms cold. The ODBC subscript path grows linearly (11 KB median 1.8 ms,
 47 KB median 4.3 ms / p95 13.9 ms for 4.2× input) and the token cache stays at 64
 statements.
 Measured on Linux x86_64 (QEMU VM, 8 vCPU, 15 GB RAM, Bun 1.3.10): fan-out median
