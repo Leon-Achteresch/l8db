@@ -10,7 +10,7 @@ import { redactSecrets } from "./editor/redact";
 import { compactTable, schemaOverview } from "./editor/schema-context";
 import { lastResult } from "./last-result";
 
-export type ChatContextKind = "table" | "schema" | "result" | "history" | "tab";
+export type ChatContextKind = "table" | "schema" | "result" | "history" | "tab" | "sql";
 
 export interface ChatContextItem {
   id: string;
@@ -18,6 +18,7 @@ export interface ChatContextItem {
   label: string;
   schema?: string;
   table?: string;
+  sql?: string;
 }
 
 export const CHAT_CONTEXT_KEYWORDS: {
@@ -170,6 +171,10 @@ export async function resolveChatContext(
         deps.tabSql?.trim()
           ? `Current editor tab:\n\`\`\`sql\n${cap(redactSecrets(deps.tabSql))}\n\`\`\``
           : "Current editor tab: no query tab open.",
+      );
+    } else if (item.kind === "sql" && item.sql?.trim()) {
+      sections.push(
+        `SQL from the editor (${item.label}):\n\`\`\`sql\n${cap(redactSecrets(item.sql.trim()))}\n\`\`\``,
       );
     } else if (item.kind === "result") {
       const last = lastResult(deps.connection?.id ?? null);

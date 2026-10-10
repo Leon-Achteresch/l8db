@@ -377,6 +377,7 @@ test("resolveChatContext with 3000 tables and 30000 columns needs no requests wh
     { id: "tab", kind: "tab", label: "Tab" },
     { id: "result", kind: "result", label: "Ergebnis" },
     { id: "history", kind: "history", label: "Verlauf" },
+    { id: "sql:1-5000", kind: "sql", label: "SQL Z. 1–5000", sql: script(5000) },
   ];
   const deps = {
     queryClient: client,
