@@ -91,6 +91,7 @@ export interface SecretMergeRequest {
 export interface SyncSecretMerge {
   sealed: SyncSealed | null;
   base: SyncSecretBase;
+  agreed: SyncSecretBase;
   updated: string[];
 }
 

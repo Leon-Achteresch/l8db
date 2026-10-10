@@ -18,10 +18,13 @@ import {
   buildSnapshot,
   type ChangeSummary,
   contentHash,
+  DELETED,
   type DevicePathHint,
   diffSnapshots,
   documentSnapshot,
   emptySnapshot,
+  hashData,
+  hashText,
   isEncryptedDocument,
   type LocalCollections,
   type LocalItem,
@@ -86,6 +89,7 @@ export interface SyncSettings {
 export interface SyncMemory {
   deviceId: string;
   lastSalt: string | null;
+  lastMode: string | null;
 }
 
 export type SyncDecision =
@@ -117,6 +121,7 @@ export interface SyncOutcome {
   secretsUpdated: number;
   attempts: number;
   warning: string | null;
+  mode: string | null;
 }
 
 export class SyncAbortedError extends Error {
@@ -145,7 +150,7 @@ export class SyncRemoteChangedError extends Error {
 export const MAX_SYNC_ATTEMPTS = 3;
 
 export function modeTag(settings: SyncSettings): string {
-  return `${settings.encryptAll ? "encrypted" : "plain"}|${settings.includeSecrets ? "secrets" : "nosecrets"}`;
+  return settings.encryptAll ? "encrypted" : "plain";
 }
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
@@ -165,6 +170,37 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Pro
       },
     );
   });
+}
+
+function entryState(snapshot: SyncSnapshot, key: string): [string, number] | undefined {
+  const entry = snapshot.items.get(key);
+  if (entry) return [entry.hash, entry.updatedAt];
+  const deletedAt = snapshot.tombstones.get(key);
+  return deletedAt === undefined ? undefined : [DELETED, deletedAt];
+}
+
+export function agreedBase(base: SyncBase, merged: SyncSnapshot, remote: SyncSnapshot): SyncBase {
+  const next: SyncBase = new Map(base);
+  const keys = new Set([
+    ...merged.items.keys(),
+    ...merged.tombstones.keys(),
+    ...remote.items.keys(),
+    ...remote.tombstones.keys(),
+  ]);
+  for (const key of keys) {
+    const ours = entryState(merged, key);
+    const theirs = entryState(remote, key);
+    if (ours && theirs && ours[0] === theirs[0]) next.set(key, ours);
+  }
+  return next;
+}
+
+function verifyTaken(merged: SyncSnapshot, local: SyncSnapshot, remote: SyncSnapshot): void {
+  for (const [key, entry] of merged.items) {
+    if (remote.items.get(key) !== entry || local.items.get(key)?.hash === entry.hash) continue;
+    const actual = hashData(entry.data);
+    if (actual !== entry.hash) merged.items.set(key, { ...entry, hash: actual });
+  }
 }
 
 function onlyIncluded(snapshot: SyncSnapshot, include: ReadonlySet<SyncCollection>): SyncSnapshot {
@@ -235,13 +271,17 @@ export function changedPathHints(
 export async function decodeRemote(
   transport: Pick<SyncTransport, "decrypt">,
   content: string,
-): Promise<{ document: SyncDocument; salt: string | null }> {
+): Promise<{ document: SyncDocument; salt: string | null; encrypted: boolean }> {
   const envelope = parseEnvelope(content);
   if (!isEncryptedDocument(envelope))
-    return { document: envelope, salt: envelopeSalt(envelope.secrets) };
+    return { document: envelope, salt: envelopeSalt(envelope.secrets), encrypted: false };
   const plain = await transport.decrypt(envelope.encrypted);
   const document = parseDocument(plain);
-  return { document, salt: envelopeSalt(envelope.encrypted) ?? envelopeSalt(document.secrets) };
+  return {
+    document,
+    salt: envelopeSalt(envelope.encrypted) ?? envelopeSalt(document.secrets),
+    encrypted: true,
+  };
 }
 
 export async function runSync(
@@ -262,8 +302,9 @@ export async function runSync(
   signal?.addEventListener("abort", onAbort, { once: true });
   let leased = false;
   try {
-    leased = await abortable(deps.transport.begin(), signal);
+    leased = await deps.transport.begin();
     if (!leased) throw new SyncBusyError();
+    if (signal?.aborted) throw new SyncAbortedError();
     for (let attempt = 1; ; attempt++) {
       try {
         const outcome = await attemptSync(deps, options, opId, attempt);
@@ -315,6 +356,7 @@ async function attemptSync(
     secretsUpdated: 0,
     attempts: attempt,
     warning: null,
+    mode: memory.lastMode,
   };
   const include = includedCollections(settings);
   const base = deps.readBase();
@@ -327,6 +369,7 @@ async function attemptSync(
   const ownLocal = onlyIncluded(local, include);
   let remoteFile: SyncRemoteFile | null = null;
   let remoteDocument: SyncDocument | null = null;
+  let remoteEncrypted = false;
   let remote: SyncSnapshot = emptySnapshot();
   if (mode !== "upload") {
     remoteFile = await abortable(deps.transport.fetch(target, opId), signal);
@@ -336,6 +379,7 @@ async function attemptSync(
       const decoded = await abortable(decodeRemote(deps.transport, remoteFile.content), signal);
       check();
       remoteDocument = decoded.document;
+      remoteEncrypted = decoded.encrypted;
       outcome.salt = decoded.salt ?? outcome.salt;
       remote = documentSnapshot(remoteDocument);
     }
@@ -357,6 +401,7 @@ async function attemptSync(
       merged = resolveConflicts(result, strategy, now);
     } else merged = result.merged;
   }
+  if (mode !== "upload") verifyTaken(merged, local, remote);
   const summary = diffSnapshots(local, merged);
   for (const collection of SYNC_COLLECTIONS)
     if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
@@ -389,6 +434,7 @@ async function attemptSync(
     deps.local.apply(snapshotCollections(merged), include);
     outcome.applied = summary;
   }
+  if (mode !== "upload") deps.writeBase(agreedBase(base, merged, remote));
   const accounts = settings.includeSecrets
     ? deps.local.secretAccounts(connectionItems(merged))
     : [];
@@ -409,6 +455,7 @@ async function attemptSync(
     check();
     deps.local.forgetSecrets(secrets.updated);
     outcome.secretsUpdated = secrets.updated.length;
+    if (mode !== "upload") deps.writeSecretBase(secrets.agreed);
     secretBase = secrets.base;
     sealed = secrets.sealed;
     if (sealed) outcome.salt = sealed.salt;
@@ -419,22 +466,41 @@ async function attemptSync(
   };
   const extra = remoteDocument?.extra;
   if (mode === "download") {
+    outcome.mode = remoteEncrypted ? "encrypted" : "plain";
     outcome.contentHash = remoteDocument?.contentHash ?? null;
     outcome.version = remoteFile?.version ?? null;
     commit();
     return outcome;
   }
-  const hash = await contentHash(merged, sealed?.fingerprint ?? null, modeTag(settings), extra);
+  const keepRemoteSecrets = !settings.includeSecrets && mode === "sync" && remoteDocument?.secrets;
+  const secretsEnvelope =
+    sealed?.envelope ?? (keepRemoteSecrets ? remoteDocument?.secrets : null) ?? null;
+  const secretsFingerprint =
+    sealed?.fingerprint ??
+    (keepRemoteSecrets && remoteDocument?.secrets
+      ? (remoteDocument.secretsFingerprint ?? hashText(remoteDocument.secrets))
+      : null);
+  const hash = await contentHash(merged, secretsFingerprint, extra);
   outcome.contentHash = hash;
   outcome.version = remoteFile?.version ?? null;
+  const tag = modeTag(settings);
+  outcome.mode = tag;
+  const modeSwitched =
+    remoteDocument !== null &&
+    remoteEncrypted !== settings.encryptAll &&
+    (memory.lastMode === null || memory.lastMode !== tag);
   const unchanged =
-    mode === "sync" && remoteDocument !== null && remoteDocument.contentHash === hash;
+    mode === "sync" &&
+    remoteDocument !== null &&
+    remoteDocument.contentHash === hash &&
+    !modeSwitched;
   if (!unchanged) {
     const document = toDocument(merged, {
       deviceId: memory.deviceId,
       updatedAt: now,
       contentHash: hash,
-      secrets: sealed?.envelope ?? null,
+      secrets: secretsEnvelope,
+      secretsFingerprint,
       extra,
     });
     let body = serializeDocument(document);

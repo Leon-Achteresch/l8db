@@ -39,6 +39,7 @@ export interface SyncState extends SyncConfig {
   lastVersion: string | null;
   lastContentHash: string | null;
   lastSalt: string | null;
+  lastMode: string | null;
   configure: (patch: Partial<Omit<SyncConfig, TargetField>>) => void;
   commitTarget: (patch: Partial<Pick<SyncConfig, TargetField>>) => void;
   report: (
@@ -52,6 +53,7 @@ export interface SyncState extends SyncConfig {
         | "lastVersion"
         | "lastContentHash"
         | "lastSalt"
+        | "lastMode"
         | "gistId"
       >
     >,
@@ -121,6 +123,7 @@ const REMOTE_RESET = {
   lastVersion: null,
   lastContentHash: null,
   lastSalt: null,
+  lastMode: null,
 };
 
 export const useSyncStore = create<SyncState>()(
@@ -138,6 +141,7 @@ export const useSyncStore = create<SyncState>()(
       lastVersion: null,
       lastContentHash: null,
       lastSalt: null,
+      lastMode: null,
       configure: (patch) =>
         set((state) => {
           const next = { ...patch };
@@ -184,6 +188,7 @@ export const useSyncStore = create<SyncState>()(
         lastVersion: state.lastVersion,
         lastContentHash: state.lastContentHash,
         lastSalt: state.lastSalt,
+        lastMode: state.lastMode,
       }),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<SyncState>;

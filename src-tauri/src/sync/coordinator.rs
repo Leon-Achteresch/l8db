@@ -35,7 +35,11 @@ fn claim(state: &mut Coordinator, label: &str, alive: impl Fn(&str) -> bool) -> 
 
 fn start(state: &mut Coordinator, label: &str, now: Instant, alive: impl Fn(&str) -> bool) -> bool {
     match &state.active {
-        Some((owner, since)) if now.duration_since(*since) < LEASE && alive(owner) => false,
+        Some((owner, since))
+            if owner != label && now.duration_since(*since) < LEASE && alive(owner) =>
+        {
+            false
+        }
         _ => {
             state.active = Some((label.to_string(), now));
             true
@@ -105,6 +109,7 @@ mod tests {
         let now = Instant::now();
         assert!(start(&mut state, "main", now, |_| true));
         assert!(!start(&mut state, "win-1", now, |_| true));
+        assert!(start(&mut state, "main", now, |_| true));
         finish(&mut state, "win-1");
         assert!(!start(&mut state, "win-1", now, |_| true));
         assert!(start(&mut state, "win-1", now + LEASE, |_| true));

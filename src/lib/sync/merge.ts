@@ -87,7 +87,10 @@ export function mergeSnapshots(
       else {
         const left = local.items.get(key) as SyncEntry;
         const right = remote.items.get(key) as SyncEntry;
-        merged.items.set(key, left.updatedAt >= right.updatedAt ? left : right);
+        merged.items.set(
+          key,
+          left.updatedAt >= right.updatedAt ? left : { ...left, updatedAt: right.updatedAt },
+        );
       }
       continue;
     }

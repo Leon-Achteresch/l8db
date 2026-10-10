@@ -404,10 +404,7 @@ impl Gist<'_> {
         }
         let body: serde_json::Value = serde_json::from_str(&bounded_text(response).await?)
             .map_err(|_| "Ungültige Antwort von GitHub.".to_string())?;
-        let version = body["history"][0]["version"]
-            .as_str()
-            .or_else(|| body["updated_at"].as_str())
-            .map(str::to_string);
+        let version = body["history"][0]["version"].as_str().map(str::to_string);
         let file = &body["files"][GIST_FILE];
         if file.is_null() {
             return Ok(RemoteFile {
@@ -512,10 +509,7 @@ impl Gist<'_> {
         }
         let body: serde_json::Value = serde_json::from_str(&bounded_text(response).await?)
             .map_err(|_| "Ungültige Antwort von GitHub.".to_string())?;
-        let version = body["history"][0]["version"]
-            .as_str()
-            .or_else(|| body["updated_at"].as_str())
-            .map(str::to_string);
+        let version = body["history"][0]["version"].as_str().map(str::to_string);
         let previous = body["history"][1]["version"].as_str();
         let warning = match &expected {
             Some(expected) if previous != Some(expected.as_str()) => Some(

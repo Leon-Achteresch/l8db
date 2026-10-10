@@ -62,6 +62,7 @@ export interface SyncDocument {
   items: Partial<Record<SyncCollection, Record<string, DocumentItem>>>;
   tombstones: Partial<Record<SyncCollection, Record<string, number>>>;
   secrets: string | null;
+  secretsFingerprint?: string | null;
   hints: { devicePaths: DevicePathHint[] };
   extra?: SyncExtra;
 }
@@ -190,7 +191,6 @@ export async function sha256Hex(text: string): Promise<string> {
 export function contentSource(
   snapshot: SyncSnapshot,
   secretsFingerprint: string | null,
-  mode = "",
   extra?: SyncExtra,
 ): string {
   const lines: string[] = [];
@@ -198,7 +198,6 @@ export function contentSource(
   for (const key of snapshot.tombstones.keys()) lines.push(`${key}\t${DELETED}`);
   lines.sort();
   lines.push(`secrets\t${secretsFingerprint ?? ""}`);
-  lines.push(`mode\t${mode}`);
   if (extra) lines.push(`extra\t${hashText(canonicalJson(extra))}`);
   return lines.join("\n");
 }
@@ -206,10 +205,9 @@ export function contentSource(
 export function contentHash(
   snapshot: SyncSnapshot,
   secretsFingerprint: string | null,
-  mode = "",
   extra?: SyncExtra,
 ): Promise<string> {
-  return sha256Hex(contentSource(snapshot, secretsFingerprint, mode, extra));
+  return sha256Hex(contentSource(snapshot, secretsFingerprint, extra));
 }
 
 const FILE_KINDS = new Set(["sqlite", "duckdb"]);
@@ -247,6 +245,7 @@ export function toDocument(
     updatedAt: number;
     contentHash: string;
     secrets: string | null;
+    secretsFingerprint?: string | null;
     include?: Iterable<SyncCollection>;
     extra?: SyncExtra;
   },
@@ -275,6 +274,7 @@ export function toDocument(
     items,
     tombstones,
     secrets: meta.secrets,
+    ...(meta.secretsFingerprint ? { secretsFingerprint: meta.secretsFingerprint } : {}),
     hints: { devicePaths: devicePathHints(snapshot) },
     ...(meta.extra ? { extra: meta.extra } : {}),
   };
@@ -403,6 +403,7 @@ function parseDocumentValue(value: Record<string, unknown>): SyncDocument {
     items,
     tombstones,
     secrets: str(value.secrets) ? (value.secrets as string) : null,
+    secretsFingerprint: str(value.secretsFingerprint) ? (value.secretsFingerprint as string) : null,
     hints: {
       devicePaths:
         isRecord(value.hints) && Array.isArray(value.hints.devicePaths)

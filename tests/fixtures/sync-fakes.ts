@@ -126,6 +126,7 @@ export interface Device {
   secrets: Map<string, string>;
   secretBase: Record<string, [string, number]>;
   secretMerges: number;
+  lastMode: string | null;
   backups: string[];
   applied: number;
   deps: SyncDeps;
@@ -146,6 +147,7 @@ export function device(
     secrets: new Map(),
     secretBase: {},
     secretMerges: 0,
+    lastMode: null,
     backups: [],
     applied: 0,
     deps: undefined as unknown as SyncDeps,
@@ -180,6 +182,7 @@ export function device(
           : {};
         const merged: Record<string, { v: string | null; t: number }> = {};
         const base: Record<string, [string, number]> = {};
+        const agreed: Record<string, [string, number]> = {};
         const updated: string[] = [];
         const values = request.accounts.map((account) => state.secrets.get(account) ?? null);
         request.accounts.forEach((account, index) => {
@@ -197,7 +200,7 @@ export function device(
                   theirs === null ||
                   theirs === known?.[0]
                 ? false
-                : ours === null || ours === known?.[0]
+                : ours === null || ours === known?.[0] || !known
                   ? true
                   : (entry?.t ?? 0) > oursAt;
           const chosen =
@@ -211,13 +214,16 @@ export function device(
             updated.push(account);
           }
           if (state_ === null) return;
+          if (theirs === state_) agreed[account] = [state_, chosen.t];
+          else if (known) agreed[account] = known;
           merged[account] = chosen;
           base[account] = [state_, chosen.t];
         });
-        const sealed = Object.keys(merged).length
-          ? crypto.seal(JSON.stringify(merged), request.salt)
-          : null;
-        return { sealed, base, updated };
+        const sealed =
+          Object.keys(merged).length && request.mode !== "download"
+            ? crypto.seal(JSON.stringify(merged), request.salt)
+            : null;
+        return { sealed, base, agreed, updated };
       },
       backup: async (content, reason) => {
         state.backups.push(content);
