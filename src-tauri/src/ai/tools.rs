@@ -9,6 +9,7 @@ const CORE: &[&str] = &[
     "query",
     "execute",
     "visualize",
+    "editor",
 ];
 
 pub(super) struct Catalog {

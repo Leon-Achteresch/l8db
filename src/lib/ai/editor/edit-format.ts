@@ -177,11 +177,28 @@ export function applyModelEdit(original: string, output: string): EditResult {
       text: eol === "\n" ? withNewline : withNewline.replace(/\n/g, eol),
     };
   }
+  return applyBlocks(base, eol, parsed);
+}
+
+function applyBlocks(base: string, eol: string, blocks: EditBlock[]): EditResult {
   let text = base;
-  for (const [index, block] of parsed.entries()) {
+  for (const [index, block] of blocks.entries()) {
     const next = applyBlock(text, block, index + 1);
     if (typeof next !== "string") return { ok: false, error: next.error };
     text = next;
   }
   return { ok: true, mode: "blocks", text: eol === "\n" ? text : text.replace(/\n/g, eol) };
+}
+
+export function applyEditBlocks(
+  original: string,
+  blocks: readonly { search: string; replace: string }[],
+): EditResult {
+  const eol = original.includes("\r\n") ? "\r\n" : "\n";
+  const lines = (value: string) => value.replace(/\r\n/g, "\n").split("\n");
+  return applyBlocks(
+    eol === "\r\n" ? original.replace(/\r\n/g, "\n") : original,
+    eol,
+    blocks.map((block) => ({ search: lines(block.search), replace: lines(block.replace) })),
+  );
 }

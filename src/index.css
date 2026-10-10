@@ -547,6 +547,10 @@ body[data-onboarding-active]
   background-color: color-mix(in oklch, oklch(0.72 0.17 150) 16%, transparent);
 }
 
+.monaco-editor .l8db-ai-typing {
+  background-color: color-mix(in oklch, var(--primary) 18%, transparent);
+}
+
 .monaco-editor .l8db-ai-added-gutter {
   background-color: oklch(0.68 0.17 150);
   width: 3px !important;
