@@ -142,7 +142,8 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
           size="sm"
           variant="default"
           className="h-7 gap-1.5 px-3 text-xs"
-          disabled={busy}
+          disabled={busy || Boolean(tx.abortedReason)}
+          title={tx.abortedReason}
           data-tx-commit
           aria-label={`${title} committen`}
           aria-keyshortcuts="Enter"

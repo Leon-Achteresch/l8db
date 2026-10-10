@@ -58,6 +58,9 @@ export function createPreviewLifecycle() {
         decision: pending.then(() => accepted && !disposed && token === generation),
       };
     },
+    disposed(): boolean {
+      return disposed;
+    },
     dispose(): void {
       disposed = true;
       generation += 1;
@@ -71,10 +74,9 @@ export function createPreviewLifecycle() {
 export type PreviewLifecycle = ReturnType<typeof createPreviewLifecycle>;
 
 export function attachPreviewLifecycle(ref: { current: PreviewLifecycle | null }): () => void {
-  const lifecycle = createPreviewLifecycle();
+  const lifecycle = ref.current && !ref.current.disposed() ? ref.current : createPreviewLifecycle();
   ref.current = lifecycle;
   return () => {
     lifecycle.dispose();
-    if (ref.current === lifecycle) ref.current = null;
   };
 }

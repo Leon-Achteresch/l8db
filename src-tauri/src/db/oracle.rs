@@ -1410,17 +1410,16 @@ pub(crate) fn script_error(error: String, index: usize, total: usize) -> String 
     )
 }
 
-pub(crate) fn combine_script_results(prior: &[QueryResult], mut last: QueryResult) -> QueryResult {
-    if !last.columns.is_empty() {
-        return last;
+pub(crate) fn add_affected(total: Option<u64>, rows: Option<u64>) -> Option<u64> {
+    match (total, rows) {
+        (Some(total), Some(rows)) => Some(total.saturating_add(rows)),
+        (total, rows) => total.or(rows),
     }
-    let counted: Vec<u64> = prior
-        .iter()
-        .chain(std::iter::once(&last))
-        .filter_map(|result| result.rows_affected)
-        .collect();
-    if !counted.is_empty() {
-        last.rows_affected = Some(counted.iter().sum());
+}
+
+pub(crate) fn combine_script_results(prior: Option<u64>, mut last: QueryResult) -> QueryResult {
+    if last.columns.is_empty() {
+        last.rows_affected = add_affected(prior, last.rows_affected);
     }
     last
 }
@@ -1611,19 +1610,18 @@ impl DatabaseAdapter for OracleAdapter {
             statements.push(sql.to_string());
         }
         let total = statements.len();
-        let mut prior = Vec::with_capacity(total.saturating_sub(1));
+        let mut affected: Option<u64> = None;
         let last = statements.pop().unwrap_or_default();
         for (index, statement) in statements.iter().enumerate() {
-            prior.push(
-                execute_one(self, statement)
-                    .await
-                    .map_err(|error| script_error(error, index, total))?,
-            );
+            let result = execute_one(self, statement)
+                .await
+                .map_err(|error| script_error(error, index, total))?;
+            affected = add_affected(affected, result.rows_affected);
         }
         let result = execute_one(self, &last)
             .await
             .map_err(|error| script_error(error, total - 1, total))?;
-        let mut result = combine_script_results(&prior, result);
+        let mut result = combine_script_results(affected, result);
         result.execution_time_ms = start.elapsed().as_millis() as u64;
         Ok(result)
     }
@@ -2989,15 +2987,15 @@ mod tests {
             execution_time_ms: 1,
             truncated: false,
         };
-        let combined = super::combine_script_results(&[dml(500)], dml(20));
+        let mut total = None;
+        for rows in [Some(500), None] {
+            total = super::add_affected(total, rows);
+        }
+        let combined = super::combine_script_results(total, dml(20));
         assert_eq!(combined.rows_affected, Some(520));
-        let plsql = super::QueryResult {
-            rows_affected: None,
-            ..dml(0)
-        };
         assert_eq!(
-            super::combine_script_results(&[dml(500), plsql.clone()], dml(20)).rows_affected,
-            Some(520)
+            super::combine_script_results(None, dml(20)).rows_affected,
+            Some(20)
         );
         let query = super::QueryResult {
             columns: vec!["N".into()],
@@ -3005,7 +3003,7 @@ mod tests {
             ..dml(0)
         };
         assert_eq!(
-            super::combine_script_results(&[dml(500)], query).rows_affected,
+            super::combine_script_results(Some(500), query).rows_affected,
             None
         );
         assert_eq!(

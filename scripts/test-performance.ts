@@ -25,6 +25,7 @@ const SUITES = {
     "tests/perf-app-requests.test.ts",
     "tests/perf-query-statement-outline.test.ts",
     "tests/perf-dml-preview.test.ts",
+    "tests/perf-dml-preview-cancel.test.ts",
     "tests/perf-multi-target.test.ts",
     "tests/perf-multi-target-script.test.ts",
     "tests/perf-usage-statistics.test.ts",
