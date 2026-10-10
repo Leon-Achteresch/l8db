@@ -104,8 +104,9 @@ export function useWidgetInteractions({
   const scopeId = useId();
   const [point, setPoint] = useState<(ChartPoint & { picks: Pick[] }) | null>(null);
   const effective = useMemo(
-    () => (dataset ? applyCrossFilters(dataset, filters, widget.id) : null),
-    [dataset, filters, widget.id],
+    () =>
+      dataset ? applyCrossFilters(dataset, filters, widget.id, connection?.kind ?? null) : null,
+    [dataset, filters, widget.id, connection?.kind],
   );
   const own = useMemo(() => filters.filter((f) => f.widgetId === widget.id), [filters, widget.id]);
   const kind = connection?.kind ?? null;
@@ -130,15 +131,18 @@ export function useWidgetInteractions({
       target.getAttribute("data-dim") ?? target.getAttribute("data-active-dim"),
     );
     const dim2 = parseAttr(target.getAttribute("data-dim2"));
-    const scalar = (value: unknown) =>
-      value !== undefined && (value === null || typeof value !== "object");
-    const picks: Pick[] = [
-      ...(scalar(dim) ? [{ key: DIM_KEY, value: dim }] : []),
-      ...(scalar(dim2) ? [{ key: DIM2_KEY, value: dim2 }] : []),
+    const scalar = (value: unknown) => value === null || typeof value !== "object";
+    const clicked: Pick[] = [
+      ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
+      ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),
     ];
+    const picks = clicked.filter((p) => scalar(p.value));
     if (!picks.length) return false;
     const canFilter = options.crossFilter && picks.some((p) => crossField(dataset, p.key));
-    const canDrill = options.drill && picks.some((p) => ownCondition(dataset, p.key, p.value));
+    const canDrill =
+      options.drill &&
+      picks.length === clicked.length &&
+      picks.some((p) => ownCondition(dataset, p.key, p.value));
     if (!canFilter && !canDrill) return false;
     const root = container.closest(".dashboard-widget") ?? container;
     const rect = root.getBoundingClientRect();
@@ -147,7 +151,7 @@ export function useWidgetInteractions({
     setPoint({
       x: point.x - rect.left,
       y: point.y - rect.top,
-      label: picks.map((p) => toLabel(p.value)).join(" × "),
+      label: clicked.map((p) => toLabel(p.value)).join(" × "),
       filtered: picks.every((p) => own.some((f) => f.key === p.key && same(f.value, p.value))),
       canFilter,
       canDrill,

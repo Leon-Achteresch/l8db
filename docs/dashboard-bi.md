@@ -45,9 +45,10 @@ before the dashboard's own CSS.
   expression. Expert SQL charts are wrapped when their mapped dimension has the same
   name and the SQL reads the source table. A linear tokenizer finds table positions
   (after FROM, JOIN, ONLY, LATERAL or a comma in a FROM list, per parenthesis level,
-  with "", `` and [] identifiers); comments, string and dollar-quoted literals are
-  ignored. List-valued dimensions are
-  not offered for filtering. Charts that do not share the column are untouched and do not
+  with "", `` and [] identifiers, Unicode names and parenthesized join lists; nested
+  comments, MySQL `#` comments, string, backslash-escaped, Oracle q-quoted and
+  dollar-quoted literals are ignored). Tokens are cached for the last 64 statements. List-valued dimension values are
+  not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.
   Selections live in memory per dashboard and are shown as removable chips.
 - **Drill-through** (`options.drill`, default on): "Details anzeigen" loads up to 200
@@ -62,7 +63,7 @@ before the dashboard's own CSS.
   aggregates show "–").
 - **Tables**: totals row and data bars (`totals`, `dataBars`). Builder charts query the
   exact total over all rows (shared with the headline total query when identical);
-  expert SQL charts show "Gesamt geladener Zeilen". Exact queries run only when the
+  expert SQL charts show "Summe geladener Zeilen". Exact queries run only when the
   result is truncated or a metric is not additive.
 - **Keyboard**: bars, funnel stages, table rows, pivot headers, ring and treemap
   segments are focusable; Enter or Space opens the same filter/details menu as a click.
@@ -76,7 +77,8 @@ before the dashboard's own CSS.
 widgets, a 60 × 40 pivot, a theme with a 512 KiB logo, 1,000 selection toggles and the
 query count of exact pivot totals (60 pivots over 12 datasets: 48 distinct queries,
 p95 2 ms to build) and source-table detection in 12.7 KB of expert SQL with 800
-references (median 1 ms; the previous regex version needed 316 ms).
+references (cold median 0.9 ms / p95 1.1 ms, cached median 0.08 ms; the earlier regex
+version needed 316 ms).
 Measured on Linux x86_64 (QEMU VM, 8 vCPU, 15 GB RAM, Bun 1.3.10): fan-out median
 1.7 ms / p95 2.5 ms with 40 of 60 queries rebuilt and 20 untouched; pivot render median
 37 ms / p95 46 ms for 2,501 cells; theme compile p95 0.07 ms; 1,000 toggles p95 1.6 ms
