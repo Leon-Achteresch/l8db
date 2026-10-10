@@ -390,6 +390,11 @@ test("resolveChatContext with 3000 tables and 30000 columns needs no requests wh
   };
   invokeCalls.length = 0;
   let text = await resolveChatContext(items, deps);
+  const repeatDeps = { ...deps, recentContext: [text, text, text, text] };
+  let repeat = await resolveChatContext(items, repeatDeps);
+  const repeatTiming = await measureAsync(async () => {
+    repeat = await resolveChatContext(items, repeatDeps);
+  });
   const buildsBefore = schemaContextStats().indexBuilds;
   const timing = await measureAsync(async () => {
     text = await resolveChatContext(items, deps);
@@ -405,6 +410,8 @@ test("resolveChatContext with 3000 tables and 30000 columns needs no requests wh
     invokeCalls: invokeCalls.length,
     indexBuilds,
     resolve: timing,
+    repeatChars: repeat.length,
+    resolveRepeat: repeatTiming,
   });
   expect(invokeCalls).toEqual([]);
   expect(picked).toHaveLength(8);
@@ -412,6 +419,10 @@ test("resolveChatContext with 3000 tables and 30000 columns needs no requests wh
   expect(indexBuilds).toBe(0);
   expect(timing.medianMs).toBeLessThan(10);
   expect(timing.p95Ms).toBeLessThan(30);
+  expect(repeat).toContain("unchanged since an earlier message");
+  expect(text.length - repeat.length).toBeGreaterThan(5_000);
+  expect(repeatTiming.medianMs).toBeLessThan(10);
+  expect(repeatTiming.p95Ms).toBeLessThan(30);
 });
 
 test("chatWireMessages compacts a 200-message 2 MB history", async () => {

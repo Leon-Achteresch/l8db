@@ -217,10 +217,10 @@ describe("resolveChatContext", () => {
       [item("tab")],
       deps({ tabSql: "select dblink('postgres://u:hunter2@h/db')" }),
     );
-    expect(withTab).toContain("Current editor tab:\n```sql\n");
+    expect(withTab).toContain("apply SQL changes there with the editor tool.\n```sql\n");
     expect(withTab).not.toContain("hunter2");
-    const missing = await resolveChatContext([item("tab")], deps({ tabSql: "   " }));
-    expect(missing).toContain("Current editor tab: no query tab open.");
+    const empty = await resolveChatContext([item("tab")], deps({ tabSql: "   " }));
+    expect(empty).toContain("The tab is empty.");
     const none = await resolveChatContext([item("tab")], deps({ tabSql: null }));
     expect(none).toContain("no query tab open");
   });
@@ -241,6 +241,25 @@ describe("resolveChatContext", () => {
     expect(text).not.toContain("hunter2");
     expect(text).not.toContain("other_statement");
     expect(text.length).toBeLessThan(6_300);
+  });
+
+  test("editor tab names title and cursor and skips SQL already sent recently", async () => {
+    const tab = {
+      tabSql: "select * from orders",
+      tabTitle: "Umsatz",
+      tabSelection: "cursor at line 1",
+    };
+    const first = await resolveChatContext([item("tab")], deps(tab));
+    expect(first).toContain('Current editor tab "Umsatz", cursor at line 1.');
+    expect(first).toContain("select * from orders");
+    const again = await resolveChatContext([item("tab")], deps({ ...tab, recentContext: [first] }));
+    expect(again).toContain("unchanged since an earlier message");
+    expect(again).not.toContain("select * from orders");
+    const changed = await resolveChatContext(
+      [item("tab")],
+      deps({ ...tab, tabSql: "select * from orders limit 5", recentContext: [first] }),
+    );
+    expect(changed).toContain("limit 5");
   });
 
   test("result section hides values unless sharing is allowed", async () => {

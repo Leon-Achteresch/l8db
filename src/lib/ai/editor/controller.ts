@@ -128,6 +128,14 @@ export class EditorAiController {
     return this.editor.getModel()?.getValue() ?? "";
   }
 
+  selectionLabel(): string | null {
+    const selection = this.editor.getSelection();
+    if (!selection) return null;
+    return selection.isEmpty()
+      ? `cursor at line ${selection.startLineNumber}`
+      : `selected lines ${selection.startLineNumber}–${selection.endLineNumber}`;
+  }
+
   async chatEdit(next: string, label: string): Promise<string> {
     const current = this.session?.getSnapshot();
     if (current?.phase === "running")
