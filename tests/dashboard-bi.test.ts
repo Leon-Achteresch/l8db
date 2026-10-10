@@ -39,6 +39,7 @@ import {
   type Widget,
   widgetsOnPage,
 } from "../src/lib/dashboards";
+import { readsTable } from "../src/lib/dashboards/sql-tables";
 
 function simple(table: string, dimension: string, bucket: "none" | "month" = "none"): Dataset {
   const dataset = emptyDataset(table);
@@ -726,5 +727,34 @@ describe("Tabellenerkennung per Tokenizer", () => {
   test("nicht numerische Werte zählen nicht als 0", () => {
     expect(combineTotal({ agg: "min" }, [5, "n/a", 7])).toBe(5);
     expect(combineTotal({ agg: "sum" }, ["2", "x", 3])).toBe(5);
+  });
+});
+
+describe("Tabellenerkennung mit Dialekten", () => {
+  test("erkennt Unicode-Namen, geklammerte Joins und escapte Klammern", () => {
+    expect(readsTable("SELECT customer_id FROM größen", "public.größen")).toBe(true);
+    expect(readsTable("SELECT 1 FROM (customers c JOIN orders o ON c.id = o.c)", "customers")).toBe(
+      true,
+    );
+    expect(readsTable("SELECT 1 FROM [weird]]name]", "weird]name", "mssql")).toBe(true);
+    expect(
+      readsTable("SELECT 1 FROM t WHERE a = ARRAY['x]', 'customers']", "customers", "postgres"),
+    ).toBe(false);
+  });
+
+  test("ignoriert MySQL-Kommentare, Backslash-Escapes und verschachtelte Kommentare", () => {
+    expect(readsTable("SELECT 1 FROM orders # FROM customers", "customers", "mysql")).toBe(false);
+    expect(readsTable("SELECT 'it\\'s FROM customers' FROM orders", "customers", "mysql")).toBe(
+      false,
+    );
+    expect(readsTable("SELECT 1 FROM orders /* a /* b */ FROM customers */", "customers")).toBe(
+      false,
+    );
+    expect(readsTable("SELECT q'[FROM customers]' FROM orders", "customers", "oracle")).toBe(false);
+  });
+
+  test("Leerzeichen, Wahrheitswerte und NaN zählen nicht", () => {
+    expect(combineTotal({ agg: "min" }, ["  ", 4, true, Number.NaN, 9])).toBe(4);
+    expect(combineTotal({ agg: "sum" }, [1n, "2", 3])).toBe(6);
   });
 });

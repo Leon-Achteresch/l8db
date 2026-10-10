@@ -29,9 +29,15 @@ export function combineTotal(metric: { agg?: Agg } | undefined, values: unknown[
   if (!metric || !combinable(metric)) return null;
   let result: number | null = null;
   for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    if (typeof value === "string" && !Number.isFinite(Number(value))) continue;
-    const number = toNumber(value);
+    const number =
+      typeof value === "number"
+        ? value
+        : typeof value === "bigint"
+          ? Number(value)
+          : typeof value === "string" && value.trim()
+            ? Number(value)
+            : Number.NaN;
+    if (!Number.isFinite(number)) continue;
     if (result === null) result = number;
     else if (metric.agg === "min") result = Math.min(result, number);
     else if (metric.agg === "max") result = Math.max(result, number);
