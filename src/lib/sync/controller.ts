@@ -124,7 +124,7 @@ export async function performSync(
   running = task;
   try {
     const outcome = await task;
-    const finished = outcome.status === "ok" || outcome.status === "skipped";
+    const finished = outcome.committed;
     useSyncStore.getState().report({
       lastStatus: outcome.status === "cancelled" ? "idle" : outcome.status,
       lastMessage: describe(outcome, mode),
@@ -136,7 +136,9 @@ export async function performSync(
             lastContentHash: outcome.contentHash,
             lastSalt: outcome.salt,
             lastMode: outcome.mode,
-            ...(outcome.uploaded && state.purgeRemoteSecrets ? { purgeRemoteSecrets: false } : {}),
+            ...(state.purgeRemoteSecrets && !outcome.remoteHasSecrets
+              ? { purgeRemoteSecrets: false }
+              : {}),
           }
         : {}),
       ...(outcome.gistId && outcome.gistId !== state.gistId ? { gistId: outcome.gistId } : {}),
@@ -172,6 +174,16 @@ export function restoreScope(document: SyncDocument, includeHistory: boolean): S
 export async function restoreBackup(
   backup: Pick<SyncBackupInfo, "id" | "hasData" | "hasSecrets">,
 ): Promise<{ summary: ChangeSummary | null; secrets: number }> {
+  let secrets = 0;
+  if (backup.hasSecrets) {
+    const result = await syncBackupRestoreSecrets(backup.id);
+    forgetCachedSecrets([...result.restored, ...result.failed]);
+    if (result.failed.length > 0)
+      throw new Error(
+        `${result.failed.length} Passwort(e) konnten nicht wiederhergestellt werden. Die Daten wurden nicht angefasst.`,
+      );
+    secrets = result.restored.length;
+  }
   let summary: ChangeSummary | null = null;
   if (backup.hasData) {
     const document = parseDocument(await syncBackupLoad(backup.id));
@@ -194,12 +206,6 @@ export async function restoreBackup(
       "restore",
     );
     applyLocal(snapshotCollections(snapshot), include);
-  }
-  let secrets = 0;
-  if (backup.hasSecrets) {
-    const restored = await syncBackupRestoreSecrets(backup.id);
-    forgetCachedSecrets(restored);
-    secrets = restored.length;
   }
   return { summary, secrets };
 }

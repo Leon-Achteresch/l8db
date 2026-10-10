@@ -132,8 +132,14 @@ export function syncProbe(target: SyncTarget, opId: string): Promise<SyncRemoteP
   return invoke<SyncRemoteProbe>("sync_probe", { target, opId });
 }
 
-export function syncBackupRestoreSecrets(id: string): Promise<string[]> {
-  return invoke<string[]>("sync_backup_restore_secrets", { id });
+export interface SyncSecretRestore {
+  restored: string[];
+  failed: string[];
+  backup: string | null;
+}
+
+export function syncBackupRestoreSecrets(id: string): Promise<SyncSecretRestore> {
+  return invoke<SyncSecretRestore>("sync_backup_restore_secrets", { id });
 }
 
 export function syncBackupSave(content: string, reason: string): Promise<SyncBackupInfo> {

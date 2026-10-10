@@ -67,7 +67,7 @@ function sync(
     decider,
     signal,
   }).then((outcome) => {
-    if (outcome.status === "ok" || outcome.status === "skipped") dev.lastMode = outcome.mode;
+    if (outcome.committed) dev.lastMode = outcome.mode;
     return outcome;
   });
 }
@@ -817,6 +817,7 @@ describe("fourth review regressions", () => {
     });
     expect(auto.status).toBe("conflict");
     expect(auto.secretConflicts).toBe(1);
+    expect(auto.committed).toBe(true);
     expect(b.secrets.get("c1")).toBe("lokal");
     const c = device("c", remote, new FakeCoordinator());
     c.collections.connections = [connection("c1", "Prod")];
@@ -891,6 +892,10 @@ describe("fourth review regressions", () => {
     expect(parseDocument(remote.content as string).secrets).not.toBeNull();
     const purged = await sync(a, "sync", { includeSecrets: false, purgeRemoteSecrets: true });
     expect(purged.uploaded).toBe(true);
+    expect(purged.remoteHasSecrets).toBe(false);
     expect(parseDocument(remote.content as string).secrets).toBeNull();
+    const again = await sync(a, "sync", { includeSecrets: false, purgeRemoteSecrets: true });
+    expect(again.uploaded).toBe(false);
+    expect(again.remoteHasSecrets).toBe(false);
   });
 });
