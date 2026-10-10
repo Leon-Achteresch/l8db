@@ -80,6 +80,7 @@ export const NEW_FEATURES = {
   "versioning.database.policies": "0.10.0",
   "versioning.reviews": "0.10.0",
   "versioning.pipeline": NEXT_FEATURE_VERSION,
+  "versioning.working-copy": NEXT_FEATURE_VERSION,
   "table.pagination.keyboard": "0.7.0",
   "table.filter.rules": "0.10.0",
   "table.cell.json-editor": "0.10.0",

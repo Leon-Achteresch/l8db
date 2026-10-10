@@ -113,11 +113,11 @@ export function useDevelopment(workspace: VersioningWorkspace) {
       await refresh();
     }, "Entwurf gespeichert");
   const changes = changedFiles(status?.changes ?? "");
-  const canCommit =
-    selected.length > 0 && Boolean(message.trim()) && !workspace.dirty && !workspace.busy;
-  const committed = `${selected.length} ${selected.length === 1 ? "Datei" : "Dateien"} committet`;
-  const commit = async (push = false) => {
-    await workspace.git("commit", message, selected);
+  const commit = async (push = false, extra: string[] = [], exclude: string[] = []) => {
+    const paths = [...new Set([...selected, ...extra])].filter(
+      (file) => extra.includes(file) || !exclude.includes(file),
+    );
+    await workspace.git("commit", message, paths);
     setSelected([]);
     setMessage("");
     if (push) {
@@ -144,8 +144,6 @@ export function useDevelopment(workspace: VersioningWorkspace) {
     mergeBranches,
     mergedFrom,
     changes,
-    canCommit,
-    committed,
     load,
     close,
     merge,

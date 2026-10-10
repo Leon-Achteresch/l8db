@@ -4,6 +4,7 @@ import type { DatabaseRelease, DatabaseTarget, RepositoryStatus } from "./types"
 
 export type VersioningArea =
   | "pipeline"
+  | "history"
   | "development"
   | "branches"
   | "releases"

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { changeSummary } from "../src/lib/versioning/changes";
+import type { DriftEntry } from "../src/lib/versioning/drift";
 import { buildPipeline, pipelineNextStep, releaseTracks } from "../src/lib/versioning/pipeline";
 import type {
   DatabaseRelease,
@@ -136,4 +138,26 @@ describe("versioning pipeline", () => {
     );
     expect(pipelineNextStep(project, status, releases, targets)).toBeNull();
   });
+});
+
+test("change summary counts a drifted object with an edited file only once", () => {
+  const object = (id: string, path: string, bodyPath?: string) => ({
+    id,
+    path,
+    ...(bodyPath ? { bodyPath } : {}),
+    selection: { schema: "APP", objectType: "package" as const, objectName: id, objectOid: null },
+  });
+  const entries: DriftEntry[] = [
+    { object: object("a", "a.pks", "a.pkb"), status: "changed", repository: {}, database: {} },
+    { object: object("b", "b.sql"), status: "added", repository: {}, database: {} },
+  ];
+  const changes = new Map([
+    ["a.pkb", "M"],
+    ["c.sql", "M"],
+  ]);
+  const summary = changeSummary(entries, changes, ["a.pkb", "c.sql"], ["a"]);
+  expect(summary.shadowed).toEqual(["a.pkb"]);
+  expect(summary).toMatchObject({ files: 1, database: 2, total: 3, selected: 2 });
+  expect(summary.selectableFiles).toEqual(["c.sql"]);
+  expect(changeSummary(null, changes, [], []).total).toBe(2);
 });

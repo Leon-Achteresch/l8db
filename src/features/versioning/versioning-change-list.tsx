@@ -9,15 +9,19 @@ export function VersioningChangeList({
   workspace,
   development,
   onOpen,
+  hidden = [],
 }: {
   workspace: VersioningWorkspace;
   development: DevelopmentState;
   onOpen?: () => void;
+  hidden?: string[];
 }) {
   const { project, status, run } = workspace;
   const { changes, showAll, path, selected, setSelected, load } = development;
   if (!project || !status) return null;
-  const files = status.files.filter((file) => showAll || changes.has(file));
+  const files = status.files.filter(
+    (file) => (showAll || changes.has(file)) && !hidden.includes(file),
+  );
   return (
     <ul className="flex flex-col" aria-label={showAll ? "Alle Dateien" : "Geänderte Objekte"}>
       {files.map((file) => {
