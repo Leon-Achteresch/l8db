@@ -11,7 +11,8 @@ export type EditorAiAction =
   | "cte"
   | "dialect"
   | "testdata"
-  | "summary";
+  | "summary"
+  | "chat";
 
 export const EDITOR_AI_ACTION_LABELS: Record<EditorAiAction, string> = {
   inline: "Ghost-Text",
@@ -23,6 +24,7 @@ export const EDITOR_AI_ACTION_LABELS: Record<EditorAiAction, string> = {
   dialect: "Dialekt übersetzen",
   testdata: "Testdaten",
   summary: "Verlauf zusammenfassen",
+  chat: "KI-Chat",
 };
 
 export interface EditorAiStats {
