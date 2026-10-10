@@ -848,3 +848,15 @@ describe("Klammernamen nach Operatoren", () => {
     }
   });
 });
+
+describe("Array-Indizes nach Kommentaren und Leerzeichen", () => {
+  test("Inhalt mit Anführungszeichen oder Ziffer ist ein Index, sonst ein Klammername", () => {
+    for (const kind of ["odbc", null] as const) {
+      expect(readsTable("SELECT a/*c*/[']'], r FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a /*c*/ [']'], r FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a [1], r FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a/*c*/[it's] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a [Unit's Price] FROM orders", "orders", kind)).toBe(true);
+    }
+  });
+});

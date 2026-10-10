@@ -50,7 +50,9 @@ before the dashboard's own CSS.
   and ClickHouse, `#` for MySQL and BigQuery), string literals (double-quoted strings
   for MySQL and BigQuery, backslash escapes for MySQL, ClickHouse, BigQuery and
   Snowflake; for ODBC and unknown dialects a bracket directly after a name, a field access, `)` or
-  `]` is an array subscript, after a keyword it is a bracket identifier), Oracle q-quoted and dollar-quoted literals are ignored).
+  `]` is an array subscript, after a keyword, operator or numeric literal it is a
+  bracket identifier, and after whitespace or a comment it is a subscript only when its
+  content starts with a quote, digit, `$`, `:` or `-`), Oracle q-quoted and dollar-quoted literals are ignored).
   Tokens are cached for the 64 most recently used statements. List-valued dimension values are
   not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.
@@ -73,7 +75,11 @@ before the dashboard's own CSS.
   segments are focusable; Enter or Space opens the same filter/details menu as a click.
 - **Target lines** (`target`, `targetLabel`) on line, area, column, bar and KPI charts.
 - **Presentation mode** hides the editor, switches the window to fullscreen and ends
-  with Esc.
+  with Esc. Verified in a real Tauri 2.12.1 window (WebKitGTK, Xvfb 1920×1080, no
+  window manager): `setFullscreen(true/false)` from the webview toggles
+  `isFullscreen()` with `core:window:allow-set-fullscreen`, and without it Tauri
+  rejects the call. The full l8db app was not driven end to end in a real window, and
+  macOS/Windows were not tested.
 
 ## Performance
 
