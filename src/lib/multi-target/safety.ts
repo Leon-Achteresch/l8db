@@ -1,4 +1,5 @@
 import type { SavedConnection } from "@/lib/connections";
+import type { DatabaseKind } from "@/lib/db/providers";
 import { isProduction, isProductionLocked, PRODUCTION_LOCK_MESSAGE } from "@/lib/environments";
 import { writesData } from "@/lib/sql-safety";
 import type { MultiTarget } from "./run";
@@ -21,9 +22,15 @@ export interface MultiTargetGate {
 export const READ_ONLY_TARGET_REASON =
   "Schreibgeschützte Verbindung: Schreibende Anweisungen werden für dieses Ziel nicht ausgeführt.";
 export const MISSING_TARGET_REASON = "Die Verbindung existiert nicht mehr.";
+export const OTHER_FAMILY_REASON =
+  "Andere Datenbankfamilie als die aktive Verbindung: Das SQL wird hier nicht ausgeführt.";
 
-export function multiTargetGate(sql: string, entries: GatedTarget[]): MultiTargetGate {
-  const kind = entries.find((entry) => entry.connection)?.connection?.kind;
+export function multiTargetGate(
+  sql: string,
+  entries: GatedTarget[],
+  activeKind: DatabaseKind | null | undefined,
+): MultiTargetGate {
+  const kind = activeKind ?? entries.find((entry) => entry.connection)?.connection?.kind;
   const write = writesData(sql, kind);
   const allowed: MultiTarget[] = [];
   const rejected: { target: MultiTarget; reason: string }[] = [];
@@ -32,6 +39,10 @@ export function multiTargetGate(sql: string, entries: GatedTarget[]): MultiTarge
   for (const { target, connection } of entries) {
     if (!connection) {
       rejected.push({ target, reason: MISSING_TARGET_REASON });
+      continue;
+    }
+    if (kind && connection.kind !== kind) {
+      rejected.push({ target, reason: OTHER_FAMILY_REASON });
       continue;
     }
     if (isProduction(connection)) production.push(target);

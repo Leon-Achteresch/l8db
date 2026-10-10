@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 
 const invocations: { command: string; args: Record<string, unknown> }[] = [];
 let pendingQuery: (() => void) | null = null;
+const failing = { savepoint: false, count: false };
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
@@ -10,7 +11,15 @@ mock.module("@tauri-apps/api/core", () => ({
       pendingQuery?.();
       return true;
     }
-    if (command === "execute_query") {
+    if (command === "execute_in_transaction") {
+      const sql = String(args.sql);
+      if (failing.savepoint && sql.startsWith("SAVEPOINT")) throw new Error("savepoint rejected");
+      if (failing.count && sql.startsWith("SELECT COUNT(*)"))
+        throw new Error("current transaction is aborted");
+      if (!sql.startsWith("SELECT"))
+        return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
+    }
+    if (command === "execute_query" || command === "execute_in_transaction") {
       if (String(args.sql).startsWith("SELECT COUNT(*)"))
         return {
           columns: ["affected_rows"],
@@ -36,8 +45,13 @@ const {
   needsDmlPreview,
   normalizeDmlPreviewMode,
   runDmlPreview,
+  hasBindParameters,
 } = await import("../src/lib/dml-preview");
-const { dmlPreviewExecutor } = await import("../src/lib/dml-preview/executor");
+const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewSavepoint } = await import(
+  "../src/lib/dml-preview/executor"
+);
+const { useTransactionStore } = await import("../src/lib/transactions");
+const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
 type QueryResult = import("../src/lib/db/types").QueryResult;
 
 function ready(sql: string, dialect: string, limit = 100) {
@@ -428,14 +442,14 @@ describe("executor", () => {
     sslMode: "prefer" as const,
   };
 
-  test("uses execute_query with a bounded timeout, pooled reads and no confirmation", async () => {
+  test("uses the editor session with a bounded timeout and no confirmation", async () => {
     invocations.length = 0;
     const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
     const outcome = await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 7));
     const queries = invocations.filter((entry) => entry.command === "execute_query");
     expect(queries.map((entry) => entry.args.sql)).toEqual([plan.countSql, plan.sampleSql]);
     for (const entry of queries) {
-      expect(entry.args.pooled).toBe(true);
+      expect(entry.args.pooled).toBeUndefined();
       expect(entry.args.database).toBe("app");
       expect((entry.args.options as Record<string, unknown>).queryTimeout).toBe(7);
       expect(typeof (entry.args.options as Record<string, unknown>).jobId).toBe("string");
@@ -469,5 +483,106 @@ describe("executor", () => {
     );
     expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(1);
     pendingQuery = null;
+  });
+});
+
+describe("review fixes", () => {
+  const connection = {
+    id: "dml-preview-tx",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@tx.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+  const openTransaction = () =>
+    useTransactionStore.setState({
+      transactions: [
+        {
+          txId: "tx-1",
+          connectionId: connection.id,
+          connectionName: "PG",
+          database: "app",
+          scope: { type: "query" },
+          changes: [],
+          startedAt: 0,
+        },
+      ],
+    });
+  const sqlOf = (command: string) =>
+    invocations.filter((entry) => entry.command === command).map((entry) => String(entry.args.sql));
+
+  test("inside an open transaction the preview is wrapped in a savepoint", async () => {
+    openTransaction();
+    invocations.length = 0;
+    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
+    await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10));
+    expect(sqlOf("execute_in_transaction")).toEqual([
+      "SAVEPOINT l8db_preview",
+      plan.countSql,
+      plan.sampleSql,
+      "RELEASE SAVEPOINT l8db_preview",
+    ]);
+    expect(sqlOf("execute_query")).toEqual([]);
+    useTransactionStore.setState({ transactions: [] });
+  });
+
+  test("a failed preview rolls back to the savepoint before the error surfaces", async () => {
+    openTransaction();
+    invocations.length = 0;
+    failing.count = true;
+    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
+    const error = await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10)).catch(
+      (reason: unknown) => reason,
+    );
+    failing.count = false;
+    expect(String(error)).toContain("aborted");
+    expect(sqlOf("execute_in_transaction")).toEqual([
+      "SAVEPOINT l8db_preview",
+      plan.countSql,
+      "ROLLBACK TO SAVEPOINT l8db_preview",
+      "RELEASE SAVEPOINT l8db_preview",
+    ]);
+    useTransactionStore.setState({ transactions: [] });
+  });
+
+  test("without a usable savepoint the preview runs outside the transaction and says so", async () => {
+    openTransaction();
+    invocations.length = 0;
+    failing.savepoint = true;
+    const executor = dmlPreviewExecutor(connection, "app", 10);
+    await runDmlPreview(ready("DELETE FROM t WHERE id > 1", "postgres"), executor);
+    failing.savepoint = false;
+    expect(executor.note).toBe(OUTSIDE_TRANSACTION_NOTE);
+    expect(sqlOf("execute_in_transaction")).toEqual(["SAVEPOINT l8db_preview"]);
+    expect(sqlOf("execute_query")).toHaveLength(2);
+    expect(previewSavepoint("mssql")?.begin).toBe("SAVE TRANSACTION l8db_preview");
+    expect(previewSavepoint("oracle")?.release).toBeNull();
+    expect(previewSavepoint("dynamodb")).toBeNull();
+    useTransactionStore.setState({ transactions: [] });
+  });
+
+  test("session views are expanded like in the editor run", async () => {
+    useSessionViewsStore.getState().add(scopeKey(connection.id, "app"), {
+      name: "recent_orders",
+      sql: "SELECT * FROM orders WHERE created > now() - interval '1 day'",
+      columns: ["id"],
+      createdAt: 0,
+    });
+    invocations.length = 0;
+    await runDmlPreview(
+      ready("DELETE FROM orders WHERE id IN (SELECT id FROM recent_orders)", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+    );
+    const [count] = sqlOf("execute_query");
+    expect(count.startsWith("WITH recent_orders AS (")).toBe(true);
+    expect(count).toContain("interval '1 day'");
+    useSessionViewsStore.getState().clearConnection(connection.id);
+  });
+
+  test("bind parameters are detected for the manual preview fallback", () => {
+    expect(hasBindParameters("DELETE FROM t WHERE id = :id")).toBe(true);
+    expect(hasBindParameters("UPDATE t SET a = $1 WHERE id = $2")).toBe(true);
+    expect(hasBindParameters("DELETE FROM t WHERE note = ':id'")).toBe(false);
+    expect(hasBindParameters("DELETE FROM t WHERE id = 1")).toBe(false);
   });
 });

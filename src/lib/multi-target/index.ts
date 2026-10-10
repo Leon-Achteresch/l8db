@@ -49,5 +49,6 @@ export {
   MISSING_TARGET_REASON,
   type MultiTargetGate,
   multiTargetGate,
+  OTHER_FAMILY_REASON,
   READ_ONLY_TARGET_REASON,
 } from "./safety";

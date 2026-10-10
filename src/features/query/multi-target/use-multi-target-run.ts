@@ -84,7 +84,7 @@ export function useMultiTargetRun() {
   );
 
   const start = useCallback(
-    (sql: string, targets: MultiTarget[]) => {
+    (sql: string, targets: MultiTarget[], kind: SavedConnection["kind"] | null) => {
       if (!sql.trim() || !targets.length || handleRef.current) return;
       const connections = useConnectionsStore.getState().connections;
       const gate = multiTargetGate(
@@ -93,6 +93,7 @@ export function useMultiTargetRun() {
           target,
           connection: connections.find((entry) => entry.id === target.connectionId) ?? null,
         })),
+        kind,
       );
       if (!gate.allowed.length) {
         toast.error("Keines der Ziele darf diese Anweisung ausführen.");
@@ -109,6 +110,7 @@ export function useMultiTargetRun() {
                 rowsAffected: null,
                 truncated: false,
                 error: reason,
+                notice: null,
                 result: null,
               },
             ]),

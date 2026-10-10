@@ -57,13 +57,18 @@ export function MultiTargetSheet({
     () => compatibleConnections(connection, allConnections),
     [connection, allConnections],
   );
-  const [selected, setSelected] = useState<MultiTarget[]>([]);
+  const [rawSelected, setSelected] = useState<MultiTarget[]>([]);
+  const selected = useMemo(() => {
+    const compatible = new Set(connections.map((entry) => entry.id));
+    return rawSelected.filter((target) => compatible.has(target.connectionId));
+  }, [rawSelected, connections]);
   const [seeded, setSeeded] = useState<string | null>(null);
   const [view, setView] = useState<View>("targets");
   const seedKey = connection ? `${connection.id}\u0001${database ?? ""}` : null;
   if (open && seedKey && seeded !== seedKey) {
     setSeeded(seedKey);
     if (!selected.length && connection) setSelected([multiTarget(connection.id, database)]);
+    else if (selected.length !== rawSelected.length) setSelected(selected);
   }
   const ids = run.order.length ? run.order : selected.map((target) => target.id);
   const byId = useMemo(() => {
@@ -128,7 +133,7 @@ export function MultiTargetSheet({
                 size="sm"
                 className="h-7 gap-1.5 px-3 text-xs"
                 disabled={run.running || !trimmedSql || !selected.length}
-                onClick={() => run.start(sql, selected)}
+                onClick={() => run.start(sql, selected, connection?.kind ?? null)}
               >
                 <PlayIcon className="size-3" />
                 Auf {selected.length} Zielen ausführen
@@ -183,6 +188,7 @@ export function MultiTargetSheet({
                 runs={run.runs}
                 kind={connection?.kind}
                 sql={run.lastSql}
+                running={run.running}
               />
             ) : (
               <MultiTargetResults

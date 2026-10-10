@@ -1,6 +1,6 @@
 export class MultiTargetCancelled extends Error {
-  constructor() {
-    super("Abgebrochen.");
+  constructor(message = "Abgebrochen.") {
+    super(message);
     this.name = "MultiTargetCancelled";
   }
 }

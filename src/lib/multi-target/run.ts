@@ -18,6 +18,7 @@ export interface TargetRun {
   rowsAffected: number | null;
   truncated: boolean;
   error: string | null;
+  notice: string | null;
   result: QueryResult | null;
 }
 
@@ -27,12 +28,18 @@ export interface MultiTargetRequest {
   jobId: string;
   timeoutSeconds: number;
   maxRows: number;
+  signal?: AbortSignal;
 }
 
 export interface MultiTargetExecutor {
   execute: (request: MultiTargetRequest) => Promise<QueryResult>;
-  cancel: (target: MultiTarget, jobId: string) => Promise<unknown>;
+  cancel: (target: MultiTarget, jobId: string) => Promise<boolean>;
 }
+
+export const LATE_CANCEL_NOTICE =
+  "Abbruch kam zu spät: Die Anweisung wurde auf diesem Ziel vollständig ausgeführt.";
+export const UNSUPPORTED_CANCEL_NOTICE =
+  "Dieser Treiber kann laufende Anweisungen nicht abbrechen. Das Ergebnis zeigt den tatsächlichen Ausgang.";
 
 export interface MultiTargetRunOptions {
   targets: MultiTarget[];
@@ -78,6 +85,7 @@ export function emptyRun(id: string, status: TargetStatus = "queued"): TargetRun
     rowsAffected: null,
     truncated: false,
     error: null,
+    notice: null,
     result: null,
   };
 }
@@ -103,13 +111,16 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
     controllers.set(target.id, controller);
     const jobId = crypto.randomUUID();
     let started = 0;
+    let cancel: Promise<boolean> | null = null;
     try {
       const result = await limiter.run(
         target.connectionId,
         async () => {
           started = performance.now();
           options.onUpdate({ ...emptyRun(target.id, "running") });
-          const onAbort = () => void options.executor.cancel(target, jobId).catch(() => undefined);
+          const onAbort = () => {
+            cancel = options.executor.cancel(target, jobId).catch(() => false);
+          };
           controller.signal.addEventListener("abort", onAbort, { once: true });
           try {
             return await options.executor.execute({
@@ -118,6 +129,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
               jobId,
               timeoutSeconds: options.timeoutSeconds,
               maxRows,
+              signal: controller.signal,
             });
           } finally {
             controller.signal.removeEventListener("abort", onAbort);
@@ -125,31 +137,36 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         },
         controller.signal,
       );
-      const durationMs = Math.round(performance.now() - started);
-      if (controller.signal.aborted) {
-        options.onUpdate({ ...emptyRun(target.id, "cancelled"), durationMs });
-        return;
-      }
+      const supported = cancel ? await cancel : true;
       options.onUpdate({
         id: target.id,
         status: "done",
-        durationMs,
+        durationMs: Math.round(performance.now() - started),
         rowCount: result.columns.length ? result.rows.length : null,
         rowsAffected: result.rows_affected,
         truncated: Boolean(result.truncated),
         error: null,
+        notice: controller.signal.aborted
+          ? supported
+            ? LATE_CANCEL_NOTICE
+            : UNSUPPORTED_CANCEL_NOTICE
+          : null,
         result,
       });
     } catch (error) {
       const durationMs = started ? Math.round(performance.now() - started) : null;
-      if (controller.signal.aborted || isMultiTargetCancelled(error)) {
-        options.onUpdate({ ...emptyRun(target.id, "cancelled"), durationMs });
+      const supported = cancel ? await cancel : false;
+      if (isMultiTargetCancelled(error) || (controller.signal.aborted && supported)) {
+        const partial =
+          isMultiTargetCancelled(error) && error.message !== "Abgebrochen." ? error.message : null;
+        options.onUpdate({ ...emptyRun(target.id, "cancelled"), durationMs, notice: partial });
         return;
       }
       options.onUpdate({
         ...emptyRun(target.id, "error"),
         durationMs,
         error: error instanceof Error ? error.message : String(error),
+        notice: controller.signal.aborted ? UNSUPPORTED_CANCEL_NOTICE : null,
       });
     } finally {
       controllers.delete(target.id);

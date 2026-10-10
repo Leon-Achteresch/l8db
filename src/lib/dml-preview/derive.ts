@@ -1,3 +1,4 @@
+import { detectBindParams } from "@/lib/bind-params";
 import type { DatabaseKind } from "@/lib/db/providers";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
@@ -854,6 +855,10 @@ function hasTopLevelWhere(tokens: Token[]): boolean {
 
 export function dmlKindOf(statement: string, dialect: string): DmlKind | "cte" | null {
   return kindOfTokens(sqlTokens(normalize(statement, dialect), dialect));
+}
+
+export function hasBindParameters(sql: string): boolean {
+  return detectBindParams(sql).some((ref) => !/^(new|old)$/i.test(ref.name));
 }
 
 export function needsDmlPreview(sql: string, dialect: string): boolean {
