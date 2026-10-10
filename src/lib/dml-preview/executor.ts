@@ -28,7 +28,7 @@ export function previewSession(
 ): PreviewSession {
   if (getQueryTransaction(connection.id, database) && previewSavepoint(connection.kind))
     return "transaction";
-  if (connection.kind === "postgres" && isServerOutputEnabled(connection.id))
+  if (supports(connection, "editor_session_preview") && isServerOutputEnabled(connection.id))
     return "editor-session";
   return "pooled";
 }
@@ -44,41 +44,49 @@ export function dmlPreviewExecutor(
     track: false,
     queryTimeout: timeoutSeconds,
     connectionId: connection.id,
+    cancelMode: "statement" as const,
   });
   const views = sessionViewsFor(connection.id, database);
   const expand = (sql: string) => expandSessionViews(sql, views, connection.kind);
-  const transaction = getQueryTransaction(connection.id, database);
-  let session = previewSession(connection, database);
+  let txId: string | null = null;
+  let session: PreviewSession = "pooled";
   let savepoint: TransactionSavepoint | null = null;
   let holding = false;
+  let inFlight = 0;
 
-  const inTransaction = (sql: string, jobId: string = crypto.randomUUID()) => {
-    const txId = transaction?.txId;
-    if (!txId) return Promise.reject(new Error("Keine Transaktion offen."));
-    return runManagedOperation(txId, () => executeInTransaction(txId, sql, options(jobId)), {
-      recordError: false,
-    });
+  const send = async (sql: string, jobId: string = crypto.randomUUID()) => {
+    const shared = session !== "pooled";
+    if (shared) inFlight++;
+    try {
+      if (session === "transaction" && txId) {
+        const id = txId;
+        return await runManagedOperation(id, () => executeInTransaction(id, sql, options(jobId)), {
+          recordError: false,
+        });
+      }
+      return await executeQuery(
+        connection.kind,
+        effectiveConnectionString(connection),
+        sql,
+        database ?? undefined,
+        session === "pooled" ? { ...options(jobId), pooled: true } : options(jobId),
+      );
+    } finally {
+      if (shared) inFlight--;
+    }
   };
-  const direct = (sql: string, jobId: string = crypto.randomUUID(), pooled = false) =>
-    executeQuery(
-      connection.kind,
-      effectiveConnectionString(connection),
-      sql,
-      database ?? undefined,
-      pooled ? { ...options(jobId), pooled: true } : options(jobId),
-    );
-  const send = (sql: string, jobId?: string) =>
-    session === "transaction"
-      ? inTransaction(sql, jobId)
-      : direct(sql, jobId, session === "pooled");
   const transactionGone = () =>
-    session === "transaction" &&
-    getQueryTransaction(connection.id, database)?.txId !== transaction?.txId;
+    session === "transaction" && getQueryTransaction(connection.id, database)?.txId !== txId;
 
   const executor: DmlPreviewExecutor = {
     note: null,
-    holdsTransaction: () => holding,
+    holdsSession: () => holding || inFlight > 0,
     open: async () => {
+      session = previewSession(connection, database);
+      txId =
+        session === "transaction"
+          ? (getQueryTransaction(connection.id, database)?.txId ?? null)
+          : null;
       if (session === "pooled") return;
       const statements = previewSavepoint(connection.kind);
       if (!statements) return;
@@ -108,6 +116,7 @@ export function dmlPreviewExecutor(
       if (transactionGone()) {
         session = "pooled";
         savepoint = null;
+        holding = false;
         executor.note = OUTSIDE_TRANSACTION_NOTE;
       }
       return send(expand(sql), jobId);

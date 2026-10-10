@@ -1400,6 +1400,31 @@ fn check_copy_schemas(source_schema: &str, target_schema: &str) -> Result<(), St
     Ok(())
 }
 
+pub(crate) fn script_error(error: String, index: usize, total: usize) -> String {
+    if total <= 1 {
+        return error;
+    }
+    format!(
+        "Anweisung {} von {total} fehlgeschlagen ({index} bereits ausgeführt): {error}",
+        index + 1
+    )
+}
+
+pub(crate) fn combine_script_results(prior: &[QueryResult], mut last: QueryResult) -> QueryResult {
+    if !last.columns.is_empty() {
+        return last;
+    }
+    let counted: Vec<u64> = prior
+        .iter()
+        .chain(std::iter::once(&last))
+        .filter_map(|result| result.rows_affected)
+        .collect();
+    if !counted.is_empty() {
+        last.rows_affected = Some(counted.iter().sum());
+    }
+    last
+}
+
 async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     let statement = prepare(sql);
@@ -1582,11 +1607,23 @@ impl DatabaseAdapter for OracleAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
         let mut statements = sql::split_statements(sql);
-        let last = statements.pop().unwrap_or_else(|| sql.to_string());
-        for statement in statements {
-            execute_one(self, &statement).await?;
+        if statements.is_empty() {
+            statements.push(sql.to_string());
         }
-        let mut result = execute_one(self, &last).await?;
+        let total = statements.len();
+        let mut prior = Vec::with_capacity(total.saturating_sub(1));
+        let last = statements.pop().unwrap_or_default();
+        for (index, statement) in statements.iter().enumerate() {
+            prior.push(
+                execute_one(self, statement)
+                    .await
+                    .map_err(|error| script_error(error, index, total))?,
+            );
+        }
+        let result = execute_one(self, &last)
+            .await
+            .map_err(|error| script_error(error, total - 1, total))?;
+        let mut result = combine_script_results(&prior, result);
         result.execution_time_ms = start.elapsed().as_millis() as u64;
         Ok(result)
     }
@@ -2943,6 +2980,41 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn script_results_sum_affected_rows_and_report_progress() {
+        let dml = |rows| super::QueryResult {
+            columns: vec![],
+            rows: vec![],
+            rows_affected: Some(rows),
+            execution_time_ms: 1,
+            truncated: false,
+        };
+        let combined = super::combine_script_results(&[dml(500)], dml(20));
+        assert_eq!(combined.rows_affected, Some(520));
+        let plsql = super::QueryResult {
+            rows_affected: None,
+            ..dml(0)
+        };
+        assert_eq!(
+            super::combine_script_results(&[dml(500), plsql.clone()], dml(20)).rows_affected,
+            Some(520)
+        );
+        let query = super::QueryResult {
+            columns: vec!["N".into()],
+            rows_affected: None,
+            ..dml(0)
+        };
+        assert_eq!(
+            super::combine_script_results(&[dml(500)], query).rows_affected,
+            None
+        );
+        assert_eq!(
+            super::script_error("ORA-00942".into(), 1, 3),
+            "Anweisung 2 von 3 fehlgeschlagen (1 bereits ausgeführt): ORA-00942"
+        );
+        assert_eq!(super::script_error("ORA-00942".into(), 0, 1), "ORA-00942");
+    }
+
     #[test]
     fn push_script_merges_package_spec_and_body() {
         let mut out = Vec::new();

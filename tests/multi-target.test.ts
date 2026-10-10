@@ -26,9 +26,12 @@ const {
 const { multiTargetExecutor, schemaScopedConnectionString } = await import(
   "../src/lib/multi-target/executor"
 );
-const { FAILED_AFTER_CANCEL_NOTICE, LATE_CANCEL_NOTICE } = await import(
-  "../src/lib/multi-target/run"
-);
+const {
+  FAILED_AFTER_CANCEL_NOTICE,
+  LATE_CANCEL_NOTICE,
+  PARTIAL_SCRIPT_NOTICE,
+  UNSUPPORTED_CANCEL_NOTICE,
+} = await import("../src/lib/multi-target/run");
 const { OTHER_FAMILY_REASON } = await import("../src/lib/multi-target/safety");
 const { renderToStaticMarkup } = await import("react-dom/server");
 const { createElement } = await import("react");
@@ -610,5 +613,94 @@ describe("second review fixes", () => {
       rowsAffected: 4,
       notice: LATE_CANCEL_NOTICE,
     });
+  });
+});
+
+describe("third review fixes", () => {
+  const runOnce = async (options: {
+    supported: boolean;
+    scriptStatements: number;
+    outcome: "resolve" | "reject";
+    cancel: boolean;
+  }) => {
+    const updates = new Map<string, TargetRun>();
+    const gate = deferred<QueryResult>();
+    const target = multiTarget("c7");
+    const handle = startMultiTargetRun({
+      targets: [target],
+      sql: "UPDATE a SET x = 1; UPDATE b SET y = 2",
+      scriptStatements: options.scriptStatements,
+      concurrency: 1,
+      perServerLimit: 1,
+      timeoutSeconds: 30,
+      maxRows: 10,
+      executor: {
+        execute: () => gate.promise,
+        cancel: async () => false,
+        canCancel: () => options.supported,
+      },
+      onUpdate: (run) => updates.set(run.id, run),
+    });
+    await tick();
+    if (options.cancel) handle.cancelAll();
+    if (options.outcome === "resolve") gate.resolve({ ...result([], []), rows_affected: 520 });
+    else gate.reject(new Error("ORA-00942: table or view does not exist"));
+    await handle.done;
+    return updates.get(target.id);
+  };
+
+  test("drivers without query_cancel get their own notice", async () => {
+    const done = await runOnce({
+      supported: false,
+      scriptStatements: 1,
+      outcome: "resolve",
+      cancel: true,
+    });
+    expect(done).toMatchObject({
+      status: "done",
+      notice: UNSUPPORTED_CANCEL_NOTICE,
+      rowsAffected: 520,
+    });
+    const failed = await runOnce({
+      supported: false,
+      scriptStatements: 1,
+      outcome: "reject",
+      cancel: true,
+    });
+    expect(failed).toMatchObject({ status: "error", notice: UNSUPPORTED_CANCEL_NOTICE });
+    const late = await runOnce({
+      supported: true,
+      scriptStatements: 1,
+      outcome: "resolve",
+      cancel: true,
+    });
+    expect(late?.notice).toBe(LATE_CANCEL_NOTICE);
+  });
+
+  test("a failing script warns that a part may already have run", async () => {
+    const failed = await runOnce({
+      supported: true,
+      scriptStatements: 2,
+      outcome: "reject",
+      cancel: false,
+    });
+    expect(failed?.status).toBe("error");
+    expect(failed?.notice).toBe(PARTIAL_SCRIPT_NOTICE);
+    const single = await runOnce({
+      supported: true,
+      scriptStatements: 1,
+      outcome: "reject",
+      cancel: false,
+    });
+    expect(single?.notice).toBeNull();
+  });
+
+  test("the executor derives cancel support from the capability", () => {
+    const pg = connection("pg3");
+    const my = connection("my3", { kind: "mysql", connectionString: "mysql://app@my3/app" });
+    useConnectionsStore.setState({ connections: [pg, my] });
+    const executor = multiTargetExecutor(false, async () => pg);
+    expect(executor.canCancel?.(multiTarget("pg3"))).toBe(true);
+    expect(executor.canCancel?.(multiTarget("my3"))).toBe(false);
   });
 });

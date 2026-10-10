@@ -26,7 +26,12 @@ function fakeSession(): FakeSession {
   };
 }
 
-const pg = { active: false, editor: fakeSession(), pooled: fakeSession() };
+const pg: {
+  active: boolean;
+  editor: FakeSession;
+  pooled: FakeSession;
+  countGate: Promise<void> | null;
+} = { active: false, editor: fakeSession(), pooled: fakeSession(), countGate: null };
 const TABLE_ROWS: Record<string, number> = {
   "public.orders": 3,
   "tenant_x.orders": 7,
@@ -91,8 +96,10 @@ function runFakePg(session: FakeSession, sql: string) {
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
     invocations.push({ command, args });
-    if (pg.active && command === "execute_query")
+    if (pg.active && command === "execute_query") {
+      if (pg.countGate && String(args.sql).startsWith("SELECT COUNT(*)")) await pg.countGate;
       return runFakePg(args.pooled ? pg.pooled : pg.editor, String(args.sql));
+    }
     if (command === "cancel_execution") {
       pendingQuery?.();
       return true;
@@ -133,7 +140,9 @@ const {
   runDmlPreview,
   hasBindParameters,
 } = await import("../src/lib/dml-preview");
-const { createPreviewLifecycle } = await import("../src/lib/dml-preview/lifecycle");
+const { attachPreviewLifecycle, createPreviewLifecycle } = await import(
+  "../src/lib/dml-preview/lifecycle"
+);
 const { useServerOutputStore } = await import("../src/lib/server-output");
 const { editorBindParams } = await import("../src/lib/bind-params");
 const { dmlPreviewExecutor, OUTSIDE_TRANSACTION_NOTE, previewSavepoint, previewSession } =
@@ -806,7 +815,7 @@ describe("preview session handling", () => {
       "SELECT",
       "SELECT",
     ]);
-    expect(executor.holdsTransaction?.()).toBe(false);
+    expect(executor.holdsSession?.()).toBe(false);
   });
 
   test("a manual BEGIN stays healthy after a failing preview", async () => {
@@ -851,7 +860,7 @@ describe("preview lifecycle ordering", () => {
   function fakeExecutor(name: string, log: string[], closeGate?: Promise<void>) {
     let holding = false;
     return {
-      holdsTransaction: () => holding,
+      holdsSession: () => holding,
       open: async () => {
         holding = true;
         log.push(`${name}:SAVEPOINT`);
@@ -943,5 +952,98 @@ describe("preview lifecycle ordering", () => {
     expect(await pending.decision).toBe(false);
     expect(isDmlPreviewCancelled(await late)).toBe(true);
     expect(log.some((entry) => entry.startsWith("b:"))).toBe(false);
+  });
+});
+
+describe("third review fixes", () => {
+  const connection = {
+    id: "dml-preview-r4",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@r4.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+
+  test("the confirmed run waits while a preview statement is in flight on the editor session", async () => {
+    pg.active = true;
+    pg.editor = fakeSession();
+    let release!: () => void;
+    pg.countGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    const lifecycle = createPreviewLifecycle();
+    const running = lifecycle.start(
+      ready("DELETE FROM orders WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const settlement = lifecycle.settle(true);
+    expect(settlement.wait).toBe(true);
+    release();
+    await running;
+    expect(await settlement.decision).toBe(true);
+    expect(lifecycle.holding()).toBe(false);
+    pg.countGate = null;
+    pg.active = false;
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+  });
+
+  test("every preview statement asks for a statement-only cancel", async () => {
+    invocations.length = 0;
+    await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+    );
+    const queries = invocations.filter((entry) => entry.command === "execute_query");
+    expect(queries.length).toBeGreaterThan(0);
+    for (const entry of queries)
+      expect((entry.args.options as Record<string, unknown>).cancelMode).toBe("statement");
+  });
+
+  test("session and transaction are read when the preview opens, not when it is created", async () => {
+    pg.active = true;
+    pg.editor = fakeSession();
+    pg.pooled = fakeSession();
+    const executor = dmlPreviewExecutor(connection, "app", 10);
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    await runDmlPreview(ready("DELETE FROM orders WHERE id > 1", "postgres"), executor);
+    expect(pg.editor.log.length).toBeGreaterThan(0);
+    expect(pg.pooled.log).toEqual([]);
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+    pg.active = false;
+  });
+
+  test("the editor session path is gated by a capability", () => {
+    const mysql = { ...connection, id: "dml-preview-my", kind: "mysql" as const };
+    useServerOutputStore.getState().setEnabled(mysql.id, true);
+    expect(previewSession(mysql, "app")).toBe("pooled");
+    useServerOutputStore.getState().setEnabled(mysql.id, false);
+  });
+
+  test("StrictMode mount, unmount and remount keeps a usable lifecycle", async () => {
+    const ref: { current: ReturnType<typeof createPreviewLifecycle> | null } = { current: null };
+    const detachFirst = attachPreviewLifecycle(ref);
+    const first = ref.current;
+    detachFirst();
+    expect(ref.current).toBeNull();
+    const detachSecond = attachPreviewLifecycle(ref);
+    expect(ref.current).not.toBe(first);
+    const outcome = await ref.current?.start(
+      { countSql: "SELECT COUNT(*) FROM t", sampleSql: "SELECT * FROM t", limit: 1 },
+      {
+        execute: async () => ({
+          columns: ["n"],
+          rows: [{ n: 0 }],
+          rows_affected: null,
+          execution_time_ms: 0,
+        }),
+        cancel: async () => false,
+      },
+    );
+    expect(outcome?.count).toBe(0);
+    expect(await ref.current?.settle(true).decision).toBe(true);
+    detachSecond();
+    expect(await first?.settle(true).decision).toBe(false);
   });
 });
