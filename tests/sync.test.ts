@@ -5,6 +5,7 @@ import {
   MAX_SYNC_ATTEMPTS,
   runSync,
   SyncBusyError,
+  SyncDowngradeError,
   SyncRemoteChangedError,
 } from "../src/lib/sync/engine";
 import { createInteractiveDecider } from "../src/lib/sync/interactive-decider";
@@ -44,7 +45,12 @@ function nameOf(snapshot: { items: Map<string, { data: unknown }> }, key: string
   return (snapshot.items.get(key)?.data as { name?: string } | undefined)?.name;
 }
 
-const settings = { includeHistory: false, includeSecrets: false, encryptAll: false };
+const settings = {
+  includeHistory: false,
+  includeSecrets: false,
+  encryptAll: false,
+  purgeRemoteSecrets: false,
+};
 
 function sync(
   dev: ReturnType<typeof device>,
@@ -791,5 +797,100 @@ describe("third review regressions", () => {
     await sync(a, "sync", encrypted);
     await sync(a, "sync", {});
     expect(remote.content).toContain("Geheim");
+  });
+});
+
+describe("fourth review regressions", () => {
+  test("first contact with differing passwords asks and never silently overwrites", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    const options = { includeSecrets: true };
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "server");
+    await sync(a, "sync", options);
+    b.collections.connections = [connection("c1", "Prod")];
+    b.secrets.set("c1", "lokal");
+    const auto = await sync(b, "sync", options, {
+      conflicts: async () => null,
+      preview: async () => true,
+    });
+    expect(auto.status).toBe("conflict");
+    expect(auto.secretConflicts).toBe(1);
+    expect(b.secrets.get("c1")).toBe("lokal");
+    const c = device("c", remote, new FakeCoordinator());
+    c.collections.connections = [connection("c1", "Prod")];
+    await sync(c, "sync", options);
+    expect(c.secrets.get("c1")).toBe("server");
+    let asked: string[] = [];
+    const resolved = await sync(b, "sync", options, {
+      ...acceptAll,
+      secretConflicts: async (list) => {
+        asked = list.map((item) => `${item.label}|${item.kind}`);
+        return { c1: "remote" };
+      },
+    });
+    expect(asked).toEqual(["Prod|Datenbank-Passwort"]);
+    expect(resolved.status).toBe("ok");
+    expect(b.secrets.get("c1")).toBe("server");
+    expect(resolved.secretBackup).not.toBeNull();
+    expect(b.secretBackups.get(resolved.secretBackup as string)).toEqual({ c1: "lokal" });
+  });
+
+  test("keeping the local password on first contact uploads it", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    const options = { includeSecrets: true };
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "server");
+    await sync(a, "sync", options);
+    b.collections.connections = [connection("c1", "Prod")];
+    b.secrets.set("c1", "lokal");
+    await sync(b, "sync", options, {
+      ...acceptAll,
+      secretConflicts: async () => ({ c1: "local" }),
+    });
+    await sync(a, "sync", options);
+    expect(a.secrets.get("c1")).toBe("lokal");
+  });
+
+  test("Hochladen refuses to replace an encrypted remote with plain text unless confirmed", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Geheim", sql: "1" } }];
+    await sync(a, "sync", { includeSecrets: true, encryptAll: true });
+    const puts = remote.puts;
+    b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Offen", sql: "1" } }];
+    await expect(sync(b, "upload")).rejects.toBeInstanceOf(SyncDowngradeError);
+    expect(remote.puts).toBe(puts);
+    expect(remote.probes).toBe(1);
+    await runSync(b.deps, {
+      mode: "upload",
+      target: webdav,
+      settings,
+      memory: { deviceId: "b", lastSalt: null, lastMode: null },
+      decider: acceptAll,
+      allowDowngrade: true,
+    });
+    expect(remote.content).toContain("Offen");
+    await sync(a, "upload", { includeSecrets: true, encryptAll: true });
+    expect(remote.probes).toBe(2);
+    expect(remote.content).not.toContain("Offen");
+  });
+
+  test("turning password sync off can remove the encrypted passwords from the server", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "pw");
+    await sync(a, "sync", { includeSecrets: true });
+    expect(parseDocument(remote.content as string).secrets).not.toBeNull();
+    await sync(a, "sync", { includeSecrets: false });
+    expect(parseDocument(remote.content as string).secrets).not.toBeNull();
+    const purged = await sync(a, "sync", { includeSecrets: false, purgeRemoteSecrets: true });
+    expect(purged.uploaded).toBe(true);
+    expect(parseDocument(remote.content as string).secrets).toBeNull();
   });
 });

@@ -76,6 +76,16 @@ export class FakeRemote {
     });
   }
 
+  probes = 0;
+
+  probe(opId: string) {
+    this.probes++;
+    return this.hold(opId, () => ({
+      exists: this.content !== null,
+      encrypted: this.content !== null && /"contentHash":"[^"]*","encrypted":"/.test(this.content),
+    }));
+  }
+
   cancel(opId: string) {
     this.cancelled.push(opId);
     const abort = this.pending.get(opId);
@@ -86,13 +96,19 @@ export class FakeRemote {
 
 export class FakeCoordinator {
   active: string | null = null;
+  token: string | null = null;
+  private counter = 0;
   begin(label: string) {
-    if (this.active && this.active !== label) return false;
+    if (this.active) return null;
     this.active = label;
-    return true;
+    this.token = `${label}-${++this.counter}`;
+    return this.token;
   }
-  end(label: string) {
-    if (this.active === label) this.active = null;
+  end(token: string) {
+    if (this.token !== token) return false;
+    this.active = null;
+    this.token = null;
+    return true;
   }
 }
 
@@ -125,6 +141,7 @@ export interface Device {
   base: SyncBase;
   secrets: Map<string, string>;
   secretBase: Record<string, [string, number]>;
+  secretBackups: Map<string, Record<string, string | null>>;
   secretMerges: number;
   lastMode: string | null;
   backups: string[];
@@ -146,6 +163,7 @@ export function device(
     base: new Map(),
     secrets: new Map(),
     secretBase: {},
+    secretBackups: new Map(),
     secretMerges: 0,
     lastMode: null,
     backups: [],
@@ -168,8 +186,9 @@ export function device(
   state.deps = {
     transport: {
       begin: async () => coordinator.begin(label),
-      end: async () => coordinator.end(label),
+      end: async (token) => coordinator.end(token),
       fetch: (_target, opId) => remote.fetch(opId),
+      probe: (_target, opId) => remote.probe(opId),
       store: (_target, content, ifMatch, expectAbsent, opId) =>
         remote.store(content, ifMatch, expectAbsent, opId),
       cancel: (opId) => remote.cancel(opId),
@@ -184,7 +203,10 @@ export function device(
         const base: Record<string, [string, number]> = {};
         const agreed: Record<string, [string, number]> = {};
         const updated: string[] = [];
+        const conflicts: string[] = [];
+        const previous: [string, string | null][] = [];
         const values = request.accounts.map((account) => state.secrets.get(account) ?? null);
+        const writes: [string, string | null][] = [];
         request.accounts.forEach((account, index) => {
           const value = values[index];
           const known = request.base[account];
@@ -192,26 +214,41 @@ export function device(
           const oursAt = known && known[0] === ours ? known[1] : request.now;
           const entry = request.mode === "upload" ? undefined : remote[account];
           const theirs = entry ? (entry.v ?? "-") : null;
-          const takeRemote =
-            request.mode === "download"
-              ? theirs !== null
-              : request.mode === "upload" ||
-                  ours === theirs ||
-                  theirs === null ||
-                  theirs === known?.[0]
+          const firstContact = !known && ours !== null && theirs !== null && ours !== theirs;
+          let takeRemote: boolean;
+          if (request.mode === "upload") takeRemote = false;
+          else if (request.mode === "download") takeRemote = theirs !== null;
+          else if (firstContact) {
+            const resolution = request.resolutions?.[account];
+            if (!resolution) {
+              conflicts.push(account);
+              if (entry) merged[account] = entry;
+              return;
+            }
+            takeRemote = resolution === "remote";
+          } else
+            takeRemote =
+              ours === theirs || theirs === null || theirs === known?.[0]
                 ? false
-                : ours === null || ours === known?.[0] || !known
+                : ours === null || ours === known?.[0]
                   ? true
                   : (entry?.t ?? 0) > oursAt;
           const chosen =
             takeRemote && entry
               ? entry
-              : { v: value, t: ours === theirs && entry ? entry.t : oursAt };
+              : {
+                  v: value,
+                  t:
+                    ours === theirs && entry
+                      ? entry.t
+                      : firstContact && entry
+                        ? Math.max(oursAt, entry.t + 1)
+                        : oursAt,
+                };
           const state_ = takeRemote ? theirs : ours;
           if (takeRemote && entry && entry.v !== value) {
-            if (entry.v === null) state.secrets.delete(account);
-            else state.secrets.set(account, entry.v);
-            updated.push(account);
+            writes.push([account, entry.v]);
+            previous.push([account, value]);
           }
           if (state_ === null) return;
           if (theirs === state_) agreed[account] = [state_, chosen.t];
@@ -219,11 +256,24 @@ export function device(
           merged[account] = chosen;
           base[account] = [state_, chosen.t];
         });
+        let backup: string | null = null;
+        if (previous.length > 0) {
+          backup = request.backupId ?? `${request.now}-passwoerter`;
+          const existing = state.secretBackups.get(backup) ?? {};
+          for (const [account, value] of previous)
+            if (!(account in existing)) existing[account] = value;
+          state.secretBackups.set(backup, existing);
+        }
+        for (const [account, value] of writes) {
+          if (value === null) state.secrets.delete(account);
+          else state.secrets.set(account, value);
+          updated.push(account);
+        }
         const sealed =
           Object.keys(merged).length && request.mode !== "download"
             ? crypto.seal(JSON.stringify(merged), request.salt)
             : null;
-        return { sealed, base, agreed, updated };
+        return { sealed, base, agreed, updated, conflicts, backup };
       },
       backup: async (content, reason) => {
         state.backups.push(content);
@@ -232,6 +282,8 @@ export function device(
           createdAt: 0,
           reason,
           size: content.length,
+          hasData: true,
+          hasSecrets: false,
         };
       },
     },

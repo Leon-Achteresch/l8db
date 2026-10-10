@@ -20,6 +20,7 @@ export interface SyncConfig {
   gistId: string;
   includeHistory: boolean;
   includeSecrets: boolean;
+  purgeRemoteSecrets: boolean;
   encryptAll: boolean;
   autoSync: boolean;
   intervalMinutes: number;
@@ -54,6 +55,7 @@ export interface SyncState extends SyncConfig {
         | "lastContentHash"
         | "lastSalt"
         | "lastMode"
+        | "purgeRemoteSecrets"
         | "gistId"
       >
     >,
@@ -75,6 +77,7 @@ export const DEFAULT_SYNC_CONFIG: SyncConfig = {
   gistId: "",
   includeHistory: false,
   includeSecrets: false,
+  purgeRemoteSecrets: false,
   encryptAll: false,
   autoSync: false,
   intervalMinutes: 30,
@@ -150,6 +153,7 @@ export const useSyncStore = create<SyncState>()(
           if (next.encryptAll && !(next.includeSecrets ?? state.includeSecrets))
             next.encryptAll = false;
           if (next.includeSecrets === false) next.encryptAll = false;
+          if (next.includeSecrets === true) next.purgeRemoteSecrets = false;
           return next;
         }),
       commitTarget: (patch) =>
@@ -175,6 +179,7 @@ export const useSyncStore = create<SyncState>()(
         gistId: state.gistId,
         includeHistory: state.includeHistory,
         includeSecrets: state.includeSecrets,
+        purgeRemoteSecrets: state.purgeRemoteSecrets,
         encryptAll: state.encryptAll,
         autoSync: state.autoSync,
         intervalMinutes: state.intervalMinutes,
