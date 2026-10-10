@@ -173,12 +173,9 @@ export interface DashboardVariable {
 
 export const CROSS_WHERE = Symbol("crossWhere");
 
-export interface CrossCondition {
-  ref: string;
-  bucket: TimeBucket;
-  value: unknown;
-  oneOf?: unknown[];
-}
+export type CrossCondition =
+  | { ref: string; bucket: TimeBucket; value: unknown; oneOf?: undefined }
+  | { ref: string; bucket: TimeBucket; oneOf: unknown[]; value?: undefined };
 
 export interface SimpleDataset {
   [CROSS_WHERE]?: CrossCondition[];

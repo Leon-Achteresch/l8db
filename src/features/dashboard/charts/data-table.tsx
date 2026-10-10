@@ -50,7 +50,7 @@ export function DataTable({
   const peaks = Object.fromEntries(
     metrics.map((m) => [
       m.key,
-      Math.max(1e-9, ...rows.map((row) => Math.abs(toNumber(row[m.key])))),
+      rows.reduce((peak, row) => Math.max(peak, Math.abs(toNumber(row[m.key]))), 1e-9),
     ]),
   );
   const queried = exact && !exact.complete ? exact : null;
@@ -65,15 +65,15 @@ export function DataTable({
                 : null
               : combineTotal(
                   m,
-                  rows.map((row) => toNumber(row[m.key])),
+                  rows.map((row) => row[m.key]),
                 ),
           ]),
         )
       : null;
-  const totalLabel = exact ? "Gesamt" : "Summe geladener Zeilen";
+  const totalLabel = exact ? "Gesamt" : "Gesamt geladener Zeilen";
   const totalHint = exact
     ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
-    : "Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)";
+    : "Aus den geladenen Zeilen berechnet (Zeilenlimit des Datensatzes)";
   const head = "border-b px-2.5 py-1.5 font-medium";
   return (
     <div
