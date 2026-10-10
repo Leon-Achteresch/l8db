@@ -5,9 +5,7 @@ import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
-import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { QUERY_RESULT_SCHEMA } from "@/lib/query-result-view";
-import { useTableViewStateStore } from "@/lib/table-view-state";
 import type { QueryResultViewModel } from "./use-query-result-view-model";
 
 interface QueryResultDataProps {
@@ -25,22 +23,6 @@ export function QueryResultData({ model, text, columns, onShowClassic }: QueryRe
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <TableViewsPanel
-        schema={QUERY_RESULT_SCHEMA}
-        table={text}
-        activeFilter={filter}
-        filterRaw={filterRaw}
-        onSelectView={(nextFilter, raw, saved) => {
-          handleFilterChange(nextFilter, raw);
-          if (stateKey && saved?.state)
-            useTableViewStateStore.getState().patch(stateKey, {
-              ...saved.state,
-              filter: nextFilter,
-              filterRaw: raw ?? false,
-              page: 0,
-            });
-        }}
-      />
       <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
         <TableFilterPanel
           key={stateKey}
