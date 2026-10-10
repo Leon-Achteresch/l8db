@@ -259,7 +259,8 @@ pub fn find_jetbrains_ssh_configs(roots: &[PathBuf]) -> Vec<ImportFile> {
             continue;
         };
         for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
-            if path.is_dir() && !products.contains(&path) {
+            let has_config = path.join("options").join(JETBRAINS_SSH_CONFIGS).is_file();
+            if has_config && !products.contains(&path) {
                 products.push(path);
             }
         }
@@ -400,6 +401,14 @@ mod tests {
             let dir = home.join(".config/JetBrains").join(product).join("options");
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join(JETBRAINS_SSH_CONFIGS), body).unwrap();
+        }
+        for index in 0..MAX_JETBRAINS_PRODUCTS + 5 {
+            std::fs::create_dir_all(
+                home.join(".config/JetBrains")
+                    .join(format!("Rider2099.{index}"))
+                    .join("caches"),
+            )
+            .unwrap();
         }
         let ordered: Vec<String> = find_jetbrains_ssh_configs(&roots)
             .into_iter()

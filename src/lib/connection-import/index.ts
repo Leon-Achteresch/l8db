@@ -1,10 +1,9 @@
+export { ADAPTERS } from "./adapters";
 export {
   buildExternalCandidates,
   countExternalImport,
-  endpointKey,
   externalConnectionString,
   persistImportedSecrets,
-  prepareParams,
   resolveExternalImport,
 } from "./build";
 export { decryptDbeaverCredentials, decryptNavicatPassword } from "./crypto";
@@ -16,11 +15,13 @@ export {
   parseDataGripConfig,
 } from "./datagrip";
 export { DBEAVER_CREDENTIALS, DBEAVER_DATA_SOURCES, parseDbeaverConfig } from "./dbeaver";
+export { endpointKey } from "./identity";
 export { parseJdbcUrl } from "./jdbc";
 export type { LegacyDecryptor } from "./navicat";
 export { parseNavicatExport } from "./navicat";
 export { fileName } from "./paths";
 export { matchProduct, resolveProduct } from "./products";
+export { resolveTransport } from "./transport";
 export type {
   ExternalConnection,
   ExternalImportCandidate,

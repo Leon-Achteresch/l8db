@@ -174,6 +174,7 @@ function toConnection(fragment: Fragment, configs: Map<string, XmlElement>): Ext
   connection.oracleSid = target.oracleSid;
   connection.oracleDescriptor = target.oracleDescriptor;
   connection.srv = target.srv;
+  connection.urlScheme = target.transport;
   if (fragment.ssh) {
     const { ssh, issue } = resolveSsh(fragment.ssh, configs);
     connection.ssh = ssh;

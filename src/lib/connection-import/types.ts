@@ -40,6 +40,7 @@ export interface ExternalConnection {
   proxy: NetworkProxy | null;
   proxySecret: string | null;
   sslMode: SslMode | null;
+  urlScheme: "http" | "https" | null;
   environment: ConnectionEnvironment | null;
   readOnly: boolean;
   issue: string | null;
@@ -115,6 +116,7 @@ export function emptyExternalConnection(sourceId: string, name: string): Externa
     proxy: null,
     proxySecret: null,
     sslMode: null,
+    urlScheme: null,
     environment: null,
     readOnly: false,
     issue: null,

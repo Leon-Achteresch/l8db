@@ -10,6 +10,7 @@ export interface JdbcTarget {
   oracleSid: boolean;
   oracleDescriptor: string;
   srv: boolean;
+  transport: "http" | "https" | null;
 }
 
 const USER_KEYS = new Set(["user", "username", "user-name", "uid", "userid"]);
@@ -45,6 +46,7 @@ function emptyTarget(subprotocol: string): JdbcTarget {
     oracleSid: false,
     oracleDescriptor: "",
     srv: false,
+    transport: null,
   };
 }
 
@@ -229,7 +231,7 @@ export function parseJdbcUrl(url: string): JdbcTarget | null {
   let inner = rest.replace(/^(loadbalance|replication|aurora|ch):/i, "");
   const transport = /^(?:\/\/)?(https?):(?=\/\/)/i.exec(inner);
   if (transport) {
-    if (transport[1].toLowerCase() === "https") target.params.push(["ssl", "true"]);
+    target.transport = transport[1].toLowerCase() as "http" | "https";
     inner = inner.slice(transport[0].length);
   }
   return parseAuthorityUrl(inner, target);
