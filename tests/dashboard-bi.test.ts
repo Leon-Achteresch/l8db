@@ -869,6 +869,13 @@ describe("Array-Indizes nach Kommentaren und Leerzeichen", () => {
       expect(readsTable(`SELECT a ['${"x".repeat(300)}]'] FROM orders`, "orders", kind)).toBe(true);
       expect(readsTable("SELECT a [1e3 || ']'] FROM orders", "orders", kind)).toBe(true);
       expect(readsTable("SELECT a [:größe || ']'] FROM orders", "orders", kind)).toBe(true);
+      for (const sql of [
+        "SELECT total [1990's Sales] FROM orders WHERE note = 'a]b'",
+        "SELECT total [1990's Sales] FROM orders o JOIN [Leon's Shop] s ON o.id = s.id",
+        "SELECT a [Unit's Price], b FROM orders WHERE c = 'x]'",
+        "SELECT x [1990's Sales] FROM orders WHERE n = 'it''s]'",
+      ])
+        expect(readsTable(sql, "orders", kind)).toBe(true);
     }
   });
 });
