@@ -52,6 +52,7 @@ const BRACKET_KEYWORDS = new Set([
   "then",
   "else",
 ]);
+const NAME_END = /[\p{L}\p{M}\p{N}_$\])"`]/u;
 const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
@@ -80,7 +81,7 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const arrays = kind === null || kind === "odbc";
   const escapedIdentifiers = kind !== null && ESCAPED_IDENTIFIER_KINDS.has(kind);
   const subscript = (at: number) => {
-    if (!arrays || /\s/.test(sql[at - 1] ?? " ")) return false;
+    if (!arrays || !NAME_END.test(sql[at - 1] ?? " ")) return false;
     const last = tokens[tokens.length - 1];
     if (!last) return false;
     if (last.mark === ")" || last.mark === "]") return true;

@@ -288,4 +288,5 @@ test("subscript checks on ODBC grow linearly with SQL size and keep the cache bo
   });
   expect(large.p95Ms).toBeLessThan(80);
   expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(8);
+  expect(cached).toBeLessThanOrEqual(64);
 });
