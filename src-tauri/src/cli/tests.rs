@@ -1,4 +1,4 @@
-use super::run::{address, split_table, statements, writes};
+use super::run::{address, rollback_note, split_table, statements, writes};
 use super::*;
 use crate::db::DatabaseKind;
 
@@ -341,4 +341,18 @@ fn task_subcommands_map_to_the_automation_cli() {
         super::run::task_args(command, &cli.global),
         ["--list-tasks", "--json"]
     );
+}
+
+#[test]
+fn rollback_message_only_promises_what_the_database_keeps() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let clean = ran(&["insert into t values (1)", "update t set a = 2"]);
+    assert!(rollback_note(DatabaseKind::Postgres, &clean).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Mysql, &clean).contains("Nichts geändert"));
+    let ddl = ran(&["create table t(a int)", "insert into t values ('x')"]);
+    assert!(rollback_note(DatabaseKind::Postgres, &ddl).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Mysql, &ddl).contains("sofort fest"));
+    assert!(rollback_note(DatabaseKind::Oracle, &ddl).contains("sofort fest"));
+    let own = ran(&["insert into t values (1)", "commit", "insert into t values (2)"]);
+    assert!(rollback_note(DatabaseKind::Postgres, &own).contains("BEGIN/COMMIT"));
 }

@@ -135,13 +135,17 @@ pub fn write_rows(
 }
 
 fn object(columns: &[String], row: &Value) -> Value {
-    Value::Object(
-        columns
-            .iter()
-            .enumerate()
-            .map(|(index, column)| (column.clone(), cell(row, column, index)))
-            .collect(),
-    )
+    let mut map = serde_json::Map::new();
+    for (index, column) in columns.iter().enumerate() {
+        let mut key = column.clone();
+        let mut n = 1;
+        while map.contains_key(&key) {
+            n += 1;
+            key = format!("{column}_{n}");
+        }
+        map.insert(key, cell(row, column, index));
+    }
+    Value::Object(map)
 }
 
 pub fn write_list(
@@ -190,6 +194,8 @@ mod tests {
     fn json_keeps_column_order_and_types() {
         let text = render(Format::Ndjson, &["b", "a"], &[json!([true, null])]);
         assert_eq!(text, "{\"b\":true,\"a\":null}\n");
+        let text = render(Format::Ndjson, &["id", "id", "id_2"], &[json!([1, 2, 3])]);
+        assert_eq!(text, "{\"id\":1,\"id_2\":2,\"id_2_2\":3}\n");
     }
 
     #[test]
