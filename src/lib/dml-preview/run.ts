@@ -6,7 +6,7 @@ export interface DmlPreviewExecutor {
   cancel: (jobId: string) => Promise<unknown>;
   open?: () => Promise<void>;
   close?: (failed: boolean) => Promise<void>;
-  holdsTransaction?: () => boolean;
+  holdsSession?: () => boolean;
   note?: string | null;
 }
 

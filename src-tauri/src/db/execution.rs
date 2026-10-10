@@ -22,6 +22,29 @@ pub struct ExecutionOptions {
     pub query_timeout: Option<u64>,
     pub connection_timeout: Option<u64>,
     pub max_rows: Option<usize>,
+    pub cancel_mode: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CancelPhase {
+    Requested,
+    CancelFailed,
+    Settled,
+    Unsettled,
+}
+
+pub fn marks_session_interrupted(statement_only: bool, phase: CancelPhase) -> bool {
+    match phase {
+        CancelPhase::Requested => !statement_only,
+        CancelPhase::Settled => false,
+        CancelPhase::CancelFailed | CancelPhase::Unsettled => statement_only,
+    }
+}
+
+pub fn statement_cancel() -> bool {
+    CONTEXT
+        .try_with(|ctx| ctx.options.cancel_mode.as_deref() == Some("statement"))
+        .unwrap_or(false)
 }
 
 #[derive(Clone)]
@@ -352,25 +375,35 @@ where
         _ = cancel.cancelled() => false,
         _ = tokio::time::sleep(query_duration()) => true,
     };
-    if let Some(session) = session {
-        session.interrupted.store(true, Ordering::Release);
-    }
-    let _ = CONTEXT.try_with(|ctx| ctx.interrupted.store(true, Ordering::Release));
+    let statement_only = statement_cancel();
+    let mark = |phase: CancelPhase| {
+        if marks_session_interrupted(statement_only, phase) {
+            if let Some(session) = session {
+                session.interrupted.store(true, Ordering::Release);
+            }
+            let _ = CONTEXT.try_with(|ctx| ctx.interrupted.store(true, Ordering::Release));
+        }
+    };
+    mark(CancelPhase::Requested);
     let cancellation = token.cancel_query(super::connection::tls_connector(ssl)?);
-    match tokio::time::timeout(connection_duration(), cancellation).await {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            return Err(format!(
-                "Abbruch nicht bestätigt: {error}. Server- und Transaktionszustand prüfen."
-            ))
-        }
-        Err(error) => {
-            return Err(format!(
-                "Abbruch nicht bestätigt: {error}. Server- und Transaktionszustand prüfen."
-            ))
-        }
+    let confirmed = match tokio::time::timeout(connection_duration(), cancellation).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
+    if let Err(error) = confirmed {
+        mark(CancelPhase::CancelFailed);
+        return Err(format!(
+            "Abbruch nicht bestätigt: {error}. Server- und Transaktionszustand prüfen."
+        ));
     }
-    match tokio::time::timeout(connection_duration(), &mut future).await {
+    let settled = tokio::time::timeout(connection_duration(), &mut future).await;
+    mark(if settled.is_ok() {
+        CancelPhase::Settled
+    } else {
+        CancelPhase::Unsettled
+    });
+    match settled {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(error)) if error.contains("57014") || error.contains("canceling statement") || error.contains("user request") || error.contains("statement timeout") => {
             if timed_out {
@@ -425,6 +458,110 @@ mod tests {
         .await;
         assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
+    }
+
+    #[test]
+    fn statement_cancel_only_poisons_sessions_when_the_statement_did_not_settle() {
+        use CancelPhase::*;
+        let poisoned = |statement_only: bool, end: CancelPhase| {
+            [Requested, end]
+                .into_iter()
+                .any(|phase| marks_session_interrupted(statement_only, phase))
+        };
+        for end in [CancelFailed, Settled, Unsettled] {
+            assert!(poisoned(false, end));
+        }
+        assert!(!poisoned(true, Settled));
+        assert!(poisoned(true, CancelFailed));
+        assert!(poisoned(true, Unsettled));
+        assert!(!marks_session_interrupted(true, Requested));
+        assert!(!marks_session_interrupted(true, Settled));
+        assert!(marks_session_interrupted(true, CancelFailed));
+        assert!(marks_session_interrupted(true, Unsettled));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn statement_cancel_keeps_the_editor_session_and_transaction_usable() {
+        let url = std::env::var("L8DB_E2E_PG_URL")
+            .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".into());
+        let (config, ssl) = super::super::connection::parse_connection(&url, None).unwrap();
+        let session = PgSession::new(connect_postgres(&config, &ssl).await.unwrap());
+        session
+            .lock()
+            .await
+            .unwrap()
+            .batch_execute(
+                "BEGIN; CREATE TEMP TABLE l8db_soft_cancel(id int); \
+                 INSERT INTO l8db_soft_cancel VALUES (1); \
+                 SET LOCAL search_path TO pg_temp, public; SAVEPOINT l8db_preview_e2e",
+            )
+            .await
+            .unwrap();
+        let job = "statement-cancel-e2e".to_string();
+        let options = ExecutionOptions {
+            job_id: Some(job.clone()),
+            cancel_mode: Some("statement".into()),
+            query_timeout: Some(30),
+            ..Default::default()
+        };
+        let query = run(Some(options), true, async {
+            let client = session.lock().await?;
+            let outcome = postgres(&client, &ssl, Some(&session), async {
+                client
+                    .simple_query("SELECT pg_sleep(20)")
+                    .await
+                    .map(|_| ())
+                    .map_err(super::super::map_pg_err)
+            })
+            .await;
+            session.finish(outcome)
+        });
+        let canceller = async {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            assert!(cancel(&job).unwrap());
+        };
+        let (result, _) = tokio::join!(query, canceller);
+        assert!(result.unwrap_err().contains("abgebrochen"));
+        assert!(session.available().await);
+        let client = session.lock().await.unwrap();
+        client
+            .batch_execute("ROLLBACK TO SAVEPOINT l8db_preview_e2e")
+            .await
+            .unwrap();
+        let count: i64 = client
+            .query_one("SELECT count(*) FROM l8db_soft_cancel", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 1);
+        let path: String = client
+            .query_one("SHOW search_path", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert!(path.starts_with("pg_temp"), "{path}");
+        client
+            .batch_execute("SAVEPOINT still_in_transaction; ROLLBACK")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn statement_cancel_mode_is_scoped_to_its_request() {
+        let soft = run(
+            Some(ExecutionOptions {
+                cancel_mode: Some("statement".into()),
+                ..Default::default()
+            }),
+            false,
+            async { Ok(statement_cancel()) },
+        );
+        let hard = run(None, false, async { Ok(statement_cancel()) });
+        let (soft, hard) = tokio::join!(soft, hard);
+        assert!(soft.unwrap());
+        assert!(!hard.unwrap());
+        assert!(!statement_cancel());
     }
 
     #[tokio::test]

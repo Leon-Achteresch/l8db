@@ -39,10 +39,12 @@ export {
   type MultiTargetRequest,
   type MultiTargetRunHandle,
   multiTarget,
+  PARTIAL_SCRIPT_NOTICE,
   startMultiTargetRun,
   type TargetRun,
   type TargetStatus,
   targetId,
+  UNSUPPORTED_CANCEL_NOTICE,
 } from "./run";
 export {
   type GatedTarget,

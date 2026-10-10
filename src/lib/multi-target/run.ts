@@ -34,10 +34,15 @@ export interface MultiTargetRequest {
 export interface MultiTargetExecutor {
   execute: (request: MultiTargetRequest) => Promise<QueryResult>;
   cancel: (target: MultiTarget, jobId: string) => Promise<boolean>;
+  canCancel?: (target: MultiTarget) => boolean;
 }
 
 export const LATE_CANCEL_NOTICE =
   "Abbruch kam zu spät: Die Anweisung wurde auf diesem Ziel vollständig ausgeführt.";
+export const UNSUPPORTED_CANCEL_NOTICE =
+  "Dieser Treiber kann laufende Anweisungen nicht abbrechen; die Anweisung lief weiter. Angezeigt wird der tatsächliche Ausgang.";
+export const PARTIAL_SCRIPT_NOTICE =
+  "Ein Teil des Skripts wurde möglicherweise bereits ausgeführt.";
 export const FAILED_AFTER_CANCEL_NOTICE =
   "Der Abbruch kam zu spät oder wird von diesem Treiber nicht unterstützt. Angezeigt wird der tatsächliche Fehler.";
 
@@ -56,6 +61,7 @@ export interface MultiTargetRunOptions {
   perServerLimit: number;
   timeoutSeconds: number;
   maxRows: number;
+  scriptStatements?: number;
   executor: MultiTargetExecutor;
   onUpdate: (run: TargetRun) => void;
 }
@@ -119,6 +125,10 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
     const jobId = crypto.randomUUID();
     let started = 0;
     let cancelAccepted: Promise<boolean> = Promise.resolve(false);
+    const supported = options.executor.canCancel?.(target) ?? true;
+    const script = (options.scriptStatements ?? 1) > 1;
+    const notices = (...entries: (string | false | null)[]) =>
+      entries.filter((entry): entry is string => Boolean(entry)).join(" ") || null;
     try {
       const result = await limiter.run(
         target.connectionId,
@@ -155,7 +165,11 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         rowsAffected: result.rows_affected,
         truncated: Boolean(result.truncated),
         error: null,
-        notice: controller.signal.aborted ? LATE_CANCEL_NOTICE : null,
+        notice: controller.signal.aborted
+          ? supported
+            ? LATE_CANCEL_NOTICE
+            : UNSUPPORTED_CANCEL_NOTICE
+          : null,
         result,
       });
     } catch (error) {
@@ -165,14 +179,21 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         isMultiTargetCancelled(error) ||
         (requested && ((await cancelAccepted) || isCancellationError(error)));
       if (cancelled) {
-        options.onUpdate({ ...emptyRun(target.id, "cancelled"), durationMs });
+        options.onUpdate({
+          ...emptyRun(target.id, "cancelled"),
+          durationMs,
+          notice: notices(script && started > 0 && PARTIAL_SCRIPT_NOTICE),
+        });
         return;
       }
       options.onUpdate({
         ...emptyRun(target.id, "error"),
         durationMs,
         error: error instanceof Error ? error.message : String(error),
-        notice: requested ? FAILED_AFTER_CANCEL_NOTICE : null,
+        notice: notices(
+          requested && (supported ? FAILED_AFTER_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE),
+          script && PARTIAL_SCRIPT_NOTICE,
+        ),
       });
     } finally {
       controllers.delete(target.id);

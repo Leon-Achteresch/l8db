@@ -16,6 +16,7 @@ import {
 import { multiTargetExecutor } from "@/lib/multi-target/executor";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { useSettingsStore } from "@/lib/settings";
+import { splitSqlStatements } from "@/lib/sql-statements";
 
 export interface PendingConfirmation {
   sql: string;
@@ -54,10 +55,14 @@ export function useMultiTargetRun() {
       setElapsedMs(null);
       setLastSql(sql);
       setRunning(true);
+      const kind = useConnectionsStore
+        .getState()
+        .connections.find((entry) => entry.id === gate.allowed[0]?.connectionId)?.kind;
       const handle = startMultiTargetRun({
         targets: gate.allowed,
         rejected: gate.rejected,
         sql,
+        scriptStatements: splitSqlStatements(sql, kind).statements.length,
         concurrency: settings.multiTargetConcurrency,
         perServerLimit: MULTI_TARGET_PER_SERVER_LIMIT,
         timeoutSeconds: settings.multiTargetTimeout,

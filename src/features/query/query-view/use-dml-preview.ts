@@ -11,7 +11,11 @@ import {
   needsDmlPreview,
 } from "@/lib/dml-preview";
 import { dmlPreviewExecutor } from "@/lib/dml-preview/executor";
-import { createPreviewLifecycle, type PreviewLifecycle } from "@/lib/dml-preview/lifecycle";
+import {
+  attachPreviewLifecycle,
+  createPreviewLifecycle,
+  type PreviewLifecycle,
+} from "@/lib/dml-preview/lifecycle";
 import { isProduction } from "@/lib/environments";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -41,8 +45,10 @@ export function useDmlPreview(
   const resolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lifecycleRef = useRef<PreviewLifecycle | null>(null);
-  lifecycleRef.current ??= createPreviewLifecycle();
-  const lifecycle = lifecycleRef.current;
+  const lifecycleOf = useCallback(() => {
+    lifecycleRef.current ??= createPreviewLifecycle();
+    return lifecycleRef.current;
+  }, []);
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -51,6 +57,7 @@ export function useDmlPreview(
 
   const finish = useCallback(
     (accepted: boolean) => {
+      const lifecycle = lifecycleOf();
       const token = lifecycle.current();
       const settlement = lifecycle.settle(accepted);
       abort();
@@ -64,18 +71,18 @@ export function useDmlPreview(
         resolve?.(decision);
       });
     },
-    [abort, lifecycle],
+    [abort, lifecycleOf],
   );
 
-  useEffect(
-    () => () => {
-      lifecycle.dispose();
+  useEffect(() => {
+    const detach = attachPreviewLifecycle(lifecycleRef);
+    return () => {
+      detach();
       abortRef.current?.abort();
       resolverRef.current?.(false);
       resolverRef.current = null;
-    },
-    [lifecycle],
-  );
+    };
+  }, []);
 
   const open = useCallback(
     (sql: string, manual: boolean, bound: boolean): Promise<boolean> => {
@@ -100,6 +107,7 @@ export function useDmlPreview(
       abort();
       resolverRef.current?.(false);
       resolverRef.current = null;
+      const lifecycle = lifecycleOf();
       lifecycle.next();
       const ready = derivation.status === "ready";
       setState({
@@ -146,7 +154,7 @@ export function useDmlPreview(
         resolverRef.current = resolve;
       });
     },
-    [connection, database, abort, lifecycle],
+    [connection, database, abort, lifecycleOf],
   );
 
   const confirmBeforeRun = useCallback(

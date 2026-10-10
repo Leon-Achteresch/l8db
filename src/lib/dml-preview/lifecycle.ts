@@ -18,7 +18,7 @@ export function createPreviewLifecycle() {
   let disposed = false;
   const active = new Set<DmlPreviewExecutor>();
 
-  const holding = () => [...active].some((executor) => executor.holdsTransaction?.() === true);
+  const holding = () => [...active].some((executor) => executor.holdsSession?.() === true);
 
   return {
     current(): number {
@@ -69,3 +69,12 @@ export function createPreviewLifecycle() {
 }
 
 export type PreviewLifecycle = ReturnType<typeof createPreviewLifecycle>;
+
+export function attachPreviewLifecycle(ref: { current: PreviewLifecycle | null }): () => void {
+  const lifecycle = createPreviewLifecycle();
+  ref.current = lifecycle;
+  return () => {
+    lifecycle.dispose();
+    if (ref.current === lifecycle) ref.current = null;
+  };
+}

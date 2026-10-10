@@ -51,6 +51,13 @@ export function multiTargetExecutor(
         },
       );
     },
+    canCancel: (target) =>
+      supports(
+        useConnectionsStore
+          .getState()
+          .connections.find((entry) => entry.id === target.connectionId),
+        "query_cancel",
+      ),
     cancel: async (target, jobId) => {
       const connection = useConnectionsStore
         .getState()
