@@ -18,7 +18,7 @@ export function VersioningAreaSwitch({
 }) {
   const databaseFeature = useNewFeatureVisibility<HTMLButtonElement>("versioning.database");
   const reviewsNew = useHasNewFeatures("versioning.reviews");
-  const deliveryNew = useHasNewFeatures("versioning.delivery");
+  const pipelineNew = useHasNewFeatures("versioning.pipeline");
   return (
     <Tabs
       value={area}
@@ -37,7 +37,7 @@ export function VersioningAreaSwitch({
           {area === "database" && count > 0 && (
             <span className="font-mono text-[10px] text-muted-foreground">{count}</span>
           )}
-          {area === "database" && (reviewsNew || deliveryNew) && <NewBadge />}
+          {area === "database" && (reviewsNew || pipelineNew) && <NewBadge />}
         </TabsTrigger>
       </TabsList>
     </Tabs>
