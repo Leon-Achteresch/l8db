@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   buildExternalCandidates,
+  countExternalImport,
   decryptDbeaverCredentials,
   decryptNavicatPassword,
   parseDataGripConfig,
@@ -477,7 +478,12 @@ test("maps Navicat connections with SSH, legacy fallback and unsupported types",
   expect(byLabel.get("ora sid")?.warnings[0]).toContain("nicht gespeichert");
   expect(byLabel.get("local sqlite")?.profile?.connectionString).toBe("/var/data/app.sqlite");
   expect(byLabel.get("local sqlite")?.missingPassword).toBe(false);
-  expect(byLabel.get("snow")?.skipReason).toContain("SNOWFLAKE");
+  const snow = byLabel.get("snow");
+  expect(snow?.skipReason).toBeNull();
+  expect(snow?.profile?.connectionString).toBe("snowflake://x@acme");
+  expect(snow?.password).toBeNull();
+  expect(snow?.missingPassword).toBe(true);
+  expect(snow?.warnings[0]).toContain("Anmeldung ergänzen");
   expect(byLabel.get("ob oracle")?.skipReason).toContain("Nicht unterstützter Typ");
   const cache = byLabel.get("cache");
   expect(cache?.profile?.connectionString).toBe("redis://@redis.example.com:6380");
@@ -607,7 +613,7 @@ test("detects duplicates by host, port, database and user and resolves skip or c
   expect(skipped.summary).toEqual({
     imported: selectable.size - 1,
     skipped: candidates.length - selectable.size + 1,
-    missingPassword: 2,
+    missingPassword: 3,
   });
 
   const copied = resolveExternalImport(candidates, selectable, "copy");
@@ -909,4 +915,183 @@ test("xml reader skips DOCTYPE declarations with an internal subset", () => {
   expect(root.children[0].name).toBe("Connections");
   expect(root.children[0].children[0].attributes.Host).toBe("h");
   expect(() => parseXml("<!DOCTYPE x [<!ELEMENT x ANY>")).toThrow();
+});
+
+function dataGrip(driverRef: string, url: string, user = "") {
+  const result = parseDataGripConfig([
+    {
+      name: "dataSources.xml",
+      text: `<project><data-source name="x" uuid="u1"><driver-ref>${driverRef}</driver-ref><jdbc-url>${url.replace(/&/g, "&amp;")}</jdbc-url></data-source></project>`,
+    },
+    {
+      name: "dataSources.local.xml",
+      text: `<project><data-source name="x" uuid="u1">${user ? `<user-name>${user}</user-name>` : ""}</data-source></project>`,
+    },
+  ]);
+  return buildExternalCandidates(result.connections, [])[0];
+}
+
+test("keeps ClickHouse TLS from https JDBC URLs, ssl flags and SSL handlers", async () => {
+  const https = dataGrip("clickhouse", "jdbc:clickhouse:https://ch.example.com/analytics", "u");
+  expect(https.profile?.connectionString).toBe(
+    "clickhouse://u@ch.example.com:8443/analytics?secure=1",
+  );
+  const flagged = dataGrip("clickhouse", "jdbc:clickhouse://ch.example.com:9440/db?ssl=true", "u");
+  expect(new URL(flagged.profile?.connectionString ?? "").searchParams.get("secure")).toBe("1");
+  expect(flagged.profile?.connectionString).toContain(":9440/");
+  const plain = dataGrip("clickhouse", "jdbc:clickhouse://ch.example.com/db", "u");
+  expect(plain.profile?.connectionString).toBe("clickhouse://u@ch.example.com:8123/db");
+  const handler = await parseDbeaverConfig(
+    JSON.stringify({
+      connections: {
+        c: {
+          provider: "clickhouse",
+          driver: "com_clickhouse",
+          name: "c",
+          configuration: {
+            host: "ch",
+            database: "db",
+            user: "u",
+            handlers: { clickhouse_ssl: { type: "CONFIG", enabled: true, properties: {} } },
+          },
+        },
+      },
+    }),
+    null,
+  );
+  expect(buildExternalCandidates(handler.connections, [])[0].profile?.connectionString).toBe(
+    "clickhouse://u@ch:8443/db?secure=1",
+  );
+});
+
+test("import count uses the same decision as the import itself", async () => {
+  const result = await parseNavicatExport(NAVICAT_NCX);
+  const candidates = buildExternalCandidates(result.connections, [
+    existing("postgresql://billing@pg.example.com/billing", "postgres", { ssh: PG_PROD_SSH }),
+  ]);
+  const all = new Set(candidates.map((candidate) => candidate.index));
+  const some = new Set([0, 1, 3]);
+  for (const selected of [all, some, new Set<number>()])
+    for (const strategy of ["skip", "copy"] as const)
+      expect(countExternalImport(candidates, selected, strategy)).toBe(
+        resolveExternalImport(candidates, selected, strategy).summary.imported,
+      );
+});
+
+test("maps Snowflake, BigQuery, Athena and DynamoDB to native families", async () => {
+  const snowflake = dataGrip(
+    "snowflake",
+    "jdbc:snowflake://acme-eu.snowflakecomputing.com/?db=SALES&schema=PUBLIC&warehouse=WH&role=ANALYST",
+    "ANNA",
+  );
+  expect(snowflake.profile?.kind).toBe("snowflake");
+  expect(snowflake.profile?.connectionString).toBe(
+    "snowflake://ANNA@acme-eu/SALES/PUBLIC?warehouse=WH&role=ANALYST",
+  );
+  expect(snowflake.warnings[0]).toContain("Anmeldung ergänzen");
+
+  const bigquery = dataGrip(
+    "bigquery",
+    "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;ProjectId=my-proj;OAuthType=0;OAuthPvtKeyPath=/keys/sa.json;DefaultDataset=events;Location=EU",
+  );
+  expect(bigquery.profile?.connectionString).toBe(
+    "bigquery://my-proj/events?location=EU&credentials_file=%2Fkeys%2Fsa.json",
+  );
+  expect(bigquery.warnings).toEqual([]);
+  expect(
+    dataGrip("bigquery", "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;OAuthType=3")
+      .skipReason,
+  ).toContain("Projekt fehlt");
+
+  const athena = dataGrip(
+    "athena",
+    "jdbc:awsathena://AwsRegion=eu-central-1;S3OutputLocation=s3://results/athena/;Workgroup=analytics;Schema=web;ProfileName=prod",
+  );
+  expect(athena.profile?.connectionString).toBe(
+    "athena://eu-central-1/AwsDataCatalog?workgroup=analytics&output=s3%3A%2F%2Fresults%2Fathena%2F&schema=web&profile=prod",
+  );
+  expect(athena.warnings).toEqual([]);
+  const athenaKeys = await parseDbeaverConfig(
+    JSON.stringify({
+      connections: {
+        a: {
+          provider: "athena",
+          driver: "aws_athena",
+          name: "a",
+          configuration: {
+            url: "jdbc:awsathena://athena.us-east-1.amazonaws.com:443;S3OutputLocation=s3://r/",
+            user: "AKIAEXAMPLE",
+            password: "secretKey",
+          },
+        },
+      },
+    }),
+    null,
+  );
+  const athenaKeyCandidate = buildExternalCandidates(athenaKeys.connections, [])[0];
+  expect(athenaKeyCandidate.profile?.connectionString).toBe(
+    "athena://AKIAEXAMPLE@us-east-1/AwsDataCatalog?output=s3%3A%2F%2Fr%2F",
+  );
+  expect(athenaKeyCandidate.password).toBe("secretKey");
+  expect(dataGrip("athena", "jdbc:awsathena://Workgroup=x").skipReason).toContain("Region");
+
+  const dynamo = await parseDbeaverConfig(
+    JSON.stringify({
+      connections: {
+        d: {
+          provider: "dynamodb",
+          driver: "dynamodb",
+          name: "d",
+          configuration: { host: "dynamodb.eu-west-1.amazonaws.com" },
+        },
+      },
+    }),
+    null,
+  );
+  const dynamoCandidate = buildExternalCandidates(dynamo.connections, [])[0];
+  expect(dynamoCandidate.profile?.connectionString).toBe("dynamodb://eu-west-1");
+  expect(dynamoCandidate.warnings[0]).toContain("Anmeldung ergänzen");
+  expect(dynamoCandidate.missingPassword).toBe(true);
+});
+
+test("maps Elasticsearch, OpenSearch and InfluxDB with TLS", async () => {
+  const elastic = dataGrip("elasticsearch", "jdbc:es://https://search.example.com:9243", "elastic");
+  expect(elastic.profile?.connectionString).toBe(
+    "elasticsearch://elastic@search.example.com:9243?ssl=true",
+  );
+  const open = dataGrip("opensearch", "jdbc:opensearch://os.example.com:9200", "admin");
+  expect(open.profile?.connectionString).toBe("opensearch://admin@os.example.com:9200");
+  const influx = await parseNavicatExport(
+    `<Connections><Connection ConnectionName="i" ConnType="INFLUXDB" Host="influx" Port="8086" Database="metrics" Password="00FF99DD211D0C515ECB698A20709847"/></Connections>`,
+  );
+  const influxCandidate = buildExternalCandidates(influx.connections, [])[0];
+  expect(influxCandidate.profile?.connectionString).toBe("influxdb://token@influx:8086/metrics");
+  const resolved = resolveExternalImport([influxCandidate], new Set([0]), "skip");
+  expect(new URL(resolved.connections[0].connectionString).password).toBe("s3cr3t!Pass");
+});
+
+test("cloud families over SSH and generic JDBC drivers stay skipped", async () => {
+  const sshCloud = await parseDbeaverConfig(
+    JSON.stringify({
+      connections: {
+        s: {
+          provider: "snowflake",
+          driver: "snowflake",
+          name: "s",
+          configuration: {
+            host: "acme.snowflakecomputing.com",
+            handlers: { ssh_tunnel: { type: "TUNNEL", enabled: true, properties: { host: "j" } } },
+          },
+        },
+      },
+    }),
+    null,
+  );
+  expect(buildExternalCandidates(sshCloud.connections, [])[0].skipReason).toContain("Cloud");
+  for (const [ref, url] of [
+    ["trino", "jdbc:trino://t:8080/hive"],
+    ["generic", "jdbc:odbc:MyDsn"],
+    ["databricks", "jdbc:databricks://adb.azuredatabricks.net:443"],
+  ])
+    expect(dataGrip(ref, url).skipReason).toContain("Nicht unterstützter Typ");
 });

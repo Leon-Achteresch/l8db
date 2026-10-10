@@ -1,5 +1,6 @@
 export {
   buildExternalCandidates,
+  countExternalImport,
   endpointKey,
   externalConnectionString,
   persistImportedSecrets,

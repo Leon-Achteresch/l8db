@@ -14,7 +14,8 @@ import {
 } from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
 import { injectUrlPassword } from "@/lib/secrets";
-import { DEFAULT_PORTS, FILE_KINDS, PASSWORDLESS_KINDS } from "./products";
+import { cloudTarget } from "./cloud";
+import { CLOUD_KINDS, DEFAULT_PORTS, FILE_KINDS, PASSWORDLESS_KINDS } from "./products";
 import type {
   ExternalConnection,
   ExternalImportCandidate,
@@ -33,7 +34,11 @@ const SCHEMES: Partial<Record<DatabaseKind, string>> = {
   mongodb: "mongodb",
   redis: "redis",
   cassandra: "cassandra",
+  elasticsearch: "elasticsearch",
+  influxdb: "influxdb",
 };
+
+const HTTP_TLS_KINDS: DatabaseKind[] = ["clickhouse", "elasticsearch", "influxdb"];
 
 const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];
 
@@ -165,7 +170,40 @@ export function prepareParams(connection: ExternalConnection): PreparedParams {
     derived = mssqlEncryptMode(mssqlEncrypt, mssqlTrust);
   const sslMode = explicit ?? connection.sslMode ?? derived ?? "prefer";
   if (SSL_PARAM_KINDS.includes(kind)) params.push(["sslmode", sslMode]);
+  if (HTTP_TLS_KINDS.includes(kind)) return httpTlsParams(kind, params, sslMode, stripped);
   return { params, sslMode, stripped };
+}
+
+const TLS_KEYS = ["ssl", "secure", "tls", "usessl"];
+
+function httpTlsParams(
+  kind: DatabaseKind,
+  params: Array<[string, string]>,
+  sslMode: SslMode,
+  stripped: string[],
+): PreparedParams {
+  const kept = params.filter(([key]) => !TLS_KEYS.includes(key.toLowerCase()));
+  const flags = params
+    .filter(([key]) => TLS_KEYS.includes(key.toLowerCase()))
+    .map(([, value]) => flag(value));
+  const secure =
+    flags.includes(true) || !["disable", "prefer"].includes(sslMode)
+      ? true
+      : flags.includes(false)
+        ? false
+        : null;
+  if (secure !== null)
+    kept.push(kind === "clickhouse" ? ["secure", secure ? "1" : "0"] : ["ssl", String(secure)]);
+  return {
+    params: kept,
+    sslMode: secure ? (sslMode === "prefer" ? "require" : sslMode) : sslMode,
+    stripped,
+  };
+}
+
+function effectiveUser(connection: ExternalConnection): string {
+  if (connection.user) return connection.user;
+  return connection.kind === "influxdb" && connection.password ? "token" : "";
 }
 
 function hostForUrl(host: string): string {
@@ -193,14 +231,18 @@ export function externalConnectionString(
 ): string {
   const kind = connection.kind as DatabaseKind;
   if (FILE_KINDS.includes(kind)) return connection.database.trim();
-  const scheme = connection.srv && kind === "mongodb" ? "mongodb+srv" : SCHEMES[kind];
-  const passwordOnly = !connection.user && Boolean(connection.password) && kind === "redis";
-  const auth = connection.user
-    ? `${encodeURIComponent(connection.user)}@`
-    : passwordOnly
-      ? "@"
-      : "";
-  const port = connection.port ?? DEFAULT_PORTS[kind] ?? null;
+  const scheme =
+    connection.srv && kind === "mongodb"
+      ? "mongodb+srv"
+      : kind === "elasticsearch" && connection.product === "OpenSearch"
+        ? "opensearch"
+        : SCHEMES[kind];
+  const user = effectiveUser(connection);
+  const passwordOnly = !user && Boolean(connection.password) && kind === "redis";
+  const auth = user ? `${encodeURIComponent(user)}@` : passwordOnly ? "@" : "";
+  const secureClickhouse =
+    kind === "clickhouse" && params.some(([key, value]) => key === "secure" && value === "1");
+  const port = connection.port ?? (secureClickhouse ? 8443 : (DEFAULT_PORTS[kind] ?? null));
   const portPart = port && !connection.srv ? `:${port}` : "";
   const query = new URLSearchParams(params);
   let path = connection.database ? `/${encodeURIComponent(connection.database)}` : "";
@@ -240,6 +282,10 @@ function skipReasonOf(connection: ExternalConnection): string | null {
     return null;
   }
   if (connection.sshIssue) return connection.sshIssue;
+  if (CLOUD_KINDS.includes(connection.kind))
+    return connection.ssh || connection.proxy
+      ? "SSH-Tunnel oder Proxy für Cloud-Dienste wird beim Import nicht unterstützt."
+      : null;
   if (!connection.host.trim()) return "Host fehlt.";
   if (/[\s/?#@\\]/.test(connection.host.trim())) return `Ungültiger Host „${connection.host}“.`;
   if (connection.kind === "oracle" && !connection.database && !connection.oracleDescriptor)
@@ -323,7 +369,11 @@ function toCandidate(
     product: connection.product || connection.driver || "unbekannt",
     kind: connection.kind,
   };
-  const skipReason = skipReasonOf(connection);
+  const cloud =
+    connection.kind && CLOUD_KINDS.includes(connection.kind) && !skipReasonOf(connection)
+      ? cloudTarget(connection)
+      : null;
+  const skipReason = skipReasonOf(connection) ?? cloud?.skipReason ?? null;
   if (skipReason)
     return {
       ...base,
@@ -338,22 +388,24 @@ function toCandidate(
       duplicateOf: null,
     };
   const kind = connection.kind as DatabaseKind;
-  const warnings: string[] = [];
+  const warnings: string[] = [...(cloud?.warnings ?? [])];
   const passwordless = PASSWORDLESS_KINDS.includes(kind);
-  const password =
-    !passwordless && connection.password && (connection.user || kind === "redis")
-      ? connection.password
-      : null;
-  const missingPassword = !passwordless && Boolean(connection.user) && !password;
-  if (missingPassword)
+  const user = cloud ? cloud.user : effectiveUser(connection);
+  const offered = cloud ? cloud.password : connection.password;
+  const password = !passwordless && offered && (user || kind === "redis") ? offered : null;
+  const missingPassword = cloud
+    ? warnings.some((warning) => warning.startsWith("Anmeldung ergänzen"))
+    : !passwordless && Boolean(user) && !password;
+  if (missingPassword && !cloud)
     warnings.push(connection.passwordHint ?? "Passwort fehlt, bitte nach dem Import ergänzen.");
   if (FILE_KINDS.includes(kind) && !ABSOLUTE_PATH.test(connection.database))
     warnings.push("Dateipfad ist relativ oder enthält Platzhalter, bitte prüfen.");
   if (!passwordless && !connection.user && ["postgres", "mysql", "mssql", "oracle"].includes(kind))
     warnings.push("Benutzer fehlt.");
-  const prepared = FILE_KINDS.includes(kind)
-    ? { params: [], sslMode: "prefer" as SslMode, stripped: [] }
-    : prepareParams(connection);
+  const prepared =
+    FILE_KINDS.includes(kind) || cloud
+      ? { params: [], sslMode: "prefer" as SslMode, stripped: [] }
+      : prepareParams(connection);
   if (prepared.stripped.length)
     warnings.push(
       `Geheime Parameter nicht übernommen, bitte im Profil ergänzen: ${prepared.stripped.join(", ")}.`,
@@ -361,7 +413,9 @@ function toCandidate(
   const ssh = sshProfile(connection, warnings);
   const proxy = connection.proxy ? { ...connection.proxy } : null;
   if (proxy?.username && !connection.proxySecret) warnings.push("Proxy-Passwort fehlt.");
-  const connectionString = externalConnectionString(connection, prepared.params);
+  const connectionString = cloud
+    ? cloud.connectionString
+    : externalConnectionString(connection, prepared.params);
   const endpoint = endpointKey(kind, connectionString, ssh, proxy) ?? "";
   const profile: ExportedConnection = {
     id: createConnectionId(),
@@ -429,6 +483,29 @@ function savedConnection(
   };
 }
 
+export type ImportDecision = "skip" | "import" | "copy";
+
+export function importDecision(
+  candidate: ExternalImportCandidate,
+  selected: ReadonlySet<number>,
+  strategy: "skip" | "copy",
+): ImportDecision {
+  if (!candidate.profile || candidate.skipReason || !selected.has(candidate.index)) return "skip";
+  if (!candidate.duplicateOf) return "import";
+  return strategy === "copy" ? "copy" : "skip";
+}
+
+export function countExternalImport(
+  candidates: ExternalImportCandidate[],
+  selected: ReadonlySet<number>,
+  strategy: "skip" | "copy",
+): number {
+  let count = 0;
+  for (const candidate of candidates)
+    if (importDecision(candidate, selected, strategy) !== "skip") count++;
+  return count;
+}
+
 export function resolveExternalImport(
   candidates: ExternalImportCandidate[],
   selected: ReadonlySet<number>,
@@ -439,16 +516,13 @@ export function resolveExternalImport(
   const secrets: ImportedConnectionSecrets[] = [];
   const summary: ExternalImportSummary = { imported: 0, skipped: 0, missingPassword: 0 };
   for (const candidate of candidates) {
+    const decision = importDecision(candidate, selected, strategy);
     const profile = candidate.profile;
-    if (!profile || candidate.skipReason || !selected.has(candidate.index)) {
+    if (decision === "skip" || !profile) {
       summary.skipped++;
       continue;
     }
-    if (candidate.duplicateOf && strategy === "skip") {
-      summary.skipped++;
-      continue;
-    }
-    const copy = Boolean(candidate.duplicateOf);
+    const copy = decision === "copy";
     const id = copy ? createConnectionId() : profile.id;
     const name = copy ? `${profile.name} (Kopie)` : profile.name;
     connections.push(keepRuleProduction(savedConnection(candidate, profile, id, name), rules));

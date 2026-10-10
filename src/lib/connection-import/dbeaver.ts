@@ -2,7 +2,7 @@ import type { ConnectionEnvironment, NetworkProxy, SshAuth } from "@/lib/connect
 import type { SslMode } from "@/lib/db";
 import { decryptDbeaverCredentials } from "./crypto";
 import { parseJdbcUrl, parsePort } from "./jdbc";
-import { FILE_KINDS, resolveProduct } from "./products";
+import { CLOUD_KINDS, FILE_KINDS, resolveProduct } from "./products";
 import {
   type ExternalConnection,
   type ExternalParseResult,
@@ -30,6 +30,17 @@ function text(value: unknown): string {
 
 function record(value: unknown): Json {
   return isRecord(value) ? value : {};
+}
+
+function cloudProperties(configuration: Json): Array<[string, string]> {
+  const entries: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(record(configuration["provider-properties"]))) {
+    const name = key.replace(/^@dbeaver-/, "").replace(/@$/, "");
+    if (text(value)) entries.push([name, text(value)]);
+  }
+  for (const [key, value] of Object.entries(record(configuration.properties)))
+    if (text(value)) entries.push([key, text(value)]);
+  return entries;
 }
 
 function environmentOf(type: string): ConnectionEnvironment | null {
@@ -231,7 +242,12 @@ function parseEntry(id: string, raw: Json, credentials: Json): ExternalConnectio
   connection.host = text(configuration.host) || target?.host || "";
   connection.port = parsePort(configuration.port) ?? target?.port ?? null;
   connection.database = text(configuration.database) || target?.database || "";
-  connection.params = target?.params ?? [];
+  connection.params = [
+    ...(target?.params ?? []),
+    ...(connection.kind && CLOUD_KINDS.includes(connection.kind)
+      ? cloudProperties(configuration)
+      : []),
+  ];
   connection.oracleSid =
     target?.oracleSid ||
     text(record(configuration["provider-properties"])["@dbeaver-sid-service@"]).toUpperCase() ===

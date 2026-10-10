@@ -7,6 +7,7 @@ import { DialogFooter } from "@/components/ui/dialog";
 import type { DuplicateStrategy } from "@/lib/connection-export";
 import {
   buildExternalCandidates,
+  countExternalImport,
   type DataGripFile,
   type ExternalImportCandidate,
   type ExternalImportSource,
@@ -54,13 +55,11 @@ export function ExternalImportPanel({ source, onClose }: Props) {
   const stats = useMemo(() => {
     let skipped = 0;
     let duplicates = 0;
-    let importable = 0;
     for (const candidate of candidates ?? []) {
       if (candidate.skipReason) skipped++;
       else if (candidate.duplicateOf) duplicates++;
-      if (!candidate.skipReason && selected.has(candidate.index))
-        if (!candidate.duplicateOf || strategy === "copy") importable++;
     }
+    const importable = candidates ? countExternalImport(candidates, selected, strategy) : 0;
     return { skipped, duplicates, importable };
   }, [candidates, selected, strategy]);
 

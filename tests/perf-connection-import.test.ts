@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
 import {
   buildExternalCandidates,
+  countExternalImport,
   type ExternalParseResult,
   parseDataGripConfig,
   parseDbeaverConfig,
@@ -42,7 +43,7 @@ const KINDS = [
   ["postgresql", "postgres-jdbc", "POSTGRESQL", "postgresql", 5432],
   ["mysql", "mysql8", "MYSQL", "mysql.8", 3306],
   ["sqlserver", "microsoft", "MSSQL", "sqlserver.ms", 1433],
-  ["db2", "db2_luw", "SNOWFLAKE", "exasol", 50000],
+  ["db2", "db2_luw", "DB2", "exasol", 50000],
 ] as const;
 
 async function dbeaverFixture() {
@@ -206,6 +207,15 @@ test("DBeaver import of 2,000 connections with encrypted credentials stays withi
     CONNECTIONS / 4 - CONNECTIONS / 20,
   );
   expect(resolved.summary.missingPassword).toBe(0);
+  const selected = new Set(candidates.map((candidate) => candidate.index));
+  const counting = await measureScenario(() => {
+    for (let toggle = 0; toggle < 50; toggle++) {
+      selected.delete(toggle);
+      countExternalImport(candidates, selected, toggle % 2 ? "copy" : "skip");
+    }
+  }, RUNS);
+  reportScenario("connection-import-count", { candidates: CONNECTIONS, toggles: 50, ...counting });
+  expect(counting.p95Ms).toBeLessThan(50);
 });
 
 test("Navicat import of 2,000 connections batches legacy decryption into one request", async () => {

@@ -10,9 +10,16 @@ interface ProductRule extends ProductMatch {
 }
 
 const UNSUPPORTED =
-  /(^|[^a-z0-9])(db2|h2|derby|hsql(db)?|sybase|ase|informix|teradata|exasol|vertica|firebird|interbase|access|ucanaccess|sap|hana|maxdb|ingres|netezza|kingbase\d*|dameng|dm\d*|gaussdb|opengauss|neo4j|couchbase|couchdb|csv|jdbcx|odbc|trino|presto|hive|spark|impala|drill|phoenix|kylin|snowflake|bigquery|athena|dynamodb|elasticsearch|opensearch|es|influxdb|cosmos|databricks|ignite|nuodb|virtuoso|solr|kafka|ldap|excel|xml|json|wmi|mock)([^a-z]|$)/;
+  /(^|[^a-z0-9])(db2|h2|derby|hsql(db)?|sybase|ase|informix|teradata|exasol|vertica|firebird|interbase|access|ucanaccess|sap|hana|maxdb|ingres|netezza|kingbase\d*|dameng|dm\d*|gaussdb|opengauss|neo4j|couchbase|couchdb|csv|jdbcx|odbc|trino|presto|hive|spark|impala|drill|phoenix|kylin|cosmos|databricks|ignite|nuodb|virtuoso|solr|kafka|ldap|excel|xml|json|wmi|mock)([^a-z]|$)/;
 
 const RULES: ProductRule[] = [
+  { pattern: /snowflake/, kind: "snowflake", label: "Snowflake" },
+  { pattern: /bigquery/, kind: "bigquery", label: "Google BigQuery" },
+  { pattern: /athena/, kind: "athena", label: "Amazon Athena" },
+  { pattern: /dynamo/, kind: "dynamodb", label: "Amazon DynamoDB" },
+  { pattern: /opensearch/, kind: "elasticsearch", label: "OpenSearch" },
+  { pattern: /elastic|(^|[^a-z])es([^a-z]|$)/, kind: "elasticsearch", label: "Elasticsearch" },
+  { pattern: /influx/, kind: "influxdb", label: "InfluxDB" },
   { pattern: /redshift/, kind: "postgres", label: "Amazon Redshift" },
   { pattern: /cockroach/, kind: "postgres", label: "CockroachDB" },
   { pattern: /greenplum/, kind: "postgres", label: "Greenplum" },
@@ -79,7 +86,11 @@ export const DEFAULT_PORTS: Partial<Record<DatabaseKind, number>> = {
   mongodb: 27017,
   redis: 6379,
   cassandra: 9042,
+  elasticsearch: 9200,
+  influxdb: 8086,
 };
+
+export const CLOUD_KINDS: DatabaseKind[] = ["snowflake", "bigquery", "athena", "dynamodb"];
 
 export const FILE_KINDS: DatabaseKind[] = ["sqlite", "duckdb"];
 
