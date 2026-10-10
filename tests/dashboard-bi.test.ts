@@ -906,6 +906,23 @@ describe("ODBC-Dialekt aus dem Treiber", () => {
     expect(tableDialect("odbc", "Driver={ODBC Driver 18 for SQL Server};Server=db")).toBe("mssql");
     expect(tableDialect("odbc", "DRIVER=MySQL ODBC 8.0 Unicode Driver;SERVER=db")).toBe("mysql");
     expect(tableDialect("odbc", "DSN=Lager")).toBe("odbc");
+    expect(tableDialect("odbc", "odbc://u:p@h:5432/db?Driver=PostgreSQL%20Unicode")).toBe(
+      "postgres",
+    );
+    expect(
+      tableDialect(
+        "odbc",
+        "odbc://u:p@h/db?Server=h&Driver=ODBC%20Driver%2018%20for%20SQL%20Server",
+      ),
+    ).toBe("mssql");
+    expect(tableDialect("odbc", "odbc://h/db?Driver=ODBC+Driver+18+for+SQL+Server")).toBe("mssql");
+    expect(
+      tableDialect("odbc", "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.so;Server=h"),
+    ).toBe("mssql");
+    expect(tableDialect("odbc", "Driver={SQL Native Client};Server=h")).toBe("mssql");
+    expect(tableDialect("odbc", "Driver=/usr/lib/libmyodbc8w.so;Server=h")).toBe("mysql");
+    expect(tableDialect("odbc", "Driver=/opt/oracle/libsqora.so.19.1;DBQ=h")).toBe("oracle");
+    expect(tableDialect("odbc", "odbc://h/db?Driver=%E0%A4%A")).toBe("odbc");
     expect(tableDialect("postgres", "Driver={SQL Server}")).toBe("postgres");
     expect(tableDialect(undefined, null)).toBeNull();
   });

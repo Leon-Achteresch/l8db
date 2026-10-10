@@ -63,10 +63,10 @@ const cache = new Map<string, TableToken[]>();
 
 const ODBC_DIALECTS: [RegExp, DatabaseKind][] = [
   [/postgres|psql|redshift/i, "postgres"],
-  [/sql ?server|mssql|freetds|azure sql/i, "mssql"],
-  [/mysql|maria/i, "mysql"],
+  [/sql ?server|mssql|msodbcsql|sql native client|sqlncli|freetds|tdsodbc|azure sql/i, "mssql"],
+  [/mysql|myodbc|maria/i, "mysql"],
   [/sqlite/i, "sqlite"],
-  [/oracle/i, "oracle"],
+  [/oracle|sqora/i, "oracle"],
   [/clickhouse/i, "clickhouse"],
   [/snowflake/i, "snowflake"],
   [/duckdb/i, "duckdb"],
@@ -78,7 +78,11 @@ export function tableDialect(
   connectionString?: string | null,
 ): DatabaseKind | null {
   if (kind !== "odbc") return kind ?? null;
-  const driver = /(?:^|;)\s*driver\s*=\s*\{?([^};]+)/i.exec(connectionString ?? "")?.[1] ?? "";
+  const raw = /(?:^|[;?&])\s*driver\s*=\s*\{?([^};&]+)/i.exec(connectionString ?? "")?.[1] ?? "";
+  let driver = raw.replace(/\+/g, " ");
+  try {
+    driver = decodeURIComponent(driver);
+  } catch {}
   return ODBC_DIALECTS.find(([pattern]) => pattern.test(driver))?.[1] ?? "odbc";
 }
 
