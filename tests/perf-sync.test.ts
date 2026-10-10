@@ -189,7 +189,7 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
       mode,
       target: webdav,
       settings,
-      memory: { deviceId: "main", lastSalt: null },
+      memory: { deviceId: "main", lastSalt: null, lastMode: "plain" },
       decider: acceptAll,
       signal,
     });
@@ -258,7 +258,7 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
     mode: "sync",
     target: webdav,
     settings,
-    memory: { deviceId: "main", lastSalt: null },
+    memory: { deviceId: "main", lastSalt: null, lastMode: "plain" },
     decider: acceptAll,
   });
   idleRemote.gets = 0;
@@ -276,7 +276,7 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
         mode: "sync",
         target: webdav,
         settings,
-        memory: { deviceId: "main", lastSalt: null },
+        memory: { deviceId: "main", lastSalt: null, lastMode: "plain" },
         decider: acceptAll,
         signal,
       });
@@ -295,7 +295,7 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
         mode: "sync",
         target: webdav,
         settings,
-        memory: { deviceId: "win-1", lastSalt: null },
+        memory: { deviceId: "win-1", lastSalt: null, lastMode: "plain" },
         decider: acceptAll,
       });
     },

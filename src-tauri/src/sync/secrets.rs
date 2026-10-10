@@ -33,6 +33,7 @@ pub enum Mode {
 pub struct MergeOutput {
     pub merged: BTreeMap<String, RemoteSecret>,
     pub base: BTreeMap<String, BaseEntry>,
+    pub agreed: BTreeMap<String, BaseEntry>,
     pub writes: Vec<(String, Option<String>)>,
 }
 
@@ -41,6 +42,7 @@ pub struct MergeOutput {
 pub struct SecretMerge {
     pub sealed: Option<crypto::Sealed>,
     pub base: BTreeMap<String, BaseEntry>,
+    pub agreed: BTreeMap<String, BaseEntry>,
     pub updated: Vec<String>,
 }
 
@@ -150,7 +152,7 @@ pub fn merge(
             Mode::Sync => {
                 if ours == theirs || theirs.is_none() || theirs == known_hash {
                     false
-                } else if ours.is_none() || ours == known_hash {
+                } else if ours.is_none() || ours == known_hash || known.is_none() {
                     true
                 } else {
                     remote_entry.is_some_and(|entry| entry.t > ours_at)
@@ -164,7 +166,7 @@ pub fn merge(
             if entry.v != value {
                 output.writes.push((account.clone(), entry.v.clone()));
             }
-            (entry, theirs)
+            (entry, theirs.clone())
         } else {
             let at = if ours == theirs {
                 remote_entry.map(|entry| entry.t).unwrap_or(ours_at)
@@ -180,6 +182,13 @@ pub fn merge(
             )
         };
         let Some(state) = state else { continue };
+        if theirs.as_deref() == Some(state.as_str()) {
+            output
+                .agreed
+                .insert(account.clone(), BaseEntry(state.clone(), entry.t));
+        } else if let Some(known) = known {
+            output.agreed.insert(account.clone(), known.clone());
+        }
         if state == DELETED && now.saturating_sub(entry.t) > TOMBSTONE_TTL_MS {
             continue;
         }
@@ -238,7 +247,7 @@ pub fn run(
         }
         updated.push(account.clone());
     }
-    let sealed = if output.merged.is_empty() {
+    let sealed = if output.merged.is_empty() || mode == Mode::Download {
         None
     } else {
         let plaintext =
@@ -252,6 +261,7 @@ pub fn run(
     Ok(SecretMerge {
         sealed,
         base: output.base,
+        agreed: output.agreed,
         updated,
     })
 }
@@ -472,6 +482,65 @@ mod tests {
         );
         assert_eq!(output.merged.keys().collect::<Vec<_>>(), vec!["c1"]);
         assert!(output.writes.is_empty());
+    }
+
+    #[test]
+    fn a_device_without_base_adopts_the_server_password() {
+        let joining = keychain(&[("c1", "veraltet")]);
+        let mut remote = BTreeMap::new();
+        remote.insert(
+            "c1".to_string(),
+            RemoteSecret {
+                v: Some("aktuell".into()),
+                t: 10,
+            },
+        );
+        let output = run_merge(
+            &joining,
+            &["c1"],
+            &BTreeMap::new(),
+            Some(&remote),
+            Mode::Sync,
+            500,
+        );
+        assert_eq!(
+            output.writes,
+            vec![("c1".to_string(), Some("aktuell".to_string()))]
+        );
+        assert_eq!(output.merged["c1"].t, 10);
+    }
+
+    #[test]
+    fn agreed_base_only_covers_states_shared_with_the_server() {
+        let store = keychain(&[("c1", "alt"), ("c2", "x")]);
+        let first = run_merge(
+            &store,
+            &["c1", "c2"],
+            &BTreeMap::new(),
+            None,
+            Mode::Sync,
+            100,
+        );
+        store.lock().unwrap().insert("c1".into(), "neu".into());
+        let mut remote = first.merged.clone();
+        remote.insert(
+            "c2".to_string(),
+            RemoteSecret {
+                v: Some("y".into()),
+                t: 150,
+            },
+        );
+        let output = run_merge(
+            &store,
+            &["c1", "c2"],
+            &first.base,
+            Some(&remote),
+            Mode::Sync,
+            200,
+        );
+        assert_eq!(output.agreed["c1"], first.base["c1"]);
+        assert_eq!(output.agreed["c2"].1, 150);
+        assert_ne!(output.base["c1"], first.base["c1"]);
     }
 
     #[test]

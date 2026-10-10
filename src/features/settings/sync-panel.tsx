@@ -48,25 +48,24 @@ export function SyncPanel() {
   const [confirmUpload, setConfirmUpload] = useState(false);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const interactive = useRef<InteractiveDecider | null>(null);
-  interactive.current ??= createInteractiveDecider({
-    conflicts: setConflicts,
-    preview: setPreview,
-  });
-  const decisions = interactive.current;
   const controller = useRef<AbortController | null>(null);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const decisions = createInteractiveDecider({ conflicts: setConflicts, preview: setPreview });
+    interactive.current = decisions;
+    return () => {
       controller.current?.abort();
-      interactive.current?.dispose();
-    },
-    [],
-  );
+      decisions.dispose();
+      if (interactive.current === decisions) interactive.current = null;
+    };
+  }, []);
   const ready = syncTarget(state) !== null;
   const blocked =
     state.provider === "webdav" &&
     /^http:\/\//i.test(state.webdavUrl.trim()) &&
     !state.webdavAllowInsecure;
   const run = async (mode: SyncMode) => {
+    const decisions = interactive.current;
+    if (!decisions) return;
     const abort = new AbortController();
     controller.current = abort;
     setRunning(true);
@@ -157,11 +156,11 @@ export function SyncPanel() {
       {state.provider && <SyncAutoRow />}
       <SyncConflictDialog
         conflicts={conflicts}
-        onResolve={(strategy) => decisions.resolveConflicts(strategy)}
+        onResolve={(strategy) => interactive.current?.resolveConflicts(strategy)}
       />
       <SyncPreviewDialog
         decision={preview}
-        onDecide={(accepted) => decisions.resolvePreview(accepted)}
+        onDecide={(accepted) => interactive.current?.resolvePreview(accepted)}
       />
       <SyncBackupsDialog open={backupsOpen} onOpenChange={setBackupsOpen} />
       <Dialog open={confirmUpload} onOpenChange={setConfirmUpload}>

@@ -57,9 +57,12 @@ function sync(
     mode,
     target: webdav,
     settings: { ...settings, ...overrides },
-    memory: { deviceId: dev.label, lastSalt: null },
+    memory: { deviceId: dev.label, lastSalt: null, lastMode: dev.lastMode },
     decider,
     signal,
+  }).then((outcome) => {
+    if (outcome.status === "ok" || outcome.status === "skipped") dev.lastMode = outcome.mode;
+    return outcome;
   });
 }
 
@@ -636,5 +639,137 @@ describe("review regressions", () => {
     expect(readSyncBase().size).toBe(1);
     useSyncStore.getState().commitTarget({ webdavPath: "/anders.json" });
     expect(readSyncBase().size).toBe(0);
+  });
+});
+
+describe("second review regressions", () => {
+  test("a retry does not treat items pulled in the first attempt as local edits", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    const c = device("c", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a);
+    await sync(b);
+    await sync(c);
+    b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "B", sql: "1" } }];
+    await sync(b);
+    a.collections.snippets = [
+      { id: "s", data: { id: "s", name: "s", body: "x", shortcut: "s" }, updatedAt: 1 },
+    ];
+    const store = a.deps.transport.store;
+    let raced = false;
+    a.deps.transport.store = async (...args) => {
+      if (!raced) {
+        raced = true;
+        await sync(c);
+        c.collections.savedQueries = [{ id: "q", data: { id: "q", name: "C", sql: "1" } }];
+        await sync(c);
+      }
+      return store(...args);
+    };
+    let asked = 0;
+    const outcome = await sync(
+      a,
+      "sync",
+      {},
+      {
+        conflicts: async () => {
+          asked++;
+          return "local";
+        },
+        preview: async () => true,
+      },
+    );
+    expect(outcome.attempts).toBe(2);
+    expect(asked).toBe(0);
+    expect(nameOf({ items: new Map(a.collections.savedQueries.map((i) => [i.id, i])) }, "q")).toBe(
+      "C",
+    );
+  });
+
+  test("an abort while the lease is being granted still releases it", async () => {
+    const remote = new FakeRemote();
+    const coordinator = new FakeCoordinator();
+    const a = device("a", remote, coordinator);
+    const begin = a.deps.transport.begin;
+    const controller = new AbortController();
+    a.deps.transport.begin = async () => {
+      const granted = await begin();
+      controller.abort();
+      return granted;
+    };
+    await expect(sync(a, "sync", {}, acceptAll, controller.signal)).rejects.toThrow("abgebrochen");
+    expect(coordinator.active).toBeNull();
+  });
+
+  test("an abort after local apply leaves a base that avoids false conflicts", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a);
+    await sync(b);
+    b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "B", sql: "1" } }];
+    await sync(b);
+    a.collections.snippets = [
+      { id: "s", data: { id: "s", name: "s", body: "x", shortcut: "s" }, updatedAt: 1 },
+    ];
+    const controller = new AbortController();
+    const store = a.deps.transport.store;
+    a.deps.transport.store = async (...args) => {
+      controller.abort();
+      return store(...args);
+    };
+    await expect(sync(a, "sync", {}, acceptAll, controller.signal)).rejects.toThrow();
+    a.deps.transport.store = store;
+    let asked = 0;
+    await sync(
+      a,
+      "sync",
+      {},
+      {
+        conflicts: async () => {
+          asked++;
+          return null;
+        },
+        preview: async () => true,
+      },
+    );
+    expect(asked).toBe(0);
+  });
+
+  test("devices with different encryption settings do not keep re-uploading", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    const encrypted = { includeSecrets: true, encryptAll: true };
+    await sync(a, "sync", encrypted);
+    await sync(b);
+    const puts = remote.puts;
+    for (let round = 0; round < 3; round++) {
+      await sync(a, "sync", encrypted);
+      await sync(b);
+    }
+    expect(remote.puts).toBe(puts);
+  });
+
+  test("remote items taken with a wrong per-item hash are re-hashed", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a);
+    await sync(b);
+    const document = JSON.parse(remote.content as string);
+    document.items.savedQueries.q = {
+      updatedAt: 9,
+      h: "zz.zz",
+      data: { id: "q", name: "X", sql: "1" },
+    };
+    remote.content = JSON.stringify(document);
+    await sync(b);
+    expect(b.base.get("savedQueries:q")?.[0]).toBe(hashData({ id: "q", name: "X", sql: "1" }));
   });
 });

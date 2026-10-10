@@ -108,7 +108,7 @@ export async function performSync(
       includeSecrets: state.includeSecrets,
       encryptAll: state.encryptAll,
     },
-    memory: { deviceId: state.deviceId, lastSalt: state.lastSalt },
+    memory: { deviceId: state.deviceId, lastSalt: state.lastSalt, lastMode: state.lastMode },
     decider,
     signal,
   });
@@ -126,6 +126,7 @@ export async function performSync(
             lastVersion: outcome.version,
             lastContentHash: outcome.contentHash,
             lastSalt: outcome.salt,
+            lastMode: outcome.mode,
           }
         : {}),
       ...(outcome.gistId && outcome.gistId !== state.gistId ? { gistId: outcome.gistId } : {}),
