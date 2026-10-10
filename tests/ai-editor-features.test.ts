@@ -70,7 +70,7 @@ const { useEditorAiSettings } = await import("@/lib/ai/editor/settings");
 const { expandToLines, insertionAfter, resolveTarget, statementBounds } = await import(
   "@/lib/ai/editor/targets"
 );
-const { useProvidersStore } = await import("@/lib/providers");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
 
 import type { EditorAiEnvironment } from "@/lib/ai/editor/context";
 import type { EditorAiStats } from "@/lib/ai/editor/metrics";
@@ -78,7 +78,7 @@ import type { SavedConnection } from "@/lib/connections";
 import type { AiProfile } from "@/lib/db/ai";
 import type { ColumnInfo, TableInfo } from "@/lib/db/types";
 
-useProvidersStore.setState({ loaded: true });
+useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
 
 function profile(patch: Partial<AiProfile> = {}): AiProfile {
   return {

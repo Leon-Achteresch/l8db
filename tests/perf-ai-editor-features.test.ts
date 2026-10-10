@@ -42,7 +42,7 @@ const { findRenameProposal } = await import("@/lib/ai/editor/rename");
 const { schemaContextStats } = await import("@/lib/ai/editor/schema-context");
 const { resolveTarget, statementBounds } = await import("@/lib/ai/editor/targets");
 const { setLastResult } = await import("@/lib/ai/last-result");
-const { useProvidersStore } = await import("@/lib/providers");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
 
 import type { ChatContextItem } from "@/lib/ai/chat-context";
 import type { SavedConnection } from "@/lib/connections";
@@ -50,7 +50,7 @@ import type { AiMessage } from "@/lib/db/ai";
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from "@/lib/db/types";
 import type { QueryHistoryEntry } from "@/lib/query-history";
 
-useProvidersStore.setState({ loaded: true });
+useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
 
 const RUNS = 40;
 
