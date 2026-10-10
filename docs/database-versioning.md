@@ -126,6 +126,8 @@ Vor dem Deployment werden Datenbankdefinitionen erneut gelesen und mit der Basel
 
 ## Fehler und Wiederaufnahme
 
+Einen fachlich falschen Release nimmt ein neuer Release zurück, nicht ein Downgrade. In **Releases** zeigt ein früherer Release derselben Linie **Zurücknehmen…**; die **Pipeline** bietet dasselbe für den neuesten Release der gewählten Linie an. l8db setzt dabei Objektdateien und `project.json` auf den Stand des früheren Releases zurück (Package-Specification und -Body getrennt), entfernt Dateien später hinzugekommener Objekte und bereitet einen Release `<neuester>-revert` mit dem neuesten Release als Vorgänger vor. Das SQL wird wie bei jedem Release erzeugt; DROP-Anweisungen für später hinzugekommene Objekte müssen weiterhin ausdrücklich freigegeben werden. Offene Änderungen unter `database/` blockieren die Rücknahme. Ausgerollt wird die Rücknahme wie jeder Release, zuerst auf Test.
+
 PostgreSQL führt alle Migrationen eines Releases in einer gemeinsamen Transaktion aus, einschließlich seiner SQL-Nachprüfungen und Aktualisierung des gemeinsamen Release-Stands. Ein SQL- oder Nachprüfungsfehler rollt diesen Release zurück. Zuvor abgeschlossene Releases bleiben angewendet. Nicht transaktionale Operationen wie `CREATE INDEX CONCURRENTLY` werden in diesem Modus abgewiesen. Die zusätzliche strukturelle Snapshot-Prüfung erfolgt nach dem Commit; eine dort festgestellte Abweichung kann bereits angewendetes SQL betreffen.
 
 Oracle führt Anweisungen einzeln aus und stoppt bei Fehlern. DDL kann bereits dauerhaft gespeichert sein. Nach der Ausführung werden verwaltete beziehungsweise neu ungültige Objekte und der erwartete Objektstand geprüft. Package-Specification und Body werden als vollständige Programmeinheiten ausgeführt.

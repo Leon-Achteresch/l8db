@@ -29,6 +29,7 @@ export function useVersioning() {
   const [branchTargetId, updateBranchTargetId] = useState("");
   const [requestedReleaseId, setRequestedReleaseId] = useState("");
   const [requestedTargetIds, setRequestedTargetIds] = useState<string[]>([]);
+  const [requestedRollbackId, setRequestedRollbackId] = useState("");
   const [dirty, updateDirty] = useState(false);
   const dirtyRef = useRef(false);
   const setDirty = useCallback((value: boolean) => {
@@ -181,6 +182,8 @@ export function useVersioning() {
     setRequestedReleaseId,
     requestedTargetIds,
     setRequestedTargetIds,
+    requestedRollbackId,
+    setRequestedRollbackId,
     busy,
     error: error ?? statusError,
     message,
