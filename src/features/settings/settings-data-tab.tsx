@@ -3,6 +3,7 @@ import { ArrowRightLeftIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { MultiTargetSettingsRow } from "@/features/settings/multi-target-settings-row";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSettingsStore } from "@/lib/settings";
@@ -129,6 +130,8 @@ export function SettingsDataTab() {
             aria-label="Destruktive Abfragen absichern"
           />
         </SettingsRow>
+
+        <MultiTargetSettingsRow />
 
         <SettingsRow settingId="null-values">
           <Switch

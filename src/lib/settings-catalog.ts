@@ -281,6 +281,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "confirmDestructiveQueries",
   },
   {
+    id: "multi-target",
+    tabId: "data",
+    title: "Abfrage auf mehreren Zielen",
+    description:
+      "Wie viele Ziele gleichzeitig abgefragt werden (1 bis 16), wie viele Zeilen je Ziel geladen werden und wann ein Ziel abbricht.",
+    keywords: ["mehrere", "ziele", "datenbanken", "tenant", "parallel", "gleichzeitig", "fan-out"],
+    key: "multiTargetConcurrency",
+  },
+  {
     id: "null-values",
     tabId: "data",
     title: "NULL-Werte hervorheben",

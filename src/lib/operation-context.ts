@@ -3,7 +3,7 @@ import { isProduction, isProductionLocked } from "@/lib/environments";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTransactionStore } from "@/lib/transactions";
 
-const IGNORED_PARAMS = new Set(["options"]);
+const IGNORED_PARAMS = new Set(["options", "schema", "search_path", "currentSchema"]);
 
 function connectionIdentity(value: string): string | null {
   let url: URL;

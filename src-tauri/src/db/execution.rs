@@ -21,6 +21,7 @@ pub struct ExecutionOptions {
     pub job_id: Option<String>,
     pub query_timeout: Option<u64>,
     pub connection_timeout: Option<u64>,
+    pub max_rows: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -102,6 +103,14 @@ where
     F: Future<Output = T>,
 {
     ROW_LIMIT.scope(limit, future).await
+}
+
+pub fn result_row_cap(maximum: usize) -> usize {
+    CONTEXT
+        .try_with(|ctx| ctx.options.max_rows)
+        .ok()
+        .flatten()
+        .map_or(maximum, |rows| rows.clamp(1, maximum))
 }
 
 pub fn query_duration() -> Duration {
@@ -416,6 +425,31 @@ mod tests {
         .await;
         assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
+    }
+
+    #[tokio::test]
+    async fn result_row_cap_is_scoped_and_bounded() {
+        let capped = |max_rows| {
+            run(
+                Some(ExecutionOptions {
+                    max_rows,
+                    ..Default::default()
+                }),
+                false,
+                async { Ok(result_row_cap(1000)) },
+            )
+        };
+        let (small, zero, large, unset) = tokio::join!(
+            capped(Some(25)),
+            capped(Some(0)),
+            capped(Some(5000)),
+            capped(None)
+        );
+        assert_eq!(small.unwrap(), 25);
+        assert_eq!(zero.unwrap(), 1);
+        assert_eq!(large.unwrap(), 1000);
+        assert_eq!(unset.unwrap(), 1000);
+        assert_eq!(result_row_cap(1000), 1000);
     }
 
     #[tokio::test]

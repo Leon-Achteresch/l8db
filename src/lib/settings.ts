@@ -88,6 +88,9 @@ export interface SettingsState {
   dmlPreviewRowLimit: number;
   dmlPreviewTimeout: number;
   dmlPreviewWarnThreshold: number;
+  multiTargetConcurrency: number;
+  multiTargetRowLimit: number;
+  multiTargetTimeout: number;
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
   hideOwnSchemaSelect: boolean;
@@ -152,6 +155,9 @@ export interface SettingsState {
   setDmlPreviewRowLimit: (v: number) => void;
   setDmlPreviewTimeout: (v: number) => void;
   setDmlPreviewWarnThreshold: (v: number) => void;
+  setMultiTargetConcurrency: (v: number) => void;
+  setMultiTargetRowLimit: (v: number) => void;
+  setMultiTargetTimeout: (v: number) => void;
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
   setHideOwnSchemaSelect: (value: boolean) => void;
@@ -243,6 +249,9 @@ export const DEFAULT_SETTINGS = {
   dmlPreviewRowLimit: 100,
   dmlPreviewTimeout: 10,
   dmlPreviewWarnThreshold: 1000,
+  multiTargetConcurrency: 4,
+  multiTargetRowLimit: 1000,
+  multiTargetTimeout: 30,
   highlightNullValues: true,
   translateFilterOperators: true,
   hideOwnSchemaSelect: true,
@@ -337,6 +346,12 @@ export const useSettingsStore = create<SettingsState>()(
       setDmlPreviewRowLimit: (dmlPreviewRowLimit) => set({ dmlPreviewRowLimit }),
       setDmlPreviewTimeout: (dmlPreviewTimeout) => set({ dmlPreviewTimeout }),
       setDmlPreviewWarnThreshold: (dmlPreviewWarnThreshold) => set({ dmlPreviewWarnThreshold }),
+      setMultiTargetConcurrency: (multiTargetConcurrency) =>
+        set({
+          multiTargetConcurrency: Math.max(1, Math.min(16, Math.floor(multiTargetConcurrency))),
+        }),
+      setMultiTargetRowLimit: (multiTargetRowLimit) => set({ multiTargetRowLimit }),
+      setMultiTargetTimeout: (multiTargetTimeout) => set({ multiTargetTimeout }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setHideOwnSchemaSelect: (hideOwnSchemaSelect) => set({ hideOwnSchemaSelect }),
