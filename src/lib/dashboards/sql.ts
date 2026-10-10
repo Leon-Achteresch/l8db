@@ -1,6 +1,6 @@
 import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier, type SqlIdentifierStyle } from "@/lib/export";
-import { compileConditionExpression } from "@/lib/sql-filter";
+import { compileConditionExpression, operatorNeedsList, parseFilterList } from "@/lib/sql-filter";
 import { quoteString } from "@/lib/sql-filter/quote";
 import { aliasOf, calcOf, datasetJoins, parseRef, replaceFieldTokens } from "./joins";
 import {
@@ -300,6 +300,12 @@ function compileCross(
     : crossCondition(expr, cross.value, kind, temporal);
 }
 
+function neutralFilterValue(operator: string, value: string, kind: DatabaseKind | null): string {
+  if (kind !== "odbc" || !value.includes("\\")) return value;
+  if (!operatorNeedsList(operator)) return neutralBackslashes(value, kind);
+  return JSON.stringify(parseFilterList(value).map((item) => neutralBackslashes(item, kind)));
+}
+
 export function crossCondition(
   expr: string,
   value: unknown,
@@ -374,7 +380,7 @@ export function buildSimpleSql(
       return compileConditionExpression(
         refExpr(f.column, ds, style),
         f.operator,
-        neutralBackslashes(value, kind),
+        neutralFilterValue(f.operator, value, kind),
         kind,
         f.dataType,
       );

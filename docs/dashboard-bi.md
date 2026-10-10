@@ -50,11 +50,15 @@ before the dashboard's own CSS.
   tables. On SQL Server, expert SQL with a `WITH` clause is extended by an extra CTE
   instead of being nested, and a top-level `ORDER BY` without `TOP`/`OFFSET` gets
   `TOP 2147483647` so it is valid inside the wrapper; ordered UNION/EXCEPT/INTERSECT
-  queries are wrapped with the ORDER BY outside and its qualifiers removed, and trend
+  queries are wrapped with the ORDER BY outside when it only uses ordinals or columns
+  of the first branch's output (qualifiers removed); otherwise the ORDER BY is dropped
+  so the query stays valid, and trend
   queries reuse the same CTE form. All dashboard SQL (literals,
   identifiers, functions) uses the dialect detected for ODBC connections; on DSN-only
-  ODBC backslashes in values are doubled, which is correct for MySQL-style backends and
-  harmless (never injectable) for ANSI backends. Oracle values without
+  ODBC backslashes in values are doubled. That is correct for MySQL-style backends and
+  never injectable on ANSI backends, but there a value containing a backslash no longer
+  matches, so equality filters miss it and negated filters (`neq`, `notIn`) keep the
+  rows they should exclude. Add `Driver=` to the connection to get exact results. Oracle values without
   a time bucket are compared in the adapter's session format (`YYYY-MM-DD HH24:MI:SS`).
   Selections are dropped automatically when their source chart is deleted, its cross
   filter is switched off or its dimension changes. A linear tokenizer finds table positions

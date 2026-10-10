@@ -1130,11 +1130,53 @@ describe("Dritte Abschlussrunde", () => {
     const topUnion = expert("SELECT TOP 5 a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
     expect(datasetDetailSql(topUnion, [], "mssql", "all")).toContain(") AS l8db_u ORDER BY a");
     const qualified = expert(
-      "SELECT t.a FROM t UNION ALL SELECT u.a FROM u ORDER BY t.a DESC, [dbo].[t].[b]",
+      "SELECT t.a, t.b FROM t UNION ALL SELECT u.a, u.b FROM u ORDER BY t.a DESC, [dbo].[t].[b]",
       "a",
     );
     expect(datasetDetailSql(qualified, [], "mssql", "all")).toContain(
       ") AS l8db_u ORDER BY a DESC, [b]",
     );
+  });
+});
+
+describe("Vierte Abschlussrunde", () => {
+  const union = (order: string) =>
+    datasetDetailSql(
+      expert(`SELECT t.a AS x, t.b FROM t UNION ALL SELECT u.a, u.b FROM u ${order}`, "x"),
+      [],
+      "mssql",
+      "all",
+    );
+
+  test("ORDER BY nach UNION wird nur mit sicheren Spaltenbezügen nach außen verschoben", () => {
+    expect(union("ORDER BY x, 2 DESC")).toContain(") AS l8db_u ORDER BY x, 2 DESC");
+    expect(union("ORDER BY t.a")).not.toContain("ORDER BY");
+    expect(union("ORDER BY dbo.fn(t.a)")).not.toContain("ORDER BY");
+    expect(union("ORDER BY CASE WHEN t.b = 'a.b' THEN 1 END")).not.toContain("ORDER BY");
+    expect(union("ORDER BY t.a")).not.toContain("TOP 2147483647");
+  });
+
+  test("CTE mit Kommentar auch im Wrapper für Details und Filter", () => {
+    const dataset = expert("WITH x AS (SELECT 1 AS a) -- note\nSELECT a FROM x", "a");
+    const sql = datasetDetailSql(dataset, [{ ref: "a", bucket: "none", value: 1 }], "mssql", "all");
+    expect(sql.startsWith("WITH x AS (SELECT 1 AS a),\nl8db_q AS (")).toBe(true);
+    expect(sql).not.toContain("-- note");
+  });
+
+  test("Listenfilter behalten JSON-Escapes und verdoppeln nur echte Backslashes auf DSN-ODBC", () => {
+    const dataset = simple("orders", "region");
+    dataset.simple.filters = [
+      {
+        id: "f",
+        column: "status",
+        operator: "in",
+        value: JSON.stringify(['say "hi"', "C:\\data", "b"]),
+      },
+    ];
+    const sql = datasetSql(dataset, "odbc", "all");
+    expect(sql).toContain(`"status" IN ('say "hi"', 'C:\\\\data', 'b')`);
+    dataset.simple.filters[0].operator = "notIn";
+    expect(datasetSql(dataset, "odbc", "all")).toContain(`NOT IN ('say "hi"', 'C:\\\\data', 'b')`);
+    expect(datasetSql(dataset, null, "all")).toContain(`NOT IN ('say "hi"', E'C:\\\\data', 'b')`);
   });
 });
