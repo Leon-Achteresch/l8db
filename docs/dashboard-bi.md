@@ -48,18 +48,15 @@ before the dashboard's own CSS.
   (builder charts are not filtered by expert selections, because the expert output
   column may be an alias). Schema-qualified names must match, CTE names never count as
   tables. On SQL Server, expert SQL with a `WITH` clause is extended by an extra CTE
-  instead of being nested, and a top-level `ORDER BY` without `TOP`/`OFFSET` gets
-  `TOP 2147483647` so it is valid inside the wrapper; ordered UNION/EXCEPT/INTERSECT
-  queries are wrapped with the ORDER BY outside when it only uses ordinals or columns
-  of the first branch's output (qualifiers removed); otherwise the ORDER BY is dropped
-  so the query stays valid, and trend
-  queries reuse the same CTE form. All dashboard SQL (literals,
-  identifiers, functions) uses the dialect detected for ODBC connections; on DSN-only
-  ODBC backslashes in values are doubled. That is correct for MySQL-style backends and
+  instead of being nested, and a top-level `ORDER BY` without `TOP`/`OFFSET` (also after a
+  UNION) gets `OFFSET 0 ROWS` so it stays unchanged and valid inside the wrapper
+  (SQL Server 2012 or newer); trend queries reuse the same CTE form. All dashboard
+  SQL (literals, identifiers, functions) uses the dialect detected for ODBC
+  connections; on DSN-only ODBC backslashes in values are doubled. That is correct for MySQL-style backends and
   never injectable on ANSI backends, but there a value containing a backslash no longer
   matches, so equality filters miss it and negated filters (`neq`, `notIn`) keep the
-  rows they should exclude. Add `Driver=` to the connection to get exact results. Oracle values without
-  a time bucket are compared in the adapter's session format (`YYYY-MM-DD HH24:MI:SS`).
+  rows they should exclude. Add `Driver=` to the connection to get exact results.
+  Oracle values without a time bucket are compared in the adapter's session format (`YYYY-MM-DD HH24:MI:SS`).
   Selections are dropped automatically when their source chart is deleted, its cross
   filter is switched off or its dimension changes. A linear tokenizer finds table positions
   after FROM, JOIN, ONLY, LATERAL or a comma in a FROM list, per parenthesis level. It
