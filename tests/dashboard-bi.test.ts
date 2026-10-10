@@ -813,5 +813,6 @@ describe("Schlüsselwörter vor Array-Indizes", () => {
     expect(readsTable("SELECT cafe\u0301as[']'], r FROM orders", "orders", "odbc")).toBe(true);
     expect(readsTable("SELECT x.update[']'], r FROM orders", "orders")).toBe(true);
     expect(readsTable("SELECT * FROM[Order Details]", "Order Details")).toBe(true);
+    expect(readsTable("SELECT 1.as[it's], r FROM orders", "orders")).toBe(true);
   });
 });
