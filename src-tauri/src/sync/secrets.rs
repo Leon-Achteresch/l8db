@@ -312,17 +312,52 @@ pub fn read_backup(
         .collect())
 }
 
-pub fn restore_backup(passphrase: &str, dir: &Path, id: &str) -> Result<Vec<String>, String> {
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreResult {
+    pub restored: Vec<String>,
+    pub failed: Vec<String>,
+    pub backup: Option<String>,
+}
+
+pub fn restore_backup(
+    passphrase: &str,
+    dir: &Path,
+    id: &str,
+    now: u64,
+) -> Result<RestoreResult, String> {
     let entries = read_backup(passphrase, dir, id)?;
-    let mut restored = Vec::new();
-    for (account, value) in entries {
-        match value {
-            Some(value) => crate::db::secrets::write_secret(&account, &value)?,
-            None => crate::db::secrets::remove_secret(&account)?,
-        }
-        restored.push(account);
+    let mut current = Vec::with_capacity(entries.len());
+    for account in entries.keys() {
+        current.push((
+            account.clone(),
+            crate::db::secrets::read_secret(account)?.filter(|value| !value.is_empty()),
+        ));
     }
-    Ok(restored)
+    let changed: Vec<(String, Option<String>)> = current
+        .into_iter()
+        .filter(|(account, value)| entries.get(account) != Some(value))
+        .collect();
+    let mut result = RestoreResult::default();
+    if !changed.is_empty() {
+        let backup = format!("{now}-wiederherstellung");
+        write_backup(passphrase, dir, &backup, &changed, None)?;
+        result.backup = Some(backup);
+    }
+    for (account, value) in entries {
+        if !changed.iter().any(|(candidate, _)| candidate == &account) {
+            continue;
+        }
+        let written = match &value {
+            Some(value) => crate::db::secrets::write_secret(&account, value),
+            None => crate::db::secrets::remove_secret(&account),
+        };
+        match written {
+            Ok(()) => result.restored.push(account),
+            Err(_) => result.failed.push(account),
+        }
+    }
+    Ok(result)
 }
 
 pub fn run(passphrase: &str, request: Request<'_>) -> Result<SecretMerge, String> {
@@ -702,6 +737,7 @@ mod tests {
         assert_eq!(merged["c1"].as_deref(), Some("geheim-alt"));
         assert_eq!(merged["c3"].as_deref(), Some("drei"));
         assert!(read_backup("pass", dir.path(), "../x").is_err());
+        assert!(restore_backup("pass", dir.path(), "../x", 1).is_err());
     }
 
     #[test]

@@ -308,7 +308,7 @@ pub async fn sync_merge_secrets<R: Runtime>(
 pub async fn sync_backup_restore_secrets<R: Runtime>(
     app: AppHandle<R>,
     id: String,
-) -> Result<Vec<String>, String> {
+) -> Result<secrets::RestoreResult, String> {
     let passphrase = Zeroizing::new(secret(PASSPHRASE_ACCOUNT).await?);
     if passphrase.is_empty() {
         return Err(
@@ -316,9 +316,19 @@ pub async fn sync_backup_restore_secrets<R: Runtime>(
         );
     }
     let dir = backup_dir(&app)?;
-    tokio::task::spawn_blocking(move || secrets::restore_backup(&passphrase, &dir, &id))
-        .await
-        .map_err(|e| e.to_string())?
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    tokio::task::spawn_blocking(move || {
+        let result = secrets::restore_backup(&passphrase, &dir, &id, now)?;
+        if result.backup.is_some() {
+            prune_backups(&dir)?;
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

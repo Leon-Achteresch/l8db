@@ -274,6 +274,12 @@ impl WebDav<'_> {
         if status == StatusCode::NOT_FOUND {
             return Ok(RemoteProbe::default());
         }
+        if status == StatusCode::RANGE_NOT_SATISFIABLE {
+            return Ok(RemoteProbe {
+                exists: true,
+                encrypted: false,
+            });
+        }
         if !status.is_success() {
             return Err(Self::error(status, "Prüfen der Sync-Datei"));
         }
@@ -646,6 +652,9 @@ mod tests {
                     (201, vec![], vec![])
                 }
                 "GET" => match files.get(&path) {
+                    Some((body, _)) if body.is_empty() && request.header("range").is_some() => {
+                        (416, vec![], vec![])
+                    }
                     Some((body, version)) => (
                         200,
                         vec![header_pair("ETag", &format!("\"v{version}\""))],
@@ -801,6 +810,9 @@ mod tests {
             dav.store(client, PLAIN_DOC, Precondition::None)
                 .await
                 .unwrap();
+            let plain = dav.probe(client).await.unwrap();
+            assert!(plain.exists && !plain.encrypted);
+            dav.store(client, "", Precondition::None).await.unwrap();
             assert_eq!(
                 dav.probe(client).await.unwrap(),
                 RemoteProbe {

@@ -22,6 +22,7 @@ const REASONS: Record<string, string> = {
   download: "vor Herunterladen",
   restore: "vor Wiederherstellung",
   passwoerter: "vor Passwort-Übernahme",
+  wiederherstellung: "vor Passwort-Wiederherstellung",
 };
 
 export function SyncBackupsDialog({ open, onOpenChange }: Props) {

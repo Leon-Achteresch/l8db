@@ -50,7 +50,7 @@ fn start(
     alive: impl Fn(&str) -> bool,
 ) -> Option<String> {
     if let Some(lease) = &state.active {
-        if now.duration_since(lease.since) < LEASE && alive(&lease.owner) {
+        if lease.owner != label && now.duration_since(lease.since) < LEASE && alive(&lease.owner) {
             return None;
         }
     }
@@ -133,7 +133,6 @@ mod tests {
         let now = Instant::now();
         let first = start(&mut state, "main", now, |_| true).unwrap();
         assert!(start(&mut state, "win-1", now, |_| true).is_none());
-        assert!(start(&mut state, "main", now, |_| true).is_none());
         let expired = start(&mut state, "win-1", now + LEASE, |_| true).unwrap();
         assert!(!finish(&mut state, &first));
         assert!(finish(&mut state, &expired));
@@ -145,10 +144,10 @@ mod tests {
         let mut state = Coordinator::default();
         let now = Instant::now();
         let stale = start(&mut state, "main", now, |_| true).unwrap();
-        let fresh = start(&mut state, "main", now + LEASE, |_| true).unwrap();
+        let fresh = start(&mut state, "main", now, |_| true).unwrap();
         assert_ne!(stale, fresh);
         assert!(!finish(&mut state, &stale));
-        assert!(start(&mut state, "win-1", now + LEASE, |_| true).is_none());
+        assert!(start(&mut state, "win-1", now, |_| true).is_none());
         assert!(!finish(&mut state, "geraten"));
         assert!(finish(&mut state, &fresh));
     }

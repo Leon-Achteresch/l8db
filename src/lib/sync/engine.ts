@@ -176,6 +176,8 @@ export interface SyncOutcome {
   mode: string | null;
   secretConflicts: number;
   secretBackup: string | null;
+  committed: boolean;
+  remoteHasSecrets: boolean;
 }
 
 export class SyncAbortedError extends Error {
@@ -426,6 +428,8 @@ async function attemptSync(
     mode: memory.lastMode,
     secretConflicts: 0,
     secretBackup: null,
+    committed: false,
+    remoteHasSecrets: false,
   };
   const include = includedCollections(settings);
   const base = deps.readBase();
@@ -567,12 +571,14 @@ async function attemptSync(
   const commit = () => {
     deps.writeBase(snapshotBase(merged));
     if (secretBase) deps.writeSecretBase(secretBase);
+    outcome.committed = true;
   };
   const extra = remoteDocument?.extra;
   if (mode === "download") {
     outcome.mode = remoteEncrypted ? "encrypted" : "plain";
     outcome.contentHash = remoteDocument?.contentHash ?? null;
     outcome.version = remoteFile?.version ?? null;
+    outcome.remoteHasSecrets = Boolean(remoteDocument?.secrets);
     commit();
     if (outcome.secretConflicts > 0) outcome.status = "conflict";
     return outcome;
@@ -641,10 +647,14 @@ async function attemptSync(
     );
     if (stored.conflict) throw new SyncRemoteChangedError();
     outcome.uploaded = true;
+    outcome.remoteHasSecrets = secretsEnvelope !== null;
     outcome.version = stored.version;
     outcome.warning = stored.warning;
     if (stored.gistId) outcome.gistId = stored.gistId;
-  } else if (outcome.applied === null && outcome.secretsUpdated === 0) outcome.status = "skipped";
+  } else {
+    outcome.remoteHasSecrets = Boolean(remoteDocument?.secrets);
+    if (outcome.applied === null && outcome.secretsUpdated === 0) outcome.status = "skipped";
+  }
   commit();
   if (outcome.secretConflicts > 0) outcome.status = "conflict";
   return outcome;
