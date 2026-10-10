@@ -1,5 +1,6 @@
 import { type Hotkey, matchesKeyboardEvent } from "@tanstack/react-hotkeys";
 import { toast } from "sonner";
+import type { ChatContextItem } from "@/lib/ai/chat-context";
 import { useAiStore } from "@/lib/ai/store";
 import type { DatabaseKind } from "@/lib/db";
 import { explainQuery } from "@/lib/db/rows";
@@ -8,7 +9,7 @@ import { monaco } from "@/lib/monaco";
 import { supports } from "@/lib/providers";
 import { sqlErrorMarkers } from "@/lib/sql-diagnostics/markers";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { askDraft, explainPrompt } from "./chat-prompts";
+import { EXPLAIN_PROMPT } from "./chat-prompts";
 import { useEditorCheckpoints } from "./checkpoints";
 import { editorAiProfile, editorAiSupported } from "./client";
 import { compactError, compactExplain } from "./compact";
@@ -296,22 +297,36 @@ export class EditorAiController {
     });
   }
 
-  private statementText(): string {
+  private statementContext(): ChatContextItem | null {
     const current = this.selectionOffsets();
-    if (!current) return "";
-    if (current.end > current.start) return current.text.slice(current.start, current.end);
-    const bounds = statementBounds(current.text, current.start, dialect());
-    return bounds ? current.text.slice(bounds.start, bounds.end) : current.text;
+    const model = this.model();
+    if (!current || !model) return null;
+    const bounds =
+      current.end > current.start
+        ? current
+        : (statementBounds(current.text, current.start, dialect()) ?? {
+            start: 0,
+            end: current.text.length,
+          });
+    const sql = current.text.slice(bounds.start, bounds.end);
+    if (!sql.trim()) return null;
+    const leading = sql.length - sql.trimStart().length;
+    const trailing = sql.length - sql.trimEnd().length;
+    const first = model.getPositionAt(bounds.start + leading).lineNumber;
+    const last = model.getPositionAt(bounds.end - trailing).lineNumber;
+    const label = first === last ? `SQL Z. ${first}` : `SQL Z. ${first}–${last}`;
+    return { id: `sql:${first}-${last}:${sql.length}`, kind: "sql", label, sql: sql.trim() };
   }
 
-  explain(sql = this.statementText()) {
-    if (!sql.trim()) return;
-    useAiStore.getState().ask(explainPrompt(sql));
+  explain() {
+    const item = this.statementContext();
+    if (item) useAiStore.getState().ask(EXPLAIN_PROMPT, [item]);
   }
 
   askInChat() {
-    const sql = this.statementText();
-    useAiStore.getState().draft(sql.trim() ? askDraft(sql) : "");
+    const item = this.statementContext();
+    if (item) useAiStore.getState().attach(item);
+    else useAiStore.getState().draft("");
   }
 
   fix() {

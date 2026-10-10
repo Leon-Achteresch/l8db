@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ChatContextItem } from "@/lib/ai/chat-context";
 import { sanitizeAiRich } from "@/lib/ai/rich";
 import type { AiMessage, AiProfile, AiProvider, AiServer } from "@/lib/db/ai";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -67,9 +68,11 @@ interface AiState extends AiData {
   minimized: boolean;
   setMinimized: (minimized: boolean) => void;
   pendingPrompt: string;
-  ask: (prompt: string) => void;
+  ask: (prompt: string, context?: ChatContextItem[]) => void;
   pendingDraft: string;
   draft: (text: string) => void;
+  pendingContext: ChatContextItem[];
+  attach: (item: ChatContextItem) => void;
   selectProfile: (id: string) => void;
   selectSession: (id: string | null) => void;
   saveProfile: (profile: AiProfile) => void;
@@ -206,11 +209,19 @@ export const useAiStore = create<AiState>((set) => ({
   minimized: false,
   setMinimized: (minimized) => set({ minimized }),
   pendingPrompt: "",
-  ask: (pendingPrompt) => set({ pendingPrompt, open: true, minimized: false }),
+  ask: (pendingPrompt, pendingContext = []) =>
+    set({ pendingPrompt, pendingContext, open: true, minimized: false }),
   pendingDraft: "",
   draft: (text) =>
     set((state) => ({
       pendingDraft: state.pendingDraft ? `${state.pendingDraft}\n\n${text}` : text,
+      open: true,
+      minimized: false,
+    })),
+  pendingContext: [],
+  attach: (item) =>
+    set((state) => ({
+      pendingContext: [...state.pendingContext.filter((entry) => entry.id !== item.id), item],
       open: true,
       minimized: false,
     })),
