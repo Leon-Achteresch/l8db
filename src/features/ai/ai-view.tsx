@@ -259,6 +259,35 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       discovery.current++;
     };
   }, [discoveryProfile, cwd, state.open, fullPage]);
+  const modelScoped = Boolean(
+    models.configOptions?.some(
+      (option) =>
+        option &&
+        typeof option === "object" &&
+        ((option as Record<string, unknown>).category === "model" ||
+          (option as Record<string, unknown>).id === "model"),
+    ),
+  );
+  const probedModel = useRef("");
+  useEffect(() => {
+    if (loading) probedModel.current = "";
+    if (loading || !modelScoped || run.current || probedModel.current === profile.model) return;
+    const model = profile.model;
+    let live = true;
+    const timer = setTimeout(() => {
+      void aiModels({ ...discoveryProfile, model }, cwd)
+        .then((result) => {
+          if (!live || !Array.isArray(result.configOptions)) return;
+          probedModel.current = model;
+          setModels((current) => ({ ...current, configOptions: result.configOptions }));
+        })
+        .catch(() => undefined);
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [loading, modelScoped, profile.model, discoveryProfile, cwd]);
   useEffect(() => {
     if ((state.open || fullPage) && view === "chat") input.current?.focus();
   }, [state.open, view, fullPage]);
