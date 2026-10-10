@@ -261,4 +261,33 @@ test("bracket identifiers keep table detection linear on SQL Server", async () =
   });
   expect(reached).toBe(true);
   expect(timing.p95Ms).toBeLessThan(15);
+  expect(tableTokenCacheKeys().length).toBeLessThanOrEqual(64);
+});
+
+test("subscript checks on ODBC grow linearly with SQL size and keep the cache bounded", async () => {
+  const build = (count: number) =>
+    `SELECT ${Array.from({ length: count }, (_, i) => `t.update[${i}], x${i}.as['k']`).join(", ")} FROM [dbo].[orders] t`;
+  const measure = async (count: number) => {
+    const sql = build(count);
+    let run = 0;
+    let reached = false;
+    const timing = await measureScenario(() => {
+      run++;
+      reached = readsTable(`${sql} -- ${count}-${run}`, "orders", "odbc");
+    }, 15);
+    expect(reached).toBe(true);
+    return { ...timing, sqlBytes: sql.length };
+  };
+  const small = await measure(400);
+  const large = await measure(1600);
+  const cached = tableTokenCacheKeys().length;
+  await reportScenario("dashboard-odbc-subscript-detection", {
+    small,
+    large,
+    growth: large.medianMs / Math.max(small.medianMs, 0.001),
+    cachedStatements: cached,
+  });
+  expect(large.p95Ms).toBeLessThan(80);
+  expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(8);
+  expect(cached).toBeLessThanOrEqual(64);
 });
