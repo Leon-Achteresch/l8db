@@ -51,10 +51,10 @@ before the dashboard's own CSS.
   for MySQL and BigQuery, backslash escapes for MySQL, ClickHouse, BigQuery and
   Snowflake; for ODBC and unknown dialects a bracket directly after a name, a field access, `)` or
   `]` is an array subscript, after a keyword, operator or numeric literal it is a
-  bracket identifier, and after whitespace or a comment it is a subscript only when it closes
-  as a quote-aware index while reading it as a name would leave unbalanced quotes, so
-  `data ['k' || ']']` is an index and `[1990's Sales]` an alias; quote lookups are
-  precomputed so this stays linear), Oracle q-quoted and dollar-quoted literals are ignored).
+  bracket identifier, and after whitespace or a comment it is a subscript when it closes as a
+  quote-aware index (quotes may not touch words, `E'`/`N'` prefixes allowed) and the
+  name reading would leave unbalanced quotes; if both readings stay possible, a second
+  linear pass prefers indexes and either reading may find the table), Oracle q-quoted and dollar-quoted literals are ignored).
   Tokens are cached for the 64 most recently used statements. List-valued dimension values are
   not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.

@@ -59,7 +59,12 @@ const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
-const cache = new Map<string, TableToken[]>();
+interface TableScan {
+  tokens: TableToken[];
+  ambiguous: boolean;
+}
+
+const cache = new Map<string, TableScan>();
 
 function skipQuoted(sql: string, start: number, close: string, backslash: boolean): number {
   let i = start + 1;
@@ -79,7 +84,14 @@ function nextQuotes(sql: string, quote: string): Int32Array {
   return next;
 }
 
-const WORD_CHAR = /[\p{L}\p{M}\p{N}_]/u;
+const WORD_CHAR = /[\p{L}\p{M}\p{N}_$]/u;
+const STRING_PREFIX = /[eEnNbBxX]/;
+
+function wordBeforeQuote(sql: string, at: number): boolean {
+  const before = sql[at - 1] ?? "";
+  if (!WORD_CHAR.test(before)) return false;
+  return !(STRING_PREFIX.test(before) && !WORD_CHAR.test(sql[at - 2] ?? ""));
+}
 
 function bracketedIndexEnd(
   sql: string,
@@ -93,7 +105,7 @@ function bracketedIndexEnd(
     if (c === "]" && --depth === 0) return i + 1;
     if (c === "[") depth++;
     if (c === "'" || c === '"') {
-      if (WORD_CHAR.test(sql[i - 1] ?? "")) return -1;
+      if (wordBeforeQuote(sql, i)) return -1;
       const next = c === "'" ? quotes.single : quotes.double;
       let close = next[i + 1];
       while (close >= 0 && sql[close + 1] === c) close = next[close + 2];
@@ -116,7 +128,8 @@ function unbalancedQuotes(text: string): boolean {
   return single % 2 === 1 || double % 2 === 1;
 }
 
-function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
+function tokenize(sql: string, kind: DatabaseKind | null, preferIndex: boolean): TableScan {
+  let ambiguous = false;
   const tokens: TableToken[] = [];
   const hash = kind !== null && HASH_COMMENT_KINDS.has(kind);
   const doubleQuoteStrings = kind !== null && STRING_DOUBLE_QUOTE_KINDS.has(kind);
@@ -141,7 +154,10 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
     if (gap !== "") return false;
     quotes ??= { single: nextQuotes(sql, "'"), double: nextQuotes(sql, '"') };
     if (bracketedIndexEnd(sql, at, quotes) < 0) return false;
-    return unbalancedQuotes(sql.slice(at + 1, skipQuoted(sql, at, "]", false) - 1));
+    if (preferIndex) return true;
+    if (unbalancedQuotes(sql.slice(at + 1, skipQuoted(sql, at, "]", false) - 1))) return true;
+    ambiguous = true;
+    return false;
   };
   let i = 0;
   while (i < sql.length) {
@@ -200,24 +216,24 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
       tokens.push({ word: text, ident: text, mark: null, end: i });
     } else i++;
   }
-  return tokens;
+  return { tokens, ambiguous };
 }
 
-function tokensOf(sql: string, kind: DatabaseKind | null): TableToken[] {
-  const key = `${kind ?? ""}\u0000${sql}`;
+function scanOf(sql: string, kind: DatabaseKind | null, preferIndex: boolean): TableScan {
+  const key = `${kind ?? ""}\u0000${preferIndex ? "i" : "n"}\u0000${sql}`;
   const cached = cache.get(key);
   if (cached) {
     cache.delete(key);
     cache.set(key, cached);
     return cached;
   }
-  const tokens = tokenize(sql, kind);
+  const scan = tokenize(sql, kind, preferIndex);
   if (cache.size >= CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
-  cache.set(key, tokens);
-  return tokens;
+  cache.set(key, scan);
+  return scan;
 }
 
 export function tableTokenCacheKeys(): string[] {
@@ -227,7 +243,12 @@ export function tableTokenCacheKeys(): string[] {
 export function readsTable(sql: string, table: string, kind: DatabaseKind | null = null): boolean {
   const name = table.slice(table.lastIndexOf(".") + 1).toLowerCase();
   if (!name) return false;
-  const tokens = tokensOf(sql, kind);
+  const named = scanOf(sql, kind, false);
+  if (tokensRead(named.tokens, name)) return true;
+  return named.ambiguous && tokensRead(scanOf(sql, kind, true).tokens, name);
+}
+
+function tokensRead(tokens: TableToken[], name: string): boolean {
   const stack = [{ from: false, expect: false }];
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];

@@ -879,3 +879,17 @@ describe("Array-Indizes nach Kommentaren und Leerzeichen", () => {
     }
   });
 });
+
+describe("Mehrdeutige Klammern mit beiden Lesarten", () => {
+  test("String-Präfixe, gemischte Aliase und Indizes und schließende Anführungszeichen", () => {
+    for (const kind of ["odbc", null] as const) {
+      expect(readsTable("SELECT data [E'x]'] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT data [N'x]'] FROM orders", "orders", kind)).toBe(true);
+      expect(
+        readsTable("SELECT x [1990's Sales], data ['k' || ']'] FROM orders", "orders", kind),
+      ).toBe(true);
+      expect(readsTable("SELECT a ['x'y], r FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a [US$'s] FROM orders WHERE c = 'x]'", "orders", kind)).toBe(true);
+    }
+  });
+});
