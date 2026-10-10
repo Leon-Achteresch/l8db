@@ -792,3 +792,18 @@ describe("Weitere Dialektregeln", () => {
     expect(readsTable("SELECT a[1], r FROM [orders]", "orders", "odbc")).toBe(true);
   });
 });
+
+describe("Klammern und Escapes in Bezeichnern", () => {
+  test("Klammerbezeichner direkt nach Schlüsselwörtern und in Dialekten ohne Arrays", () => {
+    expect(readsTable("SELECT * FROM[Order Details]", "Order Details", "mssql")).toBe(true);
+    expect(readsTable("SELECT x AS[it's], r FROM orders", "orders", "mssql")).toBe(true);
+    expect(readsTable("SELECT * FROM[Order Details]", "Order Details", "odbc")).toBe(true);
+    expect(readsTable("SELECT a[1], r FROM orders", "orders", "odbc")).toBe(true);
+  });
+
+  test("Backslashes beenden MySQL- und Snowflake-Bezeichner nicht", () => {
+    expect(readsTable("SELECT `dir\\` , r FROM orders", "orders", "mysql")).toBe(true);
+    expect(readsTable('SELECT "C:\\" AS p, r FROM orders', "orders", "snowflake")).toBe(true);
+    expect(readsTable("SELECT `a\\`b` AS x, r FROM orders", "orders", "clickhouse")).toBe(true);
+  });
+});

@@ -33,6 +33,8 @@ const NESTED_COMMENT_KINDS = new Set<DatabaseKind>(["postgres", "mssql", "duckdb
 const HASH_COMMENT_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
 const STRING_DOUBLE_QUOTE_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
 const SUBSCRIPT_BEFORE = /[\p{L}\p{M}\p{N}_$\])]/u;
+const KEYWORD_BEFORE = /(?:^|[^\p{L}\p{N}_$])(?:from|join|as|on|into|update|table|select)$/iu;
+const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
 const cache = new Map<string, TableToken[]>();
@@ -56,6 +58,12 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   const backslash = kind !== null && BACKSLASH_KINDS.has(kind);
   const nested = kind === null || NESTED_COMMENT_KINDS.has(kind);
   const brackets = kind === null || BRACKET_KINDS.has(kind);
+  const arrays = kind === null || kind === "odbc";
+  const escapedIdentifiers = kind !== null && ESCAPED_IDENTIFIER_KINDS.has(kind);
+  const subscript = (at: number) =>
+    arrays &&
+    SUBSCRIPT_BEFORE.test(sql[at - 1] ?? "") &&
+    !KEYWORD_BEFORE.test(sql.slice(Math.max(0, at - 8), at));
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
@@ -90,13 +98,9 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
       i = skipQuoted(sql, i, "'", escapes);
     } else if (c === '"' && doubleQuoteStrings) {
       i = skipQuoted(sql, i, '"', true);
-    } else if (
-      c === '"' ||
-      c === "`" ||
-      (c === "[" && brackets && !SUBSCRIPT_BEFORE.test(sql[i - 1] ?? ""))
-    ) {
+    } else if (c === '"' || c === "`" || (c === "[" && brackets && !subscript(i))) {
       const close = c === "[" ? "]" : c;
-      const end = skipQuoted(sql, i, close, c !== "[" && backslash);
+      const end = skipQuoted(sql, i, close, c !== "[" && escapedIdentifiers);
       const text = sql
         .slice(i + 1, end - 1)
         .split(close + close)
