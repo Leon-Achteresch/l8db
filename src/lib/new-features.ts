@@ -95,6 +95,7 @@ export const NEW_FEATURES = {
   "settings.about.update-channel": "0.14.0",
   "connections.baas": "0.7.0",
   "connections.welcome": "0.14.0",
+  "connections.import.external": NEXT_FEATURE_VERSION,
   "connections.open-window": "0.8.0",
   "connections.editor.command-tunnel": "0.10.0",
   "connections.editor.cloud-auth": "0.10.0",

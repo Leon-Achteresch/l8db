@@ -9,6 +9,7 @@ import { resolveOpenFiles } from "@/lib/db";
 import { runOpenFileActions } from "@/lib/file-open";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { emitHotkeyAction } from "@/lib/hotkeys";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useNotebookStore } from "@/lib/notebook/store";
 import { useTourStore } from "@/lib/tour/store";
 import { WelcomeAction } from "./welcome-action";
@@ -27,6 +28,7 @@ export function ConnectionsEmptyState({
   const [openingFile, setOpeningFile] = useState(false);
   const recent = useNotebookStore((state) => state.recent);
   const { ref } = useNewFeatureVisibility<HTMLElement>("connections.welcome");
+  const importIsNew = useHasNewFeatures("connections.import");
 
   async function openFile() {
     if (openingFile) return;
@@ -108,7 +110,8 @@ export function ConnectionsEmptyState({
                 <WelcomeAction
                   icon={Upload}
                   label="Profile importieren…"
-                  description="Aus anderen Datenbank-Tools"
+                  description="Aus DBeaver, DataGrip, Navicat und anderen Tools"
+                  isNew={importIsNew}
                   onClick={() => setImportOpen(true)}
                 />
               </div>

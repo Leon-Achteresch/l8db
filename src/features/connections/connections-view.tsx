@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import { useBaasConnections } from "@/features/baas/use-baas-connections";
@@ -22,6 +23,7 @@ import {
   useConnectionsStore,
 } from "@/lib/connections";
 import { openAppWindow } from "@/lib/db";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { supports } from "@/lib/providers";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { ConnectionBulkEditDialog } from "./connection-bulk-edit-dialog";
@@ -58,6 +60,7 @@ export function ConnectionsView() {
   const [selectedKey, setSelectedKey] = useState("all");
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const importIsNew = useHasNewFeatures("connections.import");
   const [bulkGroup, setBulkGroup] = useState<ServerGroup | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<ServerGroup | null>(null);
   const toggleFavorite = useConnectionsStore((state) => state.toggleFavorite);
@@ -246,6 +249,7 @@ export function ConnectionsView() {
                 >
                   <Upload className="size-4" />
                   Import
+                  {importIsNew && <NewBadge />}
                 </Button>
               )}
               {!editorId && (

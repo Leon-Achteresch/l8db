@@ -6,6 +6,7 @@ mod branching;
 mod check_cli;
 mod cli;
 mod community_extensions;
+mod connection_import;
 mod convex;
 mod db;
 mod desktop;
@@ -309,6 +310,7 @@ pub fn run() {
             extension_process::extension_process_read,
             extension_process::extension_process_stop,
             file_open::take_pending_open_files,
+            connection_import::decrypt_navicat_legacy_passwords,
             file_open::resolve_open_files,
             updates::check_update,
             windows::open_app_window,

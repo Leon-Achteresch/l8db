@@ -1,11 +1,13 @@
 import { Download, FolderTree, MoreHorizontal, Plus, Search, Star, Upload } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { IconMenu, IconMenuContent, IconMenuItem } from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { HostGroupRule } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
+import { useHasNewFeatures } from "@/lib/new-features";
 
 export function ConnectionsToolbar({
   connections,
@@ -28,6 +30,7 @@ export function ConnectionsToolbar({
   setExportOpen: (open: boolean) => void;
   setRulesDialog: (value: { draft: Omit<HostGroupRule, "id"> | null }) => void;
 }) {
+  const importIsNew = useHasNewFeatures("connections.import");
   return (
     <>
       {connections.length > 0 && (
@@ -67,12 +70,20 @@ export function ConnectionsToolbar({
       {connections.length > 0 && (
         <IconMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon-sm" aria-label="Weitere Aktionen">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={importIsNew ? "Weitere Aktionen, neue Funktionen" : "Weitere Aktionen"}
+              className="relative"
+            >
               <MoreHorizontal className="size-4" />
+              {importIsNew && <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />}
             </Button>
           </DropdownMenuTrigger>
           <IconMenuContent>
-            <IconMenuItem icon={<Upload />} label="Import" onSelect={() => setImportOpen(true)} />
+            <IconMenuItem icon={<Upload />} label="Import" onSelect={() => setImportOpen(true)}>
+              {importIsNew && <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />}
+            </IconMenuItem>
             <IconMenuItem icon={<Download />} label="Export" onSelect={() => setExportOpen(true)} />
             <IconMenuItem
               icon={<FolderTree />}
