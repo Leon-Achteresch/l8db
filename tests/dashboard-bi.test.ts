@@ -864,8 +864,11 @@ describe("Array-Indizes nach Kommentaren und Leerzeichen", () => {
       expect(readsTable("SELECT CASE WHEN a THEN b END [1st's] FROM orders", "orders", kind)).toBe(
         true,
       );
-      expect(readsTable("SELECT a /*c*/ [1:2], r FROM orders", "orders", kind)).toBe(true);
-      expect(readsTable("SELECT a /*c*/ [$1], r FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a [$1 || ']'] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT data ['k' || ']'] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable(`SELECT a ['${"x".repeat(300)}]'] FROM orders`, "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a [1e3 || ']'] FROM orders", "orders", kind)).toBe(true);
+      expect(readsTable("SELECT a [:größe || ']'] FROM orders", "orders", kind)).toBe(true);
     }
   });
 });
