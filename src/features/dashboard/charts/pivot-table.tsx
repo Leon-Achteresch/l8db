@@ -28,24 +28,26 @@ export function PivotTable({
   const ys = axisOf(rows, rowKey);
   const xs = axisOf(rows, colKey);
   const cells = new Map<string, number>();
-  const rowValues = new Map<string, number[]>();
-  const colValues = new Map<string, number[]>();
-  const allValues: number[] = [];
+  const rowValues = new Map<string, unknown[]>();
+  const colValues = new Map<string, unknown[]>();
+  const allValues: unknown[] = [];
+  let max = 1;
   for (const row of rows) {
     const y = toLabel(row[rowKey]);
     const x = toLabel(row[colKey]);
-    const value = toNumber(row[metric]);
-    cells.set(`${y}\u0000${x}`, (cells.get(`${y}\u0000${x}`) ?? 0) + value);
+    const raw = row[metric];
+    const cell = (cells.get(`${y}\u0000${x}`) ?? 0) + toNumber(raw);
+    cells.set(`${y}\u0000${x}`, cell);
+    max = Math.max(max, Math.abs(cell));
     const inRow = rowValues.get(y);
-    if (inRow) inRow.push(value);
-    else rowValues.set(y, [value]);
+    if (inRow) inRow.push(raw);
+    else rowValues.set(y, [raw]);
     const inColumn = colValues.get(x);
-    if (inColumn) inColumn.push(value);
-    else colValues.set(x, [value]);
-    allValues.push(value);
+    if (inColumn) inColumn.push(raw);
+    else colValues.set(x, [raw]);
+    allValues.push(raw);
   }
-  const max = Math.max(1, ...[...cells.values()].map(Math.abs));
-  const measure = shape.metrics[0] ?? { agg: "avg" as const };
+  const measure = shape.metrics[0];
   const margin = (list: ChartProps["rows"] | null | undefined) =>
     list ? new Map(list.map((row) => [toLabel(row[DIM_KEY]), row[metric]])) : null;
   const queried = exact && !exact.complete ? exact : null;
@@ -53,10 +55,10 @@ export function PivotTable({
   const exactColumns = margin(queried?.columns);
   const show = (value: unknown) =>
     value === null || value === undefined ? "–" : fmtValue(toNumber(value), options);
-  const fallback = (values: number[] | undefined) => show(combineTotal(measure, values ?? []));
+  const fallback = (values: unknown[] | undefined) => show(combineTotal(measure, values ?? []));
   const marginTotal = (
     exactMap: Map<string, unknown> | null,
-    values: number[] | undefined,
+    values: unknown[] | undefined,
     key: string,
   ) =>
     queried?.pending ? "…" : exactMap ? show(exactMap.get(key)) : queried ? "–" : fallback(values);
@@ -67,10 +69,10 @@ export function PivotTable({
     : queried
       ? show(queried.grand?.[metric])
       : fallback(allValues);
-  const totalLabel = exact ? "Gesamt" : "Summe";
+  const totalLabel = exact ? "Gesamt" : "Gesamt (geladen)";
   const totalHint = exact
     ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
-    : "Summe der geladenen Zeilen (Zeilenlimit des Datensatzes)";
+    : "Aus den geladenen Zeilen berechnet (Zeilenlimit des Datensatzes)";
   const base = accent(options);
   const xNames = dimensionLabels(xs.labels);
   const yNames = dimensionLabels(ys.labels);

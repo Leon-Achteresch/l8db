@@ -43,7 +43,10 @@ before the dashboard's own CSS.
   pivot cell offers "Dashboard danach filtern". Other charts that read the same table
   (base table or a join) get `column = value`; time buckets compare the bucketed
   expression. Expert SQL charts are wrapped when their mapped dimension has the same
-  name. Charts that do not share the column are untouched and do not query again.
+  name and the SQL reads the source table (after FROM, JOIN, ONLY, LATERAL or a comma
+  in a FROM list; comments and string literals are ignored). List-valued dimensions are
+  not offered for filtering. Charts that do not share the column are untouched and do not
+  query again.
   Selections live in memory per dashboard and are shown as removable chips.
 - **Drill-through** (`options.drill`, default on): "Details anzeigen" loads up to 200
   underlying rows (with joins only the base table's columns) with the chart's filters,
@@ -52,10 +55,12 @@ before the dashboard's own CSS.
 - **Pivot** chart: rows × columns × one metric with an optional color scale. With
   `totals`, builder charts load exact row, column and grand totals through three extra
   grouped queries ("Gesamt"; averages stay averages, not sums of averages). Expert SQL
-  charts fall back to summing the loaded rows of additive metrics ("Summe").
+  charts fall back to the loaded rows ("Gesamt (geladen)": sums for sum/count, min/max
+  ignore NULL groups; other aggregates show "–").
 - **Tables**: totals row and data bars (`totals`, `dataBars`). Builder charts query the
   exact total over all rows (shared with the headline total query when identical);
-  expert SQL charts show "Summe geladener Zeilen".
+  expert SQL charts show "Gesamt geladener Zeilen". Exact queries run only when the
+  result is truncated or a metric is not additive.
 - **Keyboard**: bars, funnel stages, table rows, pivot headers, ring and treemap
   segments are focusable; Enter or Space opens the same filter/details menu as a click.
 - **Target lines** (`target`, `targetLabel`) on line, area, column, bar and KPI charts.
