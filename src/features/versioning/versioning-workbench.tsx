@@ -24,7 +24,7 @@ const HISTORY_KEY = "l8db.versioning.history";
 export function VersioningWorkbench({
   workspace,
   development,
-  section,
+  section: requested,
   onNavigate,
   area,
   onArea,
@@ -42,17 +42,22 @@ export function VersioningWorkbench({
   const [changesOpen, setChangesOpen] = useState(true);
   const [history, setHistory] = useState(() => localStorage.getItem(HISTORY_KEY) !== "hidden");
   const reviewsNew = useHasNewFeatures("versioning.reviews");
-  const deliveryNew = useHasNewFeatures("versioning.delivery");
+  const pipelineNew = useHasNewFeatures("versioning.pipeline");
   if (!project) return null;
   const fresh: Partial<Record<VersioningArea, boolean>> = {
     reviews: reviewsNew,
-    delivery: deliveryNew,
+    pipeline: pipelineNew,
   };
   const toggleHistory = (next: boolean) => {
     localStorage.setItem(HISTORY_KEY, next ? "visible" : "hidden");
     setHistory(next);
   };
   const deploys = deployable(project.kind);
+  const section =
+    deploys || !VERSIONING_SECTIONS.some((entry) => entry.id === requested && entry.deploy)
+      ? requested
+      : "development";
+  const visible = VERSIONING_SECTIONS.filter((entry) => deploys || !entry.deploy);
   const diff = section === "development" && Boolean(development.path);
   return (
     <div className="flex min-h-0 flex-1">
@@ -94,49 +99,56 @@ export function VersioningWorkbench({
             />
           )}
           <nav className="mt-3 flex flex-col">
-            <span id="vcs-sections" className="flex h-8 items-center pl-1 text-xs font-semibold">
-              Bereiche
-            </span>
-            <div
-              role="tablist"
-              aria-orientation="vertical"
-              aria-labelledby="vcs-sections"
-              className="flex flex-col"
-            >
-              {VERSIONING_SECTIONS.filter((entry) => deploys || !entry.deploy).map(
-                ({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    disabled={busy}
-                    role="tab"
-                    aria-selected={section === id}
-                    onClick={() => onNavigate(id)}
-                    className={cn(
-                      "flex h-7 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors disabled:opacity-50",
-                      section === id
-                        ? "bg-muted font-medium text-foreground"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="size-3.5 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {fresh[id] && section !== id && <NewBadge />}
-                    {id === "development" && development.changes.size > 0 && (
-                      <span className="text-[11px] tabular-nums">{development.changes.size}</span>
-                    )}
-                    {id === "releases" && workspace.releases.length > 0 && (
-                      <span className="font-mono text-[11px]">{workspace.releases.at(-1)?.id}</span>
-                    )}
-                    {id === "targets" && Boolean(workspace.targets?.targets.length) && (
-                      <span className="text-[11px] tabular-nums">
-                        {workspace.targets?.targets.length}
-                      </span>
-                    )}
-                  </button>
-                ),
-              )}
-            </div>
+            {[visible.filter((entry) => !entry.tool), visible.filter((entry) => entry.tool)].map(
+              (group, index) => (
+                <div
+                  key={index ? "tools" : "main"}
+                  role="tablist"
+                  aria-orientation="vertical"
+                  aria-label={index ? "Werkzeuge" : "Bereiche"}
+                  className={cn("flex flex-col", index > 0 && "mt-3")}
+                >
+                  {index > 0 && (
+                    <span className="flex h-7 items-center pl-2 text-[10px] font-medium tracking-wide text-muted-foreground/80 uppercase">
+                      Werkzeuge
+                    </span>
+                  )}
+                  {group.map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      disabled={busy}
+                      role="tab"
+                      aria-selected={section === id}
+                      onClick={() => onNavigate(id)}
+                      className={cn(
+                        "flex h-7 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors disabled:opacity-50",
+                        section === id
+                          ? "bg-muted font-medium text-foreground"
+                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                      {fresh[id] && section !== id && <NewBadge />}
+                      {id === "development" && development.changes.size > 0 && (
+                        <span className="text-[11px] tabular-nums">{development.changes.size}</span>
+                      )}
+                      {id === "releases" && workspace.releases.length > 0 && (
+                        <span className="font-mono text-[11px]">
+                          {workspace.releases.at(-1)?.id}
+                        </span>
+                      )}
+                      {id === "targets" && Boolean(workspace.targets?.targets.length) && (
+                        <span className="text-[11px] tabular-nums">
+                          {workspace.targets?.targets.length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ),
+            )}
             {!history && (
               <button
                 type="button"

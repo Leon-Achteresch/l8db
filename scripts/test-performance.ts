@@ -28,6 +28,7 @@ const SUITES = {
     "tests/perf-usage-statistics-view.test.ts",
     "tests/perf-live-monitor.test.ts",
     "tests/perf-dashboard-bi.test.ts",
+    "tests/perf-versioning-pipeline.test.ts",
     "tests/abandoned-jobs.test.ts",
     "tests/performance-report.test.ts",
   ],
