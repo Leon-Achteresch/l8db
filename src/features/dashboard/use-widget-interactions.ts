@@ -130,12 +130,13 @@ export function useWidgetInteractions({
       target.getAttribute("data-dim") ?? target.getAttribute("data-active-dim"),
     );
     const dim2 = parseAttr(target.getAttribute("data-dim2"));
+    const scalar = (value: unknown) =>
+      value !== undefined && (value === null || typeof value !== "object");
     const picks: Pick[] = [
-      ...(dim !== undefined ? [{ key: DIM_KEY, value: dim }] : []),
-      ...(dim2 !== undefined ? [{ key: DIM2_KEY, value: dim2 }] : []),
+      ...(scalar(dim) ? [{ key: DIM_KEY, value: dim }] : []),
+      ...(scalar(dim2) ? [{ key: DIM2_KEY, value: dim2 }] : []),
     ];
-    if (!picks.length || picks.some((p) => p.value !== null && typeof p.value === "object"))
-      return false;
+    if (!picks.length) return false;
     const canFilter = options.crossFilter && picks.some((p) => crossField(dataset, p.key));
     const canDrill = options.drill && picks.some((p) => ownCondition(dataset, p.key, p.value));
     if (!canFilter && !canDrill) return false;

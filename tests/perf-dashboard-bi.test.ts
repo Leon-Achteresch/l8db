@@ -179,3 +179,28 @@ test("exact pivot totals add a bounded number of queries per chart", async () =>
   expect(queries).toBe(12 * 4);
   expect(timing.p95Ms).toBeLessThan(25);
 });
+
+test("source table detection stays linear for long expert SQL", async () => {
+  const sql = `SELECT ${Array.from({ length: 800 }, (_, i) => `customers.x${i}`).join(", ")}, customer_id FROM orders o JOIN customers c ON c.id = o.customer_id`;
+  const target = {
+    ...emptyDataset("lang"),
+    mode: "expert" as const,
+    sql,
+    mapping: { dimension: "customer_id", dimension2: null, metrics: [], dateColumn: null },
+  };
+  const source = dataset("customers", "customer_id");
+  const field = crossField(source, DIM_KEY);
+  if (!field) throw new Error("field");
+  const filter: CrossFilter = { widgetId: "s", key: DIM_KEY, field, value: 1, label: "x" };
+  let reached = false;
+  const timing = await measureScenario(() => {
+    reached = applyCrossFilters(target, [filter], "t") !== target;
+  }, 21);
+  await reportScenario("dashboard-expert-table-detection", {
+    ...timing,
+    sqlBytes: sql.length,
+    references: 800,
+  });
+  expect(reached).toBe(true);
+  expect(timing.p95Ms).toBeLessThan(15);
+});

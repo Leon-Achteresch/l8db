@@ -70,7 +70,11 @@ export function DataTable({
           ]),
         )
       : null;
-  const totalLabel = exact ? "Gesamt" : "Gesamt geladener Zeilen";
+  const totalLabel = exact
+    ? "Gesamt"
+    : metrics.every((m) => m.agg === undefined)
+      ? "Summe geladener Zeilen"
+      : "Gesamt geladener Zeilen";
   const totalHint = exact
     ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
     : "Aus den geladenen Zeilen berechnet (Zeilenlimit des Datensatzes)";

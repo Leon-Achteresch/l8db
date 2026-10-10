@@ -43,8 +43,10 @@ before the dashboard's own CSS.
   pivot cell offers "Dashboard danach filtern". Other charts that read the same table
   (base table or a join) get `column = value`; time buckets compare the bucketed
   expression. Expert SQL charts are wrapped when their mapped dimension has the same
-  name and the SQL reads the source table (after FROM, JOIN, ONLY, LATERAL or a comma
-  in a FROM list; comments and string literals are ignored). List-valued dimensions are
+  name and the SQL reads the source table. A linear tokenizer finds table positions
+  (after FROM, JOIN, ONLY, LATERAL or a comma in a FROM list, per parenthesis level,
+  with "", `` and [] identifiers); comments, string and dollar-quoted literals are
+  ignored. List-valued dimensions are
   not offered for filtering. Charts that do not share the column are untouched and do not
   query again.
   Selections live in memory per dashboard and are shown as removable chips.
@@ -55,8 +57,9 @@ before the dashboard's own CSS.
 - **Pivot** chart: rows × columns × one metric with an optional color scale. With
   `totals`, builder charts load exact row, column and grand totals through three extra
   grouped queries ("Gesamt"; averages stay averages, not sums of averages). Expert SQL
-  charts fall back to the loaded rows ("Gesamt (geladen)": sums for sum/count, min/max
-  ignore NULL groups; other aggregates show "–").
+  charts fall back to the loaded rows ("Summe (geladen)"; builder fallbacks say "Gesamt
+  (geladen)": sums for sum/count, min/max ignore NULL and non-numeric values, other
+  aggregates show "–").
 - **Tables**: totals row and data bars (`totals`, `dataBars`). Builder charts query the
   exact total over all rows (shared with the headline total query when identical);
   expert SQL charts show "Gesamt geladener Zeilen". Exact queries run only when the
@@ -72,7 +75,8 @@ before the dashboard's own CSS.
 `tests/perf-dashboard-bi.test.ts` (core suite) covers cross-filter fan-out over 60
 widgets, a 60 × 40 pivot, a theme with a 512 KiB logo, 1,000 selection toggles and the
 query count of exact pivot totals (60 pivots over 12 datasets: 48 distinct queries,
-p95 2 ms to build).
+p95 2 ms to build) and source-table detection in 12.7 KB of expert SQL with 800
+references (median 1 ms; the previous regex version needed 316 ms).
 Measured on Linux x86_64 (QEMU VM, 8 vCPU, 15 GB RAM, Bun 1.3.10): fan-out median
 1.7 ms / p95 2.5 ms with 40 of 60 queries rebuilt and 20 untouched; pivot render median
 37 ms / p95 46 ms for 2,501 cells; theme compile p95 0.07 ms; 1,000 toggles p95 1.6 ms

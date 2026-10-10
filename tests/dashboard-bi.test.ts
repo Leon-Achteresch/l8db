@@ -695,3 +695,36 @@ describe("Vierte Review-Runde", () => {
     expect(applyCrossFilters(selectList, [filterFrom(source, 1)], "t")).toBe(selectList);
   });
 });
+
+describe("Tabellenerkennung per Tokenizer", () => {
+  const source = simple("customers", "customer_id");
+  const reached = (sql: string) => {
+    const target = expert(sql, "customer_id");
+    return applyCrossFilters(target, [filterFrom(source, 1)], "t") !== target;
+  };
+
+  test("erkennt MSSQL-Klammern, Kommajoins nach Unterabfragen und ON", () => {
+    expect(reached("SELECT customer_id FROM [dbo].[customers]")).toBe(true);
+    expect(reached("SELECT customer_id FROM [customers] c")).toBe(true);
+    expect(reached("SELECT customer_id FROM (SELECT 1 AS x) t, customers")).toBe(true);
+    expect(reached("SELECT customer_id FROM a JOIN b ON a.x = b.x, customers")).toBe(true);
+    expect(reached("SELECT customer_id FROM a JOIN b USING (x), customers")).toBe(true);
+    expect(reached("SELECT customer_id FROM public.customers WHERE 1 = 1")).toBe(true);
+  });
+
+  test("ignoriert Funktionsargumente, Spalten, Bezeichner und Zeichenketten", () => {
+    expect(reached("SELECT customer_id FROM orders o, generate_series(1, customers.n)")).toBe(
+      false,
+    );
+    expect(reached('SELECT "from", customers FROM orders')).toBe(false);
+    expect(reached("SELECT customer_id FROM orders WHERE note = $q$ FROM customers $q$")).toBe(
+      false,
+    );
+    expect(reached("SELECT customer_id FROM orders WHERE customers.id = 1")).toBe(false);
+  });
+
+  test("nicht numerische Werte zählen nicht als 0", () => {
+    expect(combineTotal({ agg: "min" }, [5, "n/a", 7])).toBe(5);
+    expect(combineTotal({ agg: "sum" }, ["2", "x", 3])).toBe(5);
+  });
+});

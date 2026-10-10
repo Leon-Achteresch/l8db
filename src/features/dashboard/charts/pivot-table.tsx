@@ -38,7 +38,6 @@ export function PivotTable({
     const raw = row[metric];
     const cell = (cells.get(`${y}\u0000${x}`) ?? 0) + toNumber(raw);
     cells.set(`${y}\u0000${x}`, cell);
-    max = Math.max(max, Math.abs(cell));
     const inRow = rowValues.get(y);
     if (inRow) inRow.push(raw);
     else rowValues.set(y, [raw]);
@@ -47,6 +46,7 @@ export function PivotTable({
     else colValues.set(x, [raw]);
     allValues.push(raw);
   }
+  for (const cell of cells.values()) max = Math.max(max, Math.abs(cell));
   const measure = shape.metrics[0];
   const margin = (list: ChartProps["rows"] | null | undefined) =>
     list ? new Map(list.map((row) => [toLabel(row[DIM_KEY]), row[metric]])) : null;
@@ -69,7 +69,11 @@ export function PivotTable({
     : queried
       ? show(queried.grand?.[metric])
       : fallback(allValues);
-  const totalLabel = exact ? "Gesamt" : "Gesamt (geladen)";
+  const totalLabel = exact
+    ? "Gesamt"
+    : measure?.agg === undefined
+      ? "Summe (geladen)"
+      : "Gesamt (geladen)";
   const totalHint = exact
     ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"
     : "Aus den geladenen Zeilen berechnet (Zeilenlimit des Datensatzes)";

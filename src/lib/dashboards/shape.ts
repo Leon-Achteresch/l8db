@@ -30,6 +30,7 @@ export function combineTotal(metric: { agg?: Agg } | undefined, values: unknown[
   let result: number | null = null;
   for (const value of values) {
     if (value === null || value === undefined || value === "") continue;
+    if (typeof value === "string" && !Number.isFinite(Number(value))) continue;
     const number = toNumber(value);
     if (result === null) result = number;
     else if (metric.agg === "min") result = Math.min(result, number);
