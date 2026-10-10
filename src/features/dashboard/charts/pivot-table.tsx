@@ -1,4 +1,4 @@
-import { additive, DIM_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
+import { combineTotal, DIM_KEY, fmtValue, toLabel, toNumber } from "@/lib/dashboards";
 import { accent, type ChartProps, dimAttr, dimensionLabels } from "./chart-utils";
 
 interface Axis {
@@ -28,20 +28,24 @@ export function PivotTable({
   const ys = axisOf(rows, rowKey);
   const xs = axisOf(rows, colKey);
   const cells = new Map<string, number>();
-  const rowTotals = new Map<string, number>();
-  const colTotals = new Map<string, number>();
-  let total = 0;
+  const rowValues = new Map<string, number[]>();
+  const colValues = new Map<string, number[]>();
+  const allValues: number[] = [];
   for (const row of rows) {
     const y = toLabel(row[rowKey]);
     const x = toLabel(row[colKey]);
     const value = toNumber(row[metric]);
     cells.set(`${y}\u0000${x}`, (cells.get(`${y}\u0000${x}`) ?? 0) + value);
-    rowTotals.set(y, (rowTotals.get(y) ?? 0) + value);
-    colTotals.set(x, (colTotals.get(x) ?? 0) + value);
-    total += value;
+    const inRow = rowValues.get(y);
+    if (inRow) inRow.push(value);
+    else rowValues.set(y, [value]);
+    const inColumn = colValues.get(x);
+    if (inColumn) inColumn.push(value);
+    else colValues.set(x, [value]);
+    allValues.push(value);
   }
   const max = Math.max(1, ...[...cells.values()].map(Math.abs));
-  const summable = shape.metrics[0] ? additive(shape.metrics[0]) : false;
+  const measure = shape.metrics[0] ?? { agg: "avg" as const };
   const margin = (list: ChartProps["rows"] | null | undefined) =>
     list ? new Map(list.map((row) => [toLabel(row[DIM_KEY]), row[metric]])) : null;
   const queried = exact && !exact.complete ? exact : null;
@@ -49,20 +53,20 @@ export function PivotTable({
   const exactColumns = margin(queried?.columns);
   const show = (value: unknown) =>
     value === null || value === undefined ? "–" : fmtValue(toNumber(value), options);
-  const fallback = (value: number | undefined) => (summable ? fmtValue(value ?? 0, options) : "–");
+  const fallback = (values: number[] | undefined) => show(combineTotal(measure, values ?? []));
   const marginTotal = (
     exactMap: Map<string, unknown> | null,
-    sum: number | undefined,
+    values: number[] | undefined,
     key: string,
   ) =>
-    queried?.pending ? "…" : exactMap ? show(exactMap.get(key)) : queried ? "–" : fallback(sum);
-  const rowTotal = (y: string) => marginTotal(exactRows, rowTotals.get(y), y);
-  const columnTotal = (x: string) => marginTotal(exactColumns, colTotals.get(x), x);
+    queried?.pending ? "…" : exactMap ? show(exactMap.get(key)) : queried ? "–" : fallback(values);
+  const rowTotal = (y: string) => marginTotal(exactRows, rowValues.get(y), y);
+  const columnTotal = (x: string) => marginTotal(exactColumns, colValues.get(x), x);
   const grandTotal = queried?.pending
     ? "…"
     : queried
       ? show(queried.grand?.[metric])
-      : fallback(total);
+      : fallback(allValues);
   const totalLabel = exact ? "Gesamt" : "Summe";
   const totalHint = exact
     ? "Über alle Zeilen der Abfrage mit Filtern und Zeitraum berechnet"

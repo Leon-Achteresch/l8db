@@ -111,17 +111,22 @@ export function useWidgetData({
       options.totals &&
       baseShape?.dimension &&
       tabular &&
-      query.isSuccess &&
+      !query.isError &&
       !datasetMetricAggs(dataset).includes("none"),
   );
-  const exactNeeded = Boolean(margins && dataset && needsTotals(dataset, rawRows.length));
-  const pivotMargins = exactNeeded && widget.chart === "pivot" && Boolean(baseShape?.dimension2);
+  const exactNeeded = Boolean(
+    margins && dataset && needsTotals(dataset, query.isSuccess ? rawRows.length : 0),
+  );
+  const pivotMargins =
+    exactNeeded && query.isSuccess && widget.chart === "pivot" && Boolean(baseShape?.dimension2);
   const visible = useMemo(() => {
     if (!pivotMargins || !baseShape?.dimension || !baseShape.dimension2) return null;
     const unique = (key: string) => {
       const seen = new Map<string, unknown>();
       for (const row of rawRows) seen.set(JSON.stringify(row[key] ?? null), row[key] ?? null);
-      return [...seen.values()];
+      return [...seen.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([, value]) => value);
     };
     return { rows: unique(baseShape.dimension), columns: unique(baseShape.dimension2) };
   }, [pivotMargins, baseShape, rawRows]);
