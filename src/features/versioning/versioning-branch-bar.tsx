@@ -107,12 +107,14 @@ export function VersioningBranchBar({
           ↑{info.ahead ?? 0} ↓{info.behind ?? 0}
         </span>
       )}
-      <span
-        title={label}
-        className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground"
-      >
-        {label}
-      </span>
+      {label && (
+        <span
+          title={label}
+          className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground"
+        >
+          {label}
+        </span>
+      )}
       <VersioningPopover icon={ArrowDownUpIcon} label="Git synchronisieren" disabled={busy}>
         {SYNC.map(({ action, label, description, icon: Icon }) => (
           <button

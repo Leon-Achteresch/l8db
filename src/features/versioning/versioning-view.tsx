@@ -22,7 +22,7 @@ const AREA_KEY = "l8db.versioning.area";
 export function VersioningView({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, status, project, busy, error, message, run, refresh } = workspace;
   const connection = useActiveConnection();
-  const [tab, setTab] = useState<VersioningArea>("pipeline");
+  const [tab, setTab] = useState<VersioningArea>("development");
   const wide = useVersioningPanel((state) => state.mode === "tab");
   const [area, setArea] = useState<"database" | "git">(() =>
     localStorage.getItem(AREA_KEY) === "database" ? "database" : "git",

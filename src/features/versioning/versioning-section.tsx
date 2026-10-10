@@ -1,9 +1,8 @@
 import type { VersioningArea } from "@/lib/versioning/workflow";
-import type { DevelopmentState } from "./use-development";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningActivity } from "./versioning-activity";
 import { VersioningBranches } from "./versioning-branches";
-import { VersioningDevelopment } from "./versioning-development";
+import { VersioningHistoryPanel } from "./versioning-history-panel";
 import { VersioningPipeline } from "./versioning-pipeline";
 import { VersioningReleases } from "./versioning-releases";
 import { VersioningReviews } from "./versioning-reviews";
@@ -13,12 +12,10 @@ import { VersioningTargets } from "./versioning-targets";
 export function VersioningSection({
   section,
   workspace,
-  development,
   onNavigate,
 }: {
   section: VersioningArea;
   workspace: VersioningWorkspace;
-  development: DevelopmentState;
   onNavigate: (area: VersioningArea) => void;
 }) {
   const { status, project } = workspace;
@@ -33,7 +30,9 @@ export function VersioningSection({
     case "seeds":
       return <VersioningSeeds key={branchKey} workspace={workspace} />;
     case "development":
-      return <VersioningDevelopment workspace={workspace} development={development} />;
+      return null;
+    case "history":
+      return <VersioningHistoryPanel workspace={workspace} onNavigate={onNavigate} />;
     case "releases":
       return (
         <VersioningReleases

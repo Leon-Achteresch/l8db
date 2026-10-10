@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
+import { changeSummary } from "../src/lib/versioning/changes";
+import type { DriftEntry } from "../src/lib/versioning/drift";
 import { buildPipeline, pipelineNextStep, releaseTracks } from "../src/lib/versioning/pipeline";
 import { rollbackBases } from "../src/lib/versioning/rollback";
 import type {
@@ -144,4 +146,46 @@ test("rollback candidates stay fast on long release histories", () => {
   expect(offered).toBeGreaterThan(0);
   expect(median / (RELEASES / 8)).toBeLessThan(0.5);
   expect(p95).toBeLessThan(50);
+});
+
+test("working copy change summary stays fast for large schemas", () => {
+  const OBJECTS = 5000;
+  const entries: DriftEntry[] = Array.from({ length: OBJECTS }, (_, index) => ({
+    object: {
+      id: `o${index}`,
+      path: `database/objects/o${index}.pks`,
+      bodyPath: `database/objects/o${index}.pkb`,
+      selection: { schema: "APP", objectType: "package", objectName: `O${index}`, objectOid: null },
+    },
+    status: "changed",
+    repository: {},
+    database: {},
+  }));
+  const changes = new Map<string, string>();
+  for (let index = 0; index < OBJECTS; index++)
+    changes.set(`database/objects/${index % 2 ? "o" : "f"}${index}.pkb`, "M");
+  const selectedFiles = [...changes.keys()];
+  const selectedDrift = entries.map((entry) => entry.object.id);
+  const samples: number[] = [];
+  let summary = changeSummary(entries, changes, selectedFiles, selectedDrift);
+  for (let run = 0; run < RUNS; run++) {
+    const started = performance.now();
+    summary = changeSummary(entries, changes, selectedFiles, selectedDrift);
+    samples.push(performance.now() - started);
+  }
+  const median = percentile(samples, 0.5);
+  const p95 = percentile(samples, 0.95);
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-working-copy-summary",
+      objects: OBJECTS,
+      files: changes.size,
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+    }),
+  );
+  expect(summary.shadowed).toHaveLength(OBJECTS / 2);
+  expect(summary.total).toBe(OBJECTS + OBJECTS / 2);
+  expect(median).toBeLessThan(8);
+  expect(p95).toBeLessThan(20);
 });

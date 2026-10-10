@@ -26,7 +26,7 @@ export function VersioningHistoryPanel({
 }: {
   workspace: VersioningWorkspace;
   onNavigate: (area: VersioningArea) => void;
-  onClose: () => void;
+  onClose?: () => void;
 }) {
   const { repo, status, project, releases, targets } = workspace;
   const [tab, setTab] = useState<HistoryTab>("history");
@@ -65,7 +65,10 @@ export function VersioningHistoryPanel({
   return (
     <section
       aria-label="Verlauf und Stände"
-      className="flex h-64 shrink-0 flex-col border-t border-border/60"
+      className={cn(
+        "flex flex-col",
+        onClose ? "h-64 shrink-0 border-t border-border/60" : "min-h-0 flex-1",
+      )}
     >
       <div className="flex h-9 shrink-0 items-center gap-1 px-2">
         {tabs.map(({ id, label, count }) => (
@@ -94,12 +97,14 @@ export function VersioningHistoryPanel({
               ? project.name
               : "Ausgelieferter Release je Ziel"}
         </span>
-        <VersioningIconButton
-          icon={XIcon}
-          label="Verlauf ausblenden"
-          className="ml-auto size-7"
-          onClick={onClose}
-        />
+        {onClose && (
+          <VersioningIconButton
+            icon={XIcon}
+            label="Verlauf ausblenden"
+            className="ml-auto size-7"
+            onClick={onClose}
+          />
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto overscroll-contain pb-2">
         {tab === "history" && (
