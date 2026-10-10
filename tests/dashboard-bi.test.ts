@@ -1128,7 +1128,9 @@ describe("Dritte Abschlussrunde", () => {
     expect(trend.startsWith("WITH x AS (SELECT 1 AS a),\nl8db_t AS (")).toBe(true);
     expect(trend).not.toContain("-- note");
     const topUnion = expert("SELECT TOP 5 a FROM t UNION ALL SELECT a FROM u ORDER BY a", "a");
-    expect(datasetDetailSql(topUnion, [], "mssql", "all")).toContain("ORDER BY a OFFSET 0 ROWS");
+    expect(datasetDetailSql(topUnion, [], "mssql", "all")).toContain(
+      "(SELECT TOP 5 a FROM t) UNION ALL SELECT a FROM u ORDER BY a OFFSET 0 ROWS",
+    );
     const qualified = expert(
       "SELECT t.a, t.b FROM t UNION ALL SELECT u.a, u.b FROM u ORDER BY t.a DESC, [dbo].[t].[b]",
       "a",
@@ -1183,5 +1185,25 @@ describe("Vierte Abschlussrunde", () => {
     dataset.simple.filters[0].operator = "notIn";
     expect(datasetSql(dataset, "odbc", "all")).toContain(`NOT IN ('say "hi"', 'C:\\\\data', 'b')`);
     expect(datasetSql(dataset, null, "all")).toContain(`NOT IN ('say "hi"', E'C:\\\\data', 'b')`);
+  });
+});
+
+describe("Fünfte Abschlussrunde", () => {
+  test("OFFSET landet hinter Literalen und ODBC-Escapes, TOP-Zweige werden geklammert", () => {
+    const literal = expert("SELECT a FROM t ORDER BY a + N'x' -- c", "a");
+    expect(datasetDetailSql(literal, [], "mssql", "all")).toContain(
+      "ORDER BY a + N'x' OFFSET 0 ROWS -- c",
+    );
+    const braces = expert("SELECT a FROM t ORDER BY {fn UCASE(a)}", "a");
+    expect(datasetDetailSql(braces, [], "mssql", "all")).toContain(
+      "ORDER BY {fn UCASE(a)} OFFSET 0 ROWS",
+    );
+    const both = expert(
+      "SELECT a FROM t UNION ALL SELECT TOP 3 a FROM u UNION ALL SELECT a FROM v ORDER BY a",
+      "a",
+    );
+    expect(datasetDetailSql(both, [], "mssql", "all")).toContain(
+      "SELECT a FROM t UNION ALL (SELECT TOP 3 a FROM u) UNION ALL SELECT a FROM v ORDER BY a OFFSET 0 ROWS",
+    );
   });
 });
