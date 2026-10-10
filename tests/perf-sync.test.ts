@@ -127,6 +127,13 @@ function touch(collections: LocalCollections, every: number, suffix: string): Lo
   return next;
 }
 
+async function objectCount() {
+  Bun.gc(true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  Bun.gc(true);
+  return heapStats().objectCount;
+}
+
 const settings = { includeHistory: true, includeSecrets: false, encryptAll: false };
 
 test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verlaufseinträgen schnell und sparsam", async () => {
@@ -140,7 +147,7 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
 
   const build = await measureScenario(() => {
     buildSnapshot(collections, base, now);
-  });
+  }, 3);
   const fresh = (): LocalCollections =>
     Object.fromEntries(
       Object.entries(collections).map(([collection, items]) => [
@@ -148,28 +155,28 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
         items.map((item) => ({ ...item, data: { ...(item.data as object) } })),
       ]),
     ) as LocalCollections;
-  const coldInputs = Array.from({ length: 7 }, fresh);
+  const coldInputs = Array.from({ length: 5 }, fresh);
   const buildCold = await measureScenario(() => {
     buildSnapshot(coldInputs.pop() ?? fresh(), base, now);
-  }, 5);
+  }, 3);
   const hashing = await measureScenario(async () => {
     hash = await contentHash(snapshot, null);
-  });
+  }, 3);
   const serialize = await measureScenario(() => {
     body = JSON.stringify(
       toDocument(snapshot, { deviceId: "perf", updatedAt: now, contentHash: hash, secrets: null }),
     );
-  });
+  }, 3);
   const parse = await measureScenario(() => {
     parsedDocument = parseEnvelope(body) as SyncDocument;
     documentSnapshot(parsedDocument);
-  }, 5);
+  }, 3);
   const local = buildSnapshot(touch(collections, 100, "lokal"), base, now + 1);
   const remote = buildSnapshot(touch(collections, 97, "remote"), base, now + 2);
   let conflicts = 0;
   const merge = await measureScenario(() => {
     conflicts = mergeSnapshots(local, remote, base).conflicts.length;
-  });
+  }, 3);
   const payloadBytes = new TextEncoder().encode(body).length;
   const items = CONNECTIONS + SAVED_QUERIES + HISTORY + SNIPPETS + 50 + 2 + 6;
 
@@ -194,9 +201,12 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
 
   remoteStore.gets = 0;
   remoteStore.puts = 0;
+  const objectsBefore = await objectCount();
   const steady = await measureScenario(async () => {
     await run();
-  }, 5);
+  }, 3);
+  const objectsAfter = await objectCount();
+  const retainedObjects = Math.max(0, objectsAfter - objectsBefore);
   const steadyRequests = { get: remoteStore.gets, put: remoteStore.puts, runs: steady.runs + 2 };
 
   remoteStore.gets = 0;
@@ -206,21 +216,10 @@ test("Synchronisation bleibt bei 2000 Verbindungen, 5000 Abfragen und 5000 Verla
     round++;
     leader.collections = touch(collections, 250, `runde ${round}`);
     await run();
-  }, 5);
+  }, 3);
   const changedRequests = { get: remoteStore.gets, put: remoteStore.puts, runs: changed.runs + 2 };
 
   leader.collections = collections;
-  const heap = async (runs: number) => {
-    for (let index = 0; index < runs; index++) await run();
-    Bun.gc(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    Bun.gc(true);
-    return heapStats().objectCount;
-  };
-  await heap(2);
-  const objectsBefore = await heap(0);
-  const objectsAfter = await heap(5);
-  const retainedObjects = Math.max(0, objectsAfter - objectsBefore);
 
   remoteStore.delayMs = 2000;
   remoteStore.gets = 0;

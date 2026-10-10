@@ -28,6 +28,7 @@ pub struct StoreResult {
     pub version: Option<String>,
     pub gist_id: Option<String>,
     pub conflict: bool,
+    pub warning: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,13 +38,19 @@ pub enum Precondition {
     Absent,
 }
 
-pub fn client() -> Result<Client, String> {
-    Client::builder()
+static CLIENT: std::sync::OnceLock<Client> = std::sync::OnceLock::new();
+
+pub fn client() -> Result<&'static Client, String> {
+    if let Some(client) = CLIENT.get() {
+        return Ok(client);
+    }
+    let built = Client::builder()
         .user_agent(concat!("l8db/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(std::time::Duration::from_secs(15))
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| format!("HTTP-Client konnte nicht erstellt werden: {e}"))
+        .map_err(|e| format!("HTTP-Client konnte nicht erstellt werden: {e}"))?;
+    Ok(CLIENT.get_or_init(|| built))
 }
 
 fn network_error(error: reqwest::Error) -> String {
@@ -57,17 +64,38 @@ fn network_error(error: reqwest::Error) -> String {
 }
 
 async fn bounded_text(response: reqwest::Response) -> Result<String, String> {
+    bounded_text_with(response, MAX_PAYLOAD_BYTES).await
+}
+
+async fn bounded_text_with(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<String, String> {
+    let too_large = || {
+        format!(
+            "Die Sync-Datei ist größer als {} MiB.",
+            limit / (1024 * 1024)
+        )
+    };
     if response
         .content_length()
-        .is_some_and(|length| length as usize > MAX_PAYLOAD_BYTES)
+        .is_some_and(|length| length as usize > limit)
     {
-        return Err("Die Sync-Datei ist größer als 32 MiB.".into());
+        return Err(too_large());
     }
-    let bytes = response.bytes().await.map_err(network_error)?;
-    if bytes.len() > MAX_PAYLOAD_BYTES {
-        return Err("Die Sync-Datei ist größer als 32 MiB.".into());
+    let mut bytes = Vec::with_capacity(
+        response
+            .content_length()
+            .map(|length| length as usize)
+            .unwrap_or(0),
+    );
+    while let Some(chunk) = response.chunk().await.map_err(network_error)? {
+        if bytes.len() + chunk.len() > limit {
+            return Err(too_large());
+        }
+        bytes.extend_from_slice(&chunk);
     }
-    String::from_utf8(bytes.to_vec()).map_err(|_| "Die Sync-Datei ist kein gültiges UTF-8.".into())
+    String::from_utf8(bytes).map_err(|_| "Die Sync-Datei ist kein gültiges UTF-8.".into())
 }
 
 fn header(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -268,6 +296,7 @@ impl WebDav<'_> {
                 .or_else(|| header(response.headers(), "oc-etag")),
             gist_id: None,
             conflict: false,
+            warning: None,
         })
     }
 }
@@ -420,11 +449,48 @@ impl Gist<'_> {
         })
     }
 
-    pub async fn store(&self, client: &Client, content: &str) -> Result<StoreResult, String> {
+    async fn head_version(&self, client: &Client, id: &str) -> Result<Option<String>, String> {
+        let response = self
+            .request(
+                client,
+                Method::GET,
+                &format!("{}/gists/{id}/commits?per_page=1", self.api),
+            )
+            .send()
+            .await
+            .map_err(network_error)?;
+        if !response.status().is_success() {
+            return Err(gist_error(response.status(), response.headers()));
+        }
+        let body: serde_json::Value = serde_json::from_str(&bounded_text(response).await?)
+            .map_err(|_| "Ungültige Antwort von GitHub.".to_string())?;
+        Ok(body[0]["version"].as_str().map(str::to_string))
+    }
+
+    pub async fn store(
+        &self,
+        client: &Client,
+        content: &str,
+        precondition: Precondition,
+    ) -> Result<StoreResult, String> {
         self.require_token()?;
         if content.len() > MAX_PAYLOAD_BYTES {
             return Err("Die Sync-Datei ist größer als 32 MiB.".into());
         }
+        let expected = match (&precondition, self.gist_id) {
+            (Precondition::Match(version), Some(id)) => {
+                let id = Self::validate_id(id)?;
+                let current = self.head_version(client, id).await?;
+                if current.as_deref() != Some(version.as_str()) {
+                    return Ok(StoreResult {
+                        conflict: true,
+                        ..StoreResult::default()
+                    });
+                }
+                Some(version.clone())
+            }
+            _ => None,
+        };
         let files = json!({ GIST_FILE: { "content": content } });
         let request = match self.gist_id {
             Some(id) => {
@@ -446,13 +512,25 @@ impl Gist<'_> {
         }
         let body: serde_json::Value = serde_json::from_str(&bounded_text(response).await?)
             .map_err(|_| "Ungültige Antwort von GitHub.".to_string())?;
+        let version = body["history"][0]["version"]
+            .as_str()
+            .or_else(|| body["updated_at"].as_str())
+            .map(str::to_string);
+        let previous = body["history"][1]["version"].as_str();
+        let warning = match &expected {
+            Some(expected) if previous != Some(expected.as_str()) => Some(
+                "Der Gist wurde während des Hochladens parallel geändert. Frühere Stände sind in der Revisionshistorie des Gists einsehbar.".to_string(),
+            ),
+            _ if version.is_none() => {
+                Some("GitHub hat keine neue Gist-Version gemeldet.".to_string())
+            }
+            _ => None,
+        };
         Ok(StoreResult {
-            version: body["history"][0]["version"]
-                .as_str()
-                .or_else(|| body["updated_at"].as_str())
-                .map(str::to_string),
+            version,
             gist_id: body["id"].as_str().map(str::to_string),
             conflict: false,
+            warning,
         })
     }
 }
@@ -559,31 +637,28 @@ mod tests {
         let dav = dav(&base, "/l8db/sync/l8db-sync.json");
         let client = client().unwrap();
         runtime().block_on(async {
-            assert!(dav.test(&client).await.is_ok());
-            let empty = dav.fetch(&client).await.unwrap();
+            assert!(dav.test(client).await.is_ok());
+            let empty = dav.fetch(client).await.unwrap();
             assert_eq!(empty.content, None);
             let first = dav
-                .store(&client, "{\"a\":1}", Precondition::Absent)
+                .store(client, "{\"a\":1}", Precondition::Absent)
                 .await
                 .unwrap();
             assert_eq!(first.version.as_deref(), Some("\"v1\""));
-            let fetched = dav.fetch(&client).await.unwrap();
+            let fetched = dav.fetch(client).await.unwrap();
             assert_eq!(fetched.content.as_deref(), Some("{\"a\":1}"));
             assert_eq!(fetched.version.as_deref(), Some("\"v1\""));
             let second = dav
-                .store(&client, "{\"a\":2}", Precondition::Match("\"v1\"".into()))
+                .store(client, "{\"a\":2}", Precondition::Match("\"v1\"".into()))
                 .await
                 .unwrap();
             assert_eq!(second.version.as_deref(), Some("\"v2\""));
             let stale = dav
-                .store(&client, "{\"a\":3}", Precondition::Match("\"v1\"".into()))
+                .store(client, "{\"a\":3}", Precondition::Match("\"v1\"".into()))
                 .await
                 .unwrap();
             assert!(stale.conflict);
-            let absent = dav
-                .store(&client, "{}", Precondition::Absent)
-                .await
-                .unwrap();
+            let absent = dav.store(client, "{}", Precondition::Absent).await.unwrap();
             assert!(absent.conflict);
         });
         let methods: Vec<String> = server
@@ -605,6 +680,47 @@ mod tests {
     }
 
     #[test]
+    fn chunked_responses_stop_at_the_size_limit() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let sent = Arc::new(Mutex::new(0usize));
+        let counter = sent.clone();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0u8; 1024];
+            let _ = stream.read(&mut buffer);
+            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+            let chunk = vec![b'x'; 4096];
+            for _ in 0..4096 {
+                let head = format!("{:x}\r\n", chunk.len());
+                if stream.write_all(head.as_bytes()).is_err()
+                    || stream.write_all(&chunk).is_err()
+                    || stream.write_all(b"\r\n").is_err()
+                {
+                    break;
+                }
+                *counter.lock().unwrap() += chunk.len();
+            }
+        });
+        let error = runtime()
+            .block_on(async {
+                let response = client()
+                    .unwrap()
+                    .get(format!("http://{address}/"))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(response.content_length(), None);
+                bounded_text_with(response, 64 * 1024).await
+            })
+            .unwrap_err();
+        assert!(error.contains("größer als"), "{error}");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(*sent.lock().unwrap() < 4096 * 4096);
+    }
+
+    #[test]
     fn webdav_reports_bad_credentials_and_rejects_plain_http() {
         let (server, _) = nextcloud();
         let base = format!("{}/remote.php/dav/files/leon", server.base);
@@ -613,14 +729,14 @@ mod tests {
             password: "falsch",
             ..dav(&base, "/l8db.json")
         };
-        let error = runtime().block_on(wrong.fetch(&client)).unwrap_err();
+        let error = runtime().block_on(wrong.fetch(client)).unwrap_err();
         assert!(error.contains("401"));
         let insecure = WebDav {
             allow_insecure: false,
             ..dav(&base, "/l8db.json")
         };
         assert!(runtime()
-            .block_on(insecure.fetch(&client))
+            .block_on(insecure.fetch(client))
             .unwrap_err()
             .contains("unverschlüsseltes HTTP"));
         assert!(dav(&base, "/../x.json").file_url().is_err());
@@ -635,28 +751,40 @@ mod tests {
         );
     }
 
+    #[derive(Default)]
+    struct GistState {
+        content: Option<String>,
+        version: u32,
+        foreign_edit_during_patch: bool,
+    }
+
     fn gist_server(
         rate_limited: bool,
-    ) -> (crate::db::http_mock::MockServer, Arc<Mutex<Option<String>>>) {
-        let stored = Arc::new(Mutex::new(None::<String>));
-        let shared = stored.clone();
-        let server =
-            start_with_headers(move |request: &MockRequest| {
-                if request.header("authorization") != Some("Bearer ghp_test") {
-                    return (401, vec![], b"{\"message\":\"Bad credentials\"}".to_vec());
-                }
-                if rate_limited {
-                    return (
-                        403,
-                        vec![
-                            header_pair("X-RateLimit-Remaining", "0"),
-                            header_pair("X-RateLimit-Reset", "1900000000"),
-                        ],
-                        b"{}".to_vec(),
-                    );
-                }
-                let mut content = shared.lock().unwrap();
-                match (request.method.as_str(), request.route()) {
+    ) -> (crate::db::http_mock::MockServer, Arc<Mutex<GistState>>) {
+        let state = Arc::new(Mutex::new(GistState::default()));
+        let shared = state.clone();
+        let server = start_with_headers(move |request: &MockRequest| {
+            if request.header("authorization") != Some("Bearer ghp_test") {
+                return (401, vec![], b"{\"message\":\"Bad credentials\"}".to_vec());
+            }
+            if rate_limited {
+                return (
+                    403,
+                    vec![
+                        header_pair("X-RateLimit-Remaining", "0"),
+                        header_pair("X-RateLimit-Reset", "1900000000"),
+                    ],
+                    b"{}".to_vec(),
+                );
+            }
+            let mut gist = shared.lock().unwrap();
+            let history = |gist: &GistState| {
+                (1..=gist.version)
+                    .rev()
+                    .map(|v| json!({ "version": format!("h{v}") }))
+                    .collect::<Vec<_>>()
+            };
+            match (request.method.as_str(), request.route()) {
                 ("GET", "/user") => (
                     200,
                     vec![header_pair("X-OAuth-Scopes", "gist, repo")],
@@ -665,47 +793,59 @@ mod tests {
                 ("POST", "/gists") => {
                     let body = request.json();
                     assert_eq!(body["public"], false);
-                    *content = body["files"][GIST_FILE]["content"].as_str().map(str::to_string);
+                    gist.content = body["files"][GIST_FILE]["content"]
+                        .as_str()
+                        .map(str::to_string);
+                    gist.version = 1;
                     (
                         201,
                         vec![],
-                        json!({"id": "abc123", "history": [{"version": "h1"}]})
+                        json!({"id": "abc123", "history": history(&gist)})
                             .to_string()
                             .into_bytes(),
                     )
                 }
                 ("PATCH", "/gists/abc123") => {
-                    *content = request.json()["files"][GIST_FILE]["content"]
+                    if gist.foreign_edit_during_patch {
+                        gist.version += 1;
+                    }
+                    gist.content = request.json()["files"][GIST_FILE]["content"]
                         .as_str()
                         .map(str::to_string);
+                    gist.version += 1;
                     (
                         200,
                         vec![],
-                        json!({"id": "abc123", "history": [{"version": "h2"}]})
+                        json!({"id": "abc123", "history": history(&gist)})
                             .to_string()
                             .into_bytes(),
                     )
                 }
+                ("GET", "/gists/abc123/commits") => (
+                    200,
+                    vec![],
+                    json!(history(&gist)[..1]).to_string().into_bytes(),
+                ),
                 ("GET", "/gists/abc123") => (
                     200,
                     vec![],
                     json!({
                         "id": "abc123",
-                        "history": [{"version": "h2"}],
-                        "files": { GIST_FILE: { "content": content.clone(), "truncated": false } }
+                        "history": history(&gist),
+                        "files": { GIST_FILE: { "content": gist.content.clone(), "truncated": false } }
                     })
                     .to_string()
                     .into_bytes(),
                 ),
                 _ => (404, vec![], b"{\"message\":\"Not Found\"}".to_vec()),
             }
-            });
-        (server, stored)
+        });
+        (server, state)
     }
 
     #[test]
     fn gist_creates_secret_gist_then_patches() {
-        let (server, stored) = gist_server(false);
+        let (server, state) = gist_server(false);
         let client = client().unwrap();
         runtime().block_on(async {
             let fresh = Gist {
@@ -713,45 +853,78 @@ mod tests {
                 token: "ghp_test",
                 gist_id: None,
             };
-            assert!(fresh.test(&client).await.is_ok());
-            assert_eq!(fresh.fetch(&client).await.unwrap(), RemoteFile::default());
-            let created = fresh.store(&client, "{\"v\":1}").await.unwrap();
+            assert!(fresh.test(client).await.is_ok());
+            assert_eq!(fresh.fetch(client).await.unwrap(), RemoteFile::default());
+            let created = fresh
+                .store(client, "{\"v\":1}", Precondition::None)
+                .await
+                .unwrap();
             assert_eq!(created.gist_id.as_deref(), Some("abc123"));
             let linked = Gist {
                 gist_id: Some("abc123"),
                 ..fresh
             };
-            let patched = linked.store(&client, "{\"v\":2}").await.unwrap();
+            let fetched = linked.fetch(client).await.unwrap();
+            assert_eq!(fetched.version.as_deref(), Some("h1"));
+            let patched = linked
+                .store(client, "{\"v\":2}", Precondition::Match("h1".into()))
+                .await
+                .unwrap();
             assert_eq!(patched.version.as_deref(), Some("h2"));
-            let fetched = linked.fetch(&client).await.unwrap();
+            assert_eq!(patched.warning, None);
+            let fetched = linked.fetch(client).await.unwrap();
             assert_eq!(fetched.content.as_deref(), Some("{\"v\":2}"));
-            assert_eq!(fetched.gist_id.as_deref(), Some("abc123"));
             let missing = Gist {
                 gist_id: Some("doesnotexist"),
                 ..linked
             };
-            assert!(missing.fetch(&client).await.unwrap_err().contains("404"));
+            assert!(missing.fetch(client).await.unwrap_err().contains("404"));
             let bad = Gist {
                 token: "wrong",
                 ..linked
             };
-            assert!(bad.fetch(&client).await.unwrap_err().contains("401"));
+            assert!(bad.fetch(client).await.unwrap_err().contains("401"));
         });
-        assert_eq!(stored.lock().unwrap().as_deref(), Some("{\"v\":2}"));
+        assert_eq!(state.lock().unwrap().content.as_deref(), Some("{\"v\":2}"));
         let routes: Vec<String> = server
             .requests()
             .iter()
             .map(|r| format!("{} {}", r.method, r.route()))
             .collect();
         assert_eq!(
-            routes[..4],
+            routes[..6],
             [
                 "GET /user",
                 "POST /gists",
+                "GET /gists/abc123",
+                "GET /gists/abc123/commits",
                 "PATCH /gists/abc123",
                 "GET /gists/abc123"
             ]
         );
+    }
+
+    #[test]
+    fn gist_rejects_stale_base_and_flags_interleaved_writes() {
+        let (server, state) = gist_server(false);
+        let client = client().unwrap();
+        let gist = Gist {
+            api: &server.base,
+            token: "ghp_test",
+            gist_id: Some("abc123"),
+        };
+        state.lock().unwrap().version = 3;
+        let stale = runtime()
+            .block_on(gist.store(client, "{}", Precondition::Match("h2".into())))
+            .unwrap();
+        assert!(stale.conflict);
+        assert_eq!(state.lock().unwrap().version, 3);
+        state.lock().unwrap().foreign_edit_during_patch = true;
+        let raced = runtime()
+            .block_on(gist.store(client, "{}", Precondition::Match("h3".into())))
+            .unwrap();
+        assert!(!raced.conflict);
+        assert!(raced.warning.unwrap().contains("parallel geändert"));
     }
 
     #[test]
@@ -763,7 +936,7 @@ mod tests {
             token: "ghp_test",
             gist_id: Some("abc123"),
         };
-        let error = runtime().block_on(gist.fetch(&client)).unwrap_err();
+        let error = runtime().block_on(gist.fetch(client)).unwrap_err();
         assert!(error.starts_with("GitHub-Ratenlimit erreicht."), "{error}");
         assert!(error.contains("Wieder möglich ab"));
         assert!(Gist {

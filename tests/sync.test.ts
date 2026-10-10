@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { autoSyncPlan, backoffDelay, startAutoSync } from "../src/lib/sync/auto-sync";
-import { runSync, SyncBusyError, SyncRemoteChangedError } from "../src/lib/sync/engine";
+import { restoreScope } from "../src/lib/sync/controller";
+import {
+  MAX_SYNC_ATTEMPTS,
+  runSync,
+  SyncBusyError,
+  SyncRemoteChangedError,
+} from "../src/lib/sync/engine";
+import { createInteractiveDecider } from "../src/lib/sync/interactive-decider";
 import { mergeSnapshots, resolveConflicts } from "../src/lib/sync/merge";
 import {
   buildSnapshot,
@@ -16,6 +23,13 @@ import {
   TOMBSTONE_TTL_MS,
   toDocument,
 } from "../src/lib/sync/payload";
+import {
+  readSyncBase,
+  targetChangeNeedsConfirmation,
+  targetKey,
+  useSyncStore,
+  writeSyncBase,
+} from "../src/lib/sync/store";
 import {
   acceptAll,
   connection,
@@ -433,5 +447,194 @@ describe("auto sync", () => {
     await settle();
     expect(follower).toBe(0);
     stopFollower();
+  });
+});
+
+describe("review regressions", () => {
+  test("a newer local password is never replaced by a stale remote one, cleared ones propagate", async () => {
+    const remote = new FakeRemote();
+    const coordinator = new FakeCoordinator();
+    let clock = 1000;
+    const a = device("a", remote, coordinator, { clock: () => clock });
+    const b = device("b", remote, coordinator, { clock: () => clock });
+    const options = { includeSecrets: true };
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "alt");
+    await sync(a, "sync", options);
+    clock = 2000;
+    await sync(b, "sync", options);
+    expect(b.secrets.get("c1")).toBe("alt");
+    clock = 3000;
+    a.secrets.set("c1", "neu");
+    await sync(a, "sync", options);
+    expect(a.secrets.get("c1")).toBe("neu");
+    clock = 4000;
+    await sync(b, "sync", options);
+    expect(b.secrets.get("c1")).toBe("neu");
+    clock = 5000;
+    b.secrets.delete("c1");
+    await sync(b, "sync", options);
+    clock = 6000;
+    await sync(a, "sync", options);
+    expect(a.secrets.has("c1")).toBe(false);
+  });
+
+  test("switching on full encryption re-uploads instead of leaving plain text", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    a.collections.connections = [connection("c1", "Prod")];
+    await sync(a);
+    expect(remote.content).toContain("Prod");
+    const encrypted = await sync(a, "sync", { includeSecrets: true, encryptAll: true });
+    expect(encrypted.uploaded).toBe(true);
+    expect(remote.content).not.toContain("Prod");
+    const plain = await sync(a);
+    expect(plain.uploaded).toBe(true);
+    expect(remote.content).toContain("Prod");
+  });
+
+  test("remote changes during upload are re-fetched and re-merged with a bounded retry", async () => {
+    const remote = new FakeRemote();
+    const coordinator = new FakeCoordinator();
+    const a = device("a", remote, coordinator);
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Q", sql: "SELECT 1" } }];
+    await sync(a);
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Q2", sql: "SELECT 1" } }];
+    const store = a.deps.transport.store;
+    let races = 1;
+    a.deps.transport.store = async (...args) => {
+      if (races-- > 0) remote.version++;
+      return store(...args);
+    };
+    remote.gets = 0;
+    const retried = await sync(a);
+    expect(retried.attempts).toBe(2);
+    expect(remote.gets).toBe(2);
+    races = 10;
+    remote.gets = 0;
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Q3", sql: "SELECT 1" } }];
+    await expect(sync(a)).rejects.toBeInstanceOf(SyncRemoteChangedError);
+    expect(remote.gets).toBe(MAX_SYNC_ATTEMPTS);
+    expect(coordinator.active).toBeNull();
+  });
+
+  test("abandoned decisions release the pending sync and the cross-window lease", async () => {
+    for (const kind of ["conflicts", "preview"] as const) {
+      const remote = new FakeRemote();
+      const coordinator = new FakeCoordinator();
+      const a = device("a", remote, coordinator);
+      const b = device("b", remote, coordinator);
+      a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+      await sync(a);
+      if (kind === "conflicts") {
+        await sync(b);
+        a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A2", sql: "1" } }];
+        b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "B2", sql: "1" } }];
+        await sync(a);
+      }
+      const controller = new AbortController();
+      let asked = false;
+      const never = new Promise<never>(() => undefined);
+      const pending = sync(
+        b,
+        "sync",
+        {},
+        {
+          conflicts: () => {
+            asked = true;
+            return never;
+          },
+          preview: () => {
+            asked = true;
+            return never;
+          },
+        },
+        controller.signal,
+      );
+      while (!asked) await new Promise((resolve) => setTimeout(resolve, 1));
+      expect(coordinator.active).toBe("b");
+      controller.abort();
+      await expect(pending).rejects.toThrow("abgebrochen");
+      expect(coordinator.active).toBeNull();
+    }
+  });
+
+  test("disposing the interactive decider settles open and future dialogs", async () => {
+    const shown: unknown[] = [];
+    const interactive = createInteractiveDecider({
+      conflicts: (list) => shown.push(list),
+      preview: (decision) => shown.push(decision),
+    });
+    const conflict = interactive.decider.conflicts([]);
+    interactive.dispose();
+    expect(await conflict).toBeNull();
+    expect(await interactive.decider.preview({} as never)).toBe(false);
+    const dismissed = createInteractiveDecider({ conflicts: () => {}, preview: () => {} });
+    const preview = dismissed.decider.preview({} as never);
+    dismissed.resolvePreview(false);
+    expect(await preview).toBe(false);
+  });
+
+  test("unknown collections from newer builds survive a round trip", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Q", sql: "SELECT 1" } }];
+    await sync(a);
+    const document = JSON.parse(remote.content as string);
+    document.items.dashboards = { d1: { updatedAt: 1, data: { id: "d1" } } };
+    remote.content = JSON.stringify(document);
+    a.collections.savedQueries = [];
+    await sync(a);
+    const next = JSON.parse(remote.content as string);
+    expect(next.items.dashboards).toEqual({ d1: { updatedAt: 1, data: { id: "d1" } } });
+    expect(() => parseEnvelope('{"format":"l8db-sync","schemaVersion":2}')).toThrow(
+      "Bitte l8db aktualisieren",
+    );
+  });
+
+  test("backup restore respects the current history setting", () => {
+    const snapshot = buildSnapshot(
+      {
+        ...emptyCollections(),
+        history: [{ id: "h", data: { id: "h", connectionId: "c", sql: "x", ranAt: 1 } }],
+      },
+      new Map(),
+      1,
+    );
+    const document = toDocument(snapshot, {
+      deviceId: "a",
+      updatedAt: 1,
+      contentHash: "",
+      secrets: null,
+      include: ["history", "savedQueries"],
+    });
+    expect([...restoreScope(document, false)]).toEqual(["savedQueries"]);
+    expect([...restoreScope(document, true)].sort()).toEqual(["history", "savedQueries"]);
+  });
+
+  test("editing target fields only resets sync state on a real committed change", () => {
+    const config = {
+      provider: "webdav" as const,
+      webdavUrl: "https://cloud.example/dav/",
+      webdavPath: "/l8db/l8db-sync.json",
+      gistId: "",
+    };
+    expect(targetKey({ ...config, webdavUrl: " https://cloud.example/dav " })).toBe(
+      targetKey(config),
+    );
+    expect(targetKey({ ...config, webdavPath: "l8db//l8db-sync.json" })).toBe(targetKey(config));
+    expect(
+      targetChangeNeedsConfirmation({ ...config, lastSyncAt: 1 }, { webdavPath: "/x.json" }),
+    ).toBe(true);
+    expect(
+      targetChangeNeedsConfirmation({ ...config, lastSyncAt: null }, { webdavPath: "/x.json" }),
+    ).toBe(false);
+    writeSyncBase(new Map([["savedQueries:q", ["h", 1]]]));
+    useSyncStore.setState({ ...config, lastSyncAt: 1 });
+    useSyncStore.getState().configure({ webdavUser: "neu" });
+    useSyncStore.getState().commitTarget({ webdavUrl: "https://cloud.example/dav" });
+    expect(readSyncBase().size).toBe(1);
+    useSyncStore.getState().commitTarget({ webdavPath: "/anders.json" });
+    expect(readSyncBase().size).toBe(0);
   });
 });

@@ -1,11 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { SyncProvider, SyncTarget } from "@/lib/db/sync";
+import type { SyncProvider, SyncSecretBase, SyncTarget } from "@/lib/db/sync";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import type { SyncBase } from "./payload";
 
 export const SYNC_STORE_KEY = "l8db.sync";
 export const SYNC_BASE_KEY = "l8db.sync-base";
+export const SYNC_SECRET_BASE_KEY = "l8db.sync-secret-base";
 export const MIN_AUTO_SYNC_MINUTES = 15;
 
 export type SyncStatus = "idle" | "running" | "ok" | "skipped" | "error" | "conflict";
@@ -38,7 +39,8 @@ export interface SyncState extends SyncConfig {
   lastVersion: string | null;
   lastContentHash: string | null;
   lastSalt: string | null;
-  configure: (patch: Partial<SyncConfig>) => void;
+  configure: (patch: Partial<Omit<SyncConfig, TargetField>>) => void;
+  commitTarget: (patch: Partial<Pick<SyncConfig, TargetField>>) => void;
   report: (
     patch: Partial<
       Pick<
@@ -76,6 +78,24 @@ export const DEFAULT_SYNC_CONFIG: SyncConfig = {
   intervalMinutes: 30,
   syncOnStart: false,
 };
+
+export type TargetField = "provider" | "webdavUrl" | "webdavPath" | "gistId";
+
+export function targetKey(config: Pick<SyncConfig, TargetField>): string {
+  const url = config.webdavUrl.trim().replace(/\/+$/, "");
+  const path = `/${config.webdavPath.trim().replace(/^\/+/, "")}`.replace(/\/{2,}/g, "/");
+  if (config.provider === "webdav") return `webdav|${url}|${path}`;
+  if (config.provider === "gist") return `gist|${config.gistId.trim()}`;
+  return "off";
+}
+
+export function targetChangeNeedsConfirmation(
+  state: Pick<SyncState, TargetField | "lastSyncAt">,
+  patch: Partial<Pick<SyncConfig, TargetField>>,
+): boolean {
+  if (state.lastSyncAt === null) return false;
+  return targetKey({ ...state, ...patch }) !== targetKey(state);
+}
 
 export function clampInterval(minutes: number): number {
   if (!Number.isFinite(minutes)) return DEFAULT_SYNC_CONFIG.intervalMinutes;
@@ -126,13 +146,13 @@ export const useSyncStore = create<SyncState>()(
           if (next.encryptAll && !(next.includeSecrets ?? state.includeSecrets))
             next.encryptAll = false;
           if (next.includeSecrets === false) next.encryptAll = false;
-          const remoteChanged =
-            (next.provider !== undefined && next.provider !== state.provider) ||
-            (next.webdavUrl !== undefined && next.webdavUrl !== state.webdavUrl) ||
-            (next.webdavPath !== undefined && next.webdavPath !== state.webdavPath) ||
-            (next.gistId !== undefined && next.gistId !== state.gistId);
-          if (remoteChanged) clearSyncBase();
-          return remoteChanged ? { ...next, ...REMOTE_RESET } : next;
+          return next;
+        }),
+      commitTarget: (patch) =>
+        set((state) => {
+          const changed = targetKey({ ...state, ...patch }) !== targetKey(state);
+          if (changed) clearSyncBase();
+          return changed ? { ...patch, ...REMOTE_RESET } : patch;
         }),
       report: (patch) => set(patch),
       resetRemote: () => {
@@ -211,4 +231,24 @@ export function writeSyncBase(base: SyncBase): void {
 
 export function clearSyncBase(): void {
   storage()?.removeItem(SYNC_BASE_KEY);
+  storage()?.removeItem(SYNC_SECRET_BASE_KEY);
+}
+
+export function readSecretBase(): SyncSecretBase {
+  try {
+    const parsed = JSON.parse(storage()?.getItem(SYNC_SECRET_BASE_KEY) ?? "{}") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        ([, value]) =>
+          Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number",
+      ),
+    ) as SyncSecretBase;
+  } catch {
+    return {};
+  }
+}
+
+export function writeSecretBase(base: SyncSecretBase): void {
+  storage()?.setItem(SYNC_SECRET_BASE_KEY, JSON.stringify(base));
 }

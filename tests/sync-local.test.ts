@@ -4,8 +4,13 @@ import { useConnectionsStore } from "../src/lib/connections/store";
 import { exportPortableWorkspace } from "../src/lib/portable-workspace";
 import { useSavedQueriesStore } from "../src/lib/saved-queries";
 import { useSettingsStore } from "../src/lib/settings";
-import { applyLocal, collectLocal, secretAccounts } from "../src/lib/sync/local";
-import { SYNC_COLLECTIONS } from "../src/lib/sync/payload";
+import {
+  applyLocal,
+  collectLocal,
+  SYNC_PRESERVED_KEY,
+  secretAccounts,
+} from "../src/lib/sync/local";
+import { SYNC_COLLECTIONS, type SyncCollection } from "../src/lib/sync/payload";
 
 const saved: SavedConnection = {
   id: "c1",
@@ -79,13 +84,39 @@ test("applying remote data keeps live passwords, temporaries and local command t
   expect(useSettingsStore.getState().rowLimit).toBe(777);
 });
 
-test("invalid remote workspace settings are rejected before any store changes", () => {
+test("settings from newer builds are preserved instead of breaking the sync", () => {
+  window.localStorage.removeItem(SYNC_PRESERVED_KEY);
+  useSettingsStore.setState({ rowLimit: 500 });
+  const collections = collectLocal(false);
+  const settings = (collections.workspace[0].data as { value: Record<string, unknown> }).value;
+  collections.workspace = [
+    {
+      id: "settings",
+      data: { value: { ...settings, rowLimit: "viele", futureSetting: { mode: "neu" } } },
+    },
+    { id: "hotkeys", data: { value: { "future.command": "Mod+Shift+F" } } },
+  ];
+  applyLocal(collections, new Set<SyncCollection>(["workspace"]));
+  expect(useSettingsStore.getState().rowLimit).toBe(500);
+  const again = collectLocal(false);
+  expect((again.workspace[0].data as { value: Record<string, unknown> }).value).toMatchObject({
+    rowLimit: 500,
+    futureSetting: { mode: "neu" },
+  });
+  expect((again.workspace[1].data as { value: Record<string, unknown> }).value).toMatchObject({
+    "future.command": "Mod+Shift+F",
+  });
+});
+
+test("unreadable workspace sections ask for an update before any store changes", () => {
   useSavedQueriesStore.setState({
     queries: [{ id: "q1", name: "Q", sql: "SELECT 1", createdAt: 1 }],
   });
   const collections = collectLocal(false);
   collections.savedQueries = [];
-  collections.workspace = [{ id: "settings", data: { value: { rowLimit: "viele" } } }];
-  expect(() => applyLocal(collections, new Set(SYNC_COLLECTIONS))).toThrow();
+  collections.workspace = [{ id: "views", data: { value: { t: [{ unknownShape: true }] } } }];
+  expect(() => applyLocal(collections, new Set(SYNC_COLLECTIONS))).toThrow(
+    "Bitte l8db aktualisieren",
+  );
   expect(useSavedQueriesStore.getState().queries).toHaveLength(1);
 });

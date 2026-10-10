@@ -23,6 +23,72 @@ export const WORKSPACE_SECTIONS = [
 ] as const satisfies readonly (keyof PortableWorkspace)[];
 
 const SECRET_SUFFIXES = ["", ":ssh", ":ssh-jumps", ":proxy", ":params"];
+export const SYNC_PRESERVED_KEY = "l8db.sync-preserved";
+const TOLERANT_SECTIONS = ["settings", "hotkeys"] as const;
+type TolerantSection = (typeof TOLERANT_SECTIONS)[number];
+type Preserved = Record<TolerantSection, Record<string, unknown>>;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function readPreserved(): Preserved {
+  try {
+    const raw = window.localStorage.getItem(SYNC_PRESERVED_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<Preserved>) : {};
+    return {
+      settings: isPlainRecord(parsed.settings) ? parsed.settings : {},
+      hotkeys: isPlainRecord(parsed.hotkeys) ? parsed.hotkeys : {},
+    };
+  } catch {
+    return { settings: {}, hotkeys: {} };
+  }
+}
+
+function writePreserved(preserved: Preserved): void {
+  try {
+    if (Object.keys(preserved.settings).length + Object.keys(preserved.hotkeys).length === 0)
+      window.localStorage.removeItem(SYNC_PRESERVED_KEY);
+    else window.localStorage.setItem(SYNC_PRESERVED_KEY, JSON.stringify(preserved));
+  } catch {
+    return;
+  }
+}
+
+function accepts(section: TolerantSection, key: string, value: unknown): boolean {
+  try {
+    parsePortableWorkspace(
+      JSON.stringify({
+        format: "l8db-workspace",
+        version: 1,
+        settings: {},
+        hotkeys: {},
+        layouts: {},
+        profiles: {},
+        favorites: [],
+        views: {},
+        [section]: { [key]: value },
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function splitTolerant(
+  section: TolerantSection,
+  value: unknown,
+): { known: Record<string, unknown>; unknown: Record<string, unknown> } {
+  const known: Record<string, unknown> = {};
+  const unknown: Record<string, unknown> = {};
+  if (!isPlainRecord(value)) return { known, unknown };
+  for (const [key, entry] of Object.entries(value)) {
+    if (accepts(section, key, entry)) known[key] = entry;
+    else unknown[key] = entry;
+  }
+  return { known, unknown };
+}
 const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export function toSyncConnection(connection: SavedConnection): Record<string, unknown> {
@@ -32,7 +98,11 @@ export function toSyncConnection(connection: SavedConnection): Record<string, un
 
 export function collectLocal(includeHistory: boolean): LocalCollections {
   const connections = useConnectionsStore.getState();
-  const workspace = exportPortableWorkspace();
+  const workspace = exportPortableWorkspace() as unknown as Record<string, unknown>;
+  const preserved = readPreserved();
+  for (const section of TOLERANT_SECTIONS)
+    if (Object.keys(preserved[section]).length > 0)
+      workspace[section] = { ...preserved[section], ...(workspace[section] as object) };
   return {
     connections: connections.connections
       .filter((connection) => !connection.temporary)
@@ -116,13 +186,27 @@ export function applyLocal(
   include: ReadonlySet<SyncCollection>,
 ): void {
   let workspace: PortableWorkspace | null = null;
+  let preserved: Preserved | null = null;
   if (include.has("workspace") && collections.workspace.length > 0) {
     const current = exportPortableWorkspace() as unknown as Record<string, unknown>;
+    preserved = readPreserved();
     for (const item of collections.workspace) {
-      if ((WORKSPACE_SECTIONS as readonly string[]).includes(item.id))
-        current[item.id] = (item.data as { value: unknown }).value;
+      if (!(WORKSPACE_SECTIONS as readonly string[]).includes(item.id)) continue;
+      const value = (item.data as { value: unknown }).value;
+      if ((TOLERANT_SECTIONS as readonly string[]).includes(item.id)) {
+        const section = item.id as TolerantSection;
+        const split = splitTolerant(section, value);
+        current[section] = split.known;
+        preserved[section] = split.unknown;
+      } else current[item.id] = value;
     }
-    workspace = parsePortableWorkspace(JSON.stringify(current));
+    try {
+      workspace = parsePortableWorkspace(JSON.stringify(current));
+    } catch {
+      throw new Error(
+        "Die Arbeitsumgebung auf dem Server stammt vermutlich von einer neueren l8db-Version. Bitte l8db aktualisieren.",
+      );
+    }
   }
   if (include.has("connections") || include.has("hostGroupRules") || include.has("connectionPrefs"))
     useConnectionsStore.setState((state) => {
@@ -162,4 +246,5 @@ export function applyLocal(
       ),
     }));
   if (workspace) applyPortableWorkspace(workspace);
+  if (preserved) writePreserved(preserved);
 }

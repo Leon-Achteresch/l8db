@@ -68,11 +68,11 @@ export class FakeRemote {
     return this.hold(opId, () => {
       const current = this.content ? `"v${this.version}"` : null;
       if ((ifMatch && ifMatch !== current) || (expectAbsent && current))
-        return { version: null, gistId: null, conflict: true };
+        return { version: null, gistId: null, conflict: true, warning: null };
       this.content = content;
       this.version++;
       this.bytesWritten += content.length;
-      return { version: `"v${this.version}"`, gistId: null, conflict: false };
+      return { version: `"v${this.version}"`, gistId: null, conflict: false, warning: null };
     });
   }
 
@@ -124,6 +124,8 @@ export interface Device {
   collections: LocalCollections;
   base: SyncBase;
   secrets: Map<string, string>;
+  secretBase: Record<string, [string, number]>;
+  secretMerges: number;
   backups: string[];
   applied: number;
   deps: SyncDeps;
@@ -142,6 +144,8 @@ export function device(
     collections: emptyCollections(),
     base: new Map(),
     secrets: new Map(),
+    secretBase: {},
+    secretMerges: 0,
     backups: [],
     applied: 0,
     deps: undefined as unknown as SyncDeps,
@@ -169,22 +173,51 @@ export function device(
       cancel: (opId) => remote.cancel(opId),
       encrypt: async (plaintext, salt) => crypto.seal(plaintext, salt),
       decrypt: async (envelope) => crypto.open(envelope),
-      sealSecrets: async (accounts, salt) => {
-        const found = Object.fromEntries(
-          accounts.filter((a) => state.secrets.has(a)).map((a) => [a, state.secrets.get(a)]),
-        );
-        return Object.keys(found).length ? crypto.seal(JSON.stringify(found), salt) : null;
-      },
-      openSecrets: async (envelope, accounts) => {
-        const found = JSON.parse(crypto.open(envelope)) as Record<string, string>;
+      mergeSecrets: async (request) => {
+        state.secretMerges++;
+        const remote: Record<string, { v: string | null; t: number }> = request.envelope
+          ? JSON.parse(crypto.open(request.envelope))
+          : {};
+        const merged: Record<string, { v: string | null; t: number }> = {};
+        const base: Record<string, [string, number]> = {};
         const updated: string[] = [];
-        for (const account of accounts) {
-          if (found[account] !== undefined && state.secrets.get(account) !== found[account]) {
-            state.secrets.set(account, found[account]);
+        const values = request.accounts.map((account) => state.secrets.get(account) ?? null);
+        request.accounts.forEach((account, index) => {
+          const value = values[index];
+          const known = request.base[account];
+          const ours = value !== null ? value : known ? "-" : null;
+          const oursAt = known && known[0] === ours ? known[1] : request.now;
+          const entry = request.mode === "upload" ? undefined : remote[account];
+          const theirs = entry ? (entry.v ?? "-") : null;
+          const takeRemote =
+            request.mode === "download"
+              ? theirs !== null
+              : request.mode === "upload" ||
+                  ours === theirs ||
+                  theirs === null ||
+                  theirs === known?.[0]
+                ? false
+                : ours === null || ours === known?.[0]
+                  ? true
+                  : (entry?.t ?? 0) > oursAt;
+          const chosen =
+            takeRemote && entry
+              ? entry
+              : { v: value, t: ours === theirs && entry ? entry.t : oursAt };
+          const state_ = takeRemote ? theirs : ours;
+          if (takeRemote && entry && entry.v !== value) {
+            if (entry.v === null) state.secrets.delete(account);
+            else state.secrets.set(account, entry.v);
             updated.push(account);
           }
-        }
-        return updated;
+          if (state_ === null) return;
+          merged[account] = chosen;
+          base[account] = [state_, chosen.t];
+        });
+        const sealed = Object.keys(merged).length
+          ? crypto.seal(JSON.stringify(merged), request.salt)
+          : null;
+        return { sealed, base, updated };
       },
       backup: async (content, reason) => {
         state.backups.push(content);
@@ -197,6 +230,10 @@ export function device(
       },
     },
     local,
+    readSecretBase: () => ({ ...state.secretBase }),
+    writeSecretBase: (base) => {
+      state.secretBase = { ...base };
+    },
     readBase: () => new Map(state.base),
     writeBase: (base) => {
       state.base = new Map(base);
