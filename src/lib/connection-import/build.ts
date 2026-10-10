@@ -158,18 +158,19 @@ function toCandidate(
     connection.kind && CLOUD_KINDS.includes(connection.kind) && !sourceSkip
       ? cloudTarget(connection)
       : null;
-  const transport =
-    !sourceSkip && connection.kind && !cloud && !FILE_KINDS.includes(connection.kind)
-      ? resolveTransport(connection.kind, {
-          params: connection.params,
-          sslMode: connection.sslMode,
-          urlScheme: connection.urlScheme,
-          portFromUrl: connection.portFromUrl,
-          port: connection.port,
-        })
-      : null;
+  const needsTransport =
+    !sourceSkip && connection.kind && !cloud && !FILE_KINDS.includes(connection.kind);
+  const transport = needsTransport
+    ? resolveTransport(connection.kind as DatabaseKind, {
+        params: connection.params,
+        sslMode: connection.sslMode,
+        urlScheme: connection.urlScheme,
+        portFromUrl: connection.portFromUrl,
+        port: connection.port,
+      })
+    : null;
   const missingAdapter =
-    !sourceSkip && connection.kind && !cloud && !FILE_KINDS.includes(connection.kind) && !transport
+    needsTransport && !transport
       ? `Für den Typ „${connection.kind}“ fehlt die Import-Zuordnung.`
       : null;
   const skipReason = sourceSkip ?? cloud?.skipReason ?? missingAdapter;

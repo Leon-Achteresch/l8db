@@ -657,9 +657,9 @@ describe("finding 1: DBeaver entries with host still read TLS from the url field
       8443,
     ],
     [
-      "clickhouse host + http url stays on 8123",
+      "clickhouse host + http url stays on 8123 (http does not force plain, clickhouse.rs:70)",
       { host: "ch", user: "u", database: "db", url: "jdbc:clickhouse:http://ch/db" },
-      "clickhouse://u@ch:8123/db?secure=0",
+      "clickhouse://u@ch:8123/db",
       8123,
     ],
   ];
@@ -752,7 +752,7 @@ describe("finding 2 + 7: DynamoDB custom endpoints keep credentials (aws.rs:66-9
 
   test("non-loopback custom endpoints warn about a defaulted region", () => {
     const [candidate] = buildExternalCandidates(
-      [cloud("dynamodb", { host: "ddb.lan", port: 8000, user: "A", password: "s" })],
+      [cloud("dynamodb", { host: "ddb.lan", port: 9000, user: "A", password: "s" })],
       [],
     );
     expect(candidate.warnings.join(" ")).toContain("Region prüfen");
@@ -774,7 +774,7 @@ describe("finding 3 + 6: duplicate keys use the canonical kind (provider.rs:449-
       expect(endpointKey(kind, left)).toBe(endpointKey(kind, right));
     });
   const different: Array<[DatabaseKind, string, string]> = [
-    ["clickhouse", "https://u@ch:8443/db", "http://u@ch:8443/db"],
+    ["clickhouse", "https://u@ch:8123/db", "http://u@ch:8123/db"],
     ["redis", "rediss://db:6379/0", "redis://db:6379/0"],
     ["mongodb", "mongodb+srv://u@cluster.example.com/app", "mongodb://u@cluster.example.com/app"],
   ];
@@ -906,4 +906,259 @@ test("finding 8: a kind without adapter facts is skipped, not thrown", () => {
   expect(candidates[0].skipReason).toContain("Import-Zuordnung");
   expect(candidates[0].profile).toBeNull();
   expect(candidates[1].skipReason).toBeNull();
+});
+
+describe("effective TLS shared by import and duplicate key", () => {
+  const same: Array<[string, DatabaseKind, string, string]> = [
+    [
+      "clickhouse.rs:70 port 8443 implies TLS like ?secure=1",
+      "clickhouse",
+      "clickhouse://u@ch:8443/db",
+      "clickhouse://u@ch:8443/db?secure=1",
+    ],
+    [
+      "clickhouse.rs:70 http on 8443 is still TLS",
+      "clickhouse",
+      "http://u@ch:8443/db",
+      "clickhouse://u@ch:8443/db?secure=1",
+    ],
+    [
+      "clickhouse.rs:70 port 443 implies TLS",
+      "clickhouse",
+      "clickhouse://u@ch:443/db",
+      "clickhouse://u@ch:443/db?secure=1",
+    ],
+    [
+      "clickhouse.rs:75 tls=true is ignored",
+      "clickhouse",
+      "clickhouse://u@ch/db?tls=true",
+      "clickhouse://u@ch:8123/db",
+    ],
+    [
+      "clickhouse.rs:75 last param wins",
+      "clickhouse",
+      "clickhouse://u@ch:8443/db?secure=1&ssl=false",
+      "clickhouse://u@ch:8443/db?secure=0",
+    ],
+    [
+      "clickhouse.rs:76 sslmode=prefer is plain",
+      "clickhouse",
+      "clickhouse://u@ch/db?sslmode=prefer",
+      "clickhouse://u@ch:8123/db",
+    ],
+    [
+      "http_api.rs:101 port 9243 implies TLS",
+      "elasticsearch",
+      "elasticsearch://u@es:9243",
+      "elasticsearch://u@es:9243?ssl=true",
+    ],
+    [
+      "http_api.rs:115 ssl=false beats https",
+      "elasticsearch",
+      "https://u@es:9200?ssl=false",
+      "elasticsearch://u@es:9200",
+    ],
+    [
+      "http_api.rs:106 sslmode=disable beats https",
+      "elasticsearch",
+      "https://u@es:9200?sslmode=disable",
+      "elasticsearch://u@es:9200",
+    ],
+    [
+      "http_api.rs:104 sslmode=prefer leaves https on",
+      "elasticsearch",
+      "https://u@es?sslmode=prefer",
+      "elasticsearch://u@es:443?ssl=true",
+    ],
+    [
+      "http_api.rs:115 tls key wins over ssl",
+      "influxdb",
+      "influxdb://i:8086?tls=false&ssl=true",
+      "influxdb://i:8086",
+    ],
+  ];
+  for (const [name, kind, left, right] of same)
+    test(`${kind}: ${name}`, () => {
+      expect(endpointKey(kind, left)).toBe(endpointKey(kind, right));
+    });
+
+  const imported: Array<
+    [
+      string,
+      DatabaseKind,
+      number | null,
+      Array<[string, string]>,
+      "http" | "https" | null,
+      string,
+      number,
+    ]
+  > = [
+    [
+      "clickhouse.rs:70 port 8443 without flag imports as TLS",
+      "clickhouse",
+      8443,
+      [],
+      null,
+      "clickhouse://u@db:8443/app?secure=1",
+      8443,
+    ],
+    [
+      "clickhouse.rs:75 tls=true is ignored on import",
+      "clickhouse",
+      null,
+      [["tls", "true"]],
+      null,
+      "clickhouse://u@db:8123/app",
+      8123,
+    ],
+    [
+      "http_api.rs:101 port 9243 imports as TLS",
+      "elasticsearch",
+      9243,
+      [],
+      null,
+      "elasticsearch://u@db:9243/app?ssl=true",
+      9243,
+    ],
+    [
+      "http_api.rs:115 https URL with ssl=false stays plain",
+      "elasticsearch",
+      null,
+      [["ssl", "false"]],
+      "https",
+      "elasticsearch://u@db:9200/app?ssl=false",
+      9200,
+    ],
+    [
+      "http_api.rs:106 https URL with sslmode=disable stays plain",
+      "elasticsearch",
+      null,
+      [["sslmode", "disable"]],
+      "https",
+      "elasticsearch://u@db:9200/app?ssl=false",
+      9200,
+    ],
+  ];
+  for (const [name, kind, port, params, urlScheme, url, remote] of imported)
+    test(`import ${kind}: ${name}`, () => {
+      const connection = emptyExternalConnection("t", name);
+      connection.kind = kind;
+      connection.host = "db";
+      connection.port = port;
+      connection.user = "u";
+      connection.database = "app";
+      connection.params = params;
+      connection.urlScheme = urlScheme;
+      connection.portFromUrl = urlScheme !== null;
+      connection.ssh = { ...JUMP };
+      const [candidate] = buildExternalCandidates([connection], []);
+      expect(candidate.profile?.connectionString).toBe(url);
+      expect(candidate.profile?.ssh?.remotePort).toBe(remote);
+      expect(candidate.endpoint).toBe(
+        endpointKey(kind, url, candidate.profile?.ssh, null) as string,
+      );
+    });
+});
+
+describe("DynamoDB endpoint parsing (aws.rs:90)", () => {
+  const rows: Array<[string, Partial<ExternalConnection>, string | null, string | null]> = [
+    [
+      "region comes from an AWS endpoint param",
+      {
+        params: [
+          ["endpoint", "https://dynamodb.eu-west-1.amazonaws.com"],
+          ["profile", "p"],
+        ],
+      },
+      "dynamodb://eu-west-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.eu-west-1.amazonaws.com",
+      null,
+    ],
+    [
+      "region comes from a China endpoint param",
+      {
+        params: [
+          ["endpoint", "https://dynamodb.cn-north-1.amazonaws.com.cn"],
+          ["profile", "p"],
+        ],
+      },
+      "dynamodb://cn-north-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.cn-north-1.amazonaws.com.cn",
+      null,
+    ],
+    [
+      "region comes from an api.aws endpoint param",
+      {
+        params: [
+          ["endpoint", "https://dynamodb.us-east-2.api.aws"],
+          ["profile", "p"],
+        ],
+      },
+      "dynamodb://us-east-2?profile=p&endpoint=https%3A%2F%2Fdynamodb.us-east-2.api.aws",
+      null,
+    ],
+    [
+      "loopback endpoint param gets local defaults",
+      { params: [["endpoint", "http://localhost:8000"]] },
+      "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000",
+      "local",
+    ],
+    [
+      "host field with scheme and port is parsed",
+      { host: "http://localhost:8000" },
+      "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000",
+      "local",
+    ],
+    [
+      "https host field keeps https",
+      { host: "https://ddb.example.com:8443", params: [["profile", "p"]] },
+      "dynamodb://us-east-1?profile=p&endpoint=https%3A%2F%2Fddb.example.com%3A8443",
+      null,
+    ],
+    [
+      "bracketed IPv6 host with port",
+      { host: "[::1]:8001" },
+      "dynamodb://local@us-east-1?endpoint=http%3A%2F%2F%5B%3A%3A1%5D%3A8001",
+      "local",
+    ],
+    [
+      "docker-compose hostname dynamodb-local",
+      { host: "dynamodb-local" },
+      "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Fdynamodb-local%3A8000",
+      "local",
+    ],
+    [
+      "non-AWS http host on 8000 without credentials gets local defaults",
+      { host: "ddb.lan", port: 8000 },
+      "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Fddb.lan%3A8000",
+      "local",
+    ],
+    [
+      "non-AWS https host on 8000 is not local",
+      { host: "ddb.lan", port: 8000, urlScheme: "https", params: [["profile", "p"]] },
+      "dynamodb://us-east-1?profile=p&endpoint=https%3A%2F%2Fddb.lan%3A8000",
+      null,
+    ],
+  ];
+  for (const [name, fields, url, password] of rows)
+    test(name, () => {
+      const [candidate] = buildExternalCandidates([cloud("dynamodb", fields)], []);
+      expect(candidate.profile?.connectionString ?? null).toBe(url);
+      expect(candidate.password).toBe(password);
+    });
+
+  test("AWS endpoint without any derivable region is skipped", () => {
+    const [candidate] = buildExternalCandidates(
+      [cloud("dynamodb", { params: [["endpoint", "https://dynamodb.amazonaws.com"]] })],
+      [],
+    );
+    expect(candidate.skipReason).toContain("Region");
+  });
+});
+
+test("snowflake path database and db param produce the same key", () => {
+  expect(endpointKey("snowflake", "snowflake://U@acme/SALES/PUBLIC")).toBe(
+    endpointKey("snowflake", "snowflake://U@acme?db=SALES&schema=PUBLIC"),
+  );
+  expect(endpointKey("snowflake", "snowflake://U@acme/SALES")).not.toBe(
+    endpointKey("snowflake", "snowflake://U@acme?db=OTHER"),
+  );
 });

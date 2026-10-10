@@ -36,13 +36,15 @@ function skip(reason: string): CloudTarget {
   };
 }
 
-function awsRegion(connection: ExternalConnection): string {
-  const explicit = param(connection, "AwsRegion", "region");
-  if (explicit) return explicit.toLowerCase();
-  const host = connection.host.toLowerCase();
+function regionFromHost(host: string): string {
   if (AWS_REGION.test(host)) return host;
   if (!AWS_HOST.test(host)) return "";
   return /(?:^|\.)([a-z]{2}(?:-gov)?-[a-z]+-\d)(?:\.|$)/.exec(host)?.[1] ?? "";
+}
+
+function awsRegion(connection: ExternalConnection, host = connection.host.toLowerCase()): string {
+  const explicit = param(connection, "AwsRegion", "region");
+  return explicit ? explicit.toLowerCase() : regionFromHost(host);
 }
 
 function awsCredentials(connection: ExternalConnection, warnings: string[]) {
@@ -142,62 +144,99 @@ const AWS_HOST = /(^|\.)(amazonaws\.com(\.cn)?|api\.aws)$/;
 
 const STANDARD_DYNAMODB_HOST = /^dynamodb\.[a-z0-9-]+\.(amazonaws\.com(\.cn)?|api\.aws)$/;
 
-const LOOPBACK = ["localhost", "127.0.0.1", "::1"];
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1", "dynamodb-local"];
 
-interface DynamoEndpoint {
-  url: string;
-  loopback: boolean;
-  defaultedRegion: boolean;
+const LOCAL_PORT = 8000;
+
+export interface HostValue {
+  scheme: "http" | "https" | null;
+  host: string;
+  port: number | null;
 }
 
-function dynamoHost(connection: ExternalConnection): string {
-  return connection.host
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/^\[|\]$/g, "")
-    .toLowerCase();
-}
-
-function dynamoEndpoint(connection: ExternalConnection, region: string): DynamoEndpoint | null {
-  const configured = param(connection, "endpoint", "Endpoint");
-  const host = dynamoHost(connection);
-  const loopback = LOOPBACK.includes(host) || host.endsWith(".local");
-  if (configured)
-    return /^https?:\/\//i.test(configured)
-      ? { url: configured, loopback, defaultedRegion: !region }
-      : null;
-  if (!host || AWS_REGION.test(host) || STANDARD_DYNAMODB_HOST.test(host)) return null;
-  const aws = AWS_HOST.test(host);
-  const secure =
-    connection.urlScheme === "https" ||
-    ["true", "1"].includes(param(connection, "ssl", "tls").toLowerCase()) ||
-    (aws && connection.urlScheme !== "http");
-  const local = loopback || (!aws && !secure && connection.port === 8000);
-  const port = connection.port ?? (!secure && local ? 8000 : null);
-  const address = host.includes(":") ? `[${host}]` : host;
+export function parseHostValue(value: string, port: number | null = null): HostValue {
+  const trimmed = value.trim();
+  const prefix = /^(https?):\/\//i.exec(trimmed);
+  const authority = (prefix ? trimmed.slice(prefix[0].length) : trimmed).split(/[/?#]/)[0] ?? "";
+  let host = authority;
+  let parsedPort: number | null = null;
+  if (authority.startsWith("[")) {
+    const end = authority.indexOf("]");
+    host = end < 0 ? authority.slice(1) : authority.slice(1, end);
+    const rest = end < 0 ? "" : authority.slice(end + 1);
+    if (rest.startsWith(":")) parsedPort = Number(rest.slice(1)) || null;
+  } else if (authority.split(":").length === 2) {
+    const [name, rawPort] = authority.split(":");
+    host = name;
+    parsedPort = Number(rawPort) || null;
+  }
   return {
-    url: `${secure ? "https" : "http"}://${address}${port ? `:${port}` : ""}`,
-    loopback,
-    defaultedRegion: !region,
+    scheme: prefix ? (prefix[1].toLowerCase() as "http" | "https") : null,
+    host: host.toLowerCase(),
+    port: parsedPort ?? port,
+  };
+}
+
+function hostForUrl(host: string): string {
+  return host.includes(":") ? `[${host}]` : host;
+}
+
+interface DynamoTarget {
+  endpoint: string;
+  local: boolean;
+  region: string;
+}
+
+function dynamoTarget(connection: ExternalConnection): DynamoTarget | string {
+  const configured = param(connection, "endpoint", "Endpoint");
+  if (configured && !/^https?:\/\//i.test(configured))
+    return `Ungültiger DynamoDB-Endpunkt „${configured}“.`;
+  const value = parseHostValue(configured || connection.host, configured ? null : connection.port);
+  const aws = AWS_HOST.test(value.host);
+  const standard =
+    !value.host || AWS_REGION.test(value.host) || STANDARD_DYNAMODB_HOST.test(value.host);
+  const scheme =
+    value.scheme ??
+    (connection.urlScheme === "https" ||
+    ["true", "1"].includes(param(connection, "ssl", "tls").toLowerCase()) ||
+    aws
+      ? "https"
+      : "http");
+  const local =
+    LOCAL_HOSTS.includes(value.host) ||
+    value.host.endsWith(".local") ||
+    (!aws && scheme === "http" && value.port === LOCAL_PORT);
+  const derived = awsRegion(connection, value.host);
+  const region = derived || (value.host && !aws ? DEFAULT_REGION : "");
+  if (!region) return "AWS-Region für DynamoDB fehlt.";
+  if (standard && !configured) return { endpoint: "", local: false, region };
+  const port = value.port ?? (scheme === "http" && local ? LOCAL_PORT : null);
+  return {
+    endpoint: configured || `${scheme}://${hostForUrl(value.host)}${port ? `:${port}` : ""}`,
+    local,
+    region,
   };
 }
 
 function dynamodb(connection: ExternalConnection): CloudTarget {
-  const region = awsRegion(connection);
-  const endpoint = dynamoEndpoint(connection, region);
-  if (!region && !endpoint) return skip("AWS-Region für DynamoDB fehlt.");
+  const target = dynamoTarget(connection);
+  if (typeof target === "string") return skip(target);
   const warnings: string[] = [];
-  const loopbackDefaults = endpoint?.loopback && !(connection.user && connection.password);
-  const credentials = loopbackDefaults
+  const localDefaults = target.local && !(connection.user && connection.password);
+  const credentials = localDefaults
     ? { user: connection.user || "local", password: "local", profile: "", missing: false }
     : awsCredentials(connection, warnings);
-  if (endpoint?.defaultedRegion && !endpoint.loopback)
+  if (
+    target.endpoint &&
+    !target.local &&
+    !awsRegion(connection, parseHostValue(target.endpoint).host)
+  )
     warnings.push(`Region prüfen: ohne Angabe in der Quelle gilt ${DEFAULT_REGION}.`);
   return {
-    connectionString: `dynamodb://${credentials.user ? `${encodeURIComponent(credentials.user)}@` : ""}${region || DEFAULT_REGION}${query(
+    connectionString: `dynamodb://${credentials.user ? `${encodeURIComponent(credentials.user)}@` : ""}${target.region}${query(
       [
         ["profile", credentials.profile],
-        ["endpoint", endpoint?.url ?? ""],
+        ["endpoint", target.endpoint],
       ],
     )}`,
     user: credentials.user,
