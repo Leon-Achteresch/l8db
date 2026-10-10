@@ -20,7 +20,7 @@ import {
   themeCss,
   useCrossFilterStore,
 } from "../src/lib/dashboards";
-import { readsTable, tableTokenCacheKeys } from "../src/lib/dashboards/sql-tables";
+import { readsTable, tableDialect, tableTokenCacheKeys } from "../src/lib/dashboards/sql-tables";
 
 function dataset(table: string, dimension: string, joined = false): Dataset {
   const base = emptyDataset(table);
@@ -314,4 +314,22 @@ test("ambiguous spaced brackets on ODBC stay linear", async () => {
   });
   expect(large.p95Ms).toBeLessThan(80);
   expect(large.medianMs / Math.max(small.medianMs, 0.05)).toBeLessThan(8);
+});
+
+test("ODBC dialect detection stays cheap for every widget render", async () => {
+  const strings = [
+    "odbc://u:p@h:5432/db?Driver=PostgreSQL%20Unicode&Server=h",
+    "Driver={ODBC Driver 18 for SQL Server};Server=h;Database=d",
+    "DSN=Lager",
+    `odbc://h/db?${"x=1&".repeat(200)}Driver=Simba%20ODBC%20Driver%20for%20Google%20BigQuery`,
+  ];
+  let resolved = 0;
+  const timing = await measureScenario(() => {
+    resolved = 0;
+    for (let i = 0; i < 10_000; i++)
+      if (tableDialect("odbc", strings[i % 4]) !== "odbc") resolved++;
+  }, 9);
+  await reportScenario("dashboard-odbc-dialect", { ...timing, calls: 10_000, resolved });
+  expect(resolved).toBe(7_500);
+  expect(timing.p95Ms).toBeLessThan(60);
 });

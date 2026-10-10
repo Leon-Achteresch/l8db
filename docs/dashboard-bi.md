@@ -54,7 +54,8 @@ before the dashboard's own CSS.
   bracket identifier, and after whitespace or a comment it is a subscript when it closes as a
   quote-aware index whose quotes do not touch words and the name reading would leave
   unbalanced quotes). For ODBC the dialect is taken from the connection's `Driver=`
-  (PostgreSQL, SQL Server, MySQL, SQLite, Oracle, ClickHouse, Snowflake, DuckDB,
+  (raw `Driver={...};` or URL `odbc://…?Driver=…`, including driver library paths;
+  PostgreSQL, SQL Server, MySQL, SQLite, Oracle, ClickHouse, Snowflake, DuckDB,
   BigQuery), so these heuristics only apply to DSN-only ODBC connections. There a
   spaced escape-string index containing `]` (`data [E'x]']`) is read as a bracket name,
   because the same text is a valid alias such as `[Team E's]`., Oracle q-quoted and dollar-quoted literals are ignored).
