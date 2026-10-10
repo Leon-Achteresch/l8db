@@ -49,7 +49,7 @@ export function DmlPreviewDialog({
   const plan = derivation?.status === "ready" ? derivation : null;
   const count = state?.outcome?.count ?? null;
   const sample = state?.outcome?.sample ?? null;
-  const loading = Boolean(state?.phase);
+  const loading = Boolean(state?.phase) || Boolean(state?.closing);
   const overThreshold = count !== null && count > warnThreshold;
   const risky = Boolean(derivation?.whereMissing || overThreshold || state?.production);
   const title = derivation?.kind
@@ -144,6 +144,13 @@ export function DmlPreviewDialog({
             </p>
           )}
 
+          {state?.closing && (
+            <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <LoaderIcon className="size-4 animate-spin" />
+              Vorschau wird in der Transaktion beendet, danach startet die Anweisung…
+            </p>
+          )}
+
           {state?.stopped && <p className="text-sm text-muted-foreground">Vorschau abgebrochen.</p>}
 
           {sample && sample.columns.length > 0 && (
@@ -160,12 +167,12 @@ export function DmlPreviewDialog({
         </div>
 
         <DialogFooter>
-          {loading && (
+          {loading && !state?.closing && (
             <Button variant="ghost" onClick={onStop}>
               Vorschau stoppen
             </Button>
           )}
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" disabled={state?.closing} onClick={onCancel}>
             Abbrechen
           </Button>
           <Button variant={risky ? "destructive" : "default"} disabled={loading} onClick={onRun}>

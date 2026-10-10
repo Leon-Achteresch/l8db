@@ -5,11 +5,12 @@ import {
   type BindParamRef,
   type BindParamValue,
   buildParameterizedQuery,
-  detectBindParams,
+  editorBindParams,
   inlineBindValues,
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
+import { recordEditorSql } from "@/lib/dml-preview/search-path";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
@@ -93,7 +94,7 @@ export function useRunSql({
         caps.query_language !== "redis" &&
         caps.query_language !== "json"
       ) {
-        const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
+        const refs = editorBindParams(sql);
         if (refs.length > 0) {
           setBindValues((previous) => {
             const next: Record<string, BindParamValue> = {};
@@ -157,6 +158,7 @@ export function useRunSql({
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
         setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
+        recordEditorSql(connection.id, database ?? null, sql, connection.kind);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
         const message = String(err);

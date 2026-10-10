@@ -3,12 +3,14 @@ import { toast } from "sonner";
 import {
   autoPreviewApplies,
   type DmlPreviewDerivation,
+  type DmlPreviewExecutor,
   type DmlPreviewOutcome,
   type DmlPreviewPhase,
   deriveDmlPreview,
   hasBindParameters,
   isDmlPreviewCancelled,
   needsDmlPreview,
+  previewReleased,
   runDmlPreview,
 } from "@/lib/dml-preview";
 import { dmlPreviewExecutor } from "@/lib/dml-preview/executor";
@@ -26,6 +28,7 @@ export interface DmlPreviewState {
   error: string | null;
   stopped: boolean;
   note: string | null;
+  closing: boolean;
 }
 
 const BOUND_REASON =
@@ -40,6 +43,7 @@ export function useDmlPreview(
   const resolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const settledRef = useRef<Promise<void>>(Promise.resolve());
+  const executorRef = useRef<DmlPreviewExecutor | null>(null);
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -48,11 +52,20 @@ export function useDmlPreview(
 
   const finish = useCallback(
     (accepted: boolean) => {
+      const pending = previewReleased(executorRef.current, settledRef.current);
       abort();
       const resolve = resolverRef.current;
       resolverRef.current = null;
-      setState(null);
-      void settledRef.current.then(() => resolve?.(accepted));
+      if (!pending) {
+        setState(null);
+        resolve?.(accepted);
+        return;
+      }
+      setState((current) => (current ? { ...current, phase: null, closing: true } : current));
+      void pending.then(() => {
+        setState(null);
+        resolve?.(accepted);
+      });
     },
     [abort],
   );
@@ -98,11 +111,13 @@ export function useDmlPreview(
         error: null,
         stopped: false,
         note: null,
+        closing: false,
       });
       if (derivation.status === "ready") {
         const controller = new AbortController();
         abortRef.current = controller;
         const executor = dmlPreviewExecutor(connection, database, settings.dmlPreviewTimeout);
+        executorRef.current = executor;
         const running = runDmlPreview(derivation, executor, {
           signal: controller.signal,
           onPhase: (phase) =>
