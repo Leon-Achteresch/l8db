@@ -3,7 +3,7 @@ import type { DatabaseKind } from "@/lib/db";
 interface TableToken {
   word: string | null;
   ident: string | null;
-  mark: "(" | ")" | "," | "." | "[" | "]" | "number" | null;
+  mark: "(" | ")" | "," | "." | "[" | "]" | "number" | "literal" | null;
   start: number;
   end: number;
 }
@@ -192,17 +192,28 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
       const closing =
         ({ "[": "]", "(": ")", "{": "}", "<": ">" } as Record<string, string>)[opening] ?? opening;
       const end = sql.indexOf(`${closing}'`, i + 3);
+      const start = i;
       i = end < 0 ? sql.length : end + 2;
+      tokens.push({ word: null, ident: null, mark: "literal", start, end: i });
     } else if (c === "$" && /^\$(?:[A-Za-z_]\w*)?\$/.test(sql.slice(i, i + 64))) {
       const tag = sql.slice(i, i + 64).match(/^\$(?:[A-Za-z_]\w*)?\$/)?.[0] ?? "$$";
       const end = sql.indexOf(tag, i + tag.length);
+      const start = i;
       i = end < 0 ? sql.length : end + tag.length;
+      tokens.push({ word: null, ident: null, mark: "literal", start, end: i });
     } else if (c === "'") {
       const escapes =
         backslash || (/[eE]/.test(sql[i - 1] ?? "") && !/[\w$]/.test(sql[i - 2] ?? ""));
+      const start = i;
       i = skipQuoted(sql, i, "'", escapes);
+      tokens.push({ word: null, ident: null, mark: "literal", start, end: i });
     } else if (c === '"' && doubleQuoteStrings) {
+      const start = i;
       i = skipQuoted(sql, i, '"', true);
+      tokens.push({ word: null, ident: null, mark: "literal", start, end: i });
+    } else if (c === "{" || c === "}") {
+      tokens.push({ word: null, ident: null, mark: "literal", start: i, end: i + 1 });
+      i++;
     } else if (c === '"' || c === "`" || (c === "[" && brackets && !subscript(i))) {
       const close = c === "[" ? "]" : c;
       const end = skipQuoted(sql, i, close, c !== "[" && escapedIdentifiers);
@@ -301,31 +312,49 @@ export function serverSqlParts(sql: string): ServerSqlParts {
   const offset = ctes ? bodyToken.start : 0;
   let text = ctes ? sql.slice(offset) : sql;
   let depth = 0;
-  let top = false;
-  let selected = false;
   let ordered = false;
   let paged = false;
   let combined = false;
+  let orderStart = -1;
+  const branches: { start: number; end: number; top: boolean }[] = [];
+  const close = (index: number, fallback: number) => {
+    const open = branches[branches.length - 1];
+    if (open && open.end < 0) open.end = tokens[index - 1]?.end ?? fallback;
+  };
   for (let index = Math.max(body, 0); index < tokens.length; index++) {
     const token = tokens[index];
     if (token.mark === "(") depth++;
     else if (token.mark === ")") depth--;
     if (depth !== 0) continue;
-    if (token.word === "select" && !selected) {
-      selected = true;
-      const next =
+    if (token.word === "select") {
+      const skip =
         tokens[index + 1]?.word === "distinct" || tokens[index + 1]?.word === "all" ? 2 : 1;
-      if (tokens[index + next]?.word === "top") top = true;
-    } else if (token.word === "union" || token.word === "except" || token.word === "intersect")
+      branches.push({ start: token.start, end: -1, top: tokens[index + skip]?.word === "top" });
+    } else if (token.word === "union" || token.word === "except" || token.word === "intersect") {
       combined = true;
-    else if (token.word === "order" && tokens[index + 1]?.word === "by") ordered = true;
-    else if (ordered && (token.word === "offset" || token.word === "fetch" || token.word === "for"))
+      close(index, token.start);
+    } else if (token.word === "order" && tokens[index + 1]?.word === "by") {
+      ordered = true;
+      orderStart = token.start;
+      close(index, token.start);
+    } else if (
+      ordered &&
+      (token.word === "offset" || token.word === "fetch" || token.word === "for")
+    )
       paged = true;
   }
+  const top = branches[0]?.top ?? false;
   const last = tokens[tokens.length - 1];
   if (ordered && !paged && !(top && !combined) && last) {
     const at = last.end - offset;
     text = `${text.slice(0, at)} OFFSET 0 ROWS${text.slice(at)}`;
+    if (combined)
+      for (const branch of [...branches].reverse()) {
+        if (!branch.top || branch.end < 0 || branch.start > orderStart) continue;
+        const from = branch.start - offset;
+        const to = branch.end - offset;
+        text = `${text.slice(0, from)}(${text.slice(from, to)})${text.slice(to)}`;
+      }
   }
   return { ctes, body: text };
 }
