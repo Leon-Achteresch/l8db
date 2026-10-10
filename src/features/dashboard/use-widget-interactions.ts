@@ -25,6 +25,7 @@ import {
   type WidgetOptions,
 } from "@/lib/dashboards";
 import { exportRowsCsv } from "@/lib/dashboards/csv";
+import { tableDialect } from "@/lib/dashboards/sql-tables";
 import type { QueryResult } from "@/lib/db";
 import { applyMasks, resolveMasks } from "@/lib/masking";
 import { connectionMaskRules, useMaskingDisplay } from "@/lib/masking-display";
@@ -105,8 +106,15 @@ export function useWidgetInteractions({
   const [point, setPoint] = useState<(ChartPoint & { picks: Pick[] }) | null>(null);
   const effective = useMemo(
     () =>
-      dataset ? applyCrossFilters(dataset, filters, widget.id, connection?.kind ?? null) : null,
-    [dataset, filters, widget.id, connection?.kind],
+      dataset
+        ? applyCrossFilters(
+            dataset,
+            filters,
+            widget.id,
+            tableDialect(connection?.kind, connection?.connectionString),
+          )
+        : null,
+    [dataset, filters, widget.id, connection?.kind, connection?.connectionString],
   );
   const own = useMemo(() => filters.filter((f) => f.widgetId === widget.id), [filters, widget.id]);
   const kind = connection?.kind ?? null;

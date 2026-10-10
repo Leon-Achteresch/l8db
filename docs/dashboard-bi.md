@@ -52,9 +52,12 @@ before the dashboard's own CSS.
   Snowflake; for ODBC and unknown dialects a bracket directly after a name, a field access, `)` or
   `]` is an array subscript, after a keyword, operator or numeric literal it is a
   bracket identifier, and after whitespace or a comment it is a subscript when it closes as a
-  quote-aware index (quotes may not touch words, `E'`/`N'` prefixes allowed) and the
-  name reading would leave unbalanced quotes; if both readings stay possible, a second
-  linear pass prefers indexes and either reading may find the table), Oracle q-quoted and dollar-quoted literals are ignored).
+  quote-aware index whose quotes do not touch words and the name reading would leave
+  unbalanced quotes). For ODBC the dialect is taken from the connection's `Driver=`
+  (PostgreSQL, SQL Server, MySQL, SQLite, Oracle, ClickHouse, Snowflake, DuckDB,
+  BigQuery), so these heuristics only apply to DSN-only ODBC connections. There a
+  spaced escape-string index containing `]` (`data [E'x]']`) is read as a bracket name,
+  because the same text is a valid alias such as `[Team E's]`., Oracle q-quoted and dollar-quoted literals are ignored).
   Tokens are cached for the 64 most recently used statements. List-valued dimension values are
   not offered for filtering, and drill-through needs every clicked axis to be scalar. Charts that do not share the column are untouched and do not
   query again.

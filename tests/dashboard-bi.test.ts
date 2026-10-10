@@ -39,7 +39,7 @@ import {
   type Widget,
   widgetsOnPage,
 } from "../src/lib/dashboards";
-import { readsTable } from "../src/lib/dashboards/sql-tables";
+import { readsTable, tableDialect } from "../src/lib/dashboards/sql-tables";
 
 function simple(table: string, dimension: string, bucket: "none" | "month" = "none"): Dataset {
   const dataset = emptyDataset(table);
@@ -883,13 +883,39 @@ describe("Array-Indizes nach Kommentaren und Leerzeichen", () => {
 describe("Mehrdeutige Klammern mit beiden Lesarten", () => {
   test("String-Präfixe, gemischte Aliase und Indizes und schließende Anführungszeichen", () => {
     for (const kind of ["odbc", null] as const) {
-      expect(readsTable("SELECT data [E'x]'] FROM orders", "orders", kind)).toBe(true);
-      expect(readsTable("SELECT data [N'x]'] FROM orders", "orders", kind)).toBe(true);
+      expect(
+        readsTable("SELECT a [Plan X's cost], b FROM orders WHERE s = ']'", "orders", kind),
+      ).toBe(true);
+      expect(
+        readsTable("SELECT count(*) [Count 'VIP' from orders] FROM customers", "orders", kind),
+      ).toBe(false);
       expect(
         readsTable("SELECT x [1990's Sales], data ['k' || ']'] FROM orders", "orders", kind),
       ).toBe(true);
       expect(readsTable("SELECT a ['x'y], r FROM orders", "orders", kind)).toBe(true);
       expect(readsTable("SELECT a [US$'s] FROM orders WHERE c = 'x]'", "orders", kind)).toBe(true);
     }
+  });
+});
+
+describe("ODBC-Dialekt aus dem Treiber", () => {
+  test("erkennt den Dialekt hinter ODBC und lässt andere Arten unverändert", () => {
+    expect(tableDialect("odbc", "Driver={PostgreSQL Unicode};Server=db;Database=x")).toBe(
+      "postgres",
+    );
+    expect(tableDialect("odbc", "Driver={ODBC Driver 18 for SQL Server};Server=db")).toBe("mssql");
+    expect(tableDialect("odbc", "DRIVER=MySQL ODBC 8.0 Unicode Driver;SERVER=db")).toBe("mysql");
+    expect(tableDialect("odbc", "DSN=Lager")).toBe("odbc");
+    expect(tableDialect("postgres", "Driver={SQL Server}")).toBe("postgres");
+    expect(tableDialect(undefined, null)).toBeNull();
+  });
+
+  test("PostgreSQL hinter ODBC liest Escape-Strings als Index, SQL Server Klammern als Namen", () => {
+    const postgres = tableDialect("odbc", "Driver={PostgreSQL Unicode};Server=db");
+    expect(readsTable("SELECT data [E'x]'] FROM orders", "orders", postgres)).toBe(true);
+    const mssql = tableDialect("odbc", "Driver={ODBC Driver 18 for SQL Server};Server=db");
+    expect(readsTable("SELECT a [Team E's score] FROM orders WHERE s = ']'", "orders", mssql)).toBe(
+      true,
+    );
   });
 });
