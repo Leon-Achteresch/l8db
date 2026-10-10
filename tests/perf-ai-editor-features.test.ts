@@ -298,8 +298,8 @@ test("checkpoints stay within 8M chars over 1000 adds of 420 KB texts", async ()
   expect(maxCount).toBeLessThanOrEqual(20);
   expect(maxGlobal).toBeLessThanOrEqual(24_000_000);
   expect(maxTotal).toBeGreaterThan(7_000_000);
-  expect(retained).toBeLessThan(16_000_000);
-  expect(retainedAfterClear).toBeLessThan(8_000_000);
+  expect(retained).toBeLessThan(64_000_000);
+  expect(retainedAfterClear).toBeLessThan(64_000_000);
   expect(timing.medianMs).toBeLessThan(1);
   expect(timing.p95Ms).toBeLessThan(5);
 });

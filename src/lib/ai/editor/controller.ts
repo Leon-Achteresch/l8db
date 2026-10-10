@@ -246,9 +246,12 @@ export class EditorAiController {
   open(start: EditStart) {
     this.session?.close();
     this.clearRename();
+    const lenses = this.editor.getOption(monaco.editor.EditorOption.codeLens);
+    if (lenses) this.editor.updateOptions({ codeLens: false });
     this.session = new InlineEditSession(this.editor, this.options.editorId, start, (session) => {
       if (this.session === session) {
         this.session = null;
+        if (lenses) this.editor.updateOptions({ codeLens: true });
         this.emit();
       }
     });

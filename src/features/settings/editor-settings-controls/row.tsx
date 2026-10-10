@@ -9,6 +9,7 @@ export function Row({
   title: fallbackTitle,
   description: fallbackDescription,
   compact,
+  stacked,
   children,
 }: {
   settingId?: string;
@@ -16,6 +17,7 @@ export function Row({
   title?: string;
   description?: string;
   compact: boolean;
+  stacked?: boolean;
   children: ReactNode;
 }) {
   const setting = settingId ? SETTINGS_BY_ID.get(settingId) : undefined;
@@ -28,6 +30,7 @@ export function Row({
         featureId={featureId}
         title={title}
         description={description}
+        stacked={stacked}
       >
         {children}
       </SettingsRow>
