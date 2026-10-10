@@ -6,9 +6,13 @@ export function scriptStatementCount(sql: string, kind: DatabaseKind | null | un
   return splitSqlStatements(sql, kind ?? undefined).statements.length;
 }
 
-export function partialRiskStatements(sql: string, kind: DatabaseKind | null | undefined): number {
+export function partialRiskStatements(
+  sql: string,
+  kind: DatabaseKind | null | undefined,
+  persistentSession = false,
+): number {
   const count = scriptStatementCount(sql, kind);
-  if (count <= 1) return count;
+  if (count <= 1 || persistentSession) return count;
   if (kind === "postgres" && scriptPolicyIssue(sql, kind, false) === null) return 1;
   return count;
 }

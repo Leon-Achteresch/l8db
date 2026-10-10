@@ -4,11 +4,12 @@ import {
   autoPreviewApplies,
   type DmlPreviewDerivation,
   type DmlPreviewOutcome,
-  type DmlPreviewPhase,
   deriveDmlPreview,
   hasBindParameters,
   isDmlPreviewCancelled,
+  isDmlPreviewUnavailable,
   needsDmlPreview,
+  runDmlPreview,
 } from "@/lib/dml-preview";
 import { dmlPreviewExecutor } from "@/lib/dml-preview/executor";
 import {
@@ -25,12 +26,11 @@ export interface DmlPreviewState {
   derivation: DmlPreviewDerivation;
   production: boolean;
   manual: boolean;
-  phase: DmlPreviewPhase | null;
+  phase: "count" | null;
   outcome: DmlPreviewOutcome | null;
   error: string | null;
   stopped: boolean;
   note: string | null;
-  closing: boolean;
 }
 
 const BOUND_REASON =
@@ -58,18 +58,12 @@ export function useDmlPreview(
   const finish = useCallback(
     (accepted: boolean) => {
       const lifecycle = lifecycleOf();
-      const token = lifecycle.current();
-      const settlement = lifecycle.settle(accepted);
+      const decision = lifecycle.decide(accepted, lifecycle.current());
       abort();
       const resolve = resolverRef.current;
       resolverRef.current = null;
-      if (settlement.wait)
-        setState((current) => (current ? { ...current, phase: null, closing: true } : current));
-      else setState(null);
-      void settlement.decision.then((decision) => {
-        if (settlement.wait && lifecycle.current() === token) setState(null);
-        resolve?.(decision);
-      });
+      setState(null);
+      resolve?.(decision);
     },
     [abort, lifecycleOf],
   );
@@ -108,7 +102,7 @@ export function useDmlPreview(
       resolverRef.current?.(false);
       resolverRef.current = null;
       const lifecycle = lifecycleOf();
-      lifecycle.next();
+      const token = lifecycle.next();
       const ready = derivation.status === "ready";
       setState({
         derivation,
@@ -119,34 +113,38 @@ export function useDmlPreview(
         error: null,
         stopped: false,
         note: null,
-        closing: false,
       });
       if (derivation.status === "ready") {
         const controller = new AbortController();
         abortRef.current = controller;
         const executor = dmlPreviewExecutor(connection, database, settings.dmlPreviewTimeout);
-        const running = lifecycle.start(derivation, executor, {
-          signal: controller.signal,
-          onPhase: (phase) =>
-            !controller.signal.aborted &&
-            setState((current) => (current ? { ...current, phase } : current)),
-        });
-        running.then(
+        const current = () => lifecycle.current() === token && !controller.signal.aborted;
+        setState((state) => (state ? { ...state, note: executor.note ?? null } : state));
+        runDmlPreview(derivation, executor, { signal: controller.signal }).then(
           (outcome) => {
-            if (controller.signal.aborted) return;
+            if (!current()) return;
             abortRef.current = null;
-            setState((current) =>
-              current ? { ...current, phase: null, outcome, note: executor.note ?? null } : current,
-            );
+            setState((state) => (state ? { ...state, phase: null, outcome } : state));
           },
           (error: unknown) => {
-            if (isDmlPreviewCancelled(error) && controller.signal.aborted) return;
+            if (isDmlPreviewCancelled(error) || !current()) return;
             abortRef.current = null;
-            setState((current) =>
-              current
-                ? { ...current, phase: null, error: String(error), note: executor.note ?? null }
-                : current,
-            );
+            setState((state) => {
+              if (!state) return state;
+              if (isDmlPreviewUnavailable(error))
+                return {
+                  ...state,
+                  phase: null,
+                  derivation: {
+                    status: "unavailable",
+                    kind: derivation.kind,
+                    statement: derivation.statement,
+                    reason: error.reason,
+                    whereMissing: derivation.whereMissing,
+                  },
+                };
+              return { ...state, phase: null, error: String(error) };
+            });
           },
         );
       }

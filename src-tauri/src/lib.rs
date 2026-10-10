@@ -396,6 +396,7 @@ pub fn run() {
             db::commands::cancel_execution,
             db::commands::configure_execution_defaults,
             db::commands::execute_query_with_params,
+            db::dml_preview::preview_dml,
             db::commands::describe_query_columns,
             db::commands::list_views,
             db::commands::get_view_definition,

@@ -15,6 +15,7 @@ pub mod data_compare;
 pub mod datagen;
 mod datagen_data;
 pub mod debugger;
+pub mod dml_preview;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod dynamodb;

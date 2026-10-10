@@ -19,7 +19,11 @@ export {
   DmlPreviewCancelled,
   type DmlPreviewExecutor,
   type DmlPreviewOutcome,
-  type DmlPreviewPhase,
+  DmlPreviewUnavailableError,
   isDmlPreviewCancelled,
+  isDmlPreviewUnavailable,
+  isMissingTableError,
+  MISSING_TABLE_REASON,
+  type PreviewPlanQueries,
   runDmlPreview,
 } from "./run";

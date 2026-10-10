@@ -750,3 +750,35 @@ describe("fourth review fixes", () => {
     expect(partialRiskStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", "mysql")).toBe(2);
   });
 });
+
+describe("isolated preview round", () => {
+  test("a connection error after the target was prepared does not claim partial execution", async () => {
+    const updates = new Map<string, TargetRun>();
+    const target = multiTarget("c5");
+    await startMultiTargetRun({
+      targets: [target],
+      sql: "UPDATE a SET x = 1; UPDATE b SET y = 2",
+      scriptStatements: () => 2,
+      concurrency: 1,
+      perServerLimit: 1,
+      timeoutSeconds: 30,
+      maxRows: 10,
+      executor: {
+        execute: async ({ onExecuting }) => {
+          onExecuting?.();
+          throw new Error("Verbindungs-Timeout nach 15 Sekunden");
+        },
+        cancel: async () => false,
+      },
+      onUpdate: (run) => updates.set(run.id, run),
+    }).done;
+    expect(updates.get(target.id)).toMatchObject({ status: "error", notice: null });
+  });
+
+  test("a persistent session keeps the notice even for PostgreSQL scripts", () => {
+    const sql = "UPDATE a SET x = 1; UPDATE b SET y = 2;";
+    expect(partialRiskStatements(sql, "postgres")).toBe(1);
+    expect(partialRiskStatements(sql, "postgres", true)).toBe(2);
+    expect(partialRiskStatements(sql, undefined)).toBe(2);
+  });
+});

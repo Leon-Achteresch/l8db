@@ -178,7 +178,6 @@ fn options(job: &str, timeout: u64) -> ExecutionOptions {
         }),
         connection_timeout: Some(15),
         max_rows: None,
-        cancel_mode: None,
     }
 }
 
