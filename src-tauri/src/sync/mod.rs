@@ -161,15 +161,6 @@ impl Provider {
         }
     }
 
-    async fn probe(&self) -> Result<remote::RemoteProbe, String> {
-        let client = remote::client()?;
-        match (self.webdav(), self.gist()) {
-            (Some(dav), _) => dav.probe(client).await,
-            (_, Some(gist)) => gist.probe(client).await,
-            _ => unreachable!(),
-        }
-    }
-
     async fn store(
         &self,
         content: &str,
@@ -274,6 +265,8 @@ pub async fn sync_merge_secrets<R: Runtime>(
     salt: Option<String>,
     resolutions: Option<std::collections::BTreeMap<String, secrets::Resolution>>,
     backup_id: Option<String>,
+    edited_at: Option<std::collections::BTreeMap<String, u64>>,
+    key_fingerprint: Option<String>,
 ) -> Result<secrets::SecretMerge, String> {
     let passphrase = Zeroizing::new(secret(PASSPHRASE_ACCOUNT).await?);
     if passphrase.is_empty() {
@@ -291,6 +284,8 @@ pub async fn sync_merge_secrets<R: Runtime>(
                 now,
                 salt: salt.as_deref(),
                 resolutions: resolutions.unwrap_or_default(),
+                edited_at: edited_at.unwrap_or_default(),
+                key_fingerprint,
                 backup_dir: Some(&dir),
                 backup_id,
             },
@@ -329,14 +324,6 @@ pub async fn sync_backup_restore_secrets<R: Runtime>(
     })
     .await
     .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub async fn sync_probe(target: SyncTarget, op_id: String) -> Result<remote::RemoteProbe, String> {
-    cancellable(&op_id, async {
-        Provider::resolve(&target).await?.probe().await
-    })
-    .await
 }
 
 #[tauri::command]

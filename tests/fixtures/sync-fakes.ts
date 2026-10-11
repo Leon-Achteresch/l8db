@@ -76,16 +76,6 @@ export class FakeRemote {
     });
   }
 
-  probes = 0;
-
-  probe(opId: string) {
-    this.probes++;
-    return this.hold(opId, () => ({
-      exists: this.content !== null,
-      encrypted: this.content !== null && /"contentHash":"[^"]*","encrypted":"/.test(this.content),
-    }));
-  }
-
   cancel(opId: string) {
     this.cancelled.push(opId);
     const abort = this.pending.get(opId);
@@ -140,10 +130,11 @@ export interface Device {
   collections: LocalCollections;
   base: SyncBase;
   secrets: Map<string, string>;
-  secretBase: Record<string, [string, number]>;
+  secretBase: { fingerprint: string | null; entries: Record<string, [string, number]> };
+  secretEdits: Record<string, number>;
+  keyFingerprint: string;
   secretBackups: Map<string, Record<string, string | null>>;
   secretMerges: number;
-  lastMode: string | null;
   backups: string[];
   applied: number;
   deps: SyncDeps;
@@ -162,10 +153,11 @@ export function device(
     collections: emptyCollections(),
     base: new Map(),
     secrets: new Map(),
-    secretBase: {},
+    secretBase: { fingerprint: null, entries: {} },
+    secretEdits: {},
+    keyFingerprint: `key-${label}`,
     secretBackups: new Map(),
     secretMerges: 0,
-    lastMode: null,
     backups: [],
     applied: 0,
     deps: undefined as unknown as SyncDeps,
@@ -188,7 +180,6 @@ export function device(
       begin: async () => coordinator.begin(label),
       end: async (token) => coordinator.end(token),
       fetch: (_target, opId) => remote.fetch(opId),
-      probe: (_target, opId) => remote.probe(opId),
       store: (_target, content, ifMatch, expectAbsent, opId) =>
         remote.store(content, ifMatch, expectAbsent, opId),
       cancel: (opId) => remote.cancel(opId),
@@ -206,15 +197,23 @@ export function device(
         const conflicts: string[] = [];
         const previous: [string, string | null][] = [];
         const values = request.accounts.map((account) => state.secrets.get(account) ?? null);
+        const baseEntries = request.keyFingerprint === state.keyFingerprint ? request.base : {};
         const writes: [string, string | null][] = [];
         request.accounts.forEach((account, index) => {
           const value = values[index];
-          const known = request.base[account];
+          const known = baseEntries[account];
           const ours = value !== null ? value : known ? "-" : null;
-          const oursAt = known && known[0] === ours ? known[1] : request.now;
+          const unchanged = known !== undefined && known[0] === ours;
+          const editedAt = unchanged ? known[1] : request.editedAt[account];
+          const oursAt = editedAt ?? request.now;
           const entry = request.mode === "upload" ? undefined : remote[account];
           const theirs = entry ? (entry.v ?? "-") : null;
-          const firstContact = !known && ours !== null && theirs !== null && ours !== theirs;
+          const bothChanged = ours !== theirs && ours !== known?.[0] && theirs !== known?.[0];
+          const firstContact =
+            ours !== null &&
+            theirs !== null &&
+            ours !== theirs &&
+            (!known || (bothChanged && editedAt === undefined));
           let takeRemote: boolean;
           if (request.mode === "upload") takeRemote = false;
           else if (request.mode === "download") takeRemote = theirs !== null;
@@ -273,7 +272,15 @@ export function device(
           Object.keys(merged).length && request.mode !== "download"
             ? crypto.seal(JSON.stringify(merged), request.salt)
             : null;
-        return { sealed, base, agreed, updated, conflicts, backup };
+        return {
+          keyFingerprint: state.keyFingerprint,
+          sealed,
+          base,
+          agreed,
+          updated,
+          conflicts,
+          backup,
+        };
       },
       backup: async (content, reason) => {
         state.backups.push(content);
@@ -288,10 +295,11 @@ export function device(
       },
     },
     local,
-    readSecretBase: () => ({ ...state.secretBase }),
+    readSecretBase: () => ({ ...state.secretBase, entries: { ...state.secretBase.entries } }),
     writeSecretBase: (base) => {
-      state.secretBase = { ...base };
+      state.secretBase = { ...base, entries: { ...base.entries } };
     },
+    readSecretEdits: () => ({ ...state.secretEdits }),
     readBase: () => new Map(state.base),
     writeBase: (base) => {
       state.base = new Map(base);

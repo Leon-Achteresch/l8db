@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { autoSyncPlan, backoffDelay, startAutoSync } from "../src/lib/sync/auto-sync";
-import { restoreScope } from "../src/lib/sync/controller";
+import { autoDecider, restoreScope } from "../src/lib/sync/controller";
 import {
   MAX_SYNC_ATTEMPTS,
   runSync,
   SyncBusyError,
+  type SyncDecider,
   SyncDowngradeError,
   SyncRemoteChangedError,
 } from "../src/lib/sync/engine";
@@ -56,19 +57,18 @@ function sync(
   dev: ReturnType<typeof device>,
   mode: "sync" | "upload" | "download" = "sync",
   overrides: Partial<typeof settings> = {},
-  decider = acceptAll,
+  decider: SyncDecider = acceptAll,
   signal?: AbortSignal,
+  allowDowngrade = false,
 ) {
   return runSync(dev.deps, {
     mode,
     target: webdav,
     settings: { ...settings, ...overrides },
-    memory: { deviceId: dev.label, lastSalt: null, lastMode: dev.lastMode },
+    memory: { deviceId: dev.label, lastSalt: null },
     decider,
     signal,
-  }).then((outcome) => {
-    if (outcome.committed) dev.lastMode = outcome.mode;
-    return outcome;
+    allowDowngrade,
   });
 }
 
@@ -317,7 +317,7 @@ describe("engine", () => {
     const a = device("a", remote, coordinator);
     a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Q", sql: "SELECT 1" } }];
     await sync(a, "upload");
-    expect([remote.gets, remote.puts]).toEqual([0, 1]);
+    expect([remote.gets, remote.puts]).toEqual([1, 1]);
     const b = device("b", remote, coordinator);
     b.collections.savedQueries = [{ id: "z", data: { id: "z", name: "Z", sql: "SELECT 2" } }];
     const replaced = await sync(b, "download");
@@ -497,7 +497,9 @@ describe("review regressions", () => {
     const encrypted = await sync(a, "sync", { includeSecrets: true, encryptAll: true });
     expect(encrypted.uploaded).toBe(true);
     expect(remote.content).not.toContain("Prod");
-    const plain = await sync(a);
+    await expect(sync(a)).rejects.toBeInstanceOf(SyncDowngradeError);
+    expect(remote.content).not.toContain("Prod");
+    const plain = await sync(a, "sync", {}, acceptAll, undefined, true);
     expect(plain.uploaded).toBe(true);
     expect(remote.content).toContain("Prod");
   });
@@ -752,11 +754,11 @@ describe("second review regressions", () => {
     a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
     const encrypted = { includeSecrets: true, encryptAll: true };
     await sync(a, "sync", encrypted);
-    await sync(b);
     const puts = remote.puts;
     for (let round = 0; round < 3; round++) {
       await sync(a, "sync", encrypted);
-      await sync(b);
+      const blocked = await sync(b, "sync", {}, autoDecider);
+      expect(blocked.downgradeBlocked).toBe(true);
     }
     expect(remote.puts).toBe(puts);
   });
@@ -791,11 +793,15 @@ describe("third review regressions", () => {
     b.collections.snippets = [
       { id: "s", data: { id: "s", name: "Notiz", body: "x", shortcut: "s" }, updatedAt: 1 },
     ];
-    await sync(b);
+    await expect(sync(b)).rejects.toBeInstanceOf(SyncDowngradeError);
+    const auto = await sync(b, "sync", {}, autoDecider);
+    expect(auto.status).toBe("conflict");
+    expect(auto.downgradeBlocked).toBe(true);
+    expect(b.collections.savedQueries).toEqual([]);
     expect(JSON.parse(remote.content as string)).toHaveProperty("encrypted");
     expect(remote.content).not.toContain("Geheim");
     await sync(a, "sync", encrypted);
-    await sync(a, "sync", {});
+    await sync(a, "sync", {}, acceptAll, undefined, true);
     expect(remote.content).toContain("Geheim");
   });
 });
@@ -866,18 +872,16 @@ describe("fourth review regressions", () => {
     b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Offen", sql: "1" } }];
     await expect(sync(b, "upload")).rejects.toBeInstanceOf(SyncDowngradeError);
     expect(remote.puts).toBe(puts);
-    expect(remote.probes).toBe(1);
     await runSync(b.deps, {
       mode: "upload",
       target: webdav,
       settings,
-      memory: { deviceId: "b", lastSalt: null, lastMode: null },
+      memory: { deviceId: "b", lastSalt: null },
       decider: acceptAll,
       allowDowngrade: true,
     });
     expect(remote.content).toContain("Offen");
     await sync(a, "upload", { includeSecrets: true, encryptAll: true });
-    expect(remote.probes).toBe(2);
     expect(remote.content).not.toContain("Offen");
   });
 
@@ -897,5 +901,163 @@ describe("fourth review regressions", () => {
     const again = await sync(a, "sync", { includeSecrets: false, purgeRemoteSecrets: true });
     expect(again.uploaded).toBe(false);
     expect(again.remoteHasSecrets).toBe(false);
+  });
+});
+
+describe("fifth review regressions", () => {
+  const encrypted = { includeSecrets: true, encryptAll: true };
+
+  test("download then sync or auto-sync never writes plain text over an encrypted remote", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Geheim", sql: "1" } }];
+    await sync(a, "sync", encrypted);
+    const downloaded = await sync(b, "download");
+    expect(downloaded.remoteEncrypted).toBe(true);
+    b.collections.snippets = [
+      { id: "s", data: { id: "s", name: "Neu", body: "x", shortcut: "s" }, updatedAt: 1 },
+    ];
+    const puts = remote.puts;
+    await expect(sync(b)).rejects.toBeInstanceOf(SyncDowngradeError);
+    const auto = await sync(b, "sync", {}, autoDecider);
+    expect(auto).toMatchObject({ status: "conflict", downgradeBlocked: true, uploaded: false });
+    expect(remote.puts).toBe(puts);
+    expect(remote.content).not.toContain("Geheim");
+  });
+
+  test("Hochladen keeps the encrypted passwords on the server unless purging was chosen", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "pw");
+    await sync(a, "sync", { includeSecrets: true });
+    const envelope = parseDocument(remote.content as string).secrets;
+    b.collections.connections = [connection("c1", "Prod B")];
+    await sync(b, "upload");
+    expect(parseDocument(remote.content as string).secrets).toBe(envelope);
+    await sync(b, "upload", { purgeRemoteSecrets: true });
+    expect(parseDocument(remote.content as string).secrets).toBeNull();
+  });
+
+  test("password conflicts use real edit times and ask when the edit time is unknown", async () => {
+    const remote = new FakeRemote();
+    let clock = 1000;
+    const a = device("a", remote, new FakeCoordinator(), { clock: () => clock });
+    const b = device("b", remote, new FakeCoordinator(), { clock: () => clock });
+    const options = { includeSecrets: true };
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "basis");
+    await sync(a, "sync", options);
+    b.collections.connections = [connection("c1", "Prod")];
+    await sync(b, "sync", options);
+    a.secrets.set("c1", "von-a");
+    a.secretEdits.c1 = 1500;
+    clock = 5000;
+    await sync(a, "sync", options);
+    b.secrets.set("c1", "von-b-alt");
+    b.secretEdits.c1 = 1200;
+    clock = 9000;
+    await sync(b, "sync", options);
+    expect(b.secrets.get("c1")).toBe("von-a");
+    a.secrets.set("c1", "a-unbekannt");
+    clock = 9500;
+    const unknownRemote = device("u", remote, new FakeCoordinator(), { clock: () => clock });
+    unknownRemote.collections.connections = [connection("c1", "Prod")];
+    b.secrets.set("c1", "b-neu");
+    b.secretEdits.c1 = 9400;
+    await sync(b, "sync", options);
+    delete a.secretEdits.c1;
+    const outcome = await sync(a, "sync", options, {
+      conflicts: async () => null,
+      preview: async () => true,
+    });
+    expect(outcome.secretConflicts).toBe(1);
+    expect(a.secrets.get("c1")).toBe("a-unbekannt");
+  });
+
+  test("a changed device key discards the base and asks instead of overwriting", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    const options = { includeSecrets: true };
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "server");
+    await sync(a, "sync", options);
+    b.collections.connections = [connection("c1", "Prod")];
+    await sync(b, "sync", options);
+    b.secrets.set("c1", "lokal");
+    b.keyFingerprint = "neuer-schluessel";
+    const outcome = await sync(b, "sync", options, {
+      conflicts: async () => null,
+      preview: async () => true,
+    });
+    expect(outcome.secretConflicts).toBe(1);
+    expect(b.secrets.get("c1")).toBe("lokal");
+  });
+
+  test("an abort during the password merge keeps the lease until the merge returns", async () => {
+    const remote = new FakeRemote();
+    const coordinator = new FakeCoordinator();
+    const a = device("a", remote, coordinator);
+    a.collections.connections = [connection("c1", "Prod")];
+    a.secrets.set("c1", "pw");
+    const merge = a.deps.transport.mergeSecrets;
+    let release: () => void = () => undefined;
+    let started = false;
+    a.deps.transport.mergeSecrets = async (request) => {
+      started = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return merge(request);
+    };
+    const controller = new AbortController();
+    const pending = sync(a, "sync", { includeSecrets: true }, acceptAll, controller.signal);
+    while (!started) await new Promise((resolve) => setTimeout(resolve, 1));
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(coordinator.active).toBe("a");
+    release();
+    await expect(pending).rejects.toThrow("abgebrochen");
+    expect(coordinator.active).toBeNull();
+  });
+
+  test("entries taken from the server after a remote resolution are re-hashed", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a);
+    await sync(b);
+    b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "B", sql: "1" } }];
+    const document = JSON.parse(remote.content as string);
+    document.items.savedQueries.q = {
+      updatedAt: 9,
+      h: "zz.zz",
+      data: { id: "q", name: "X", sql: "1" },
+    };
+    remote.content = JSON.stringify(document);
+    await sync(b, "sync", {}, { conflicts: async () => "remote", preview: async () => true });
+    expect(b.base.get("savedQueries:q")?.[0]).toBe(hashData({ id: "q", name: "X", sql: "1" }));
+  });
+
+  test("older and newer clients compute the same hash for unknown collections", async () => {
+    const known = buildSnapshot(emptyCollections(), new Map(), 1);
+    const newer = {
+      items: new Map(known.items),
+      tombstones: new Map([["dashboards:old", 1]]),
+    };
+    newer.items.set("dashboards:d1", {
+      hash: hashData({ id: "d1", title: "Umsatz" }),
+      updatedAt: 1,
+      data: { id: "d1", title: "Umsatz" },
+    });
+    const extra = {
+      items: { dashboards: { d1: { updatedAt: 1, data: { id: "d1", title: "Umsatz" } } } },
+      tombstones: { dashboards: { old: 1 } },
+    };
+    expect(await contentHash(known, null, extra)).toBe(await contentHash(newer, null));
   });
 });

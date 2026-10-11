@@ -498,7 +498,6 @@ pub fn run() {
             sync::sync_decrypt,
             sync::sync_merge_secrets,
             sync::sync_backup_restore_secrets,
-            sync::sync_probe,
             sync::sync_claim_leader,
             sync::sync_release_leader,
             sync::sync_begin,

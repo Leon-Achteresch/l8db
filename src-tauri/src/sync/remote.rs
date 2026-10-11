@@ -31,37 +31,6 @@ pub struct StoreResult {
     pub warning: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteProbe {
-    pub exists: bool,
-    pub encrypted: bool,
-}
-
-const PROBE_BYTES: usize = 16 * 1024;
-
-pub fn looks_encrypted(prefix: &str) -> bool {
-    let Some(at) = prefix.find("\"encrypted\":\"") else {
-        return false;
-    };
-    let head = &prefix[..at];
-    head.trim_end().ends_with(',')
-        && head.contains("\"contentHash\":")
-        && !head.contains("\"items\":")
-}
-
-async fn prefix_text(mut response: reqwest::Response) -> Result<String, String> {
-    let mut bytes = Vec::new();
-    while bytes.len() < PROBE_BYTES {
-        match response.chunk().await.map_err(network_error)? {
-            Some(chunk) => bytes.extend_from_slice(&chunk),
-            None => break,
-        }
-    }
-    bytes.truncate(PROBE_BYTES);
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Precondition {
     None,
@@ -260,33 +229,6 @@ impl WebDav<'_> {
             content: Some(bounded_text(response).await?),
             version,
             gist_id: None,
-        })
-    }
-
-    pub async fn probe(&self, client: &Client) -> Result<RemoteProbe, String> {
-        let response = self
-            .request(client, Method::GET, &self.file_url()?)
-            .header("Range", format!("bytes=0-{}", PROBE_BYTES - 1))
-            .send()
-            .await
-            .map_err(network_error)?;
-        let status = response.status();
-        if status == StatusCode::NOT_FOUND {
-            return Ok(RemoteProbe::default());
-        }
-        if status == StatusCode::RANGE_NOT_SATISFIABLE {
-            return Ok(RemoteProbe {
-                exists: true,
-                encrypted: false,
-            });
-        }
-        if !status.is_success() {
-            return Err(Self::error(status, "Prüfen der Sync-Datei"));
-        }
-        let prefix = prefix_text(response).await?;
-        Ok(RemoteProbe {
-            exists: true,
-            encrypted: looks_encrypted(&prefix),
         })
     }
 
@@ -504,17 +446,6 @@ impl Gist<'_> {
         })
     }
 
-    pub async fn probe(&self, client: &Client) -> Result<RemoteProbe, String> {
-        let file = self.fetch(client).await?;
-        Ok(match file.content {
-            Some(content) => RemoteProbe {
-                exists: true,
-                encrypted: looks_encrypted(&content),
-            },
-            None => RemoteProbe::default(),
-        })
-    }
-
     async fn head_version(&self, client: &Client, id: &str) -> Result<Option<String>, String> {
         let response = self
             .request(
@@ -652,9 +583,6 @@ mod tests {
                     (201, vec![], vec![])
                 }
                 "GET" => match files.get(&path) {
-                    Some((body, _)) if body.is_empty() && request.header("range").is_some() => {
-                        (416, vec![], vec![])
-                    }
                     Some((body, version)) => (
                         200,
                         vec![header_pair("ETag", &format!("\"v{version}\""))],
@@ -784,48 +712,6 @@ mod tests {
         assert!(error.contains("größer als"), "{error}");
         std::thread::sleep(std::time::Duration::from_millis(50));
         assert!(*sent.lock().unwrap() < 4096 * 4096);
-    }
-
-    const ENCRYPTED_DOC: &str = "{\"format\":\"l8db-sync\",\"schemaVersion\":1,\"deviceId\":\"a\",\"updatedAt\":1,\"contentHash\":\"ab\",\"encrypted\":\"{}\"}";
-    const PLAIN_DOC: &str = "{\"format\":\"l8db-sync\",\"schemaVersion\":1,\"deviceId\":\"a\",\"updatedAt\":1,\"contentHash\":\"ab\",\"items\":{\"connections\":{\"c\":{\"data\":{\"x\":1,\"encrypted\":\"no\"}}}},\"tombstones\":{}}";
-
-    #[test]
-    fn webdav_probe_detects_encrypted_and_plain_files() {
-        let (server, _) = nextcloud();
-        let base = format!("{}/remote.php/dav/files/leon", server.base);
-        let dav = dav(&base, "/l8db/l8db-sync.json");
-        let client = client().unwrap();
-        runtime().block_on(async {
-            assert_eq!(dav.probe(client).await.unwrap(), RemoteProbe::default());
-            dav.store(client, ENCRYPTED_DOC, Precondition::None)
-                .await
-                .unwrap();
-            assert_eq!(
-                dav.probe(client).await.unwrap(),
-                RemoteProbe {
-                    exists: true,
-                    encrypted: true
-                }
-            );
-            dav.store(client, PLAIN_DOC, Precondition::None)
-                .await
-                .unwrap();
-            let plain = dav.probe(client).await.unwrap();
-            assert!(plain.exists && !plain.encrypted);
-            dav.store(client, "", Precondition::None).await.unwrap();
-            assert_eq!(
-                dav.probe(client).await.unwrap(),
-                RemoteProbe {
-                    exists: true,
-                    encrypted: false
-                }
-            );
-        });
-        assert!(server
-            .requests()
-            .iter()
-            .filter(|r| r.method == "GET")
-            .all(|r| r.header("range").is_some()));
     }
 
     #[test]
@@ -1010,29 +896,6 @@ mod tests {
                 "GET /gists/abc123"
             ]
         );
-    }
-
-    #[test]
-    fn gist_probe_detects_encrypted_and_missing_gists() {
-        let (server, state) = gist_server(false);
-        let client = client().unwrap();
-        let fresh = Gist {
-            api: &server.base,
-            token: "ghp_test",
-            gist_id: None,
-        };
-        let linked = Gist {
-            gist_id: Some("abc123"),
-            ..fresh
-        };
-        runtime().block_on(async {
-            assert_eq!(fresh.probe(client).await.unwrap(), RemoteProbe::default());
-            state.lock().unwrap().content = Some(ENCRYPTED_DOC.to_string());
-            state.lock().unwrap().version = 1;
-            assert!(linked.probe(client).await.unwrap().encrypted);
-            state.lock().unwrap().content = Some(PLAIN_DOC.to_string());
-            assert!(!linked.probe(client).await.unwrap().encrypted);
-        });
     }
 
     #[test]

@@ -10,9 +10,9 @@ import {
   syncEnd,
   syncFetch,
   syncMergeSecrets,
-  syncProbe,
   syncStore,
 } from "@/lib/db/sync";
+import { readSecretEdits } from "@/lib/secret-edits";
 import {
   runSync,
   type SyncDecider,
@@ -48,7 +48,6 @@ export const syncDeps: SyncDeps = {
     begin: syncBegin,
     end: syncEnd,
     fetch: syncFetch,
-    probe: syncProbe,
     store: syncStore,
     cancel: syncCancel,
     encrypt: syncEncrypt,
@@ -66,6 +65,7 @@ export const syncDeps: SyncDeps = {
   writeBase: writeSyncBase,
   readSecretBase: readSecretBase,
   writeSecretBase: writeSecretBase,
+  readSecretEdits: readSecretEdits,
   now: () => Date.now(),
 };
 
@@ -76,6 +76,8 @@ export function syncInProgress(): boolean {
 }
 
 function describe(outcome: SyncOutcome, mode: SyncMode): string {
+  if (outcome.downgradeBlocked)
+    return "Konflikt: Server verschlüsselt, dieses Gerät nicht. Bitte „Gesamte Sync-Datei verschlüsseln“ aktivieren und die Sync-Passphrase hinterlegen.";
   if (outcome.status === "conflict" && outcome.secretConflicts > 0)
     return `${outcome.secretConflicts} Passwort-Konflikt(e) offen – bitte manuell synchronisieren und entscheiden.`;
   if (outcome.status === "conflict")
@@ -117,7 +119,7 @@ export async function performSync(
       purgeRemoteSecrets: state.purgeRemoteSecrets,
     },
     allowDowngrade,
-    memory: { deviceId: state.deviceId, lastSalt: state.lastSalt, lastMode: state.lastMode },
+    memory: { deviceId: state.deviceId, lastSalt: state.lastSalt },
     decider,
     signal,
   });
@@ -135,7 +137,7 @@ export async function performSync(
             lastVersion: outcome.version,
             lastContentHash: outcome.contentHash,
             lastSalt: outcome.salt,
-            lastMode: outcome.mode,
+            lastRemoteEncrypted: outcome.remoteEncrypted,
             ...(state.purgeRemoteSecrets && !outcome.remoteHasSecrets
               ? { purgeRemoteSecrets: false }
               : {}),
@@ -158,6 +160,7 @@ export async function performSync(
 }
 
 export const autoDecider: SyncDecider = {
+  automatic: true,
   conflicts: async () => null,
   preview: async () => true,
 };
@@ -172,6 +175,23 @@ export function restoreScope(document: SyncDocument, includeHistory: boolean): S
 }
 
 export async function restoreBackup(
+  backup: Pick<SyncBackupInfo, "id" | "hasData" | "hasSecrets">,
+): Promise<{ summary: ChangeSummary | null; secrets: number }> {
+  if (running)
+    throw new Error("Eine Synchronisierung läuft gerade. Bitte warten Sie, bis sie beendet ist.");
+  const token = await syncBegin();
+  if (!token)
+    throw new Error(
+      "Eine Synchronisierung läuft gerade in einem anderen Fenster. Bitte warten Sie, bis sie beendet ist.",
+    );
+  try {
+    return await restoreUnderLease(backup);
+  } finally {
+    await syncEnd(token).catch(() => false);
+  }
+}
+
+async function restoreUnderLease(
   backup: Pick<SyncBackupInfo, "id" | "hasData" | "hasSecrets">,
 ): Promise<{ summary: ChangeSummary | null; secrets: number }> {
   let secrets = 0;

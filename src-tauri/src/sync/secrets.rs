@@ -11,6 +11,29 @@ const SECRET_SUFFIXES: [&str; 5] = ["", ":ssh", ":ssh-jumps", ":proxy", ":params
 const MAX_SECRET_ACCOUNTS: usize = 50_000;
 const DEVICE_KEY_ACCOUNT: &str = "l8db-sync:device-key";
 const DELETED: &str = "-";
+static KEYCHAIN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn keychain_lock() -> std::sync::MutexGuard<'static, ()> {
+    KEYCHAIN_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub fn key_fingerprint(key: &[u8]) -> String {
+    digester(key)("l8db-sync-secret-base")
+}
+
+pub fn usable_base(
+    base: BTreeMap<String, BaseEntry>,
+    stored: Option<&str>,
+    current: &str,
+) -> BTreeMap<String, BaseEntry> {
+    if stored == Some(current) {
+        base
+    } else {
+        BTreeMap::new()
+    }
+}
 pub const TOMBSTONE_TTL_MS: u64 = 90 * 24 * 60 * 60 * 1000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -50,6 +73,7 @@ pub struct MergeOutput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretMerge {
+    pub key_fingerprint: String,
     pub conflicts: Vec<String>,
     pub backup: Option<String>,
     pub sealed: Option<crypto::Sealed>,
@@ -134,6 +158,7 @@ pub fn merge(
     mode: Mode,
     now: u64,
     resolutions: &BTreeMap<String, Resolution>,
+    edited: &BTreeMap<String, u64>,
     read: impl Fn(&str) -> Result<Option<String>, String>,
     digest: impl Fn(&str) -> String,
 ) -> Result<MergeOutput, String> {
@@ -152,14 +177,22 @@ pub fn merge(
             Some(value) => Some(digest(value)),
             None => known.map(|_| DELETED.to_string()),
         };
-        let ours_at = match (known, &ours) {
-            (Some(BaseEntry(hash, at)), Some(state)) if hash == state => *at,
-            _ => now,
+        let local_unchanged =
+            matches!((known, &ours), (Some(BaseEntry(hash, _)), Some(state)) if hash == state);
+        let edited_at = if local_unchanged {
+            known.map(|entry| entry.1)
+        } else {
+            edited.get(account).copied()
         };
+        let ours_at = edited_at.unwrap_or(now);
         let remote_entry = remote.and_then(|remote| remote.get(account));
         let theirs = state_of(remote_entry, &digest);
         let known_hash = known.map(|entry| entry.0.clone());
-        let first_contact = known.is_none() && ours.is_some() && theirs.is_some() && ours != theirs;
+        let both_changed = ours != theirs && ours != known_hash && theirs != known_hash;
+        let first_contact = ours.is_some()
+            && theirs.is_some()
+            && ours != theirs
+            && (known.is_none() || (both_changed && edited_at.is_none()));
         let take_remote = match mode {
             Mode::Upload => false,
             Mode::Download => theirs.is_some(),
@@ -249,6 +282,8 @@ pub struct Request<'a> {
     pub now: u64,
     pub salt: Option<&'a str>,
     pub resolutions: BTreeMap<String, Resolution>,
+    pub edited_at: BTreeMap<String, u64>,
+    pub key_fingerprint: Option<String>,
     pub backup_dir: Option<&'a Path>,
     pub backup_id: Option<String>,
 }
@@ -326,6 +361,7 @@ pub fn restore_backup(
     id: &str,
     now: u64,
 ) -> Result<RestoreResult, String> {
+    let _guard = keychain_lock();
     let entries = read_backup(passphrase, dir, id)?;
     let mut current = Vec::with_capacity(entries.len());
     for account in entries.keys() {
@@ -369,14 +405,22 @@ pub fn run(passphrase: &str, request: Request<'_>) -> Result<SecretMerge, String
         )?))?),
         None => None,
     };
+    let _guard = keychain_lock();
     let key = device_key()?;
+    let fingerprint = key_fingerprint(&key);
+    let base = usable_base(
+        request.base,
+        request.key_fingerprint.as_deref(),
+        &fingerprint,
+    );
     let output = merge(
         &accounts,
-        &request.base,
+        &base,
         remote.as_ref(),
         mode,
         request.now,
         &request.resolutions,
+        &request.edited_at,
         crate::db::secrets::read_secret,
         digester(&key),
     )?;
@@ -412,6 +456,7 @@ pub fn run(passphrase: &str, request: Request<'_>) -> Result<SecretMerge, String
         )?)
     };
     Ok(SecretMerge {
+        key_fingerprint: fingerprint,
         conflicts: output.conflicts,
         backup,
         sealed,
@@ -454,6 +499,7 @@ mod tests {
             remote,
             mode,
             now,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             |account| Ok(store.lock().unwrap().get(account).cloned()),
             digest(),
@@ -595,6 +641,7 @@ mod tests {
             Mode::Sync,
             500,
             &BTreeMap::new(),
+            &BTreeMap::from([("c1".to_string(), 450)]),
             |account| {
                 *reads.lock().unwrap() += 1;
                 Ok(b.lock().unwrap().get(account).cloned())
@@ -607,8 +654,23 @@ mod tests {
             output.writes,
             vec![("c1".to_string(), Some("remote".to_string()))]
         );
-        let older = run_merge(&b, &["c1"], &synced.base, Some(&remote), Mode::Sync, 1000);
-        assert!(older.writes.is_empty());
+        let newer_local = merge(
+            &["c1".to_string()],
+            &synced.base,
+            Some(&remote),
+            Mode::Sync,
+            1000,
+            &BTreeMap::new(),
+            &BTreeMap::from([("c1".to_string(), 950)]),
+            |account| Ok(b.lock().unwrap().get(account).cloned()),
+            digest(),
+        )
+        .unwrap();
+        assert!(newer_local.writes.is_empty());
+        assert_eq!(newer_local.merged["c1"].t, 950);
+        let unknown = run_merge(&b, &["c1"], &synced.base, Some(&remote), Mode::Sync, 1000);
+        assert_eq!(unknown.conflicts, vec!["c1".to_string()]);
+        assert!(unknown.writes.is_empty());
     }
 
     #[test]
@@ -668,6 +730,7 @@ mod tests {
             Mode::Sync,
             500,
             &BTreeMap::new(),
+            &BTreeMap::new(),
             read,
             digest(),
         )
@@ -685,6 +748,7 @@ mod tests {
             Mode::Sync,
             500,
             &keep_local,
+            &BTreeMap::new(),
             read,
             digest(),
         )
@@ -699,6 +763,7 @@ mod tests {
             Mode::Sync,
             500,
             &take_remote,
+            &BTreeMap::new(),
             read,
             digest(),
         )
@@ -771,6 +836,36 @@ mod tests {
         assert_eq!(output.agreed["c1"], first.base["c1"]);
         assert_eq!(output.agreed["c2"].1, 150);
         assert_ne!(output.base["c1"], first.base["c1"]);
+    }
+
+    #[test]
+    fn a_lost_device_key_discards_the_base_instead_of_marking_everything_changed() {
+        let base = BTreeMap::from([("c1".to_string(), BaseEntry("abc".into(), 5))]);
+        let old = key_fingerprint(b"0123456789abcdef0123456789abcdef");
+        let new = key_fingerprint(b"fedcba9876543210fedcba9876543210");
+        assert_ne!(old, new);
+        assert_eq!(usable_base(base.clone(), Some(&old), &old), base);
+        assert!(usable_base(base.clone(), Some(&old), &new).is_empty());
+        assert!(usable_base(base.clone(), None, &new).is_empty());
+        let store = keychain(&[("c1", "lokal")]);
+        let mut remote = BTreeMap::new();
+        remote.insert(
+            "c1".to_string(),
+            RemoteSecret {
+                v: Some("server".into()),
+                t: 1,
+            },
+        );
+        let output = run_merge(
+            &store,
+            &["c1"],
+            &usable_base(base, Some(&old), &new),
+            Some(&remote),
+            Mode::Sync,
+            10,
+        );
+        assert_eq!(output.conflicts, vec!["c1".to_string()]);
+        assert!(output.writes.is_empty());
     }
 
     #[test]
