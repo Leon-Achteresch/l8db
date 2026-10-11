@@ -90,7 +90,7 @@
         "playwright": "^1.63.0",
         "shadcn": "^4.21.0",
         "tailwindcss": "^4.3.3",
-        "typescript": "~5.8.3",
+        "typescript": "~6.0.3",
         "vite": "^8.3.1",
       },
     },
@@ -100,7 +100,7 @@
       "devDependencies": {
         "@l8db/extension-api": "file:../../packages/extension-api",
         "@l8db/extension-sdk": "file:../../packages/extension-sdk",
-        "typescript": "~5.8.3",
+        "typescript": "~6.0.3",
       },
     },
     "packages/extension-api": {
@@ -1449,7 +1449,7 @@
 
     "type-is": ["type-is@2.1.0", "", { "dependencies": { "content-type": "^2.0.0", "media-typer": "^1.1.0", "mime-types": "^3.0.0" } }, "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA=="],
 
-    "typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
+    "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "undici": ["undici@7.29.1", "", {}, "sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q=="],
 
@@ -1653,6 +1653,6 @@
 
     "enquirer/strip-ansi/ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 
-    "l8db-hello-extension/@l8db/extension-sdk/@l8db/extension-api": ["@l8db/extension-api@file:packages/extension-api", { "dependencies": { "semver": "^7.8.5" } }],
+    "l8db-hello-extension/@l8db/extension-sdk/@l8db/extension-api": ["@l8db/extension-api@workspace:packages/extension-api"],
   }
 }
