@@ -3,12 +3,15 @@ import {
   loadSecret as readSecret,
   deleteSecret as removeSecret,
 } from "@/lib/db";
+import { recordSecretEdit } from "@/lib/secret-edits";
 
 const sessionSecrets = new Map<string, string>();
 
 export async function storeSecret(account: string, secret: string): Promise<void> {
+  const changed = sessionSecrets.get(account) !== secret;
   sessionSecrets.set(account, secret);
   await persistSecret(account, secret);
+  if (changed) recordSecretEdit(account);
 }
 
 export async function rememberSecret(account: string, secret: string): Promise<void> {
@@ -35,6 +38,7 @@ export async function loadSecret(account: string): Promise<string | null> {
 export async function deleteSecret(account: string): Promise<void> {
   sessionSecrets.delete(account);
   await removeSecret(account);
+  recordSecretEdit(account);
 }
 
 const REDACTED_SECRET = "***";

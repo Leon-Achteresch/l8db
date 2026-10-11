@@ -52,7 +52,7 @@ export function SyncPanel() {
   const [conflicts, setConflicts] = useState<SyncConflict[] | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmUpload, setConfirmUpload] = useState(false);
-  const [confirmDowngrade, setConfirmDowngrade] = useState(false);
+  const [downgradeMode, setDowngradeMode] = useState<SyncMode | null>(null);
   const [secretConflicts, setSecretConflicts] = useState<SecretConflict[] | null>(null);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const interactive = useRef<InteractiveDecider | null>(null);
@@ -92,7 +92,7 @@ export function SyncPanel() {
       if (outcome.status === "ok" || outcome.status === "skipped")
         toast.success(useSyncStore.getState().lastMessage ?? "Synchronisiert");
     } catch (error) {
-      if (error instanceof SyncDowngradeError) setConfirmDowngrade(true);
+      if (error instanceof SyncDowngradeError) setDowngradeMode(mode);
       else if (!(error instanceof Error && error.name === "AbortError"))
         toast.error(errorMessage(error));
     } finally {
@@ -177,7 +177,12 @@ export function SyncPanel() {
         conflicts={secretConflicts}
         onResolve={(resolutions) => interactive.current?.resolveSecrets(resolutions)}
       />
-      <Dialog open={confirmDowngrade} onOpenChange={setConfirmDowngrade}>
+      <Dialog
+        open={downgradeMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setDowngradeMode(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Verschlüsselung auf dem Server aufheben?</DialogTitle>
@@ -189,17 +194,30 @@ export function SyncPanel() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDowngrade(false)}>
+            <Button variant="outline" onClick={() => setDowngradeMode(null)}>
               Abbrechen
             </Button>
+            {state.storedSecrets.passphrase && (
+              <Button
+                onClick={() => {
+                  const mode = downgradeMode ?? "sync";
+                  setDowngradeMode(null);
+                  state.configure({ encryptAll: true });
+                  void run(mode);
+                }}
+              >
+                Verschlüsselung aktivieren
+              </Button>
+            )}
             <Button
               variant="destructive"
               onClick={() => {
-                setConfirmDowngrade(false);
-                void run("upload", true);
+                const mode = downgradeMode ?? "upload";
+                setDowngradeMode(null);
+                void run(mode, true);
               }}
             >
-              Unverschlüsselt hochladen
+              Unverschlüsselt überschreiben
             </Button>
           </DialogFooter>
         </DialogContent>

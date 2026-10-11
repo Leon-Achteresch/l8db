@@ -3,7 +3,6 @@ import type {
   SecretResolution,
   SyncBackupInfo,
   SyncRemoteFile,
-  SyncRemoteProbe,
   SyncSealed,
   SyncSecretBase,
   SyncSecretMerge,
@@ -50,7 +49,6 @@ export type SyncMode = "sync" | "upload" | "download";
 export interface SyncTransport {
   begin(): Promise<string | null>;
   end(token: string): Promise<boolean>;
-  probe(target: SyncTarget, opId: string): Promise<SyncRemoteProbe>;
   fetch(target: SyncTarget, opId: string): Promise<SyncRemoteFile>;
   store(
     target: SyncTarget,
@@ -78,9 +76,15 @@ export interface SyncDeps {
   local: SyncLocal;
   readBase(): SyncBase;
   writeBase(base: SyncBase): void;
-  readSecretBase(): SyncSecretBase;
-  writeSecretBase(base: SyncSecretBase): void;
+  readSecretBase(): StoredSecretBase;
+  writeSecretBase(base: StoredSecretBase): void;
+  readSecretEdits(): Record<string, number>;
   now(): number;
+}
+
+export interface StoredSecretBase {
+  fingerprint: string | null;
+  entries: SyncSecretBase;
 }
 
 export interface SyncSettings {
@@ -93,7 +97,6 @@ export interface SyncSettings {
 export interface SyncMemory {
   deviceId: string;
   lastSalt: string | null;
-  lastMode: string | null;
 }
 
 export type SyncDecision =
@@ -117,6 +120,7 @@ export interface SecretConflict {
 export type SecretResolutions = Record<string, SecretResolution>;
 
 export interface SyncDecider {
+  automatic?: boolean;
   conflicts(conflicts: SyncConflict[]): Promise<ConflictStrategy | null>;
   preview(decision: Extract<SyncDecision, { kind: "preview" }>): Promise<boolean>;
   secretConflicts?(conflicts: SecretConflict[]): Promise<SecretResolutions | null>;
@@ -173,7 +177,8 @@ export interface SyncOutcome {
   secretsUpdated: number;
   attempts: number;
   warning: string | null;
-  mode: string | null;
+  remoteEncrypted: boolean;
+  downgradeBlocked: boolean;
   secretConflicts: number;
   secretBackup: string | null;
   committed: boolean;
@@ -204,21 +209,6 @@ export class SyncRemoteChangedError extends Error {
 }
 
 export const MAX_SYNC_ATTEMPTS = 3;
-
-export function keepsEncryption(
-  settings: SyncSettings,
-  memory: Pick<SyncMemory, "lastMode">,
-  remoteEncrypted: boolean,
-  mode: SyncMode,
-): boolean {
-  if (settings.encryptAll) return true;
-  if (!remoteEncrypted || mode === "upload") return false;
-  return memory.lastMode !== "encrypted";
-}
-
-export function modeTag(settings: SyncSettings): string {
-  return settings.encryptAll ? "encrypted" : "plain";
-}
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return promise;
@@ -262,9 +252,9 @@ export function agreedBase(base: SyncBase, merged: SyncSnapshot, remote: SyncSna
   return next;
 }
 
-function verifyTaken(merged: SyncSnapshot, local: SyncSnapshot, remote: SyncSnapshot): void {
+function verifyTaken(merged: SyncSnapshot, local: SyncSnapshot): void {
   for (const [key, entry] of merged.items) {
-    if (remote.items.get(key) !== entry || local.items.get(key)?.hash === entry.hash) continue;
+    if (local.items.get(key)?.data === entry.data) continue;
     const actual = hashData(entry.data);
     if (actual !== entry.hash) merged.items.set(key, { ...entry, hash: actual });
   }
@@ -425,7 +415,8 @@ async function attemptSync(
     secretsUpdated: 0,
     attempts: attempt,
     warning: null,
-    mode: memory.lastMode,
+    remoteEncrypted: false,
+    downgradeBlocked: false,
     secretConflicts: 0,
     secretBackup: null,
     committed: false,
@@ -444,25 +435,34 @@ async function attemptSync(
   let remoteDocument: SyncDocument | null = null;
   let remoteEncrypted = false;
   let remote: SyncSnapshot = emptySnapshot();
-  if (mode === "upload" && !settings.encryptAll) {
-    const probe = await abortable(deps.transport.probe(target, opId), signal);
-    check();
-    if (probe.encrypted && !options.allowDowngrade) throw new SyncDowngradeError();
-  }
-  if (mode !== "upload") {
-    remoteFile = await abortable(deps.transport.fetch(target, opId), signal);
-    check();
-    if (remoteFile.gistId) outcome.gistId = remoteFile.gistId;
-    if (remoteFile.content) {
+  remoteFile = await abortable(deps.transport.fetch(target, opId), signal);
+  check();
+  if (remoteFile.gistId) outcome.gistId = remoteFile.gistId;
+  if (remoteFile.content) {
+    try {
       const decoded = await abortable(decodeRemote(deps.transport, remoteFile.content), signal);
-      check();
       remoteDocument = decoded.document;
       remoteEncrypted = decoded.encrypted;
       outcome.salt = decoded.salt ?? outcome.salt;
       remote = documentSnapshot(remoteDocument);
+    } catch (error) {
+      if (!(mode === "upload" && options.allowDowngrade)) throw error;
+      remoteEncrypted = true;
     }
-    passThrough(local, remote, include);
+    check();
   }
+  outcome.remoteEncrypted = remoteEncrypted;
+  if (
+    remoteFile.content &&
+    remoteEncrypted &&
+    !settings.encryptAll &&
+    mode !== "download" &&
+    !options.allowDowngrade
+  ) {
+    if (decider.automatic) return { ...outcome, status: "conflict", downgradeBlocked: true };
+    throw new SyncDowngradeError();
+  }
+  passThrough(local, remote, include);
   let merged: SyncSnapshot;
   if (mode === "download") {
     if (!remoteDocument) throw new Error("Auf dem Server liegen noch keine Sync-Daten.");
@@ -479,7 +479,7 @@ async function attemptSync(
       merged = resolveConflicts(result, strategy, now);
     } else merged = result.merged;
   }
-  if (mode !== "upload") verifyTaken(merged, local, remote);
+  if (mode !== "upload") verifyTaken(merged, local);
   const summary = diffSnapshots(local, merged);
   for (const collection of SYNC_COLLECTIONS)
     if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
@@ -516,20 +516,24 @@ async function attemptSync(
   const accounts = settings.includeSecrets
     ? deps.local.secretAccounts(connectionItems(merged))
     : [];
-  let secretBase: SyncSecretBase | null = null;
+  let secretBase: StoredSecretBase | null = null;
   let sealed: SyncSealed | null = null;
   if (settings.includeSecrets && accounts.length > 0) {
+    const stored = deps.readSecretBase();
     const request = {
       envelope: mode === "upload" ? null : (remoteDocument?.secrets ?? null),
       accounts,
-      base: deps.readSecretBase(),
+      base: stored.entries,
+      keyFingerprint: stored.fingerprint,
+      editedAt: deps.readSecretEdits(),
       mode,
       now,
       salt: outcome.salt,
       resolutions: null as SecretResolutions | null,
       backupId: outcome.backup?.id ?? null,
     };
-    let secrets = await abortable(deps.transport.mergeSecrets(request), signal);
+    let secrets = await deps.transport.mergeSecrets(request);
+    deps.local.forgetSecrets(secrets.updated);
     check();
     if (secrets.conflicts.length > 0 && decider.secretConflicts) {
       const resolutions = await abortable(
@@ -540,17 +544,13 @@ async function attemptSync(
       );
       check();
       if (resolutions && Object.keys(resolutions).length > 0) {
-        deps.local.forgetSecrets(secrets.updated);
         const first = secrets;
-        secrets = await abortable(
-          deps.transport.mergeSecrets({
-            ...request,
-            base: deps.readSecretBase(),
-            resolutions,
-            backupId: first.backup ?? request.backupId,
-          }),
-          signal,
-        );
+        secrets = await deps.transport.mergeSecrets({
+          ...request,
+          resolutions,
+          backupId: first.backup ?? request.backupId,
+        });
+        deps.local.forgetSecrets(secrets.updated);
         check();
         secrets = {
           ...secrets,
@@ -563,8 +563,9 @@ async function attemptSync(
     outcome.secretBackup = secrets.backup;
     deps.local.forgetSecrets(secrets.updated);
     outcome.secretsUpdated = secrets.updated.length;
-    if (mode !== "upload") deps.writeSecretBase(secrets.agreed);
-    secretBase = secrets.base;
+    if (mode !== "upload")
+      deps.writeSecretBase({ fingerprint: secrets.keyFingerprint, entries: secrets.agreed });
+    secretBase = { fingerprint: secrets.keyFingerprint, entries: secrets.base };
     sealed = secrets.sealed;
     if (sealed) outcome.salt = sealed.salt;
   }
@@ -575,7 +576,6 @@ async function attemptSync(
   };
   const extra = remoteDocument?.extra;
   if (mode === "download") {
-    outcome.mode = remoteEncrypted ? "encrypted" : "plain";
     outcome.contentHash = remoteDocument?.contentHash ?? null;
     outcome.version = remoteFile?.version ?? null;
     outcome.remoteHasSecrets = Boolean(remoteDocument?.secrets);
@@ -584,10 +584,7 @@ async function attemptSync(
     return outcome;
   }
   const keepRemoteSecrets =
-    !settings.includeSecrets &&
-    !settings.purgeRemoteSecrets &&
-    mode === "sync" &&
-    remoteDocument?.secrets;
+    !settings.includeSecrets && !settings.purgeRemoteSecrets && remoteDocument?.secrets;
   const secretsEnvelope =
     sealed?.envelope ?? (keepRemoteSecrets ? remoteDocument?.secrets : null) ?? null;
   const secretsFingerprint =
@@ -598,13 +595,8 @@ async function attemptSync(
   const hash = await contentHash(merged, secretsFingerprint, extra);
   outcome.contentHash = hash;
   outcome.version = remoteFile?.version ?? null;
-  const encrypt = keepsEncryption(settings, memory, remoteEncrypted, mode);
-  const tag = encrypt ? "encrypted" : "plain";
-  outcome.mode = modeTag(settings);
-  const modeSwitched =
-    remoteDocument !== null &&
-    remoteEncrypted !== encrypt &&
-    (memory.lastMode === null || memory.lastMode !== tag);
+  const encrypt = settings.encryptAll;
+  const modeSwitched = remoteDocument !== null && remoteEncrypted !== encrypt;
   const unchanged =
     mode === "sync" &&
     remoteDocument !== null &&
@@ -647,6 +639,7 @@ async function attemptSync(
     );
     if (stored.conflict) throw new SyncRemoteChangedError();
     outcome.uploaded = true;
+    outcome.remoteEncrypted = encrypt;
     outcome.remoteHasSecrets = secretsEnvelope !== null;
     outcome.version = stored.version;
     outcome.warning = stored.warning;

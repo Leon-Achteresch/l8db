@@ -45,11 +45,6 @@ export interface SyncBackupInfo {
   hasSecrets: boolean;
 }
 
-export interface SyncRemoteProbe {
-  exists: boolean;
-  encrypted: boolean;
-}
-
 export type SecretResolution = "local" | "remote";
 
 export const SYNC_WEBDAV_ACCOUNT = "l8db-sync:webdav";
@@ -97,9 +92,12 @@ export interface SecretMergeRequest {
   salt: string | null;
   resolutions: Record<string, SecretResolution> | null;
   backupId: string | null;
+  editedAt: Record<string, number>;
+  keyFingerprint: string | null;
 }
 
 export interface SyncSecretMerge {
+  keyFingerprint: string;
   conflicts: string[];
   backup: string | null;
   sealed: SyncSealed | null;
@@ -126,10 +124,6 @@ export function syncBegin(): Promise<string | null> {
 
 export function syncEnd(token: string): Promise<boolean> {
   return invoke<boolean>("sync_end", { token });
-}
-
-export function syncProbe(target: SyncTarget, opId: string): Promise<SyncRemoteProbe> {
-  return invoke<SyncRemoteProbe>("sync_probe", { target, opId });
 }
 
 export interface SyncSecretRestore {
