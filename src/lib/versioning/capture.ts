@@ -25,6 +25,7 @@ import {
   portableOracleMetadata,
 } from "./oracle-metadata";
 import { requalify } from "./schema";
+import { METADATA_QUERY } from "./session";
 import type { ManagedObject, ObjectSnapshot } from "./types";
 
 export async function captureObject(
@@ -69,6 +70,7 @@ export async function captureObject(
                 url,
                 oracleConstraintMetadataSql(schema, name),
                 db,
+                METADATA_QUERY,
               )
             ).rows,
             schema,
@@ -80,8 +82,15 @@ export async function captureObject(
       connection.kind === "oracle" && object.metadataVersion === 3
         ? portableOracleIdentityColumns(
             columns,
-            (await executeQuery(connection.kind, url, oracleIdentityMetadataSql(schema, name), db))
-              .rows,
+            (
+              await executeQuery(
+                connection.kind,
+                url,
+                oracleIdentityMetadataSql(schema, name),
+                db,
+                METADATA_QUERY,
+              )
+            ).rows,
           )
         : columns;
     definition = formatTableDefinition({
@@ -113,6 +122,7 @@ export async function captureObject(
         url,
         `SELECT object_type FROM all_objects WHERE owner = '${schema.replaceAll("'", "''")}' AND object_name = '${name.replaceAll("'", "''")}' AND object_type = 'PACKAGE BODY'`,
         db,
+        METADATA_QUERY,
       );
       if (exists.rows.length) throw error;
     }

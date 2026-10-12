@@ -16,10 +16,14 @@ const definitions = { ...(await import("../src/lib/compare-definition")) };
 const capture = { ...(await import("../src/lib/versioning/capture")) };
 const db = { ...(await import("../src/lib/db")) };
 const sequences = ["ISEQ$$_123", "ISEQ$$_USER", "APP_SEQUENCE"];
+const queryOptions: unknown[] = [];
 
 mock.module("../src/lib/db", () => ({
   ...db,
-  executeQuery: async () => ({ rows: [{ sequence: "ISEQ$$_123" }] }),
+  executeQuery: async (...args: unknown[]) => {
+    queryOptions.push(args[4]);
+    return { rows: [{ sequence: "ISEQ$$_123" }] };
+  },
 }));
 
 mock.module("../src/lib/versioning/repository", () => ({
@@ -108,6 +112,8 @@ test("Oracle discovery excludes actual identity sequences while retaining explic
     expect((await scan()).find((entry) => entry.object.id === "ISEQ$$_123")?.status).toBe(
       "changed",
     );
+    expect(queryOptions.length).toBeGreaterThan(0);
+    for (const options of queryOptions) expect(options).toMatchObject({ track: false });
   } finally {
     for (const name of sequences) delete database[name];
     useProvidersStore.setState(providers);
