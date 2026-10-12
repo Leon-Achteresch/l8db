@@ -1,10 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, RadioIcon, Trash2Icon } from "lucide-react";
+import { InboxIcon, PlusIcon, RadioIcon, SendIcon, Trash2Icon } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { dropPublication, dropSubscription } from "@/lib/db";
@@ -108,7 +116,24 @@ export function ReplicationView() {
           {pubsLoading ? (
             <p className="p-8 text-center text-sm text-muted-foreground">Lade Publikationen…</p>
           ) : (publications?.length ?? 0) === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">Keine Publikationen.</p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SendIcon />
+                </EmptyMedia>
+                <EmptyTitle>Keine Publikationen</EmptyTitle>
+                <EmptyDescription>
+                  Eine Publikation legt fest, welche Tabellen per logischer Replikation an
+                  Subskribenten gehen.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" variant="outline" onClick={() => setPubDialogOpen(true)}>
+                  <PlusIcon data-icon="inline-start" />
+                  Publikation anlegen
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             <div className="flex flex-col gap-2">
               {publications!.map((pub) => (
@@ -183,7 +208,23 @@ export function ReplicationView() {
           {subsLoading ? (
             <p className="p-8 text-center text-sm text-muted-foreground">Lade Subskriptionen…</p>
           ) : (subscriptions?.length ?? 0) === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">Keine Subskriptionen.</p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <InboxIcon />
+                </EmptyMedia>
+                <EmptyTitle>Keine Subskriptionen</EmptyTitle>
+                <EmptyDescription>
+                  Eine Subskription empfängt Änderungen aus der Publikation einer anderen Datenbank.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" variant="outline" onClick={() => setSubDialogOpen(true)}>
+                  <PlusIcon data-icon="inline-start" />
+                  Subskription anlegen
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             <div className="flex flex-col gap-2">
               {subscriptions!.map((sub) => (

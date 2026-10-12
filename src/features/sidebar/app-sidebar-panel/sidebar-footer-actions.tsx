@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ActivityIcon,
   ArchiveIcon,
@@ -9,13 +9,9 @@ import {
   RadioIcon,
   UploadIcon,
 } from "lucide-react";
+import { IconMenu, IconMenuContent, IconMenuItem } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { useActiveCapabilities } from "@/lib/db-selection";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -31,6 +27,7 @@ type FooterAction = {
 
 export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const navigate = useNavigate();
   const actions: FooterAction[] = [
     ...(caps.query_language === "sql" && !caps.object_storage
       ? [{ to: "/import", label: "SQL importieren", icon: UploadIcon } as const]
@@ -74,24 +71,24 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
         </Link>
       </Button>
       {more.length ? (
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1.5 px-2 font-normal">
               <EllipsisIcon className="size-4 text-muted-foreground" />
               Mehr
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="end" className="w-60">
+          <IconMenuContent side="top">
             {more.map((action) => (
-              <DropdownMenuItem key={action.to} asChild>
-                <Link to={action.to}>
-                  <action.icon className="text-muted-foreground" />
-                  {action.label}
-                </Link>
-              </DropdownMenuItem>
+              <IconMenuItem
+                key={action.to}
+                icon={<action.icon />}
+                label={action.label}
+                onSelect={() => void navigate({ to: action.to })}
+              />
             ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </IconMenuContent>
+        </IconMenu>
       ) : null}
     </div>
   );

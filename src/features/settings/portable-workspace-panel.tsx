@@ -48,10 +48,7 @@ export function PortableWorkspacePanel() {
   };
   return (
     <>
-      <SettingsRow
-        title="Portable Arbeitsumgebung"
-        description="Einstellungen, Hotkeys, Spaltenlayouts, Favoriten und Filter als JSON übertragen. Verbindungen und Zugangsdaten sind nicht enthalten; Objektzuordnungen verwenden die vorhandenen Verbindungs-IDs."
-      >
+      <SettingsRow settingId="portable-workspace">
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => void exportFile()}>
             Exportieren

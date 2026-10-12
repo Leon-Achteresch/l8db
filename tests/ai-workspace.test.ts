@@ -4,8 +4,10 @@ import {
   aiConnections,
   bypassAiPermissions,
   mergeAiModels,
+  modelEfforts,
   modeOptions,
   safeEndpoint,
+  thoughtLevel,
 } from "@/lib/ai/context";
 import { AI_PROVIDERS, aiSessionConnection, mergeAiRecords, useAiStore } from "@/lib/ai/store";
 import type { SavedConnection } from "@/lib/connections";
@@ -128,6 +130,52 @@ test("native ACP session model metadata is normalized while preserving discovery
   expect(modeOptions({ availableModes: [{ id: "ask", name: "Ask" }] })).toEqual([
     { id: "ask", name: "Ask" },
   ]);
+});
+
+test("reasoning choices come from Claude model levels, Copilot flags and OpenCode variants", () => {
+  const base = {
+    id: "p",
+    name: "p",
+    binary: "",
+    home: "",
+    endpoint: "",
+    model: "",
+    effort: "",
+    mode: "",
+  };
+  const claude = {
+    models: [
+      { id: "default", name: "Default", efforts: ["low", "high", "max"] },
+      { id: "claude-haiku-4-5", name: "Haiku 4.5" },
+    ],
+  };
+  expect(modelEfforts({ ...base, provider: "claude" }, claude, true)).toEqual([
+    "low",
+    "high",
+    "max",
+  ]);
+  expect(
+    modelEfforts({ ...base, provider: "claude", model: "claude-haiku-4-5" }, claude, true),
+  ).toEqual([]);
+  expect(modelEfforts({ ...base, provider: "copilot" }, { models: [] }, true)).toEqual([]);
+  expect(
+    modelEfforts({ ...base, provider: "copilot", model: "gpt-5.4" }, { models: [] }, true),
+  ).toContain("xhigh");
+  const opencode = {
+    models: [],
+    configOptions: [
+      { id: "model", category: "model", options: [{ value: "a" }] },
+      {
+        id: "effort",
+        category: "thought_level",
+        options: [{ value: "high" }, { value: "max" }, { value: "default" }],
+      },
+    ],
+  };
+  expect(thoughtLevel(opencode)).toEqual({ id: "effort", choices: ["high", "max"] });
+  expect(thoughtLevel({ models: [], configOptions: [{ id: "mode", category: "mode" }] })).toBe(
+    null,
+  );
 });
 
 test("rapid same-millisecond profile and session updates retain newest text", () => {

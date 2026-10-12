@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { fmtNumber } from "@/lib/dashboards";
+import { fmtValue } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
-import { type ChartProps, categories, hoveredIndex } from "./chart-utils";
+import { type ChartProps, categories, dimAttr, hoveredIndex } from "./chart-utils";
 import { roundArcPath } from "./svg-geometry";
 
-export function Rings({ rows, shape, options }: ChartProps) {
+export function Rings({ rows, shape, options, interactive = false }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const items = categories(rows, shape, options.colorOffset).sort((a, b) => a.value - b.value);
@@ -15,7 +15,7 @@ export function Rings({ rows, shape, options }: ChartProps) {
   const outer = Math.min(width, height) / 2;
   const inner = outer * 0.35;
   const band = (outer - inner) / Math.max(items.length, 1);
-  const stroke = band * 0.82;
+  const stroke = Math.min(14, band * 0.62);
   const hovered = hover !== null ? items[hover] : undefined;
 
   return (
@@ -32,13 +32,18 @@ export function Rings({ rows, shape, options }: ChartProps) {
           {items.map((item, i) => {
             const r = inner + band * i + band / 2;
             return (
-              <g key={item.name} data-index={i}>
+              <g
+                key={item.name}
+                data-index={i}
+                data-dim={dimAttr(item.raw)}
+                tabIndex={interactive ? 0 : undefined}
+              >
                 <circle
                   cx={cx}
                   cy={cy}
                   r={r}
                   fill="none"
-                  stroke="var(--muted)"
+                  stroke="var(--dash-track)"
                   strokeWidth={stroke}
                 />
                 <path
@@ -58,7 +63,9 @@ export function Rings({ rows, shape, options }: ChartProps) {
           x={cx}
           y={cy}
           width={width}
-          entries={[{ label: hovered.name, value: fmtNumber(hovered.value), color: hovered.color }]}
+          entries={[
+            { label: hovered.name, value: fmtValue(hovered.value, options), color: hovered.color },
+          ]}
         />
       )}
     </div>

@@ -22,12 +22,12 @@ export function Score({ rows, shape, options }: ChartProps) {
       {
         key: `${item.name} offen`,
         value: Math.max(0, item.max - item.value),
-        fill: "var(--muted)",
+        fill: "var(--dash-track)",
       },
     ])
     .filter((slice) => slice.value > 0);
   const outer = Math.min(width, height) / 2;
-  const stroke = outer * 0.3;
+  const stroke = Math.min(16, outer * 0.2);
   const r = outer - stroke / 2;
   let start = 0;
 
@@ -53,9 +53,12 @@ export function Score({ rows, shape, options }: ChartProps) {
         </svg>
       )}
       <div className="pointer-events-none absolute inset-0 grid place-items-center">
-        <span className="text-3xl font-semibold tabular-nums">
-          {Math.round((total / totalMax) * 100)}
-        </span>
+        <div className="text-center">
+          <div className="text-2xl font-semibold tabular-nums tracking-tight">
+            {Math.round((total / totalMax) * 100)}
+          </div>
+          <div className="text-[11px] text-muted-foreground">von 100</div>
+        </div>
       </div>
     </div>
   );

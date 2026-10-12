@@ -69,6 +69,7 @@ const viewState = shape(
     filterCombinator: (value) => value === "AND" || value === "OR",
     filterSql: text,
     columnSizing: record(number),
+    contentColumnSizing: record(number),
     scroll: shape({ top: number, left: number, identity: text }),
   },
 );
@@ -92,6 +93,7 @@ const settingEnums: Record<string, string[]> = {
   editorAcceptSuggestionOnEnter: ["on", "smart", "off"],
   editorTabCompletion: ["on", "off", "onlySnippets"],
   uiDensity: ["compact", "normal", "spacious"],
+  tableStyle: ["classic", "compact", "semantic", "profile"],
   sslDefaultMode: ["prefer", "require", "disable", "verify-full"],
 };
 const settingRanges: Record<string, [number, number]> = {
@@ -107,6 +109,7 @@ const settingRanges: Record<string, [number, number]> = {
 const protectedSettings = new Set([
   "crashReports",
   "usageMetrics",
+  "localUsageStats",
   "autoUpdateCheck",
   "autoUpdateInstall",
   "skippedUpdateVersion",

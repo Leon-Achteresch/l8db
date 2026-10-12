@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import { QueryResultTable } from "../../src/features/query/query-result-table";
 import { DataTable } from "../../src/features/table/data-table";
 import { initAppearance } from "../../src/lib/appearance";
+import { useConnectionsStore } from "../../src/lib/connections";
+import { useQueryWorkspace } from "../../src/lib/query-workspace";
 import { useSettingsStore } from "../../src/lib/settings";
 
 const params = new URLSearchParams(location.search);
@@ -16,6 +18,23 @@ useSettingsStore.setState({
   uiDensity: (params.get("density") ?? "normal") as "normal" | "compact" | "spacious",
 });
 initAppearance();
+
+(
+  window as unknown as {
+    configureGrid: (options: {
+      scale: number;
+      density: "compact" | "normal" | "spacious";
+      font: number;
+      row: number;
+    }) => void;
+  }
+).configureGrid = (options) => {
+  useSettingsStore.setState({ uiScale: options.scale, uiDensity: options.density });
+  useQueryWorkspace.getState().update({
+    resultFontSize: options.font,
+    resultRowHeight: options.row,
+  });
+};
 
 const foreignKeys =
   params.get("fk") === "1"
@@ -31,6 +50,19 @@ const foreignKeys =
         },
       ]
     : undefined;
+if (foreignKeys)
+  useConnectionsStore.setState({
+    activeId: "perf-grid",
+    connections: [
+      {
+        id: "perf-grid",
+        name: "Performance fixture",
+        kind: "postgres",
+        connectionString: "postgresql://fixture.invalid/perf",
+        sslMode: "disable",
+      },
+    ],
+  });
 const longText = "x".repeat(Number(params.get("textSize") ?? 0));
 const COLUMNS = Array.from(
   { length: Number(new URLSearchParams(location.search).get("columns") ?? 12) },

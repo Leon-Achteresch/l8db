@@ -1,0 +1,228 @@
+import type { QueryResult } from "@/lib/db/types";
+import { createLimiter, isMultiTargetCancelled } from "./limiter";
+
+export interface MultiTarget {
+  id: string;
+  connectionId: string;
+  database: string | null;
+  schema: string | null;
+}
+
+export type TargetStatus = "queued" | "running" | "done" | "error" | "cancelled" | "rejected";
+
+export interface TargetRun {
+  id: string;
+  status: TargetStatus;
+  durationMs: number | null;
+  rowCount: number | null;
+  rowsAffected: number | null;
+  truncated: boolean;
+  error: string | null;
+  notice: string | null;
+  result: QueryResult | null;
+}
+
+export interface MultiTargetRequest {
+  target: MultiTarget;
+  sql: string;
+  jobId: string;
+  timeoutSeconds: number;
+  maxRows: number;
+  signal?: AbortSignal;
+  onExecuting?: () => void;
+  preflight?: boolean;
+}
+
+export interface MultiTargetExecutor {
+  execute: (request: MultiTargetRequest) => Promise<QueryResult>;
+  cancel: (target: MultiTarget, jobId: string) => Promise<boolean>;
+  canCancel?: (target: MultiTarget) => boolean;
+}
+
+export const LATE_CANCEL_NOTICE =
+  "Abbruch kam zu spät: Die Anweisung wurde auf diesem Ziel vollständig ausgeführt.";
+export const UNSUPPORTED_CANCEL_NOTICE =
+  "Dieser Treiber kann laufende Anweisungen nicht abbrechen; die Anweisung lief weiter. Angezeigt wird der tatsächliche Ausgang.";
+export const PARTIAL_SCRIPT_NOTICE =
+  "Ein Teil des Skripts wurde möglicherweise bereits ausgeführt.";
+export const FAILED_AFTER_CANCEL_NOTICE =
+  "Der Abbruch kam zu spät oder wird von diesem Treiber nicht unterstützt. Angezeigt wird der tatsächliche Fehler.";
+
+const CANCELLATION_ERROR =
+  /\b57014\b|canceling statement|cancell?ed by user|query (?:was )?cancell?ed|ORA-01013|vom Server abgebrochen|Abfrage abgebrochen/i;
+
+export function isCancellationError(error: unknown): boolean {
+  return CANCELLATION_ERROR.test(error instanceof Error ? error.message : String(error));
+}
+
+export interface MultiTargetRunOptions {
+  targets: MultiTarget[];
+  rejected?: { target: MultiTarget; reason: string }[];
+  sql: string;
+  concurrency: number;
+  perServerLimit: number;
+  timeoutSeconds: number;
+  maxRows: number;
+  scriptStatements?: number | ((target: MultiTarget) => number);
+  executor: MultiTargetExecutor;
+  onUpdate: (run: TargetRun) => void;
+}
+
+export interface MultiTargetRunHandle {
+  done: Promise<void>;
+  cancel: (id: string) => void;
+  cancelAll: () => void;
+  stats: () => { peak: number; started: number; active: number; queued: number };
+}
+
+export const MULTI_TARGET_MAX_CONCURRENCY = 16;
+export const MULTI_TARGET_PER_SERVER_LIMIT = 8;
+export const MULTI_TARGET_MAX_ROWS = 1000;
+
+export function targetId(connectionId: string, database: string | null, schema: string | null) {
+  return `${connectionId}\u0001${database ?? ""}\u0001${schema ?? ""}`;
+}
+
+export function multiTarget(
+  connectionId: string,
+  database: string | null = null,
+  schema: string | null = null,
+): MultiTarget {
+  return { id: targetId(connectionId, database, schema), connectionId, database, schema };
+}
+
+export function emptyRun(id: string, status: TargetStatus = "queued"): TargetRun {
+  return {
+    id,
+    status,
+    durationMs: null,
+    rowCount: null,
+    rowsAffected: null,
+    truncated: false,
+    error: null,
+    notice: null,
+    result: null,
+  };
+}
+
+export function clampConcurrency(value: number): number {
+  if (!Number.isFinite(value)) return 4;
+  return Math.max(1, Math.min(MULTI_TARGET_MAX_CONCURRENCY, Math.floor(value)));
+}
+
+export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTargetRunHandle {
+  const limiter = createLimiter(
+    clampConcurrency(options.concurrency),
+    Math.max(1, Math.min(MULTI_TARGET_PER_SERVER_LIMIT, Math.floor(options.perServerLimit))),
+  );
+  const maxRows = Math.max(1, Math.min(MULTI_TARGET_MAX_ROWS, Math.floor(options.maxRows)));
+  const controllers = new Map<string, AbortController>();
+  for (const { target, reason } of options.rejected ?? [])
+    options.onUpdate({ ...emptyRun(target.id, "rejected"), error: reason });
+  for (const target of options.targets) options.onUpdate(emptyRun(target.id));
+
+  const runOne = async (target: MultiTarget) => {
+    const controller = new AbortController();
+    controllers.set(target.id, controller);
+    const jobId = crypto.randomUUID();
+    let started = 0;
+    let cancelAccepted: Promise<boolean> = Promise.resolve(false);
+    const supported = options.executor.canCancel?.(target) ?? true;
+    const statements =
+      typeof options.scriptStatements === "function"
+        ? options.scriptStatements(target)
+        : (options.scriptStatements ?? 1);
+    const script = statements > 1;
+    let executing = false;
+    const notices = (...entries: (string | false | null)[]) =>
+      entries.filter((entry): entry is string => Boolean(entry)).join(" ") || null;
+    try {
+      const result = await limiter.run(
+        target.connectionId,
+        async () => {
+          started = performance.now();
+          options.onUpdate({ ...emptyRun(target.id, "running") });
+          const onAbort = () => {
+            cancelAccepted = options.executor.cancel(target, jobId).then(
+              (accepted) => accepted === true,
+              () => false,
+            );
+          };
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+          try {
+            return await options.executor.execute({
+              target,
+              sql: options.sql,
+              jobId,
+              timeoutSeconds: options.timeoutSeconds,
+              maxRows,
+              signal: controller.signal,
+              preflight: script,
+              onExecuting: () => {
+                executing = true;
+              },
+            });
+          } finally {
+            controller.signal.removeEventListener("abort", onAbort);
+          }
+        },
+        controller.signal,
+      );
+      options.onUpdate({
+        id: target.id,
+        status: "done",
+        durationMs: Math.round(performance.now() - started),
+        rowCount: result.columns.length ? result.rows.length : null,
+        rowsAffected: result.rows_affected,
+        truncated: Boolean(result.truncated),
+        error: null,
+        notice: controller.signal.aborted
+          ? supported
+            ? LATE_CANCEL_NOTICE
+            : UNSUPPORTED_CANCEL_NOTICE
+          : null,
+        result,
+      });
+    } catch (error) {
+      const durationMs = started ? Math.round(performance.now() - started) : null;
+      const requested = controller.signal.aborted;
+      const cancelled =
+        isMultiTargetCancelled(error) ||
+        (requested && ((await cancelAccepted) || isCancellationError(error)));
+      if (cancelled) {
+        options.onUpdate({
+          ...emptyRun(target.id, "cancelled"),
+          durationMs,
+          notice: notices(script && executing && PARTIAL_SCRIPT_NOTICE),
+        });
+        return;
+      }
+      options.onUpdate({
+        ...emptyRun(target.id, "error"),
+        durationMs,
+        error: error instanceof Error ? error.message : String(error),
+        notice: notices(
+          requested && (supported ? FAILED_AFTER_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE),
+          script && executing && PARTIAL_SCRIPT_NOTICE,
+        ),
+      });
+    } finally {
+      controllers.delete(target.id);
+    }
+  };
+
+  const done = Promise.all(options.targets.map(runOne)).then(() => undefined);
+  return {
+    done,
+    cancel: (id) => controllers.get(id)?.abort(),
+    cancelAll: () => {
+      for (const controller of [...controllers.values()]) controller.abort();
+    },
+    stats: () => ({
+      peak: limiter.peak,
+      started: limiter.started,
+      active: limiter.active,
+      queued: limiter.queued,
+    }),
+  };
+}

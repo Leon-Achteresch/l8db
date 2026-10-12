@@ -74,6 +74,9 @@ for (const kind of ["postgres", "oracle"] as const) {
           .click();
         await page.getByRole("tab", { name: "Kunden", exact: true }).click();
         await page.getByRole("button", { name: "Aktionen: Customer 2", exact: true }).click();
+        await page
+          .getByRole("menuitem", { name: "Kundenzuordnung und Update-Regeln", exact: true })
+          .click();
         await page.getByText("Update-Regeln", { exact: true }).click();
         await page.getByRole("checkbox", { name: "Updates pausieren", exact: true }).check();
         await page.getByRole("button", { name: "Regeln speichern", exact: true }).click();

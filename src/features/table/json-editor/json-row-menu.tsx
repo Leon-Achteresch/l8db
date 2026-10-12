@@ -4,11 +4,14 @@ import {
   ArrowUpIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
-  ClipboardCopyIcon,
+  ClipboardIcon,
+  CopyIcon,
   CopyPlusIcon,
-  CornerDownRightIcon,
-  DatabaseZapIcon,
+  DatabaseIcon,
   EllipsisIcon,
+  FileCodeIcon,
+  KeyRoundIcon,
+  ListPlusIcon,
   PackageIcon,
   PackageOpenIcon,
   PencilIcon,
@@ -17,22 +20,20 @@ import {
   ShapesIcon,
   TextCursorInputIcon,
   Trash2Icon,
+  WaypointsIcon,
 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  IconMenu,
+  IconMenuContent,
+  IconMenuItem,
+  IconMenuSeparator,
+  IconMenuSubContent,
+  IconMenuSubTrigger,
+} from "@/components/icon-menu";
+import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { type JsonKind, type JsonRow, parseEmbeddedJson } from "@/lib/json-editor";
 import { cn } from "@/lib/utils";
-import { JSON_KIND_META, JsonTypeIcon } from "./json-type-icon";
+import { JSON_KIND_META } from "./json-type-icon";
 import type { JsonActions } from "./types";
 
 const KINDS: JsonKind[] = ["string", "number", "boolean", "null", "object", "array"];
@@ -52,7 +53,7 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
   const container = row.kind === "object" || row.kind === "array";
   const embedded = row.kind === "string" && parseEmbeddedJson(row.value as string) !== undefined;
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
+    <IconMenu open={open} onOpenChange={onOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -64,164 +65,172 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
               : "opacity-0 group-hover/row:opacity-100 group-data-[selected=true]/row:opacity-100",
           )}
           aria-label="Aktionen"
+          title={`Aktionen für ${isRoot ? "Wurzel" : String(row.key)} (${JSON_KIND_META[row.kind].label})`}
         >
           <EllipsisIcon className="size-3.5" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-60"
-        onCloseAutoFocus={(event) => event.preventDefault()}
-      >
-        <DropdownMenuLabel className="flex items-center gap-2 text-xs">
-          <JsonTypeIcon kind={row.kind} />
-          <span className="truncate font-mono">{isRoot ? "Wurzel" : String(row.key)}</span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <IconMenuContent onCloseAutoFocus={(event) => event.preventDefault()}>
         {!readOnly && !container && (
-          <DropdownMenuItem onSelect={() => actions.startEdit(path, "value")}>
-            <PencilIcon />
-            Wert bearbeiten
-            <DropdownMenuShortcut>↵</DropdownMenuShortcut>
-          </DropdownMenuItem>
+          <IconMenuItem
+            icon={<PencilIcon />}
+            label="Wert bearbeiten"
+            shortcut="↵"
+            onSelect={() => actions.startEdit(path, "value")}
+          />
         )}
         {!readOnly && inObject && (
-          <DropdownMenuItem onSelect={() => actions.startEdit(path, "key")}>
-            <TextCursorInputIcon />
-            Schlüssel umbenennen
-            <DropdownMenuShortcut>F2</DropdownMenuShortcut>
-          </DropdownMenuItem>
+          <IconMenuItem
+            icon={<TextCursorInputIcon />}
+            label="Schlüssel umbenennen"
+            shortcut="F2"
+            onSelect={() => actions.startEdit(path, "key")}
+          />
         )}
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <ClipboardCopyIcon />
-            Kopieren
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-64">
-            <DropdownMenuItem onSelect={() => actions.copy(path, "value")}>
-              <ClipboardCopyIcon />
-              Wert
-              <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
-            </DropdownMenuItem>
+          <IconMenuSubTrigger icon={<CopyIcon />} label="Kopieren als" />
+          <IconMenuSubContent>
+            <IconMenuItem
+              icon={<ClipboardIcon />}
+              label="Wert kopieren"
+              shortcut="⌘C"
+              onSelect={() => actions.copy(path, "value")}
+            />
             {inObject && (
-              <DropdownMenuItem onSelect={() => actions.copy(path, "key")}>
-                <TextCursorInputIcon />
-                Schlüssel
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<KeyRoundIcon />}
+                label="Schlüssel kopieren"
+                onSelect={() => actions.copy(path, "key")}
+              />
             )}
-            <DropdownMenuItem onSelect={() => actions.copy(path, "jsonpath")}>
-              <RouteIcon />
-              JSONPath
-              <DropdownMenuShortcut>⇧⌘C</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.copy(path, "js")}>
-              <RouteIcon />
-              JavaScript-Zugriff
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.copy(path, "pg")}>
-              <DatabaseZapIcon />
-              SQL-Ausdruck (-&gt; / -&gt;&gt;)
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.copy(path, "pgpath")}>
-              <DatabaseZapIcon />
-              SQL-Pfad (#&gt;)
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
+            <IconMenuItem
+              icon={<RouteIcon />}
+              label="JSONPath kopieren"
+              shortcut="⇧⌘C"
+              onSelect={() => actions.copy(path, "jsonpath")}
+            />
+            <IconMenuItem
+              icon={<FileCodeIcon />}
+              label="JavaScript-Zugriff kopieren"
+              onSelect={() => actions.copy(path, "js")}
+            />
+            <IconMenuItem
+              icon={<DatabaseIcon />}
+              label="SQL-Ausdruck (-> / ->>) kopieren"
+              onSelect={() => actions.copy(path, "pg")}
+            />
+            <IconMenuItem
+              icon={<WaypointsIcon />}
+              label="SQL-Pfad (#>) kopieren"
+              onSelect={() => actions.copy(path, "pgpath")}
+            />
+          </IconMenuSubContent>
         </DropdownMenuSub>
         {container && (
           <>
-            <DropdownMenuItem onSelect={() => actions.expandDeep(path, true)}>
-              <ChevronsUpDownIcon />
-              Alles darunter aufklappen
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.expandDeep(path, false)}>
-              <ChevronsDownUpIcon />
-              Alles darunter zuklappen
-            </DropdownMenuItem>
+            <IconMenuItem
+              icon={<ChevronsUpDownIcon />}
+              label="Alles darunter aufklappen"
+              onSelect={() => actions.expandDeep(path, true)}
+            />
+            <IconMenuItem
+              icon={<ChevronsDownUpIcon />}
+              label="Alles darunter zuklappen"
+              onSelect={() => actions.expandDeep(path, false)}
+            />
           </>
         )}
         {!readOnly && (
           <>
-            <DropdownMenuSeparator />
+            <IconMenuSeparator />
             {container && (
-              <DropdownMenuItem onSelect={() => actions.addChild(path)}>
-                <PlusIcon />
-                {row.kind === "array" ? "Element anhängen" : "Schlüssel hinzufügen"}
-                <DropdownMenuShortcut>⌘↵</DropdownMenuShortcut>
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<PlusIcon />}
+                label={row.kind === "array" ? "Element anhängen" : "Schlüssel hinzufügen"}
+                shortcut="⌘↵"
+                onSelect={() => actions.addChild(path)}
+              />
             )}
             {!isRoot && (
               <>
-                <DropdownMenuItem onSelect={() => actions.insertAfter(path)}>
-                  <CornerDownRightIcon />
-                  Danach einfügen
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => actions.duplicate(path)}>
-                  <CopyPlusIcon />
-                  Duplizieren
-                  <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => actions.move(path, -1)}>
-                  <ArrowUpIcon />
-                  Nach oben
-                  <DropdownMenuShortcut>⌥↑</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => actions.move(path, 1)}>
-                  <ArrowDownIcon />
-                  Nach unten
-                  <DropdownMenuShortcut>⌥↓</DropdownMenuShortcut>
-                </DropdownMenuItem>
+                <IconMenuItem
+                  icon={<ListPlusIcon />}
+                  label="Danach einfügen"
+                  onSelect={() => actions.insertAfter(path)}
+                />
+                <IconMenuItem
+                  icon={<CopyPlusIcon />}
+                  label="Duplizieren"
+                  shortcut="⌘D"
+                  onSelect={() => actions.duplicate(path)}
+                />
+                <IconMenuItem
+                  icon={<ArrowUpIcon />}
+                  label="Nach oben"
+                  shortcut="⌥↑"
+                  onSelect={() => actions.move(path, -1)}
+                />
+                <IconMenuItem
+                  icon={<ArrowDownIcon />}
+                  label="Nach unten"
+                  shortcut="⌥↓"
+                  onSelect={() => actions.move(path, 1)}
+                />
               </>
             )}
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <ShapesIcon />
-                Typ ändern
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {KINDS.map((kind) => (
-                  <DropdownMenuItem
-                    key={kind}
-                    disabled={kind === row.kind}
-                    onSelect={() => actions.setKind(path, kind)}
-                  >
-                    <JsonTypeIcon kind={kind} />
-                    {JSON_KIND_META[kind].label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
+              <IconMenuSubTrigger icon={<ShapesIcon />} label="Typ ändern" />
+              <IconMenuSubContent>
+                {KINDS.map((kind) => {
+                  const KindIcon = JSON_KIND_META[kind].icon;
+                  return (
+                    <IconMenuItem
+                      key={kind}
+                      icon={<KindIcon />}
+                      label={JSON_KIND_META[kind].label}
+                      disabled={kind === row.kind}
+                      onSelect={() => actions.setKind(path, kind)}
+                    />
+                  );
+                })}
+              </IconMenuSubContent>
             </DropdownMenuSub>
             {row.kind === "object" && (
-              <DropdownMenuItem onSelect={() => actions.sortKeys(path)}>
-                <ArrowDownAZIcon />
-                Schlüssel sortieren
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<ArrowDownAZIcon />}
+                label="Schlüssel sortieren"
+                onSelect={() => actions.sortKeys(path)}
+              />
             )}
             {embedded && (
-              <DropdownMenuItem onSelect={() => actions.unpack(path)}>
-                <PackageOpenIcon />
-                Eingebettetes JSON entpacken
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<PackageOpenIcon />}
+                label="Eingebettetes JSON entpacken"
+                onSelect={() => actions.unpack(path)}
+              />
             )}
             {container && !isRoot && (
-              <DropdownMenuItem onSelect={() => actions.pack(path)}>
-                <PackageIcon />
-                Als JSON-Text einpacken
-              </DropdownMenuItem>
+              <IconMenuItem
+                icon={<PackageIcon />}
+                label="Als JSON-Text einpacken"
+                onSelect={() => actions.pack(path)}
+              />
             )}
             {!isRoot && (
               <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onSelect={() => actions.remove(path)}>
-                  <Trash2Icon />
-                  Löschen
-                  <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
-                </DropdownMenuItem>
+                <IconMenuSeparator />
+                <IconMenuItem
+                  icon={<Trash2Icon />}
+                  label="Löschen"
+                  variant="destructive"
+                  shortcut="⌫"
+                  onSelect={() => actions.remove(path)}
+                />
               </>
             )}
           </>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </IconMenuContent>
+    </IconMenu>
   );
 }

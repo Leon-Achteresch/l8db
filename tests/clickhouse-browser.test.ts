@@ -93,7 +93,7 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
       await page.screenshot({ path: "/tmp/l8db-clickhouse-table.png" });
 
       await sidebarTable("kv_memory").click({ button: "right" });
-      await page.getByRole("menuitem", { name: "Im Editor öffnen", exact: true }).click();
+      await page.getByRole("menuitem", { name: /^Neue Abfrage für / }).click();
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("100 Zeilen", { exact: true }).first().waitFor();
       await page.locator(".monaco-editor .view-lines").first().click();

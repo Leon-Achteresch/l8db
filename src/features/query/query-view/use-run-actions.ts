@@ -18,7 +18,13 @@ interface UseRunActionsParams {
   workspace: QueryWorkspaceState;
   exec: QueryExecutionState;
   cursor: EditorCursorState;
-  runSql: (text: string) => Promise<void>;
+  runSql: (
+    text: string,
+    bound?: undefined,
+    skipBind?: boolean,
+    previewed?: boolean,
+  ) => Promise<void>;
+  previewSql: (text: string) => Promise<boolean>;
   setEditorFocus: (focus: boolean) => void;
 }
 
@@ -30,6 +36,7 @@ export function useRunActions({
   exec,
   cursor,
   runSql,
+  previewSql,
   setEditorFocus,
 }: UseRunActionsParams) {
   const { selectedSql, cursorOffset, editorSqlRef, cursorOffsetRef } = cursor;
@@ -149,7 +156,30 @@ export function useRunActions({
     cursorOffsetRef,
   ]);
 
-  return { handleRun, handleRunSelection, handleRunStatement, handleCheck };
+  const handlePreview = useCallback(async () => {
+    const target = resolveQueryRunTarget(
+      sql,
+      selectedSql,
+      cursorOffset,
+      workspace.runTarget,
+      connection?.kind,
+    );
+    if (!connection || !target.trim() || exec.runningRef.current) return;
+    setStatementError(null);
+    if (await previewSql(target)) await runSql(target, undefined, false, true);
+  }, [
+    connection,
+    sql,
+    selectedSql,
+    cursorOffset,
+    workspace.runTarget,
+    exec.runningRef,
+    previewSql,
+    runSql,
+    setStatementError,
+  ]);
+
+  return { handleRun, handleRunSelection, handleRunStatement, handleCheck, handlePreview };
 }
 
 export type RunActions = ReturnType<typeof useRunActions>;

@@ -10,6 +10,7 @@ import type { DataExportFormat } from "@/lib/export-formats";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import { applyMasks, type ColumnMask } from "@/lib/masking";
 import type { useTableRowsQuery } from "@/lib/queries";
+import { useTableExportRequest } from "@/lib/table-export-request";
 
 type Options = {
   schema: string;
@@ -52,6 +53,12 @@ export function useTableExport({
     { ignoreInputs: false },
   );
   useEffect(() => onHotkeyAction("grid.export", () => setCsvExportOpen(true)), []);
+  const exportRequest = useTableExportRequest((state) => state.request);
+  useEffect(() => {
+    if (exportRequest?.schema !== schema || exportRequest.table !== table) return;
+    useTableExportRequest.setState({ request: null });
+    setCsvExportOpen(true);
+  }, [exportRequest, schema, table]);
 
   const exportColumns = useMemo(
     () => (data?.columns ?? []).filter((c) => c !== "__ctid__"),

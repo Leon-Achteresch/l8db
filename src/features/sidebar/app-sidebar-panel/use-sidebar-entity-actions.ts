@@ -2,19 +2,25 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { copyWithToast } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
-import { dropTable, getTableDdl, truncateTable } from "@/lib/db";
-import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { dropTable, getTableDdl, listTableColumnsDetailed, truncateTable } from "@/lib/db";
+import { useActiveCapabilities, useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
+import { EMPTY_CSV_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
 import { quoteIdent } from "@/lib/sql-filter/quote";
+import { SQL_TEMPLATE_LABELS, type SqlTemplate, templateSql } from "@/lib/sql-templates";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { useTableExportRequest } from "@/lib/table-export-request";
 import { useTableTabs } from "@/lib/table-tabs";
+import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import type { EntityConfirmAction } from "./entity-confirm-dialog";
 
 export function useSidebarEntityActions(type: "table" | "view") {
   const [confirmAction, setConfirmAction] = useState<EntityConfirmAction | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const navigate = useNavigate();
+  const openTab = useTableTabs((state) => state.openTab);
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
   const openAlterTableTab = useTableTabs((state) => state.openAlterTableTab);
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
@@ -79,7 +85,7 @@ export function useSidebarEntityActions(type: "table" | "view") {
     navigate({ to: "/query/$id", params: { id } });
   };
 
-  const handleScriptTable = async (itemSchema: string, itemName: string) => {
+  const handleScriptTable = async (itemSchema: string, itemName: string, copy = false) => {
     if (!activeConnection) return;
     try {
       const ddl = await getTableDdl(
@@ -89,11 +95,75 @@ export function useSidebarEntityActions(type: "table" | "view") {
         itemName,
         activeDatabase ?? undefined,
       );
+      if (copy) return await copyWithToast(ddl, "CREATE-Skript");
       const id = openQueryTabWithSql(ddl);
       navigate({ to: "/query/$id", params: { id } });
     } catch (error) {
       toast.error("CREATE-Skript konnte nicht erstellt werden", { description: String(error) });
     }
+  };
+
+  const handleCopySql = async (itemSchema: string, itemName: string, template: SqlTemplate) => {
+    if (!activeConnection) return;
+    const connection = activeConnection;
+    try {
+      const columns = await queryClient.fetchQuery({
+        queryKey: ["columns-detailed", connection.id, activeDatabase, itemSchema, itemName],
+        queryFn: () =>
+          listTableColumnsDetailed(
+            connection.kind,
+            effectiveConnectionString(connection),
+            itemSchema,
+            itemName,
+            activeDatabase ?? undefined,
+          ),
+        staleTime: 5 * 60 * 1000,
+      });
+      await copyWithToast(
+        templateSql(template, itemSchema, itemName, columns, connection.kind),
+        SQL_TEMPLATE_LABELS[template],
+      );
+    } catch (error) {
+      toast.error("Spalten konnten nicht geladen werden", { description: String(error) });
+    }
+  };
+
+  const qualifiedName = (itemSchema: string, itemName: string) =>
+    itemSchema && caps.query_language !== "redis" ? `${itemSchema}.${itemName}` : itemName;
+
+  const openEntity = (itemSchema: string, itemName: string) => {
+    if (type === "view") return openView(itemSchema, itemName);
+    navigate({
+      to: "/tables/$schema/$table",
+      params: { schema: itemSchema, table: itemName },
+      search: { type: "table" },
+    });
+  };
+
+  const openInNewTab = (itemSchema: string, itemName: string) =>
+    type === "view"
+      ? openViewEditorTab({ schema: itemSchema, view: itemName })
+      : openTab({ schema: itemSchema, table: itemName, entityType: "table" });
+
+  const handleExport = (itemSchema: string, itemName: string) => {
+    useTableExportRequest.setState({ request: { schema: itemSchema, table: itemName } });
+    navigate({
+      to: "/tables/$schema/$table",
+      params: { schema: itemSchema, table: itemName },
+      search: { type },
+    });
+  };
+
+  const handleImport = (itemSchema: string, itemName: string) => {
+    if (!activeConnection) return;
+    useDbSelectionStore.getState().setSchema(activeConnection.id, itemSchema);
+    const key = JSON.stringify([activeConnection.id, activeDatabase, itemSchema]);
+    const { csv, patchCsv } = useImportWorkspace.getState();
+    const draft = csv[key];
+    const job = useTasksStore.getState().tasks.find((task) => task.id === draft?.jobId);
+    if (!(job && isTaskActive(job)) && draft?.targetTable !== itemName)
+      patchCsv(key, { ...EMPTY_CSV_IMPORT, targetTable: itemName });
+    navigate({ to: "/import", search: { tab: "csv" } });
   };
 
   const toggleFavoriteObject = (itemSchema: string, itemName: string) => {
@@ -157,6 +227,12 @@ export function useSidebarEntityActions(type: "table" | "view") {
     handleConfirmAction,
     handleOpenInEditor,
     handleScriptTable,
+    handleCopySql,
+    qualifiedName,
+    openEntity,
+    openInNewTab,
+    handleExport,
+    handleImport,
     toggleFavoriteObject,
     isFavorite,
     handleFocusInErDiagram,
@@ -164,3 +240,5 @@ export function useSidebarEntityActions(type: "table" | "view") {
     openView,
   };
 }
+
+export type SidebarEntityActions = ReturnType<typeof useSidebarEntityActions>;

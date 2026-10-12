@@ -3,7 +3,12 @@ import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
-import { recordDuration } from "@/lib/telemetry";
+import {
+  recordDatabaseOperation,
+  traceCommand,
+  USAGE_COMMANDS,
+  usageOutcome,
+} from "@/lib/telemetry";
 import { cancelTableExport, type TableExportProgress, type TableExportRequest } from "./columns";
 import type { DatabaseKind } from "./providers";
 
@@ -13,6 +18,10 @@ export interface QueryExecutionOptions {
   confirmed?: boolean;
   track?: boolean;
   session?: string;
+  pooled?: boolean;
+  queryTimeout?: number;
+  maxRows?: number;
+  connectionId?: string;
 }
 
 const SQL_COMMANDS = new Set([
@@ -22,18 +31,17 @@ const SQL_COMMANDS = new Set([
   "execute_in_transaction_with_params",
   "execute_script",
 ]);
-const MEASURED_COMMANDS = new Set([
-  ...SQL_COMMANDS,
-  "fetch_table_rows",
-  "test_connection",
-  "test_connection_string",
-]);
 const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,
+  "preview_dml",
   "test_connection",
   "test_connection_string",
   "list_databases",
   "list_schemas",
+  "list_tables",
+  "list_views",
+  "list_functions",
+  "list_procedures",
   "fetch_table_rows",
   "count_table_rows",
   "count_table_rows_capped",
@@ -193,6 +201,27 @@ async function productionGuard(command: string, args: Record<string, unknown>): 
 }
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!Object.hasOwn(USAGE_COMMANDS, command)) return invokeCommand<T>(command, args);
+  const started = performance.now();
+  let failure: unknown;
+  let failed = false;
+  try {
+    return await invokeCommand<T>(command, args);
+  } catch (error) {
+    failed = true;
+    failure = error;
+    throw error;
+  } finally {
+    recordDatabaseOperation(
+      command,
+      args?.kind,
+      failed ? usageOutcome(failure ?? "unknown") : "ok",
+      performance.now() - started,
+    );
+  }
+}
+
+async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (WRITE_COMMANDS.has(command)) {
     if (isReadOnlyActive(args?.connectionString)) throw new Error(READ_ONLY_MESSAGE);
     await readOnlyGuard(args ?? {});
@@ -202,9 +231,10 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   const options = (args?.options ?? {}) as QueryExecutionOptions;
   let taskId: string | undefined;
   let backendOptions: Record<string, unknown> = {
-    queryTimeout: settings.queryTimeout,
+    queryTimeout: options.queryTimeout ?? settings.queryTimeout,
     connectionTimeout: settings.connectionTimeout,
     ...(options.jobId ? { jobId: options.jobId } : {}),
+    ...(options.maxRows ? { maxRows: options.maxRows } : {}),
   };
   if (SQL_COMMANDS.has(command)) {
     const { operationContext } = await import("@/lib/operation-context");
@@ -263,30 +293,22 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       }).catch(() => undefined);
     }
   }
-  const started = performance.now();
-  const measure = (status: string) => {
-    if (!MEASURED_COMMANDS.has(command)) return;
-    recordDuration("db.command.duration", performance.now() - started, {
-      command,
-      kind: typeof args?.kind === "string" ? args.kind : "unknown",
-      status,
-    });
-  };
+  const kind = typeof args?.kind === "string" ? args.kind : "unknown";
   try {
     if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
       throw new Error(READ_ONLY_MESSAGE);
-    const result = await tauriInvoke<T>(
-      command,
-      CONFIGURED_COMMANDS.has(command) ? { ...args, options: backendOptions } : args,
+    const result = await traceCommand(command, { kind }, () =>
+      tauriInvoke<T>(
+        command,
+        CONFIGURED_COMMANDS.has(command) ? { ...args, options: backendOptions } : args,
+      ),
     );
     unlisten?.();
     if (taskId) finishTask(taskId, result);
-    measure("ok");
     return result;
   } catch (error) {
     unlisten?.();
     if (taskId) finishTask(taskId, undefined, error);
-    measure("error");
     throw error;
   }
 }

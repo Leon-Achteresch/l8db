@@ -49,9 +49,9 @@ function signer() {
   return { key, signature };
 }
 
-function fixture() {
+function fixture(version = "0.3.0") {
   const directory = temporary();
-  const names = artifactNames("0.3.0");
+  const names = artifactNames(version);
   const { key, signature } = signer();
   const executable = Buffer.alloc(64);
   executable.writeUInt32BE(0xcafebabe, 0);
@@ -88,7 +88,7 @@ function fixture() {
         `${signature(readFileSync(join(directory, name)))}\n`,
       );
   }
-  const manifest = generateManifest(directory, "0.3.0", "Notes");
+  const manifest = generateManifest(directory, version, "Notes");
   writeFileSync(join(directory, "latest.json"), JSON.stringify(manifest));
   const assets = readdirSync(directory).map((name) => ({
     name,
@@ -111,6 +111,23 @@ describe("release artifact integrity", () => {
       value.key,
     );
     expect(hashes.size).toBe(value.assets.length);
+  });
+  test("verifies canary packages and keeps rpm upgrades below the release", async () => {
+    const value = fixture("0.3.0-canary.2");
+    expect(value.names.rpm).toBe("l8db-0.3.0-0.canary.2.x86_64.rpm");
+    expect(value.names.msi).toBe("l8db_0.3.0-canary.2_x64_en-US.msi");
+    expect(value.manifest.platforms["linux-x86_64-rpm"].url).toBe(
+      "https://github.com/Leon-Achteresch/l8db/releases/download/v0.3.0-canary.2/l8db-0.3.0-0.canary.2.x86_64.rpm",
+    );
+    const hashes = await verifyArtifacts(
+      value.manifest,
+      value.assets,
+      "0.3.0-canary.2",
+      value.directory,
+      value.key,
+    );
+    expect(hashes.size).toBe(value.assets.length);
+    expect(() => artifactNames("0.3.0-beta.1")).toThrow("Invalid release version");
   });
   test("rejects corrupted bytes, signing keys and trusted comments", async () => {
     const directory = temporary();

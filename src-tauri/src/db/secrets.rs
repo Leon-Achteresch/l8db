@@ -108,7 +108,9 @@ mod backend {
     }
 }
 
+pub use backend::delete as remove_secret;
 pub use backend::get as read_secret;
+pub use backend::set as write_secret;
 
 async fn blocking<T, F>(f: F) -> Result<T, String>
 where
@@ -120,9 +122,22 @@ where
         .map_err(|e| format!("Keychain-Task fehlgeschlagen: {e}"))?
 }
 
+static KEYCHAIN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn keychain_lock() -> std::sync::MutexGuard<'static, ()> {
+    KEYCHAIN_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub fn locked<T>(work: impl FnOnce() -> T) -> T {
+    let _guard = keychain_lock();
+    work()
+}
+
 #[tauri::command]
 pub async fn store_secret(account: String, secret: String) -> Result<(), String> {
-    blocking(move || backend::set(&account, &secret)).await
+    blocking(move || locked(|| backend::set(&account, &secret))).await
 }
 
 #[tauri::command]
@@ -132,12 +147,27 @@ pub async fn load_secret(account: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub async fn delete_secret(account: String) -> Result<(), String> {
-    blocking(move || backend::delete(&account)).await
+    blocking(move || locked(|| backend::delete(&account))).await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{delete_secret, load_secret, store_secret};
+    use super::{delete_secret, keychain_lock, load_secret, locked, store_secret};
+
+    #[test]
+    fn keychain_writes_wait_for_a_running_sync_merge() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let guard = keychain_lock();
+        let done = Arc::new(AtomicBool::new(false));
+        let flag = done.clone();
+        let writer = std::thread::spawn(move || locked(|| flag.store(true, Ordering::SeqCst)));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(!done.load(Ordering::SeqCst));
+        drop(guard);
+        writer.join().unwrap();
+        assert!(done.load(Ordering::SeqCst));
+    }
 
     #[tokio::test]
     async fn secret_roundtrip() {

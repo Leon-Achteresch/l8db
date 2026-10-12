@@ -7,10 +7,20 @@ import {
   RefreshCwIcon,
   ScanSearchIcon,
   ServerIcon,
+  Settings2Icon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
 import { listSchemas } from "@/lib/db";
@@ -19,14 +29,16 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { control } from "@/lib/versioning/control";
+import { targetStage } from "@/lib/versioning/delivery";
 import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
+import { snapshotTargets } from "@/lib/versioning/rollout-snapshot";
 import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningDeliveryGates } from "./versioning-delivery-gates";
-import { VersioningPopover } from "./versioning-popover";
+import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningSelect } from "./versioning-select";
 import { VersioningTargetDetails } from "./versioning-target-details";
 import { VersioningTargetPolicy } from "./versioning-target-policy";
@@ -56,7 +68,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [preflight, setPreflight] = useState<FleetResult[]>([]);
   const [recovery, setRecovery] = useState<DatabaseTarget | null>(null);
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = targets?.targets.find((entry) => entry.id === editingId);
   const [waveLimit, setWaveLimit] = useState("1");
+  const [snapshot, setSnapshot] = useState(true);
   const [confirmation, setConfirmation] = useState("");
   const selectedConnection = connections.find((entry) => entry.id === connectionId);
   const sourceSchema = [
@@ -166,7 +181,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
     try {
       if (preflight.some((item) => item.error))
         throw new Error("Alle ausgewählten Ziele müssen die Vorprüfung bestehen.");
-      await deployFleet(
+      const snapshots = await deployFleet(
         repo,
         project,
         plans,
@@ -174,9 +189,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
         releaseId,
         workspace.setMessage,
         Number(waveLimit),
+        snapshot,
       );
       workspace.setMessage(
-        "Welle abgeschlossen. Betrieb prüfen und verbleibende Ziele neu planen.",
+        `Welle abgeschlossen${snapshots.length ? ` · ${snapshots.length} ${snapshots.length === 1 ? "Sicherung" : "Sicherungen"} vorher erstellt` : ""}. Betrieb prüfen und verbleibende Ziele neu planen.`,
       );
     } finally {
       setPlans([]);
@@ -552,67 +568,54 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                       <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-[10px] text-muted-foreground">
                         {target.release?.id ?? "Ohne Baseline"}
                       </span>
-                      <VersioningPopover
-                        icon={EllipsisIcon}
-                        label={`Aktionen: ${target.name}`}
-                        disabled={workspace.busy}
-                        className="w-64"
-                      >
-                        <button
-                          type="button"
-                          disabled={!target.release}
-                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
-                          onClick={() =>
-                            void run(async () => {
-                              const result = await inspectTarget(
-                                repo,
-                                project,
-                                target,
-                                connectionFor(target),
-                              );
-                              setDifferenceName(target.name);
-                              setDifferences(result.differences);
-                              workspace.setMessage(`Stand geprüft: ${target.name}`);
-                            })
-                          }
-                        >
-                          <ScanSearchIcon className="size-4 text-muted-foreground" />
-                          Stand prüfen
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!releaseId}
-                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
-                          onClick={() => {
-                            setRecovery(target);
-                            setRecoveryConfirmation("");
-                          }}
-                        >
-                          <RefreshCwIcon className="size-4 text-muted-foreground" />
-                          Stand abgleichen
-                        </button>
-                        <p className="text-[10px] leading-relaxed text-muted-foreground">
-                          {releaseId
-                            ? `Gewählter Release: ${releaseId}`
-                            : "Für den Abgleich zuerst einen Zielrelease auswählen."}
-                        </p>
-                        <VersioningTargetDetails
-                          workspace={workspace}
-                          target={target}
-                          onSaved={() => {
-                            setPlans([]);
-                            setPreflight([]);
-                          }}
-                        />
-                        <VersioningTargetPolicy
-                          workspace={workspace}
-                          target={target}
-                          onSaved={() => {
-                            setPlans([]);
-                            setPreflight([]);
-                          }}
-                        />
-                      </VersioningPopover>
+                      <IconMenu>
+                        <DropdownMenuTrigger asChild>
+                          <VersioningIconButton
+                            icon={EllipsisIcon}
+                            label={`Aktionen: ${target.name}`}
+                            disabled={workspace.busy}
+                          />
+                        </DropdownMenuTrigger>
+                        <IconMenuContent>
+                          <IconMenuItem
+                            icon={<ScanSearchIcon />}
+                            label="Stand prüfen"
+                            disabled={!target.release}
+                            onSelect={() =>
+                              void run(async () => {
+                                const result = await inspectTarget(
+                                  repo,
+                                  project,
+                                  target,
+                                  connectionFor(target),
+                                );
+                                setDifferenceName(target.name);
+                                setDifferences(result.differences);
+                                workspace.setMessage(`Stand geprüft: ${target.name}`);
+                              })
+                            }
+                          />
+                          <IconMenuItem
+                            icon={<RefreshCwIcon />}
+                            label={
+                              releaseId
+                                ? `Stand abgleichen · Release ${releaseId}`
+                                : "Stand abgleichen · zuerst Zielrelease auswählen"
+                            }
+                            disabled={!releaseId}
+                            onSelect={() => {
+                              setRecovery(target);
+                              setRecoveryConfirmation("");
+                            }}
+                          />
+                          <IconMenuSeparator />
+                          <IconMenuItem
+                            icon={<Settings2Icon />}
+                            label="Kundenzuordnung und Update-Regeln"
+                            onSelect={() => setEditingId(target.id)}
+                          />
+                        </IconMenuContent>
+                      </IconMenu>
                     </li>
                   );
                 })}
@@ -630,6 +633,36 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             Ausgangsständen.
           </p>
         </div>
+      )}
+      {editing && (
+        <Dialog open onOpenChange={(open) => !open && setEditingId(null)}>
+          <DialogContent className="vcs-surface sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{editing.name}</DialogTitle>
+              <DialogDescription className="text-xs">
+                Kundenzuordnung und Update-Regeln dieses Ziels
+              </DialogDescription>
+            </DialogHeader>
+            <fieldset disabled={workspace.busy} className="flex min-w-0 flex-col gap-3">
+              <VersioningTargetDetails
+                workspace={workspace}
+                target={editing}
+                onSaved={() => {
+                  setPlans([]);
+                  setPreflight([]);
+                }}
+              />
+              <VersioningTargetPolicy
+                workspace={workspace}
+                target={editing}
+                onSaved={() => {
+                  setPlans([]);
+                  setPreflight([]);
+                }}
+              />
+            </fieldset>
+          </DialogContent>
+        </Dialog>
       )}
       {recovery && (
         <div
@@ -807,6 +840,35 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             Nach jeder Welle Anwendung und Betrieb prüfen. Verbleibende Ziele anschließend neu
             planen und ausdrücklich starten.
           </p>
+          {snapshotTargets(
+            project,
+            plans.filter((item) => item.releases.length).map((item) => item.target),
+          ).length > 0 && (
+            <label className="flex items-start gap-2 text-xs leading-relaxed">
+              <input
+                type="checkbox"
+                checked={snapshot}
+                onChange={(event) => setSnapshot(event.target.checked)}
+              />
+              <span>
+                Vorher eine Sicherung jedes Produktivsystems erstellen
+                <span className="block text-[11px] text-muted-foreground">
+                  Verschlüsselt mit pg_dump im Tresor unter Datenbank → Sicherungen. Schlägt sie
+                  fehl, startet der Rollout nicht. Große Datenbanken brauchen entsprechend Zeit und
+                  Platz.
+                </span>
+              </span>
+            </label>
+          )}
+          {project.kind === "oracle" &&
+            plans.some(
+              (item) => item.releases.length && targetStage(item.target) === "production",
+            ) && (
+              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                Für Oracle erstellt l8db keine Sicherung. Vor dem Rollout auf Produktion eine eigene
+                Sicherung anlegen, etwa per RMAN, Flashback oder Export der Packages.
+              </p>
+            )}
           <label className="text-xs leading-relaxed" htmlFor="versioning-deploy-confirmation">
             Release-ID zur Bestätigung eingeben
             <Input

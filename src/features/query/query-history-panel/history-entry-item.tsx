@@ -1,4 +1,5 @@
 import { PlayIcon, Trash2Icon } from "lucide-react";
+import { memo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,9 +13,23 @@ interface HistoryEntryItemProps {
   undoableRemove: (id: string) => void;
 }
 
-export function HistoryEntryItem({ entry, onLoad, undoableRemove }: HistoryEntryItemProps) {
+export const HistoryEntryItem = memo(function HistoryEntryItem({
+  entry,
+  onLoad,
+  undoableRemove,
+}: HistoryEntryItemProps) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
   return (
-    <div className="group px-3 py-2 hover:bg-muted/40">
+    <fieldset
+      className="group min-w-0 px-3 py-2 hover:bg-muted/40"
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+      }}
+    >
       <button
         type="button"
         className="block w-full text-left"
@@ -35,45 +50,47 @@ export function HistoryEntryItem({ entry, onLoad, undoableRemove }: HistoryEntry
           {entry.error && <span className="text-destructive">· Fehler</span>}
         </p>
       </button>
-      <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-1.5 text-[11px]"
-          onClick={() => onLoad(entry.sql, "new")}
-        >
-          <PlayIcon className="size-3" />
-          Neuer Tab
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5 text-[11px]"
-          onClick={() => onLoad(entry.sql, "replace")}
-        >
-          Editor ersetzen
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5 text-[11px]"
-          onClick={() => {
-            useSavedQueriesStore.getState().saveQuery(firstLine(entry.sql) || "Query", entry.sql);
-            toast.success("Query dauerhaft gespeichert");
-          }}
-        >
-          Dauerhaft speichern
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-          onClick={() => undoableRemove(entry.id)}
-        >
-          <Trash2Icon className="size-3" />
-          Löschen
-        </Button>
-      </div>
-    </div>
+      {(hovered || focused) && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-[11px]"
+            onClick={() => onLoad(entry.sql, "new")}
+          >
+            <PlayIcon className="size-3" />
+            Neuer Tab
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 text-[11px]"
+            onClick={() => onLoad(entry.sql, "replace")}
+          >
+            Editor ersetzen
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 text-[11px]"
+            onClick={() => {
+              useSavedQueriesStore.getState().saveQuery(firstLine(entry.sql) || "Query", entry.sql);
+              toast.success("Query dauerhaft gespeichert");
+            }}
+          >
+            Dauerhaft speichern
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+            onClick={() => undoableRemove(entry.id)}
+          >
+            <Trash2Icon className="size-3" />
+            Löschen
+          </Button>
+        </div>
+      )}
+    </fieldset>
   );
-}
+});

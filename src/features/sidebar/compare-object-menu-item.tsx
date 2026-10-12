@@ -1,5 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { GitCompareIcon } from "lucide-react";
 import { ContextMenuItem } from "@/components/ui/context-menu";
 import {
   type CompareObjectType,
@@ -63,8 +62,7 @@ export function CompareObjectMenuItem({
         void navigate({ to: "/compare", search: { compareId: id, setup: true } });
       }}
     >
-      <GitCompareIcon />
-      Vergleich erstellen
+      Vergleichen…
     </ContextMenuItem>
   );
 }

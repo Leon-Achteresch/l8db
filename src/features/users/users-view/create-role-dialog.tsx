@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-
 import { useNavigate } from "@tanstack/react-router";
 import { Loader, Plus } from "lucide";
 import { CheckIcon } from "lucide-react";
@@ -8,15 +7,16 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@/features/shell/workbench-dialog";
 import { defaultCreateForm } from "@/features/users/users-view/constants";
 import { SwitchRow } from "@/features/users/users-view/switch-row";
 import type { CreateFormState } from "@/features/users/users-view/types";
@@ -26,7 +26,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 
-export function CreateRoleDialog({
+function CreateRoleDialogContent({
   open,
   onOpenChange,
   allRoles,
@@ -78,7 +78,7 @@ export function CreateRoleDialog({
   }, [connection, database, form, queryClient, onOpenChange, navigate]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={creating} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Neue Rolle erstellen</DialogTitle>
@@ -218,3 +218,5 @@ export function CreateRoleDialog({
     </Dialog>
   );
 }
+
+export const CreateRoleDialog = asWorkbenchTab(CreateRoleDialogContent, "Rollen-Editor");

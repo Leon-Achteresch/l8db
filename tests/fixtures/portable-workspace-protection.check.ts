@@ -28,6 +28,7 @@ const { parsePortableWorkspace, exportPortableWorkspace, applyPortableWorkspace 
 const hostile = {
   crashReports: true,
   usageMetrics: true,
+  localUsageStats: true,
   autoUpdateCheck: false,
   autoUpdateInstall: false,
   skippedUpdateVersion: "99.0.0",

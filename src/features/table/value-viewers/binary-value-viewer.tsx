@@ -12,6 +12,7 @@ import {
 } from "@/lib/value-viewers/binary";
 import { saveBytesToFile } from "@/lib/value-viewers/binary-file";
 import type { ImageFormat } from "@/lib/value-viewers/image";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { HexDumpView } from "./hex-dump-view";
 
 const BASE64_PREVIEW_BYTES = 256 * 1024;
@@ -32,7 +33,7 @@ export function BinaryValueViewer({ binary, image, fileName }: BinaryValueViewer
   const copy = async (text: string, label: string) => {
     try {
       await copyText(text);
-      toast.success(`${label} kopiert`);
+      showCopiedMessage(`${label} kopiert`);
     } catch {
       toast.error(`${label} konnte nicht kopiert werden`);
     }

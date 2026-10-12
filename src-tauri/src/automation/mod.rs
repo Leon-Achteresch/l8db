@@ -73,6 +73,7 @@ pub fn services_from_app(app: &AppHandle) -> Result<Services, String> {
             let _ = emitter.emit("automation-event", event);
         }),
         headless: false,
+        require_password: true,
     })
 }
 

@@ -29,6 +29,7 @@ export function useVersioning() {
   const [branchTargetId, updateBranchTargetId] = useState("");
   const [requestedReleaseId, setRequestedReleaseId] = useState("");
   const [requestedTargetIds, setRequestedTargetIds] = useState<string[]>([]);
+  const [requestedRollbackId, setRequestedRollbackId] = useState("");
   const [dirty, updateDirty] = useState(false);
   const dirtyRef = useRef(false);
   const setDirty = useCallback((value: boolean) => {
@@ -108,6 +109,10 @@ export function useVersioning() {
         Boolean(error || statusError),
       );
   }, [status, releases, targets, dirty, error, statusError]);
+  useEffect(() => {
+    useVersioningPanel.setState({ branch: status?.repo === repo ? status.branch : null });
+    return () => useVersioningPanel.setState({ branch: null });
+  }, [status, repo]);
   const run = async (action: () => Promise<void>, success?: string) => {
     setBusy(true);
     setError(null);
@@ -177,6 +182,8 @@ export function useVersioning() {
     setRequestedReleaseId,
     requestedTargetIds,
     setRequestedTargetIds,
+    requestedRollbackId,
+    setRequestedRollbackId,
     busy,
     error: error ?? statusError,
     message,

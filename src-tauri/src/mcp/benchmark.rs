@@ -780,6 +780,7 @@ mod tests {
             exposed,
             read_only: false,
             allow_ddl: false,
+            allow_scripts: false,
             redact_columns: vec![],
             mask_rules: vec![],
             environment: None,

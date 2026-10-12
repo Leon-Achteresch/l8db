@@ -1,12 +1,15 @@
 import { type Column, createCell, flexRender } from "@tanstack/react-table";
 import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
+import { shortUuid } from "@/lib/grid-cell-format";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
+import { GridStyleContext } from "./data-table/grid-style-context";
 import { DataTableCellBadge } from "./data-table-cell/data-table-cell-badge";
 import { DataTableEditingCell } from "./data-table-cell/data-table-editing-cell";
+import { SemanticCellValue } from "./data-table-cell/semantic-cell-value";
 import { VALUE_CLASSES } from "./data-table-cell/value-classes";
 import type { DataTableRowProps } from "./data-table-row";
 import type { TableRow } from "./data-table-types";
@@ -92,7 +95,13 @@ export const DataTableCell = memo(function DataTableCell({
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
     [value, dataType, cellIndex, hasCustomContent],
   );
-  const previewLimit = cellPreviewLimit(previewWidth, fontSize);
+  const gridStyle = useContext(GridStyleContext);
+  const tableStyle = gridStyle.style;
+  const columnStyle = cellIndex > 0 ? gridStyle.columns.get(columnId) : undefined;
+  const previewLimit =
+    tableStyle === "classic"
+      ? cellPreviewLimit(previewWidth, fontSize)
+      : Math.max(8, Math.ceil(previewWidth / (fontSize * 0.5)));
   const preview = useMemo(
     () =>
       badge?.text
@@ -174,13 +183,31 @@ export const DataTableCell = memo(function DataTableCell({
         ...(isSticky ? { "--cell-tint": stickyTint } : null),
       }}
       className={cn(
-        "px-3 py-[var(--ui-cell-padding)] align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden font-mono text-xs",
+        "align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden font-mono text-xs",
+        tableStyle === "classic"
+          ? "px-3 py-[var(--ui-cell-padding)]"
+          : tableStyle === "semantic"
+            ? "px-2 py-[max(0rem,calc(var(--ui-cell-padding)-0.125rem))]"
+            : "px-2 py-[max(0rem,calc(var(--ui-cell-padding)-0.25rem))]",
         cellIndex > 0 &&
-          (monochromeCells
-            ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
-            : VALUE_CLASSES[preview.kind]),
+          tableStyle !== "semantic" &&
+          (tableStyle !== "classic" && preview.kind === "null"
+            ? "text-muted-foreground/60 italic"
+            : monochromeCells
+              ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
+              : VALUE_CLASSES[preview.kind]),
+        cellIndex > 0 && tableStyle === "semantic" && "text-foreground/90",
+        tableStyle === "semantic" &&
+          cellIndex > 0 &&
+          !columnStyle?.numeric &&
+          columnStyle?.kind !== "key" &&
+          columnStyle?.kind !== "uuid" &&
+          "font-sans",
+        tableStyle === "semantic" && hasCustomContent && "text-blue-600 dark:text-blue-400",
+        tableStyle !== "classic" && columnStyle?.numeric && "text-right tabular-nums",
         cellIndex === 0 &&
           "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none font-mono text-xs",
+        cellIndex === 0 && tableStyle !== "classic" && "px-1",
         cellIndex === 0 && isMarked && "text-primary",
         pinnedOffset !== null &&
           "sticky z-10 border-r border-border shadow-[1px_0_0_0_var(--border)]",
@@ -230,6 +257,15 @@ export const DataTableCell = memo(function DataTableCell({
           <DataTableCellBadge badge={badge} />
           {preview.text}
         </>
+      ) : tableStyle === "semantic" ? (
+        <SemanticCellValue
+          value={value}
+          preview={preview}
+          column={columnStyle}
+          now={gridStyle.now}
+        />
+      ) : tableStyle !== "classic" && preview.kind === "uuid" ? (
+        shortUuid(String(value))
       ) : (
         preview.text
       )}

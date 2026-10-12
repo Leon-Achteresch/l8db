@@ -3,6 +3,7 @@ import type { SavedConnection } from "@/lib/connections";
 export interface ConnectionEditorProps {
   connection?: SavedConnection;
   template?: SavedConnection;
+  initialUrl?: string;
   onSaved: () => void;
   onCancel: () => void;
 }

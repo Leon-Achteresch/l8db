@@ -5,10 +5,7 @@ import { useTourStore } from "@/lib/tour/store";
 export function TourSection() {
   return (
     <div data-tour="tour-settings">
-      <SettingsRow
-        title="Produkttour"
-        description="Kapitelweise Führung durch Verbindungen, Explorer, SQL und Einstellungen. Startet immer bei Kapitel 1."
-      >
+      <SettingsRow settingId="tour">
         <Button
           type="button"
           size="sm"

@@ -15,22 +15,25 @@ export function getVirtualRowModel<T extends RowData>(cacheSize = 512) {
       if (source === data) return model;
       source = data;
       const cache = new Map<number, Row<T>>();
-      const ids = new Map<number, string>();
+      const cachedIndicesById = new Map<string, number>();
       let indicesById: Map<string, number> | undefined;
-      const getId = (index: number) => {
-        let id = ids.get(index);
-        if (id === undefined) {
-          id = table.options.getRowId?.(data[index], index) ?? String(index);
-          ids.set(index, id);
-        }
-        return id;
-      };
+      const getId = (index: number) =>
+        table.options.getRowId?.(data[index], index) ?? String(index);
       const getRow = (index: number) => {
         let row = cache.get(index);
         if (row) cache.delete(index);
         else row = createRow(table, getId(index), data[index], index, 0);
         cache.set(index, row);
-        if (cache.size > Math.max(1, cacheSize)) cache.delete(cache.keys().next().value!);
+        cachedIndicesById.set(row.id, index);
+        if (cache.size > Math.max(1, cacheSize)) {
+          const oldest = cache.keys().next().value;
+          if (oldest !== undefined) {
+            const evicted = cache.get(oldest);
+            cache.delete(oldest);
+            if (evicted && cachedIndicesById.get(evicted.id) === oldest)
+              cachedIndicesById.delete(evicted.id);
+          }
+        }
         return row;
       };
       const arrayIndex = (key: string | symbol) => {
@@ -65,19 +68,27 @@ export function getVirtualRowModel<T extends RowData>(cacheSize = 512) {
         }
         return indicesById;
       };
+      const indexById = (key: string | symbol) => {
+        if (typeof key !== "string") return undefined;
+        const cached = cachedIndicesById.get(key);
+        if (cached !== undefined) return cached;
+        if (table.options.getRowId) return idIndices().get(key);
+        const index = arrayIndex(key);
+        return index < 0 ? undefined : index;
+      };
       const rowsById = new Proxy(Object.create(null) as Record<string, Row<T>>, {
         get(_, key) {
-          const index = typeof key === "string" ? idIndices().get(key) : undefined;
+          const index = indexById(key);
           return index === undefined ? undefined : getRow(index);
         },
         has(_, key) {
-          return typeof key === "string" && idIndices().has(key);
+          return indexById(key) !== undefined;
         },
         ownKeys() {
           return [...idIndices().keys()];
         },
         getOwnPropertyDescriptor(_, key) {
-          const index = typeof key === "string" ? idIndices().get(key) : undefined;
+          const index = indexById(key);
           return index === undefined
             ? undefined
             : { configurable: true, enumerable: true, get: () => getRow(index) };

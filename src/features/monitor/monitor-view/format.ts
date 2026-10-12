@@ -1,5 +1,3 @@
-import type { SessionInfo } from "@/lib/db";
-
 export function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -33,17 +31,6 @@ export function formatDateTime(value: number | string | null): string {
   });
 }
 
-export function formatElapsed(value: string | null): string {
-  if (!value) return "—";
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return "—";
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return `${seconds} s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
-
 export function firstLine(sql: string): string {
   const line =
     sql
@@ -60,18 +47,30 @@ export function levelVariant(level: string): "destructive" | "secondary" | "outl
   return "outline";
 }
 
-export function sessionPriority(session: SessionInfo): number {
-  if (session.blocked_by.length > 0) return 0;
-  if (session.state === "active") return 1;
-  if (session.wait_event) return 2;
-  return 3;
+export function formatSeconds(totalSeconds: number | null): string {
+  if (totalSeconds == null || !Number.isFinite(totalSeconds)) return "—";
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ${String(seconds % 60).padStart(2, "0")} s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} h ${String(minutes % 60).padStart(2, "0")} min`;
+  return `${Math.floor(hours / 24)} d ${hours % 24} h`;
 }
 
-export function sessionStateVariant(
-  session: SessionInfo,
-): "default" | "secondary" | "destructive" | "outline" {
-  if (session.blocked_by.length > 0) return "destructive";
-  if (session.state === "active") return "default";
-  if (session.wait_event) return "secondary";
-  return "outline";
+export function secondsSince(value: string | null | undefined, now: number): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  return Math.max(0, (now - timestamp) / 1000);
+}
+
+export function formatCount(value: number | null, digits = 0): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("de-DE", { maximumFractionDigits: digits });
+}
+
+export function formatPercent(value: number | null, digits = 0): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value.toLocaleString("de-DE", { maximumFractionDigits: digits })} %`;
 }

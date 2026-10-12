@@ -21,6 +21,7 @@ pub struct ExecutionOptions {
     pub job_id: Option<String>,
     pub query_timeout: Option<u64>,
     pub connection_timeout: Option<u64>,
+    pub max_rows: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -75,6 +76,12 @@ pub fn cancellation_token() -> CancellationToken {
         .unwrap_or_default()
 }
 
+pub fn interrupted() -> bool {
+    CONTEXT
+        .try_with(|ctx| ctx.interrupted.load(Ordering::Acquire))
+        .unwrap_or(false)
+}
+
 pub fn session_id() -> Option<String> {
     SESSION.try_with(Clone::clone).ok().flatten()
 }
@@ -96,6 +103,14 @@ where
     F: Future<Output = T>,
 {
     ROW_LIMIT.scope(limit, future).await
+}
+
+pub fn result_row_cap(maximum: usize) -> usize {
+    CONTEXT
+        .try_with(|ctx| ctx.options.max_rows)
+        .ok()
+        .flatten()
+        .map_or(maximum, |rows| rows.clamp(1, maximum))
 }
 
 pub fn query_duration() -> Duration {
@@ -256,6 +271,14 @@ impl PgSession {
         Ok(guard)
     }
 
+    pub fn try_lock_healthy(&self) -> Option<tokio::sync::MutexGuard<'_, tokio_postgres::Client>> {
+        if self.interrupted.load(Ordering::Acquire) {
+            return None;
+        }
+        let client = self.client.try_lock().ok()?;
+        (!client.is_closed() && !self.interrupted.load(Ordering::Acquire)).then_some(client)
+    }
+
     pub async fn available(&self) -> bool {
         let client = self.client.lock().await;
         !self.interrupted.load(Ordering::Acquire) && !client.is_closed()
@@ -276,11 +299,7 @@ impl PgSession {
     }
 
     pub fn finish<T>(&self, result: Result<T, String>) -> Result<T, String> {
-        if self.interrupted.load(Ordering::Acquire)
-            || CONTEXT
-                .try_with(|ctx| ctx.interrupted.load(Ordering::Acquire))
-                .unwrap_or(false)
-        {
+        if self.interrupted.load(Ordering::Acquire) || interrupted() {
             self.interrupted.store(true, Ordering::Release);
             if result.is_ok() {
                 return Err("Abfrage abgeschlossen, während ihr Abbruch angefordert wurde. Die Sitzung wird nicht weiterverwendet; offene Transaktion zurückrollen.".into());
@@ -414,6 +433,31 @@ mod tests {
         .await;
         assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
+    }
+
+    #[tokio::test]
+    async fn result_row_cap_is_scoped_and_bounded() {
+        let capped = |max_rows| {
+            run(
+                Some(ExecutionOptions {
+                    max_rows,
+                    ..Default::default()
+                }),
+                false,
+                async { Ok(result_row_cap(1000)) },
+            )
+        };
+        let (small, zero, large, unset) = tokio::join!(
+            capped(Some(25)),
+            capped(Some(0)),
+            capped(Some(5000)),
+            capped(None)
+        );
+        assert_eq!(small.unwrap(), 25);
+        assert_eq!(zero.unwrap(), 1);
+        assert_eq!(large.unwrap(), 1000);
+        assert_eq!(unset.unwrap(), 1000);
+        assert_eq!(result_row_cap(1000), 1000);
     }
 
     #[tokio::test]

@@ -19,6 +19,7 @@ import { capabilitiesFor } from "@/lib/providers";
 import { activateConnection, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function useDataCompare(left: DataCompareSideSelection, right: DataCompareSideSelection) {
   const navigate = useNavigate();
@@ -204,7 +205,7 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
     if (!script?.sql) return;
     try {
       await copyText(script.sql);
-      toast.success("Skript kopiert");
+      showCopiedMessage("Skript kopiert");
     } catch (copyError) {
       toast.error(`Skript konnte nicht kopiert werden: ${errorMessage(copyError)}`);
     }

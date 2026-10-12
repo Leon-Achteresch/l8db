@@ -31,15 +31,33 @@ Keep checks fast: run only what the change can break, once at the end, not after
 | `src/**/*.ts(x)` | `npx tsc -p tsconfig.app.json --noEmit`, `bunx biome check <changed files>`, and only the tests that cover the change (`grep -l <module> tests/*.test.ts`) |
 | `src-tauri/**/*.rs` | `cargo check`, plus `cargo test <module>` if logic changed |
 
-- Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, browser/perf/integration/E2E tests, `production:check`, `tauri build`.
+- Every runtime feature, including small additions, needs a scoped performance regression test. Extend an existing scenario when possible. Cover realistic large inputs, latency (median/p95), retained memory or bounded allocations/DOM, and database request counts/concurrency where applicable; include cancellation and idle behavior for background work. Functional correctness alone does not establish performance.
+- Run the feature's performance tests once after implementation and record the measured workload and limits. `bun run test:perf:core` covers shared cache/grid budgets; browser, constrained CPU/heap, and PostgreSQL suites run in `.github/workflows/performance.yml`. Document a baseline and resulting measurements for optimizations. Do not loosen budgets to make a regression pass.
+- Real platform results and CPU/heap simulation are separate evidence. Never claim every computer or database family was tested; record OS, architecture, CPU, RAM, runtime, and missing coverage. Prefer eliminating duplicate reads, bounding results and caches, and cancelling abandoned work over increasing database concurrency or automatic polling.
+
+- Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, unrelated browser/perf/integration/E2E tests, `production:check`, `tauri build`. Scoped performance tests required above are included in the change's checks.
 - Do not re-run a check that already passed, and do not wait for CI.
 - If a check fails for reasons unrelated to your change, report it instead of fixing it.
 
 ## Git & Releases
 
-- Daily work goes to `development` (features: `merge --no-ff`).
-- Releases follow semantic-release: every push to `main` publishes automatically. `/release` (`.claude/skills/release/SKILL.md`) opens or updates the PR `development` → `main`; it is merged with a merge commit, never squashed. No release branches, no version PR, no back-merge.
-- Versions come from Conventional Commits since the last tag (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE:` → major, minor before 1.0; anything else alone releases nothing). The version in `package.json`/Cargo/`tauri.conf.json` and `CHANGELOG.md` are set only inside the release runners and are not maintained in the repo; see `.github/RELEASING.md`. Commit messages must use Conventional Commit prefixes.
+- Daily work happens directly on `development`; `development` publishes nothing. Do not create worktrees or switch branches in a checkout used by other agents. Existing feature branches are integrated with `merge --no-ff` from a separate, clean clone on `development`.
+- Before starting any change, synchronize `development` using the parallel-work protocol below. When a change is finished, commit only your changes and push to `origin/development` using that protocol.
+- Canary: every push to `canary` publishes a GitHub pre-release `vX.Y.Z-canary.N` (never "Latest"). `/canary` (`.claude/skills/canary/SKILL.md`) fast-forwards `canary` to `development` after confirmation; never force-push or commit directly to `canary`.
+- Stable: every push to `main` publishes `vX.Y.Z`. `/release` (`.claude/skills/release/SKILL.md`) opens or updates the PR `canary` → `main`; it is merged with a merge commit, never squashed. No release branches, no version PR, no back-merge, except after a hotfix (`fix/*` from `main` → PR → `main`): merge `main` into `development` right away, then run `/canary`.
+- Versions come from Conventional Commits since the last stable tag (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE:` → major, minor before 1.0; anything else alone releases nothing). Canary `N` counts per target version. The version in `package.json`/Cargo/`tauri.conf.json` and `CHANGELOG.md` are set only inside the release runners and are not maintained in the repo; see `.github/RELEASING.md`. Commit messages must use Conventional Commit prefixes.
+- Users pick the update channel (Stable/Canary) in Settings → About; both channels check through `check_update` (`src-tauri/src/updates.rs`, wrapper `src/lib/db/updates.ts`).
+
+## Parallel agents (no worktrees)
+
+- Work directly on `development`; no worktrees or branch switching. Finish with your commit on `origin/development`.
+- Shared checkout: serialize Git writes (fetch/pull/add/commit/merge/push) with `flock -w 30 .git/agent-coordination.lock bash -c '<commands>'`. Lock the entire transaction, not individual commands; locks end with the shell. Never delete the lock file. Release before waiting; retry on timeout.
+- Before editing, inspect status and relevant diffs. Re-read files before focused edits and preserve concurrent changes.
+- Preserve existing dirty/staged/untracked/deleted files. Format only files changed by your task. No broad staging, `commit -a`, destructive reset/clean/restore, stash, rebase, or force-push.
+- Start: under the lock, verify `development`, fetch, then pull `--ff-only` with autostash disabled when safe. If updating needs a clean checkout, preserve pending changes and defer the update. Divergence requires a merge.
+- Finish: run scoped required checks; under one lock verify branch and empty index, stage only owned paths (`git add -- <paths>`), review staged diff, commit, fetch, push. If remote advanced or rejects the push, merge `origin/development` with a clean checkout, then retry. Resolve conflicts preserving both features; never choose entire files with ours/theirs. Recheck only affected behavior.
+- Separate clones: fetch/merge/retry handles competing pushes. Same development-only and preservation rules apply.
+- Complete only after verifying your commit is reachable from fetched `origin/development` and its feature survives integration. Report commit and checks; leave other agents' pending changes intact. Read only relevant diffs, batch independent reads, and avoid repeating checks or instructions.
 
 ## Toolchain
 
@@ -82,6 +100,7 @@ All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitio
 - Secrets live in the OS keychain (`store_secret`/`load_secret`/`delete_secret`); `connectionString` in the store is the *direct* URL, `tunnelPort` is memory-only, `effectiveConnectionString()` resolves the usable URL. All `invoke()` call sites must use the effective URL.
 - `fetch_table_rows` defaults to 100 rows. Simple (builder-generated) filters are validated server-side (`validate_table_filter`: string literals are stripped, then `; -- /* */ UNION RETURNING INTO` are rejected); explicit raw SQL sets `allow_raw=true` (`fetch_table_rows`/`count_table_rows`, threaded from the SQL filter modes via `filterRaw`/`fkRaw`).
 - Object storage: the `s3` family (`src-tauri/src/db/s3/`) sets the `object_storage` capability. Its UI lives in `src/features/storage/` and talks to dedicated `s3_*` commands (`src/lib/db/storage.ts`); the generic adapter only maps buckets to tables for SQL/MCP. MinIO lab: `scripts/minio-lab.sh` (see `docs/providers.md`).
+- CLI (`src-tauri/src/cli/`, clap): the app binary doubles as `l8db <befehl>` (`conn`, `query`, `table`, `db`, `schema`, `open`, `task`, `check`, `mcp`, `completions`); `cli::wants` decides CLI vs. app before Tauri starts. Connections come from the automation mirror (`automation::connection::resolve`), never a second store. Help/errors are German; add every new example to a help text so `every_documented_example_parses` covers it. See `docs/cli.md`.
 - `smoke_adapters_from_env` (ignored) exercises every adapter whose `L8DB_SMOKE_<KIND>_URL` env var is set (see `docs/providers.md`).
 - Ignored Rust tests under `#[ignore]` need a local lab: Postgres 18 on `127.0.0.1:5433` (`postgres`/`testpw`, db `testdb`, `wal_level=logical`; override via `L8DB_E2E_PG_URL`) plus OpenSSH on `127.0.0.1:2222` (root login, provider hostname `l8db-pg`; overrides `L8DB_E2E_SSH_HOST`/`_PORT`, client key via `L8DB_E2E_KEY_FILE`, isolated known_hosts via `L8DB_KNOWN_HOSTS`). Subscription tests create a `testsub` database and clean up after themselves; `connect=false` keeps CREATE SUBSCRIPTION deterministic (no worker timing).
 

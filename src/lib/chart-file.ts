@@ -6,8 +6,11 @@ import {
   createId,
   type Dashboard,
   type Dataset,
+  dashboardPages,
+  pageOf,
   settle,
   type Widget,
+  widgetsOnPage,
 } from "@/lib/dashboards";
 
 export interface ChartFile {
@@ -106,18 +109,23 @@ export function confirmChartSql(chart: ChartFile): boolean {
 export function insertChartFile(
   dashboard: Dashboard,
   chart: ChartFile,
+  pageId?: string,
 ): { dataset: Dataset; widget: Widget } {
   const dataset = { ...structuredClone(chart.dataset), id: createId() };
+  const pages = dashboardPages(dashboard);
+  const page = pageOf({ page: pageId }, pages);
+  const { block: _block, ...source } = structuredClone(chart.widget);
   const widget = settle(
     {
-      ...structuredClone(chart.widget),
+      ...source,
       id: createId(),
       datasetId: dataset.id,
       title: chart.name,
+      page: dashboard.pages?.length ? page : undefined,
       x: 0,
       y: 0,
     },
-    dashboard.widgets,
+    widgetsOnPage(dashboard.widgets, pages, page),
   );
   return { dataset, widget };
 }

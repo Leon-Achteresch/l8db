@@ -1,6 +1,5 @@
 import { CalendarIcon, CopyIcon, HashIcon, ListIcon, Trash2Icon, TypeIcon } from "lucide-react";
 import { useId, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,6 +10,7 @@ import {
   variableToken,
 } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { VariableControl } from "./variable-control";
 
 const TYPES: { type: VariableType; label: string; Icon: typeof TypeIcon; example: string }[] = [
@@ -147,7 +147,7 @@ export function VariableEditor({
           type="button"
           onClick={() => {
             void navigator.clipboard?.writeText(variableToken(name));
-            toast.success("Platzhalter kopiert");
+            showCopiedMessage("Platzhalter kopiert");
           }}
           className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 font-mono text-[11px] text-foreground hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring"
         >

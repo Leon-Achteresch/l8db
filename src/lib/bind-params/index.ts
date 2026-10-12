@@ -1,4 +1,4 @@
-export { detectBindParams, scanBindParams } from "./scan";
+export { detectBindParams, editorBindParams, scanBindParams } from "./scan";
 export type {
   BindParamOccurrence,
   BindParamRef,

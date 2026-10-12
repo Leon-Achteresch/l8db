@@ -8,11 +8,14 @@ use serde_json::{json, Value};
 
 const PREVIEW_ROWS: usize = 20;
 const MAX_CELL: usize = 120;
+const PREVIEW_COLUMNS: usize = 50;
+const MAX_PROMPT: usize = 32_000;
 
 pub fn prompt(attachments: &[Attachment]) -> String {
     let mut text = String::new();
+    let file_budget = (MAX_PROMPT / attachments.len().max(1)).min(8_000);
     for file in attachments {
-        text.push_str(&format!(
+        let mut preview = format!(
             "\nAttached file \"{}\" ({:?}, {} rows, columns: {}). First rows as TSV:\n{}\n",
             file.name,
             file.format,
@@ -21,6 +24,7 @@ pub fn prompt(attachments: &[Attachment]) -> String {
                 .unwrap_or_else(|| "unknown".into()),
             file.columns
                 .iter()
+                .take(PREVIEW_COLUMNS)
                 .enumerate()
                 .map(|(index, column)| match file.types.get(index) {
                     Some(kind) if !kind.is_empty() => format!("{column} ({kind})"),
@@ -33,6 +37,7 @@ pub fn prompt(attachments: &[Attachment]) -> String {
                 .take(PREVIEW_ROWS)
                 .map(|row| row
                     .iter()
+                    .take(PREVIEW_COLUMNS)
                     .map(|cell| cell
                         .as_deref()
                         .unwrap_or("NULL")
@@ -44,7 +49,15 @@ pub fn prompt(attachments: &[Attachment]) -> String {
                     .join("\t"))
                 .collect::<Vec<_>>()
                 .join("\n")
-        ));
+        );
+        if file.columns.len() > PREVIEW_COLUMNS {
+            preview.push_str(&format!(
+                "[{} further columns omitted from preview]\n",
+                file.columns.len() - PREVIEW_COLUMNS
+            ));
+        }
+        text.push_str(&crate::mcp::server::cap(preview, file_budget));
+        text.push('\n');
     }
     if !text.is_empty() {
         text.push_str("To load an attached file into the database use the import_file tool; it always creates a new table and asks the user first.\n");
@@ -301,6 +314,29 @@ mod tests {
             "columns": ["id", "name"], "rows": [["1", "Anna"]], "totalRows": 1
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn wide_attachments_share_a_bounded_preview_budget() {
+        let mut wide = file();
+        wide.columns = (0..100).map(|index| format!("column_{index}")).collect();
+        wide.rows = vec![vec![Some("🦆".repeat(200)); 100]; 20];
+        let files: Vec<_> = (0..10)
+            .map(|index| Attachment {
+                name: format!("file_{index}.csv"),
+                ..wide.clone()
+            })
+            .collect();
+        let preview = prompt(&files);
+        assert!(preview.chars().count() < MAX_PROMPT + 2_000);
+        for file in &files {
+            assert!(preview.contains(&file.name));
+        }
+        assert!(preview.contains("truncated"));
+        assert!(!preview.contains("column_50"));
+        assert_eq!(files[0].columns.len(), 100);
+        assert_eq!(files[0].rows[0].len(), 100);
+        assert_eq!(prompt(&[]), "");
     }
 
     #[test]

@@ -199,6 +199,73 @@ export async function seedApp(
           }
           case "load_secret":
             return args?.account === "perf" ? password : null;
+          case "live_metrics": {
+            const tick = Math.floor(Date.now() / 1000);
+            const record = window as unknown as { __liveMetricsCalls?: number };
+            record.__liveMetricsCalls = (record.__liveMetricsCalls ?? 0) + 1;
+            return {
+              connections: 18,
+              max_connections: 100,
+              active_sessions: 12,
+              waiting_locks: 3,
+              database_size_bytes: args?.includeDetails ? 2_576_980_378 : null,
+              commits: tick * 1480,
+              rollbacks: tick * 2,
+              queries_read: tick * 1500,
+              queries_write: tick * 500,
+              queries_other: tick * 100,
+              rows_read: tick * 90_000,
+              rows_written: tick * 2_000,
+              blocks_read: tick * 12,
+              blocks_hit: tick * 40_000,
+              temp_bytes: 0,
+              deadlocks: 0,
+              cpu_busy: tick * 28,
+              cpu_total: tick * 100,
+              server_version: "18.0",
+              uptime_seconds: 3600,
+              timezone: "Europe/Berlin",
+              default_isolation: "read committed",
+              in_recovery: false,
+              replay_delay_ms: null,
+              replication: [],
+              table_io: [],
+            };
+          }
+          case "list_sessions": {
+            const count = Number(localStorage.getItem("l8db.perf.sessions") ?? 0);
+            const now = Date.now();
+            return Array.from({ length: count }, (_, index) => ({
+              pid: 8000 + index,
+              user: `user_${index % 7}`,
+              database: "l8db_perf",
+              application: `app_${index % 5}`,
+              client_addr: `192.168.1.${index % 250}`,
+              state: index % 4 === 0 ? "idle" : "active",
+              query: `SELECT o.id, o.total FROM orders o WHERE o.id = ${index}`,
+              query_start: new Date(now - index * 1000).toISOString(),
+              transaction_start: null,
+              wait_event: null,
+              is_self: index === 0,
+              blocked_by: index % 50 === 1 ? [8000] : [],
+              client_port: 50000 + index,
+              backend_start: new Date(now - 3_600_000).toISOString(),
+              state_change: new Date(now - index * 1000).toISOString(),
+              backend_xid: null,
+              wait_event_type: null,
+              backend_type: "client backend",
+            }));
+          }
+          case "list_locks": {
+            const count = Number(localStorage.getItem("l8db.perf.sessions") ?? 0);
+            return Array.from({ length: count }, (_, index) => ({
+              pid: 8000 + index,
+              lock_type: "relation",
+              relation: `public.table_${String(index % 100).padStart(4, "0")}`,
+              mode: "AccessShareLock",
+              granted: index % 50 !== 1,
+            }));
+          }
           default:
             return [];
         }

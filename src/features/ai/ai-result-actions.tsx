@@ -14,6 +14,7 @@ import type { AiTable } from "@/lib/ai/result";
 import { DEFAULT_CSV_OPTIONS, serializeCsv } from "@/lib/export";
 import { useTableTabs } from "@/lib/table-tabs";
 import { saveBytesToFile } from "@/lib/value-viewers/binary-file";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { buildXlsx } from "@/lib/xlsx";
 
 function fileName(title: string, extension: string) {
@@ -93,7 +94,7 @@ export function AiResultActions({
             <DropdownMenuItem
               onSelect={() => {
                 void navigator.clipboard?.writeText(sql);
-                toast.success("SQL kopiert");
+                showCopiedMessage("SQL kopiert");
               }}
             >
               <Copy className="size-3.5" />

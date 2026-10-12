@@ -6,7 +6,11 @@ import { CLICKHOUSE_TYPES, COMMON_TYPES } from "@/features/tables/create-table-v
 import { loadTemplateColumns } from "@/features/tables/create-table-view/load-template-columns";
 import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
-import { constraintDialectInfo, renameConstraintColumn } from "@/lib/constraint-designer";
+import {
+  type ConstraintKind,
+  constraintDialectInfo,
+  renameConstraintColumn,
+} from "@/lib/constraint-designer";
 import {
   type ColumnDefinition,
   type CreateTableRequest,
@@ -17,6 +21,7 @@ import {
 } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function useCreateTable() {
   const connection = useActiveConnection();
@@ -58,6 +63,7 @@ export function useCreateTable() {
   const [constraintDialog, setConstraintDialog] = useState<{
     key: number;
     index: number | null;
+    kind?: ConstraintKind;
   } | null>(null);
 
   const incomplete = !tableName.trim() || columns.some((c) => !c.name.trim());
@@ -159,7 +165,7 @@ export function useCreateTable() {
     if (!ddl) return;
     try {
       await copyText(ddl);
-      toast.success("SQL kopiert.");
+      showCopiedMessage("SQL kopiert.");
     } catch {
       toast.error("SQL konnte nicht kopiert werden.");
     }
@@ -179,8 +185,8 @@ export function useCreateTable() {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
 
-  const openConstraintDialog = (index: number | null) =>
-    setConstraintDialog({ key: Date.now(), index });
+  const openConstraintDialog = (index: number | null, kind?: ConstraintKind) =>
+    setConstraintDialog({ key: Date.now(), index, kind });
 
   const closeConstraintDialog = () => setConstraintDialog(null);
 

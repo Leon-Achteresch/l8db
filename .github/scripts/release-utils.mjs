@@ -5,6 +5,7 @@ import { appendFileSync } from "node:fs";
 
 export const REPOSITORY = "Leon-Achteresch/l8db";
 export const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+export const CANARY_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-canary\.([1-9]\d*)$/;
 
 export function compareVersions(left, right) {
   assert(VERSION_PATTERN.test(left) && VERSION_PATTERN.test(right), "Invalid stable version");
@@ -14,6 +15,20 @@ export function compareVersions(left, right) {
     if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
   }
   return 0;
+}
+
+export function compareReleases(left, right) {
+  assert(
+    [left, right].every((version) => VERSION_PATTERN.test(version) || CANARY_PATTERN.test(version)),
+    "Invalid release version",
+  );
+  const [leftCore, leftCanary] = left.split("-canary.");
+  const [rightCore, rightCanary] = right.split("-canary.");
+  const core = compareVersions(leftCore, rightCore);
+  if (core || leftCanary === rightCanary) return core;
+  if (leftCanary === undefined) return 1;
+  if (rightCanary === undefined) return -1;
+  return Math.sign(Number(leftCanary) - Number(rightCanary));
 }
 
 export function nextVersion(current, latest, bump = "patch") {
@@ -73,21 +88,22 @@ export function api(route) {
   return JSON.parse(gh("api", route));
 }
 
-export function releases() {
+export function releases(channel = "stable") {
+  const canary = channel === "canary";
   return JSON.parse(gh("api", "--paginate", "--slurp", `repos/${REPOSITORY}/releases?per_page=100`))
     .flat()
     .filter(
       (release) =>
         release.tag_name.startsWith("v") &&
-        VERSION_PATTERN.test(release.tag_name.slice(1)) &&
-        !release.prerelease,
+        (canary ? CANARY_PATTERN : VERSION_PATTERN).test(release.tag_name.slice(1)) &&
+        release.prerelease === canary,
     );
 }
 
 export function newestRelease(all) {
   return all
     .filter((release) => !release.draft)
-    .sort((a, b) => compareVersions(b.tag_name.slice(1), a.tag_name.slice(1)))[0];
+    .sort((a, b) => compareReleases(b.tag_name.slice(1), a.tag_name.slice(1)))[0];
 }
 
 export function outputs(values) {

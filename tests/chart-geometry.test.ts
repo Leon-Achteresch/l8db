@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import {
+  barPath,
   curvePath,
   niceTicks,
   squarify,
   stackValues,
-  valueDomain,
 } from "../src/features/dashboard/charts/svg-geometry";
 
 test("niceTicks deckt den Wertebereich mit runden Schritten ab", () => {
@@ -33,7 +33,15 @@ test("stackValues stapelt positive und negative Werte getrennt", () => {
     [0, 3],
     [0, 4],
   ]);
-  expect(valueDomain(stackValues(rows, ["a", "b"], true))).toEqual([-1, 5]);
+});
+
+test("barPath rundet nur das Datenende ab", () => {
+  expect(barPath(10, 20, 100, 40, 4, false)).toBe(
+    "M10,100L10,44Q10,40 14,40L26,40Q30,40 30,44L30,100Z",
+  );
+  expect(barPath(10, 20, 50, 120, 4, true)).toBe(
+    "M50,10L116,10Q120,10 120,14L120,26Q120,30 116,30L50,30Z",
+  );
 });
 
 test("squarify füllt die Fläche proportional ohne Überlappung", () => {

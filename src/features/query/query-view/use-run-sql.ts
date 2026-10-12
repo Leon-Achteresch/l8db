@@ -5,17 +5,19 @@ import {
   type BindParamRef,
   type BindParamValue,
   buildParameterizedQuery,
-  detectBindParams,
+  editorBindParams,
   inlineBindValues,
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
+import { viewableSelect } from "@/lib/query-result-view";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { recordUserQueryOutcome } from "@/lib/telemetry";
 
 import { executeSqlWithTransactions } from "./execute-sql";
 import { rowCountOf, withCreateNotice } from "./result-text";
@@ -35,6 +37,7 @@ interface UseRunSqlParams {
   setEditorFocus: (focus: boolean) => void;
   collectOutput: () => Promise<void>;
   runMultiStatement: (text: string) => Promise<void>;
+  confirmPreview: (sql: string, bound?: boolean) => Promise<boolean>;
 }
 
 export function useRunSql({
@@ -49,6 +52,7 @@ export function useRunSql({
   setEditorFocus,
   collectOutput,
   runMultiStatement,
+  confirmPreview,
 }: UseRunSqlParams) {
   const queryClient = useQueryClient();
   const recordHistory = useQueryHistoryStore((state) => state.record);
@@ -66,11 +70,12 @@ export function useRunSql({
     setErrorSource,
     setResultState,
     setExecutedSql,
+    setViewSource,
   } = exec;
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
   const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
+    async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
       if (
@@ -78,6 +83,7 @@ export function useRunSql({
         runsOneStatementPerCall(connection.kind) &&
         splitSqlStatements(sql, connection.kind).statements.length > 1
       ) {
+        if (!previewed && !(await confirmPreview(sql))) return;
         await runMultiStatement(sql);
         return;
       }
@@ -87,7 +93,7 @@ export function useRunSql({
         caps.query_language !== "redis" &&
         caps.query_language !== "json"
       ) {
-        const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
+        const refs = editorBindParams(sql);
         if (refs.length > 0) {
           setBindValues((previous) => {
             const next: Record<string, BindParamValue> = {};
@@ -102,6 +108,8 @@ export function useRunSql({
           return;
         }
       }
+      if (!previewed && !(await confirmPreview(sql, Boolean(bound)))) return;
+      if (runningRef.current) return;
       setEditorFocus(false);
       const currentTab = useTableTabs
         .getState()
@@ -116,6 +124,7 @@ export function useRunSql({
       setError(null);
       const startedAt = performance.now();
       const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
+        recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
         recordHistory({
           connectionId: connection.id,
           database: database ?? null,
@@ -144,6 +153,9 @@ export function useRunSql({
           onJob: setActiveJobId,
         });
         setExecutedSql(sql);
+        const viewText =
+          !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
+        setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
@@ -151,6 +163,7 @@ export function useRunSql({
         setError(message);
         const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
         setErrorSource(base === null ? null : { text: sql, base });
+        setViewSource(null);
         setResult(null);
         finishHistory({ rowCount: null, error: message });
       } finally {
@@ -179,10 +192,12 @@ export function useRunSql({
       setErrorSource,
       setResultState,
       setExecutedSql,
+      setViewSource,
       editorSqlRef,
       cursorOffsetRef,
       setEditorFocus,
       runMultiStatement,
+      confirmPreview,
     ],
   );
 

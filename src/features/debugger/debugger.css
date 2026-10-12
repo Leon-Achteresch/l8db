@@ -1,15 +1,15 @@
 .debug-workbench {
   display: flex;
   flex-direction: column;
-  width: min(1440px, 96vw);
+  width: 100%;
   max-width: none;
-  height: min(900px, 88dvh);
+  height: 100%;
   gap: 0;
   padding: 0;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 0;
   background: var(--background);
-  box-shadow: 0 32px 100px #0004;
+  box-shadow: none;
 }
 .debug-header { display: flex; align-items: center; gap: 14px; padding: 18px 22px; border-bottom: 1px solid var(--border); }
 .debug-brand-icon { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 11px; background: var(--muted); }
@@ -82,4 +82,6 @@
 .debug-footer-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .debug-alert { margin: 0; padding: 12px 22px; font-size: 12px; white-space: pre-wrap; color: var(--destructive); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--destructive) 5%, var(--background)); }
 @media (max-width: 900px) { .debug-engine, .debug-shortcut, .debug-file-hint { display: none; } .debug-inspector, .debug-setup { width: 280px; } .debug-toolbar { gap: 6px; padding-inline: 14px; } }
-@media (max-width: 640px) { .debug-workbench { height: 94dvh; } .debug-header { padding: 12px; gap: 9px; } .debug-brand-icon { display: none; } .debug-toolbar { flex-wrap: wrap; } .debug-body { flex-direction: column; overflow: auto; } .debug-code-pane { min-height: 260px; } .debug-inspector, .debug-setup { width: 100%; max-height: 240px; border-left: 0; border-top: 1px solid var(--border); } .debug-footer { line-height: 1.5; } }
+@media (max-width: 640px) { .debug-workbench { height: 100%; } .debug-header { padding: 12px; gap: 9px; } .debug-brand-icon { display: none; } .debug-toolbar { flex-wrap: wrap; } .debug-body { flex-direction: column; overflow: auto; } .debug-code-pane { min-height: 260px; } .debug-inspector, .debug-setup { width: 100%; max-height: 240px; border-left: 0; border-top: 1px solid var(--border); } .debug-footer { line-height: 1.5; } }
+
+.debug-workbench[data-workbench-content] { max-width: none; margin: 0; padding: 0; gap: 0; overflow: hidden; }

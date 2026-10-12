@@ -14,10 +14,11 @@ import { SetupStepper } from "./setup-stepper";
 export function ConnectionEditor({
   connection,
   template,
+  initialUrl,
   onSaved,
   onCancel,
 }: ConnectionEditorProps) {
-  const editor = useConnectionEditor({ connection, template, onSaved });
+  const editor = useConnectionEditor({ connection, template, initialUrl, onSaved });
   const {
     activeInfo,
     busy,

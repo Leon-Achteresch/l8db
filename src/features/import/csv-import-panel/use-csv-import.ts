@@ -195,10 +195,10 @@ export function useCsvImport() {
     return validateMappings(mappings, mappingTargets, parsed.rows);
   }, [parsed, mappingTargets, mappings]);
 
-  const handlePickFile = async () => {
+  const handlePickFile = async (given?: Awaited<ReturnType<typeof pickDataFile>>) => {
     setFileError(null);
     try {
-      const picked = await pickDataFile();
+      const picked = given ?? (await pickDataFile());
       if (!picked) return;
       setOutcome(null);
       if (picked.format !== "csv") {
@@ -358,6 +358,7 @@ export function useCsvImport() {
     mappingTargets,
     inferredTypes,
     conflictsSupported: caps.import_conflicts,
+    transactional: caps.transactions,
     conflict,
     setConflict,
     blocked,

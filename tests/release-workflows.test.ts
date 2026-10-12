@@ -23,6 +23,18 @@ test("compilation runs alongside CI while signing and publication require all ga
   expect(release.jobs.finalize.permissions.contents).toBe("write");
 });
 
+test("canary and stable releases queue separately and keep rpm upgrades monotonic", () => {
+  expect(release.on.push.branches).toEqual(["main", "canary"]);
+  expect(release.concurrency.group).toContain("github.ref_name");
+  expect(release.jobs.prepare.if).toContain("refs/heads/canary");
+  expect(followup.on.workflow_run.branches).toEqual(["main"]);
+  const bundle = release.jobs.package.steps.find(
+    (step: { name?: string }) => step.name === "Sign and bundle the compiled application",
+  );
+  expect(bundle.run).toContain("--bundles appimage,deb");
+  expect(bundle.run).toContain('"release":"0.canary.%s"');
+});
+
 test("post-publication work runs independently and can be resumed by published tag", () => {
   expect(release.jobs.changelog).toBeUndefined();
   expect(release.jobs["feature-videos"]).toBeUndefined();

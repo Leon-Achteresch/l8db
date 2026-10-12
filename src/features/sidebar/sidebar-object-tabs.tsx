@@ -1,12 +1,15 @@
 import type { LucideIcon } from "lucide-react";
 import { startTransition, useOptimistic } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
+import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 
 export type SidebarObjectTab = {
   value: string;
   label: string;
   icon: LucideIcon;
+  featureScope?: string;
 };
 
 export function SidebarObjectTabs({
@@ -19,6 +22,7 @@ export function SidebarObjectTabs({
   onValueChange: (value: string) => void;
 }) {
   const [shown, setShown] = useOptimistic(value);
+  const seen = useSeenNewFeatures();
   return (
     <Tabs
       value={shown}
@@ -39,10 +43,13 @@ export function SidebarObjectTabs({
           >
             <TabsTrigger
               value={tab.value}
-              className="h-full w-full px-0 transition-none"
+              className="relative h-full w-full px-0 transition-none"
               aria-label={tab.label}
             >
               <tab.icon className="size-4" />
+              {hasNewFeatures(tab.featureScope, seen) ? (
+                <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+              ) : null}
             </TabsTrigger>
           </Tooltip>
         ))}

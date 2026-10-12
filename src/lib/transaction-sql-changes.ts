@@ -1,10 +1,18 @@
 import type { SavedConnection } from "@/lib/connections";
-import type { QueryResult } from "@/lib/db";
-import { executeInTransaction, listTableColumnsDetailed } from "@/lib/db";
+import type { QueryResult, TransactionTableChanges } from "@/lib/db";
+import {
+  executeInTransaction,
+  listTableColumnsDetailed,
+  transactionDatabaseChanges,
+} from "@/lib/db";
 import { sqlTokens } from "@/lib/sql-safety";
 import { splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
-import type { TransactionChange } from "@/lib/transactions";
+import {
+  type DatabaseChanges,
+  type TransactionChange,
+  useTransactionStore,
+} from "@/lib/transactions";
 
 type Change = Omit<TransactionChange, "id" | "timestamp">;
 
@@ -69,6 +77,20 @@ function plan(sql: string, kind: SavedConnection["kind"]) {
       target: `${insert[1]}${insert[2] ? `.${insert[2]}` : ""}`,
       clean,
     };
+  const remove = new RegExp(
+    `^DELETE\\s+(?:FROM\\s+)?${TARGET}(?:\\s+WHERE\\s+([\\s\\S]+))?$`,
+    "i",
+  ).exec(clean);
+  if (remove) {
+    if (remove[3] && /\b(ORDER\s+BY|LIMIT|ROWNUM)\b/i.test(remove[3])) return null;
+    return {
+      type: "delete" as const,
+      ...targetParts(remove[1], remove[2], kind),
+      target: `${remove[1]}${remove[2] ? `.${remove[2]}` : ""}`,
+      clean,
+      where: remove[3] ?? null,
+    };
+  }
   const update = new RegExp(
     `^UPDATE\\s+${TARGET}\\s+SET\\s+([\\s\\S]+?)(?:\\s+WHERE\\s+([\\s\\S]+))?$`,
     "i",
@@ -366,8 +388,8 @@ async function executeSnapshotChanges(
         snapshotQuery(
           kind,
           parsed.target,
-          parsed.type === "update" ? parsed.where : null,
-          parsed.type === "update",
+          parsed.type === "insert" ? null : parsed.where,
+          parsed.type !== "insert",
           maxSnapshotRows + 1,
         ),
       )
@@ -388,6 +410,22 @@ async function executeSnapshotChanges(
     await internal(rollback).catch(() => undefined);
     await release().catch(() => undefined);
     throw error;
+  }
+  if (parsed.type === "delete") {
+    await release().catch(() => undefined);
+    return {
+      result,
+      changes:
+        before.length === Number(result.rows_affected)
+          ? before.map((row) => ({
+              type: "delete",
+              schema: parsed.schema,
+              table: parsed.table,
+              oldValues: row,
+              fromSql: true,
+            }))
+          : [],
+    };
   }
   try {
     let after: Record<string, unknown>[];
@@ -469,7 +507,7 @@ export async function executeWithTransactionChanges(
   try {
     let before: Record<string, unknown>[] = [];
     let keys: string[] = [];
-    if (parsed.type === "update") {
+    if (parsed.type !== "insert") {
       const selected = await internal(
         `SELECT * FROM ${parsed.target}${parsed.where ? ` WHERE ${parsed.where}\n` : ""} LIMIT 101 FOR UPDATE`,
       );
@@ -478,7 +516,7 @@ export async function executeWithTransactionChanges(
         await internal(`RELEASE SAVEPOINT ${savepoint}`);
         return fallback();
       }
-      if (before.length > 0) {
+      if (before.length > 0 && parsed.type === "update") {
         const relation = parsed.target.replaceAll("'", "''");
         const primaryKey = await internal(
           `SELECT a.attname AS name FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) WHERE i.indrelid = to_regclass('${relation}') AND i.indisprimary`,
@@ -494,7 +532,15 @@ export async function executeWithTransactionChanges(
     applied = true;
     await internal(`RELEASE SAVEPOINT ${savepoint}`);
     let changes: Change[] = [];
-    if (parsed.type === "insert" && result.rows.length <= 100) {
+    if (parsed.type === "delete") {
+      changes = result.rows.map((row) => ({
+        type: "delete",
+        schema: parsed.schema,
+        table: parsed.table,
+        oldValues: row,
+        fromSql: true,
+      }));
+    } else if (parsed.type === "insert" && result.rows.length <= 100) {
       changes = result.rows.map((row) => ({
         type: "insert",
         schema: parsed.schema,
@@ -533,4 +579,50 @@ export async function executeWithTransactionChanges(
     await internal(`RELEASE SAVEPOINT ${savepoint}`);
     return fallback();
   }
+}
+
+export function databaseChangesFrom(tables: TransactionTableChanges[]) {
+  const changes: Change[] = [];
+  const notes: string[] = [];
+  for (const table of tables) {
+    const target = { schema: table.schema, table: table.table, fromSql: true };
+    if (table.note) notes.push(`${table.schema}.${table.table}: ${table.note}`);
+    const rowKey = (row: Record<string, unknown>) =>
+      (table.key_columns.length && keyOf(row, table.key_columns)) || crypto.randomUUID();
+    const removed = new Map(table.removed.map((row) => [rowKey(row), row]));
+    for (const row of table.added) {
+      const key = rowKey(row);
+      const old = removed.get(key);
+      if (!old) {
+        changes.push({ type: "insert", ...target, rowValues: row });
+        continue;
+      }
+      removed.delete(key);
+      changes.push({
+        type: "update",
+        ...target,
+        rowKey: table.key_columns.map((column) => `${column} ${rowValue(row, column)}`).join(", "),
+        ...changedColumns(old, row),
+      });
+    }
+    for (const row of removed.values()) changes.push({ type: "delete", ...target, oldValues: row });
+  }
+  return { changes, notes };
+}
+
+export async function refreshDatabaseChanges(connection: SavedConnection, txId: string) {
+  if (connection.kind !== "oracle") return;
+  const at = Date.now();
+  let next: DatabaseChanges;
+  try {
+    const { changes, notes } = databaseChangesFrom(await transactionDatabaseChanges(txId));
+    next = {
+      changes: changes.map((change) => ({ id: crypto.randomUUID(), timestamp: at, ...change })),
+      notes,
+      at,
+    };
+  } catch (error) {
+    next = { changes: [], notes: [String(error)], at };
+  }
+  useTransactionStore.getState().setDatabaseChanges(txId, next);
 }

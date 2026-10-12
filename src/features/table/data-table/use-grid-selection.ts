@@ -1,5 +1,4 @@
 import { type Dispatch, type SetStateAction, useCallback, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import { copyText } from "@/lib/clipboard";
 import {
   cellKey,
@@ -83,8 +82,8 @@ export function useGridSelection(
     if (selectedCount <= 1) return false;
     const tsv = cellsToTsv(data, selectedCells, visibleColumnIds);
     if (tsv === "") return false;
-    void copyText(tsv);
-    toast.success(`${selectedCount} Zellen als TSV kopiert.`);
+    void copyText(tsv, `${selectedCount} Zellen als TSV kopiert.`);
+
     return true;
   }, [selectedCells, selectedCount, data, visibleColumnIds]);
 

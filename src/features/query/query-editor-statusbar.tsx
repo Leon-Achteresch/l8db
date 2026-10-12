@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useSyncExternalStore } from "react";
 
+import { EditorAiCheckpoints } from "@/features/query/editor-ai/editor-ai-checkpoints";
 import type { EditorPositionStore } from "@/features/query/query-view/editor-position-store";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
@@ -12,6 +13,7 @@ interface QueryEditorStatusbarProps {
   sql: string;
   dialect: string | undefined;
   dialectLabel: string;
+  editorId?: string;
 }
 
 export function QueryEditorStatusbar({
@@ -20,6 +22,7 @@ export function QueryEditorStatusbar({
   sql,
   dialect,
   dialectLabel,
+  editorId,
 }: QueryEditorStatusbarProps) {
   const deferredSql = useDeferredValue(sql);
   const statementCount = useMemo(
@@ -47,6 +50,7 @@ export function QueryEditorStatusbar({
         {statementCount} Statement{statementCount === 1 ? "" : "s"}
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        {editorId && <EditorAiCheckpoints editorId={editorId} />}
         <span className="hidden whitespace-nowrap sm:inline">{dialectLabel}</span>
         <span className="hidden h-3 w-px bg-border sm:inline-block" />
         <span className="whitespace-nowrap tabular-nums">

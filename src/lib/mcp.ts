@@ -24,6 +24,7 @@ export interface McpConnection {
   exposed: boolean;
   readOnly: boolean;
   allowDdl: boolean;
+  allowScripts: boolean;
   redactColumns: string[];
   maskRules: MaskRule[];
   environment: string | null;
@@ -116,6 +117,7 @@ export function mergeMcpConnections(
       exposed: previous?.exposed ?? false,
       readOnly: previous?.readOnly ?? true,
       allowDdl: previous?.allowDdl ?? false,
+      allowScripts: previous?.allowScripts ?? false,
       redactColumns: previous?.redactColumns ?? [],
       maskRules: connection.maskRules ?? [],
       environment: connectionEnvironment(connection),

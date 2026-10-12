@@ -1,4 +1,5 @@
 import { lazy } from "react";
+import { WorkbenchView } from "@/features/shell/workbench-view";
 import type { Tab } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 
@@ -82,6 +83,7 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
     case "bucket":
       return <BucketView bucket={tab.bucket} />;
     case "tool": {
+      if (tab.tool === "workbench") return <WorkbenchView tabId={tab.id} />;
       if (tab.tool === "compare") return <CompareView tabId={tab.id} />;
       const ToolComponent = TOOL_TABS[tab.tool].Component;
       return <ToolComponent />;

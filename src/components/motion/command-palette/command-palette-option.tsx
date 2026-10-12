@@ -1,18 +1,21 @@
-import { motion } from "motion/react";
+import { NewBadge } from "@/components/new-badge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
+import { CommandMatchText } from "./command-match-text";
 import type { CommandItem } from "./types";
 
 export function CommandPaletteOption({
   item,
+  query,
   index,
   isActive,
   uid,
-  reduce,
   hasIcons,
   onHover,
   onSelect,
 }: {
   item: CommandItem;
+  query: string;
   index: number;
   isActive: boolean;
   uid: string;
@@ -22,8 +25,10 @@ export function CommandPaletteOption({
   onSelect: () => void;
 }) {
   const Icon = item.icon;
+  const feature = useNewFeatureVisibility<HTMLButtonElement>(item.featureId);
   return (
     <button
+      ref={feature.ref}
       type="button"
       id={`${uid}-opt-${index}`}
       role="option"
@@ -37,32 +42,26 @@ export function CommandPaletteOption({
       )}
     >
       {isActive ? (
-        <motion.span
-          layoutId={`${uid}-active`}
-          className="absolute inset-0 z-0 rounded-md bg-primary/[0.05]"
-          transition={
-            reduce
-              ? { duration: 0 }
-              : // Tracks rapid arrow-key navigation — keep it tighter
-                // than SPRING_LAYOUT so it never lags the active row.
-                {
-                  type: "spring",
-                  stiffness: 480,
-                  damping: 38,
-                }
-          }
-        />
+        <span aria-hidden className="absolute inset-0 z-0 rounded-md bg-primary/[0.05]" />
       ) : null}
       {Icon ? (
         <Icon className="relative z-10 h-4 w-4" />
       ) : hasIcons ? (
         <span className="relative z-10 h-4 w-4" />
       ) : null}
-      <span className="relative z-10 flex-1 truncate">{item.label}</span>
+      <span className="relative z-10 flex-1 truncate">
+        <CommandMatchText text={item.label} query={query} />
+      </span>
       {item.badge ? <span className="relative z-10 shrink-0">{item.badge}</span> : null}
+      {feature.isNew ? <NewBadge className="relative z-10" /> : null}
+      {item.context ? (
+        <span className="relative z-10 shrink-0 text-[10px] text-muted-foreground">
+          {item.context}
+        </span>
+      ) : null}
       {item.hint ? (
         <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {item.hint}
+          <CommandMatchText text={item.hint} query={query} />
         </kbd>
       ) : null}
     </button>

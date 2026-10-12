@@ -183,6 +183,11 @@ export async function listSchemaCopyObjects(
   });
 }
 
+export interface SchemaCopyTarget {
+  connectionString: string;
+  database?: string;
+}
+
 export async function previewSchemaObjectCopy(
   kind: DatabaseKind,
   connectionString: string,
@@ -191,6 +196,7 @@ export async function previewSchemaObjectCopy(
   objectType: SchemaCopyObjectType,
   name: string,
   database?: string,
+  target?: SchemaCopyTarget,
 ): Promise<string> {
   return invoke("preview_schema_object_copy", {
     kind,
@@ -200,6 +206,8 @@ export async function previewSchemaObjectCopy(
     targetSchema,
     objectType,
     name,
+    targetConnectionString: target?.connectionString,
+    targetDatabase: target?.database,
   });
 }
 

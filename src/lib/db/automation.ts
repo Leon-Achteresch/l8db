@@ -508,11 +508,19 @@ export interface AutomationConnection {
   kind: DatabaseKind;
   connectionString: string;
   readOnly: boolean;
+  productionLocked: boolean;
   environment: string | null;
   tags: string[];
   ssh: SshDescriptor | null;
   proxy: ProxyDescriptor | null;
+  commandTunnel: CommandTunnelDescriptor | null;
   vault: boolean;
+}
+
+export interface CommandTunnelDescriptor {
+  command: string;
+  localPort: number | null;
+  timeoutSecs: number | null;
 }
 
 export interface RunSummary {

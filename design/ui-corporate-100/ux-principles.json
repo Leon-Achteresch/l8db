@@ -1,0 +1,248 @@
+{
+  "source": "https://lawsofux.com/",
+  "reviewed": "2026-10-08",
+  "principleCount": 30,
+  "scope": "Designkriterien für statische Entwürfe; Interaktion und empirische Effekte sind nicht durch Bilder nachgewiesen.",
+  "principles": [
+    {
+      "name": "Aesthetic-Usability Effect",
+      "slug": "aesthetic-usability-effect",
+      "source": "https://lawsofux.com/aesthetic-usability-effect/",
+      "criterion": "Ruhige, konsistente Oberflächen; Schönheit ersetzt keine klare Bedienung.",
+      "prompt": "Consistent, restrained visual polish; never sacrifice legibility.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Choice Overload",
+      "slug": "choice-overload",
+      "source": "https://lawsofux.com/choice-overload/",
+      "criterion": "Werkzeuge nach Aufgabe bündeln; seltene Optionen in Mehr, Hauptaufgaben sichtbar.",
+      "prompt": "Group choices by task; show essentials and reveal advanced options.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Chunking",
+      "slug": "chunking",
+      "source": "https://lawsofux.com/chunking/",
+      "criterion": "Semantische Gruppen für Verbindung, Objekt, Aufgabe und Ergebnis.",
+      "prompt": "Use meaningful chunks for connection, object, task and result.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Cognitive Bias",
+      "slug": "cognitive-bias",
+      "source": "https://lawsofux.com/cognitive-bias/",
+      "criterion": "Neutrale Beschriftungen, nachvollziehbare Zahlen, keine irreführenden Voreinstellungen.",
+      "prompt": "Use neutral labels, contextual evidence and honest defaults.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Cognitive Load",
+      "slug": "cognitive-load",
+      "source": "https://lawsofux.com/cognitive-load/",
+      "criterion": "Eine dominante Aufgabe; aktives Objekt, Kontext und nächster Schritt erkennbar.",
+      "prompt": "One dominant task with visible context and a clear next action.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Doherty Threshold",
+      "slug": "doherty-threshold",
+      "source": "https://lawsofux.com/doherty-threshold/",
+      "criterion": "Laufstatus, Abbrechen und Fortschritt vorsehen; Feedbacklatenz muss später gemessen werden.",
+      "prompt": "Show running, cancel and progress states when applicable; latency is an implementation requirement.",
+      "scope": "Interaktiv; im Bild nur Zustandskonzept"
+    },
+    {
+      "name": "Fitts’s Law",
+      "slug": "fittss-law",
+      "source": "https://lawsofux.com/fittss-law/",
+      "criterion": "Wichtige Ziele ausreichend groß, voneinander getrennt und nahe der Aufgabe platzieren.",
+      "prompt": "Use generous separated targets for important controls close to the task.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Flow",
+      "slug": "flow",
+      "source": "https://lawsofux.com/flow/",
+      "criterion": "Arbeitskontext erhalten; störende Modals durch passende Inline-Hilfen ersetzen.",
+      "prompt": "Preserve working context and avoid unnecessary interruption.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Goal-Gradient Effect",
+      "slug": "goal-gradient-effect",
+      "source": "https://lawsofux.com/goal-gradient-effect/",
+      "criterion": "Bei mehrstufigen Aufgaben reale Schritte und verbleibende Arbeit zeigen.",
+      "prompt": "Use truthful completed and remaining steps for multi-step tasks.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Hick’s Law",
+      "slug": "hicks-law",
+      "source": "https://lawsofux.com/hicks-law/",
+      "criterion": "Aktionen priorisieren und Entscheidungen in verständliche Schritte gliedern.",
+      "prompt": "Prioritize actions and divide difficult decisions into clear steps.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Jakob’s Law",
+      "slug": "jakobs-law",
+      "source": "https://lawsofux.com/jakobs-law/",
+      "criterion": "Bekannte Desktopmuster, Tabs, Objektbaum und bestehende l8db-Navigation beibehalten.",
+      "prompt": "Keep familiar desktop conventions, tabs, object tree and l8db navigation.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Law of Common Region",
+      "slug": "law-of-common-region",
+      "source": "https://lawsofux.com/law-of-common-region/",
+      "criterion": "Zusammengehörige Inhalte in klar abgegrenzten Bereichen.",
+      "prompt": "Enclose related information in clear shared regions.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Law of Proximity",
+      "slug": "law-of-proximity",
+      "source": "https://lawsofux.com/law-of-proximity/",
+      "criterion": "Beschriftung, Wert und Aktion räumlich zusammenhalten.",
+      "prompt": "Keep related labels, values and actions close.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Law of Prägnanz",
+      "slug": "law-of-pragnanz",
+      "source": "https://lawsofux.com/law-of-pragnanz/",
+      "criterion": "Einfache Formen und klare Hierarchie statt dekorativer Komplexität.",
+      "prompt": "Use simple forms and an immediately readable hierarchy.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Law of Similarity",
+      "slug": "law-of-similarity",
+      "source": "https://lawsofux.com/law-of-similarity/",
+      "criterion": "Gleiche Funktion erhält gleiche Form, Typografie und Zustandsdarstellung.",
+      "prompt": "Give equivalent functions consistent styling and states.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Law of Uniform Connectedness",
+      "slug": "law-of-uniform-connectedness",
+      "source": "https://lawsofux.com/law-of-uniform-connectedness/",
+      "criterion": "Beziehungen durch beschriftete Linien oder eindeutige Zuordnung zeigen.",
+      "prompt": "Show actual relationships with clear labeled connectors or alignment.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Mental Model",
+      "slug": "mental-model",
+      "source": "https://lawsofux.com/mental-model/",
+      "criterion": "Verbindung → Datenbank → Schema → Objekt bildet die sichtbare Struktur.",
+      "prompt": "Follow connection, database, schema, object mental models.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Miller’s Law",
+      "slug": "millers-law",
+      "source": "https://lawsofux.com/millers-law/",
+      "criterion": "Information sinnvoll gruppieren; keine starre Sieben-Elemente-Grenze anwenden.",
+      "prompt": "Chunk meaningfully; do not enforce a magical seven-item limit.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Occam’s Razor",
+      "slug": "occams-razor",
+      "source": "https://lawsofux.com/occams-razor/",
+      "criterion": "Nur Elemente zeigen, die Verständnis oder Ausführung unterstützen.",
+      "prompt": "Remove redundant decorative or functional elements.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Paradox of the Active User",
+      "slug": "paradox-of-the-active-user",
+      "source": "https://lawsofux.com/paradox-of-the-active-user/",
+      "criterion": "Direkten Einstieg, Beispiele und Hilfe im Arbeitskontext anbieten.",
+      "prompt": "Enable immediate action with examples and contextual help.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Pareto Principle",
+      "slug": "pareto-principle",
+      "source": "https://lawsofux.com/pareto-principle/",
+      "criterion": "Häufige Aufgaben prominent; Priorisierung später anhand Nutzung prüfen.",
+      "prompt": "Put likely frequent actions first; verify priorities with usage research.",
+      "scope": "Visuell und empirisch"
+    },
+    {
+      "name": "Parkinson’s Law",
+      "slug": "parkinsons-law",
+      "source": "https://lawsofux.com/parkinsons-law/",
+      "criterion": "Aufgaben begrenzen und sinnvolle Startwerte anbieten, ohne künstlichen Zeitdruck.",
+      "prompt": "Scope tasks and offer useful defaults without artificial pressure.",
+      "scope": "Interaktiv"
+    },
+    {
+      "name": "Peak-End Rule",
+      "slug": "peak-end-rule",
+      "source": "https://lawsofux.com/peak-end-rule/",
+      "criterion": "Abschluss mit Ergebnis, Zusammenfassung und sinnvoller Folgeaktion.",
+      "prompt": "Finish workflows with a clear outcome and useful next action.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Postel’s Law",
+      "slug": "postels-law",
+      "source": "https://lawsofux.com/postels-law/",
+      "criterion": "Flexible Eingaben mit expliziter Validierung; technische Ausgabe präzise.",
+      "prompt": "Accept practical input formats, validate explicitly and output precisely.",
+      "scope": "Interaktiv; im Bild nur Eingabekonzept"
+    },
+    {
+      "name": "Selective Attention",
+      "slug": "selective-attention",
+      "source": "https://lawsofux.com/selective-attention/",
+      "criterion": "Auswahl und relevante Warnung hervorheben; Hintergrundwerkzeuge zurücknehmen.",
+      "prompt": "Emphasize the selected item and relevant warning, quiet secondary tools.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Serial Position Effect",
+      "slug": "serial-position-effect",
+      "source": "https://lawsofux.com/serial-position-effect/",
+      "criterion": "Primäre Schritte am Anfang, Ergebnis und nächste Aktion am Ende.",
+      "prompt": "Place primary steps first and outcomes or next actions last.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Tesler’s Law",
+      "slug": "teslers-law",
+      "source": "https://lawsofux.com/teslers-law/",
+      "criterion": "System übernimmt Routine, notwendige Komplexität bleibt erreichbar.",
+      "prompt": "Move routine work to the system without hiding necessary complexity.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Von Restorff Effect",
+      "slug": "von-restorff-effect",
+      "source": "https://lawsofux.com/von-restorff-effect/",
+      "criterion": "Eine klare Hauptaktion; Warnfarbe nur für echte Warnungen mit Text und Symbol.",
+      "prompt": "One clear primary action; semantic color paired with text and icons.",
+      "scope": "Visuell"
+    },
+    {
+      "name": "Working Memory",
+      "slug": "working-memory",
+      "source": "https://lawsofux.com/working-memory/",
+      "criterion": "Vergleichswerte, Filter, Entwürfe und Kontext sichtbar erhalten.",
+      "prompt": "Keep filters, drafts and comparison values visible rather than recalled.",
+      "scope": "Visuell und interaktiv"
+    },
+    {
+      "name": "Zeigarnik Effect",
+      "slug": "zeigarnik-effect",
+      "source": "https://lawsofux.com/zeigarnik-effect/",
+      "criterion": "Echte offene Entwürfe und unerledigte Schritte kenntlich machen.",
+      "prompt": "Mark actual unfinished drafts and tasks with truthful status.",
+      "scope": "Visuell und interaktiv"
+    }
+  ]
+}

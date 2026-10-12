@@ -811,3 +811,32 @@ async fn branch_merge_cannot_modify_or_delete_published_releases() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn release_commits_name_the_commit_that_added_each_manifest() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    assert_eq!(handle(request(&root, "release-commits")).await.unwrap(), "");
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Versioning Test"])
+        .await
+        .unwrap();
+    fs::create_dir_all(root.join("database/releases")).unwrap();
+    fs::write(root.join("database/releases/v1.json"), "{}\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Release v1"]).await.unwrap();
+    let first = revision(&root, "HEAD").await.unwrap();
+    fs::write(root.join("database/releases/v1.json"), "{\"x\":1}\n").unwrap();
+    fs::write(root.join("database/releases/v2.json"), "{}\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Release v2"]).await.unwrap();
+    let second = revision(&root, "HEAD").await.unwrap();
+    let text = handle(request(&root, "release-commits")).await.unwrap();
+    let text = text.as_str().unwrap();
+    assert!(text.contains(&format!("{first}\n\ndatabase/releases/v1.json")));
+    assert!(text.contains(&format!("{second}\n\ndatabase/releases/v2.json")));
+    assert_eq!(text.matches("v1.json").count(), 1);
+    fs::remove_dir_all(root).unwrap();
+}

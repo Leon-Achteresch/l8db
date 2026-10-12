@@ -1,0 +1,130 @@
+{
+  "passed": true,
+  "checks": [
+    "200 unique entries and bounded pagination",
+    "20 views and all 200 designs reachable",
+    "collection, layout, theme and search filters",
+    "favorites persist and toggle",
+    "four-image comparison and selection limit",
+    "full-size images, prompts and navigation",
+    "reference, UX and download sections",
+    "200 thumbnails and all material links"
+  ],
+  "designCount": 200,
+  "thumbnailCount": 200,
+  "downloadLinks": [
+    {
+      "url": "../ui-corporate-100/references/l8db-current-light.png",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/references/l8db-current-dark.png",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/ux-review.html",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/review-notes.json",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/l8db-corporate-100-designs.zip",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/manifest.json",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/catalogue.csv",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/index.html",
+      "status": 200
+    },
+    {
+      "url": "../ui-explorations-100/l8db-100-designs.zip",
+      "status": 200
+    },
+    {
+      "url": "../ui-explorations-100/manifest.json",
+      "status": 200
+    },
+    {
+      "url": "../ui-explorations-100/catalogue.csv",
+      "status": 200
+    },
+    {
+      "url": "../ui-explorations-100/index.html",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/ux-review.html",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/ux-principles.json",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/review-notes.json",
+      "status": 200
+    },
+    {
+      "url": "../ui-corporate-100/validation.json",
+      "status": 200
+    },
+    {
+      "url": "../ui-explorations-100/validation.json",
+      "status": 200
+    }
+  ],
+  "performance": {
+    "workload": "200 entries, 20 corporate view filters, at most 24 cards rendered",
+    "limits": {
+      "filterMedianMs": 50,
+      "filterP95Ms": 100,
+      "maxCards": 24,
+      "maxDomElements": 2000
+    },
+    "medianMs": 4,
+    "p95Ms": 4.299999997019768,
+    "samples": [
+      5.4000000059604645,
+      4.200000002980232,
+      4.299999997019768,
+      4.200000002980232,
+      4,
+      4.0999999940395355,
+      3.9000000059604645,
+      3.5,
+      3.800000011920929,
+      3.5,
+      3.9000000059604645,
+      4,
+      3.7999999970197678,
+      4.0999999940395355,
+      4.299999997019768,
+      4.0999999940395355,
+      2.7999999970197678,
+      3,
+      3,
+      2.8999999910593033
+    ],
+    "domElements": 837,
+    "scope": "Synchronous filter and forced layout; no app database, paint latency or retained-heap measurement; no background polling"
+  },
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.8037.92 Safari/537.36",
+  "platform": "Linux 6.12.111+deb13-amd64 x86_64\nv20.19.2\nmodel name\t: QEMU Virtual CPU version 2.5+\nMemTotal:       16382176 kB\n",
+  "mobile": {
+    "viewport": 375,
+    "document": 375,
+    "viewFilter": "block",
+    "cards": 24
+  },
+  "keyboardTabs": "ArrowRight switched from Entwürfe to Referenzstil and moved focus; one selected tab",
+  "reviewed": "2026-10-08"
+}

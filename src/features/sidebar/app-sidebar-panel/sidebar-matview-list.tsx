@@ -3,8 +3,17 @@ import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { LayersIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { CopyAsMenu } from "@/components/copy-as-menu";
+import { ToolsMenu } from "@/components/tools-menu";
 import { Button } from "@/components/ui/button";
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   Dialog,
   DialogContent,
@@ -19,9 +28,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { copyNameActions } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { createMaterializedView } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -99,19 +110,20 @@ export function SidebarMatviewList({
               params: { schema: item.schema, name: item.name },
             }),
           );
+          const qualifiedName = `${item.schema}.${item.name}`;
+          const open = () =>
+            navigate({
+              to: "/matviews/$schema/$name",
+              params: { schema: item.schema, name: item.name },
+            });
           return (
-            <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+            <SidebarMenuItem key={qualifiedName}>
               <ContextMenu>
-                <ContextMenuTrigger asChild>
-                  <SidebarMenuButton
-                    isActive={isActive}
-                    onClick={() => {
-                      navigate({
-                        to: "/matviews/$schema/$name",
-                        params: { schema: item.schema, name: item.name },
-                      });
-                    }}
-                  >
+                <ContextMenuTrigger
+                  asChild
+                  onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
+                >
+                  <SidebarMenuButton isActive={isActive} onClick={open}>
                     <LayersIcon className="text-muted-foreground" />
                     <span className="truncate">
                       {item.schema}.{item.name}
@@ -120,11 +132,20 @@ export function SidebarMatviewList({
                   </SidebarMenuButton>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <CompareObjectMenuItem
-                    schema={item.schema}
-                    name={item.name}
-                    objectType="materialized_view"
-                  />
+                  <ContextMenuItem onSelect={open}>
+                    Öffnen
+                    <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.open)}</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <CopyAsMenu name={item.name} qualifiedName={qualifiedName} shortcuts />
+                  <ContextMenuSeparator />
+                  <ToolsMenu>
+                    <CompareObjectMenuItem
+                      schema={item.schema}
+                      name={item.name}
+                      objectType="materialized_view"
+                    />
+                  </ToolsMenu>
                 </ContextMenuContent>
               </ContextMenu>
             </SidebarMenuItem>

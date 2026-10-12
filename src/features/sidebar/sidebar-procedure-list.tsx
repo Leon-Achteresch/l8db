@@ -1,10 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { CopyIcon, HammerIcon, SquareFunctionIcon } from "lucide-react";
+import { SquareFunctionIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { CopyAsMenu } from "@/components/copy-as-menu";
+import { ToolsMenu } from "@/components/tools-menu";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
@@ -15,8 +19,10 @@ import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-it
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { copyNameActions } from "@/lib/clipboard";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useInvalidObjectsQuery } from "@/lib/queries";
@@ -82,10 +88,14 @@ export function SidebarProcedureList({
       <SidebarWindow count={items.length}>
         {(index) => {
           const item = items[index];
+          const qualifiedName = `${item.schema}.${item.name}`;
           return (
             <SidebarMenuItem key={item.oid}>
               <ContextMenu>
-                <ContextMenuTrigger asChild>
+                <ContextMenuTrigger
+                  asChild
+                  onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
+                >
                   <SidebarMenuButton onClick={() => open(item)}>
                     <SquareFunctionIcon className="text-muted-foreground" />
                     <span className="truncate">
@@ -98,38 +108,44 @@ export function SidebarProcedureList({
                   </SidebarMenuButton>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem onSelect={() => open(item)}>Öffnen</ContextMenuItem>
-                  <CompareObjectMenuItem
-                    schema={item.schema}
-                    name={item.name}
-                    objectType="procedure"
-                    oid={item.oid}
-                    identityArgs={item.identity_args}
-                  />
+                  <ContextMenuItem onSelect={() => open(item)}>
+                    Öffnen
+                    <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.open)}</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <CopyAsMenu name={item.name} qualifiedName={qualifiedName} shortcuts />
+                  <ContextMenuSeparator />
                   {capabilities.compile_objects ? (
                     <ContextMenuItem
                       onSelect={() => {
-                        void compile(item.oid, "procedure", `${item.schema}.${item.name}`);
+                        void compile(item.oid, "procedure", qualifiedName);
                       }}
                     >
-                      <HammerIcon />
                       Kompilieren
                     </ContextMenuItem>
                   ) : null}
-                  {capabilities.schema_object_copy ? (
-                    <ContextMenuItem
-                      onSelect={() =>
-                        setCopyTarget({
-                          schema: item.schema,
-                          name: item.name,
-                          objectType: "routine",
-                        })
-                      }
-                    >
-                      <CopyIcon />
-                      In anderem Schema erstellen
-                    </ContextMenuItem>
-                  ) : null}
+                  <ToolsMenu>
+                    <CompareObjectMenuItem
+                      schema={item.schema}
+                      name={item.name}
+                      objectType="procedure"
+                      oid={item.oid}
+                      identityArgs={item.identity_args}
+                    />
+                    {capabilities.schema_object_copy ? (
+                      <ContextMenuItem
+                        onSelect={() =>
+                          setCopyTarget({
+                            schema: item.schema,
+                            name: item.name,
+                            objectType: "routine",
+                          })
+                        }
+                      >
+                        In anderem Schema erstellen…
+                      </ContextMenuItem>
+                    ) : null}
+                  </ToolsMenu>
                 </ContextMenuContent>
               </ContextMenu>
             </SidebarMenuItem>

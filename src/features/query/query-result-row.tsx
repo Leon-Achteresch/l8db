@@ -19,7 +19,7 @@ type QueryResultRowProps = {
   columnWindow: ColumnWindowItem[];
   columns: string[];
   onInspect?: (column: string, value: unknown, row: number) => void;
-  measureElement: (element: HTMLTableRowElement | null) => void;
+  measureElement?: (element: HTMLTableRowElement | null) => void;
 };
 
 export const QueryResultRow = memo(function QueryResultRow({

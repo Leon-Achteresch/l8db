@@ -19,6 +19,8 @@ export interface SavedChart extends ChartFile {
 interface DashboardWorkspaceState {
   drawerWidths: Record<DashboardDrawerKind, number>;
   savedCharts: SavedChart[];
+  databaseSharing: boolean;
+  setDatabaseSharing: (enabled: boolean) => void;
   setDrawerWidth: (drawer: DashboardDrawerKind, width: number) => void;
   saveChart: (chart: ChartFile) => string;
   removeChart: (id: string) => void;
@@ -28,6 +30,8 @@ export const useDashboardWorkspaceStore = create<DashboardWorkspaceState>()(
     (set) => ({
       drawerWidths: { dashboards: 380, charts: 400 },
       savedCharts: [],
+      databaseSharing: false,
+      setDatabaseSharing: (databaseSharing) => set({ databaseSharing }),
       setDrawerWidth: (drawer, width) =>
         set((state) => ({
           drawerWidths: { ...state.drawerWidths, [drawer]: clampDrawerWidth(width) },

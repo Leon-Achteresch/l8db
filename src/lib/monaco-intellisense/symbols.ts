@@ -1,6 +1,12 @@
 import { fetchTableRows, getFunctionDefinition } from "@/lib/db";
 import { packageOid, parsePlsqlMembers } from "@/lib/plsql";
-import type { HoverExtras, SymbolTarget } from "@/lib/sql-intellisense";
+import { BUILTIN_FUNCTIONS, type HoverExtras, type SymbolTarget } from "@/lib/sql-intellisense";
+import { isPackage } from "@/lib/sql-intellisense/resolve";
+import {
+  parseRoutineSignatures,
+  type RoutineSignature,
+  signaturesFromArgs,
+} from "@/lib/sql-intellisense/signature";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { ctx } from "./context";
@@ -26,6 +32,63 @@ export async function packageMembers(schema: string, name: string) {
   } catch {
     return [];
   }
+}
+
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+async function definitionSignatures(oid: string, name: string): Promise<RoutineSignature[]> {
+  try {
+    return parseRoutineSignatures(await fetchDefinition(oid)).filter((sig) => same(sig.name, name));
+  } catch {
+    return [];
+  }
+}
+
+export async function routineSignatures(
+  path: string[],
+  source: string,
+): Promise<{ label: string; signatures: RoutineSignature[] }> {
+  const { registry } = ctx;
+  const name = path[path.length - 1];
+  const qualifier = path.length > 1 ? path[path.length - 2] : null;
+  const schema = path.length > 2 ? path[0] : null;
+  const label = path.join(".");
+  const inSchema = (fnSchema: string, owner: string | null) => !owner || same(fnSchema, owner);
+  const pkg =
+    qualifier &&
+    registry.functions.find(
+      (fn) => isPackage(fn) && same(fn.name, qualifier) && inSchema(fn.schema, schema),
+    );
+  if (pkg)
+    return {
+      label,
+      signatures: await definitionSignatures(packageOid(pkg.schema, pkg.name, "spec"), name),
+    };
+  if (!qualifier) {
+    const local = parseRoutineSignatures(source).filter((sig) => same(sig.name, name));
+    if (local.length) return { label, signatures: local };
+  }
+  const routines = [...registry.functions, ...registry.procedures].filter(
+    (fn) => !isPackage(fn) && same(fn.name, name) && inSchema(fn.schema, qualifier),
+  );
+  const signatures = (
+    await Promise.all(
+      routines.map((fn) =>
+        fn.identity_args
+          ? [signaturesFromArgs(fn.name, fn.identity_args, fn.return_type || null)]
+          : definitionSignatures(fn.oid, fn.name),
+      ),
+    )
+  ).flat();
+  if (signatures.length || qualifier) return { label, signatures };
+  const builtin = BUILTIN_FUNCTIONS.find((fn) => same(fn.name, name));
+  const args = builtin && /^[^(]*\((.*)\)/.exec(builtin.signature);
+  return {
+    label,
+    signatures: args
+      ? [{ ...signaturesFromArgs(builtin.name, args[1], null), kind: "FUNCTION" }]
+      : [],
+  };
 }
 
 export async function hoverExtras(target: SymbolTarget): Promise<HoverExtras> {

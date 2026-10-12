@@ -15,8 +15,10 @@ import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
+import { useSettingsViewState } from "@/lib/settings-view-state";
 import { activateConnectionWithToast, restoreSshTunnel } from "@/lib/ssh";
-import { recordCount, recordDuration } from "@/lib/telemetry";
+import { recordDuration, trackRoute } from "@/lib/telemetry";
+import { initUsageTracking } from "@/lib/usage-tracking";
 import { initWindowIntegration } from "@/lib/window-integration";
 import { router } from "./router";
 
@@ -30,10 +32,20 @@ if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
 const disposeCrashReporting = initCrashReporting();
 if (import.meta.hot) import.meta.hot.dispose(disposeCrashReporting);
 
-router.subscribe("onResolved", () => {
+const usageTracking = initUsageTracking();
+if (import.meta.hot) import.meta.hot.dispose(usageTracking.dispose);
+const unsubscribeUsageRoute = router.subscribe("onResolved", () => {
   const route = router.state.matches.at(-1)?.routeId;
-  if (route) recordCount("view.open", { route });
+  const tab = (router.state.location.search as { tab?: string }).tab;
+  if (!route) return;
+  trackRoute(route);
+  usageTracking.view(
+    route.endsWith("/settings")
+      ? `/settings/${tab ?? useSettingsViewState.getState().category}`
+      : route,
+  );
 });
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeUsageRoute);
 
 const queryClient = createAppQueryClient();
 const extensionHost = createExtensionHost();

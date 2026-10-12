@@ -1,12 +1,13 @@
-import { ClipboardCopyIcon, CopyPlusIcon, Trash2Icon } from "lucide-react";
-import { toast } from "sonner";
 import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
-import { copyText } from "@/lib/clipboard";
+import { copyWithToast } from "@/lib/clipboard";
 import { serializeSelectionCell } from "@/lib/grid-selection";
 import type { TableRow } from "../data-table-types";
 
@@ -37,34 +38,54 @@ export function DataTableRowMenu({
 }: Props) {
   return (
     <ContextMenuContent>
-      <ContextMenuLabel className="font-mono text-[11px]">
+      <ContextMenuLabel className="font-mono">
         Zeile {menuRow.rowIndex + 1 + rowOffset}
       </ContextMenuLabel>
       <ContextMenuSeparator />
-      <ContextMenuItem
-        onClick={() => {
-          const text = columns.map((id) => serializeSelectionCell(menuRow.original[id])).join("\t");
-          void copyText(text);
-          toast.success("Zeile kopiert.");
-        }}
-      >
-        <ClipboardCopyIcon />
-        Zeile kopieren
-      </ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>Kopieren als</ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          <ContextMenuItem
+            onSelect={() =>
+              void copyWithToast(
+                columns.map((id) => serializeSelectionCell(menuRow.original[id])).join("\t"),
+                "Zeile",
+              )
+            }
+          >
+            Tabulatorgetrennt
+          </ContextMenuItem>
+          <ContextMenuItem
+            onSelect={() =>
+              void copyWithToast(
+                JSON.stringify(
+                  Object.fromEntries(columns.map((id) => [id, menuRow.original[id] ?? null])),
+                  (_, value) => (typeof value === "bigint" ? value.toString() : value),
+                  2,
+                ),
+                "Zeile",
+              )
+            }
+          >
+            JSON
+          </ContextMenuItem>
+        </ContextMenuSubContent>
+      </ContextMenuSub>
       {canDuplicate && (
-        <ContextMenuItem disabled={duplicateDisabled} onClick={onDuplicate}>
-          <CopyPlusIcon />
+        <ContextMenuItem disabled={duplicateDisabled} onSelect={onDuplicate}>
           Zeile duplizieren
         </ContextMenuItem>
       )}
       {onDeleteRow && (
-        <ContextMenuItem
-          variant="destructive"
-          onClick={() => onDeleteRow(menuRow.ctid, menuRow.original)}
-        >
-          <Trash2Icon />
-          Zeile löschen
-        </ContextMenuItem>
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            variant="destructive"
+            onSelect={() => onDeleteRow(menuRow.ctid, menuRow.original)}
+          >
+            Zeile löschen
+          </ContextMenuItem>
+        </>
       )}
     </ContextMenuContent>
   );

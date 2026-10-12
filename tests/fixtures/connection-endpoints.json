@@ -1,0 +1,4945 @@
+[
+  {
+    "kind": "postgres",
+    "url": "postgresql://app_owner@db.internal:5433/app?sslmode=prefer",
+    "identity": {
+      "host": "db.internal",
+      "port": 5433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "app_owner",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://root@legacy.example.com:3307/shop?sslmode=disable",
+    "identity": {
+      "host": "legacy.example.com",
+      "port": 3307,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "shop",
+      "schema": "",
+      "user": "root",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://crm@maria.local:3306/crm?sslmode=prefer",
+    "identity": {
+      "host": "maria.local",
+      "port": 3306,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "crm",
+      "schema": "",
+      "user": "crm",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "oracle",
+    "url": "oracle://scott@ora.example.com:1521/?connect_string=%28DESCRIPTION%3D%28ADDRESS%3D%28PROTOCOL%3DTCP%29%28HOST%3Dora.example.com%29%28PORT%3D1521%29%29%28CONNECT_DATA%3D%28SID%3DORCL%29%29%29",
+    "identity": {
+      "host": "",
+      "port": null,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=ora.example.com)(PORT=1521))(CONNECT_DATA=(SID=ORCL)))",
+      "schema": "",
+      "user": "scott",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "oracle",
+    "url": "oracle://hr@10.2.0.7:1521/FREEPDB1",
+    "identity": {
+      "host": "10.2.0.7",
+      "port": 1521,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "//10.2.0.7:1521/FREEPDB1",
+      "schema": "",
+      "user": "hr",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://db.internal:5433/app?sslmode=prefer",
+    "identity": {
+      "host": "db.internal",
+      "port": 5433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://legacy.example.com:3307/shop?sslmode=disable",
+    "identity": {
+      "host": "legacy.example.com",
+      "port": 3307,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "shop",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://shop_rw@localhost:5432/shop?sslmode=require",
+    "identity": {
+      "host": "localhost",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "shop",
+      "schema": "",
+      "user": "shop_rw",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://sa@mssql.example.com:1433/erp?sslmode=verify-full",
+    "identity": {
+      "host": "mssql.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "erp",
+      "schema": "",
+      "user": "sa",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "oracle",
+    "url": "oracle://ora.example.com:1522/FREEPDB1",
+    "identity": {
+      "host": "ora.example.com",
+      "port": 1522,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "//ora.example.com:1522/FREEPDB1",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://ch.example.com:8123/analytics",
+    "identity": {
+      "host": "ch.example.com",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "analytics",
+      "schema": "",
+      "user": "default",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://app@10.1.0.4:3306/app?sslmode=prefer",
+    "identity": {
+      "host": "10.1.0.4",
+      "port": 3306,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "app",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://core@10.1.0.9:5432/core?sslmode=prefer",
+    "identity": {
+      "host": "10.1.0.9",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "core",
+      "schema": "",
+      "user": "core",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://billing@pg.example.com:5432/billing?sslmode=require",
+    "identity": {
+      "host": "pg.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "billing",
+      "schema": "",
+      "user": "billing",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://root@legacy.example.com:3306?sslmode=prefer",
+    "identity": {
+      "host": "legacy.example.com",
+      "port": 3306,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "root",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://sa@sql.example.com:1433/dbo?sslmode=prefer",
+    "identity": {
+      "host": "sql.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "dbo",
+      "schema": "",
+      "user": "sa",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "oracle",
+    "url": "oracle://hr@ora.example.com:1521/?connect_string=%28DESCRIPTION%3D%28ADDRESS%3D%28PROTOCOL%3DTCP%29%28HOST%3Dora.example.com%29%28PORT%3D1521%29%29%28CONNECT_DATA%3D%28SID%3DXE%29%29%29",
+    "identity": {
+      "host": "",
+      "port": null,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=ora.example.com)(PORT=1521))(CONNECT_DATA=(SID=XE)))",
+      "schema": "",
+      "user": "hr",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://x@acme",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "x",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "redis://@redis.example.com:6380",
+    "identity": {
+      "host": "redis.example.com",
+      "port": 6380,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://billing:secret@PG.example.com/billing",
+    "identity": {
+      "host": "pg.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "billing",
+      "schema": "",
+      "user": "billing",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://sa@srv:1433/crm?instance=SQLEXPRESS&integrated_security=true&application_name=erp&sslmode=require",
+    "identity": {
+      "host": "srv",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "crm",
+      "schema": "",
+      "user": "sa",
+      "params": [
+        [
+          "instance",
+          "SQLEXPRESS"
+        ],
+        [
+          "integrated_security",
+          "true"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://sa@sql01:1433?instance=INST2&sslmode=prefer",
+    "identity": {
+      "host": "sql01",
+      "port": 1433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "sa",
+      "params": [
+        [
+          "instance",
+          "INST2"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db:5432/app?sslmode=prefer",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db:3306/app?useUnicode=true&sslmode=prefer",
+    "identity": {
+      "host": "db",
+      "port": 3306,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@prod-db.example.com:5432/app?sslmode=prefer",
+    "identity": {
+      "host": "prod-db.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db:5432/app?sslmode=verify-full",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://billing@pg.example.com/billing",
+    "identity": {
+      "host": "pg.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "billing",
+      "schema": "",
+      "user": "billing",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch.example.com:8443/analytics?secure=1",
+    "identity": {
+      "host": "ch.example.com",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "analytics",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://ANNA@acme-eu/SALES/PUBLIC?warehouse=WH&role=ANALYST",
+    "identity": {
+      "host": "acme-eu.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "SALES",
+      "schema": "PUBLIC",
+      "user": "ANNA",
+      "params": [
+        [
+          "warehouse",
+          "WH"
+        ],
+        [
+          "role",
+          "ANALYST"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.example.com:9243?ssl=true",
+    "identity": {
+      "host": "search.example.com",
+      "port": 9243,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch.internal:8443/db?secure=1",
+    "identity": {
+      "host": "ch.internal",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal?ssl=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@c1:9042/ks?sslmode=verify-full",
+    "identity": {
+      "host": "c1",
+      "port": 9042,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "ks",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal:9200?ssl=true&insecure=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=analytics&profile=prod",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "analytics"
+        ],
+        [
+          "profile",
+          "prod"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "",
+    "identity": null,
+    "error": "Ungültige athena:// URL"
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://localhost:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?credentials_file=%2Fk.json",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "credentials_file",
+          "/k.json"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com:5432/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com:4100/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com:4100/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com:4100/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com:5432/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db.example.com:5432/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com:3306/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 3306,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com:4100/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com:4100/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com:3306/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com:3306/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db.example.com:4100/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com:1433/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com:4100/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com:4100/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com:4100/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com:1433/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db.example.com:1433/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com:9042/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9042,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com:4100/app?sslmode=prefer",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9042,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com:4100/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com:9042/app?sslmode=require",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9042,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com:9042/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9042,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db.example.com:4100/app?sslmode=verify-full",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db.example.com:8123/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db.example.com:4100/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db.example.com:8443/app?secure=1",
+    "identity": {
+      "host": "db.example.com",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db.example.com:4100/app?secure=1",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com:9200/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com:4100/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com/app?ssl=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com/app?ssl=true&insecure=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com:4100/app?ssl=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com:4100/app?ssl=true&insecure=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com:9200/app?ssl=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db.example.com:9200/app?ssl=true&insecure=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com:8086/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com:4100/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com/app?ssl=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com/app?ssl=true&insecure=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com:4100/app?ssl=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com:4100/app?ssl=true&insecure=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com:8086/app?ssl=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 8086,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db.example.com:8086/app?ssl=true&insecure=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 8086,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com:27017/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com:4100/app",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "mongodb",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com/app?tls=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com/app?tls=true&tlsAllowInvalidCertificates=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com:4100/app?tls=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com:4100/app?tls=true&tlsAllowInvalidCertificates=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com:27017/app?tls=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db.example.com:27017/app?tls=true&tlsAllowInvalidCertificates=true",
+    "identity": {
+      "host": "db.example.com",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "redis://u@db.example.com:6379/0",
+    "identity": {
+      "host": "db.example.com",
+      "port": 6379,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "redis://u@db.example.com:4100/0",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://u@db.example.com/0",
+    "identity": {
+      "host": "db.example.com",
+      "port": 6379,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://u@db.example.com:4100/0",
+    "identity": {
+      "host": "db.example.com",
+      "port": 4100,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://u@db.example.com:6379/0",
+    "identity": {
+      "host": "db.example.com",
+      "port": 6379,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://u@db:9042/app?sslmode=require",
+    "identity": {
+      "host": "db",
+      "port": 9042,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://u@db:6379/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db:27017/app?tls=true&tlsAllowInvalidCertificates=true",
+    "identity": {
+      "host": "db",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db:9200/app?ssl=true",
+    "identity": {
+      "host": "db",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db/app?ssl=true",
+    "identity": {
+      "host": "db",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://u@db:8086/app?ssl=true",
+    "identity": {
+      "host": "db",
+      "port": 8086,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db:8443/app?secure=1",
+    "identity": {
+      "host": "db",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db:9440/app?secure=1",
+    "identity": {
+      "host": "db",
+      "port": 9440,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db:5432/app?sslmode=require",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db:5432/app?sslmode=verify-ca",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@db:5432/app?sslmode=disable",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db:3306/app?sslmode=require",
+    "identity": {
+      "host": "db",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db:3306/app?sslmode=verify-ca",
+    "identity": {
+      "host": "db",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db:1433/app?instance=SQLEXPRESS&integrated_security=true&sslmode=require",
+    "identity": {
+      "host": "db",
+      "port": 1433,
+      "transport": "",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": [
+        [
+          "instance",
+          "SQLEXPRESS"
+        ],
+        [
+          "integrated_security",
+          "true"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@db:1433/app?sslmode=prefer",
+    "identity": {
+      "host": "db",
+      "port": 1433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "redis://@db:6379/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@eu-west-1?endpoint=http%3A%2F%2F127.0.0.1%3A8000",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://127.0.0.1:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2F%5B%3A%3A1%5D%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://[::1]:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Fdynamo.local%3A4566",
+    "identity": {
+      "host": "us-east-1",
+      "port": 4566,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://dynamo.local:4566"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-central-1?endpoint=http%3A%2F%2Fddb.internal",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 80,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "endpoint",
+          "http://ddb.internal"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=https%3A%2F%2Flocalhost%3A4566",
+    "identity": {
+      "host": "us-east-1",
+      "port": 4566,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "https://localhost:4566"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?profile=prod",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "prod"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://us-west-2?profile=dev",
+    "identity": {
+      "host": "us-west-2",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "dev"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/DB/S?warehouse=WH&role=R",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "DB",
+      "schema": "S",
+      "user": "U",
+      "params": [
+        [
+          "warehouse",
+          "WH"
+        ],
+        [
+          "role",
+          "R"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/DB/S?warehouse=OTHER&role=R",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "DB",
+      "schema": "S",
+      "user": "U",
+      "params": [
+        [
+          "warehouse",
+          "OTHER"
+        ],
+        [
+          "role",
+          "R"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/DB/S?warehouse=WH&role=ADMIN",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "DB",
+      "schema": "S",
+      "user": "U",
+      "params": [
+        [
+          "warehouse",
+          "WH"
+        ],
+        [
+          "role",
+          "ADMIN"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?schema=web&output=s3%3A%2F%2Fa%2F",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "schema",
+          "web"
+        ],
+        [
+          "output",
+          "s3://a/"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?schema=etl&output=s3%3A%2F%2Fa%2F",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "schema",
+          "etl"
+        ],
+        [
+          "output",
+          "s3://a/"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?output=s3%3A%2F%2Fa%2F",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "output",
+          "s3://a/"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?output=s3%3A%2F%2Fb%2F",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "output",
+          "s3://b/"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=a",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=b",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/OtherCatalog",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "OtherCatalog",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p/d?location=EU",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "d",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "location",
+          "EU"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p/d?location=US",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "d",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "location",
+          "US"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p/d?credentials_file=%2Fa.json",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "d",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "credentials_file",
+          "/a.json"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p/d?credentials_file=%2Fb.json",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "d",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "credentials_file",
+          "/b.json"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?profile=a",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?profile=b",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?endpoint=http%3A%2F%2Flocalhost%3A8000",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "endpoint",
+          "http://localhost:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://ANNA@acme/SALES?warehouse=WH&role=R",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "SALES",
+      "schema": "",
+      "user": "ANNA",
+      "params": [
+        [
+          "warehouse",
+          "WH"
+        ],
+        [
+          "role",
+          "R"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9200?ssl=true",
+    "identity": {
+      "host": "es",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9200?ssl=false",
+    "identity": {
+      "host": "es",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:8443/db?secure=1",
+    "identity": {
+      "host": "ch",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:8123/db?secure=0",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?profile=prod&endpoint=https%3A%2F%2Fvpce-1.dynamodb.eu-west-1.vpce.amazonaws.com",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "prod"
+        ],
+        [
+          "endpoint",
+          "https://vpce-1.dynamodb.eu-west-1.vpce.amazonaws.com"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://cn-north-1?profile=cn",
+    "identity": {
+      "host": "cn-north-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "cn"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-central-1?profile=p",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://AKIA@eu-west-1?endpoint=https%3A%2F%2Fddb.example.com",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "AKIA",
+      "params": [
+        [
+          "endpoint",
+          "https://ddb.example.com"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://AKIA@us-east-1?endpoint=http%3A%2F%2Fddb.lan%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "AKIA",
+      "params": [
+        [
+          "endpoint",
+          "http://ddb.lan:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://us-east-1?profile=x&endpoint=http%3A%2F%2Fddb.lan",
+    "identity": {
+      "host": "us-east-1",
+      "port": 80,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "x"
+        ],
+        [
+          "endpoint",
+          "http://ddb.lan"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2F127.0.0.1%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://127.0.0.1:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://test@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A4566",
+    "identity": {
+      "host": "us-east-1",
+      "port": 4566,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "test",
+      "params": [
+        [
+          "endpoint",
+          "http://localhost:4566"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=https%3A%2F%2Flocalhost",
+    "identity": {
+      "host": "us-east-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "https://localhost"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://A@us-east-1?endpoint=http%3A%2F%2Fddb.lan%3A9000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 9000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "A",
+      "params": [
+        [
+          "endpoint",
+          "http://ddb.lan:9000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "https://u@ch/db",
+    "identity": {
+      "host": "ch",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "http://u@ch/db",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:8123/db",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "opensearch://u@os:9200",
+    "identity": {
+      "host": "os",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@os:9200",
+    "identity": {
+      "host": "os",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "https://u@es",
+    "identity": {
+      "host": "es",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:443?ssl=true",
+    "identity": {
+      "host": "es",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "http://token@i:8086/b",
+    "identity": {
+      "host": "i",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://token@i/b",
+    "identity": {
+      "host": "i",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "valkey://db:6379/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "redis://db/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgres://u@db/app",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "https://u@ch:8123/db",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "http://u@ch:8123/db",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://db:6379/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "redis://db:6379/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tcp",
+      "tls": false,
+      "verify": false,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb+srv://u@cluster.example.com/app",
+    "identity": {
+      "host": "cluster.example.com",
+      "port": null,
+      "transport": "mongodb+srv",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@cluster.example.com/app",
+    "identity": {
+      "host": "cluster.example.com",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?database=A",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "A",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?database=B",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "B",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?db=A",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "A",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?db=B",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "B",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/DB?schema=A",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "DB",
+      "schema": "A",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/DB?schema=B",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "DB",
+      "schema": "B",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?endpoint=https%3A%2F%2Fa",
+    "identity": {
+      "host": "a",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?endpoint=https%3A%2F%2Fb",
+    "identity": {
+      "host": "b",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?project=a",
+    "identity": {
+      "host": "a",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?project=b",
+    "identity": {
+      "host": "b",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?endpoint=a",
+    "identity": null,
+    "error": "Ungültiger BigQuery-Endpunkt: a"
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?api_endpoint=b",
+    "identity": null,
+    "error": "Ungültiger BigQuery-Endpunkt: b"
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?key_file=a",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "credentials_file",
+          "a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?credentials_file=b",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "credentials_file",
+          "b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h/b?org=a",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "org",
+          "a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h/b?orgID=b",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "org",
+          "b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h?bucket=a",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "a",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h?db=b",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h/b?version=2",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "version",
+          "2"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h/b?version=3",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "version",
+          "3"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://h/ks?nodes=a",
+    "identity": {
+      "host": "h",
+      "port": 9042,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "ks",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "nodes",
+          "a:9042"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "cassandra",
+    "url": "cassandra://h/ks?hosts=b",
+    "identity": {
+      "host": "h",
+      "port": 9042,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "ks",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "nodes",
+          "b:9042"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@h/db?instance=A",
+    "identity": {
+      "host": "h",
+      "port": 1433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": [
+        [
+          "instance",
+          "A"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "mssql",
+    "url": "mssql://u@h/db?instance=B",
+    "identity": {
+      "host": "h",
+      "port": 1433,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": [
+        [
+          "instance",
+          "B"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@h/db?hostaddr=10.0.0.1",
+    "identity": {
+      "host": "h",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": [
+        [
+          "hostaddr",
+          "10.0.0.1"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://u@h/db?hostaddr=10.0.0.2",
+    "identity": {
+      "host": "h",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": [
+        [
+          "hostaddr",
+          "10.0.0.2"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "oracle",
+    "url": "oracle://u@h/?connect_string=A",
+    "identity": {
+      "host": "",
+      "port": null,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "A",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "oracle",
+    "url": "oracle://u@h/?tns=B",
+    "identity": {
+      "host": "",
+      "port": null,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "B",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://r/C?schema=a",
+    "identity": {
+      "host": "r",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "C",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "schema",
+          "a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://r/C?schema=b",
+    "identity": {
+      "host": "r",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "C",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "schema",
+          "b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://r?profile=a",
+    "identity": {
+      "host": "r",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://r?profile=b",
+    "identity": {
+      "host": "r",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h/b?orgID=x",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "org",
+          "x"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://h/b?org=x",
+    "identity": {
+      "host": "h",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "b",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "org",
+          "x"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db:3306/app?sslmode=disable",
+    "identity": {
+      "host": "db",
+      "port": 3306,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db:3306/app?sslmode=verify-full",
+    "identity": {
+      "host": "db",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:8443/db",
+    "identity": {
+      "host": "ch",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "http://u@ch:8443/db",
+    "identity": {
+      "host": "ch",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:443/db",
+    "identity": {
+      "host": "ch",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:443/db?secure=1",
+    "identity": {
+      "host": "ch",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch/db?tls=true",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:8443/db?secure=1&ssl=false",
+    "identity": {
+      "host": "ch",
+      "port": 8443,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch:8443/db?secure=0",
+    "identity": {
+      "host": "ch",
+      "port": 8443,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch/db?sslmode=prefer",
+    "identity": {
+      "host": "ch",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9243",
+    "identity": {
+      "host": "es",
+      "port": 9243,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9243?ssl=true",
+    "identity": {
+      "host": "es",
+      "port": 9243,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "https://u@es:9200?ssl=false",
+    "identity": {
+      "host": "es",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9200",
+    "identity": {
+      "host": "es",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "https://u@es:9200?sslmode=disable",
+    "identity": {
+      "host": "es",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "https://u@es?sslmode=prefer",
+    "identity": {
+      "host": "es",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://i:8086?tls=false&ssl=true",
+    "identity": {
+      "host": "i",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://i:8086",
+    "identity": {
+      "host": "i",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db:8443/app",
+    "identity": {
+      "host": "db",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db:8123/app",
+    "identity": {
+      "host": "db",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db:9243/app",
+    "identity": {
+      "host": "db",
+      "port": 9243,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db:9200/app?ssl=false",
+    "identity": {
+      "host": "db",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.eu-west-1.amazonaws.com",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://dynamodb.eu-west-1.amazonaws.com"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://cn-north-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.cn-north-1.amazonaws.com.cn",
+    "identity": {
+      "host": "cn-north-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://dynamodb.cn-north-1.amazonaws.com.cn"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://us-east-2?profile=p&endpoint=https%3A%2F%2Fdynamodb.us-east-2.api.aws",
+    "identity": {
+      "host": "us-east-2",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://dynamodb.us-east-2.api.aws"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://us-east-1?profile=p&endpoint=https%3A%2F%2Fddb.example.com%3A8443",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://ddb.example.com:8443"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2F%5B%3A%3A1%5D%3A8001",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8001,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://[::1]:8001"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Fdynamodb-local%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://dynamodb-local:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://local@us-east-1?endpoint=http%3A%2F%2Fddb.lan%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "local",
+      "params": [
+        [
+          "endpoint",
+          "http://ddb.lan:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://us-east-1?profile=p&endpoint=https%3A%2F%2Fddb.lan%3A8000",
+    "identity": {
+      "host": "us-east-1",
+      "port": 8000,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://ddb.lan:8000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/SALES/PUBLIC",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "SALES",
+      "schema": "PUBLIC",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?db=SALES&schema=PUBLIC",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "SALES",
+      "schema": "PUBLIC",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme/SALES",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "SALES",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://U@acme?db=OTHER",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "OTHER",
+      "schema": "",
+      "user": "U",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "postgres",
+    "url": "postgresql://db:5432/app?sslmode=prefer",
+    "identity": {
+      "host": "db",
+      "port": 5432,
+      "transport": "",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mysql",
+    "url": "mysql://u@db:3306?sslmode=verify-full",
+    "identity": {
+      "host": "db",
+      "port": 3306,
+      "transport": "",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch.example.com:9440/db?secure=1",
+    "identity": {
+      "host": "ch.example.com",
+      "port": 9440,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://my-proj/events?location=EU&credentials_file=%2Fkeys%2Fsa.json",
+    "identity": {
+      "host": "my-proj",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "events",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "location",
+          "EU"
+        ],
+        [
+          "credentials_file",
+          "/keys/sa.json"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "opensearch://admin@os.example.com:9200",
+    "identity": {
+      "host": "os.example.com",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "admin",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://influx.internal/metrics?ssl=true",
+    "identity": {
+      "host": "influx.internal",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "metrics",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@m1:27017/app?tls=true&tlsAllowInvalidCertificates=true",
+    "identity": {
+      "host": "m1",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://e@search.internal:9200?ssl=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "e",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=etl&profile=prod",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "etl"
+        ],
+        [
+          "profile",
+          "prod"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=analytics&profile=dev",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "analytics"
+        ],
+        [
+          "profile",
+          "dev"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=analytics&profile=prod&endpoint=http%3A%2F%2Flocalhost%3A4566",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 4566,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "analytics"
+        ],
+        [
+          "profile",
+          "prod"
+        ],
+        [
+          "endpoint",
+          "http://localhost:4566"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/OtherCatalog?workgroup=analytics&profile=prod",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "OtherCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "workgroup",
+          "analytics"
+        ],
+        [
+          "profile",
+          "prod"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "snowflake",
+    "url": "snowflake://ANNA@acme/SALES?warehouse=OTHER&role=R",
+    "identity": {
+      "host": "acme.snowflakecomputing.com",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "SALES",
+      "schema": "",
+      "user": "ANNA",
+      "params": [
+        [
+          "warehouse",
+          "OTHER"
+        ],
+        [
+          "role",
+          "R"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@db/app",
+    "identity": {
+      "host": "db",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@ch.example.com:8123/db",
+    "identity": {
+      "host": "ch.example.com",
+      "port": 8123,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "db",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://eu-central-1/AwsDataCatalog?workgroup=analytics&output=s3%3A%2F%2Fresults%2Fathena%2F&schema=web&profile=prod",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "schema",
+          "web"
+        ],
+        [
+          "output",
+          "s3://results/athena/"
+        ],
+        [
+          "workgroup",
+          "analytics"
+        ],
+        [
+          "profile",
+          "prod"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "influxdb",
+    "url": "influxdb://token@influx:8086/metrics",
+    "identity": {
+      "host": "influx",
+      "port": 8086,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "metrics",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal:9200",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://cache:6380",
+    "identity": {
+      "host": "cache",
+      "port": 6380,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "clickhouse",
+    "url": "clickhouse://u@db/app?secure=1",
+    "identity": {
+      "host": "db",
+      "port": 8443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "athena",
+    "url": "athena://AKIAEXAMPLE@us-east-1/AwsDataCatalog?output=s3%3A%2F%2Fr%2F",
+    "identity": {
+      "host": "us-east-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "AwsDataCatalog",
+      "schema": "",
+      "user": "AKIAEXAMPLE",
+      "params": [
+        [
+          "output",
+          "s3://r/"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "redis",
+    "url": "rediss://db/0",
+    "identity": {
+      "host": "db",
+      "port": 6379,
+      "transport": "tls",
+      "tls": true,
+      "verify": true,
+      "database": "0",
+      "schema": "",
+      "user": "",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?endpoint=https%3A%2F%2Fa",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "endpoint",
+          "https://a"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "bigquery",
+    "url": "bigquery://p?api_endpoint=https%3A%2F%2Fb",
+    "identity": {
+      "host": "p",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "endpoint",
+          "https://b"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-central-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.us-east-2.amazonaws.com",
+    "identity": {
+      "host": "eu-central-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://dynamodb.us-east-2.amazonaws.com"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://eu-west-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.us-east-2.amazonaws.com",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://dynamodb.us-east-2.amazonaws.com"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://ap-south-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.ap-south-1.amazonaws.com",
+    "identity": {
+      "host": "ap-south-1",
+      "port": 443,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "",
+      "params": [
+        [
+          "profile",
+          "p"
+        ],
+        [
+          "endpoint",
+          "https://dynamodb.ap-south-1.amazonaws.com"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@m1:27017/app?tls=true",
+    "identity": {
+      "host": "m1",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal:9200?ssl=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db:27017/app?tls=true",
+    "identity": {
+      "host": "db",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9243/?insecure=true",
+    "identity": {
+      "host": "es",
+      "port": 9243,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://A@eu-west-1?endpoint=http%3A%2F%2Fddb.lan%3A9000",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 9000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "A",
+      "params": [
+        [
+          "endpoint",
+          "http://ddb.lan:9000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal:9200/?ssl=true&insecure=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  }
+]

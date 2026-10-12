@@ -4,7 +4,8 @@ import { useReactFlow } from "@xyflow/react";
 import { toPng, toSvg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { FileCode, FileText, Image } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import { EXPORT_PADDING, EXPORT_SCALE } from "@/features/er-diagram/er-diagram-view/constants";
 import {
   dataUrlToUint8Array,
@@ -12,6 +13,7 @@ import {
   getFlowElement,
 } from "@/features/er-diagram/er-diagram-view/export-utils";
 import type { ErNodeType } from "@/features/er-diagram/er-diagram-view/types";
+import { onHotkeyAction } from "@/lib/hotkeys";
 
 export function ExportButtons({
   nodes,
@@ -119,6 +121,20 @@ export function ExportButtons({
     },
     [exporting, getNodes, getEdges, getNodesBounds, setExporting, prepareExport],
   );
+
+  useEffect(() => {
+    const stop = (["png", "svg", "pdf"] as const).map((format) =>
+      onHotkeyAction(`er.export.${format}`, () => {
+        if (nodes.length === 0) return;
+        void doExport(format).catch((error) =>
+          toast.error(`Export fehlgeschlagen: ${String(error)}`),
+        );
+      }),
+    );
+    return () => {
+      for (const dispose of stop) dispose();
+    };
+  }, [doExport, nodes.length]);
 
   return (
     <div className="rounded-md bg-card border border-border shadow-sm flex items-center">

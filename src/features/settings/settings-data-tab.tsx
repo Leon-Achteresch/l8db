@@ -3,6 +3,7 @@ import { ArrowRightLeftIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { MultiTargetSettingsRow } from "@/features/settings/multi-target-settings-row";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSettingsStore } from "@/lib/settings";
@@ -39,10 +40,7 @@ export function SettingsDataTab() {
       </div>
 
       <div className="space-y-3">
-        <SettingsRow
-          title="Query-Verlauf je Verbindung"
-          description="50 bis 5000 Einträge. Ältere Einträge werden entfernt; dauerhaft gespeicherte Queries bleiben erhalten."
-        >
+        <SettingsRow settingId="history-limit">
           <Input
             type="number"
             min={50}
@@ -57,10 +55,7 @@ export function SettingsDataTab() {
             className="h-8 w-24 text-xs"
           />
         </SettingsRow>
-        <SettingsRow
-          title="Standard-Zeilenlimit"
-          description="Maximale Anzahl abgerufener Datensätze pro Tabelle (10 bis 5000)."
-        >
+        <SettingsRow settingId="row-limit">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1">
               {ROW_LIMIT_PRESETS.map((preset) => (
@@ -92,10 +87,7 @@ export function SettingsDataTab() {
           </div>
         </SettingsRow>
 
-        <SettingsRow
-          title="Query-Timeout"
-          description="Zeitgrenze für SQL-Ausführungen (5 bis 300 Sekunden). PostgreSQL und SQLite können den Abbruch bestätigen; bei anderen Treibern muss nach einem Timeout der Serverzustand geprüft werden."
-        >
+        <SettingsRow settingId="timeout">
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -114,10 +106,7 @@ export function SettingsDataTab() {
           </div>
         </SettingsRow>
 
-        <SettingsRow
-          title="Änderungen als Transaktion (Safe Mode)"
-          description="Zeilenänderungen und DML sammeln und erst nach manuellem Commit persistieren."
-        >
+        <SettingsRow settingId="transactions">
           <Switch
             checked={transactionsEnabled}
             onCheckedChange={setTransactionsEnabled}
@@ -125,14 +114,7 @@ export function SettingsDataTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Transaktionen pro Tabelle"
-          description={
-            hasTransactions
-              ? "Zum Wechseln zuerst offene Transaktionen abschließen."
-              : "Tabellen getrennt committen. Für abhängige Änderungen ausschalten: dann gilt eine gemeinsame Transaktion pro Datenbank. SQLite verwendet immer den gemeinsamen Modus. SQL im Editor bleibt im Tabellenmodus separat."
-          }
-        >
+        <SettingsRow settingId="transactions-per-table" resetDisabled={hasTransactions}>
           <Switch
             checked={transactionsPerTable}
             onCheckedChange={setTransactionsPerTable}
@@ -141,10 +123,7 @@ export function SettingsDataTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Destruktive Abfragen absichern"
-          description="Bestätigungsdialog vor DROP TABLE, TRUNCATE oder DELETE ohne WHERE-Klausel."
-        >
+        <SettingsRow settingId="destructive-confirm">
           <Switch
             checked={confirmDestructiveQueries}
             onCheckedChange={setConfirmDestructiveQueries}
@@ -152,10 +131,9 @@ export function SettingsDataTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="NULL-Werte hervorheben"
-          description="NULL-Werte im Tabellengitter optisch klar von leeren Zeichenketten trennen."
-        >
+        <MultiTargetSettingsRow />
+
+        <SettingsRow settingId="null-values">
           <Switch
             checked={highlightNullValues}
             onCheckedChange={setHighlightNullValues}
@@ -163,11 +141,7 @@ export function SettingsDataTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="Transfer"
-          description="Komplette Schemas mit Struktur und Daten in eine andere Verbindung kopieren, auch zwischen Datenbankfamilien."
-          featureId="settings.data.transfer"
-        >
+        <SettingsRow settingId="transfer" featureId="settings.data.transfer">
           <Button variant="outline" size="sm" asChild>
             <Link to="/transfer">
               <ArrowRightLeftIcon className="size-3.5" />

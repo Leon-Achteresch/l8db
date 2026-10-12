@@ -13,6 +13,7 @@ export function SettingsSearch({ value, onChange }: SettingsSearchProps) {
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"
+        aria-label="Einstellungen durchsuchen"
         placeholder="Einstellungen durchsuchen …"
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -22,6 +23,7 @@ export function SettingsSearch({ value, onChange }: SettingsSearchProps) {
         <button
           type="button"
           onClick={() => onChange("")}
+          aria-label="Einstellungssuche leeren"
           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
         >
           <X className="size-3.5" />

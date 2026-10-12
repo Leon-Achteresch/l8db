@@ -12,6 +12,7 @@ import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { copyText } from "@/lib/clipboard";
 import { useSettingsStore } from "@/lib/settings";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
@@ -28,7 +29,7 @@ export function SettingsAboutTab() {
     try {
       await copyText(info);
       setCopied(true);
-      toast.success("Diagnose-Informationen in die Zwischenablage kopiert");
+      showCopiedMessage("Diagnose-Informationen in die Zwischenablage kopiert");
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("Kopieren fehlgeschlagen");
@@ -44,10 +45,7 @@ export function SettingsAboutTab() {
         </p>
       </div>
 
-      <SettingsRow
-        title="Über l8db"
-        description="Informationen zur App, Funktionen und Technologien."
-      >
+      <SettingsRow settingId="about">
         <Button variant="outline" size="sm" asChild>
           <Link to="/about">
             <Info className="size-3.5" />
@@ -56,10 +54,7 @@ export function SettingsAboutTab() {
         </Button>
       </SettingsRow>
 
-      <SettingsRow
-        title="Dokumentation"
-        description="Anleitungen zu Verbindungen, Query-Editor und Installation im Browser öffnen."
-      >
+      <SettingsRow settingId="documentation">
         <Button variant="outline" size="sm" asChild>
           <Link to="/docs">
             <BookOpen className="size-3.5" />
@@ -68,11 +63,7 @@ export function SettingsAboutTab() {
         </Button>
       </SettingsRow>
 
-      <SettingsRow
-        title="Open-Source-Lizenzen"
-        description="l8db ist Open Source unter der Apache License 2.0. Lizenzen aller enthaltenen Komponenten anzeigen."
-        featureId="settings.about.open-source-licenses"
-      >
+      <SettingsRow settingId="open-source-licenses" featureId="settings.about.open-source-licenses">
         <Button variant="outline" size="sm" onClick={() => setLicensesOpen(true)}>
           <Scale className="size-3.5" />
           <span>Lizenzen anzeigen</span>
@@ -83,10 +74,7 @@ export function SettingsAboutTab() {
       <UpdateSection />
 
       <div className="space-y-3 pt-2">
-        <SettingsRow
-          title="Systemdiagnose"
-          description="Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte."
-        >
+        <SettingsRow settingId="diagnostics">
           <Button variant="outline" size="sm" onClick={() => void copyDiagnosticInfo()}>
             <MorphIcon
               icon={copied ? Check : Copy}
@@ -95,32 +83,21 @@ export function SettingsAboutTab() {
             <span>{copied ? "Kopiert" : "Infos kopieren"}</span>
           </Button>
         </SettingsRow>
-        <SettingsRow
-          title="Absturzberichte senden"
-          description="Abstürze mit Fehlermeldung, Stacktrace, Version und Betriebssystem an Sentry (EU) senden. Verbindungsdaten werden entfernt, SQL und Ergebnisdaten nie gesendet."
-          featureId="settings.about.crash-reports"
-        >
+        <SettingsRow settingId="crash-reports" featureId="settings.about.crash-reports">
           <Switch
             checked={crashReports}
             onCheckedChange={setCrashReports}
             aria-label="Absturzberichte senden"
           />
         </SettingsRow>
-        <SettingsRow
-          title="Nutzungs- und Leistungsdaten senden"
-          description="Startzeit, Dauer von Datenbankbefehlen je DB-Typ, geöffnete Bereiche und Sitzungen an Sentry (EU) senden. Nie SQL, Tabellennamen oder Verbindungsdaten."
-          featureId="settings.about.usage-metrics"
-        >
+        <SettingsRow settingId="usage-metrics" featureId="settings.about.usage-metrics">
           <Switch
             checked={usageMetrics}
             onCheckedChange={setUsageMetrics}
             aria-label="Nutzungs- und Leistungsdaten senden"
           />
         </SettingsRow>
-        <SettingsRow
-          title="Bug melden"
-          description="Problem beschreiben und direkt auf GitHub melden, kopieren oder per E-Mail senden."
-        >
+        <SettingsRow settingId="bug-report">
           <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
             <Bug className="size-3.5" />
             <span>Bug melden</span>

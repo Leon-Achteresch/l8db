@@ -157,4 +157,25 @@ describe("other user-data stores across windows", () => {
     expect(persisted.productionReadOnly).toBe(false);
     expect(persisted.editorFontSize).toBe(15);
   });
+
+  test("package function search stays independent of column search and syncs across windows", () => {
+    useSettingsStore.getState().setSearchIncludeColumns(false);
+    useSettingsStore.getState().setSearchIncludePackageMembers(true);
+    expect(
+      stored<{ searchIncludePackageMembers: boolean }>("l8db.settings").searchIncludePackageMembers,
+    ).toBe(true);
+    otherWindowWrites(
+      "l8db.settings",
+      { ...useSettingsStore.getState(), searchIncludePackageMembers: false },
+      1,
+    );
+    expect(useSettingsStore.getState().searchIncludePackageMembers).toBe(false);
+    useSettingsStore.getState().setSearchIncludeColumns(true);
+    const persisted = stored<{
+      searchIncludeColumns: boolean;
+      searchIncludePackageMembers: boolean;
+    }>("l8db.settings");
+    expect(persisted.searchIncludeColumns).toBe(true);
+    expect(persisted.searchIncludePackageMembers).toBe(false);
+  });
 });

@@ -159,6 +159,23 @@ test("imports new MCP dashboards locked and active", async () => {
   expect(writes()).toEqual([]);
 });
 
+test("CSS design synchronizes in both directions without database requests", async () => {
+  const design = { css: ".dashboard-widget { border-radius: 24px; }", enabled: true };
+  applyMcpDashboards([{ ...file("css-1"), design }]);
+  const board = mcpBoards()[0];
+  expect(board.design).toEqual(design);
+  const changed = { css: ":root { --dash-color-1: #f0f; }", enabled: false };
+  useDashboardsStore.getState().update(board.id, { design: changed });
+  await Bun.sleep(450);
+  expect(writes()).toHaveLength(1);
+  expect((writes()[0].args.dashboard as { design: unknown }).design).toEqual(changed);
+  expect(calls.some(({ cmd }) => cmd === "execute_query")).toBe(false);
+  applyMcpDashboards([{ ...file("css-2"), design }]);
+  expect(mcpBoards()[0].design).toEqual(design);
+  applyMcpDashboards([{ ...file("css-3"), design: null } as ReturnType<typeof file>]);
+  expect(mcpBoards()[0].design).toBeUndefined();
+});
+
 test("unchanged stamps keep the store untouched, new stamps update in place", async () => {
   applyMcpDashboards([file("s1")]);
   const first = mcpBoards()[0];

@@ -64,6 +64,7 @@ export function QueryEditorContent({
           onRunSelection={actions.handleRunSelection}
           onRunStatement={actions.handleRunStatement}
           onCheck={() => void actions.handleCheck()}
+          onPreview={() => void actions.handlePreview()}
           onSelectionChange={(selectedSql) => editorSync.schedule({ tabId, selectedSql })}
           onCursorChange={(cursorOffset) => editorSync.schedule({ tabId, cursorOffset })}
           onPositionChange={cursor.setCursorPosition}
@@ -86,6 +87,7 @@ export function QueryEditorContent({
           sql={sql}
           dialect={dialect}
           dialectLabel={dialectLabel}
+          editorId={tabId}
         />
       )}
     </>

@@ -48,7 +48,7 @@ export function DebugButton(props: DebugButtonProps) {
         Debuggen
       </Button>
       {context ? (
-        <DebugDialog {...props} context={context} onClose={() => setContext(undefined)} />
+        <DebugDialog {...props} context={context} open onOpenChange={() => setContext(undefined)} />
       ) : null}
     </>
   );

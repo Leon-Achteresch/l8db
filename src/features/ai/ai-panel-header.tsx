@@ -10,15 +10,10 @@ import {
   X,
 } from "lucide-react";
 import type { Ref } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export function AiPanelHeader({
@@ -103,7 +98,7 @@ export function AiPanelHeader({
           >
             <History className="size-4" />
           </Button>
-          <DropdownMenu>
+          <IconMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 size="icon"
@@ -117,25 +112,25 @@ export function AiPanelHeader({
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl text-xs">
-              <DropdownMenuItem onSelect={onFullPage}>
-                <Maximize2 className="size-3.5" />
-                Im Arbeitsbereich öffnen
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onMinimize}>
-                <div ref={minimizeRef} className="flex flex-1 items-center gap-2">
-                  <Minus className="size-3.5" />
-                  Minimieren
-                  {minimizeNew && <NewBadge className="ml-auto" />}
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={busy} onSelect={onSettings}>
-                <Settings2 className="size-3.5" />
-                KI-Einstellungen
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <IconMenuContent>
+              <IconMenuItem
+                icon={<Maximize2 />}
+                label="Im Arbeitsbereich öffnen"
+                onSelect={onFullPage}
+              />
+              <IconMenuItem icon={<Minus />} label="Minimieren" onSelect={onMinimize}>
+                <div ref={minimizeRef} className="pointer-events-none absolute inset-0" />
+                {minimizeNew && <NewBadge className="absolute -right-1 -top-1" />}
+              </IconMenuItem>
+              <IconMenuSeparator />
+              <IconMenuItem
+                icon={<Settings2 />}
+                label="KI-Einstellungen"
+                disabled={busy}
+                onSelect={onSettings}
+              />
+            </IconMenuContent>
+          </IconMenu>
         </>
       )}
       <Button

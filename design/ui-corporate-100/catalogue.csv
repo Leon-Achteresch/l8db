@@ -1,0 +1,101 @@
+id,design,view,tone,concept,file,width,height
+101,Kontextinspektor,SQL-Arbeitsplatz,Hell,Corporate Design,images/101-context-inspector-sql.png,1586,992
+102,Kontextinspektor,Tabellen-Explorer,Dunkel,Corporate Design,images/102-context-inspector-table.png,1586,992
+103,Kontextinspektor,ER-Diagramm,Hell,Corporate Design,images/103-context-inspector-schema.png,1586,992
+104,Kontextinspektor,Query Builder,Dunkel,Corporate Design,images/104-context-inspector-builder.png,1586,992
+105,Kontextinspektor,Ausführungsplan,Hell,Corporate Design,images/105-context-inspector-explain.png,1586,992
+106,Prioritätsbahnen,Live-Monitor,Hell,Corporate Design,images/106-priority-lanes-monitor.png,1586,992
+107,Prioritätsbahnen,Datenbank-Health,Dunkel,Corporate Design,images/107-priority-lanes-health.png,1586,992
+108,Prioritätsbahnen,Datenbankübersicht,Hell,Corporate Design,images/108-priority-lanes-dashboard.png,1586,992
+109,Prioritätsbahnen,Abfrageverlauf,Dunkel,Corporate Design,images/109-priority-lanes-history.png,1586,992
+110,Prioritätsbahnen,Automatisierung,Hell,Corporate Design,images/110-priority-lanes-automation.png,1586,992
+111,Geführter Kontext,SQL-Notebook,Hell,Corporate Design,images/111-guided-context-notebook.png,1586,992
+112,Geführter Kontext,AI-Arbeitsbereich,Dunkel,Corporate Design,images/112-guided-context-ai.png,1586,992
+113,Geführter Kontext,Datenvergleich,Hell,Corporate Design,images/113-guided-context-data-compare.png,1586,992
+114,Geführter Kontext,Schema-Vergleich,Dunkel,Corporate Design,images/114-guided-context-schema-compare.png,1586,992
+115,Geführter Kontext,Transaktionsprüfung,Hell,Corporate Design,images/115-guided-context-transactions.png,1586,992
+116,Master und Detail,Verbindungen,Hell,Corporate Design,images/116-master-detail-connections.png,1586,992
+117,Master und Detail,Datenimport,Dunkel,Corporate Design,images/117-master-detail-import.png,1586,992
+118,Master und Detail,Objektspeicher,Hell,Corporate Design,images/118-master-detail-storage.png,1586,992
+119,Master und Detail,Einstellungen,Dunkel,Corporate Design,images/119-master-detail-settings.png,1586,992
+120,Master und Detail,MCP und Zugriff,Hell,Corporate Design,images/120-master-detail-mcp.png,1586,992
+121,Verknüpfte Werkbank,SQL-Arbeitsplatz,Dunkel,Corporate Design,images/121-linked-workbench-sql.png,1586,992
+122,Verknüpfte Werkbank,Tabellen-Explorer,Hell,Corporate Design,images/122-linked-workbench-table.png,1586,992
+123,Verknüpfte Werkbank,ER-Diagramm,Dunkel,Corporate Design,images/123-linked-workbench-schema.png,1586,992
+124,Verknüpfte Werkbank,Query Builder,Hell,Corporate Design,images/124-linked-workbench-builder.png,1586,992
+125,Verknüpfte Werkbank,Ausführungsplan,Dunkel,Corporate Design,images/125-linked-workbench-explain.png,1586,992
+126,Signal und Beleg,Live-Monitor,Dunkel,Corporate Design,images/126-signal-and-evidence-monitor.png,1586,992
+127,Signal und Beleg,Datenbank-Health,Hell,Corporate Design,images/127-signal-and-evidence-health.png,1586,992
+128,Signal und Beleg,Datenbankübersicht,Dunkel,Corporate Design,images/128-signal-and-evidence-dashboard.png,1586,992
+129,Signal und Beleg,Abfrageverlauf,Hell,Corporate Design,images/129-signal-and-evidence-history.png,1586,992
+130,Signal und Beleg,Automatisierung,Dunkel,Corporate Design,images/130-signal-and-evidence-automation.png,1586,992
+131,Gepaarte Flächen,SQL-Notebook,Dunkel,Corporate Design,images/131-paired-surfaces-notebook.png,1586,992
+132,Gepaarte Flächen,AI-Arbeitsbereich,Hell,Corporate Design,images/132-paired-surfaces-ai.png,1586,992
+133,Gepaarte Flächen,Datenvergleich,Dunkel,Corporate Design,images/133-paired-surfaces-data-compare.png,1586,992
+134,Gepaarte Flächen,Schema-Vergleich,Hell,Corporate Design,images/134-paired-surfaces-schema-compare.png,1586,992
+135,Gepaarte Flächen,Transaktionsprüfung,Dunkel,Corporate Design,images/135-paired-surfaces-transactions.png,1586,992
+136,Aufgabenkontinuität,Verbindungen,Dunkel,Corporate Design,images/136-task-continuity-connections.png,1586,992
+137,Aufgabenkontinuität,Datenimport,Hell,Corporate Design,images/137-task-continuity-import.png,1586,992
+138,Aufgabenkontinuität,Objektspeicher,Dunkel,Corporate Design,images/138-task-continuity-storage.png,1586,992
+139,Aufgabenkontinuität,Einstellungen,Hell,Corporate Design,images/139-task-continuity-settings.png,1586,992
+140,Aufgabenkontinuität,MCP und Zugriff,Dunkel,Corporate Design,images/140-task-continuity-mcp.png,1586,992
+141,Fokussierte Arbeitsfläche,SQL-Arbeitsplatz,Hell,Corporate Design,images/141-focused-canvas-sql.png,1586,992
+142,Fokussierte Arbeitsfläche,Tabellen-Explorer,Dunkel,Corporate Design,images/142-focused-canvas-table.png,1586,992
+143,Fokussierte Arbeitsfläche,ER-Diagramm,Hell,Corporate Design,images/143-focused-canvas-schema.png,1586,992
+144,Fokussierte Arbeitsfläche,Query Builder,Dunkel,Corporate Design,images/144-focused-canvas-builder.png,1586,992
+145,Fokussierte Arbeitsfläche,Ausführungsplan,Hell,Corporate Design,images/145-focused-canvas-explain.png,1586,992
+146,Kontextband,Live-Monitor,Hell,Corporate Design,images/146-context-ribbon-monitor.png,1586,992
+147,Kontextband,Datenbank-Health,Dunkel,Corporate Design,images/147-context-ribbon-health.png,1586,992
+148,Kontextband,Datenbankübersicht,Hell,Corporate Design,images/148-context-ribbon-dashboard.png,1586,992
+149,Kontextband,Abfrageverlauf,Dunkel,Corporate Design,images/149-context-ribbon-history.png,1586,992
+150,Kontextband,Automatisierung,Hell,Corporate Design,images/150-context-ribbon-automation.png,1586,992
+151,Entscheidung mit Vorschau,SQL-Notebook,Hell,Corporate Design,images/151-decision-preview-notebook.png,1586,992
+152,Entscheidung mit Vorschau,AI-Arbeitsbereich,Dunkel,Corporate Design,images/152-decision-preview-ai.png,1586,992
+153,Entscheidung mit Vorschau,Datenvergleich,Hell,Corporate Design,images/153-decision-preview-data-compare.png,1586,992
+154,Entscheidung mit Vorschau,Schema-Vergleich,Dunkel,Corporate Design,images/154-decision-preview-schema-compare.png,1586,992
+155,Entscheidung mit Vorschau,Transaktionsprüfung,Hell,Corporate Design,images/155-decision-preview-transactions.png,1586,992
+156,Explorationsspalten,Verbindungen,Hell,Corporate Design,images/156-exploration-columns-connections.png,1586,992
+157,Explorationsspalten,Datenimport,Dunkel,Corporate Design,images/157-exploration-columns-import.png,1586,992
+158,Explorationsspalten,Objektspeicher,Hell,Corporate Design,images/158-exploration-columns-storage.png,1586,992
+159,Explorationsspalten,Einstellungen,Dunkel,Corporate Design,images/159-exploration-columns-settings.png,1586,992
+160,Explorationsspalten,MCP und Zugriff,Hell,Corporate Design,images/160-exploration-columns-mcp.png,1586,992
+161,Gestufte Details,SQL-Arbeitsplatz,Dunkel,Corporate Design,images/161-progressive-details-sql.png,1586,992
+162,Gestufte Details,Tabellen-Explorer,Hell,Corporate Design,images/162-progressive-details-table.png,1586,992
+163,Gestufte Details,ER-Diagramm,Dunkel,Corporate Design,images/163-progressive-details-schema.png,1586,992
+164,Gestufte Details,Query Builder,Hell,Corporate Design,images/164-progressive-details-builder.png,1586,992
+165,Gestufte Details,Ausführungsplan,Dunkel,Corporate Design,images/165-progressive-details-explain.png,1586,992
+166,Objektlinse,Live-Monitor,Dunkel,Corporate Design,images/166-object-lens-monitor.png,1586,992
+167,Objektlinse,Datenbank-Health,Hell,Corporate Design,images/167-object-lens-health.png,1586,992
+168,Objektlinse,Datenbankübersicht,Dunkel,Corporate Design,images/168-object-lens-dashboard.png,1586,992
+169,Objektlinse,Abfrageverlauf,Hell,Corporate Design,images/169-object-lens-history.png,1586,992
+170,Objektlinse,Automatisierung,Dunkel,Corporate Design,images/170-object-lens-automation.png,1586,992
+171,Prüfbereich,SQL-Notebook,Dunkel,Corporate Design,images/171-review-shelf-notebook.png,1586,992
+172,Prüfbereich,AI-Arbeitsbereich,Hell,Corporate Design,images/172-review-shelf-ai.png,1586,992
+173,Prüfbereich,Datenvergleich,Dunkel,Corporate Design,images/173-review-shelf-data-compare.png,1586,992
+174,Prüfbereich,Schema-Vergleich,Hell,Corporate Design,images/174-review-shelf-schema-compare.png,1586,992
+175,Prüfbereich,Transaktionsprüfung,Dunkel,Corporate Design,images/175-review-shelf-transactions.png,1586,992
+176,Workflow-Brücke,Verbindungen,Dunkel,Corporate Design,images/176-workflow-bridge-connections.png,1586,992
+177,Workflow-Brücke,Datenimport,Hell,Corporate Design,images/177-workflow-bridge-import.png,1586,992
+178,Workflow-Brücke,Objektspeicher,Dunkel,Corporate Design,images/178-workflow-bridge-storage.png,1586,992
+179,Workflow-Brücke,Einstellungen,Hell,Corporate Design,images/179-workflow-bridge-settings.png,1586,992
+180,Workflow-Brücke,MCP und Zugriff,Dunkel,Corporate Design,images/180-workflow-bridge-mcp.png,1586,992
+181,Strukturierte Übersicht,SQL-Arbeitsplatz,Hell,Corporate Design,images/181-structured-overview-sql.png,1586,992
+182,Strukturierte Übersicht,Tabellen-Explorer,Dunkel,Corporate Design,images/182-structured-overview-table.png,1586,992
+183,Strukturierte Übersicht,ER-Diagramm,Hell,Corporate Design,images/183-structured-overview-schema.png,1586,992
+184,Strukturierte Übersicht,Query Builder,Dunkel,Corporate Design,images/184-structured-overview-builder.png,1586,992
+185,Strukturierte Übersicht,Ausführungsplan,Hell,Corporate Design,images/185-structured-overview-explain.png,1586,992
+186,Kontextanker,Live-Monitor,Hell,Corporate Design,images/186-memory-anchor-monitor.png,1586,992
+187,Kontextanker,Datenbank-Health,Dunkel,Corporate Design,images/187-memory-anchor-health.png,1586,992
+188,Kontextanker,Datenbankübersicht,Hell,Corporate Design,images/188-memory-anchor-dashboard.png,1586,992
+189,Kontextanker,Abfrageverlauf,Dunkel,Corporate Design,images/189-memory-anchor-history.png,1586,992
+190,Kontextanker,Automatisierung,Hell,Corporate Design,images/190-memory-anchor-automation.png,1586,992
+191,Kompakter Arbeitsplatz,SQL-Notebook,Hell,Corporate Design,images/191-compact-professional-notebook.png,1586,992
+192,Kompakter Arbeitsplatz,AI-Arbeitsbereich,Dunkel,Corporate Design,images/192-compact-professional-ai.png,1586,992
+193,Kompakter Arbeitsplatz,Datenvergleich,Hell,Corporate Design,images/193-compact-professional-data-compare.png,1586,992
+194,Kompakter Arbeitsplatz,Schema-Vergleich,Dunkel,Corporate Design,images/194-compact-professional-schema-compare.png,1586,992
+195,Kompakter Arbeitsplatz,Transaktionsprüfung,Hell,Corporate Design,images/195-compact-professional-transactions.png,1586,992
+196,Ruhiger Arbeitsfluss,Verbindungen,Hell,Corporate Design,images/196-calm-workflow-connections.png,1586,992
+197,Ruhiger Arbeitsfluss,Datenimport,Dunkel,Corporate Design,images/197-calm-workflow-import.png,1586,992
+198,Ruhiger Arbeitsfluss,Objektspeicher,Hell,Corporate Design,images/198-calm-workflow-storage.png,1586,992
+199,Ruhiger Arbeitsfluss,Einstellungen,Dunkel,Corporate Design,images/199-calm-workflow-settings.png,1586,992
+200,Ruhiger Arbeitsfluss,MCP und Zugriff,Hell,Corporate Design,images/200-calm-workflow-mcp.png,1586,992

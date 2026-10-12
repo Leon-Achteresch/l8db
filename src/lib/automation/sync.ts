@@ -45,12 +45,14 @@ export function buildAutomationConnection(connection: SavedConnection): Automati
   const readOnly = serverReadOnly(connection);
   const ssh = connection.ssh?.host ? connection.ssh : null;
   const proxy = connection.proxy?.host ? connection.proxy : null;
+  const command = connection.commandTunnel?.command?.trim() ? connection.commandTunnel : null;
   return {
     id: connection.id,
     name: connection.name,
     kind: connection.kind,
     connectionString: cleanConnectionString(connection, readOnly),
     readOnly,
+    productionLocked: isProductionLocked(connection),
     environment: connectionEnvironment(connection),
     tags: (connection.tags ?? []).map((tag) => tag.name),
     ssh: ssh
@@ -75,6 +77,13 @@ export function buildAutomationConnection(connection: SavedConnection): Automati
       : null,
     proxy: proxy
       ? { type: proxy.type, host: proxy.host, port: proxy.port, username: proxy.username ?? null }
+      : null,
+    commandTunnel: command
+      ? {
+          command: command.command.trim(),
+          localPort: command.localPort || null,
+          timeoutSecs: command.timeoutSecs || null,
+        }
       : null,
     vault: Boolean(connection.vault),
   };

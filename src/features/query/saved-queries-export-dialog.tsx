@@ -1,32 +1,57 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { QueryHistoryDialogContent } from "@/features/query/query-history-dialog-content";
+import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
+import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
+import { usePortalContainer } from "@/lib/portal-container";
 import type { SavedQuery } from "@/lib/saved-queries";
 import { serializeSavedQueryExport } from "@/lib/saved-queries-transfer";
+import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 
 interface Props {
   open: boolean;
   queries: SavedQuery[];
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
-export function SavedQueriesExportDialog({ open, queries, onOpenChange }: Props) {
+export function SavedQueriesExportDialog({ open, queries, onOpenChange, onCloseAutoFocus }: Props) {
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(queries.map((query) => query.id)),
   );
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const selectAllId = useId();
+  const titleId = useId();
+  const descriptionId = useId();
+  const scopedContainer = usePortalContainer();
+  const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
+  const virtualizer = useVirtualizer({
+    count: queries.length,
+    getScrollElement: () => scrollRef.current,
+    getItemKey: useCallback((index: number) => queries[index].id, [queries]),
+    estimateSize: () => 36,
+    measureElement: measureVirtualItem,
+    observeElementRect: observeVirtualScrollRect,
+    scrollToFn,
+    overscan: 3,
+    initialRect: { width: 450, height: 320 },
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
+  });
 
   const chosen = useMemo(
     () => queries.filter((query) => selected.has(query.id)),
@@ -65,11 +90,17 @@ export function SavedQueriesExportDialog({ open, queries, onOpenChange }: Props)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={!scopedContainer}>
+      <QueryHistoryDialogContent
+        className="max-w-lg"
+        onCloseAutoFocus={onCloseAutoFocus}
+        onDismiss={() => onOpenChange(false)}
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <DialogHeader>
-          <DialogTitle>Gespeicherte Queries exportieren</DialogTitle>
-          <DialogDescription>
+          <DialogTitle id={titleId}>Gespeicherte Queries exportieren</DialogTitle>
+          <DialogDescription id={descriptionId}>
             Exportiert werden nur Name und SQL. Verbindungen, Passwörter und der Verlauf bleiben
             außen vor. Klick auf einen Eintrag zeigt das enthaltene SQL.
           </DialogDescription>
@@ -79,10 +110,15 @@ export function SavedQueriesExportDialog({ open, queries, onOpenChange }: Props)
             Es gibt noch keine gespeicherten Queries.
           </p>
         ) : (
-          <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-            <label className="flex items-center gap-2 border-b pb-2 text-xs text-muted-foreground">
+          <div className="flex min-h-0 flex-col gap-1">
+            <label
+              htmlFor={selectAllId}
+              className="flex items-center gap-2 border-b pb-2 text-xs text-muted-foreground"
+            >
               <Checkbox
                 checked={allSelected}
+                id={selectAllId}
+                aria-label="Alle Queries auswählen"
                 onCheckedChange={(value) =>
                   setSelected(
                     value === true ? new Set(queries.map((query) => query.id)) : new Set(),
@@ -91,29 +127,48 @@ export function SavedQueriesExportDialog({ open, queries, onOpenChange }: Props)
               />
               Alle auswählen
             </label>
-            {queries.map((query) => (
-              <div key={query.id} className="rounded-md px-1 py-1 hover:bg-muted/40">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={selected.has(query.id)}
-                    onCheckedChange={() => toggle(query.id)}
-                  />
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 text-left"
-                    onClick={() => setExpanded(expanded === query.id ? null : query.id)}
-                    title="SQL anzeigen"
-                  >
-                    <span className="block truncate text-sm">{query.name}</span>
-                  </button>
-                </div>
-                {expanded === query.id && (
-                  <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-[11px] whitespace-pre-wrap">
-                    {query.sql}
-                  </pre>
-                )}
+            <div
+              ref={scrollRef}
+              data-slot="saved-query-export-list"
+              className="max-h-80 overflow-y-auto"
+              style={{ height: Math.min(320, virtualizer.getTotalSize()), contain: "strict" }}
+            >
+              <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const query = queries[virtualRow.index];
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      className="absolute top-0 left-0 w-full rounded-md px-1 py-1 hover:bg-muted/40"
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selected.has(query.id)}
+                          aria-label={`${query.name} auswählen`}
+                          onCheckedChange={() => toggle(query.id)}
+                        />
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => setExpanded(expanded === query.id ? null : query.id)}
+                          title="SQL anzeigen"
+                        >
+                          <span className="block truncate text-sm">{query.name}</span>
+                        </button>
+                      </div>
+                      {expanded === query.id && (
+                        <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-[11px] whitespace-pre-wrap">
+                          {query.sql}
+                        </pre>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </div>
           </div>
         )}
         <DialogFooter>
@@ -124,7 +179,7 @@ export function SavedQueriesExportDialog({ open, queries, onOpenChange }: Props)
             {chosen.length === 1 ? "1 Query exportieren" : `${chosen.length} Queries exportieren`}
           </Button>
         </DialogFooter>
-      </DialogContent>
+      </QueryHistoryDialogContent>
     </Dialog>
   );
 }

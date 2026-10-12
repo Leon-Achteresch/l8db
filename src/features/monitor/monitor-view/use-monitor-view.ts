@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EMPTY_SERVER_OUTPUT } from "@/features/monitor/monitor-view/constants";
-import { formatTime, sessionPriority } from "@/features/monitor/monitor-view/format";
+import { formatTime } from "@/features/monitor/monitor-view/format";
 import type {
   HistoryFilter,
   HistoryRange,
@@ -8,12 +8,7 @@ import type {
 } from "@/features/monitor/monitor-view/types";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
-import {
-  useDatabaseOverviewQuery,
-  useLocksQuery,
-  useRefreshConnection,
-  useSessionsQuery,
-} from "@/lib/queries";
+import { useDatabaseOverviewQuery } from "@/lib/queries";
 import { type QueryHistoryEntry, useQueryHistoryStore } from "@/lib/query-history";
 import {
   collectServerOutput,
@@ -26,10 +21,8 @@ export function useMonitorView() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();
-  const { refresh, isRefreshing } = useRefreshConnection();
-  const sessionsQuery = useSessionsQuery(5000);
-  const locksQuery = useLocksQuery(5000);
-  const overviewQuery = useDatabaseOverviewQuery(30_000);
+  const [tab, setTab] = useState<MonitorTab>("live");
+  const overviewQuery = useDatabaseOverviewQuery(tab === "performance" ? 30_000 : undefined);
   const historyEntries = useQueryHistoryStore((state) => state.entries);
   const clearHistory = useQueryHistoryStore((state) => state.clearForConnection);
   const serverOutputEnabled = useServerOutputStore((state) =>
@@ -39,7 +32,6 @@ export function useMonitorView() {
     connection ? (state.entries[connection.id] ?? EMPTY_SERVER_OUTPUT) : EMPTY_SERVER_OUTPUT,
   );
   const clearServerOutput = useServerOutputStore((state) => state.clear);
-  const [tab, setTab] = useState<MonitorTab>("performance");
   const [range, setRange] = useState<HistoryRange>("7d");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [historySearch, setHistorySearch] = useState("");
@@ -139,24 +131,6 @@ export function useMonitorView() {
     [database, serverOutputEntries],
   );
 
-  const visibleSessions = useMemo(
-    () =>
-      [...(sessionsQuery.data ?? [])]
-        .sort((left, right) => sessionPriority(left) - sessionPriority(right))
-        .slice(0, 16),
-    [sessionsQuery.data],
-  );
-
-  const activeSessions = sessionsQuery.data?.filter((session) => session.state === "active").length;
-  const blockedSessions = sessionsQuery.data?.filter(
-    (session) => session.blocked_by.length > 0,
-  ).length;
-  const lastUpdatedAt = Math.max(
-    sessionsQuery.dataUpdatedAt ?? 0,
-    locksQuery.dataUpdatedAt ?? 0,
-    overviewQuery.dataUpdatedAt ?? 0,
-  );
-
   const toggleServerOutput = async (enabled: boolean) => {
     if (!connection) return;
     setServerOutputBusy(true);
@@ -177,10 +151,6 @@ export function useMonitorView() {
     connection,
     database,
     capabilities,
-    refresh,
-    isRefreshing,
-    sessionsQuery,
-    locksQuery,
     overviewQuery,
     clearHistory,
     serverOutputEnabled,
@@ -203,10 +173,6 @@ export function useMonitorView() {
     slowQueries,
     filteredHistory,
     scopedServerOutput,
-    visibleSessions,
-    activeSessions,
-    blockedSessions,
-    lastUpdatedAt,
     toggleServerOutput,
   };
 }

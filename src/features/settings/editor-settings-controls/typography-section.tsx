@@ -18,7 +18,7 @@ import type { Store } from "./types";
 export function EditorTypographySection({ store, compact }: { store: Store; compact: boolean }) {
   return (
     <Section title="Schriftbild" description="Schriftart, Größe und Zeilenabstand des Editors.">
-      <Row title="Schriftart" description="Code-Schriftart für den SQL-Editor." compact={compact}>
+      <Row settingId="editor-font-family" compact={compact}>
         <Select
           value={store.editorFontFamily}
           onValueChange={(value) => store.setEditorFontFamily(value as EditorFontFamily)}
@@ -35,11 +35,7 @@ export function EditorTypographySection({ store, compact }: { store: Store; comp
           </SelectContent>
         </Select>
       </Row>
-      <Row
-        title="Schriftgröße"
-        description="Größe der Code-Schriftart (10 bis 24 px)."
-        compact={compact}
-      >
+      <Row settingId="font-size" compact={compact}>
         <div className="flex w-40 items-center gap-2">
           <Slider
             min={10}
@@ -52,22 +48,14 @@ export function EditorTypographySection({ store, compact }: { store: Store; comp
           <SliderValue value={String(store.editorFontSize)} unit="px" />
         </div>
       </Row>
-      <Row
-        title="Ligaturen"
-        description="Programmier-Ligaturen der Schriftart nutzen (→, ≠, ⇒)."
-        compact={compact}
-      >
+      <Row settingId="editor-font-ligatures" compact={compact}>
         <Switch
           checked={store.editorFontLigatures}
           onCheckedChange={store.setEditorFontLigatures}
           aria-label="Schrift-Ligaturen"
         />
       </Row>
-      <Row
-        title="Zeilenhöhe"
-        description="Abstand zwischen den Zeilen als Vielfaches der Schriftgröße."
-        compact={compact}
-      >
+      <Row settingId="editor-line-height" compact={compact}>
         <div className="flex w-40 items-center gap-2">
           <Slider
             min={1.2}
@@ -80,11 +68,7 @@ export function EditorTypographySection({ store, compact }: { store: Store; comp
           <SliderValue value={store.editorLineHeight.toFixed(1)} unit="×" />
         </div>
       </Row>
-      <Row
-        title="Einrückungsbreite"
-        description="Anzahl der Leerzeichen pro Tabulatorstufe."
-        compact={compact}
-      >
+      <Row settingId="tab-size" compact={compact}>
         <SegmentedControl
           value={String(store.editorTabSize)}
           onChange={(value) => store.setEditorTabSize(Number.parseInt(value, 10))}

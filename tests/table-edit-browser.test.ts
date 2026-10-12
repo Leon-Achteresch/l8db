@@ -158,7 +158,8 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
       await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
       const header = page.locator('th[data-column-id="email"]');
       await header.click({ button: "right" });
-      await page.getByRole("menuitem", { name: "Spalte kopieren", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Kopieren als", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Werte", exact: true }).click();
 
       const expected = Array.from({ length: 12 }, (_, i) => `user${i + 1}@example.test`).join("\n");
       const write = await page.evaluate(() =>
@@ -196,7 +197,8 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
       await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
       const cell = page.locator('tr[data-index="1"] td[data-col="email"]');
       await cell.click({ button: "right" });
-      await page.getByRole("menuitem", { name: "Zeile kopieren", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Kopieren als", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Tabulatorgetrennt", exact: true }).click();
       await page.waitForFunction(
         () => window.invokes.some((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
         undefined,

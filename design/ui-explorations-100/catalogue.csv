@@ -1,0 +1,101 @@
+id,design,view,tone,concept,file,width,height
+001,Porcelain Studio,SQL-Arbeitsplatz,Hell,Produktnah,images/001-porcelain-studio-sql-workspace.png,1586,992
+002,Porcelain Studio,Tabellen-Explorer,Hell,Produktnah,images/002-porcelain-studio-table-explorer.png,1586,992
+003,Porcelain Studio,KI-Arbeitsplatz,Hell,Produktnah,images/003-porcelain-studio-ai-workspace.png,1586,992
+004,Porcelain Studio,ER-Diagramm,Hell,Produktnah,images/004-porcelain-studio-schema-atlas.png,1586,992
+005,Porcelain Studio,Live-Monitoring,Hell,Produktnah,images/005-porcelain-studio-live-monitor.png,1586,992
+006,Carbon Cockpit,Tabellen-Explorer,Dunkel,Produktnah,images/006-carbon-cockpit-table-explorer.png,1586,992
+007,Carbon Cockpit,KI-Arbeitsplatz,Dunkel,Produktnah,images/007-carbon-cockpit-ai-workspace.png,1586,992
+008,Carbon Cockpit,ER-Diagramm,Dunkel,Produktnah,images/008-carbon-cockpit-schema-atlas.png,1586,992
+009,Carbon Cockpit,Live-Monitoring,Dunkel,Produktnah,images/009-carbon-cockpit-live-monitor.png,1586,992
+010,Carbon Cockpit,Datenvergleich,Dunkel,Produktnah,images/010-carbon-cockpit-data-compare.png,1586,992
+011,Liquid Frost,KI-Arbeitsplatz,Hell,Experimentell,images/011-liquid-frost-ai-workspace.png,1587,991
+012,Liquid Frost,ER-Diagramm,Hell,Experimentell,images/012-liquid-frost-schema-atlas.png,1586,992
+013,Liquid Frost,Live-Monitoring,Hell,Experimentell,images/013-liquid-frost-live-monitor.png,1586,992
+014,Liquid Frost,Datenvergleich,Hell,Experimentell,images/014-liquid-frost-data-compare.png,1586,992
+015,Liquid Frost,SQL-Notebook,Hell,Experimentell,images/015-liquid-frost-query-notebook.png,1586,992
+016,Editorial Ledger,ER-Diagramm,Hell,Produktnah,images/016-editorial-ledger-schema-atlas.png,1586,992
+017,Editorial Ledger,Live-Monitoring,Hell,Produktnah,images/017-editorial-ledger-live-monitor.png,1586,992
+018,Editorial Ledger,Datenvergleich,Hell,Produktnah,images/018-editorial-ledger-data-compare.png,1586,992
+019,Editorial Ledger,SQL-Notebook,Hell,Produktnah,images/019-editorial-ledger-query-notebook.png,1586,992
+020,Editorial Ledger,Verbindungszentrale,Hell,Produktnah,images/020-editorial-ledger-connection-hub.png,1586,992
+021,Spatial Atlas,Live-Monitoring,Dunkel,Experimentell,images/021-spatial-atlas-live-monitor.png,1586,992
+022,Spatial Atlas,Datenvergleich,Dunkel,Experimentell,images/022-spatial-atlas-data-compare.png,1586,992
+023,Spatial Atlas,SQL-Notebook,Dunkel,Experimentell,images/023-spatial-atlas-query-notebook.png,1586,992
+024,Spatial Atlas,Verbindungszentrale,Dunkel,Experimentell,images/024-spatial-atlas-connection-hub.png,1586,992
+025,Spatial Atlas,Automatisierung,Dunkel,Experimentell,images/025-spatial-atlas-automation-flow.png,1586,992
+026,Chromatic Brutalism,Datenvergleich,Hell,Experimentell,images/026-chromatic-brutalism-data-compare.png,1586,992
+027,Chromatic Brutalism,SQL-Notebook,Hell,Experimentell,images/027-chromatic-brutalism-query-notebook.png,1586,992
+028,Chromatic Brutalism,Verbindungszentrale,Hell,Experimentell,images/028-chromatic-brutalism-connection-hub.png,1586,992
+029,Chromatic Brutalism,Automatisierung,Hell,Experimentell,images/029-chromatic-brutalism-automation-flow.png,1586,992
+030,Chromatic Brutalism,Object Storage,Hell,Experimentell,images/030-chromatic-brutalism-object-storage.png,1586,992
+031,Zen Paper,SQL-Notebook,Hell,Produktnah,images/031-zen-paper-query-notebook.png,1586,992
+032,Zen Paper,Verbindungszentrale,Hell,Produktnah,images/032-zen-paper-connection-hub.png,1586,992
+033,Zen Paper,Automatisierung,Hell,Produktnah,images/033-zen-paper-automation-flow.png,1586,992
+034,Zen Paper,Object Storage,Hell,Produktnah,images/034-zen-paper-object-storage.png,1586,992
+035,Zen Paper,SQL-Arbeitsplatz,Hell,Produktnah,images/035-zen-paper-sql-workspace.png,1586,992
+036,Aurora Ribbon,Verbindungszentrale,Dunkel,Experimentell,images/036-aurora-ribbon-connection-hub.png,1586,992
+037,Aurora Ribbon,Automatisierung,Dunkel,Experimentell,images/037-aurora-ribbon-automation-flow.png,1586,992
+038,Aurora Ribbon,Object Storage,Dunkel,Experimentell,images/038-aurora-ribbon-object-storage.png,1586,992
+039,Aurora Ribbon,SQL-Arbeitsplatz,Dunkel,Experimentell,images/039-aurora-ribbon-sql-workspace.png,1586,992
+040,Aurora Ribbon,Tabellen-Explorer,Dunkel,Experimentell,images/040-aurora-ribbon-table-explorer.png,1586,992
+041,Neo Terminal,Automatisierung,Dunkel,Produktnah,images/041-neo-terminal-automation-flow.png,1586,992
+042,Neo Terminal,Object Storage,Dunkel,Produktnah,images/042-neo-terminal-object-storage.png,1586,992
+043,Neo Terminal,SQL-Arbeitsplatz,Dunkel,Produktnah,images/043-neo-terminal-sql-workspace.png,1586,992
+044,Neo Terminal,Tabellen-Explorer,Dunkel,Produktnah,images/044-neo-terminal-table-explorer.png,1586,992
+045,Neo Terminal,KI-Arbeitsplatz,Dunkel,Produktnah,images/045-neo-terminal-ai-workspace.png,1586,992
+046,Modular Bento,Object Storage,Hell,Produktnah,images/046-modular-bento-object-storage.png,1586,992
+047,Modular Bento,SQL-Arbeitsplatz,Hell,Produktnah,images/047-modular-bento-sql-workspace.png,1586,992
+048,Modular Bento,Tabellen-Explorer,Hell,Produktnah,images/048-modular-bento-table-explorer.png,1586,992
+049,Modular Bento,KI-Arbeitsplatz,Hell,Produktnah,images/049-modular-bento-ai-workspace.png,1586,992
+050,Modular Bento,ER-Diagramm,Hell,Produktnah,images/050-modular-bento-schema-atlas.png,1586,992
+051,Radial Orbit,SQL-Arbeitsplatz,Dunkel,Experimentell,images/051-radial-orbit-sql-workspace.png,1586,992
+052,Radial Orbit,Tabellen-Explorer,Dunkel,Experimentell,images/052-radial-orbit-table-explorer.png,1586,992
+053,Radial Orbit,KI-Arbeitsplatz,Dunkel,Experimentell,images/053-radial-orbit-ai-workspace.png,1586,992
+054,Radial Orbit,ER-Diagramm,Dunkel,Experimentell,images/054-radial-orbit-schema-atlas.png,1586,992
+055,Radial Orbit,Live-Monitoring,Dunkel,Experimentell,images/055-radial-orbit-live-monitor.png,1586,992
+056,Clay Interface,Tabellen-Explorer,Hell,Experimentell,images/056-clay-interface-table-explorer.png,1586,992
+057,Clay Interface,KI-Arbeitsplatz,Hell,Experimentell,images/057-clay-interface-ai-workspace.png,1586,992
+058,Clay Interface,ER-Diagramm,Hell,Experimentell,images/058-clay-interface-schema-atlas.png,1586,992
+059,Clay Interface,Live-Monitoring,Hell,Experimentell,images/059-clay-interface-live-monitor.png,1586,992
+060,Clay Interface,Datenvergleich,Hell,Experimentell,images/060-clay-interface-data-compare.png,1586,992
+061,Infrared Lab,KI-Arbeitsplatz,Dunkel,Experimentell,images/061-infrared-lab-ai-workspace.png,1586,992
+062,Infrared Lab,ER-Diagramm,Dunkel,Experimentell,images/062-infrared-lab-schema-atlas.png,1586,992
+063,Infrared Lab,Live-Monitoring,Dunkel,Experimentell,images/063-infrared-lab-live-monitor.png,1586,992
+064,Infrared Lab,Datenvergleich,Dunkel,Experimentell,images/064-infrared-lab-data-compare.png,1586,992
+065,Infrared Lab,SQL-Notebook,Dunkel,Experimentell,images/065-infrared-lab-query-notebook.png,1586,992
+066,Glass Monolith,ER-Diagramm,Dunkel,Experimentell,images/066-glass-monolith-schema-atlas.png,1586,992
+067,Glass Monolith,Live-Monitoring,Dunkel,Experimentell,images/067-glass-monolith-live-monitor.png,1586,992
+068,Glass Monolith,Datenvergleich,Dunkel,Experimentell,images/068-glass-monolith-data-compare.png,1586,992
+069,Glass Monolith,SQL-Notebook,Dunkel,Experimentell,images/069-glass-monolith-query-notebook.png,1586,992
+070,Glass Monolith,Verbindungszentrale,Dunkel,Experimentell,images/070-glass-monolith-connection-hub.png,1586,992
+071,Focus Strip,Live-Monitoring,Hell,Produktnah,images/071-focus-strip-live-monitor.png,1586,992
+072,Focus Strip,Datenvergleich,Hell,Produktnah,images/072-focus-strip-data-compare.png,1587,991
+073,Focus Strip,SQL-Notebook,Hell,Produktnah,images/073-focus-strip-query-notebook.png,1586,992
+074,Focus Strip,Verbindungszentrale,Hell,Produktnah,images/074-focus-strip-connection-hub.png,1586,992
+075,Focus Strip,Automatisierung,Hell,Produktnah,images/075-focus-strip-automation-flow.png,1586,992
+076,Ink Blueprint,Datenvergleich,Hell,Produktnah,images/076-ink-blueprint-data-compare.png,1586,992
+077,Ink Blueprint,SQL-Notebook,Hell,Produktnah,images/077-ink-blueprint-query-notebook.png,1586,992
+078,Ink Blueprint,Verbindungszentrale,Hell,Produktnah,images/078-ink-blueprint-connection-hub.png,1586,992
+079,Ink Blueprint,Automatisierung,Hell,Produktnah,images/079-ink-blueprint-automation-flow.png,1586,992
+080,Ink Blueprint,Object Storage,Hell,Produktnah,images/080-ink-blueprint-object-storage.png,1586,992
+081,Data Cinema,SQL-Notebook,Dunkel,Experimentell,images/081-data-cinema-query-notebook.png,1586,992
+082,Data Cinema,Verbindungszentrale,Dunkel,Experimentell,images/082-data-cinema-connection-hub.png,1586,992
+083,Data Cinema,Automatisierung,Dunkel,Experimentell,images/083-data-cinema-automation-flow.png,1586,992
+084,Data Cinema,Object Storage,Dunkel,Experimentell,images/084-data-cinema-object-storage.png,1586,992
+085,Data Cinema,SQL-Arbeitsplatz,Dunkel,Experimentell,images/085-data-cinema-sql-workspace.png,1586,992
+086,Woven Canvas,Verbindungszentrale,Hell,Experimentell,images/086-woven-canvas-connection-hub.png,1586,992
+087,Woven Canvas,Automatisierung,Hell,Experimentell,images/087-woven-canvas-automation-flow.png,1586,992
+088,Woven Canvas,Object Storage,Hell,Experimentell,images/088-woven-canvas-object-storage.png,1586,992
+089,Woven Canvas,SQL-Arbeitsplatz,Hell,Experimentell,images/089-woven-canvas-sql-workspace.png,1586,992
+090,Woven Canvas,Tabellen-Explorer,Hell,Experimentell,images/090-woven-canvas-table-explorer.png,1586,992
+091,Magnetic Tiles,Automatisierung,Dunkel,Experimentell,images/091-magnetic-tiles-automation-flow.png,1586,992
+092,Magnetic Tiles,Object Storage,Dunkel,Experimentell,images/092-magnetic-tiles-object-storage.png,1586,992
+093,Magnetic Tiles,SQL-Arbeitsplatz,Dunkel,Experimentell,images/093-magnetic-tiles-sql-workspace.png,1586,992
+094,Magnetic Tiles,Tabellen-Explorer,Dunkel,Experimentell,images/094-magnetic-tiles-table-explorer.png,1586,992
+095,Magnetic Tiles,KI-Arbeitsplatz,Dunkel,Experimentell,images/095-magnetic-tiles-ai-workspace.png,1586,992
+096,Ambient Horizon,Object Storage,Hell,Experimentell,images/096-ambient-horizon-object-storage.png,1586,992
+097,Ambient Horizon,SQL-Arbeitsplatz,Hell,Experimentell,images/097-ambient-horizon-sql-workspace.png,1586,992
+098,Ambient Horizon,Tabellen-Explorer,Hell,Experimentell,images/098-ambient-horizon-table-explorer.png,1586,992
+099,Ambient Horizon,KI-Arbeitsplatz,Hell,Experimentell,images/099-ambient-horizon-ai-workspace.png,1586,992
+100,Ambient Horizon,ER-Diagramm,Hell,Experimentell,images/100-ambient-horizon-schema-atlas.png,1586,992

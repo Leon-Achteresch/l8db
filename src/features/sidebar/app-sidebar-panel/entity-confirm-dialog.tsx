@@ -1,3 +1,4 @@
+import { useEffect, useId, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,6 +9,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 
 export interface EntityConfirmAction {
@@ -33,11 +36,17 @@ export function EntityConfirmDialog({
   onClose,
   onConfirm,
 }: EntityConfirmDialogProps) {
+  const [confirmation, setConfirmation] = useState("");
+  const id = useId();
+  const expected = isRedis ? (activeDatabase ?? "0") : (confirmAction?.name ?? "");
+  useEffect(() => {
+    setConfirmation("");
+  }, [confirmAction]);
   return (
     <AlertDialog
       open={confirmAction !== null}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !actionLoading) onClose();
       }}
     >
       <AlertDialogContent>
@@ -57,11 +66,27 @@ export function EntityConfirmDialog({
                 : "Alle Zeilen in dieser Tabelle werden unwiderruflich gelöscht (TRUNCATE TABLE). Die Tabellenstruktur bleibt erhalten."}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor={id}>Zum Bestätigen „{expected}“ eingeben</Label>
+          <Input
+            id={id}
+            value={confirmation}
+            disabled={actionLoading}
+            autoComplete="off"
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+        </div>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={actionLoading}>Abbrechen</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={actionLoading}>
+          <AlertDialogAction
+            onClick={(event) => {
+              event.preventDefault();
+              if (confirmation === expected) onConfirm();
+            }}
+            disabled={actionLoading || confirmation !== expected}
+          >
             {actionLoading ? <Spinner className="size-4" /> : null}
-            {confirmAction?.kind === "drop" ? "Drop Table" : "Delete All"}
+            {confirmAction?.kind === "drop" ? "Tabelle löschen" : "Alle Daten löschen"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

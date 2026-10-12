@@ -88,6 +88,10 @@ fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
 }
 
 async fn read_fixture_request(socket: &mut tokio::net::TcpStream) {
+    read_fixture_payload(socket).await;
+}
+
+async fn read_fixture_payload(socket: &mut tokio::net::TcpStream) -> Value {
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
     let mut reader = BufReader::new(socket);
     let mut length = 0;
@@ -104,7 +108,13 @@ async fn read_fixture_request(socket: &mut tokio::net::TcpStream) {
         }
     }
     assert!(length <= 65_536);
-    reader.read_exact(&mut vec![0; length]).await.unwrap();
+    let mut bytes = vec![0; length];
+    reader.read_exact(&mut bytes).await.unwrap();
+    if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    }
 }
 
 #[test]
@@ -459,7 +469,16 @@ fn tool_history_converts_to_each_provider_protocol() {
             byok::payload(&profile(provider), "instructions", &messages, &tools).unwrap();
         match provider {
             "anthropic" => {
-                assert_eq!(payload["system"], "instructions");
+                assert_eq!(payload["system"][0]["text"], "instructions");
+                assert_eq!(payload["system"][0]["cache_control"]["type"], "ephemeral");
+                assert_eq!(payload["tools"][0]["cache_control"]["type"], "ephemeral");
+                assert_eq!(
+                    payload["messages"][2]["content"][0]["cache_control"]["type"],
+                    "ephemeral"
+                );
+                assert!(payload["messages"][1]["content"][0]
+                    .get("cache_control")
+                    .is_none());
                 assert_eq!(payload["messages"][1]["content"][0]["type"], "tool_use");
                 assert_eq!(
                     payload["messages"][2]["content"][0]["tool_use_id"],
@@ -1179,4 +1198,382 @@ fn default_model_prefers_current_chat_models() {
         Some("qwen2.5-7b-instruct")
     );
     assert_eq!(super::byok::pick_model("ollama", &[]), None);
+}
+
+#[test]
+fn skills_and_static_instructions_precede_changing_connection_context() {
+    let mut request = request();
+    request.connections[0].default_schema = Some("main".into());
+    let skills = "\nSelected skill: fixture instructions\n";
+    let first = context::instructions_with_skills(&request, skills);
+    request.connections[0].name = "Changed connection".into();
+    let second = context::instructions_with_skills(&request, skills);
+    let first_prefix = first.split("Current connections:").next().unwrap();
+    assert_eq!(
+        first_prefix,
+        second.split("Current connections:").next().unwrap()
+    );
+    assert!(first_prefix.contains(skills));
+    assert!(first.contains("\"defaultSchema\":\"main\""));
+    assert!(!first_prefix.contains("Changed connection"));
+}
+
+#[test]
+fn byok_tools_load_on_demand_without_rewriting_the_existing_catalog() {
+    use super::tools::{published, Catalog};
+    let config = context::scoped_config(&request(), McpConfig::default()).unwrap();
+    let external = vec![
+        json!({"name":"ext_fixture_mail","description":"Search inbox messages","inputSchema":{"type":"object","properties":{"term":{"type":"string"}}}}),
+    ];
+    let mut catalog = Catalog::new(&config, false, &external);
+    let initial = catalog.tools().to_vec();
+    let names = published(&initial);
+    assert!(names.contains("query") && names.contains("visualize") && names.contains("execute"));
+    assert!(!names.contains("dashboard") && !names.contains("ext_fixture_mail"));
+    let initial_bytes = serde_json::to_vec(&initial).unwrap().len();
+    let full_bytes = serde_json::to_vec(&context::tool_definitions())
+        .unwrap()
+        .len();
+    assert!(
+        initial_bytes < full_bytes / 2,
+        "{initial_bytes} vs {full_bytes}"
+    );
+    assert_eq!(
+        catalog.discover(&json!({"names":["dashboard","workflow"]}))["isError"],
+        false
+    );
+    assert_eq!(&catalog.tools()[..initial.len()], initial.as_slice());
+    let loaded = catalog.tools().to_vec();
+    assert_eq!(
+        catalog.discover(&json!({"names":["dashboard","missing"]}))["isError"],
+        true
+    );
+    assert_eq!(catalog.tools(), loaded.as_slice());
+    catalog.discover(&json!({"names":["dashboard"]}));
+    assert_eq!(catalog.tools(), loaded.as_slice());
+    catalog.discover(&json!({"query":"inbox"}));
+    assert!(published(catalog.tools()).contains("ext_fixture_mail"));
+    let count = catalog.tools().len();
+    let listing = catalog.discover(&json!({}));
+    assert!(listing["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("ext_fixture_mail"));
+    assert_eq!(catalog.tools().len(), count);
+}
+
+#[test]
+fn unavailable_write_import_script_and_provider_tools_cannot_be_loaded() {
+    let mut request = request();
+    request.allow_writes = false;
+    let config = context::scoped_config(&request, McpConfig::default()).unwrap();
+    let mut catalog = super::tools::Catalog::new(&config, true, &[]);
+    for name in ["execute", "import_file", "script", "health"] {
+        assert!(!super::tools::published(catalog.tools()).contains(name));
+        assert_eq!(
+            catalog.discover(&json!({"names":[name]}))["isError"],
+            true,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn model_tool_output_keeps_text_and_errors_without_json_or_binary_duplication() {
+    let text = "month\tvalue\n2026-01\t42\n(1 rows)";
+    let result = json!({"content":[{"type":"text","text":text}],"structuredContent":{"duplicate":"unneeded"},"isError":false});
+    assert_eq!(super::tools::model_output(&result, 20_000), text);
+    let error = json!({"content":[{"type":"text","text":"Invalid column"}],"isError":true});
+    assert_eq!(
+        super::tools::model_output(&error, 20_000),
+        "[tool error]\nInvalid column"
+    );
+    let binary = json!({"content":[{"type":"image","data":"PRIVATE_BINARY".repeat(1000)},{"type":"resource","resource":{"uri":"fixture://note","text":"Resource text"}}]});
+    let output = super::tools::model_output(&binary, 20_000);
+    assert!(!output.contains("PRIVATE_BINARY"));
+    assert!(output.contains("omitted") && output.contains("Resource text"));
+    let structured = json!({"structuredContent":{"value":42}});
+    assert_eq!(
+        super::tools::model_output(&structured, 20_000),
+        "{\"value\":42}"
+    );
+    let large = json!({"content":[{"type":"text","text":"🦆".repeat(30_000)}]});
+    let output = super::tools::model_output(&large, 100);
+    assert_eq!(
+        output
+            .chars()
+            .filter(|character| *character == '🦆')
+            .count(),
+        100
+    );
+    assert!(output.contains("truncated"));
+}
+
+#[test]
+fn repeated_failures_are_bounded_but_successful_queries_are_never_cached() {
+    use super::tools::Failures;
+    let tools = context::tool_definitions();
+    let args = crate::mcp::server::normalize_args(
+        &tools,
+        "query",
+        json!({"sql":"SELECT missing", "limit":"20"}),
+    );
+    let key = Failures::key("query", &args);
+    assert_eq!(
+        key,
+        Failures::key("query", &json!({"limit":20,"sql":"SELECT missing"}))
+    );
+    assert_eq!(
+        Failures::key(
+            "external",
+            &json!({"filter":{"a":1,"b":2},"rows":[{"c":3,"d":4}]})
+        ),
+        Failures::key(
+            "external",
+            &json!({"rows":[{"d":4,"c":3}],"filter":{"b":2,"a":1}})
+        )
+    );
+    let mut failures = Failures::default();
+    let error = json!({"isError":true});
+    failures.record(key.clone(), &error);
+    assert!(!failures.blocked(&key));
+    failures.record(key.clone(), &error);
+    assert!(failures.blocked(&key));
+    assert!(!failures.blocked(&Failures::key("query", &json!({"sql":"SELECT corrected"}))));
+    failures.record(key.clone(), &json!({"isError":false}));
+    assert!(!failures.blocked(&key));
+}
+
+#[test]
+fn tool_error_status_uses_each_provider_protocol() {
+    let messages = vec![
+        json!({"role":"assistant","content":"","tool_calls":[{"id":"error-call","function":{"name":"query","arguments":"{}"}}]}),
+        json!({"role":"tool","tool_call_id":"error-call","name":"query","content":"[tool error]\nInvalid column","isError":true}),
+    ];
+    for provider in ["openai", "anthropic", "google"] {
+        let (_, body) = byok::payload(&profile(provider), "fixture", &messages, &[]).unwrap();
+        match provider {
+            "anthropic" => assert_eq!(body["messages"][1]["content"][0]["is_error"], true),
+            "google" => assert_eq!(
+                body["contents"][1]["parts"][0]["functionResponse"]["response"]["error"],
+                messages[1]["content"]
+            ),
+            _ => assert!(body["messages"][2].get("isError").is_none()),
+        }
+    }
+}
+
+async fn fixture_completion(socket: &mut tokio::net::TcpStream, calls: Vec<Value>, text: &str) {
+    use tokio::io::AsyncWriteExt;
+    let frame = if calls.is_empty() {
+        json!({"choices":[{"delta":{"content":text},"finish_reason":"stop"}]})
+    } else {
+        json!({"choices":[{"delta":{"tool_calls":calls},"finish_reason":"tool_calls"}]})
+    };
+    let body = format!("data: {frame}\n\ndata: [DONE]\n\n");
+    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+}
+
+#[tokio::test]
+async fn byok_discovery_and_failure_recovery_preserve_real_query_results() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("probe.sqlite");
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE probe(value INTEGER); INSERT INTO probe VALUES(42)")
+        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let fixture = tokio::spawn(async move {
+        let call = |index, name: &str, args: Value| json!({"index":index,"id":format!("call-{index}"),"type":"function","function":{"name":name,"arguments":args.to_string()}});
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let first = read_fixture_payload(&mut socket).await;
+        let initial = first["tools"].as_array().unwrap().clone();
+        assert!(!initial
+            .iter()
+            .any(|tool| tool["function"]["name"] == "dashboard"));
+        fixture_completion(
+            &mut socket,
+            vec![
+                call(0, "discover_tools", json!({"names":["dashboard"]})),
+                call(1, "dashboard", json!({"action":"chart_types"})),
+                call(2, "dashboard", json!({"action":"chart_types"})),
+            ],
+            "",
+        )
+        .await;
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let second = read_fixture_payload(&mut socket).await;
+        let tools = second["tools"].as_array().unwrap();
+        assert_eq!(&tools[..initial.len()], initial.as_slice());
+        assert_eq!(tools.last().unwrap()["function"]["name"], "dashboard");
+        let messages = second["messages"].as_array().unwrap();
+        assert!(messages.last().unwrap()["content"]
+            .as_str()
+            .unwrap()
+            .contains("next round"));
+        let bad = json!({"connection":"active","sql":"SELECT missing FROM probe"});
+        fixture_completion(
+            &mut socket,
+            vec![
+                call(0, "dashboard", json!({"action":"chart_types"})),
+                call(1, "query", bad.clone()),
+                call(2, "query", bad.clone()),
+            ],
+            "",
+        )
+        .await;
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let third = read_fixture_payload(&mut socket).await;
+        assert!(
+            third["messages"].as_array().unwrap().last().unwrap()["content"]
+                .as_str()
+                .unwrap()
+                .starts_with("[tool error]")
+        );
+        fixture_completion(
+            &mut socket,
+            vec![
+                call(0, "query", bad),
+                call(
+                    1,
+                    "query",
+                    json!({"connection":"active","sql":"SELECT value FROM probe"}),
+                ),
+            ],
+            "",
+        )
+        .await;
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let fourth = read_fixture_payload(&mut socket).await;
+        let results: Vec<_> = fourth["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|message| message["role"] == "tool")
+            .collect();
+        assert!(results[results.len() - 2]["content"]
+            .as_str()
+            .unwrap()
+            .contains("already failed twice"));
+        assert_eq!(results.last().unwrap()["content"], "value\n42\n(1 rows)");
+        fixture_completion(&mut socket, vec![], "42").await;
+    });
+    let mut request = request();
+    request.profile.endpoint = format!("http://{address}/v1");
+    request.connections[0].connection_string = format!("sqlite://{}", path.display());
+    request.messages.push(super::types::Message {
+        role: "user".into(),
+        text: "Inspect probe".into(),
+    });
+    let config = context::scoped_config(&request, McpConfig::default()).unwrap();
+    let (run, events) = run(Some(false));
+    let external = integrations::connect(&[], std::path::Path::new("."), &run)
+        .await
+        .unwrap();
+    let server = Arc::new(tokio::sync::Mutex::new(Server {
+        pool: crate::db::pool::create_pool_state(),
+        columns: HashMap::new(),
+    }));
+    tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        byok::run(&request, "fixture", &server, &config, external, &run),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    fixture.await.unwrap();
+    let events = events.lock().unwrap();
+    assert!(!events.iter().any(|event| event["kind"] == "approval"));
+    assert!(events.iter().any(|event| event["kind"] == "tool"
+        && event["data"]["name"] == "dashboard"
+        && event["data"]["status"] == "completed"));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["kind"] == "tool"
+                && event["data"]["name"] == "query"
+                && event["data"]["status"] == "running")
+            .count(),
+        3
+    );
+    assert!(events.iter().any(|event| event["kind"] == "tool"
+        && event["data"]["result"]["content"][0]["text"] == "value\n42\n(1 rows)"));
+}
+
+#[tokio::test]
+async fn editor_tool_round_trips_to_the_frontend_without_a_decision_block() {
+    let server = tokio::sync::Mutex::new(Server {
+        pool: crate::db::pool::create_pool_state(),
+        columns: HashMap::new(),
+    });
+    let config = McpConfig::default();
+    let (run, events) = run(None);
+    let state = run.state.clone();
+    let respond = async {
+        loop {
+            let entry = state.approvals.lock().unwrap().drain().next();
+            if let Some((key, sender)) = entry {
+                assert!(key.starts_with("fixture-window:fixture-run:"));
+                sender
+                    .send(json!({"ok": true, "text": "Im Editor angewendet."}))
+                    .unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let args = json!({"action": "edit", "sql": "select 2", "summary": "Zwei"});
+    let (result, _) = tokio::join!(
+        context::call(&server, &config, &run, "editor", args.clone()),
+        respond
+    );
+    assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(result["content"][0]["text"], "Im Editor angewendet.");
+    let kinds: Vec<Value> = events
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|event| event["kind"].clone())
+        .collect();
+    assert_eq!(kinds, vec![json!("tool"), json!("editor"), json!("tool")]);
+    assert_eq!(events.lock().unwrap()[1]["data"]["details"], args);
+
+    let (mut planned, planned_events) = super::tests::run(None);
+    planned.plan_only = true;
+    let blocked = context::call(
+        &server,
+        &config,
+        &planned,
+        "editor",
+        json!({"action": "edit", "sql": "x"}),
+    )
+    .await;
+    assert_eq!(blocked["isError"], true);
+    assert!(planned_events
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|event| event["kind"] != "editor"));
+
+    let failing = async {
+        loop {
+            let entry = state.approvals.lock().unwrap().drain().next();
+            if let Some((_, sender)) = entry {
+                sender
+                    .send(json!({"ok": false, "text": "SEARCH-Block 1 wurde nicht gefunden"}))
+                    .unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let (failed, _) = tokio::join!(
+        context::call(&server, &config, &run, "editor", json!({"action": "read"})),
+        failing
+    );
+    assert_eq!(failed["isError"], true);
+    assert!(context::tool_definitions()
+        .iter()
+        .any(|tool| tool["name"] == "editor"));
 }

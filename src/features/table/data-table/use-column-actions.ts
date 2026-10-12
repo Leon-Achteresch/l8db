@@ -1,5 +1,4 @@
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
 import { copyText } from "@/lib/clipboard";
 import { fitHeaderColumnWidth, measureHeaderTitleWidth } from "@/lib/column-header-width";
 import type { ForeignKeyInfo } from "@/lib/db";
@@ -33,15 +32,13 @@ export function useColumnActions({
   const copyColumnNames = useCallback(() => {
     const names = formatVisibleColumnNames(order, hidden);
     if (names === "") return;
-    void copyText(names);
-    toast.success("Spaltennamen kopiert.");
+    void copyText(names, "Spaltennamen kopiert.");
   }, [order, hidden]);
 
   const copyColumnValues = useCallback(
     (columnId: string) => {
       const text = data.map((row) => serializeSelectionCell(row[columnId])).join("\n");
-      void copyText(text);
-      toast.success(`Spalte ${columnId} kopiert (${data.length} Werte).`);
+      void copyText(text, `Spalte ${columnId} kopiert (${data.length} Werte).`);
     },
     [data],
   );

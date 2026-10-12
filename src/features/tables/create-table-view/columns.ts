@@ -22,3 +22,16 @@ export function emptyColumn(): ColumnDefinition & { id: number } {
     is_unique: false,
   };
 }
+
+const SIZED_TYPE = /^(.*?)\s*\((\d+(?:\s*,\s*\d+)?)\)$/;
+
+export function splitType(dataType: string): { base: string; length: string } {
+  const match = SIZED_TYPE.exec(dataType.trim());
+  if (!match) return { base: dataType, length: "" };
+  return { base: match[1], length: match[2] };
+}
+
+export function joinType(base: string, length: string): string {
+  const size = length.trim();
+  return size ? `${base}(${size})` : base;
+}

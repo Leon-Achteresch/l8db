@@ -1,6 +1,5 @@
-import { PlusIcon, Trash2Icon } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { ArrowDownWideNarrowIcon, ArrowUpNarrowWideIcon, XIcon } from "lucide-react";
+import { IconButton } from "@/components/icon-button";
 import {
   Select,
   SelectContent,
@@ -8,13 +7,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { QueryBuilderSection } from "@/features/query-builder/query-builder-section";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import {
   type BuilderOrder,
   type ColumnOption,
   columnOptionValue,
   parseColumnOptionValue,
-  type SortDirection,
 } from "@/lib/query-builder";
 
 interface QueryBuilderOrdersProps {
@@ -34,59 +33,58 @@ export function QueryBuilderOrders({
 }: QueryBuilderOrdersProps) {
   const listRef = useListAnimation<HTMLDivElement>();
   return (
-    <div className="rounded-md border">
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="text-sm font-medium">Sortierung</span>
-        <Button size="sm" variant="ghost" onClick={onAdd} disabled={options.length === 0}>
-          <PlusIcon />
-          Sortierung
-        </Button>
+    <QueryBuilderSection
+      title="Sortierung"
+      count={orders.length}
+      addLabel="Sortierung hinzufügen"
+      addDisabled={options.length === 0}
+      onAdd={onAdd}
+    >
+      <div ref={listRef} className="space-y-1.5">
+        {orders.map((order) => (
+          <div key={order.id} className="flex items-center gap-1">
+            <Select
+              value={columnOptionValue(order.source, order.column)}
+              onValueChange={(value) => onChange(order.id, parseColumnOptionValue(value))}
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-7 min-w-0 flex-1 font-mono text-xs"
+                aria-label="Spalte"
+              >
+                <SelectValue placeholder="Spalte" />
+              </SelectTrigger>
+              <SelectContent searchable>
+                {options.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <IconButton
+              size="icon-xs"
+              variant="outline"
+              className="size-7"
+              aria-label={order.direction === "ASC" ? "Aufsteigend" : "Absteigend"}
+              onClick={() =>
+                onChange(order.id, { direction: order.direction === "ASC" ? "DESC" : "ASC" })
+              }
+            >
+              {order.direction === "ASC" ? <ArrowUpNarrowWideIcon /> : <ArrowDownWideNarrowIcon />}
+            </IconButton>
+            <IconButton
+              size="icon-xs"
+              variant="ghost"
+              className="text-muted-foreground"
+              aria-label="Sortierung entfernen"
+              onClick={() => onRemove(order.id)}
+            >
+              <XIcon />
+            </IconButton>
+          </div>
+        ))}
       </div>
-      <div ref={listRef} className="space-y-2 p-3">
-        {orders.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Keine Sortierung definiert.</p>
-        ) : (
-          orders.map((order) => (
-            <div key={order.id} className="flex items-center gap-2">
-              <Select
-                value={columnOptionValue(order.source, order.column)}
-                onValueChange={(value) => onChange(order.id, parseColumnOptionValue(value))}
-              >
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="Spalte" />
-                </SelectTrigger>
-                <SelectContent searchable>
-                  {options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={order.direction}
-                onValueChange={(value) => onChange(order.id, { direction: value as SortDirection })}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ASC">aufsteigend</SelectItem>
-                  <SelectItem value="DESC">absteigend</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Sortierung entfernen"
-                onClick={() => onRemove(order.id)}
-              >
-                <Trash2Icon />
-              </Button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
+    </QueryBuilderSection>
   );
 }

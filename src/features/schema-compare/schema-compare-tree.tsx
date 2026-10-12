@@ -1,41 +1,40 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  ChevronRightIcon,
-  CircleMinusIcon,
-  CirclePlusIcon,
-  DiffIcon,
-  EqualIcon,
-} from "lucide-react";
+import { ChevronRightIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { CatalogObjectType } from "@/lib/db";
 import {
-  type CompareResult,
   type DiffItem,
   type DiffStatus,
   OBJECT_TYPE_META,
+  STATUS_LABEL,
   TYPE_ORDER,
 } from "@/lib/schema-compare/types";
 import { cn } from "@/lib/utils";
 import { SchemaObjectIcon } from "./schema-object-icon";
+import { StatusMarker } from "./status-marker";
 
 type Row =
-  | { kind: "status"; id: string; status: DiffStatus; keys: string[] }
-  | { kind: "type"; id: string; status: DiffStatus; type: CatalogObjectType; keys: string[] }
-  | { kind: "item"; id: string; item: DiffItem };
+  | { kind: "group"; id: string; label: string; count: number; keys: string[]; depth: number }
+  | { kind: "item"; id: string; item: DiffItem; depth: number };
 
-const STATUS_ORDER: DiffStatus[] = ["only_source", "only_target", "different", "identical"];
+export type TreeGrouping = "type" | "status";
 
-const STATUS_VISUAL: Record<DiffStatus, { Icon: typeof DiffIcon; color: string }> = {
-  only_source: { Icon: CirclePlusIcon, color: "text-emerald-500" },
-  only_target: { Icon: CircleMinusIcon, color: "text-rose-500" },
-  different: { Icon: DiffIcon, color: "text-amber-500" },
-  identical: { Icon: EqualIcon, color: "text-muted-foreground" },
+const STATUS_ORDER = ["only_source", "only_target", "different"] as const;
+
+const STATUS_RANK: Record<DiffStatus, number> = {
+  different: 0,
+  only_source: 1,
+  only_target: 2,
+  identical: 3,
 };
 
 interface SchemaCompareTreeProps {
-  result: CompareResult;
   items: DiffItem[];
+  grouping: TreeGrouping;
+  identicalCount: number;
+  showIdentical: boolean;
+  onShowIdenticalChange: (value: boolean) => void;
   selection: Record<string, boolean>;
   activeKey: string | null;
   expandAll: boolean;
@@ -43,28 +42,19 @@ interface SchemaCompareTreeProps {
   onActivate: (key: string) => void;
 }
 
-function statusTitle(status: DiffStatus, count: number, result: CompareResult): string {
-  switch (status) {
-    case "only_source":
-      return `${count} nur in Quelle (${result.sourceLabel})`;
-    case "only_target":
-      return `${count} nur im Ziel (${result.targetLabel})`;
-    case "different":
-      return `${count} unterschiedlich`;
-    default:
-      return `${count} identisch`;
-  }
-}
-
-const STATUS_ACTION: Partial<Record<DiffStatus, string>> = {
-  only_source: "Auswahl wird im Ziel erstellt",
-  only_target: "Auswahl wird im Ziel gelöscht",
-  different: "Auswahl wird im Ziel angepasst",
+const STATUS_ACTION: Record<DiffStatus, string> = {
+  only_source: "wird im Ziel erstellt",
+  only_target: "wird im Ziel gelöscht",
+  different: "wird im Ziel angepasst",
+  identical: "identisch",
 };
 
 export function SchemaCompareTree({
-  result,
   items,
+  grouping,
+  identicalCount,
+  showIdentical,
+  onShowIdenticalChange,
   selection,
   activeKey,
   expandAll,
@@ -72,27 +62,64 @@ export function SchemaCompareTree({
   onActivate,
 }: SchemaCompareTreeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const rows = useMemo(() => {
     const out: Row[] = [];
-    for (const status of STATUS_ORDER) {
-      const inStatus = items.filter((item) => item.status === status);
-      if (inStatus.length === 0) continue;
-      out.push({ kind: "status", id: status, status, keys: inStatus.map((item) => item.key) });
-      if (collapsed.has(status)) continue;
+    const changed = items.filter((item) => item.status !== "identical");
+    const pushType = (pool: DiffItem[], prefix: string, depth: number) => {
       for (const type of TYPE_ORDER) {
-        const inType = inStatus.filter((item) => item.type === type);
+        const inType = pool
+          .filter((item) => item.type === type)
+          .sort(
+            (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || a.name.localeCompare(b.name),
+          );
         if (inType.length === 0) continue;
-        const id = `${status}|${type}`;
-        out.push({ kind: "type", id, status, type, keys: inType.map((item) => item.key) });
-        if (expandAll || expanded.has(id))
-          for (const item of inType) out.push({ kind: "item", id: item.key, item });
+        const id = `${prefix}${type}`;
+        out.push({
+          kind: "group",
+          id,
+          label: OBJECT_TYPE_META[type as CatalogObjectType].plural,
+          count: inType.length,
+          keys: inType.map((item) => item.key),
+          depth,
+        });
+        if (!expandAll && collapsed.has(id)) continue;
+        for (const item of inType) out.push({ kind: "item", id: item.key, item, depth });
       }
+    };
+    if (grouping === "type") pushType(changed, "", 0);
+    else
+      for (const status of STATUS_ORDER) {
+        const inStatus = changed.filter((item) => item.status === status);
+        if (inStatus.length === 0) continue;
+        const id = `status|${status}`;
+        out.push({
+          kind: "group",
+          id,
+          label: `${STATUS_LABEL[status]} – ${STATUS_ACTION[status]}`,
+          count: inStatus.length,
+          keys: inStatus.map((item) => item.key),
+          depth: 0,
+        });
+        if (!expandAll && collapsed.has(id)) continue;
+        pushType(inStatus, `${id}|`, 1);
+      }
+    if (identicalCount > 0) {
+      out.push({
+        kind: "group",
+        id: "identical",
+        label: "Identisch",
+        count: identicalCount,
+        keys: [],
+        depth: 0,
+      });
+      if (showIdentical)
+        for (const item of items.filter((entry) => entry.status === "identical"))
+          out.push({ kind: "item", id: item.key, item, depth: 0 });
     }
     return out;
-  }, [items, collapsed, expanded, expandAll]);
+  }, [items, grouping, collapsed, expandAll, identicalCount, showIdentical]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -102,13 +129,18 @@ export function SchemaCompareTree({
     useFlushSync: false,
   });
 
-  const flip = (setter: typeof setCollapsed, id: string) =>
-    setter((current) => {
+  const flip = (id: string) => {
+    if (id === "identical") {
+      onShowIdenticalChange(!showIdentical);
+      return;
+    }
+    setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
 
   const groupState = (keys: string[]): boolean | "indeterminate" => {
     const count = keys.filter((key) => selection[key]).length;
@@ -117,164 +149,134 @@ export function SchemaCompareTree({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_10rem_11rem] border-b bg-muted/40 px-2 py-1 text-[11px] font-medium text-muted-foreground">
-        <span>Gruppe / Objekt</span>
-        <span>Übergeordnet</span>
-        <span>Unterschied</span>
-      </div>
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-auto"
-        role="tree"
-        aria-label="Unterschiede"
-      >
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-          {virtualizer.getVirtualItems().map((virtual) => {
-            const row = rows[virtual.index];
-            const style = {
-              position: "absolute" as const,
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: virtual.size,
-              transform: `translateY(${virtual.start}px)`,
-            };
-            if (row.kind === "status") {
-              const { Icon, color } = STATUS_VISUAL[row.status];
-              const open = !collapsed.has(row.id);
-              return (
-                <div
-                  key={row.id}
-                  style={style}
-                  role="treeitem"
-                  aria-expanded={open}
-                  aria-selected={false}
-                  tabIndex={-1}
-                  className="flex items-center gap-1.5 bg-muted/20 px-2 text-xs font-semibold"
-                >
-                  <button
-                    type="button"
-                    className="flex items-center"
-                    aria-label={open ? "Zuklappen" : "Aufklappen"}
-                    onClick={() => flip(setCollapsed, row.id)}
-                  >
-                    <ChevronRightIcon
-                      className={cn("size-3.5 transition-transform", open && "rotate-90")}
-                    />
-                  </button>
-                  {row.status !== "identical" && (
-                    <Checkbox
-                      checked={groupState(row.keys)}
-                      onCheckedChange={(checked) => onToggle(row.keys, checked === true)}
-                      aria-label="Gruppe auswählen"
-                    />
-                  )}
-                  <Icon className={cn("size-3.5", color)} />
-                  <span className="truncate">
-                    {statusTitle(row.status, row.keys.length, result)}
-                  </span>
-                  {STATUS_ACTION[row.status] && (
-                    <span
-                      className={cn(
-                        "shrink-0 font-normal",
-                        row.status === "only_target" ? "text-rose-500" : "text-muted-foreground",
-                      )}
-                    >
-                      – {STATUS_ACTION[row.status]}
-                    </span>
-                  )}
-                </div>
-              );
-            }
-            if (row.kind === "type") {
-              const open = expandAll || expanded.has(row.id);
-              return (
-                <div
-                  key={row.id}
-                  style={style}
-                  role="treeitem"
-                  aria-expanded={open}
-                  aria-selected={false}
-                  tabIndex={-1}
-                  className="flex items-center gap-1.5 pl-6 pr-2 text-xs"
-                >
-                  <button
-                    type="button"
-                    className="flex items-center"
-                    aria-label={open ? "Zuklappen" : "Aufklappen"}
-                    onClick={() => flip(setExpanded, row.id)}
-                  >
-                    <ChevronRightIcon
-                      className={cn("size-3.5 transition-transform", open && "rotate-90")}
-                    />
-                  </button>
-                  {row.status !== "identical" && (
-                    <Checkbox
-                      checked={groupState(row.keys)}
-                      onCheckedChange={(checked) => onToggle(row.keys, checked === true)}
-                      aria-label={`${OBJECT_TYPE_META[row.type].plural} auswählen`}
-                    />
-                  )}
-                  <SchemaObjectIcon type={row.type} />
-                  <button
-                    type="button"
-                    className="truncate text-left"
-                    onClick={() => flip(setExpanded, row.id)}
-                  >
-                    {OBJECT_TYPE_META[row.type].plural} ({row.keys.length})
-                  </button>
-                </div>
-              );
-            }
-            const item = row.item;
-            const active = item.key === activeKey;
-            const related =
-              item.status === "only_source" || item.status === "only_target"
-                ? item.children.filter((child) => child.object_type !== "column").length
-                : 0;
+    <div
+      ref={scrollRef}
+      className="min-h-0 flex-1 overflow-auto"
+      role="tree"
+      aria-label="Unterschiede"
+    >
+      <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        {virtualizer.getVirtualItems().map((virtual) => {
+          const row = rows[virtual.index];
+          const style = {
+            position: "absolute" as const,
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: virtual.size,
+            transform: `translateY(${virtual.start}px)`,
+          };
+          if (row.kind === "group") {
+            const open =
+              row.id === "identical" ? showIdentical : expandAll || !collapsed.has(row.id);
             return (
               <div
                 key={row.id}
                 style={style}
                 role="treeitem"
-                aria-selected={active}
+                aria-expanded={open}
+                aria-selected={false}
                 tabIndex={-1}
-                onClick={() => onActivate(item.key)}
-                onKeyDown={(event) => {
-                  if (event.key === " " && item.status !== "identical") {
-                    event.preventDefault();
-                    onToggle([item.key], !selection[item.key]);
-                  }
-                }}
                 className={cn(
-                  "grid cursor-default grid-cols-[minmax(0,1fr)_10rem_11rem] items-center pl-12 pr-2 text-xs hover:bg-accent/50",
-                  active && "bg-accent",
+                  "group flex items-center gap-1.5 pr-2 text-xs font-medium text-muted-foreground",
+                  row.depth === 0 ? "pl-2" : "pl-6",
+                  row.id === "identical" && "mt-1",
                 )}
               >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {item.status !== "identical" && (
-                    <Checkbox
-                      checked={Boolean(selection[item.key])}
-                      onClick={(event) => event.stopPropagation()}
-                      onCheckedChange={(checked) => onToggle([item.key], checked === true)}
-                      aria-label={`${item.name} auswählen`}
-                    />
-                  )}
-                  <SchemaObjectIcon type={item.type} />
-                  <span className="truncate font-mono">{item.name}</span>
-                  {related > 0 && (
-                    <span className="shrink-0 text-muted-foreground">+{related}</span>
-                  )}
-                </span>
-                <span className="truncate font-mono text-muted-foreground">
-                  {item.parent ?? ""}
-                </span>
-                <span className="truncate text-muted-foreground">{item.differsBy.join(", ")}</span>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground"
+                  aria-label={`${row.label} ${open ? "zuklappen" : "aufklappen"}`}
+                  onClick={() => flip(row.id)}
+                >
+                  <ChevronRightIcon
+                    className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")}
+                  />
+                  <span className="truncate">{row.label}</span>
+                </button>
+                {row.keys.length > 0 && (
+                  <Checkbox
+                    checked={groupState(row.keys)}
+                    onCheckedChange={(checked) => onToggle(row.keys, checked === true)}
+                    aria-label={`${row.label} auswählen`}
+                    className="size-3.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=indeterminate]:opacity-100"
+                  />
+                )}
+                <span className="w-6 text-right font-normal tabular-nums">{row.count}</span>
               </div>
             );
-          })}
-        </div>
+          }
+          const item = row.item;
+          const active = item.key === activeKey;
+          const related =
+            item.status === "only_source" || item.status === "only_target"
+              ? item.children.filter((child) => child.object_type !== "column").length
+              : 0;
+          const parent = item.parent && item.parent !== item.name ? item.parent : null;
+          return (
+            <div
+              key={row.id}
+              style={style}
+              role="treeitem"
+              aria-selected={active}
+              tabIndex={-1}
+              title={[
+                `${OBJECT_TYPE_META[item.type].label} ${STATUS_ACTION[item.status]}`,
+                item.differsBy.length > 0 ? item.differsBy.join(", ") : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              onClick={() => onActivate(item.key)}
+              onKeyDown={(event) => {
+                if (event.key === " " && item.status !== "identical") {
+                  event.preventDefault();
+                  onToggle([item.key], !selection[item.key]);
+                }
+              }}
+              className={cn(
+                "flex cursor-default items-center gap-1.5 rounded-sm pr-2 text-xs hover:bg-accent/50",
+                row.depth === 0 ? "pl-3" : "pl-7",
+                active && "bg-accent",
+              )}
+            >
+              {item.status !== "identical" ? (
+                <Checkbox
+                  checked={Boolean(selection[item.key])}
+                  onClick={(event) => event.stopPropagation()}
+                  onCheckedChange={(checked) => onToggle([item.key], checked === true)}
+                  aria-label={`${item.name} auswählen`}
+                  className="size-3.5"
+                />
+              ) : (
+                <span className="size-3.5 shrink-0" />
+              )}
+              <SchemaObjectIcon type={item.type} />
+              <span
+                className={cn(
+                  "truncate font-mono",
+                  item.status === "only_target" &&
+                    "text-muted-foreground line-through decoration-muted-foreground/60",
+                )}
+              >
+                {item.name}
+              </span>
+              {parent && <span className="truncate font-mono text-muted-foreground">{parent}</span>}
+              {related > 0 && <span className="shrink-0 text-muted-foreground">+{related}</span>}
+              {grouping === "status" && item.differsBy.length > 0 && (
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {item.differsBy.join(", ")}
+                </span>
+              )}
+              <span className="ml-auto pl-2">
+                {item.status === "identical" ? (
+                  <span className="sr-only">{STATUS_LABEL.identical}</span>
+                ) : (
+                  <StatusMarker status={item.status} />
+                )}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

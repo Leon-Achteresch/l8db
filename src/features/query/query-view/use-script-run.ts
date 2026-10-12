@@ -10,6 +10,7 @@ import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
+import { recordUserQueryOutcome } from "@/lib/telemetry";
 import { getQueryTransaction } from "@/lib/transactions";
 
 import { SCRIPT_MODE_NOTE } from "./constants";
@@ -102,6 +103,7 @@ export function useScriptRun({
       const base = Math.max(0, sql.indexOf(text));
       const shift = (items: ScriptRunEntry[]) =>
         base ? items.map((e) => ({ ...e, start: e.start + base, end: e.end + base })) : items;
+      const startedAt = performance.now();
       try {
         const outcome = await runSqlScript({
           connection,
@@ -114,6 +116,7 @@ export function useScriptRun({
           onProgress: (items) => setScriptEntries(shift(items)),
         });
         const entries = shift(outcome.entries);
+        recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
         setScriptEntries(entries);
         setResultState(
           outcome.error ? null : withCreateNotice(outcome.lastResult, entries.at(-1)?.sql ?? text),
@@ -128,6 +131,7 @@ export function useScriptRun({
           setScriptActiveIndex(failed.index);
         } else setScriptActiveIndex(entries.length - 1);
       } catch (failure) {
+        recordUserQueryOutcome(connection.kind, failure, performance.now() - startedAt);
         setError(String(failure));
         setErrorSource(null);
       } finally {

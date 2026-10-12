@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
+  type ReactNode,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -19,15 +20,17 @@ import { useElementSize } from "@/lib/hooks/use-element-size";
 const IDLE_WIDTH = 180;
 const ACTIVE_WIDTH = 220;
 const SHRINK_DELAY = 0.07;
+const BACKLOG_DURATION = 1600;
 const PERCENT = new Intl.NumberFormat("de-DE", { style: "percent" });
 
 interface Props {
   buttonRef: RefObject<HTMLButtonElement | null>;
   shortcut: string;
+  badge?: ReactNode;
   onOpen: () => void;
 }
 
-export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
+export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
   useIslandMoments();
   const view = useIslandView();
   const reduce = useReducedMotion();
@@ -35,6 +38,11 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
   const [pill, setPill] = useState({ width: 0, delay: 0 });
   const [hovered, setHovered] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
+  const backlog = useIslandStore((state) => state.queue.length > 1);
+  const duration =
+    view.duration && backlog && !view.action
+      ? Math.min(view.duration, BACKLOG_DURATION)
+      : view.duration;
 
   useEffect(() => () => useIslandStore.setState({ queue: [] }), []);
 
@@ -54,10 +62,10 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
   }, [view.key]);
 
   useEffect(() => {
-    if (!view.duration || hovered) return;
-    const timer = window.setTimeout(() => dismissIslandMoment(view.key), view.duration);
+    if (!duration || hovered) return;
+    const timer = window.setTimeout(() => dismissIslandMoment(view.key), duration);
     return () => window.clearTimeout(timer);
-  }, [view, hovered]);
+  }, [view, duration, hovered]);
 
   const max = frame.width || undefined;
   const trailing =
@@ -114,6 +122,7 @@ export function DynamicIsland({ buttonRef, shortcut, onOpen }: Props) {
             <span className="min-w-0 truncate font-medium @max-[8rem]/header-search:hidden">
               {view.title}
             </span>
+            {view.idle ? badge : null}
             {view.detail ? (
               <span className="min-w-0 truncate text-current/55 @max-[14rem]/header-search:hidden">
                 {view.detail}

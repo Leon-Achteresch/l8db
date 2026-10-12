@@ -1,12 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
-import { BracesIcon, CopyIcon, PackageIcon } from "lucide-react";
+import { BracesIcon, PackageIcon } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
+import { CopyAsMenu } from "@/components/copy-as-menu";
 import { SidebarSearchInput } from "@/components/sidebar-search-input";
+import { ToolsMenu } from "@/components/tools-menu";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
@@ -17,8 +20,10 @@ import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-it
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { copyNameActions } from "@/lib/clipboard";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isFunctionInvalid, isPackageInvalid } from "@/lib/invalid-objects";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { packageOid } from "@/lib/plsql";
@@ -97,6 +102,40 @@ export function SidebarFunctionList({
     return <p className="py-1 text-sm text-muted-foreground">Keine Funktionen gefunden.</p>;
   }
 
+  const open = (item: NonNullable<SidebarFunctionListProps["items"]>[number]) => {
+    if (target) {
+      target.open(
+        item.return_type === "PACKAGE"
+          ? { kind: "package", schema: item.schema, name: item.name }
+          : {
+              kind: "function",
+              schema: item.schema,
+              name: item.name,
+              oid: item.oid,
+            },
+      );
+      return;
+    }
+    if (item.return_type === "PACKAGE") {
+      openPackageTab({ schema: item.schema, name: item.name });
+      navigate({
+        to: "/packages/$schema/$name",
+        params: { schema: item.schema, name: item.name },
+      });
+      return;
+    }
+    openFunctionTab({
+      schema: item.schema,
+      name: item.name,
+      oid: item.oid,
+    });
+    navigate({
+      to: "/functions/$schema/$name",
+      params: { schema: item.schema, name: item.name },
+      search: { oid: item.oid },
+    });
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="sticky top-0 z-10 flex items-center bg-sidebar py-1">
@@ -119,45 +158,15 @@ export function SidebarFunctionList({
               item.return_type === "PACKAGE"
                 ? isPackageInvalid(invalidSet, item.schema, item.name)
                 : isFunctionInvalid(invalidSet, item.schema, item.name);
+            const qualifiedName = `${item.schema}.${item.name}`;
             return (
               <SidebarMenuItem key={item.oid}>
                 <ContextMenu>
-                  <ContextMenuTrigger asChild>
-                    <SidebarMenuButton
-                      onClick={() => {
-                        if (target) {
-                          target.open(
-                            item.return_type === "PACKAGE"
-                              ? { kind: "package", schema: item.schema, name: item.name }
-                              : {
-                                  kind: "function",
-                                  schema: item.schema,
-                                  name: item.name,
-                                  oid: item.oid,
-                                },
-                          );
-                          return;
-                        }
-                        if (item.return_type === "PACKAGE") {
-                          openPackageTab({ schema: item.schema, name: item.name });
-                          navigate({
-                            to: "/packages/$schema/$name",
-                            params: { schema: item.schema, name: item.name },
-                          });
-                          return;
-                        }
-                        openFunctionTab({
-                          schema: item.schema,
-                          name: item.name,
-                          oid: item.oid,
-                        });
-                        navigate({
-                          to: "/functions/$schema/$name",
-                          params: { schema: item.schema, name: item.name },
-                          search: { oid: item.oid },
-                        });
-                      }}
-                    >
+                  <ContextMenuTrigger
+                    asChild
+                    onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
+                  >
+                    <SidebarMenuButton onClick={() => open(item)}>
                       {item.return_type === "PACKAGE" ? (
                         <PackageIcon className="text-muted-foreground" />
                       ) : (
@@ -175,22 +184,24 @@ export function SidebarFunctionList({
                     </SidebarMenuButton>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
-                    <CompareObjectMenuItem
-                      schema={item.schema}
-                      name={item.name}
-                      objectType={item.return_type === "PACKAGE" ? "package" : "routine"}
-                      oid={item.oid}
-                      identityArgs={item.identity_args}
-                    />
-                    {caps.compile_objects ? (
-                      item.return_type === "PACKAGE" ? (
+                    <ContextMenuItem onSelect={() => open(item)}>
+                      Öffnen
+                      <ContextMenuShortcut>
+                        {formatMenuShortcut(MENU_KEYS.open)}
+                      </ContextMenuShortcut>
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <CopyAsMenu name={item.name} qualifiedName={qualifiedName} shortcuts />
+                    <ContextMenuSeparator />
+                    {caps.compile_objects &&
+                      (item.return_type === "PACKAGE" ? (
                         <>
                           <ContextMenuItem
                             onSelect={() => {
                               void compile(
                                 packageOid(item.schema, item.name, "spec"),
                                 "package_spec",
-                                `${item.schema}.${item.name} (Spec)`,
+                                `${qualifiedName} (Spec)`,
                               );
                             }}
                           >
@@ -201,7 +212,7 @@ export function SidebarFunctionList({
                               void compile(
                                 packageOid(item.schema, item.name, "body"),
                                 "package_body",
-                                `${item.schema}.${item.name} (Body)`,
+                                `${qualifiedName} (Body)`,
                               );
                             }}
                           >
@@ -211,18 +222,21 @@ export function SidebarFunctionList({
                       ) : (
                         <ContextMenuItem
                           onSelect={() => {
-                            void compile(item.oid, "function", `${item.schema}.${item.name}`);
+                            void compile(item.oid, "function", qualifiedName);
                           }}
                         >
                           Kompilieren
                         </ContextMenuItem>
-                      )
-                    ) : (
-                      <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
-                    )}
-                    {caps.schema_object_copy && item.return_type !== "PACKAGE" && (
-                      <>
-                        <ContextMenuSeparator />
+                      ))}
+                    <ToolsMenu>
+                      <CompareObjectMenuItem
+                        schema={item.schema}
+                        name={item.name}
+                        objectType={item.return_type === "PACKAGE" ? "package" : "routine"}
+                        oid={item.oid}
+                        identityArgs={item.identity_args}
+                      />
+                      {caps.schema_object_copy && item.return_type !== "PACKAGE" && (
                         <ContextMenuItem
                           onSelect={() =>
                             setCopyTarget({
@@ -232,11 +246,10 @@ export function SidebarFunctionList({
                             })
                           }
                         >
-                          <CopyIcon />
-                          In anderem Schema erstellen
+                          In anderem Schema erstellen…
                         </ContextMenuItem>
-                      </>
-                    )}
+                      )}
+                    </ToolsMenu>
                   </ContextMenuContent>
                 </ContextMenu>
               </SidebarMenuItem>

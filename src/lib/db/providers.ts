@@ -43,6 +43,7 @@ export interface Capabilities {
   replication: boolean;
   sessions: boolean;
   locks: boolean;
+  live_monitor: boolean;
   transactions: boolean;
   table_transactions: boolean;
   row_edit: boolean;
@@ -76,11 +77,15 @@ export interface Capabilities {
   migration_script: boolean;
   server_output: boolean;
   query_cancel: boolean;
+  dashboard_parallelism: number;
   ssl: boolean;
   ssh: boolean;
   backup: boolean;
   object_storage: boolean;
   health_advisor: boolean;
+  dml_preview: boolean;
+  multi_target_query: boolean;
+  multi_target_schemas: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

@@ -5,6 +5,7 @@ interface VersioningPanelState {
   open: boolean;
   pending: number;
   hasError: boolean;
+  branch: string | null;
   mode: "panel" | "tab";
   tabHost: HTMLElement | null;
   returnPath: string;
@@ -19,6 +20,7 @@ export const useVersioningPanel = create<VersioningPanelState>((set) => ({
   open: false,
   pending: 0,
   hasError: false,
+  branch: null,
   mode:
     typeof localStorage !== "undefined" && localStorage.getItem("l8db.versioning.mode") === "tab"
       ? "tab"

@@ -1,11 +1,12 @@
+import { useContext } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-
 import { useActiveConnection } from "@/lib/connections";
 import type { Capabilities } from "@/lib/db";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { oracleLoginSchema } from "@/lib/schema-selection";
+import { WorkbenchDatabaseContext } from "@/lib/workbench-context";
 
 interface DbSelectionState {
   databaseByConnection: Record<string, string>;
@@ -61,11 +62,13 @@ export function databaseFromConnectionString(connectionString: string): string |
 }
 
 export function useActiveDatabase(): string | null {
+  const scope = useContext(WorkbenchDatabaseContext);
   const connection = useActiveConnection();
   const capabilities = useCapabilities(connection?.kind);
   const selected = useDbSelectionStore((state) =>
     connection ? (state.databaseByConnection[connection.id] ?? null) : null,
   );
+  if (scope) return scope.database;
   if (!connection) {
     return null;
   }

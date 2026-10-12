@@ -2,7 +2,6 @@ import { useSortable } from "@dnd-kit/react/sortable";
 import {
   ArchiveIcon,
   BracesIcon,
-  CopyIcon,
   EyeIcon,
   LoaderCircleIcon,
   PackageIcon,
@@ -16,12 +15,13 @@ import {
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, type RefObject } from "react";
+import { CopyAsMenu } from "@/components/copy-as-menu";
+import { HotkeyMenuShortcut } from "@/components/hotkey-menu-shortcut";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
-  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { AiFlash } from "@/features/automation/ai-flash";
@@ -40,7 +40,6 @@ export interface TableTabActions {
   closeToRight: (tab: Tab) => void;
   closeAll: () => void;
   split: (tab: Tab) => void;
-  copy: (value: string) => void;
 }
 
 export interface TableTabsSortableTabProps {
@@ -204,12 +203,10 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           </button>
         </motion.div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
+      <ContextMenuContent>
         <ContextMenuItem onSelect={onClose}>
           Schließen
-          <ContextMenuShortcut>
-            <XIcon className="size-3" />
-          </ContextMenuShortcut>
+          <HotkeyMenuShortcut command="tab.close" />
         </ContextMenuItem>
         <ContextMenuItem
           disabled={tabsCount <= 1}
@@ -227,22 +224,18 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           Alle schließen
         </ContextMenuItem>
         {!easyMode && (
-          <ContextMenuItem disabled={!canSplit} onSelect={() => actions.current.split(tab)}>
-            Rechts teilen
-          </ContextMenuItem>
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem disabled={!canSplit} onSelect={() => actions.current.split(tab)}>
+              Rechts teilen
+              <HotkeyMenuShortcut command="view.split" />
+            </ContextMenuItem>
+          </>
         )}
         {tab.kind === "table" && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => actions.current.copy(tab.table)}>
-              Tabellenname kopieren
-              <ContextMenuShortcut>
-                <CopyIcon className="size-3.5" />
-              </ContextMenuShortcut>
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => actions.current.copy(`${tab.schema}.${tab.table}`)}>
-              Vollständigen Namen kopieren
-            </ContextMenuItem>
+            <CopyAsMenu name={tab.table} qualifiedName={`${tab.schema}.${tab.table}`} />
           </>
         )}
       </ContextMenuContent>

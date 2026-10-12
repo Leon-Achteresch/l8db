@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { columnWindowRange } from "@/lib/column-window";
 import { lastGridRect, rememberGridRect } from "@/lib/grid-rect";
+import { createGridWindowRange } from "@/lib/grid-window-range";
 import { IS_CHROMIUM } from "@/lib/platform";
 import { useGridVirtualizer } from "./use-transition-virtualizer";
 
@@ -11,6 +12,7 @@ export function useColumnWindow(
   scrollRef: RefObject<HTMLDivElement | null>,
   widths: number[],
   pinned: number[],
+  overscanPixels = 256,
 ) {
   const enabled = widths.length > 20;
   const direction = useRef<"forward" | "backward" | null>(null);
@@ -22,21 +24,22 @@ export function useColumnWindow(
     );
   }, [widths, pinned]);
   const overscan = Number.isFinite(narrowest)
-    ? Math.ceil((IS_CHROMIUM ? 512 : 256) / Math.max(1, narrowest))
+    ? Math.ceil(overscanPixels / Math.max(1, narrowest))
     : 2;
   const behind = Number.isFinite(narrowest) ? Math.ceil(64 / Math.max(1, narrowest)) : 1;
+  const windowRanges = useMemo(
+    () => ({
+      forward: createGridWindowRange(behind, overscan, 2, pinned),
+      backward: createGridWindowRange(overscan, behind, 2, pinned),
+    }),
+    [behind, overscan, pinned],
+  );
   const rangeExtractor = useCallback(
     (range: Parameters<typeof columnWindowRange>[0]) => {
       if (!IS_CHROMIUM) return columnWindowRange(range, pinned);
-      const backward = direction.current === "backward";
-      return columnWindowRange(
-        range,
-        pinned,
-        backward ? overscan : behind,
-        backward ? behind : overscan,
-      );
+      return windowRanges[direction.current === "backward" ? "backward" : "forward"](range);
     },
-    [pinned, overscan, behind],
+    [pinned, windowRanges],
   );
   const virtualizer = useGridVirtualizer({
     horizontal: true,

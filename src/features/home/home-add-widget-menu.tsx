@@ -39,7 +39,7 @@ export function HomeAddWidgetMenu({ connectionId }: { connectionId: string }) {
     (dashboard) =>
       dashboard.connectionId === connectionId &&
       (!dashboard.database || dashboard.database === database) &&
-      dashboard.widgets.length > 0,
+      dashboard.widgets.some((widget) => !widget.block),
   );
   const saved = useSavedQueriesStore((state) => state.queries);
   const available = SINGLE_KINDS.filter(
@@ -83,29 +83,31 @@ export function HomeAddWidgetMenu({ connectionId }: { connectionId: string }) {
             {dashboards.map((dashboard) => (
               <div key={dashboard.id}>
                 <DropdownMenuLabel>{dashboard.name}</DropdownMenuLabel>
-                {dashboard.widgets.map((chart) => (
-                  <DropdownMenuItem
-                    key={chart.id}
-                    onSelect={() =>
-                      add("chart", {
-                        dashboardId: dashboard.id,
-                        chartId: chart.id,
-                        w: Math.max(chart.w, HOME_WIDGETS.chart.minW),
-                        h: Math.max(chart.h, HOME_WIDGETS.chart.minH),
-                      })
-                    }
-                  >
-                    <span className="truncate">
-                      {chart.title ||
-                        dashboard.datasets.find((dataset) => dataset.id === chart.datasetId)
-                          ?.name ||
-                        CHARTS[chart.chart].label}
-                    </span>
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                      {CHARTS[chart.chart].label}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
+                {dashboard.widgets
+                  .filter((chart) => !chart.block)
+                  .map((chart) => (
+                    <DropdownMenuItem
+                      key={chart.id}
+                      onSelect={() =>
+                        add("chart", {
+                          dashboardId: dashboard.id,
+                          chartId: chart.id,
+                          w: Math.max(chart.w, HOME_WIDGETS.chart.minW),
+                          h: Math.max(chart.h, HOME_WIDGETS.chart.minH),
+                        })
+                      }
+                    >
+                      <span className="truncate">
+                        {chart.title ||
+                          dashboard.datasets.find((dataset) => dataset.id === chart.datasetId)
+                            ?.name ||
+                          CHARTS[chart.chart].label}
+                      </span>
+                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                        {CHARTS[chart.chart].label}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
               </div>
             ))}
           </DropdownMenuSubContent>

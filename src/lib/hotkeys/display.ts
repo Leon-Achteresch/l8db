@@ -18,6 +18,10 @@ export function formatHotkeyDisplay(hotkey: string): string {
   }
 }
 
+export function formatMenuShortcut(hotkey: string): string {
+  return formatHotkeyDisplay(hotkey).replace(/ /g, "");
+}
+
 export function splitHotkeyForKbd(hotkey: string): string[] {
   const display = formatHotkeyDisplay(hotkey);
   if (display.includes("+")) return display.split("+").map((part) => part.trim());

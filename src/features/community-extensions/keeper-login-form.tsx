@@ -1,6 +1,5 @@
 import { CopyIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -12,6 +11,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { copyText } from "@/lib/clipboard";
 import type { Json } from "@/lib/extensions/contracts";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { KeeperApproval } from "./keeper-approval";
 import type { VaultStatus } from "./password-manager";
 import { VaultField } from "./vault-field";
@@ -76,7 +76,7 @@ export function KeeperLoginForm({
             variant="ghost"
             aria-label="Befehle kopieren"
             className="absolute top-2 right-2"
-            onClick={() => void copyText(commands).then(() => toast.success("Befehle kopiert"))}
+            onClick={() => void copyText(commands).then(() => showCopiedMessage("Befehle kopiert"))}
           >
             <CopyIcon />
           </Button>

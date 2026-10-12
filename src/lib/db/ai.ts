@@ -58,6 +58,7 @@ export interface AiAttachment {
   totalRows: number | null;
 }
 export interface AiKnowledge {
+  rules?: string;
   notes: string;
   glossary: { term: string; meaning: string }[];
   tables: Record<string, { description: string; columns: Record<string, string> }>;
@@ -74,6 +75,8 @@ export interface AiMessage {
   createdAt?: number;
   durationMs?: number;
   attachments?: AiAttachment[];
+  context?: string;
+  contextLabels?: string[];
 }
 export interface AiConnection {
   id: string;
@@ -143,3 +146,24 @@ export const aiKnowledgeGet = (connectionId: string) =>
   invoke<AiKnowledge>("ai_knowledge_get", { connectionId });
 export const aiKnowledgeSet = (connectionId: string, knowledge: AiKnowledge) =>
   invoke<AiKnowledge>("ai_knowledge_set", { connectionId, knowledge });
+export interface AiCompleteRequest {
+  runId: string;
+  profile: AiProfile;
+  cached: string;
+  system: string;
+  messages: { role: "user" | "assistant"; text: string }[];
+  maxTokens: number;
+  stop?: string[];
+  cacheKey?: string;
+}
+export interface AiCompleteResult {
+  text: string;
+  truncated: boolean;
+  model: string;
+}
+export function aiComplete(request: AiCompleteRequest, onEvent: (event: AiEvent) => void) {
+  const events = new Channel<AiEvent>();
+  events.onmessage = onEvent;
+  return invoke<AiCompleteResult>("ai_complete", { request, events });
+}
+export const aiCompleteCancel = (runId: string) => invoke<void>("ai_complete_cancel", { runId });

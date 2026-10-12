@@ -8,13 +8,19 @@ export {
   validateHotkeyInput,
 } from "./conflicts";
 export { HOTKEY_AREAS } from "./constants";
-export { detectHotkeyPlatform, formatHotkeyDisplay, splitHotkeyForKbd } from "./display";
+export {
+  detectHotkeyPlatform,
+  formatHotkeyDisplay,
+  formatMenuShortcut,
+  splitHotkeyForKbd,
+} from "./display";
 export {
   filterHotkeyCommands,
   groupHotkeyCommands,
   isCommandVisibleInRoute,
   isHotkeyAvailable,
 } from "./filter";
+export { MENU_KEYS, type MenuKeyActions, menuKeyHandler } from "./menu-keys";
 export type { Hotkey, HotkeyArea, HotkeyCommand, HotkeyOrigin } from "./types";
 export {
   resolveHotkey,

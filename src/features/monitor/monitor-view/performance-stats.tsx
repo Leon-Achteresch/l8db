@@ -10,7 +10,7 @@ import { firstLine, formatBytes, formatMs } from "@/features/monitor/monitor-vie
 import type { MonitorViewState } from "@/features/monitor/monitor-view/use-monitor-view";
 
 export function PerformanceStats({ m }: { m: MonitorViewState }) {
-  const { capabilities, overviewQuery, range, measuredHistory, stats, activeSessions } = m;
+  const { capabilities, overviewQuery, range, measuredHistory, stats } = m;
   const rangeLabel =
     range === "24h" ? "Letzte 24 Stunden" : range === "7d" ? "Letzte 7 Tage" : "Gesamter Verlauf";
   return (
@@ -43,17 +43,11 @@ export function PerformanceStats({ m }: { m: MonitorViewState }) {
           icon: AlertTriangleIcon,
         },
         {
-          label: "Aktive Sessions",
-          value: capabilities.sessions ? (
-            activeSessions == null ? (
-              "…"
-            ) : (
-              <AnimatedNumber value={activeSessions} />
-            )
-          ) : (
-            "—"
-          ),
-          detail: capabilities.sessions ? "Live" : "Nicht verfügbar",
+          label: "Erfolgreich",
+          value: <AnimatedNumber value={stats.success} />,
+          detail: stats.total
+            ? `${Math.round((stats.success / stats.total) * 100)} % Anteil`
+            : "Keine Queries",
           icon: ActivityIcon,
         },
         {

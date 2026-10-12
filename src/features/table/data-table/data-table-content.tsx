@@ -12,6 +12,7 @@ import { DataTableDraftControls } from "./data-table-draft-controls";
 import { DataTableFooter } from "./data-table-footer";
 import { DataTableSearchBar } from "./data-table-search-bar";
 import { EditTargetContext } from "./edit-target-context";
+import { GridStyleContext } from "./grid-style-context";
 import { useColumnDragPreview } from "./use-column-drag-preview";
 import { useDataTable } from "./use-data-table";
 
@@ -64,6 +65,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     editingCell,
     fkPickerCell,
     focusCell,
+    gridStyle,
     handleCellEdit,
     hasDraft,
     hasEphemeralMarkers,
@@ -81,7 +83,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     paddingBottom,
     paddingTop,
     rootRef,
-    rowVirtualizer,
+    measureRow,
     rows,
     saveCellValue,
     scrollRef,
@@ -126,200 +128,204 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
   );
   return (
     <EditTargetContext.Provider value={editTarget}>
-      <div
-        ref={rootRef}
-        data-tour="data-grid"
-        className={cn("flex min-h-0 flex-1 flex-col relative", className)}
-      >
-        {isFetching && (
-          <div className="absolute top-0 left-0 right-0 z-50 h-0.5 w-full bg-primary/20 overflow-hidden">
-            <div className="h-full w-1/3 bg-primary animate-pulse rounded-full" />
-          </div>
-        )}
-        {hasEphemeralMarkers && (
-          <p role="status" className="border-b px-3 py-1 text-xs text-muted-foreground">
-            Ohne stabilen Zeilenschlüssel bleiben Markierungen nur bis zum nächsten Laden erhalten.
-          </p>
-        )}
-        {search.searchOpen && (
-          <DataTableSearchBar
-            search={search}
-            loadedRowCount={data.length}
-            visibleColumnCount={searchColumns.length}
-          />
-        )}
-        {draft && (
-          <DataTableDraftControls
-            isInserting={isInserting}
-            insertError={drafts.insertError}
-            onDiscard={() => {
-              setDraft(null);
-              setInsertError(null);
-            }}
-            onSave={() => void drafts.saveDraft()}
-          />
-        )}
-        <div className="relative flex min-h-0 flex-1 basis-0 flex-col">
-          <div
-            ref={scrollRef}
-            data-grid-scroll
-            style={{ contain: "strict" }}
-            className={cn(
-              "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
-              isFetching && "opacity-85",
-              table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
-            )}
-          >
-            <div className="pb-3">
-              <DragDropProvider
-                sensors={headerSensors}
-                onDragStart={(event) => {
-                  const id = event.operation.source?.id;
-                  if (id === undefined) return;
-                  keepColumn(String(id));
-                  dragPreview.start(String(id));
-                }}
-                onDragMove={(event) =>
-                  dragPreview.update(
-                    event.to
-                      ? event.to.x - event.operation.position.initial.x
-                      : event.operation.transform.x,
-                  )
-                }
-                onDragEnd={(event) => {
-                  dragPreview.end(event.canceled);
-                  keepColumn(null);
-                }}
-              >
-                <style ref={dragPreview.styleRef} />
-                <table
-                  data-column-scope={columnScope}
-                  className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
-                  style={{ width: tableWidth }}
-                >
-                  <colgroup>
-                    {visibleColumns.map((column, index) => (
-                      <col key={column.id} style={{ width: columnWidths[index] }} />
-                    ))}
-                  </colgroup>
-                  {tableHeader}
-                  {draft && (
-                    <tbody ref={draftRef}>
-                      <DataTableDraftRow
-                        columns={visibleColumns}
-                        fields={draft}
-                        disabled={isInserting}
-                        onChange={setDraft}
-                      />
-                    </tbody>
-                  )}
-                  <DataTableBody
-                    activeCell={activeCell}
-                    activeMatch={activeMatch}
-                    canPickFk={canPickFk}
-                    colSpan={colSpan}
-                    columnOrder={columnOrder}
-                    columnPinning={columnPinning}
-                    columnScale={columnScale}
-                    columnVisibility={columnVisibility}
-                    columnWindow={columnWindow}
-                    columns={columns}
-                    commitEditingCell={commitEditingCell}
-                    customCellColumns={customCellColumns}
-                    editingCell={editingCell}
-                    focusCell={focusCell}
-                    handleCellEdit={handleCellEdit}
-                    hasDraft={hasDraft}
-                    hasRowActions={hasRowActions}
-                    isSaving={isSaving}
-                    markedRows={markedRows}
-                    matchesByRow={matchesByRow}
-                    menuRow={menuRow}
-                    outgoingFkByColumn={outgoingFkByColumn}
-                    paddingBottom={paddingBottom}
-                    paddingTop={paddingTop}
-                    rowVirtualizer={rowVirtualizer}
-                    rows={rows}
-                    scrollRef={scrollRef}
-                    selectedByRow={selectedByRow}
-                    setActiveCell={setActiveCell}
-                    setDraft={setDraft}
-                    setEditingCell={setEditingCell}
-                    setFkPickerCell={setFkPickerCell}
-                    setInsertError={setInsertError}
-                    setInspectCell={setInspectCell}
-                    setMenuRow={setMenuRow}
-                    setSelectionAnchor={setSelectionAnchor}
-                    table={table}
-                    tbodyRef={tbodyRef}
-                    toggleRowMarker={toggleRowMarker}
-                    uiScale={uiScale}
-                    virtualRows={virtualRows}
-                    visibleColumns={visibleColumns}
-                    columnNames={columnNames}
-                    stateKey={props.stateKey}
-                    emptyMessage={emptyMessage}
-                    onSaveRow={onSaveRow}
-                    canEditCell={canEditCell}
-                    page={page}
-                    pageSize={pageSize}
-                    onInsertRow={onInsertRow}
-                    onDeleteRow={onDeleteRow}
-                    columnDetails={columnDetails}
-                  />
-                </table>
-              </DragDropProvider>
+      <GridStyleContext.Provider value={gridStyle}>
+        <div
+          ref={rootRef}
+          data-tour="data-grid"
+          className={cn("flex min-h-0 flex-1 flex-col relative", className)}
+        >
+          {isFetching && (
+            <div className="absolute top-0 left-0 right-0 z-50 h-0.5 w-full bg-primary/20 overflow-hidden">
+              <div className="h-full w-1/3 bg-primary animate-pulse rounded-full" />
             </div>
+          )}
+          {hasEphemeralMarkers && (
+            <p role="status" className="border-b px-3 py-1 text-xs text-muted-foreground">
+              Ohne stabilen Zeilenschlüssel bleiben Markierungen nur bis zum nächsten Laden
+              erhalten.
+            </p>
+          )}
+          {search.searchOpen && (
+            <DataTableSearchBar
+              search={search}
+              loadedRowCount={data.length}
+              visibleColumnCount={searchColumns.length}
+            />
+          )}
+          {draft && (
+            <DataTableDraftControls
+              isInserting={isInserting}
+              insertError={drafts.insertError}
+              onDiscard={() => {
+                setDraft(null);
+                setInsertError(null);
+              }}
+              onSave={() => void drafts.saveDraft()}
+            />
+          )}
+          <div className="relative flex min-h-0 flex-1 basis-0 flex-col">
+            <div
+              ref={scrollRef}
+              data-grid-scroll
+              style={{ contain: "strict" }}
+              className={cn(
+                "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
+                isFetching && "opacity-85",
+                table.getState().columnSizingInfo.isResizingColumn &&
+                  "cursor-col-resize select-none",
+              )}
+            >
+              <div className="pb-3">
+                <DragDropProvider
+                  sensors={headerSensors}
+                  onDragStart={(event) => {
+                    const id = event.operation.source?.id;
+                    if (id === undefined) return;
+                    keepColumn(String(id));
+                    dragPreview.start(String(id));
+                  }}
+                  onDragMove={(event) =>
+                    dragPreview.update(
+                      event.to
+                        ? event.to.x - event.operation.position.initial.x
+                        : event.operation.transform.x,
+                    )
+                  }
+                  onDragEnd={(event) => {
+                    dragPreview.end(event.canceled);
+                    keepColumn(null);
+                  }}
+                >
+                  <style ref={dragPreview.styleRef} />
+                  <table
+                    data-column-scope={columnScope}
+                    className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
+                    style={{ width: tableWidth }}
+                  >
+                    <colgroup>
+                      {visibleColumns.map((column, index) => (
+                        <col key={column.id} style={{ width: columnWidths[index] }} />
+                      ))}
+                    </colgroup>
+                    {tableHeader}
+                    {draft && (
+                      <tbody ref={draftRef}>
+                        <DataTableDraftRow
+                          columns={visibleColumns}
+                          fields={draft}
+                          disabled={isInserting}
+                          onChange={setDraft}
+                        />
+                      </tbody>
+                    )}
+                    <DataTableBody
+                      activeCell={activeCell}
+                      activeMatch={activeMatch}
+                      canPickFk={canPickFk}
+                      colSpan={colSpan}
+                      columnOrder={columnOrder}
+                      columnPinning={columnPinning}
+                      columnScale={columnScale}
+                      columnVisibility={columnVisibility}
+                      columnWindow={columnWindow}
+                      columns={columns}
+                      commitEditingCell={commitEditingCell}
+                      customCellColumns={customCellColumns}
+                      editingCell={editingCell}
+                      focusCell={focusCell}
+                      handleCellEdit={handleCellEdit}
+                      hasDraft={hasDraft}
+                      hasRowActions={hasRowActions}
+                      isSaving={isSaving}
+                      markedRows={markedRows}
+                      matchesByRow={matchesByRow}
+                      menuRow={menuRow}
+                      outgoingFkByColumn={outgoingFkByColumn}
+                      paddingBottom={paddingBottom}
+                      paddingTop={paddingTop}
+                      measureRow={measureRow}
+                      rows={rows}
+                      scrollRef={scrollRef}
+                      selectedByRow={selectedByRow}
+                      setActiveCell={setActiveCell}
+                      setDraft={setDraft}
+                      setEditingCell={setEditingCell}
+                      setFkPickerCell={setFkPickerCell}
+                      setInsertError={setInsertError}
+                      setInspectCell={setInspectCell}
+                      setMenuRow={setMenuRow}
+                      setSelectionAnchor={setSelectionAnchor}
+                      table={table}
+                      tbodyRef={tbodyRef}
+                      toggleRowMarker={toggleRowMarker}
+                      uiScale={uiScale}
+                      virtualRows={virtualRows}
+                      visibleColumns={visibleColumns}
+                      columnNames={columnNames}
+                      stateKey={props.stateKey}
+                      emptyMessage={emptyMessage}
+                      onSaveRow={onSaveRow}
+                      canEditCell={canEditCell}
+                      page={page}
+                      pageSize={pageSize}
+                      onInsertRow={onInsertRow}
+                      onDeleteRow={onDeleteRow}
+                      columnDetails={columnDetails}
+                    />
+                  </table>
+                </DragDropProvider>
+              </div>
+            </div>
+            <PageWave
+              direction="up"
+              ref={waveRefs.up}
+              className="pointer-events-none absolute inset-x-0 top-9 z-50 opacity-0"
+            />
+            <PageWave
+              direction="down"
+              ref={waveRefs.down}
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-50 opacity-0"
+            />
           </div>
-          <PageWave
-            direction="up"
-            ref={waveRefs.up}
-            className="pointer-events-none absolute inset-x-0 top-9 z-50 opacity-0"
-          />
-          <PageWave
-            direction="down"
-            ref={waveRefs.down}
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-50 opacity-0"
+          {rows.length > 0 && (
+            <DataTableFooter
+              rowCount={rows.length}
+              page={page}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              countLabel={countLabel}
+              onExactCount={onExactCount}
+              hasNextPage={hasNextPage}
+              selectionStats={selectionStats}
+              isFetching={isFetching}
+              activeSort={activeSort}
+              canEdit={!!onSaveRow}
+              onRefresh={onRefresh}
+              autoRefreshMs={autoRefreshMs}
+              autoRefreshPause={autoRefreshPause}
+              onAutoRefreshChange={setAutoRefreshMs}
+              onPageChange={onPageChange}
+            />
+          )}
+          <DataTableCellDialogs
+            inspectCell={inspectCell}
+            setInspectCell={setInspectCell}
+            fkPickerCell={fkPickerCell}
+            setFkPickerCell={setFkPickerCell}
+            columnTypeByName={columnTypeByName}
+            cellEditorKind={cellEditorKind}
+            onSaveRow={onSaveRow}
+            canEditCell={canEditCell}
+            isSaving={isSaving}
+            saveCellValue={saveCellValue}
+            foreignKeys={foreignKeys}
+            currentSchema={currentSchema}
+            currentTable={currentTable}
+            columnDetails={columnDetails}
+            data={data}
           />
         </div>
-        {rows.length > 0 && (
-          <DataTableFooter
-            rowCount={rows.length}
-            page={page}
-            pageSize={pageSize}
-            totalCount={totalCount}
-            countLabel={countLabel}
-            onExactCount={onExactCount}
-            hasNextPage={hasNextPage}
-            selectionStats={selectionStats}
-            isFetching={isFetching}
-            activeSort={activeSort}
-            canEdit={!!onSaveRow}
-            onRefresh={onRefresh}
-            autoRefreshMs={autoRefreshMs}
-            autoRefreshPause={autoRefreshPause}
-            onAutoRefreshChange={setAutoRefreshMs}
-            onPageChange={onPageChange}
-          />
-        )}
-        <DataTableCellDialogs
-          inspectCell={inspectCell}
-          setInspectCell={setInspectCell}
-          fkPickerCell={fkPickerCell}
-          setFkPickerCell={setFkPickerCell}
-          columnTypeByName={columnTypeByName}
-          cellEditorKind={cellEditorKind}
-          onSaveRow={onSaveRow}
-          canEditCell={canEditCell}
-          isSaving={isSaving}
-          saveCellValue={saveCellValue}
-          foreignKeys={foreignKeys}
-          currentSchema={currentSchema}
-          currentTable={currentTable}
-          columnDetails={columnDetails}
-          data={data}
-        />
-      </div>
+      </GridStyleContext.Provider>
     </EditTargetContext.Provider>
   );
 });

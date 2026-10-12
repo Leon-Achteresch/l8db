@@ -56,9 +56,23 @@ const option = (name) => {
 const head = option("--head") ?? "HEAD";
 const previousTag = option("--previous");
 
-const tags = git("tag", "--merged", head, "--list", "v*", "--sort=-v:refname")
+const canary = /^(\d+\.\d+\.\d+)-canary\.\d+$/.exec(next)?.[1];
+const tags = git(
+  "-c",
+  "versionsort.suffix=-",
+  "tag",
+  ...(canary ? [] : ["--merged", head]),
+  "--list",
+  "v*",
+  "--sort=-v:refname",
+)
   .split("\n")
-  .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag) && tag !== `v${next}`);
+  .filter(
+    (tag) =>
+      (/^v\d+\.\d+\.\d+$/.test(tag) ||
+        (/^v\d+\.\d+\.\d+-canary\.\d+$/.test(tag) && tag.startsWith(`v${canary}-canary.`))) &&
+      tag !== `v${next}`,
+  );
 const today = option("--date") ?? new Date().toISOString().slice(0, 10);
 
 const sections = [];

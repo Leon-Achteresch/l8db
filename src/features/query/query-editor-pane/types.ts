@@ -43,6 +43,7 @@ export interface QueryEditorPaneProps {
   onRunSelection?: () => void;
   onRunStatement?: () => void;
   onCheck?: () => void;
+  onPreview?: () => void;
   onSelectionChange?: (selectedText: string) => void;
   onCursorChange?: (offset: number) => void;
   onPositionChange?: (position: EditorPosition) => void;

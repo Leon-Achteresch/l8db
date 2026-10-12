@@ -7,6 +7,7 @@ import { copyText } from "@/lib/clipboard";
 import { type ObjectProperties, s3Presign, type TransferItem } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
 import { downloadItems, uploadPaths } from "@/lib/storage/transfers";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
 
@@ -76,7 +77,7 @@ export function useObjectActions(bucket: string) {
   async function copyPresigned(row: BrowserRow) {
     try {
       await copyText(await presign(row));
-      toast.success("Presigned URL (1 Stunde gültig) kopiert.");
+      showCopiedMessage("Presigned URL (1 Stunde gültig) kopiert.");
     } catch (error) {
       toast.error(errorText(error));
     }

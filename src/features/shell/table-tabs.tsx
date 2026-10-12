@@ -14,7 +14,6 @@ import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
-import { copyText } from "@/lib/clipboard";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
@@ -116,7 +115,6 @@ export function TableTabs() {
     closeToRight: handleCloseToRight,
     closeAll: handleCloseAll,
     split: handleSplitTab,
-    copy: (value) => void copyText(value),
   };
   const actions = useRef(tabActions);
   actions.current = tabActions;

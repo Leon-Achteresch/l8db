@@ -1,11 +1,24 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
+import { createGridWindowRange } from "@/lib/grid-window-range";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { useGridVirtualizer } from "@/lib/hooks/use-transition-virtualizer";
 import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
 import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
+import { IS_CHROMIUM } from "@/lib/platform";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
   activeFilterCount,
@@ -15,6 +28,7 @@ import {
   type ResultSort,
 } from "@/lib/result-grid";
 import { useSettingsStore } from "@/lib/settings";
+import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 
 import { QueryResultRow } from "./query-result-row";
 import { ResultEmpty } from "./query-result-table/result-empty";
@@ -80,22 +94,47 @@ export const QueryResultTable = memo(function QueryResultTable({
     ) *
       uiScale) /
     100;
+  const [rowMeasurement, setRowMeasurement] = useState({ input: rowHeight, size: rowHeight });
+  const estimatedRowHeight = rowMeasurement.input === rowHeight ? rowMeasurement.size : rowHeight;
   const [sorts, setSorts] = useState<ResultSort[]>([]);
   const [filters, setFilters] = useState<ResultFilters>({});
   const [filterRowOpen, setFilterRowOpen] = useState(false);
   const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>({});
-
-  const [lastResult, setLastResult] = useState(result);
-  if (result !== lastResult) {
-    setLastResult(result);
-    setSorts([]);
-    setFilters({});
-    setFilterRowOpen(false);
-    setAutoColumnWidths({});
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [lastView, setLastView] = useState({ result, isLoading, error });
+  const viewChanged =
+    result !== lastView.result || isLoading !== lastView.isLoading || error !== lastView.error;
+  const focusedFilter =
+    viewChanged && filterRowOpen
+      ? (scrollRef.current?.querySelector<HTMLInputElement>("thead input:focus") ?? null)
+      : null;
+  const deferViewChange = focusedFilter !== null;
+  if (viewChanged && !deferViewChange) {
+    setLastView({ result, isLoading, error });
+    if (result !== lastView.result) {
+      setSorts([]);
+      setFilters({});
+      setFilterRowOpen(false);
+      setAutoColumnWidths({});
+    }
   }
+  useLayoutEffect(() => {
+    if (!deferViewChange) return;
+    focusedFilter.blur();
+    setLastView({ result, isLoading, error });
+    if (result !== lastView.result) {
+      setSorts([]);
+      setFilters({});
+      setFilterRowOpen(false);
+      setAutoColumnWidths({});
+    }
+  }, [deferViewChange, focusedFilter, result, isLoading, error, lastView.result]);
+  const displayedResult = deferViewChange ? lastView.result : result;
+  const displayedLoading = deferViewChange ? lastView.isLoading : isLoading;
+  const displayedError = deferViewChange ? lastView.error : error;
 
-  const columns = useMemo(() => result?.columns ?? [], [result]);
-  const rows = useMemo(() => result?.rows ?? [], [result]);
+  const columns = useMemo(() => displayedResult?.columns ?? [], [displayedResult]);
+  const rows = useMemo(() => displayedResult?.rows ?? [], [displayedResult]);
   const { markedRows, toggleRowMarker } = useRowMarkers(rows);
   const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
@@ -106,7 +145,6 @@ export const QueryResultTable = memo(function QueryResultTable({
     () => (visibleRows === rows ? null : new Map(rows.map((row, index) => [row, index]))),
     [rows, visibleRows],
   );
-  const scrollRef = useRef<HTMLDivElement>(null);
   const columnWidths = useMemo(
     () => [48, ...columns.map((column) => autoColumnWidths[column] ?? workspace.resultColumnWidth)],
     [columns, workspace.resultColumnWidth, autoColumnWidths],
@@ -115,22 +153,52 @@ export const QueryResultTable = memo(function QueryResultTable({
     () => columnWidths.reduce((sum, width) => sum + width, 0),
     [columnWidths],
   );
-  const rowVirtualizer = useVirtualizer({
+  const rowDirection = useRef<"forward" | "backward" | null>(null);
+  const rowWindowRanges = useMemo(() => {
+    const behind = Math.ceil(64 / estimatedRowHeight);
+    const ahead = Math.ceil(128 / estimatedRowHeight);
+    return {
+      forward: createGridWindowRange(behind, ahead, 4),
+      backward: createGridWindowRange(ahead, behind, 4),
+    };
+  }, [estimatedRowHeight]);
+  const rowRangeExtractor = useCallback(
+    (range: Range) =>
+      IS_CHROMIUM
+        ? rowWindowRanges[rowDirection.current === "backward" ? "backward" : "forward"](range)
+        : defaultRangeExtractor(range),
+    [rowWindowRanges],
+  );
+  const rowVirtualizer = useGridVirtualizer({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
-    overscan: Math.ceil(256 / rowHeight),
+    estimateSize: () => estimatedRowHeight,
+    overscan: IS_CHROMIUM ? 0 : Math.ceil(256 / estimatedRowHeight),
+    rangeExtractor: rowRangeExtractor,
+    measureElement: (element, entry, instance) => {
+      const size = measureVirtualItem(element, entry, instance);
+      if (entry)
+        setRowMeasurement((previous) =>
+          previous.input === rowHeight && previous.size === size
+            ? previous
+            : { input: rowHeight, size },
+        );
+      return size;
+    },
     useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
+    onChange: (instance) => {
+      rowDirection.current = instance.scrollDirection;
+    },
   });
   useEffect(() => {
-    if (rowHeight > 0) rowVirtualizer.measure();
-  }, [rowVirtualizer, rowHeight]);
+    if (estimatedRowHeight > 0) rowVirtualizer.measure();
+  }, [rowVirtualizer, estimatedRowHeight]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualRows[0]?.start ?? 0;
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
 
-  const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS);
+  const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS, 128);
   const dataColumnWindow = useMemo(
     () => columnWindow.items.filter((item) => item.index !== 0),
     [columnWindow.items],
@@ -166,11 +234,12 @@ export const QueryResultTable = memo(function QueryResultTable({
     setAutoColumnWidths(nextWidths);
   };
 
-  if (isLoading) return <ResultLoading />;
+  if (displayedLoading) return <ResultLoading />;
 
-  if (error) return <ResultError error={error} kind={kind} />;
+  if (displayedError) return <ResultError error={displayedError} kind={kind} />;
 
-  if (!result || result.columns.length === 0) return <ResultEmpty result={result} />;
+  if (!displayedResult || displayedResult.columns.length === 0)
+    return <ResultEmpty result={displayedResult} />;
 
   return (
     <div className="flex h-full flex-col">
@@ -286,7 +355,11 @@ export const QueryResultTable = memo(function QueryResultTable({
                   columnWindow={dataColumnWindow}
                   columns={columns}
                   onInspect={onInspect}
-                  measureElement={rowVirtualizer.measureElement}
+                  measureElement={
+                    virtualRow.index === virtualRows[0]?.index
+                      ? rowVirtualizer.measureElement
+                      : undefined
+                  }
                 />
               );
             })}

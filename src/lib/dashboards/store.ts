@@ -24,7 +24,15 @@ interface DashboardsState {
 
 type History = Pick<DashboardsState, "dashboards">;
 
-const VOLATILE = ["locked", "refreshSec", "filePath", "fileStamp", "mcpId", "mcpStamp"] as const;
+const VOLATILE = [
+  "locked",
+  "refreshSec",
+  "filePath",
+  "fileStamp",
+  "mcpId",
+  "mcpStamp",
+  "sharedId",
+] as const;
 
 type Volatile = Pick<Dashboard, (typeof VOLATILE)[number]>;
 
@@ -143,7 +151,7 @@ export const useDashboardsStore = create<DashboardsState>()(
           const source = get().dashboards.find((d) => d.id === id);
           if (!source) return id;
           return get().importDashboard(
-            { ...source, mcpId: null, name: `${source.name} (Kopie)` },
+            { ...source, mcpId: null, sharedId: null, name: `${source.name} (Kopie)` },
             source.connectionId,
             source.database,
           );
@@ -151,11 +159,14 @@ export const useDashboardsStore = create<DashboardsState>()(
         setActive: (connectionId, id) =>
           set((s) => ({ active: { ...s.active, [connectionId]: id } })),
         importDashboard: (dashboard, connectionId, database) => {
-          const existing = dashboard.filePath
-            ? get().dashboards.find(
-                (d) => d.filePath === dashboard.filePath && d.connectionId === connectionId,
-              )
-            : undefined;
+          const existing = get().dashboards.find(
+            (d) =>
+              d.connectionId === connectionId &&
+              ((dashboard.filePath && d.filePath === dashboard.filePath) ||
+                (dashboard.sharedId &&
+                  d.sharedId === dashboard.sharedId &&
+                  d.database === database)),
+          );
           if (existing) {
             set((s) => ({
               dashboards: s.dashboards.map((d) =>

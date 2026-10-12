@@ -93,6 +93,67 @@ fn bson_type(value: &Bson) -> &'static str {
     }
 }
 
+pub fn checked_uri(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if !(trimmed.starts_with("mongodb://") || trimmed.starts_with("mongodb+srv://")) {
+        return Err("Eine mongodb:// oder mongodb+srv:// URL ist erforderlich".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    use mongodb::options::{ConnectionString, HostInfo, ServerAddress, Tls};
+    let uri = checked_uri(value)?;
+    let parsed = ConnectionString::parse(&uri).map_err(map_err)?;
+    let (host, port, srv) = match &parsed.host_info {
+        HostInfo::DnsRecord(record) => (record.clone(), None, true),
+        HostInfo::HostIdentifiers(hosts) => match hosts.first() {
+            Some(ServerAddress::Tcp { host, port }) => {
+                (host.clone(), Some(port.unwrap_or(27017)), false)
+            }
+            _ => (String::new(), None, false),
+        },
+        _ => (String::new(), None, false),
+    };
+    let relaxed = url::Url::parse(&uri)
+        .map(|url| {
+            url.query_pairs().any(|(key, value)| {
+                ["tlsallowinvalidhostnames", "tlsinsecure"]
+                    .contains(&key.to_ascii_lowercase().as_str())
+                    && value.eq_ignore_ascii_case("true")
+            })
+        })
+        .unwrap_or(false);
+    let (tls, verify) = match &parsed.tls {
+        Some(Tls::Enabled(options)) => (
+            true,
+            options.allow_invalid_certificates != Some(true) && !relaxed,
+        ),
+        Some(Tls::Disabled) => (false, false),
+        None => (srv, srv && !relaxed),
+    };
+    let credential = parsed.credential.as_ref();
+    Ok(super::endpoint::EndpointIdentity {
+        host: host.trim_matches(['[', ']']).to_ascii_lowercase(),
+        port,
+        transport: if srv { "mongodb+srv" } else { "mongodb" }.to_string(),
+        tls,
+        verify,
+        database: parsed.default_database.clone().unwrap_or_default(),
+        schema: String::new(),
+        user: credential
+            .and_then(|credential| credential.username.clone())
+            .unwrap_or_default(),
+        params: super::endpoint::identity_params(&[
+            ("replicaSet", parsed.replica_set.clone()),
+            (
+                "authSource",
+                credential.and_then(|credential| credential.source.clone()),
+            ),
+        ]),
+    })
+}
+
 impl MongoAdapter {
     pub fn new(
         connection_string: &str,
@@ -100,12 +161,8 @@ impl MongoAdapter {
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let trimmed = connection_string.trim();
-        if !(trimmed.starts_with("mongodb://") || trimmed.starts_with("mongodb+srv://")) {
-            return Err("Eine mongodb:// oder mongodb+srv:// URL ist erforderlich".to_string());
-        }
         Ok(Self {
-            uri: trimmed.to_string(),
+            uri: checked_uri(connection_string)?,
             database: database.filter(|d| !d.is_empty()).map(str::to_string),
             pool_state,
             key,

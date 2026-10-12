@@ -15,6 +15,7 @@ import { useDraftRow } from "./use-draft-row";
 import { useForeignKeyMaps } from "./use-foreign-key-maps";
 import { useGridActiveCell } from "./use-grid-active-cell";
 import { useGridSearch } from "./use-grid-search";
+import { useGridStyle } from "./use-grid-style";
 import { useRowVirtualizer } from "./use-row-virtualizer";
 import { useVisibleColumns } from "./use-visible-columns";
 export function useDataTableModel({
@@ -94,6 +95,7 @@ export function useDataTableModel({
     currentTable,
     sortableColumns,
   });
+  const gridStyle = useGridStyle(columnNames, data, columnDetails, typeInfoByColumn);
   const { columnOrder, columnVisibility, searchColumns, columnPinning, pinnedSet } =
     useColumnLayoutState(order, hidden, pinned);
   const search = useGridSearch(data, searchColumns);
@@ -103,6 +105,8 @@ export function useDataTableModel({
     order,
     fkByColumn,
     typeInfoByColumn,
+    data,
+    gridStyle,
   );
   const table = useReactTable({
     data,
@@ -126,13 +130,8 @@ export function useDataTableModel({
   });
 
   const rows = table.getRowModel().rows;
-  const { uiScale, rowVirtualizer, virtualRows, paddingTop, paddingBottom } = useRowVirtualizer(
-    rows,
-    draftHeight,
-    scrollRef,
-    stateKey,
-    scrollIdentity,
-  );
+  const { uiScale, rowVirtualizer, measureRow, virtualRows, paddingTop, paddingBottom } =
+    useRowVirtualizer(rows, draftHeight, scrollRef, stateKey, scrollIdentity);
   const tableWidth = table.getTotalSize();
   const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
   const hasRowActions = !!onInsertRow || !!onDeleteRow;
@@ -181,6 +180,7 @@ export function useDataTableModel({
     customCellColumns,
     columns,
     typeInfoByColumn,
+    gridStyle,
     columnOrder,
     columnVisibility,
     searchColumns,
@@ -194,6 +194,7 @@ export function useDataTableModel({
     columnSizing,
     uiScale,
     rowVirtualizer,
+    measureRow,
     virtualRows,
     paddingTop,
     paddingBottom,

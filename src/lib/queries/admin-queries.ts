@@ -101,7 +101,7 @@ export function useSubscriptionsQuery() {
   });
 }
 
-export function useSessionsQuery(refetchInterval = 5000) {
+export function useSessionsQuery(refetchInterval: number | false = 5000) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -113,7 +113,7 @@ export function useSessionsQuery(refetchInterval = 5000) {
   });
 }
 
-export function useLocksQuery(refetchInterval = 5000) {
+export function useLocksQuery(refetchInterval: number | false = 5000) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({

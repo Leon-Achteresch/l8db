@@ -7,6 +7,7 @@ import {
   listExtensions,
   listFunctions,
   listInvalidObjects,
+  listPackageMembers,
   listProcedures,
   listRolePrivileges,
   listRoles,
@@ -23,6 +24,23 @@ export function useFunctionsQuery(enabled = true) {
     queryKey: ["functions", connection?.id, database, schema],
     queryFn: () =>
       listFunctions(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: enabled && supports(connection, "functions"),
+  });
+}
+
+export function usePackageMembersQuery(enabled = true) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["package-members", connection?.id, database, schema],
+    queryFn: () =>
+      listPackageMembers(
         connection!.kind,
         effectiveConnectionString(connection!),
         database ?? undefined,
@@ -119,6 +137,7 @@ export function useCompileInvalidObjectsMutation() {
       queryClient.invalidateQueries({ queryKey: ["invalid-objects"] });
       queryClient.invalidateQueries({ queryKey: ["compile-errors"] });
       queryClient.invalidateQueries({ queryKey: ["functions"] });
+      queryClient.invalidateQueries({ queryKey: ["package-members"] });
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
       queryClient.invalidateQueries({ queryKey: ["views"] });
       queryClient.invalidateQueries({ queryKey: ["synonyms"] });
