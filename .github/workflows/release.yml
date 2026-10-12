@@ -299,7 +299,11 @@ jobs:
           printf '%s\n' "$signature" | grep -F 'TeamIdentifier=R4LQCWA594'
           printf '%s\n' "$signature" | grep -F '(runtime)'
           codesign --display --entitlements - --xml "$app_path" | grep -F 'com.apple.security.cs.disable-library-validation'
-          xcrun stapler validate "$app_path"
+          for attempt in 1 2 3 4 5; do
+            xcrun stapler validate "$app_path" && break
+            [ "$attempt" -lt 5 ] || exit 1
+            sleep $((attempt * 15))
+          done
           spctl --assess --type execute --verbose=2 "$app_path"
       - run: node .github/scripts/package-release.mjs
       - name: Native installer and upgrade smoke
