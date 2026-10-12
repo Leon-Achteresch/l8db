@@ -80,6 +80,10 @@ fn validate(kdf: &KdfParams) -> Result<Vec<u8>, String> {
     Ok(salt)
 }
 
+pub fn warm(passphrase: &str, kdf: &KdfParams) -> Result<(), String> {
+    derive(passphrase, kdf).map(|_| ())
+}
+
 fn derive(passphrase: &str, kdf: &KdfParams) -> Result<DerivedKey, String> {
     let salt = validate(kdf)?;
     let digest = passphrase_digest(passphrase);
@@ -191,42 +195,78 @@ pub fn seal(passphrase: &str, plaintext: &str, kdf: KdfParams) -> Result<Sealed,
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenError {
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl OpenError {
+    fn auth(message: &str) -> Self {
+        Self {
+            kind: "auth",
+            message: message.into(),
+        }
+    }
+
+    fn other(message: impl Into<String>) -> Self {
+        Self {
+            kind: "other",
+            message: message.into(),
+        }
+    }
+}
+
+impl From<OpenError> for String {
+    fn from(error: OpenError) -> Self {
+        error.message
+    }
+}
+
 pub fn open(passphrase: &str, envelope: &str) -> Result<String, String> {
+    open_checked(passphrase, envelope).map_err(String::from)
+}
+
+pub fn open_checked(passphrase: &str, envelope: &str) -> Result<String, OpenError> {
+    let corrupt = || OpenError::other("Verschlüsselte Sync-Daten sind beschädigt.");
     if envelope.len() > MAX_ENVELOPE_BYTES {
-        return Err("Verschlüsselte Sync-Daten sind zu groß.".into());
+        return Err(OpenError::other("Verschlüsselte Sync-Daten sind zu groß."));
     }
     if passphrase.is_empty() {
-        return Err(
-            "Die Sync-Daten sind verschlüsselt. Bitte zuerst die Sync-Passphrase hinterlegen."
-                .into(),
-        );
+        return Err(OpenError::auth(
+            "Die Sync-Daten sind verschlüsselt. Bitte zuerst die Sync-Passphrase hinterlegen.",
+        ));
     }
-    let envelope: Envelope = serde_json::from_str(envelope)
-        .map_err(|_| "Verschlüsselte Sync-Daten sind beschädigt.".to_string())?;
+    let envelope: Envelope = serde_json::from_str(envelope).map_err(|_| corrupt())?;
     if envelope.v != 1 || envelope.cipher != "aes-256-gcm" {
-        return Err("Nicht unterstütztes Verschlüsselungsformat.".into());
+        return Err(OpenError::other(
+            "Nicht unterstütztes Verschlüsselungsformat.",
+        ));
     }
-    let key = derive(passphrase, &envelope.kdf)?;
+    let key = derive(passphrase, &envelope.kdf).map_err(OpenError::other)?;
     let nonce: [u8; NONCE_LEN] = STANDARD
         .decode(&envelope.nonce)
         .ok()
         .and_then(|bytes| bytes.try_into().ok())
-        .ok_or_else(|| "Verschlüsselte Sync-Daten sind beschädigt.".to_string())?;
-    let mut data = STANDARD
-        .decode(&envelope.data)
-        .map_err(|_| "Verschlüsselte Sync-Daten sind beschädigt.".to_string())?;
+        .ok_or_else(corrupt)?;
+    let mut data = STANDARD.decode(&envelope.data).map_err(|_| corrupt())?;
     let aad = associated(&envelope.kdf);
-    let plain = cipher(&key)?
+    let plain = cipher(&key)
+        .map_err(OpenError::other)?
         .open_in_place(
             Nonce::assume_unique_for_key(nonce),
             Aad::from(&aad),
             &mut data,
         )
         .map_err(|_| {
-            "Entschlüsselung fehlgeschlagen: Passphrase falsch oder Daten manipuliert.".to_string()
+            OpenError::auth(
+                "Entschlüsselung fehlgeschlagen: Passphrase falsch oder Daten manipuliert.",
+            )
         })?
         .to_vec();
-    String::from_utf8(plain).map_err(|_| "Entschlüsselte Sync-Daten sind ungültig.".to_string())
+    String::from_utf8(plain)
+        .map_err(|_| OpenError::other("Entschlüsselte Sync-Daten sind ungültig."))
 }
 
 #[cfg(test)]
@@ -276,6 +316,28 @@ mod tests {
         envelope.kdf.t = 2;
         let error = open("pw", &serde_json::to_string(&envelope).unwrap()).unwrap_err();
         assert!(error.contains("Entschlüsselung fehlgeschlagen"));
+    }
+
+    #[test]
+    fn decrypt_errors_distinguish_wrong_passphrase_from_damage() {
+        let sealed = seal("richtig", "inhalt", quick_kdf()).unwrap();
+        assert_eq!(
+            open_checked("falsch", &sealed.envelope).unwrap_err().kind,
+            "auth"
+        );
+        assert_eq!(open_checked("", &sealed.envelope).unwrap_err().kind, "auth");
+        assert_eq!(
+            open_checked("richtig", "{kaputt").unwrap_err().kind,
+            "other"
+        );
+        let mut envelope: Envelope = serde_json::from_str(&sealed.envelope).unwrap();
+        envelope.kdf.m = 64 * 1024 * 1024;
+        assert_eq!(
+            open_checked("richtig", &serde_json::to_string(&envelope).unwrap())
+                .unwrap_err()
+                .kind,
+            "other"
+        );
     }
 
     #[test]

@@ -2,6 +2,10 @@ import { syncAcrossWindows } from "@/lib/window-sync";
 
 export const SECRET_EDITS_KEY = "l8db.secret-edits";
 const CONNECTION_SECRET = /^[A-Za-z0-9_-]{1,128}(?::ssh|:ssh-jumps|:proxy|:params)?$/;
+
+export function isTrackedSecret(account: string): boolean {
+  return CONNECTION_SECRET.test(account);
+}
 const LIMIT = 50_000;
 
 let cache: Record<string, number> | null = null;
@@ -36,9 +40,9 @@ export function readSecretEdits(): Record<string, number> {
 export function recordSecretEdits(accounts: string[], at: number = Date.now()): void {
   const relevant = accounts.filter((account) => CONNECTION_SECRET.test(account));
   if (relevant.length === 0) return;
-  if (!cache) readSecretEdits();
-  const edits = cache ?? {};
-  for (const account of relevant) edits[account] = at;
+  cache = null;
+  const edits = readSecretEdits();
+  for (const account of relevant) edits[account] = Math.max(edits[account] ?? 0, at);
   if (Object.keys(edits).length > LIMIT)
     cache = Object.fromEntries(
       Object.entries(edits)
@@ -55,6 +59,10 @@ export function recordSecretEdits(accounts: string[], at: number = Date.now()): 
 
 export function recordSecretEdit(account: string, at: number = Date.now()): void {
   recordSecretEdits([account], at);
+}
+
+export function resetSecretEditCache(): void {
+  cache = null;
 }
 
 syncAcrossWindows(SECRET_EDITS_KEY, () => {

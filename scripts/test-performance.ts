@@ -34,6 +34,7 @@ const SUITES = {
     "tests/perf-dashboard-bi.test.ts",
     "tests/perf-versioning-pipeline.test.ts",
     "tests/perf-sync.test.ts",
+    "tests/perf-secret-save.test.ts",
     "tests/perf-connection-import.test.ts",
     "tests/abandoned-jobs.test.ts",
     "tests/performance-report.test.ts",

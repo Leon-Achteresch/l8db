@@ -246,11 +246,19 @@ pub async fn sync_encrypt(
 }
 
 #[tauri::command]
-pub async fn sync_decrypt(envelope: String) -> Result<String, String> {
-    let passphrase = secret(PASSPHRASE_ACCOUNT).await?;
-    tokio::task::spawn_blocking(move || crypto::open(&passphrase, &envelope))
+pub async fn sync_decrypt(envelope: String) -> Result<String, crypto::OpenError> {
+    let passphrase = secret(PASSPHRASE_ACCOUNT)
         .await
-        .map_err(|e| format!("Entschlüsselung fehlgeschlagen: {e}"))?
+        .map_err(|message| crypto::OpenError {
+            kind: "other",
+            message,
+        })?;
+    tokio::task::spawn_blocking(move || crypto::open_checked(&passphrase, &envelope))
+        .await
+        .map_err(|e| crypto::OpenError {
+            kind: "other",
+            message: format!("Entschlüsselung fehlgeschlagen: {e}"),
+        })?
 }
 
 #[tauri::command]

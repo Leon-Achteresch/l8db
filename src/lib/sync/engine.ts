@@ -1,12 +1,13 @@
-import type {
-  SecretMergeRequest,
-  SecretResolution,
-  SyncBackupInfo,
-  SyncRemoteFile,
-  SyncSealed,
-  SyncSecretMerge,
-  SyncStoreResult,
-  SyncTarget,
+import {
+  type SecretMergeRequest,
+  type SecretResolution,
+  type SyncBackupInfo,
+  SyncDecryptError,
+  type SyncRemoteFile,
+  type SyncSealed,
+  type SyncSecretMerge,
+  type SyncStoreResult,
+  type SyncTarget,
 } from "@/lib/db/sync";
 import {
   type ConflictStrategy,
@@ -125,7 +126,8 @@ export type DowngradeReason = "plain" | "undecryptable";
 
 export class SyncDowngradeError extends Error {
   readonly reason: DowngradeReason;
-  constructor(reason: DowngradeReason = "plain") {
+  readonly remoteToken: string;
+  constructor(reason: DowngradeReason = "plain", remoteToken = "") {
     super(
       reason === "plain"
         ? "Die Sync-Datei auf dem Server ist vollständig verschlüsselt, auf diesem Rechner ist die Verschlüsselung aber nicht aktiviert. Aktivieren Sie die Verschlüsselung oder bestätigen Sie ausdrücklich, dass die Datei unverschlüsselt überschrieben wird."
@@ -133,6 +135,7 @@ export class SyncDowngradeError extends Error {
     );
     this.name = "SyncDowngradeError";
     this.reason = reason;
+    this.remoteToken = remoteToken;
   }
 }
 
@@ -352,7 +355,7 @@ export async function runSync(
     memory: SyncMemory;
     decider: SyncDecider;
     signal?: AbortSignal;
-    allowDowngrade?: boolean;
+    confirmedRemote?: string | null;
   },
 ): Promise<SyncOutcome> {
   const { mode, target, signal } = options;
@@ -395,7 +398,7 @@ async function attemptSync(
     memory: SyncMemory;
     decider: SyncDecider;
     signal?: AbortSignal;
-    allowDowngrade?: boolean;
+    confirmedRemote?: string | null;
   },
   opId: string,
   attempt: number,
@@ -444,9 +447,11 @@ async function attemptSync(
     const envelope = parseEnvelope(remoteFile.content);
     remoteEncrypted = isEncryptedDocument(envelope);
     outcome.remoteEncrypted = remoteEncrypted;
-    if (remoteEncrypted && !settings.encryptAll && mode !== "download" && !options.allowDowngrade) {
+    const token = `${remoteFile.version ?? ""}|${envelope.contentHash}`;
+    const confirmed = options.confirmedRemote === token;
+    if (remoteEncrypted && !settings.encryptAll && mode !== "download" && !confirmed) {
       if (decider.automatic) return { ...outcome, status: "conflict", downgradeBlocked: true };
-      throw new SyncDowngradeError("plain");
+      throw new SyncDowngradeError("plain", token);
     }
     try {
       const decoded = await abortable(decodeRemote(deps.transport, envelope), signal);
@@ -455,8 +460,9 @@ async function attemptSync(
       remote = documentSnapshot(remoteDocument);
     } catch (error) {
       if (error instanceof SyncAbortedError) throw error;
-      if (!remoteEncrypted || mode !== "upload") throw error;
-      if (!options.allowDowngrade) throw new SyncDowngradeError("undecryptable");
+      const authFailure = error instanceof SyncDecryptError && error.kind === "auth";
+      if (!remoteEncrypted || mode !== "upload" || !authFailure) throw error;
+      if (!confirmed) throw new SyncDowngradeError("undecryptable", token);
     }
     check();
   }

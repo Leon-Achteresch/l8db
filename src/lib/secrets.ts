@@ -3,11 +3,17 @@ import {
   loadSecret as readSecret,
   deleteSecret as removeSecret,
 } from "@/lib/db";
-import { recordSecretEdit } from "@/lib/secret-edits";
+import { isTrackedSecret, recordSecretEdit } from "@/lib/secret-edits";
 
 const sessionSecrets = new Map<string, string>();
+const generations = new Map<string, number>();
+
+function bump(account: string): void {
+  generations.set(account, (generations.get(account) ?? 0) + 1);
+}
 
 async function storedValue(account: string): Promise<string | null | undefined> {
+  if (!isTrackedSecret(account)) return undefined;
   try {
     return await readSecret(account);
   } catch {
@@ -16,20 +22,23 @@ async function storedValue(account: string): Promise<string | null | undefined> 
 }
 
 export async function storeSecret(account: string, secret: string): Promise<void> {
-  const previous = await storedValue(account);
+  bump(account);
   sessionSecrets.set(account, secret);
+  const previous = await storedValue(account);
   await persistSecret(account, secret);
-  if (previous !== secret) recordSecretEdit(account);
+  if (isTrackedSecret(account) && previous !== secret) recordSecretEdit(account);
 }
 
 export async function rememberSecret(account: string, secret: string): Promise<void> {
-  const previous = await storedValue(account);
+  bump(account);
   sessionSecrets.set(account, secret);
+  const previous = await storedValue(account);
   await removeSecret(account);
-  if (previous !== null) recordSecretEdit(account);
+  if (isTrackedSecret(account) && previous !== null) recordSecretEdit(account);
 }
 
 export function forgetSessionSecret(account: string): void {
+  bump(account);
   sessionSecrets.delete(account);
 }
 
@@ -40,16 +49,20 @@ export function peekSecret(account: string): string | null {
 export async function loadSecret(account: string): Promise<string | null> {
   const cached = sessionSecrets.get(account);
   if (cached !== undefined) return cached;
+  const generation = generations.get(account) ?? 0;
   const secret = await readSecret(account);
+  if ((generations.get(account) ?? 0) !== generation)
+    return sessionSecrets.get(account) ?? (await readSecret(account));
   if (secret !== null) sessionSecrets.set(account, secret);
   return secret;
 }
 
 export async function deleteSecret(account: string): Promise<void> {
-  const previous = await storedValue(account);
+  bump(account);
   sessionSecrets.delete(account);
+  const previous = await storedValue(account);
   await removeSecret(account);
-  if (previous !== null) recordSecretEdit(account);
+  if (isTrackedSecret(account) && previous !== null) recordSecretEdit(account);
 }
 
 const REDACTED_SECRET = "***";

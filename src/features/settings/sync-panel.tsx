@@ -53,9 +53,11 @@ export function SyncPanel() {
   const [conflicts, setConflicts] = useState<SyncConflict[] | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmUpload, setConfirmUpload] = useState(false);
-  const [downgrade, setDowngrade] = useState<{ mode: SyncMode; reason: DowngradeReason } | null>(
-    null,
-  );
+  const [downgrade, setDowngrade] = useState<{
+    mode: SyncMode;
+    reason: DowngradeReason;
+    token: string;
+  } | null>(null);
   const [secretConflicts, setSecretConflicts] = useState<SecretConflict[] | null>(null);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const interactive = useRef<InteractiveDecider | null>(null);
@@ -78,7 +80,7 @@ export function SyncPanel() {
     state.provider === "webdav" &&
     /^http:\/\//i.test(state.webdavUrl.trim()) &&
     !state.webdavAllowInsecure;
-  const run = async (mode: SyncMode, allowDowngrade = false) => {
+  const run = async (mode: SyncMode, confirmedRemote: string | null = null) => {
     const decisions = interactive.current;
     if (!decisions) return;
     const abort = new AbortController();
@@ -90,12 +92,13 @@ export function SyncPanel() {
         decisions.decider,
         abort.signal,
         undefined,
-        allowDowngrade,
+        confirmedRemote,
       );
       if (outcome.status === "ok" || outcome.status === "skipped")
         toast.success(useSyncStore.getState().lastMessage ?? "Synchronisiert");
     } catch (error) {
-      if (error instanceof SyncDowngradeError) setDowngrade({ mode, reason: error.reason });
+      if (error instanceof SyncDowngradeError)
+        setDowngrade({ mode, reason: error.reason, token: error.remoteToken });
       else if (!(error instanceof Error && error.name === "AbortError"))
         toast.error(errorMessage(error));
     } finally {
@@ -219,9 +222,9 @@ export function SyncPanel() {
             <Button
               variant="destructive"
               onClick={() => {
-                const mode = downgrade?.mode ?? "upload";
+                if (!downgrade) return;
                 setDowngrade(null);
-                void run(mode, true);
+                void run(downgrade.mode, downgrade.token);
               }}
             >
               {downgrade?.reason === "undecryptable"
