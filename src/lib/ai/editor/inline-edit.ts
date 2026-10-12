@@ -235,6 +235,10 @@ export class InlineEditSession {
     };
   }
 
+  private toModelEol(text: string): string {
+    return text.replace(/\r\n|\r|\n/g, this.model().getEOL());
+  }
+
   private regionText(): string {
     const { start, end } = this.regionOffsets();
     return this.model().getValue().slice(start, end);
@@ -262,8 +266,9 @@ export class InlineEditSession {
     );
   }
 
-  private replaceRegion(text: string) {
+  private replaceRegion(value: string) {
     const model = this.model();
+    const text = this.toModelEol(value);
     const { start, end } = this.regionOffsets();
     const range = monaco.Range.fromPositions(model.getPositionAt(start), model.getPositionAt(end));
     if (model.getValueInRange(range) !== text) {
@@ -400,8 +405,9 @@ export class InlineEditSession {
     }
   }
 
-  async applyChat(next: string, label: string): Promise<string> {
+  async applyChat(value: string, label: string): Promise<string> {
     if (this.disposed) return "Der Editor wurde geschlossen.";
+    const next = this.toModelEol(value);
     if (this.snapshot.phase === "running") return "Der Editor wird gerade geändert.";
     if (this.snapshot.phase === "review") this.clearReview();
     else this.base = this.regionText();
@@ -449,10 +455,11 @@ export class InlineEditSession {
     let version = model.getVersionId();
     model.pushStackElement();
     while (!this.disposed && model.getVersionId() === version) {
-      const target = Math.min(
+      let target = Math.min(
         insert.length,
         Math.ceil((insert.length * (performance.now() - began)) / TYPE_MS),
       );
+      if (insert[target - 1] === "\r" && target < insert.length) target++;
       const from = model.getPositionAt(at + typed);
       const to = model.getPositionAt(at + shown);
       this.applying = true;
@@ -510,7 +517,8 @@ export class InlineEditSession {
       });
   }
 
-  private enterReview(next: string, warning: string) {
+  private enterReview(value: string, warning: string) {
+    const next = this.toModelEol(value);
     if (next === this.base) {
       this.set({ phase: "input", status: "", warning: "Die KI hat keine Änderung vorgeschlagen." });
       return;
