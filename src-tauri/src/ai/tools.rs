@@ -6,6 +6,8 @@ const CORE: &[&str] = &[
     "connections",
     "search",
     "describe",
+    "relations",
+    "explain",
     "query",
     "execute",
     "visualize",
@@ -47,6 +49,7 @@ impl Catalog {
             .filter(|tool| CORE.contains(&tool["name"].as_str().unwrap_or("")))
             .cloned()
             .collect();
+        loaded.push(super::harness::plan_definition());
         loaded.push(json!({
             "name": "discover_tools",
             "description": "Find and load tools for dashboards, workflows, benchmarks, health checks, opening things in l8db, saving knowledge, importing attachments and external MCPs. Search with query or request exact names. Empty arguments list available names and brief descriptions. Loaded tools become callable in the next round; do not call them in this round.",

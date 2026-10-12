@@ -59,7 +59,14 @@ fn acp_plan_read(tool: &Value) -> bool {
         Some("other") | None => {}
         Some(_) => return false,
     }
-    let reads = ["connections", "search", "describe", "query"];
+    let reads = [
+        "connections",
+        "search",
+        "describe",
+        "relations",
+        "explain",
+        "query",
+    ];
     let input = &tool["rawInput"];
     if input["serverName"] == "l8db_ai"
         && input["toolName"]

@@ -425,6 +425,51 @@ test("resolveChatContext with 3000 tables and 30000 columns needs no requests wh
   expect(repeatTiming.p95Ms).toBeLessThan(30);
 });
 
+test("chatWireMessages adds bounded work logs for tool-heavy assistant turns", async () => {
+  const turn: AiMessage[] = Array.from({ length: 200 }, (_, index) => ({
+    id: `w${index}`,
+    role: index % 2 === 0 ? "user" : "assistant",
+    text: `${index} ${"z".repeat(2_000)}`,
+    rich:
+      index % 2 === 0
+        ? undefined
+        : Array.from({ length: 40 }, (_, call) => ({
+            type: "tool" as const,
+            id: `t${index}-${call}`,
+            name: call % 3 === 0 ? "describe" : "query",
+            status: call % 7 === 0 ? "error" : "success",
+            sql: `SELECT ${"col, ".repeat(80)} FROM t${call}`,
+            output: `${"a\tb\n".repeat(2_000)}(2000 rows)`,
+          })),
+  }));
+  let result = chatWireMessages(turn);
+  const timing = measure(() => {
+    result = chatWireMessages(turn);
+  });
+  const retained = retainedBytes(() => {
+    for (let index = 0; index < 50; index++) chatWireMessages(turn);
+  });
+  const chars = result.messages.reduce((sum, message) => sum + message.text.length, 0);
+  const logChars = result.messages.map((message) => {
+    const start = message.text.indexOf("<work-log>");
+    return start < 0 ? 0 : message.text.length - start;
+  });
+  await reportScenario("ai-chat-work-log", {
+    messages: turn.length,
+    toolCalls: 100 * 40,
+    toolOutputChars: 100 * 40 * 12_011,
+    outputChars: chars,
+    maxLogChars: Math.max(...logChars),
+    wire: timing,
+    retainedBytesAfter50Calls: retained,
+  });
+  expect(Math.max(...logChars)).toBeLessThanOrEqual(1_600);
+  expect(chars).toBeLessThanOrEqual(40_000);
+  expect(timing.medianMs).toBeLessThan(25);
+  expect(timing.p95Ms).toBeLessThan(60);
+  expect(retained).toBeLessThan(8_000_000);
+});
+
 test("chatWireMessages compacts a 200-message 2 MB history", async () => {
   const turn: AiMessage[] = Array.from({ length: 200 }, (_, index) => ({
     id: `m${index}`,

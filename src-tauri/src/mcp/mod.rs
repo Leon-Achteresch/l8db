@@ -5,6 +5,7 @@ pub mod dashboard;
 mod dashboard_builder;
 mod discovery;
 pub mod health;
+pub mod insight;
 pub mod nosql;
 pub mod open;
 pub mod redact;
