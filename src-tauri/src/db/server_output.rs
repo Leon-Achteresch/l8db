@@ -41,6 +41,14 @@ pub fn is_enabled(key: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn peek_pg_session(key: &str) -> Option<Arc<super::execution::PgSession>> {
+    let reg = registry().lock().ok()?;
+    if !reg.enabled.contains(key) {
+        return None;
+    }
+    reg.sessions.get(key).cloned()
+}
+
 pub fn set_enabled(key: &str, enabled: bool) {
     let mut reg = registry().lock().expect("server output registry");
     if enabled {

@@ -1,4 +1,5 @@
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import { listSchemas } from "@/lib/db/catalog";
 import { cancelExecution } from "@/lib/db/core";
 import { executeQuery } from "@/lib/db/rows";
 import { supports } from "@/lib/providers";
@@ -32,10 +33,23 @@ export function multiTargetExecutor(
     return pending;
   };
   return {
-    execute: async ({ target, sql, jobId, timeoutSeconds, maxRows, signal, onExecuting }) => {
+    execute: async ({
+      target,
+      sql,
+      jobId,
+      timeoutSeconds,
+      maxRows,
+      signal,
+      onExecuting,
+      preflight,
+    }) => {
       const connection = await ready(target.connectionId);
       if (signal?.aborted) throw new MultiTargetCancelled();
       const url = targetConnectionString(connection, target);
+      if (preflight) {
+        await listSchemas(connection.kind, url, target.database ?? undefined);
+        if (signal?.aborted) throw new MultiTargetCancelled();
+      }
       onExecuting?.();
       return executeQuery(connection.kind, url, sql, target.database ?? undefined, {
         jobId,

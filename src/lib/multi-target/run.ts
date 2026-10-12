@@ -30,6 +30,7 @@ export interface MultiTargetRequest {
   maxRows: number;
   signal?: AbortSignal;
   onExecuting?: () => void;
+  preflight?: boolean;
 }
 
 export interface MultiTargetExecutor {
@@ -156,6 +157,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
               timeoutSeconds: options.timeoutSeconds,
               maxRows,
               signal: controller.signal,
+              preflight: script,
               onExecuting: () => {
                 executing = true;
               },

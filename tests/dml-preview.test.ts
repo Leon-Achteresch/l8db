@@ -82,7 +82,9 @@ const { attachPreviewLifecycle, createPreviewLifecycle } = await import(
 const { COMMITTED_STATE_NOTE, dmlPreviewExecutor, SESSION_VIEW_REASON } = await import(
   "../src/lib/dml-preview/executor"
 );
-const { LOCK_BLOCKED_REASON, SCHEMA_NOTE } = await import("../src/lib/dml-preview");
+const { LOCK_BLOCKED_REASON, LOCK_OTHER_REASON, SCHEMA_NOTE } = await import(
+  "../src/lib/dml-preview"
+);
 const { useServerOutputStore } = await import("../src/lib/server-output");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
@@ -777,5 +779,64 @@ describe("isolated preview review fixes", () => {
     expect(String(error)).toContain(SESSION_VIEW_REASON);
     expect(calls).toHaveLength(0);
     useSessionViewsStore.getState().clearConnection(connection.id);
+  });
+});
+
+describe("busy detection and lock classification", () => {
+  const connection = {
+    id: "dml-preview-busy",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@busy.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+
+  test("server output in autocommit keeps the normal timeout", async () => {
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    calls.length = 0;
+    const executor = dmlPreviewExecutor(connection, "app", 10, 3);
+    expect(executor.busy).toBe(false);
+    expect(executor.note).toBe(COMMITTED_STATE_NOTE);
+    await runDmlPreview(ready("DELETE FROM t WHERE id > 1", "postgres"), executor);
+    expect(calls[0].request).not.toHaveProperty("lockTimeoutMs");
+    expect(calls[0].options.queryTimeout).toBe(10);
+    backend.failWith = "Query-Timeout nach 10 Sekunden";
+    const timeout = await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewUnavailable(timeout)).toBe(false);
+    backend.failWith = null;
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+  });
+
+  test("locks are recognised by error class and blamed on the right session", async () => {
+    backend.failWith = "ERROR: canceling statement due to lock timeout (SQLSTATE 55P03)";
+    const other = await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(String(other)).toContain(LOCK_OTHER_REASON);
+    expect(String(other)).not.toContain(LOCK_BLOCKED_REASON);
+    for (const message of ["ERROR 1205 rows matched", "value 1222 out of range"]) {
+      backend.failWith = message;
+      const plain = await runDmlPreview(
+        ready("DELETE FROM t WHERE id > 1", "postgres"),
+        dmlPreviewExecutor(connection, "app", 10, 3),
+      ).catch((reason: unknown) => reason);
+      expect(isDmlPreviewUnavailable(plain)).toBe(false);
+    }
+    backend.failWith = null;
+  });
+
+  test("a backend read-only rejection becomes a visible fallback", async () => {
+    backend.failWith = "Vorschau nicht lesend: 'COMMENT' ist in der Vorschau nicht erlaubt.";
+    const error = await runDmlPreview(
+      ready("DELETE FROM t WHERE comment = 'x'", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewUnavailable(error)).toBe(true);
+    expect(String(error)).toContain("COMMENT");
+    backend.failWith = null;
   });
 });

@@ -37,37 +37,67 @@ pub fn postgres_prelude(timeout: Duration, lock_timeout_ms: Option<u64>) -> Stri
     prelude
 }
 
-pub fn ensure_single_read(sql: &str, postgres: bool) -> Result<(), String> {
-    let rejected =
-        || Err("Die Vorschau-Abfrage muss eine einzelne lesende Anweisung sein.".to_string());
-    if super::split_statements(sql).len() != 1 {
-        return rejected();
+pub const NOT_READ_ONLY: &str = "Vorschau nicht lesend:";
+pub const SEARCH_PATH_BOUND: Duration = Duration::from_millis(200);
+
+pub fn ensure_read_query(kind: DatabaseKind, sql: &str) -> Result<(), String> {
+    let reject = |detail: &str| Err(format!("{NOT_READ_ONLY} {detail}"));
+    let statements = match kind {
+        DatabaseKind::Oracle => super::oracle::statement_count(sql),
+        _ => crate::mcp::redact::statement_count(sql),
+    };
+    if statements != 1 {
+        return reject("Die Vorschau-Abfrage muss genau eine Anweisung sein.");
     }
-    if postgres {
+    let first = crate::mcp::redact::sql_words(sql).into_iter().next();
+    if !matches!(
+        first.as_deref(),
+        Some("select" | "with" | "values" | "table")
+    ) {
+        return reject("Die Vorschau-Abfrage muss mit SELECT oder WITH beginnen.");
+    }
+    if let Some(word) = crate::mcp::redact::write_word(sql) {
+        return reject(&format!(
+            "'{}' ist in der Vorschau nicht erlaubt.",
+            word.to_uppercase()
+        ));
+    }
+    if let Some(word) = crate::mcp::redact::dangerous_word(sql) {
+        return reject(&format!("Funktion '{word}' ist in der Vorschau gesperrt."));
+    }
+    if kind == DatabaseKind::Postgres {
         if !super::postgres::single_read_statement(sql) {
-            return rejected();
+            return reject("Die Vorschau-Abfrage muss eine einzelne lesende Anweisung sein.");
         }
         super::postgres::read_only_batch_guard(sql)?;
     }
     Ok(())
 }
 
-async fn session_search_path(
-    connection_string: &str,
-    database: Option<&str>,
-    config: &tokio_postgres::Config,
-    ssl: &super::connection::PgTls,
-) -> Option<String> {
-    let key = super::cloud_auth::pool_key(connection_string, database);
-    if !super::server_output::is_enabled(&key) {
+pub async fn bounded_lookup<F>(future: F) -> Option<String>
+where
+    F: std::future::Future<Output = Option<String>>,
+{
+    let cancel = execution::cancellation_token();
+    if cancel.is_cancelled() {
         return None;
     }
-    let session = super::server_output::pg_session(&key, config, ssl)
-        .await
-        .ok()??;
-    let client = session.lock().await.ok()?;
-    let row = client.query_one("SHOW search_path", &[]).await.ok()?;
-    row.try_get::<_, String>(0).ok()
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => None,
+        result = tokio::time::timeout(SEARCH_PATH_BOUND, future) => result.ok().flatten(),
+    }
+}
+
+async fn session_search_path(connection_string: &str, database: Option<&str>) -> Option<String> {
+    let key = super::cloud_auth::pool_key(connection_string, database);
+    let session = super::server_output::peek_pg_session(&key)?;
+    let client = session.try_lock_healthy()?;
+    bounded_lookup(async {
+        let row = client.query_one("SHOW search_path", &[]).await.ok()?;
+        row.try_get::<_, String>(0).ok()
+    })
+    .await
 }
 
 pub fn count_of(result: &QueryResult) -> Option<f64> {
@@ -91,7 +121,10 @@ async fn postgres(
     limit: usize,
 ) -> Result<DmlPreviewResponse, String> {
     let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-    let search_path = session_search_path(connection_string, database, &config, &ssl).await;
+    let search_path = session_search_path(connection_string, database).await;
+    if execution::cancellation_token().is_cancelled() {
+        return Err("Vorschau abgebrochen.".into());
+    }
     let client = execution::connect_postgres(&config, &ssl).await?;
     let outcome = execution::postgres(&client, &ssl, None, async {
         client
@@ -170,9 +203,8 @@ pub async fn preview_dml(
     if !capabilities.dml_preview {
         return Err("Die DML-Vorschau wird für diese Datenbankfamilie nicht unterstützt.".into());
     }
-    let is_postgres = kind == DatabaseKind::Postgres;
-    ensure_single_read(&request.count_sql, is_postgres)?;
-    ensure_single_read(&request.sample_sql, is_postgres)?;
+    ensure_read_query(kind, &request.count_sql)?;
+    ensure_read_query(kind, &request.sample_sql)?;
     let limit = request.limit.clamp(1, super::commands::MAX_RESULT_ROWS);
     execution::run_query(options, capabilities.query_cancel, async {
         match kind {
@@ -222,19 +254,94 @@ mod tests {
     }
 
     #[test]
-    fn final_preview_sql_must_be_one_read_statement() {
-        let ok = "WITH recent AS (SELECT 1) SELECT COUNT(*) FROM recent";
-        assert!(ensure_single_read(ok, true).is_ok());
-        assert!(ensure_single_read("SELECT 1", false).is_ok());
-        for bad in [
-            "WITH v AS (SELECT 1); COMMIT; DELETE FROM t",
-            "SELECT 1; SELECT 2",
-            "DELETE FROM t",
-            "COMMIT",
-        ] {
-            assert!(ensure_single_read(bad, true).is_err(), "{bad}");
+    fn final_preview_sql_must_be_one_read_statement_in_every_family() {
+        use DatabaseKind::*;
+        let ok = "WITH recent AS (SELECT 1 AS id) SELECT COUNT(*) AS affected_rows FROM recent";
+        for kind in [Postgres, Mysql, Mssql, Sqlite, Oracle, Duckdb] {
+            assert!(ensure_read_query(kind, ok).is_ok(), "{kind:?}");
+            assert!(
+                ensure_read_query(kind, "SELECT * FROM t WHERE id > 1").is_ok(),
+                "{kind:?}"
+            );
+            for bad in [
+                "DELETE FROM t",
+                "UPDATE t SET a = 1",
+                "INSERT INTO t VALUES (1)",
+                "SELECT * INTO backup FROM t",
+                "SELECT 1; DELETE FROM t",
+                "WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+                "SELECT * FROM t FOR UPDATE",
+                "COMMIT",
+            ] {
+                let error = ensure_read_query(kind, bad).unwrap_err();
+                assert!(error.starts_with(NOT_READ_ONLY), "{kind:?} {bad}: {error}");
+            }
         }
-        assert!(ensure_single_read("SELECT 1; DELETE FROM t", false).is_err());
+        for (kind, bad) in [
+            (Mysql, "SELECT * FROM t INTO OUTFILE '/tmp/x'"),
+            (Mysql, "SELECT * FROM t INTO DUMPFILE '/tmp/x'"),
+            (Mysql, "CALL purge_all()"),
+            (Mssql, "EXEC sp_who"),
+            (Mssql, "SELECT * FROM t; EXEC xp_cmdshell 'dir'"),
+            (Oracle, "BEGIN DELETE FROM t; END;"),
+            (Sqlite, "ATTACH DATABASE '/tmp/x.db' AS x"),
+            (Postgres, "SELECT pg_sleep(10)"),
+        ] {
+            assert!(ensure_read_query(kind, bad).is_err(), "{kind:?} {bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_search_path_lookup_is_bounded_and_honours_cancel() {
+        let started = std::time::Instant::now();
+        let busy = bounded_lookup(std::future::pending::<Option<String>>()).await;
+        assert!(busy.is_none());
+        assert!(started.elapsed() < SEARCH_PATH_BOUND + Duration::from_millis(100));
+        let quick = bounded_lookup(async { Some("staging, public".to_string()) }).await;
+        assert_eq!(quick.as_deref(), Some("staging, public"));
+        let options = ExecutionOptions {
+            job_id: Some("dml-preview-lookup-cancel".into()),
+            ..Default::default()
+        };
+        let cancelled = execution::run(Some(options), true, async {
+            assert!(execution::cancel("dml-preview-lookup-cancel").unwrap());
+            let started = std::time::Instant::now();
+            let value = bounded_lookup(std::future::pending::<Option<String>>()).await;
+            Ok::<_, String>((value, started.elapsed()))
+        })
+        .await
+        .unwrap();
+        assert!(cancelled.0.is_none());
+        assert!(cancelled.1 < Duration::from_millis(20));
+    }
+
+    #[test]
+    fn peeking_never_creates_an_editor_session() {
+        let key = "dml-preview-peek-test";
+        assert!(super::super::server_output::peek_pg_session(key).is_none());
+        super::super::server_output::set_enabled(key, true);
+        assert!(super::super::server_output::peek_pg_session(key).is_none());
+        assert!(super::super::server_output::peek_pg_session(key).is_none());
+        super::super::server_output::set_enabled(key, false);
+    }
+
+    #[tokio::test]
+    async fn busy_editor_sessions_add_no_wait_beyond_the_bound() {
+        let mut waits = Vec::new();
+        for _ in 0..20 {
+            let started = std::time::Instant::now();
+            let _ = bounded_lookup(std::future::pending::<Option<String>>()).await;
+            waits.push(started.elapsed());
+        }
+        waits.sort();
+        let p95 = waits[(waits.len() * 95).div_ceil(100) - 1];
+        println!(
+            "performance dml-preview-search-path: {{\"lookups\":20,\"boundMs\":{},\"medianMs\":{},\"p95Ms\":{},\"extraRequestsPerPreview\":1,\"sessionCreations\":0}}",
+            SEARCH_PATH_BOUND.as_millis(),
+            waits[waits.len() / 2].as_millis(),
+            p95.as_millis()
+        );
+        assert!(p95 < SEARCH_PATH_BOUND + Duration::from_millis(50));
     }
 
     #[test]

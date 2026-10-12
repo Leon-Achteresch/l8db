@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const invocations: { command: string; args: Record<string, unknown> }[] = [];
+let preflightFails = false;
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
     invocations.push({ command, args });
+    if (command === "list_schemas" && preflightFails)
+      throw new Error("Verbindungs-Timeout nach 15 Sekunden");
+    if (command === "list_schemas") return ["public"];
     if (command === "execute_query" && String(args.sql).includes("FAIL"))
       throw new Error("ORA-00942: table or view does not exist");
     if (command === "execute_query")
@@ -789,5 +793,68 @@ describe("isolated preview round", () => {
       partialRiskStatements("UPDATE a SET x = 1; COMMIT; UPDATE b SET y = 2;", "postgres"),
     ).toBe(3);
     expect(partialRiskStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", undefined)).toBe(2);
+  });
+});
+
+describe("preflight before the partial notice", () => {
+  const pg = connection("pg-preflight");
+
+  test("a multi-statement script checks the target connection before anything counts as sent", async () => {
+    useConnectionsStore.setState({ connections: [pg] });
+    invocations.length = 0;
+    let executing = 0;
+    await multiTargetExecutor(true, async () => pg).execute({
+      target: multiTarget("pg-preflight", "tenant_1"),
+      sql: "UPDATE a SET x = 1; COMMIT; UPDATE b SET y = 2",
+      jobId: "job-preflight",
+      timeoutSeconds: 10,
+      maxRows: 10,
+      preflight: true,
+      onExecuting: () => {
+        executing++;
+      },
+    });
+    expect(invocations.map((entry) => entry.command)).toEqual(["list_schemas", "execute_query"]);
+    expect(invocations[0].args.database).toBe("tenant_1");
+    expect(executing).toBe(1);
+  });
+
+  test("a failing connect never claims partial execution", async () => {
+    useConnectionsStore.setState({ connections: [pg] });
+    preflightFails = true;
+    invocations.length = 0;
+    const updates = new Map<string, TargetRun>();
+    const target = multiTarget("pg-preflight", "tenant_2");
+    await startMultiTargetRun({
+      targets: [target],
+      sql: "UPDATE a SET x = 1; COMMIT; UPDATE b SET y = 2",
+      scriptStatements: 3,
+      concurrency: 1,
+      perServerLimit: 1,
+      timeoutSeconds: 10,
+      maxRows: 10,
+      executor: multiTargetExecutor(true, async () => pg),
+      onUpdate: (run) => updates.set(run.id, run),
+    }).done;
+    preflightFails = false;
+    expect(updates.get(target.id)).toMatchObject({ status: "error", notice: null });
+    expect(invocations.some((entry) => entry.command === "execute_query")).toBe(false);
+  });
+
+  test("single statements skip the preflight", async () => {
+    useConnectionsStore.setState({ connections: [pg] });
+    invocations.length = 0;
+    await startMultiTargetRun({
+      targets: [multiTarget("pg-preflight", "tenant_3")],
+      sql: "UPDATE a SET x = 1",
+      scriptStatements: 1,
+      concurrency: 1,
+      perServerLimit: 1,
+      timeoutSeconds: 10,
+      maxRows: 10,
+      executor: multiTargetExecutor(true, async () => pg),
+      onUpdate: () => undefined,
+    }).done;
+    expect(invocations.map((entry) => entry.command)).toEqual(["execute_query"]);
   });
 });
