@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import type { DatabaseKind } from "./providers";
 
 export interface DbeaverWorkspace {
   data_sources_path: string;
@@ -26,4 +27,30 @@ export function detectDbeaverWorkspace(): Promise<DbeaverWorkspace | null> {
 
 export function detectJetbrainsSshConfigs(): Promise<ImportFile[]> {
   return invoke<ImportFile[]>("detect_jetbrains_ssh_configs");
+}
+
+export interface EndpointIdentity {
+  host: string;
+  port: number | null;
+  transport: string;
+  tls: boolean;
+  verify: boolean;
+  database: string;
+  schema: string;
+  user: string;
+  params: Array<[string, string]>;
+}
+
+export interface EndpointRequest {
+  kind: DatabaseKind;
+  url: string;
+}
+
+export interface EndpointResult {
+  identity: EndpointIdentity | null;
+  error: string | null;
+}
+
+export function resolveConnectionEndpoints(requests: EndpointRequest[]): Promise<EndpointResult[]> {
+  return invoke<EndpointResult[]>("resolve_connection_endpoints", { requests });
 }

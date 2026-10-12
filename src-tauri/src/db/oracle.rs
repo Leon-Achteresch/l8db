@@ -869,48 +869,88 @@ fn binds(values: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
+pub struct OracleUrl {
+    pub user: String,
+    pub password: String,
+    pub connect_string: String,
+    pub tcp: Option<(String, u16)>,
+}
+
+pub fn parse_oracle_url(value: &str) -> Result<OracleUrl, String> {
+    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige Oracle-URL".to_string())?;
+    if url.scheme() != "oracle" {
+        return Err(
+            "Eine oracle:// URL ist erforderlich (oracle://user:pass@host:1521/service)"
+                .to_string(),
+        );
+    }
+    let host = url.host_str().ok_or("Host fehlt")?.to_owned();
+    let service = percent(url.path().trim_start_matches('/'));
+    let mut connect_string = if service.is_empty() {
+        String::new()
+    } else {
+        format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
+    };
+    let mut from_override = false;
+    for (k, v) in url.query_pairs() {
+        if k == "connect_string" || k == "tns" {
+            connect_string = v.into_owned();
+            from_override = true;
+        }
+    }
+    if connect_string.is_empty() {
+        return Err("Service-Name fehlt in der URL".to_string());
+    }
+    let tcp = if from_override {
+        ezconnect_endpoint(&connect_string)
+    } else {
+        Some((host, url.port().unwrap_or(1521)))
+    };
+    Ok(OracleUrl {
+        user: match super::connection::proxy_user(&url) {
+            Some(target) => format!("{}[{target}]", percent(url.username())),
+            None => percent(url.username()),
+        },
+        password: percent(url.password().unwrap_or("")),
+        connect_string,
+        tcp,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_oracle_url(value)?;
+    let (host, port) = parsed
+        .tcp
+        .map(|(host, port)| (host, Some(port)))
+        .unwrap_or_default();
+    Ok(super::endpoint::EndpointIdentity {
+        host: host.trim_matches(['[', ']']).to_ascii_lowercase(),
+        port,
+        transport: String::new(),
+        tls: false,
+        verify: false,
+        database: parsed.connect_string,
+        schema: String::new(),
+        user: parsed.user,
+        params: Vec::new(),
+    })
+}
+
 impl OracleAdapter {
     pub fn new(
         connection_string: &str,
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige Oracle-URL".to_string())?;
-        if url.scheme() != "oracle" {
-            return Err(
-                "Eine oracle:// URL ist erforderlich (oracle://user:pass@host:1521/service)"
-                    .to_string(),
-            );
-        }
-        let host = url.host_str().ok_or("Host fehlt")?.to_owned();
-        let service = percent(url.path().trim_start_matches('/'));
-        let mut connect_string = if service.is_empty() {
-            String::new()
-        } else {
-            format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
-        };
-        let mut from_override = false;
-        for (k, v) in url.query_pairs() {
-            if k == "connect_string" || k == "tns" {
-                connect_string = v.into_owned();
-                from_override = true;
-            }
-        }
-        if connect_string.is_empty() {
-            return Err("Service-Name fehlt in der URL".to_string());
-        }
-        let tcp = if from_override {
-            ezconnect_endpoint(&connect_string)
-        } else {
-            Some((host, url.port().unwrap_or(1521)))
-        };
+        let OracleUrl {
+            user,
+            password,
+            connect_string,
+            tcp,
+        } = parse_oracle_url(connection_string)?;
         Ok(Self {
-            user: match super::connection::proxy_user(&url) {
-                Some(target) => format!("{}[{target}]", percent(url.username())),
-                None => percent(url.username()),
-            },
-            password: percent(url.password().unwrap_or("")),
+            user,
+            password,
             connect_string,
             tcp,
             pool_state,

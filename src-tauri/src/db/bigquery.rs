@@ -287,41 +287,97 @@ fn convert_rows(schema: &Value, rows: &Value) -> Vec<Vec<Value>> {
         .unwrap_or_default()
 }
 
+pub struct BigqueryUrl {
+    pub project: String,
+    pub dataset: Option<String>,
+    pub location: Option<String>,
+    pub endpoint: Option<String>,
+    pub credentials_file: Option<String>,
+    pub mode: String,
+    pub secret: String,
+}
+
+pub fn parse_bigquery_url(value: &str) -> Result<BigqueryUrl, String> {
+    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige BigQuery-URL".to_string())?;
+    if url.scheme() != "bigquery" {
+        return Err("Eine bigquery:// URL ist erforderlich".to_string());
+    }
+    let mut project = percent(url.host_str().unwrap_or(""));
+    let mut location = None;
+    let mut endpoint = None;
+    let mut credentials_file = None;
+    let mut mode = percent(url.username());
+    let secret = percent(url.password().unwrap_or(""));
+    for (k, v) in url.query_pairs() {
+        let v = v.trim().to_string();
+        if v.is_empty() {
+            continue;
+        }
+        match k.as_ref() {
+            "project" | "project_id" => project = v,
+            "location" => location = Some(v),
+            "endpoint" | "api_endpoint" => endpoint = Some(v.trim_end_matches('/').to_string()),
+            "credentials_file" | "key_file" => credentials_file = Some(v),
+            "auth" => mode = v,
+            _ => {}
+        }
+    }
+    if project.is_empty() {
+        return Err("Die Projekt-ID fehlt (bigquery://projekt-id).".into());
+    }
+    let dataset = url
+        .path_segments()
+        .and_then(|mut s| s.next())
+        .map(percent)
+        .filter(|d| !d.is_empty());
+    Ok(BigqueryUrl {
+        project,
+        dataset,
+        location,
+        endpoint,
+        credentials_file,
+        mode,
+        secret,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_bigquery_url(value)?;
+    let base = parsed
+        .endpoint
+        .clone()
+        .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
+    let url =
+        url::Url::parse(&base).map_err(|_| format!("Ungültiger BigQuery-Endpunkt: {base}"))?;
+    let tls = url.scheme() == "https";
+    Ok(super::endpoint::EndpointIdentity {
+        host: parsed.project,
+        port: url.port_or_known_default(),
+        transport: url.scheme().to_string(),
+        tls,
+        verify: tls,
+        database: parsed.dataset.unwrap_or_default(),
+        schema: String::new(),
+        user: String::new(),
+        params: super::endpoint::identity_params(&[
+            ("location", parsed.location),
+            ("endpoint", parsed.endpoint),
+            ("credentials_file", parsed.credentials_file),
+        ]),
+    })
+}
+
 impl BigqueryAdapter {
     pub fn new(connection_string: &str) -> Result<Self, String> {
-        let url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige BigQuery-URL".to_string())?;
-        if url.scheme() != "bigquery" {
-            return Err("Eine bigquery:// URL ist erforderlich".to_string());
-        }
-        let mut project = percent(url.host_str().unwrap_or(""));
-        let mut location = None;
-        let mut endpoint = None;
-        let mut credentials_file = None;
-        let mut mode = percent(url.username());
-        let secret = percent(url.password().unwrap_or(""));
-        for (k, v) in url.query_pairs() {
-            let v = v.trim().to_string();
-            if v.is_empty() {
-                continue;
-            }
-            match k.as_ref() {
-                "project" | "project_id" => project = v,
-                "location" => location = Some(v),
-                "endpoint" | "api_endpoint" => endpoint = Some(v.trim_end_matches('/').to_string()),
-                "credentials_file" | "key_file" => credentials_file = Some(v),
-                "auth" => mode = v,
-                _ => {}
-            }
-        }
-        if project.is_empty() {
-            return Err("Die Projekt-ID fehlt (bigquery://projekt-id).".into());
-        }
-        let dataset = url
-            .path_segments()
-            .and_then(|mut s| s.next())
-            .map(percent)
-            .filter(|d| !d.is_empty());
+        let BigqueryUrl {
+            project,
+            dataset,
+            location,
+            endpoint,
+            credentials_file,
+            mode,
+            secret,
+        } = parse_bigquery_url(connection_string)?;
         let auth = match mode.to_ascii_lowercase().as_str() {
             "" | "adc" => match (&credentials_file, secret.trim_start().starts_with('{')) {
                 (Some(path), _) => GoogleAuth::File(path.clone()),

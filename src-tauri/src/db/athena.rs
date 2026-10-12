@@ -170,6 +170,15 @@ fn table_columns(meta: &Value) -> Vec<DetailedColumnInfo> {
     out
 }
 
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    aws::endpoint(
+        value,
+        "athena",
+        Some(DEFAULT_CATALOG),
+        &["schema", "output", "workgroup", "profile", "endpoint"],
+    )
+}
+
 impl AthenaAdapter {
     pub fn new(
         connection_string: &str,

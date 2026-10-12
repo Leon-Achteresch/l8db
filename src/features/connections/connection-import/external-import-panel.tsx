@@ -16,6 +16,7 @@ import {
   type ExternalImportSummary as Summary,
 } from "@/lib/connection-import";
 import { useConnectionsStore } from "@/lib/connections";
+import { resolveConnectionEndpoints } from "@/lib/db";
 import { storeSecret } from "@/lib/secrets";
 import { proxySecretAccount, sshSecretAccount } from "@/lib/ssh";
 import { DuplicateStrategyField } from "./duplicate-strategy-field";
@@ -71,7 +72,7 @@ export function ExternalImportPanel({ source, onClose }: Props) {
     useFlushSync: false,
   });
 
-  function apply(loaded: LoadedExternalImport | null, missing?: string) {
+  async function apply(loaded: LoadedExternalImport | null, missing?: string) {
     if (!loaded) {
       if (missing) setError(missing);
       return;
@@ -85,9 +86,10 @@ export function ExternalImportPanel({ source, onClose }: Props) {
       setCandidates(null);
       return;
     }
-    const next = buildExternalCandidates(
+    const next = await buildExternalCandidates(
       loaded.result.connections,
       useConnectionsStore.getState().connections,
+      resolveConnectionEndpoints,
     );
     setCandidates(next);
     setSelected(
@@ -101,7 +103,7 @@ export function ExternalImportPanel({ source, onClose }: Props) {
     setBusy(true);
     setError(null);
     try {
-      apply(await load(), missing);
+      await apply(await load(), missing);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setCandidates(null);

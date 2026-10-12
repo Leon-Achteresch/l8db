@@ -1,11 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { buildExternalCandidates, endpointKey } from "../src/lib/connection-import";
+import { buildExternalCandidatesWith, identityKey } from "../src/lib/connection-import";
 import {
   type ExternalConnection,
   emptyExternalConnection,
 } from "../src/lib/connection-import/types";
-import type { SavedConnection } from "../src/lib/connections";
-import type { DatabaseKind, SslMode } from "../src/lib/db";
+import type { NetworkProxy, SavedConnection, SshConnection } from "../src/lib/connections";
+import type { DatabaseKind, EndpointIdentity, SslMode } from "../src/lib/db";
+import { fixtureEndpoints } from "./fixtures/endpoint-fixtures";
+
+function endpointKey(
+  kind: DatabaseKind,
+  url: string,
+  ssh?: Pick<SshConnection, "host" | "port" | "user"> | null,
+  proxy?: NetworkProxy | null,
+): string | null {
+  const [result] = fixtureEndpoints([{ kind, url }]);
+  return result.identity ? identityKey(kind, result.identity, ssh, proxy) : null;
+}
 
 interface Spec {
   kind: DatabaseKind;
@@ -260,15 +271,19 @@ describe("transport matrix", () => {
         for (const verifyOff of [false, true]) {
           if (signal === "none" && verifyOff) continue;
           test(`${spec.kind} (${spec.cite}) tls=${signal} port=${port ?? "none"} verify=${verifyOff ? "off" : "on"}`, () => {
-            const [candidate] = buildExternalCandidates(
+            const [candidate] = buildExternalCandidatesWith(
               [source(spec, signal, port, verifyOff)],
               [],
+              fixtureEndpoints,
             );
             const want = expected(spec, signal, port, verifyOff);
             expect(candidate.skipReason).toBeNull();
             expect(candidate.profile?.connectionString).toBe(want.url);
             expect(candidate.profile?.ssh?.remotePort).toBe(want.remote);
-            expect(candidate.endpoint).toBe(want.key);
+            expect(candidate.endpoint.split("|")[3]).toBe(String(want.remote));
+            expect(candidate.endpoint).toBe(
+              endpointKey(spec.kind, want.url, candidate.profile?.ssh) as string,
+            );
             expect(candidate.profile?.sslMode).toBe(want.mode);
           });
         }
@@ -460,11 +475,11 @@ describe("review scenarios", () => {
       connection.urlScheme = scenario.urlScheme ?? null;
       connection.portFromUrl = scenario.urlScheme != null;
       connection.ssh = { ...JUMP };
-      const [candidate] = buildExternalCandidates([connection], []);
+      const [candidate] = buildExternalCandidatesWith([connection], [], fixtureEndpoints);
       expect(candidate.profile?.connectionString).toBe(scenario.url);
       if (scenario.remote !== undefined) {
         expect(candidate.profile?.ssh?.remotePort).toBe(scenario.remote);
-        expect(candidate.endpoint.split("|")[2]).toBe(String(scenario.remote));
+        expect(candidate.endpoint.split("|")[3]).toBe(String(scenario.remote));
       }
       if (scenario.warning) expect(candidate.warnings.join(" ")).toContain(scenario.warning);
     });
@@ -524,7 +539,11 @@ describe("DynamoDB endpoints (aws.rs:90)", () => {
   ];
   for (const [name, fields, url] of rows)
     test(name, () => {
-      const [candidate] = buildExternalCandidates([cloud("dynamodb", fields)], []);
+      const [candidate] = buildExternalCandidatesWith(
+        [cloud("dynamodb", fields)],
+        [],
+        fixtureEndpoints,
+      );
       expect(candidate.profile?.connectionString).toBe(url);
     });
 });
@@ -593,9 +612,9 @@ describe("cloud duplicate identity (B6)", () => {
         ["role", "R"],
       ],
     });
-    const [same] = buildExternalCandidates([imported], [existing]);
+    const [same] = buildExternalCandidatesWith([imported], [existing], fixtureEndpoints);
     expect(same.duplicateOf?.id).toBe("e1");
-    const [other] = buildExternalCandidates(
+    const [other] = buildExternalCandidatesWith(
       [
         {
           ...imported,
@@ -606,17 +625,18 @@ describe("cloud duplicate identity (B6)", () => {
         },
       ],
       [existing],
+      fixtureEndpoints,
     );
     expect(other.duplicateOf).toBeNull();
   });
 });
 
 test("existing URLs without a port resolve to the adapter default in the duplicate key", () => {
-  expect(endpointKey("elasticsearch", "elasticsearch://u@db/app?ssl=true")?.split("|")[2]).toBe(
+  expect(endpointKey("elasticsearch", "elasticsearch://u@db/app?ssl=true")?.split("|")[3]).toBe(
     "443",
   );
-  expect(endpointKey("elasticsearch", "elasticsearch://u@db/app")?.split("|")[2]).toBe("9200");
-  expect(endpointKey("clickhouse", "clickhouse://u@db/app?secure=1")?.split("|")[2]).toBe("8443");
+  expect(endpointKey("elasticsearch", "elasticsearch://u@db/app")?.split("|")[3]).toBe("9200");
+  expect(endpointKey("clickhouse", "clickhouse://u@db/app?secure=1")?.split("|")[3]).toBe("8443");
   expect(endpointKey("redis", "rediss://db/0")).not.toBe(endpointKey("redis", "redis://db/0"));
   expect(endpointKey("postgres", "postgres://u@db/app")).toBe(
     endpointKey("postgres", "postgresql://u@db:5432/app?sslmode=prefer"),
@@ -633,7 +653,7 @@ async function dbeaverRow(
     JSON.stringify({ connections: { one: { provider, driver, name: "one", configuration } } }),
     null,
   );
-  return buildExternalCandidates(parsed.connections, [])[0];
+  return buildExternalCandidatesWith(parsed.connections, [], fixtureEndpoints)[0];
 }
 
 describe("finding 1: DBeaver entries with host still read TLS from the url field", () => {
@@ -657,9 +677,9 @@ describe("finding 1: DBeaver entries with host still read TLS from the url field
       8443,
     ],
     [
-      "clickhouse host + http url stays on 8123 (http does not force plain, clickhouse.rs:70)",
+      "clickhouse host + http url is written as secure=0 (source semantics)",
       { host: "ch", user: "u", database: "db", url: "jdbc:clickhouse:http://ch/db" },
-      "clickhouse://u@ch:8123/db",
+      "clickhouse://u@ch:8123/db?secure=0",
       8123,
     ],
   ];
@@ -676,7 +696,7 @@ describe("finding 1: DBeaver entries with host still read TLS from the url field
       });
       expect(candidate.profile?.connectionString).toBe(url);
       expect(candidate.profile?.ssh?.remotePort).toBe(remote);
-      expect(candidate.endpoint.split("|")[2]).toBe(String(remote));
+      expect(candidate.endpoint.split("|")[3]).toBe(String(remote));
     });
 });
 
@@ -745,15 +765,20 @@ describe("finding 2 + 7: DynamoDB custom endpoints keep credentials (aws.rs:66-9
   ];
   for (const [name, fields, url, password] of rows)
     test(name, () => {
-      const [candidate] = buildExternalCandidates([cloud("dynamodb", fields)], []);
+      const [candidate] = buildExternalCandidatesWith(
+        [cloud("dynamodb", fields)],
+        [],
+        fixtureEndpoints,
+      );
       expect(candidate.profile?.connectionString).toBe(url);
       expect(candidate.password).toBe(password);
     });
 
   test("non-loopback custom endpoints warn about a defaulted region", () => {
-    const [candidate] = buildExternalCandidates(
+    const [candidate] = buildExternalCandidatesWith(
       [cloud("dynamodb", { host: "ddb.lan", port: 9000, user: "A", password: "s" })],
       [],
+      fixtureEndpoints,
     );
     expect(candidate.warnings.join(" ")).toContain("Region prüfen");
   });
@@ -783,7 +808,7 @@ describe("finding 3 + 6: duplicate keys use the canonical kind (provider.rs:449-
       expect(endpointKey(kind, left)).not.toBe(endpointKey(kind, right));
     });
   test("mongodb+srv keys carry no default port", () => {
-    expect(endpointKey("mongodb", "mongodb+srv://u@cluster.example.com/app")?.split("|")[2]).toBe(
+    expect(endpointKey("mongodb", "mongodb+srv://u@cluster.example.com/app")?.split("|")[3]).toBe(
       "",
     );
   });
@@ -811,7 +836,12 @@ describe("finding 4: identity params follow the adapter URL reads", () => {
       "snowflake://U@acme?endpoint=https%3A%2F%2Fb",
     ],
     ["bigquery", "bigquery.rs:309", "bigquery://p?project=a", "bigquery://p?project=b"],
-    ["bigquery", "bigquery.rs:311", "bigquery://p?endpoint=a", "bigquery://p?api_endpoint=b"],
+    [
+      "bigquery",
+      "bigquery.rs:311",
+      "bigquery://p?endpoint=https%3A%2F%2Fa",
+      "bigquery://p?api_endpoint=https%3A%2F%2Fb",
+    ],
     ["bigquery", "bigquery.rs:312", "bigquery://p?key_file=a", "bigquery://p?credentials_file=b"],
     ["influxdb", "influxdb.rs:425", "influxdb://h/b?org=a", "influxdb://h/b?orgID=b"],
     ["influxdb", "influxdb.rs:409", "influxdb://h?bucket=a", "influxdb://h?db=b"],
@@ -878,7 +908,7 @@ describe("finding 5: per-driver precedence from the adapter table (mysql.rs:408)
       connection.user = "u";
       connection.database = "app";
       connection.params = params;
-      const [candidate] = buildExternalCandidates([connection], []);
+      const [candidate] = buildExternalCandidatesWith([connection], [], fixtureEndpoints);
       expect(candidate.profile?.connectionString).toBe(`mysql://u@db:3306/app?sslmode=${mode}`);
     });
   test("flags the adapter does not read are ignored (mssql.rs:508)", () => {
@@ -888,7 +918,7 @@ describe("finding 5: per-driver precedence from the adapter table (mysql.rs:408)
     connection.user = "u";
     connection.database = "app";
     connection.params = [["ssl", "true"]];
-    const [candidate] = buildExternalCandidates([connection], []);
+    const [candidate] = buildExternalCandidatesWith([connection], [], fixtureEndpoints);
     expect(candidate.profile?.connectionString).toBe("mssql://u@db:1433/app?sslmode=prefer");
   });
 });
@@ -902,7 +932,7 @@ test("finding 8: a kind without adapter facts is skipped, not thrown", () => {
   ok.host = "db";
   ok.user = "u";
   ok.database = "app";
-  const candidates = buildExternalCandidates([connection, ok], []);
+  const candidates = buildExternalCandidatesWith([connection, ok], [], fixtureEndpoints);
   expect(candidates[0].skipReason).toContain("Import-Zuordnung");
   expect(candidates[0].profile).toBeNull();
   expect(candidates[1].skipReason).toBeNull();
@@ -994,12 +1024,12 @@ describe("effective TLS shared by import and duplicate key", () => {
     ]
   > = [
     [
-      "clickhouse.rs:70 port 8443 without flag imports as TLS",
+      "clickhouse.rs:70 port 8443 without a source flag stays unflagged and resolves as TLS",
       "clickhouse",
       8443,
       [],
       null,
-      "clickhouse://u@db:8443/app?secure=1",
+      "clickhouse://u@db:8443/app",
       8443,
     ],
     [
@@ -1012,12 +1042,12 @@ describe("effective TLS shared by import and duplicate key", () => {
       8123,
     ],
     [
-      "http_api.rs:101 port 9243 imports as TLS",
+      "http_api.rs:101 port 9243 without a source flag stays unflagged and resolves as TLS",
       "elasticsearch",
       9243,
       [],
       null,
-      "elasticsearch://u@db:9243/app?ssl=true",
+      "elasticsearch://u@db:9243/app",
       9243,
     ],
     [
@@ -1051,7 +1081,7 @@ describe("effective TLS shared by import and duplicate key", () => {
       connection.urlScheme = urlScheme;
       connection.portFromUrl = urlScheme !== null;
       connection.ssh = { ...JUMP };
-      const [candidate] = buildExternalCandidates([connection], []);
+      const [candidate] = buildExternalCandidatesWith([connection], [], fixtureEndpoints);
       expect(candidate.profile?.connectionString).toBe(url);
       expect(candidate.profile?.ssh?.remotePort).toBe(remote);
       expect(candidate.endpoint).toBe(
@@ -1140,15 +1170,20 @@ describe("DynamoDB endpoint parsing (aws.rs:90)", () => {
   ];
   for (const [name, fields, url, password] of rows)
     test(name, () => {
-      const [candidate] = buildExternalCandidates([cloud("dynamodb", fields)], []);
+      const [candidate] = buildExternalCandidatesWith(
+        [cloud("dynamodb", fields)],
+        [],
+        fixtureEndpoints,
+      );
       expect(candidate.profile?.connectionString ?? null).toBe(url);
       expect(candidate.password).toBe(password);
     });
 
   test("AWS endpoint without any derivable region is skipped", () => {
-    const [candidate] = buildExternalCandidates(
+    const [candidate] = buildExternalCandidatesWith(
       [cloud("dynamodb", { params: [["endpoint", "https://dynamodb.amazonaws.com"]] })],
       [],
+      fixtureEndpoints,
     );
     expect(candidate.skipReason).toContain("Region");
   });
@@ -1161,4 +1196,147 @@ test("snowflake path database and db param produce the same key", () => {
   expect(endpointKey("snowflake", "snowflake://U@acme/SALES")).not.toBe(
     endpointKey("snowflake", "snowflake://U@acme?db=OTHER"),
   );
+});
+
+describe("import verification against the Rust resolution", () => {
+  function pgWithTls(): ExternalConnection {
+    const connection = emptyExternalConnection("v", "verify");
+    connection.kind = "postgres";
+    connection.host = "db";
+    connection.user = "u";
+    connection.database = "app";
+    connection.params = [["ssl", "true"]];
+    return connection;
+  }
+
+  function resolverReturning(patch: Partial<EndpointIdentity>) {
+    return (requests: { kind: DatabaseKind; url: string }[]) =>
+      fixtureLike(requests).map((result) =>
+        result.identity ? { ...result, identity: { ...result.identity, ...patch } } : result,
+      );
+  }
+
+  function fixtureLike(requests: { kind: DatabaseKind; url: string }[]) {
+    return requests.map(() => ({
+      identity: {
+        host: "db",
+        port: 5432,
+        transport: "",
+        tls: true,
+        verify: true,
+        database: "app",
+        schema: "",
+        user: "u",
+        params: [] as Array<[string, string]>,
+      },
+      error: null,
+    }));
+  }
+
+  test("a resolved TLS downgrade skips the candidate", () => {
+    const [candidate] = buildExternalCandidatesWith(
+      [pgWithTls()],
+      [],
+      resolverReturning({ tls: false }),
+    );
+    expect(candidate.skipReason).toContain("ohne TLS");
+    expect(candidate.profile).toBeNull();
+  });
+
+  test("a resolved verification downgrade skips the candidate", () => {
+    const [candidate] = buildExternalCandidatesWith(
+      [pgWithTls()],
+      [],
+      resolverReturning({ verify: false }),
+    );
+    expect(candidate.skipReason).toContain("Zertifikat");
+  });
+
+  test("a resolved port change skips the candidate", () => {
+    const [candidate] = buildExternalCandidatesWith(
+      [pgWithTls()],
+      [],
+      resolverReturning({ port: 6543 }),
+    );
+    expect(candidate.skipReason).toContain("Port 6543");
+  });
+
+  test("an unreadable URL skips the candidate with the adapter error", () => {
+    const [candidate] = buildExternalCandidatesWith([pgWithTls()], [], (requests) =>
+      requests.map(() => ({ identity: null, error: "Ungültiger SSL-Modus" })),
+    );
+    expect(candidate.skipReason).toContain("Ungültiger SSL-Modus");
+  });
+
+  test("matching resolution keeps the candidate and takes the SSH remote port from Rust", () => {
+    const connection = pgWithTls();
+    connection.ssh = { ...JUMP };
+    const [candidate] = buildExternalCandidatesWith([connection], [], resolverReturning({}));
+    expect(candidate.skipReason).toBeNull();
+    expect(candidate.profile?.ssh?.remotePort).toBe(5432);
+  });
+
+  test("existing connections and candidates are resolved in one batch", () => {
+    const batches: number[] = [];
+    const existing: SavedConnection = {
+      id: "e",
+      name: "e",
+      kind: "postgres",
+      connectionString: "postgresql://u@db/app",
+      sslMode: "prefer",
+    };
+    const [candidate] = buildExternalCandidatesWith([pgWithTls()], [existing], (requests) => {
+      batches.push(requests.length);
+      return fixtureLike(requests);
+    });
+    expect(batches).toEqual([2]);
+    expect(candidate.duplicateOf?.id).toBe("e");
+  });
+});
+
+describe("finding C: DynamoDB region precedence", () => {
+  const rows: Array<[string, Partial<ExternalConnection>, string]> = [
+    [
+      "explicit region field wins over host and endpoint",
+      {
+        host: "eu-west-1",
+        params: [
+          ["region", "eu-central-1"],
+          ["endpoint", "https://dynamodb.us-east-2.amazonaws.com"],
+          ["profile", "p"],
+        ],
+      },
+      "dynamodb://eu-central-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.us-east-2.amazonaws.com",
+    ],
+    [
+      "region-named host wins over the endpoint hostname",
+      {
+        host: "eu-west-1",
+        params: [
+          ["endpoint", "https://dynamodb.us-east-2.amazonaws.com"],
+          ["profile", "p"],
+        ],
+      },
+      "dynamodb://eu-west-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.us-east-2.amazonaws.com",
+    ],
+    [
+      "endpoint hostname is used last",
+      {
+        params: [
+          ["endpoint", "https://dynamodb.ap-south-1.amazonaws.com"],
+          ["profile", "p"],
+        ],
+      },
+      "dynamodb://ap-south-1?profile=p&endpoint=https%3A%2F%2Fdynamodb.ap-south-1.amazonaws.com",
+    ],
+  ];
+  for (const [name, fields, url] of rows)
+    test(name, () => {
+      const [candidate] = buildExternalCandidatesWith(
+        [cloud("dynamodb", fields)],
+        [],
+        fixtureEndpoints,
+      );
+      expect(candidate.profile?.connectionString).toBe(url);
+    });
 });

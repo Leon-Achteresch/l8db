@@ -470,6 +470,115 @@ fn windows_auth(_user: &str, _password: &str) -> Result<AuthMethod, String> {
     Err("Windows-Authentifizierung ist nur unter Windows verfügbar.".to_string())
 }
 
+pub struct MssqlUrl {
+    pub url: url::Url,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub password: String,
+    pub database: String,
+    pub ssl: SslMode,
+    pub access_token: Option<String>,
+    pub trust: bool,
+    pub trusted: bool,
+    pub ca: Option<String>,
+    pub application_name: Option<String>,
+    pub instance: Option<String>,
+}
+
+pub fn parse_mssql_url(value: &str) -> Result<MssqlUrl, String> {
+    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige SQL-Server-URL".to_string())?;
+    if !matches!(url.scheme(), "mssql" | "sqlserver") {
+        return Err("Eine mssql:// URL ist erforderlich".to_string());
+    }
+    let host = url.host_str().ok_or("Host fehlt")?.to_string();
+    let port = url.port().unwrap_or(1433);
+    let user = percent_decode(url.username());
+    let password = percent_decode(url.password().unwrap_or(""));
+    let database = percent_decode(url.path().trim_start_matches('/'));
+    let mut ssl = SslMode::Prefer;
+    let mut access_token = None;
+    let mut trust = false;
+    let mut trusted = false;
+    let mut ca = None;
+    let mut application_name = None;
+    let mut instance = None;
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "sslmode" => {
+                ssl = serde_json::from_value(serde_json::Value::String(value.into_owned()))
+                    .map_err(|_| "Ungültiger SSL-Modus".to_string())?
+            }
+            "encrypt" => {
+                ssl = match value.to_lowercase().as_str() {
+                    "optional" => SslMode::Prefer,
+                    "false" | "no" | "0" | "disable" | "disabled" => SslMode::Disable,
+                    _ => SslMode::VerifyFull,
+                }
+            }
+            "sslrootcert" | "trust_server_certificate_ca" | "trustservercertificateca"
+                if !value.is_empty() =>
+            {
+                ca = Some(value.into_owned())
+            }
+            "trusted_connection"
+            | "trustedconnection"
+            | "integrated_security"
+            | "integratedsecurity" => {
+                trusted = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1" | "sspi")
+            }
+            "trust_server_certificate" | "trustservercertificate" => {
+                trust = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1")
+            }
+            "application_name" | "app" => application_name = Some(value.into_owned()),
+            "instance" => instance = Some(value.into_owned()),
+            super::cloud_auth::ACCESS_TOKEN_PARAM => access_token = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+    Ok(MssqlUrl {
+        url,
+        host,
+        port,
+        user,
+        password,
+        database,
+        ssl,
+        access_token,
+        trust,
+        trusted,
+        ca,
+        application_name,
+        instance,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_mssql_url(value)?;
+    let ssl = if parsed.access_token.is_some() {
+        parsed.ssl.max(SslMode::Require)
+    } else {
+        parsed.ssl
+    };
+    Ok(super::endpoint::EndpointIdentity {
+        host: parsed.host.trim_matches(['[', ']']).to_ascii_lowercase(),
+        port: Some(parsed.port),
+        transport: String::new(),
+        tls: ssl >= SslMode::Require,
+        verify: parsed.ca.is_some() || (ssl >= SslMode::VerifyCa && !parsed.trust),
+        database: parsed.database,
+        schema: String::new(),
+        user: parsed.user,
+        params: super::endpoint::identity_params(&[
+            ("instance", parsed.instance),
+            (
+                "integrated_security",
+                parsed.trusted.then(|| "true".to_string()),
+            ),
+        ]),
+    })
+}
+
 impl MssqlAdapter {
     pub fn new(
         connection_string: &str,
@@ -478,68 +587,31 @@ impl MssqlAdapter {
         key: String,
     ) -> Result<Self, String> {
         let resolved = super::cloud_auth::resolve(connection_string.trim())?;
-        let url = url::Url::parse(&resolved).map_err(|_| "Ungültige SQL-Server-URL".to_string())?;
-        if !matches!(url.scheme(), "mssql" | "sqlserver") {
-            return Err("Eine mssql:// URL ist erforderlich".to_string());
-        }
+        let parsed = parse_mssql_url(&resolved)?;
         let mut config = Config::new();
-        config.host(url.host_str().ok_or("Host fehlt")?);
-        config.port(url.port().unwrap_or(1433));
-        let user = percent_decode(url.username());
-        let password = percent_decode(url.password().unwrap_or(""));
-        if !user.is_empty() {
-            config.authentication(AuthMethod::sql_server(&user, &password));
+        config.host(&parsed.host);
+        config.port(parsed.port);
+        if !parsed.user.is_empty() {
+            config.authentication(AuthMethod::sql_server(&parsed.user, &parsed.password));
         }
-        let path_db = url.path().trim_start_matches('/');
         let db = database
             .filter(|d| !d.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| percent_decode(path_db));
+            .unwrap_or_else(|| parsed.database.clone());
         if !db.is_empty() {
             config.database(db);
         }
-        let mut ssl = SslMode::Prefer;
-        let mut access_token = None;
-        let mut trust = false;
-        let mut trusted = false;
-        let mut ca = None;
-        for (key, value) in url.query_pairs() {
-            match key.as_ref() {
-                "sslmode" => {
-                    ssl = serde_json::from_value(serde_json::Value::String(value.into_owned()))
-                        .map_err(|_| "Ungültiger SSL-Modus".to_string())?
-                }
-                "encrypt" => {
-                    ssl = match value.to_lowercase().as_str() {
-                        "optional" => SslMode::Prefer,
-                        "false" | "no" | "0" | "disable" | "disabled" => SslMode::Disable,
-                        _ => SslMode::VerifyFull,
-                    }
-                }
-                "sslrootcert" | "trust_server_certificate_ca" | "trustservercertificateca"
-                    if !value.is_empty() =>
-                {
-                    ca = Some(value.into_owned())
-                }
-                "trusted_connection"
-                | "trustedconnection"
-                | "integrated_security"
-                | "integratedsecurity" => {
-                    trusted = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1" | "sspi")
-                }
-                "trust_server_certificate" | "trustservercertificate" => {
-                    trust = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1")
-                }
-                "application_name" | "app" => config.application_name(value.into_owned()),
-                "instance" => config.instance_name(value.into_owned()),
-                super::cloud_auth::ACCESS_TOKEN_PARAM => access_token = Some(value.into_owned()),
-                _ => {}
-            }
+        if let Some(name) = &parsed.application_name {
+            config.application_name(name.clone());
         }
-        if trusted {
-            config.authentication(windows_auth(&user, &password)?);
+        if let Some(instance) = &parsed.instance {
+            config.instance_name(instance.clone());
         }
-        if let Some(token) = access_token {
+        let mut ssl = parsed.ssl;
+        if parsed.trusted {
+            config.authentication(windows_auth(&parsed.user, &parsed.password)?);
+        }
+        if let Some(token) = parsed.access_token {
             config.authentication(AuthMethod::aad_token(token));
             ssl = ssl.max(SslMode::Require);
         }
@@ -548,11 +620,12 @@ impl MssqlAdapter {
             SslMode::Prefer => EncryptionLevel::Off,
             SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull => EncryptionLevel::Required,
         });
-        if let Some(ca) = ca {
+        if let Some(ca) = parsed.ca {
             config.trust_cert_ca(ca);
-        } else if trust || matches!(ssl, SslMode::Prefer | SslMode::Require) {
+        } else if parsed.trust || matches!(ssl, SslMode::Prefer | SslMode::Require) {
             config.trust_cert();
         }
+        let url = parsed.url;
         Ok(Self {
             config,
             proxy_user: super::connection::proxy_user(&url),

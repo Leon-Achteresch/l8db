@@ -9,13 +9,18 @@ export interface TransportSource {
   port: number | null;
 }
 
+export interface IntendedTransport {
+  tls: boolean | null;
+  verify: boolean | null;
+  port: number | null;
+}
+
 export interface ResolvedTransport {
   scheme: string;
   port: number | null;
-  sshRemotePort: number;
   params: Array<[string, string]>;
   sslMode: SslMode;
-  tls: boolean | null;
+  intended: IntendedTransport;
   stripped: string[];
   warnings: string[];
 }
@@ -111,51 +116,6 @@ function decisive(mode: SslMode | null): mode is SslMode {
   return mode !== null && mode !== "prefer";
 }
 
-export interface TlsInput {
-  scheme: string | null;
-  port: number | null;
-  params: Array<[string, string]>;
-}
-
-function lookup(params: Array<[string, string]>, key: string): string | undefined {
-  return params.find(([name]) => name.trim().toLowerCase() === key)?.[1];
-}
-
-export function adapterTls(
-  facts: AdapterFacts,
-  flagKeys: string[],
-  input: TlsInput,
-): boolean | null {
-  const rules = facts.tls;
-  const scheme = input.scheme?.toLowerCase() ?? "";
-  const modeOf = (value: string): boolean | null => {
-    const normalized = value.trim().toLowerCase();
-    if (rules.modeOff.includes(normalized)) return false;
-    if (rules.modeOn.includes("*") || rules.modeOn.includes(normalized)) return true;
-    return null;
-  };
-  let tls: boolean | null = rules.tlsSchemes.includes(scheme)
-    ? true
-    : rules.plainSchemes.includes(scheme)
-      ? false
-      : input.port !== null && rules.tlsPorts.includes(input.port)
-        ? true
-        : null;
-  if (rules.order === "sequential") {
-    for (const [rawKey, value] of input.params) {
-      const key = rawKey.trim().toLowerCase();
-      if (rules.modeKeys.includes(key)) tls = modeOf(value) ?? tls;
-      else if (flagKeys.includes(key)) tls = flag(value) ?? false;
-    }
-    return tls;
-  }
-  const mode = rules.modeKeys.map((key) => lookup(input.params, key)).find((value) => value);
-  if (mode !== undefined) tls = modeOf(mode) ?? tls;
-  const deciding = flagKeys.find((key) => lookup(input.params, key) !== undefined);
-  if (deciding) tls = flag(lookup(input.params, deciding) as string) ?? tls;
-  return tls;
-}
-
 function readSignals(facts: AdapterFacts, source: TransportSource): Signals {
   let paramMode: SslMode | null = null;
   let verifyOff = false;
@@ -170,11 +130,20 @@ function readSignals(facts: AdapterFacts, source: TransportSource): Signals {
       if (on === true) verifyOn = true;
     } else if (FACTORY_KEYS.includes(key) && /NonValidatingFactory/i.test(value)) verifyOff = true;
   }
-  const flagged = adapterTls(facts, facts.sourceFlagKeys ?? facts.flagKeys, {
-    scheme: source.urlScheme,
-    port: source.port,
-    params: source.params,
-  });
+  const flags = new Map<string, boolean>();
+  for (const [rawKey, value] of source.params) {
+    const key = rawKey.trim().toLowerCase();
+    const on = flag(value);
+    if (FLAG_KEYS.includes(key) && on !== null && !flags.has(key)) flags.set(key, on);
+  }
+  const deciding = facts.flagKeys.find((key) => flags.has(key));
+  const flagged = deciding
+    ? (flags.get(deciding) as boolean)
+    : source.urlScheme === "https"
+      ? true
+      : source.urlScheme === "http"
+        ? false
+        : null;
   const mode = decisive(paramMode)
     ? paramMode
     : decisive(source.sslMode)
@@ -224,12 +193,6 @@ function writeTls(
   }
 }
 
-export function implicitPort(kind: DatabaseKind, tls: boolean): number | null {
-  const facts = ADAPTERS[kind];
-  if (!facts) return null;
-  return tls ? facts.implicitTlsPort : facts.fieldPort;
-}
-
 export function resolveTransport(
   kind: DatabaseKind,
   source: TransportSource,
@@ -265,13 +228,17 @@ export function resolveTransport(
       : tls
         ? facts.fieldTlsPort
         : facts.fieldPort);
+  const enforced = signals.tls === true && facts.tlsWriter !== "none";
   return {
     scheme: facts.tlsWriter === "scheme" && tls ? facts.tlsScheme : facts.scheme,
     port,
-    sshRemotePort: port ?? implicitPort(kind, tls) ?? 0,
     params,
     sslMode,
-    tls: signals.tls,
+    intended: {
+      tls: facts.tlsWriter === "none" ? null : signals.tls,
+      verify: enforced ? !signals.verifyOff : null,
+      port,
+    },
     stripped,
     warnings,
   };

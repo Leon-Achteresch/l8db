@@ -20,6 +20,7 @@ pub mod dml_preview;
 mod duckdb;
 mod dynamodb;
 pub(crate) mod elasticsearch;
+pub mod endpoint;
 pub(crate) mod exact_number;
 pub mod execution;
 pub mod export;

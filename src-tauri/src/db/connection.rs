@@ -85,15 +85,25 @@ fn append_option(config: &mut Config, option: String) {
     config.options(options);
 }
 
-pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, PgTls), String> {
-    let resolved = super::cloud_auth::resolve(value)?;
-    let mut url = url::Url::parse(&resolved).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
+pub struct PgUrl {
+    pub config: Config,
+    pub tls: PgTls,
+    pub schema: Option<String>,
+    pub role: Option<String>,
+    pub hostaddr: Option<String>,
+    pub options: Option<String>,
+}
+
+pub fn parse_pg_url(value: &str) -> Result<PgUrl, String> {
+    let mut url = url::Url::parse(value).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
     if !matches!(url.scheme(), "postgres" | "postgresql") {
         return Err("Eine postgresql:// oder postgres:// URL ist erforderlich".to_string());
     }
     let role = proxy_user(&url);
     let mut tls = PgTls::default();
     let mut schema = None;
+    let mut hostaddr = None;
+    let mut options = None;
     let mut params = Vec::new();
     for part in url.query().unwrap_or_default().split('&') {
         let Some((key, value)) = url::form_urlencoded::parse(part.as_bytes()).next() else {
@@ -116,7 +126,15 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
             "sslkey" => tls.key = text(),
             "sslpassword" => tls.password = text(),
             "schema" | "currentSchema" | "search_path" => schema = text(),
-            known if PG_OPTIONS.contains(&known) => params.push(part.to_string()),
+            known if PG_OPTIONS.contains(&known) => {
+                if known == "hostaddr" {
+                    hostaddr = text();
+                }
+                if known == "options" {
+                    options = text();
+                }
+                params.push(part.to_string())
+            }
             _ => {}
         }
     }
@@ -125,8 +143,27 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
     }
     let query = params.join("&");
     url.set_query(if query.is_empty() { None } else { Some(&query) });
-    let mut config =
+    let config =
         Config::from_str(url.as_str()).map_err(|e| format!("Ungültiger Connection String: {e}"))?;
+    Ok(PgUrl {
+        config,
+        tls,
+        schema,
+        role,
+        hostaddr,
+        options,
+    })
+}
+
+pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, PgTls), String> {
+    let resolved = super::cloud_auth::resolve(value)?;
+    let PgUrl {
+        mut config,
+        tls,
+        schema,
+        role,
+        ..
+    } = parse_pg_url(&resolved)?;
     config
         .ssl_mode(tls.mode.to_pg())
         .connect_timeout(super::execution::connection_duration());
@@ -146,6 +183,31 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
         config.application_name("l8db");
     }
     Ok((config, tls))
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_pg_url(value.trim())?;
+    let host = match parsed.config.get_hosts().first() {
+        Some(tokio_postgres::config::Host::Tcp(host)) => host.to_ascii_lowercase(),
+        #[cfg(unix)]
+        Some(tokio_postgres::config::Host::Unix(path)) => path.display().to_string(),
+        None => String::new(),
+    };
+    Ok(super::endpoint::EndpointIdentity {
+        host: host.trim_matches(['[', ']']).to_string(),
+        port: Some(parsed.config.get_ports().first().copied().unwrap_or(5432)),
+        transport: String::new(),
+        tls: parsed.tls.mode >= SslMode::Require,
+        verify: parsed.tls.mode >= SslMode::VerifyCa,
+        database: parsed.config.get_dbname().unwrap_or_default().to_string(),
+        schema: parsed.schema.unwrap_or_default(),
+        user: parsed.config.get_user().unwrap_or_default().to_string(),
+        params: super::endpoint::identity_params(&[
+            ("hostaddr", parsed.hostaddr),
+            ("options", parsed.options),
+            ("role", parsed.role),
+        ]),
+    })
 }
 
 pub fn connection_key(value: &str, database: Option<&str>) -> String {

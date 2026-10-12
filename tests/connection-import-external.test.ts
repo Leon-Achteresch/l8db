@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import {
-  buildExternalCandidates,
+  buildExternalCandidatesWith,
   countExternalImport,
   decryptDbeaverCredentials,
   decryptNavicatPassword,
@@ -13,6 +13,7 @@ import {
 } from "../src/lib/connection-import";
 import { parseXml } from "../src/lib/connection-import/xml";
 import type { SavedConnection } from "../src/lib/connections";
+import { fixtureEndpoints } from "./fixtures/endpoint-fixtures";
 
 const DBEAVER_CREDENTIALS_B64 =
   "AAECAwQFBgcICQoLDA0ODz5TPlgh6DpNnKqkJUAkSBOS3K7zn7EuJ6cGXtL3R55eTLeaO9c+g6TvUWHehtWfUDpn66kbIhIvepYGCBjrYNuu/LegynTpu+aKkGMd9as0ZX58VY93b5+DJ/7jrSnaST9CalfRi6G0jdP4aUpOZCvmepH1A+nNUoPuIuKdf6Q8nq0Q2yLAkjb52uAnP3ncZ3N8oAqWi77ubCsPqmAv/alBJSN6M7/dqaFvG0dc7ntenB++8ypU0G52WAOP1G7TCVwRiwNKi7JYCeMyCUNi6cePMywVK0eHOEAeFSMcRhlR";
@@ -210,7 +211,7 @@ test("maps DBeaver connections, folders, credentials and SSH handlers", async ()
   expect(byId.get("generic-h2")?.kind).toBeNull();
   expect(byId.get("custom-unknown")?.kind).toBeNull();
 
-  const candidates = buildExternalCandidates(result.connections, []);
+  const candidates = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   const byLabel = new Map(candidates.map((entry) => [entry.label, entry]));
   const prod = byLabel.get("Prod Postgres");
   expect(prod?.profile?.connectionString).toBe(
@@ -251,7 +252,7 @@ test("maps DBeaver connections, folders, credentials and SSH handlers", async ()
 test("DBeaver import without credentials reports missing passwords", async () => {
   const result = await parseDbeaverConfig(DBEAVER_SOURCES, null);
   expect(result.notice).toContain("credentials-config.json");
-  const candidates = buildExternalCandidates(result.connections, []);
+  const candidates = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   expect(candidates.find((entry) => entry.label === "Prod Postgres")?.missingPassword).toBe(false);
   expect(candidates.find((entry) => entry.label === "Maria")?.missingPassword).toBe(true);
   const broken = await parseDbeaverConfig(DBEAVER_SOURCES, new Uint8Array(64));
@@ -356,7 +357,7 @@ test("merges DataGrip data sources, local user names and SSH configs", () => {
   ]);
   expect(result.error).toBeNull();
   expect(result.notice).toContain("JetBrains-Schlüsselbund");
-  const candidates = buildExternalCandidates(result.connections, []);
+  const candidates = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   const byLabel = new Map(candidates.map((entry) => [entry.label, entry]));
   const shop = byLabel.get("shop@localhost");
   expect(shop?.profile).toMatchObject({
@@ -402,7 +403,7 @@ test("DataGrip SSH reference without sshConfigs.xml is skipped, broken XML is re
     { name: "dataSources.xml", text: DATAGRIP_SHARED },
     { name: "dataSources.local.xml", text: DATAGRIP_LOCAL },
   ]);
-  const candidate = buildExternalCandidates(result.connections, []).find(
+  const candidate = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints).find(
     (entry) => entry.label === "mysql via ssh",
   );
   expect(candidate?.skipReason).toContain("sshConfigs.xml");
@@ -449,7 +450,7 @@ test("maps Navicat connections with SSH, legacy fallback and unsupported types",
   });
   expect(result.error).toBeNull();
   expect(legacyCalls).toEqual([["F7CD9A953A6DFF06206844"]]);
-  const candidates = buildExternalCandidates(result.connections, []);
+  const candidates = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   const byLabel = new Map(candidates.map((entry) => [entry.label, entry]));
   const pg = byLabel.get("pg prod");
   expect(pg?.password).toBe("s3cr3t!Pass");
@@ -493,7 +494,7 @@ test("maps Navicat connections with SSH, legacy fallback and unsupported types",
 
 test("Navicat legacy passwords without decryptor are reported missing", async () => {
   const result = await parseNavicatExport(NAVICAT_NCX);
-  const legacy = buildExternalCandidates(result.connections, []).find(
+  const legacy = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints).find(
     (entry) => entry.label === "legacy mysql",
   );
   expect(legacy?.password).toBeNull();
@@ -596,11 +597,15 @@ const PG_PROD_SSH = {
 
 test("detects duplicates by host, port, database and user and resolves skip or copy", async () => {
   const result = await parseNavicatExport(NAVICAT_NCX);
-  const candidates = buildExternalCandidates(result.connections, [
-    existing("postgresql://billing:secret@PG.example.com/billing", "postgres", {
-      ssh: PG_PROD_SSH,
-    }),
-  ]);
+  const candidates = buildExternalCandidatesWith(
+    result.connections,
+    [
+      existing("postgresql://billing:secret@PG.example.com/billing", "postgres", {
+        ssh: PG_PROD_SSH,
+      }),
+    ],
+    fixtureEndpoints,
+  );
   const pg = candidates.find((entry) => entry.label === "pg prod");
   expect(pg?.duplicateOf?.id).toBe("existing-1");
   expect(candidates.filter((entry) => entry.duplicateOf)).toHaveLength(1);
@@ -683,7 +688,7 @@ function dbeaverEntry(configuration: Record<string, unknown>, extra: Record<stri
 
 async function singleCandidate(configuration: Record<string, unknown>, extra = {}) {
   const parsed = await parseDbeaverConfig(dbeaverEntry(configuration, extra), null);
-  const [candidate] = buildExternalCandidates(parsed.connections, []);
+  const [candidate] = buildExternalCandidatesWith(parsed.connections, [], fixtureEndpoints);
   return candidate;
 }
 
@@ -694,7 +699,7 @@ test("maps SQL Server JDBC parameters to the adapter keys", () => {
       text: `<project><component name="DataSourceManagerImpl"><data-source name="ms" uuid="m1"><driver-ref>sqlserver.ms</driver-ref><jdbc-url>jdbc:sqlserver://srv\\SQLEXPRESS:1433;databaseName=crm;user=sa;integratedSecurity=true;trustServerCertificate=true;encrypt=true;applicationName=erp</jdbc-url></data-source></component></project>`,
     },
   ]);
-  const [candidate] = buildExternalCandidates(result.connections, []);
+  const [candidate] = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   const url = new URL(candidate.profile?.connectionString ?? "");
   expect(url.hostname).toBe("srv");
   expect(url.searchParams.get("instance")).toBe("SQLEXPRESS");
@@ -711,7 +716,7 @@ test("splits a Navicat SQL Server host with a named instance", async () => {
   const result = await parseNavicatExport(
     `<Connections><Connection ConnectionName="ms" ConnType="MSSQL" Host="sql01\\INST2" Port="1433" UserName="sa"/></Connections>`,
   );
-  const [candidate] = buildExternalCandidates(result.connections, []);
+  const [candidate] = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   expect(candidate.skipReason).toBeNull();
   const url = new URL(candidate.profile?.connectionString ?? "");
   expect(url.hostname).toBe("sql01");
@@ -734,7 +739,7 @@ test("maps DBeaver SOCKS and HTTP proxies and never imports them as direct conne
     }),
     null,
   );
-  const [socksCandidate] = buildExternalCandidates(socks.connections, []);
+  const [socksCandidate] = buildExternalCandidatesWith(socks.connections, [], fixtureEndpoints);
   expect(socksCandidate.profile?.proxy).toEqual({
     type: "socks5",
     host: "socks.example.com",
@@ -790,7 +795,7 @@ test("skips Navicat HTTP tunnels instead of connecting directly", async () => {
   const result = await parseNavicatExport(
     `<Connections><Connection ConnectionName="tun" ConnType="MYSQL" Host="db" Port="3306" UserName="u" HTTP="true" HTTP_URL="https://example.com/ntunnel_mysql.php"/></Connections>`,
   );
-  const [candidate] = buildExternalCandidates(result.connections, []);
+  const [candidate] = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   expect(candidate.skipReason).toContain("HTTP-Tunnel");
   expect(candidate.profile).toBeNull();
 });
@@ -802,7 +807,7 @@ test("strips secret-like JDBC parameters from the stored connection string", () 
       text: `<project><data-source name="my" uuid="s1"><driver-ref>mysql.8</driver-ref><jdbc-url>jdbc:mysql://db:3306/app?user=u&amp;keyStorePassword=k1&amp;trustCertificateKeyStorePassword=k2&amp;clientCertificateKeyStorePassword=k3&amp;accessToken=t&amp;useUnicode=true</jdbc-url></data-source></project>`,
     },
   ]);
-  const [candidate] = buildExternalCandidates(result.connections, []);
+  const [candidate] = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints);
   const stored = candidate.profile?.connectionString ?? "";
   for (const secret of ["k1", "k2", "k3", "accessToken", "KeyStorePassword"])
     expect(stored).not.toContain(secret);
@@ -817,7 +822,7 @@ test("keeps a host rule's production environment over an imported environment", 
     dbeaverEntry({ host: "prod-db.example.com", database: "app", user: "u", type: "dev" }),
     null,
   );
-  const [candidate] = buildExternalCandidates(parsed.connections, []);
+  const [candidate] = buildExternalCandidatesWith(parsed.connections, [], fixtureEndpoints);
   expect(candidate.profile?.environment).toBe("development");
   const rules = [{ id: "r1", name: "Prod", pattern: "prod-*", environment: "production" as const }];
   const guarded = resolveExternalImport([candidate], new Set([0]), "skip", rules);
@@ -865,37 +870,51 @@ test("maps SSL settings without downgrading to prefer", async () => {
     }),
     null,
   );
-  expect(buildExternalCandidates(mysql.connections, [])[0].profile?.sslMode).toBe("require");
+  expect(
+    buildExternalCandidatesWith(mysql.connections, [], fixtureEndpoints)[0].profile?.sslMode,
+  ).toBe("require");
   const navicat = await parseNavicatExport(
     `<Connections><Connection ConnectionName="n" ConnType="MYSQL" Host="db" UserName="u" SSL="true"/></Connections>`,
   );
-  expect(buildExternalCandidates(navicat.connections, [])[0].profile?.sslMode).toBe("verify-full");
+  expect(
+    buildExternalCandidatesWith(navicat.connections, [], fixtureEndpoints)[0].profile?.sslMode,
+  ).toBe("verify-full");
 });
 
 test("duplicate detection includes the SSH tunnel and proxy", async () => {
   const result = await parseNavicatExport(NAVICAT_NCX);
-  const direct = buildExternalCandidates(result.connections, [
-    existing("postgresql://billing@pg.example.com/billing"),
-  ]);
+  const direct = buildExternalCandidatesWith(
+    result.connections,
+    [existing("postgresql://billing@pg.example.com/billing")],
+    fixtureEndpoints,
+  );
   expect(direct.find((entry) => entry.label === "pg prod")?.duplicateOf).toBeNull();
-  const otherJump = buildExternalCandidates(result.connections, [
-    existing("postgresql://billing@pg.example.com/billing", "postgres", {
-      ssh: { ...PG_PROD_SSH, host: "other-jump" },
-    }),
-  ]);
+  const otherJump = buildExternalCandidatesWith(
+    result.connections,
+    [
+      existing("postgresql://billing@pg.example.com/billing", "postgres", {
+        ssh: { ...PG_PROD_SSH, host: "other-jump" },
+      }),
+    ],
+    fixtureEndpoints,
+  );
   expect(otherJump.find((entry) => entry.label === "pg prod")?.duplicateOf).toBeNull();
-  const viaProxy = buildExternalCandidates(result.connections, [
-    existing("postgresql://billing@pg.example.com/billing", "postgres", {
-      ssh: PG_PROD_SSH,
-      proxy: { type: "socks5", host: "socks", port: 1080 },
-    }),
-  ]);
+  const viaProxy = buildExternalCandidatesWith(
+    result.connections,
+    [
+      existing("postgresql://billing@pg.example.com/billing", "postgres", {
+        ssh: PG_PROD_SSH,
+        proxy: { type: "socks5", host: "socks", port: 1080 },
+      }),
+    ],
+    fixtureEndpoints,
+  );
   expect(viaProxy.find((entry) => entry.label === "pg prod")?.duplicateOf).toBeNull();
 });
 
 test("Redis with a password but no user keeps an empty user", async () => {
   const result = await parseNavicatExport(NAVICAT_NCX);
-  const cache = buildExternalCandidates(result.connections, []).find(
+  const cache = buildExternalCandidatesWith(result.connections, [], fixtureEndpoints).find(
     (entry) => entry.label === "cache",
   );
   const resolved = resolveExternalImport(
@@ -928,7 +947,7 @@ function dataGrip(driverRef: string, url: string, user = "") {
       text: `<project><data-source name="x" uuid="u1">${user ? `<user-name>${user}</user-name>` : ""}</data-source></project>`,
     },
   ]);
-  return buildExternalCandidates(result.connections, [])[0];
+  return buildExternalCandidatesWith(result.connections, [], fixtureEndpoints)[0];
 }
 
 test("keeps ClickHouse TLS from https JDBC URLs, ssl flags and SSL handlers", async () => {
@@ -959,16 +978,19 @@ test("keeps ClickHouse TLS from https JDBC URLs, ssl flags and SSL handlers", as
     }),
     null,
   );
-  expect(buildExternalCandidates(handler.connections, [])[0].profile?.connectionString).toBe(
-    "clickhouse://u@ch:8443/db?secure=1",
-  );
+  expect(
+    buildExternalCandidatesWith(handler.connections, [], fixtureEndpoints)[0].profile
+      ?.connectionString,
+  ).toBe("clickhouse://u@ch:8443/db?secure=1");
 });
 
 test("import count uses the same decision as the import itself", async () => {
   const result = await parseNavicatExport(NAVICAT_NCX);
-  const candidates = buildExternalCandidates(result.connections, [
-    existing("postgresql://billing@pg.example.com/billing", "postgres", { ssh: PG_PROD_SSH }),
-  ]);
+  const candidates = buildExternalCandidatesWith(
+    result.connections,
+    [existing("postgresql://billing@pg.example.com/billing", "postgres", { ssh: PG_PROD_SSH })],
+    fixtureEndpoints,
+  );
   const all = new Set(candidates.map((candidate) => candidate.index));
   const some = new Set([0, 1, 3]);
   for (const selected of [all, some, new Set<number>()])
@@ -1028,7 +1050,11 @@ test("maps Snowflake, BigQuery, Athena and DynamoDB to native families", async (
     }),
     null,
   );
-  const athenaKeyCandidate = buildExternalCandidates(athenaKeys.connections, [])[0];
+  const athenaKeyCandidate = buildExternalCandidatesWith(
+    athenaKeys.connections,
+    [],
+    fixtureEndpoints,
+  )[0];
   expect(athenaKeyCandidate.profile?.connectionString).toBe(
     "athena://AKIAEXAMPLE@us-east-1/AwsDataCatalog?output=s3%3A%2F%2Fr%2F",
   );
@@ -1048,7 +1074,7 @@ test("maps Snowflake, BigQuery, Athena and DynamoDB to native families", async (
     }),
     null,
   );
-  const dynamoCandidate = buildExternalCandidates(dynamo.connections, [])[0];
+  const dynamoCandidate = buildExternalCandidatesWith(dynamo.connections, [], fixtureEndpoints)[0];
   expect(dynamoCandidate.profile?.connectionString).toBe("dynamodb://eu-west-1");
   expect(dynamoCandidate.warnings[0]).toContain("Anmeldung ergänzen");
   expect(dynamoCandidate.missingPassword).toBe(true);
@@ -1064,7 +1090,7 @@ test("maps Elasticsearch, OpenSearch and InfluxDB with TLS", async () => {
   const influx = await parseNavicatExport(
     `<Connections><Connection ConnectionName="i" ConnType="INFLUXDB" Host="influx" Port="8086" Database="metrics" Password="00FF99DD211D0C515ECB698A20709847"/></Connections>`,
   );
-  const influxCandidate = buildExternalCandidates(influx.connections, [])[0];
+  const influxCandidate = buildExternalCandidatesWith(influx.connections, [], fixtureEndpoints)[0];
   expect(influxCandidate.profile?.connectionString).toBe("influxdb://token@influx:8086/metrics");
   const resolved = resolveExternalImport([influxCandidate], new Set([0]), "skip");
   expect(new URL(resolved.connections[0].connectionString).password).toBe("s3cr3t!Pass");
@@ -1087,7 +1113,9 @@ test("cloud families over SSH and generic JDBC drivers stay skipped", async () =
     }),
     null,
   );
-  expect(buildExternalCandidates(sshCloud.connections, [])[0].skipReason).toContain("Cloud");
+  expect(
+    buildExternalCandidatesWith(sshCloud.connections, [], fixtureEndpoints)[0].skipReason,
+  ).toContain("Cloud");
   for (const [ref, url] of [
     ["trino", "jdbc:trino://t:8080/hive"],
     ["generic", "jdbc:odbc:MyDsn"],
@@ -1100,7 +1128,7 @@ function dbeaverOne(provider: string, driver: string, configuration: Record<stri
   return parseDbeaverConfig(
     JSON.stringify({ connections: { one: { provider, driver, name: "one", configuration } } }),
     null,
-  ).then((parsed) => buildExternalCandidates(parsed.connections, [])[0]);
+  ).then((parsed) => buildExternalCandidatesWith(parsed.connections, [], fixtureEndpoints)[0]);
 }
 
 const JUMP = { ssh_tunnel: { type: "TUNNEL", enabled: true, properties: { host: "jump" } } };
@@ -1149,9 +1177,10 @@ test("keeps sslmode for Cassandra and maps TLS for MongoDB and Redis", async () 
   const redis = await parseNavicatExport(
     `<Connections><Connection ConnectionName="r" ConnType="REDIS" Host="cache" Port="6380" SSL="true"/></Connections>`,
   );
-  expect(buildExternalCandidates(redis.connections, [])[0].profile?.connectionString).toBe(
-    "rediss://cache:6380",
-  );
+  expect(
+    buildExternalCandidatesWith(redis.connections, [], fixtureEndpoints)[0].profile
+      ?.connectionString,
+  ).toBe("rediss://cache:6380");
 });
 
 test("first DataGrip SSH config wins when ids repeat", () => {
@@ -1206,7 +1235,7 @@ test("cloud duplicate keys include profile, workgroup, endpoint and catalog", ()
   const url = "jdbc:awsathena://AwsRegion=eu-central-1;Workgroup=analytics;ProfileName=prod";
   const candidate = dataGrip("athena", url);
   const sameUrl = candidate.profile?.connectionString ?? "";
-  const same = buildExternalCandidates(
+  const same = buildExternalCandidatesWith(
     parseDataGripConfig([
       {
         name: "dataSources.xml",
@@ -1214,6 +1243,7 @@ test("cloud duplicate keys include profile, workgroup, endpoint and catalog", ()
       },
     ]).connections,
     [existing(sameUrl, "athena")],
+    fixtureEndpoints,
   )[0];
   expect(same.duplicateOf?.id).toBe("existing-1");
   for (const other of [
@@ -1222,7 +1252,7 @@ test("cloud duplicate keys include profile, workgroup, endpoint and catalog", ()
     `${sameUrl}&endpoint=http%3A%2F%2Flocalhost%3A4566`,
     sameUrl.replace("/AwsDataCatalog", "/OtherCatalog"),
   ]) {
-    const result = buildExternalCandidates(
+    const result = buildExternalCandidatesWith(
       parseDataGripConfig([
         {
           name: "dataSources.xml",
@@ -1230,6 +1260,7 @@ test("cloud duplicate keys include profile, workgroup, endpoint and catalog", ()
         },
       ]).connections,
       [existing(other, "athena")],
+      fixtureEndpoints,
     )[0];
     expect(result.duplicateOf).toBeNull();
   }
