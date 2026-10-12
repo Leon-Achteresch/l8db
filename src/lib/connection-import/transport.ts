@@ -21,6 +21,8 @@ export interface ResolvedTransport {
   params: Array<[string, string]>;
   sslMode: SslMode;
   intended: IntendedTransport;
+  verifyOff: boolean;
+  insecureParam: [string, string] | null;
   stripped: string[];
   warnings: string[];
 }
@@ -167,7 +169,6 @@ function finalMode(signals: Signals): SslMode {
 }
 
 function writeTls(
-  kind: DatabaseKind,
   facts: AdapterFacts,
   signals: Signals,
   sslMode: SslMode,
@@ -179,18 +180,8 @@ function writeTls(
   else if (facts.tlsWriter === "secure" && tls !== null) params.push(["secure", tls ? "1" : "0"]);
   else if (facts.tlsWriter === "ssl" && tls !== null) params.push(["ssl", String(tls)]);
   else if (facts.tlsWriter === "mongo" && tls !== null) params.push(["tls", String(tls)]);
-  if (!tls) return;
-  if (facts.tlsWriter === "none") {
+  if (tls && facts.tlsWriter === "none")
     warnings.push(`TLS aus der Quelle wird für ${facts.scheme} beim Import nicht übernommen.`);
-    return;
-  }
-  if (!signals.verifyOff || facts.tlsWriter === "sslmode") return;
-  if (facts.insecureParam) {
-    params.push(facts.insecureParam);
-    warnings.push("Zertifikatsprüfung ist aus, wie in der Quelle eingestellt.");
-  } else {
-    warnings.push(`Zertifikatsprüfung war in der Quelle aus, l8db prüft das Zertifikat (${kind}).`);
-  }
 }
 
 export function resolveTransport(
@@ -219,7 +210,7 @@ export function resolveTransport(
     seen.add(name.toLowerCase());
     params.push([name, value]);
   }
-  writeTls(kind, facts, signals, sslMode, params, warnings);
+  writeTls(facts, signals, sslMode, params, warnings);
   const tls = signals.tls === true;
   const port =
     source.port ??
@@ -239,6 +230,8 @@ export function resolveTransport(
       verify: enforced ? !signals.verifyOff : null,
       port,
     },
+    verifyOff: signals.verifyOff && facts.tlsWriter !== "sslmode",
+    insecureParam: facts.insecureParam,
     stripped,
     warnings,
   };

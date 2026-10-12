@@ -124,7 +124,12 @@ mod tests {
             summary(C, "https://u@ch/db"),
             ("ch".into(), Some(8443), true, true)
         );
-        assert_eq!(summary(C, "https://u@ch:443/db").1, Some(8443));
+        assert_eq!(summary(C, "https://u@ch:443/db").1, Some(443));
+        assert_eq!(
+            summary(C, "http://u@ch:80/db"),
+            ("ch".into(), Some(80), false, false)
+        );
+        assert_eq!(summary(C, "http://u@ch/db").1, Some(8123));
         assert!(!ok(C, "clickhouse://ch:8443/db?secure=1&ssl=false").tls);
         assert!(ok(C, "clickhouse://ch/db?ssl=false&secure=1").tls);
         assert!(!ok(C, "clickhouse://ch/db?secure=on").tls);
@@ -151,6 +156,12 @@ mod tests {
             summary(E, "https://u@es"),
             ("es".into(), Some(443), true, true)
         );
+        assert_eq!(
+            summary(E, "http://u@es:80"),
+            ("es".into(), Some(80), false, false)
+        );
+        assert_eq!(summary(E, "http://u@es").1, Some(9200));
+        assert_eq!(summary(I, "http://i:80").1, Some(80));
         assert!(!ok(E, "https://es?ssl=false").tls);
         assert!(!ok(E, "https://es?sslmode=disable").tls);
         assert!(!ok(E, "https://es?sslmode=DISABLE").tls);
@@ -209,6 +220,11 @@ mod tests {
         assert!(ms.tls && !ms.verify);
         assert_eq!(ms.params, vec![("instance".into(), "X".into())]);
         assert!(!ok(Mssql, "mssql://sa@db/erp?encrypt=optional").tls);
+        let plain = ok(
+            Mssql,
+            "mssql://sa@db/erp?encrypt=false&sslrootcert=%2Fca.pem",
+        );
+        assert!(!plain.tls && !plain.verify);
         assert!(
             ok(
                 Mssql,
@@ -257,6 +273,13 @@ mod tests {
         );
         assert_eq!((plain.port, plain.tls), (Some(27017), false));
         assert_eq!(plain.params.len(), 2);
+        assert!(resolve(
+            Mongodb,
+            "mongodb://m1/app?tls=true&tlsAllowInvalidHostnames=true"
+        )
+        .is_err());
+        assert!(!ok(Mongodb, "mongodb://m1/app?tls=true&tlsInsecure=true").verify);
+        assert!(ok(Mongodb, "mongodb://m1/app?tls=true").verify);
         let insecure = ok(
             Mongodb,
             "mongodb://m1/app?tls=true&tlsAllowInvalidCertificates=true",
@@ -364,9 +387,8 @@ mod tests {
     #[test]
     fn endpoint_fixtures_match_the_adapters() {
         let path = fixture_path();
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return;
-        };
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} fehlt: {error}", path.display()));
         let entries: Vec<FixtureEntry> = serde_json::from_str(&text).unwrap();
         let fresh: Vec<FixtureEntry> = entries
             .iter()

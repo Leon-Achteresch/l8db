@@ -83,6 +83,8 @@ function readConnection(element: XmlElement, index: number, pending: PendingSecr
     return connection;
   }
   connection.host = attribute(element, "Host", "Server");
+  if (connection.kind === "mongodb")
+    connection.srv = truthy(attribute(element, "UseSRVRecord", "SRVRecord", "SRV"));
   connection.port = parsePort(attribute(element, "Port"));
   const oracle = connection.kind === "oracle";
   connection.database = attribute(element, "Database", "InitialDatabase", "ServiceName", "SID");

@@ -425,7 +425,8 @@ impl InfluxAdapter {
             .ok_or("Host fehlt in der URL")?
             .to_lowercase();
         let tls = http_api::tls(&url, host.ends_with(".influxdata.com"));
-        let port = url.port().unwrap_or(if tls.secure { 443 } else { 8086 });
+        let port = super::http_api::explicit_port(connection_string, &url)
+            .unwrap_or(if tls.secure { 443 } else { 8086 });
         let token = http_api::param(&url, &["token", "authToken", "auth_token"])
             .unwrap_or_else(|| http_api::decode(url.password().unwrap_or("")));
         let path_db = http_api::decode(url.path().trim_matches('/'));

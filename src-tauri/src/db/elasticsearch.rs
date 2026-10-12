@@ -405,7 +405,8 @@ impl ElasticAdapter {
             .ok_or("Host fehlt in der URL")?
             .to_lowercase();
         let tls = http_api::tls(&url, CLOUD_HOSTS.iter().any(|h| host.ends_with(h)));
-        let port = url.port().unwrap_or(if tls.secure { 443 } else { 9200 });
+        let port = super::http_api::explicit_port(connection_string, &url)
+            .unwrap_or(if tls.secure { 443 } else { 9200 });
         let prefix = url.path().trim_end_matches('/');
         let base = format!(
             "{}{}",

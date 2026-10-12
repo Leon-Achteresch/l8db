@@ -115,10 +115,22 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
         },
         _ => (String::new(), None, false),
     };
+    let relaxed = url::Url::parse(&uri)
+        .map(|url| {
+            url.query_pairs().any(|(key, value)| {
+                ["tlsallowinvalidhostnames", "tlsinsecure"]
+                    .contains(&key.to_ascii_lowercase().as_str())
+                    && value.eq_ignore_ascii_case("true")
+            })
+        })
+        .unwrap_or(false);
     let (tls, verify) = match &parsed.tls {
-        Some(Tls::Enabled(options)) => (true, options.allow_invalid_certificates != Some(true)),
+        Some(Tls::Enabled(options)) => (
+            true,
+            options.allow_invalid_certificates != Some(true) && !relaxed,
+        ),
         Some(Tls::Disabled) => (false, false),
-        None => (srv, srv),
+        None => (srv, srv && !relaxed),
     };
     let credential = parsed.credential.as_ref();
     Ok(super::endpoint::EndpointIdentity {

@@ -565,7 +565,8 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
         port: Some(parsed.port),
         transport: String::new(),
         tls: ssl >= SslMode::Require,
-        verify: parsed.ca.is_some() || (ssl >= SslMode::VerifyCa && !parsed.trust),
+        verify: ssl >= SslMode::Require
+            && (parsed.ca.is_some() || (ssl >= SslMode::VerifyCa && !parsed.trust)),
         database: parsed.database,
         schema: String::new(),
         user: parsed.user,

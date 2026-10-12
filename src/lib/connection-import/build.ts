@@ -10,8 +10,9 @@ import {
   type SavedConnection,
   TAG_COLORS,
 } from "@/lib/connections";
-import type { DatabaseKind, EndpointRequest, EndpointResult } from "@/lib/db";
+import type { DatabaseKind, EndpointIdentity, EndpointRequest, EndpointResult } from "@/lib/db";
 import { injectUrlPassword } from "@/lib/secrets";
+import { ADAPTERS } from "./adapters";
 import { cloudTarget } from "./cloud";
 import { fileKey, identityKey } from "./identity";
 import { CLOUD_KINDS, FILE_KINDS, PASSWORDLESS_KINDS } from "./products";
@@ -123,6 +124,8 @@ function skipReasonOf(connection: ExternalConnection): string | null {
     (connection.oracleSid || connection.oracleDescriptor)
   )
     return "Oracle mit SID oder TNS über SSH-Tunnel oder Proxy bitte manuell mit Service-Name anlegen.";
+  if (connection.kind === "mongodb" && connection.srv && (connection.ssh || connection.proxy))
+    return "mongodb+srv über SSH-Tunnel oder Proxy geht nicht: die Hosts kommen per DNS, ein einzelner weitergeleiteter Port reicht nicht.";
   return null;
 }
 
@@ -131,7 +134,11 @@ export type EndpointResolver = (requests: EndpointRequest[]) => Promise<Endpoint
 interface Draft {
   candidate: ExternalImportCandidate;
   intended: IntendedTransport | null;
+  verifyOff: boolean;
+  insecureParam: [string, string] | null;
 }
+
+export const ENDPOINT_CHUNK = 5_000;
 
 function resolvable(kind: DatabaseKind): boolean {
   return !FILE_KINDS.includes(kind);
@@ -146,7 +153,7 @@ function mismatch(intended: IntendedTransport, result: EndpointResult): string |
       : "l8db würde diese Verbindung mit TLS aufbauen, die Quelle aber ohne. Bitte manuell anlegen.";
   if (intended.verify === true && !identity.verify)
     return "l8db würde das Zertifikat nicht prüfen, die Quelle schon. Bitte manuell anlegen.";
-  if (intended.port !== null && identity.port !== intended.port)
+  if (intended.port !== null && identity.port !== null && identity.port !== intended.port)
     return `l8db würde Port ${identity.port ?? "?"} statt ${intended.port} verwenden. Bitte manuell anlegen.`;
   return null;
 }
@@ -214,6 +221,8 @@ function toDraft(connection: ExternalConnection, index: number): Draft {
         skipReason,
       ),
       intended: null,
+      verifyOff: false,
+      insecureParam: null,
     };
   const kind = connection.kind as DatabaseKind;
   const warnings: string[] = [...(cloud?.warnings ?? [])];
@@ -235,7 +244,7 @@ function toDraft(connection: ExternalConnection, index: number): Draft {
     warnings.push(
       `Geheime Parameter nicht übernommen, bitte im Profil ergänzen: ${transport.stripped.join(", ")}.`,
     );
-  const ssh = sshProfile(connection, warnings, transport?.port ?? 0);
+  const ssh = sshProfile(connection, warnings, transport?.port ?? ADAPTERS[kind]?.fieldPort ?? 0);
   const proxy = connection.proxy ? { ...connection.proxy } : null;
   if (proxy?.username && !connection.proxySecret) warnings.push("Proxy-Passwort fehlt.");
   const connectionString = cloud
@@ -274,11 +283,14 @@ function toDraft(connection: ExternalConnection, index: number): Draft {
       ? {
           ...transport.intended,
           port:
-            kind === "oracle" && (connection.oracleSid || connection.oracleDescriptor)
+            connection.srv ||
+            (kind === "oracle" && (connection.oracleSid || connection.oracleDescriptor))
               ? null
               : transport.intended.port,
         }
       : { tls: null, verify: null, port: null },
+    verifyOff: transport?.verifyOff ?? false,
+    insecureParam: transport?.insecureParam ?? null,
   };
 }
 
@@ -288,6 +300,10 @@ interface Plan {
   existingRequests: SavedConnection[];
   pending: Draft[];
   requests: EndpointRequest[];
+}
+
+function requestOf(profile: ExportedConnection): EndpointRequest {
+  return { kind: profile.kind, url: profile.connectionString };
 }
 
 function plan(connections: ExternalConnection[], existing: SavedConnection[]): Plan {
@@ -301,15 +317,79 @@ function plan(connections: ExternalConnection[], existing: SavedConnection[]): P
       kind: connection.kind,
       url: connection.connectionString,
     })),
-    ...pending.map((draft) => {
-      const profile = draft.candidate.profile as ExportedConnection;
-      return { kind: profile.kind, url: profile.connectionString };
-    }),
+    ...pending.map((draft) => requestOf(draft.candidate.profile as ExportedConnection)),
   ];
   return { drafts, existing, existingRequests, pending, requests };
 }
 
-function finish(planned: Plan, results: EndpointResult[]): ExternalImportCandidate[] {
+interface Followup {
+  requests: EndpointRequest[];
+  finish: (results: EndpointResult[]) => ExternalImportCandidate[];
+}
+
+function withParam(url: string, [key, value]: [string, string]): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set(key, value);
+  return parsed.toString();
+}
+
+function relax(draft: Draft, result: EndpointResult | undefined): Draft {
+  const profile = draft.candidate.profile;
+  const identity = result?.identity;
+  if (!profile || !identity?.tls || !draft.verifyOff || !identity.verify) return draft;
+  const warnings = [...draft.candidate.warnings];
+  if (!draft.insecureParam) {
+    warnings.push("Zertifikatsprüfung war in der Quelle aus, l8db prüft das Zertifikat trotzdem.");
+    return { ...draft, candidate: { ...draft.candidate, warnings } };
+  }
+  warnings.push("Zertifikatsprüfung ist aus, wie in der Quelle eingestellt.");
+  return {
+    ...draft,
+    candidate: {
+      ...draft.candidate,
+      warnings,
+      profile: {
+        ...profile,
+        connectionString: withParam(profile.connectionString, draft.insecureParam),
+      },
+    },
+  };
+}
+
+function remotePort(draft: Draft, identity: EndpointIdentity, kind: DatabaseKind): number | null {
+  return identity.port ?? draft.intended?.port ?? ADAPTERS[kind]?.fieldPort ?? null;
+}
+
+function finalize(
+  draft: Draft,
+  result: EndpointResult,
+  known: Map<string, SavedConnection>,
+): ExternalImportCandidate {
+  const candidate = draft.candidate;
+  const profile = candidate.profile as ExportedConnection;
+  const problem = draft.intended ? mismatch(draft.intended, result) : null;
+  if (problem || !result.identity) return skipped(candidate, problem ?? "");
+  const identity = result.identity;
+  const warnings = [...candidate.warnings];
+  if (draft.verifyOff && identity.tls && identity.verify && draft.insecureParam)
+    warnings.push("Zertifikatsprüfung war in der Quelle aus, l8db prüft das Zertifikat trotzdem.");
+  let ssh = profile.ssh;
+  if (ssh) {
+    const port = remotePort(draft, identity, profile.kind);
+    if (!port) return skipped(candidate, "Der Zielport für den SSH-Tunnel ist unbekannt.");
+    ssh = { ...ssh, remotePort: port };
+  }
+  const endpoint = identityKey(profile.kind, identity, ssh, profile.proxy);
+  return {
+    ...candidate,
+    warnings,
+    profile: { ...profile, ssh },
+    endpoint,
+    duplicateOf: known.get(endpoint) ?? null,
+  };
+}
+
+function firstStage(planned: Plan, results: EndpointResult[]): Followup {
   const known = new Map<string, SavedConnection>();
   const remember = (key: string, connection: SavedConnection) => {
     if (!known.has(key)) known.set(key, connection);
@@ -325,34 +405,85 @@ function finish(planned: Plan, results: EndpointResult[]): ExternalImportCandida
         connection,
       );
   });
-  const resolved = new Map<Draft, EndpointResult>();
+  const missing: EndpointResult = { identity: null, error: "keine Antwort" };
+  const first = new Map<Draft, EndpointResult>();
   planned.pending.forEach((draft, position) => {
-    resolved.set(
-      draft,
-      results[planned.existingRequests.length + position] ?? {
-        identity: null,
-        error: "keine Antwort",
-      },
-    );
+    first.set(draft, results[planned.existingRequests.length + position] ?? missing);
   });
-  return planned.drafts.map((draft) => {
-    const candidate = draft.candidate;
-    const profile = candidate.profile;
-    if (!profile) return candidate;
-    const result = resolved.get(draft);
-    if (!result) return { ...candidate, duplicateOf: known.get(candidate.endpoint) ?? null };
-    const problem = draft.intended ? mismatch(draft.intended, result) : null;
-    if (problem || !result.identity) return skipped(candidate, problem ?? "");
-    const identity = result.identity;
-    const ssh = profile.ssh ? { ...profile.ssh, remotePort: identity.port ?? 0 } : null;
-    const endpoint = identityKey(profile.kind, identity, ssh, profile.proxy);
-    return {
-      ...candidate,
-      profile: { ...profile, ssh },
-      endpoint,
-      duplicateOf: known.get(endpoint) ?? null,
-    };
+  const relaxed = new Map<Draft, Draft>();
+  for (const draft of planned.pending) {
+    const next = relax(draft, first.get(draft));
+    if (next.candidate.profile?.connectionString !== draft.candidate.profile?.connectionString)
+      relaxed.set(draft, next);
+  }
+  const followups = [...relaxed.values()];
+  return {
+    requests: followups.map((draft) => requestOf(draft.candidate.profile as ExportedConnection)),
+    finish: (second) => {
+      const again = new Map<Draft, EndpointResult>();
+      for (const [position, draft] of followups.entries())
+        again.set(draft, second[position] ?? missing);
+      return planned.drafts.map((draft) => {
+        const candidate = draft.candidate;
+        if (!candidate.profile) return candidate;
+        const result = first.get(draft);
+        if (!result) return { ...candidate, duplicateOf: known.get(candidate.endpoint) ?? null };
+        const changed = relaxed.get(draft);
+        if (changed) return finalize(changed, again.get(changed) ?? missing, known);
+        return finalize(relax(draft, result), result, known);
+      });
+    },
+  };
+}
+
+function unique(requests: EndpointRequest[]): {
+  distinct: EndpointRequest[];
+  expand: (results: EndpointResult[]) => EndpointResult[];
+} {
+  const positions = new Map<string, number>();
+  const distinct: EndpointRequest[] = [];
+  const slots = requests.map((request) => {
+    const key = `${request.kind}\u0000${request.url}`;
+    let slot = positions.get(key);
+    if (slot === undefined) {
+      slot = distinct.length;
+      positions.set(key, slot);
+      distinct.push(request);
+    }
+    return slot;
   });
+  return {
+    distinct,
+    expand: (results) =>
+      slots.map((slot) => results[slot] ?? { identity: null, error: "keine Antwort" }),
+  };
+}
+
+function chunks(requests: EndpointRequest[]): EndpointRequest[][] {
+  const out: EndpointRequest[][] = [];
+  for (let start = 0; start < requests.length; start += ENDPOINT_CHUNK)
+    out.push(requests.slice(start, start + ENDPOINT_CHUNK));
+  return out;
+}
+
+function lookupSync(
+  requests: EndpointRequest[],
+  lookup: (requests: EndpointRequest[]) => EndpointResult[],
+): EndpointResult[] {
+  if (!requests.length) return [];
+  const { distinct, expand } = unique(requests);
+  return expand(chunks(distinct).flatMap((chunk) => lookup(chunk)));
+}
+
+async function lookupAsync(
+  requests: EndpointRequest[],
+  resolve: EndpointResolver,
+): Promise<EndpointResult[]> {
+  if (!requests.length) return [];
+  const { distinct, expand } = unique(requests);
+  const results: EndpointResult[] = [];
+  for (const chunk of chunks(distinct)) results.push(...(await resolve(chunk)));
+  return expand(results);
 }
 
 export function buildExternalCandidatesWith(
@@ -361,7 +492,8 @@ export function buildExternalCandidatesWith(
   lookup: (requests: EndpointRequest[]) => EndpointResult[],
 ): ExternalImportCandidate[] {
   const planned = plan(connections, existing);
-  return finish(planned, planned.requests.length ? lookup(planned.requests) : []);
+  const followup = firstStage(planned, lookupSync(planned.requests, lookup));
+  return followup.finish(lookupSync(followup.requests, lookup));
 }
 
 export async function buildExternalCandidates(
@@ -370,7 +502,8 @@ export async function buildExternalCandidates(
   resolve: EndpointResolver,
 ): Promise<ExternalImportCandidate[]> {
   const planned = plan(connections, existing);
-  return finish(planned, planned.requests.length ? await resolve(planned.requests) : []);
+  const followup = firstStage(planned, await lookupAsync(planned.requests, resolve));
+  return followup.finish(await lookupAsync(followup.requests, resolve));
 }
 
 function savedConnection(

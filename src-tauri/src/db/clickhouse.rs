@@ -85,7 +85,8 @@ impl ClickhouseAdapter {
             return Err("Eine clickhouse:// URL ist erforderlich".to_string());
         }
         let host = url.host_str().ok_or("Host fehlt")?;
-        let mut secure = url.scheme() == "https" || matches!(url.port(), Some(8443) | Some(443));
+        let explicit = super::http_api::explicit_port(connection_string, &url);
+        let mut secure = url.scheme() == "https" || matches!(explicit, Some(8443) | Some(443));
         let mut user = percent(url.username());
         let mut password = percent(url.password().unwrap_or(""));
         for (k, v) in url.query_pairs() {
@@ -97,7 +98,7 @@ impl ClickhouseAdapter {
                 _ => {}
             }
         }
-        let port = url.port().unwrap_or(if secure { 8443 } else { 8123 });
+        let port = explicit.unwrap_or(if secure { 8443 } else { 8123 });
         let path_db = percent(url.path().trim_start_matches('/'));
         let database = database
             .filter(|d| !d.is_empty())
