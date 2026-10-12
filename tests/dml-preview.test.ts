@@ -1,166 +1,83 @@
 import { describe, expect, mock, test } from "bun:test";
 
-const invocations: { command: string; args: Record<string, unknown> }[] = [];
-let pendingQuery: (() => void) | null = null;
-const failing = { savepoint: false, count: false, rollback: false };
-
-interface FakeSession {
-  inBlock: boolean;
-  aborted: boolean;
-  searchPath: string[];
-  temp: Set<string>;
-  savepoints: Set<string>;
-  timeoutNext: boolean;
-  log: string[];
+interface PreviewCall {
+  kind: string;
+  connectionString: string;
+  database?: string;
+  request: { countSql: string; sampleSql: string; limit: number };
+  options: Record<string, unknown>;
 }
 
-function fakeSession(): FakeSession {
-  return {
-    inBlock: false,
-    aborted: false,
-    searchPath: ["public"],
-    temp: new Set(),
-    savepoints: new Set(),
-    timeoutNext: false,
-    log: [],
-  };
-}
-
-const pg: {
-  active: boolean;
-  editor: FakeSession;
-  pooled: FakeSession;
-  countGate: Promise<void> | null;
-} = { active: false, editor: fakeSession(), pooled: fakeSession(), countGate: null };
-const TABLE_ROWS: Record<string, number> = {
-  "public.orders": 3,
-  "tenant_x.orders": 7,
-  "My Schema.orders": 11,
-};
-
-function splitPath(value: string): string[] {
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .map((part) =>
-      part.startsWith('"') ? part.slice(1, -1).replace(/""/g, '"') : part.toLowerCase(),
-    );
-}
-
-function runFakePg(session: FakeSession, sql: string) {
-  session.log.push(sql.replace(/l8db_preview_[0-9a-f]{32}/g, "SP"));
-  const fail = (message: string): never => {
-    if (session.inBlock) session.aborted = true;
-    throw new Error(message);
-  };
-  if (/^BEGIN$/i.test(sql)) {
-    session.inBlock = true;
-    return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
-  }
-  const savepoint = /^(SAVEPOINT|ROLLBACK TO SAVEPOINT|RELEASE SAVEPOINT) (\w+)$/i.exec(sql);
-  if (savepoint) {
-    const [, verb, name] = savepoint;
-    if (!session.inBlock)
-      throw new Error("ERROR: SAVEPOINT can only be used in transaction blocks (SQLSTATE 25P01)");
-    if (verb.startsWith("ROLLBACK") && failing.rollback)
-      throw new Error("canceling statement due to user request (SQLSTATE 57014)");
-    if (verb.startsWith("ROLLBACK")) session.aborted = false;
-    else if (session.aborted) fail("current transaction is aborted (SQLSTATE 25P02)");
-    else if (verb === "SAVEPOINT") session.savepoints.add(name);
-    else session.savepoints.delete(name);
-    return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
-  }
-  const setPath = /^SET\s+search_path\s*(?:=|\s+TO\s+)\s*(.+)$/i.exec(sql);
-  if (setPath) {
-    session.searchPath = splitPath(setPath[1]);
-    return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
-  }
-  if (session.aborted) fail("current transaction is aborted (SQLSTATE 25P02)");
-  if (session.timeoutNext) {
-    session.timeoutNext = false;
-    fail("Query-Timeout nach 10 Sekunden.");
-  }
-  const table = /FROM\s+(\w+)/i.exec(sql)?.[1] ?? "";
-  const resolved = session.temp.has(table)
-    ? 5
-    : session.searchPath.map((schema) => TABLE_ROWS[`${schema}.${table}`]).find((n) => n);
-  if (resolved === undefined) fail(`relation "${table}" does not exist (SQLSTATE 42P01)`);
-  if (sql.startsWith("SELECT COUNT(*)"))
-    return {
-      columns: ["affected_rows"],
-      rows: [{ affected_rows: String(resolved) }],
-      rows_affected: null,
-      execution_time_ms: 1,
-    };
-  return { columns: ["id"], rows: [{ id: 1 }], rows_affected: null, execution_time_ms: 1 };
-}
+const calls: PreviewCall[] = [];
+const cancels: string[] = [];
+const backend: {
+  count: number;
+  failWith: string | null;
+  hold: ((error: Error) => void) | null;
+  connections: { opened: number; closed: number };
+} = { count: 3, failWith: null, hold: null, connections: { opened: 0, closed: 0 } };
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
-    invocations.push({ command, args });
-    if (pg.active && command === "execute_query") {
-      if (pg.countGate && String(args.sql).startsWith("SELECT COUNT(*)")) await pg.countGate;
-      return runFakePg(args.pooled ? pg.pooled : pg.editor, String(args.sql));
-    }
     if (command === "cancel_execution") {
-      pendingQuery?.();
+      cancels.push(String(args.jobId));
+      backend.hold?.(new Error("ERROR: canceling statement due to user request (SQLSTATE 57014)"));
       return true;
     }
-    if (command === "execute_in_transaction") {
-      const sql = String(args.sql);
-      if (failing.savepoint && sql.startsWith("SAVEPOINT")) throw new Error("savepoint rejected");
-      if (failing.rollback && sql.startsWith("ROLLBACK TO"))
-        throw new Error("canceling statement due to user request (SQLSTATE 57014)");
-      if (command === "commit_transaction") return null;
-      if (failing.count && sql.startsWith("SELECT COUNT(*)"))
-        throw new Error("current transaction is aborted");
-      if (!sql.startsWith("SELECT"))
-        return { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
-    }
-    if (command === "execute_query" || command === "execute_in_transaction") {
-      if (String(args.sql).startsWith("SELECT COUNT(*)"))
-        return {
+    if (command !== "preview_dml") return null;
+    calls.push(args as unknown as PreviewCall);
+    backend.connections.opened++;
+    try {
+      if (backend.hold)
+        await new Promise<never>((_, reject) => {
+          backend.hold = reject;
+        });
+      if (backend.failWith) throw new Error(backend.failWith);
+      return {
+        count: {
           columns: ["affected_rows"],
-          rows: [{ affected_rows: "3" }],
+          rows: [{ affected_rows: String(backend.count) }],
           rows_affected: null,
           execution_time_ms: 1,
-        };
-      return {
-        columns: ["id"],
-        rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
-        rows_affected: null,
-        execution_time_ms: 1,
+        },
+        sample:
+          backend.count === 0
+            ? null
+            : {
+                columns: ["id"],
+                rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+                rows_affected: null,
+                execution_time_ms: 1,
+              },
+        readOnly: args.kind === "postgres",
       };
+    } finally {
+      backend.connections.closed++;
     }
-    return null;
   },
 }));
 
 const {
   autoPreviewApplies,
   deriveDmlPreview,
+  hasBindParameters,
   isDmlPreviewCancelled,
+  isDmlPreviewUnavailable,
+  MISSING_TABLE_REASON,
   needsDmlPreview,
   normalizeDmlPreviewMode,
   runDmlPreview,
-  hasBindParameters,
 } = await import("../src/lib/dml-preview");
 const { attachPreviewLifecycle, createPreviewLifecycle } = await import(
   "../src/lib/dml-preview/lifecycle"
 );
+const { COMMITTED_STATE_NOTE, dmlPreviewExecutor } = await import(
+  "../src/lib/dml-preview/executor"
+);
 const { useServerOutputStore } = await import("../src/lib/server-output");
-const { editorBindParams } = await import("../src/lib/bind-params");
-const {
-  dmlPreviewExecutor,
-  EDITOR_SESSION_ABORTED_REASON,
-  OUTSIDE_TRANSACTION_NOTE,
-  previewSavepoint,
-  previewSession,
-  TRANSACTION_ABORTED_REASON,
-} = await import("../src/lib/dml-preview/executor");
-const { finishManagedTransaction } = await import("../src/lib/managed-transactions");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
+const { editorBindParams } = await import("../src/lib/bind-params");
 type QueryResult = import("../src/lib/db/types").QueryResult;
 
 function ready(sql: string, dialect: string, limit = 100) {
@@ -451,163 +368,170 @@ describe("policy", () => {
   });
 });
 
-function result(rows: Record<string, unknown>[], columns: string[]): QueryResult {
-  return { columns, rows, rows_affected: null, execution_time_ms: 1 };
+function response(count: number) {
+  return {
+    count: {
+      columns: ["affected_rows"],
+      rows: [{ affected_rows: String(count) }],
+      rows_affected: null,
+      execution_time_ms: 1,
+    },
+    sample:
+      count === 0
+        ? null
+        : ({
+            columns: ["id"],
+            rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+            rows_affected: null,
+            execution_time_ms: 1,
+          } as QueryResult),
+    readOnly: true,
+  };
 }
 
 describe("runner", () => {
-  test("one preview issues exactly a count and a sample request", async () => {
+  test("one preview is one isolated call that carries count and sample", async () => {
     const plan = ready("DELETE FROM t WHERE id > 1", "postgres", 2);
-    const calls: string[] = [];
+    const seen: string[] = [];
     const outcome = await runDmlPreview(plan, {
-      execute: async (sql) => {
-        calls.push(sql);
-        return sql.startsWith("SELECT COUNT")
-          ? result([{ affected_rows: 5 }], ["affected_rows"])
-          : result([{ id: 1 }, { id: 2 }, { id: 3 }], ["id"]);
+      preview: async (queries) => {
+        seen.push(queries.countSql, queries.sampleSql);
+        return response(5);
       },
       cancel: async () => false,
     });
-    expect(calls).toEqual([plan.countSql, plan.sampleSql]);
-    expect(new Set(calls).size).toBe(2);
-    expect(outcome.requests).toBe(2);
-    expect(outcome.count).toBe(5);
+    expect(seen).toEqual([plan.countSql, plan.sampleSql]);
+    expect(outcome).toMatchObject({ count: 5, requests: 1, readOnly: true });
     expect(outcome.sample.rows).toHaveLength(2);
     expect(outcome.sample.truncated).toBe(true);
   });
 
-  test("zero affected rows skip the sample request", async () => {
-    const calls: string[] = [];
+  test("zero affected rows return an empty sample", async () => {
     const outcome = await runDmlPreview(ready("DELETE FROM t WHERE false", "postgres"), {
-      execute: async (sql) => {
-        calls.push(sql);
-        return result([{ affected_rows: "0" }], ["affected_rows"]);
-      },
+      preview: async () => response(0),
       cancel: async () => false,
     });
     expect(outcome.count).toBe(0);
-    expect(calls).toHaveLength(1);
+    expect(outcome.sample.rows).toEqual([]);
   });
 
-  test("cancelling during the count cancels the job and never starts the sample", async () => {
-    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
+  test("cancelling sends cancel_execution for the preview job only", async () => {
     const controller = new AbortController();
-    const executed: string[] = [];
+    let jobSeen = "";
+    let reject: ((error: Error) => void) | null = null;
     const cancelled: string[] = [];
-    let release: (() => void) | null = null;
     const running = runDmlPreview(
-      plan,
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
       {
-        execute: (sql, jobId) => {
-          executed.push(`${jobId}:${sql}`);
-          return new Promise<QueryResult>((_, reject) => {
-            release = () => reject(new Error("abgebrochen"));
+        preview: (_plan, jobId) => {
+          jobSeen = jobId;
+          return new Promise((_, rejectPreview) => {
+            reject = rejectPreview;
           });
         },
         cancel: async (jobId) => {
           cancelled.push(jobId);
-          release?.();
-          return true;
+          reject?.(new Error("canceling statement due to user request"));
         },
       },
       { signal: controller.signal },
     );
-    await Promise.resolve();
     controller.abort();
-    const error = await running.catch((reason: unknown) => reason);
-    expect(isDmlPreviewCancelled(error)).toBe(true);
-    expect(executed).toHaveLength(1);
-    expect(cancelled).toEqual([executed[0].split(":")[0]]);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(executed).toHaveLength(1);
+    expect(isDmlPreviewCancelled(await running.catch((error: unknown) => error))).toBe(true);
+    expect(cancelled).toEqual([jobSeen]);
   });
 
-  test("an already aborted preview sends no request", async () => {
+  test("an already aborted preview sends nothing", async () => {
     const controller = new AbortController();
     controller.abort();
-    let calls = 0;
+    let calledPreview = 0;
     const error = await runDmlPreview(
       ready("DELETE FROM t", "postgres"),
       {
-        execute: async () => {
-          calls++;
-          return result([], []);
+        preview: async () => {
+          calledPreview++;
+          return response(1);
         },
         cancel: async () => false,
       },
       { signal: controller.signal },
     ).catch((reason: unknown) => reason);
     expect(isDmlPreviewCancelled(error)).toBe(true);
-    expect(calls).toBe(0);
+    expect(calledPreview).toBe(0);
+  });
+
+  test("a table the isolated connection cannot see makes the preview unavailable", async () => {
+    for (const message of [
+      'ERROR: relation "scratch" does not exist (SQLSTATE 42P01)',
+      "no such table: scratch",
+      "ORA-00942: table or view does not exist",
+      "Invalid object name '#scratch'.",
+    ]) {
+      const error = await runDmlPreview(ready("DELETE FROM scratch WHERE id > 1", "postgres"), {
+        preview: async () => {
+          throw new Error(message);
+        },
+        cancel: async () => false,
+      }).catch((reason: unknown) => reason);
+      expect(isDmlPreviewUnavailable(error)).toBe(true);
+      expect(String(error)).toContain(MISSING_TABLE_REASON);
+    }
   });
 });
 
-describe("executor", () => {
+describe("isolated preview connection", () => {
   const connection = {
-    id: "dml-preview-pg",
+    id: "dml-preview-isolated",
     name: "PG",
     kind: "postgres" as const,
-    connectionString: "postgresql://app@db.example.test:5432/app",
+    connectionString: "postgresql://app@isolated.example.test:5432/app",
     sslMode: "prefer" as const,
   };
 
-  test("uses the editor session with a bounded timeout and no confirmation", async () => {
-    invocations.length = 0;
+  test("the preview runs through preview_dml with its own job id and timeout", async () => {
+    calls.length = 0;
+    backend.count = 3;
     const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
     const outcome = await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 7));
-    const queries = invocations.filter((entry) => entry.command === "execute_query");
-    expect(queries.map((entry) => entry.args.sql)).toEqual([plan.countSql, plan.sampleSql]);
-    for (const entry of queries) {
-      expect(entry.args.pooled).toBe(true);
-      expect(entry.args.database).toBe("app");
-      expect((entry.args.options as Record<string, unknown>).queryTimeout).toBe(7);
-      expect(typeof (entry.args.options as Record<string, unknown>).jobId).toBe("string");
-    }
-    expect(outcome.count).toBe(3);
-  });
-
-  test("abort sends cancel_execution for the running job", async () => {
-    invocations.length = 0;
-    const controller = new AbortController();
-    const executor = dmlPreviewExecutor(connection, null, 10);
-    const slow = {
-      ...executor,
-      execute: (sql: string, jobId: string) =>
-        new Promise<QueryResult>((resolve, reject) => {
-          pendingQuery = () => reject(new Error("abgebrochen"));
-          void executor.execute(sql, jobId).then(() => undefined);
-          setTimeout(() => resolve(result([], [])), 1000);
-        }),
-    };
-    const running = runDmlPreview(ready("DELETE FROM t", "postgres"), slow, {
-      signal: controller.signal,
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      kind: "postgres",
+      connectionString: connection.connectionString,
+      database: "app",
+      request: { countSql: plan.countSql, sampleSql: plan.sampleSql, limit: plan.limit },
     });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    controller.abort();
-    expect(isDmlPreviewCancelled(await running.catch((reason: unknown) => reason))).toBe(true);
-    const cancel = invocations.find((entry) => entry.command === "cancel_execution");
-    const query = invocations.find((entry) => entry.command === "execute_query");
-    expect(cancel?.args.jobId).toBe(
-      (query?.args.options as Record<string, unknown> | undefined)?.jobId,
-    );
-    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(1);
-    pendingQuery = null;
+    expect(calls[0].options.queryTimeout).toBe(7);
+    expect(typeof calls[0].options.jobId).toBe("string");
+    expect(calls[0].options).not.toHaveProperty("cancelMode");
+    expect(outcome).toMatchObject({ count: 3, readOnly: true });
   });
-});
 
-describe("review fixes", () => {
-  const connection = {
-    id: "dml-preview-tx",
-    name: "PG",
-    kind: "postgres" as const,
-    connectionString: "postgresql://app@tx.example.test:5432/app",
-    sslMode: "prefer" as const,
-  };
-  const openTransaction = () =>
+  test("cancel discards the preview connection and nothing stays open", async () => {
+    calls.length = 0;
+    cancels.length = 0;
+    backend.connections = { opened: 0, closed: 0 };
+    backend.hold = () => undefined;
+    const controller = new AbortController();
+    const running = runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
+      { signal: controller.signal },
+    ).catch((error: unknown) => error);
+    while (calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    controller.abort();
+    expect(isDmlPreviewCancelled(await running)).toBe(true);
+    backend.hold = null;
+    expect(cancels).toEqual([String(calls[0].options.jobId)]);
+    expect(backend.connections).toEqual({ opened: 1, closed: 1 });
+  });
+
+  test("an open transaction or persistent editor session shows the committed-state note", () => {
+    expect(dmlPreviewExecutor(connection, "app", 10).note).toBeNull();
     useTransactionStore.setState({
       transactions: [
         {
-          txId: "tx-1",
+          txId: "tx-note",
           connectionId: connection.id,
           connectionName: "PG",
           database: "app",
@@ -617,423 +541,73 @@ describe("review fixes", () => {
         },
       ],
     });
-  const sqlOf = (command: string) =>
-    invocations
-      .filter((entry) => entry.command === command)
-      .map((entry) => String(entry.args.sql).replace(/l8db_preview_[0-9a-f]{32}/g, "SP"));
-
-  test("inside an open transaction the preview is wrapped in a savepoint", async () => {
-    openTransaction();
-    invocations.length = 0;
-    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
-    await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10));
-    expect(sqlOf("execute_in_transaction")).toEqual([
-      "SAVEPOINT SP",
-      plan.countSql,
-      plan.sampleSql,
-      "RELEASE SAVEPOINT SP",
-    ]);
-    expect(sqlOf("execute_query")).toEqual([]);
+    expect(dmlPreviewExecutor(connection, "app", 10).note).toBe(COMMITTED_STATE_NOTE);
     useTransactionStore.setState({ transactions: [] });
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    expect(dmlPreviewExecutor(connection, "app", 10).note).toBe(COMMITTED_STATE_NOTE);
+    useServerOutputStore.getState().setEnabled(connection.id, false);
   });
 
-  test("a failed preview rolls back to the savepoint before the error surfaces", async () => {
-    openTransaction();
-    invocations.length = 0;
-    failing.count = true;
-    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
-    const error = await runDmlPreview(plan, dmlPreviewExecutor(connection, "app", 10)).catch(
-      (reason: unknown) => reason,
+  test("a preview never sends statements into the user's transaction", async () => {
+    calls.length = 0;
+    useTransactionStore.setState({
+      transactions: [
+        {
+          txId: "tx-isolated",
+          connectionId: connection.id,
+          connectionName: "PG",
+          database: "app",
+          scope: { type: "query" },
+          changes: [],
+          startedAt: 0,
+        },
+      ],
+    });
+    await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10),
     );
-    failing.count = false;
-    expect(String(error)).toContain("aborted");
-    expect(sqlOf("execute_in_transaction")).toEqual([
-      "SAVEPOINT SP",
-      plan.countSql,
-      "ROLLBACK TO SAVEPOINT SP",
-      "RELEASE SAVEPOINT SP",
-    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toHaveProperty("txId");
     useTransactionStore.setState({ transactions: [] });
   });
 
-  test("without a usable savepoint the preview runs outside the transaction and says so", async () => {
-    openTransaction();
-    invocations.length = 0;
-    failing.savepoint = true;
-    const executor = dmlPreviewExecutor(connection, "app", 10);
-    await runDmlPreview(ready("DELETE FROM t WHERE id > 1", "postgres"), executor);
-    failing.savepoint = false;
-    expect(executor.note).toBe(OUTSIDE_TRANSACTION_NOTE);
-    expect(sqlOf("execute_in_transaction")).toEqual(["SAVEPOINT SP"]);
-    expect(sqlOf("execute_query")).toHaveLength(2);
-    expect(previewSavepoint("mssql")?.begin).toMatch(
-      /^SAVE TRANSACTION l8db_preview_[0-9a-f]{32}$/,
-    );
-    expect(previewSavepoint("oracle")?.release).toBeNull();
-    expect(previewSavepoint("dynamodb")).toBeNull();
-    useTransactionStore.setState({ transactions: [] });
-  });
-
-  test("session views are expanded like in the editor run", async () => {
+  test("session views are expanded before the isolated preview runs", async () => {
+    calls.length = 0;
     useSessionViewsStore.getState().add(scopeKey(connection.id, "app"), {
       name: "recent_orders",
       sql: "SELECT * FROM orders WHERE created > now() - interval '1 day'",
       columns: ["id"],
       createdAt: 0,
     });
-    invocations.length = 0;
     await runDmlPreview(
       ready("DELETE FROM orders WHERE id IN (SELECT id FROM recent_orders)", "postgres"),
       dmlPreviewExecutor(connection, "app", 10),
     );
-    const [count] = sqlOf("execute_query");
-    expect(count.startsWith("WITH recent_orders AS (")).toBe(true);
-    expect(count).toContain("interval '1 day'");
+    expect(calls[0].request.countSql.startsWith("WITH recent_orders AS (")).toBe(true);
     useSessionViewsStore.getState().clearConnection(connection.id);
   });
-
-  test("bind parameters are detected for the manual preview fallback", () => {
-    expect(hasBindParameters("DELETE FROM t WHERE id = :id")).toBe(true);
-    expect(hasBindParameters("UPDATE t SET a = $1 WHERE id = $2")).toBe(true);
-    expect(hasBindParameters("DELETE FROM t WHERE note = ':id'")).toBe(false);
-    expect(hasBindParameters("DELETE FROM t WHERE id = 1")).toBe(false);
-  });
 });
 
-describe("second review fixes", () => {
-  const connection = {
-    id: "dml-preview-tx2",
-    name: "PG",
-    kind: "postgres" as const,
-    connectionString: "postgresql://app@tx2.example.test:5432/app",
-    sslMode: "prefer" as const,
-  };
-  const transaction = (txId: string) => ({
-    txId,
-    connectionId: connection.id,
-    connectionName: "PG",
-    database: "app",
-    scope: { type: "query" as const },
-    changes: [],
-    startedAt: 0,
-  });
-
-  test("a failing preview does not mark the user's transaction as failed", async () => {
-    useTransactionStore.setState({ transactions: [transaction("tx-2")], panelOpen: false });
-    failing.count = true;
-    await runDmlPreview(
-      ready("DELETE FROM t WHERE id > 1", "postgres"),
-      dmlPreviewExecutor(connection, "app", 10),
-    ).catch(() => undefined);
-    failing.count = false;
-    const state = useTransactionStore.getState();
-    expect(state.transactions[0].lastError).toBeUndefined();
-    expect(state.panelOpen).toBe(false);
-    useTransactionStore.setState({ transactions: [] });
-  });
-
-  test("DuckDB and sqlite_http have no preview savepoint, names are unique", () => {
-    expect(previewSavepoint("duckdb")).toBeNull();
-    expect(previewSavepoint("sqlite_http")).toBeNull();
-    expect(previewSavepoint("postgres")?.name).not.toBe(previewSavepoint("postgres")?.name);
-  });
-
-  test("a commit during the preview switches to running outside without rollback", async () => {
-    useTransactionStore.setState({ transactions: [transaction("tx-3")] });
-    invocations.length = 0;
-    const executor = dmlPreviewExecutor(connection, "app", 10);
-    const plan = ready("DELETE FROM t WHERE id > 1", "postgres");
-    await executor.open?.();
-    useTransactionStore.setState({ transactions: [] });
-    await executor.execute(plan.countSql, "job-a");
-    await executor.close?.(true);
-    expect(executor.note).toBe(OUTSIDE_TRANSACTION_NOTE);
-    const tx = invocations.filter((entry) => entry.command === "execute_in_transaction");
-    expect(tx).toHaveLength(1);
-    expect(invocations.filter((entry) => entry.command === "execute_query")).toHaveLength(1);
-  });
-
-  test("editor and preview share one bind parameter detection", () => {
-    expect(editorBindParams("UPDATE t SET a = :new WHERE id = :id").map((ref) => ref.name)).toEqual(
-      ["id"],
-    );
-    expect(hasBindParameters("UPDATE t SET a = :new")).toBe(false);
-  });
-});
-
-describe("preview session handling", () => {
-  const connection = {
-    id: "dml-preview-session",
-    name: "PG",
-    kind: "postgres" as const,
-    connectionString: "postgresql://app@session.example.test:5432/app",
-    sslMode: "prefer" as const,
-  };
-  const withEditorSession = async (setup: (session: FakeSession) => void, sql: string) => {
-    pg.active = true;
-    pg.editor = fakeSession();
-    pg.pooled = fakeSession();
-    setup(pg.editor);
-    useServerOutputStore.getState().setEnabled(connection.id, true);
-    try {
-      const executor = dmlPreviewExecutor(connection, "app", 10);
-      const outcome = await runDmlPreview(ready(sql, "postgres"), executor).catch(
-        (error: unknown) => error,
-      );
-      return { outcome, executor };
-    } finally {
-      useServerOutputStore.getState().setEnabled(connection.id, false);
-      pg.active = false;
-    }
-  };
-
-  test("only a persistent editor session or a transaction leaves the pool", () => {
-    expect(previewSession(connection, "app")).toBe("pooled");
-    useServerOutputStore.getState().setEnabled(connection.id, true);
-    expect(previewSession(connection, "app")).toBe("editor-session");
-    useServerOutputStore.getState().setEnabled(connection.id, false);
-  });
-
-  test("temporary tables of the editor session are visible to the preview", async () => {
-    const { outcome } = await withEditorSession(
-      (session) => session.temp.add("scratch"),
-      "DELETE FROM scratch WHERE id > 1",
-    );
-    expect((outcome as { count: number }).count).toBe(5);
-    expect(pg.pooled.log).toEqual([]);
-  });
-
-  test("search_path set without spaces and with quoted schemas is honoured", async () => {
-    const compact = await withEditorSession(
-      (session) => runFakePg(session, "SET search_path=tenant_x"),
-      "DELETE FROM orders WHERE id > 1",
-    );
-    expect((compact.outcome as { count: number }).count).toBe(7);
-    const quoted = await withEditorSession(
-      (session) => runFakePg(session, 'SET search_path TO "My Schema", public'),
-      "DELETE FROM orders WHERE id > 1",
-    );
-    expect((quoted.outcome as { count: number }).count).toBe(11);
-  });
-
-  test("in autocommit the savepoint probe fails harmlessly and nothing is rolled back", async () => {
-    const { outcome, executor } = await withEditorSession(
-      () => undefined,
-      "DELETE FROM orders WHERE id > 1",
-    );
-    expect((outcome as { count: number }).count).toBe(3);
-    expect(pg.editor.log.map((sql) => sql.split(" ")[0])).toEqual([
-      "SAVEPOINT",
-      "SELECT",
-      "SELECT",
-    ]);
-    expect(executor.holdsSession?.()).toBe(false);
-  });
-
-  test("a manual BEGIN stays healthy after a failing preview", async () => {
-    const { outcome } = await withEditorSession(
-      (session) => runFakePg(session, "BEGIN"),
-      "DELETE FROM missing_table WHERE id > 1",
-    );
-    expect(String(outcome)).toContain("does not exist");
-    expect(pg.editor.log).toEqual([
-      "BEGIN",
-      "SAVEPOINT SP",
-      expect.stringContaining("SELECT COUNT(*)"),
-      "ROLLBACK TO SAVEPOINT SP",
-      "RELEASE SAVEPOINT SP",
-    ]);
-    expect(pg.editor).toMatchObject({ inBlock: true, aborted: false });
-    expect(pg.editor.savepoints.size).toBe(0);
-  });
-
-  test("a manual BEGIN stays healthy after a preview timeout", async () => {
-    const { outcome } = await withEditorSession((session) => {
-      runFakePg(session, "BEGIN");
-      session.timeoutNext = true;
-    }, "DELETE FROM orders WHERE id > 1");
-    expect(String(outcome)).toContain("Query-Timeout");
-    expect(pg.editor).toMatchObject({ inBlock: true, aborted: false });
-    pg.active = true;
-    expect(() => runFakePg(pg.editor, "SELECT COUNT(*) FROM orders")).not.toThrow();
-    pg.active = false;
-  });
-});
-
-describe("preview lifecycle ordering", () => {
-  const plan = { countSql: "SELECT COUNT(*) FROM t", sampleSql: "SELECT * FROM t", limit: 10 };
-  function deferredVoid() {
-    let resolve!: () => void;
-    const promise = new Promise<void>((done) => {
-      resolve = done;
-    });
-    return { promise, resolve };
-  }
-  function fakeExecutor(name: string, log: string[], closeGate?: Promise<void>) {
-    let holding = false;
-    return {
-      holdsSession: () => holding,
-      open: async () => {
-        holding = true;
-        log.push(`${name}:SAVEPOINT`);
-      },
-      close: async () => {
-        await closeGate;
-        log.push(`${name}:RELEASE`);
-        holding = false;
-      },
-      execute: async (sql: string) => {
-        log.push(`${name}:${sql.startsWith("SELECT COUNT") ? "COUNT" : "SAMPLE"}`);
-        return {
-          columns: ["n"],
-          rows: [{ n: 1 }],
-          rows_affected: null,
-          execution_time_ms: 0,
-        };
-      },
-      cancel: async () => false,
-    };
-  }
-
-  test("a new preview sends its savepoint only after the previous release finished", async () => {
-    const log: string[] = [];
-    const gate = deferredVoid();
+describe("preview lifecycle", () => {
+  test("a newer dialog makes an older confirmation stale", () => {
     const lifecycle = createPreviewLifecycle();
-    const first = lifecycle.start(plan, fakeExecutor("a", log, gate.promise));
-    const second = lifecycle.start(plan, fakeExecutor("b", log));
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(log).toEqual(["a:SAVEPOINT", "a:COUNT", "a:SAMPLE"]);
-    gate.resolve();
-    await Promise.all([first, second]);
-    expect(log).toEqual([
-      "a:SAVEPOINT",
-      "a:COUNT",
-      "a:SAMPLE",
-      "a:RELEASE",
-      "b:SAVEPOINT",
-      "b:COUNT",
-      "b:SAMPLE",
-      "b:RELEASE",
-    ]);
+    const first = lifecycle.next();
+    const second = lifecycle.next();
+    expect(lifecycle.decide(true, first)).toBe(false);
+    expect(lifecycle.decide(true, second)).toBe(true);
+    expect(lifecycle.decide(false, second)).toBe(false);
   });
 
-  test("the confirmed run waits until the release completed", async () => {
-    const log: string[] = [];
-    const gate = deferredVoid();
+  test("a disposed tab never runs the statement", () => {
     const lifecycle = createPreviewLifecycle();
-    void lifecycle.start(plan, fakeExecutor("a", log, gate.promise));
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const settlement = lifecycle.settle(true);
-    expect(settlement.wait).toBe(true);
-    let decided: boolean | null = null;
-    void settlement.decision.then((value) => {
-      decided = value;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(decided).toBeNull();
-    gate.resolve();
-    await settlement.decision;
-    expect(decided).toBe(true);
-    expect(log.at(-1)).toBe("a:RELEASE");
-    expect(lifecycle.holding()).toBe(false);
-    expect(lifecycle.settle(true).wait).toBe(false);
-  });
-
-  test("a stale finish cannot run after a newer dialog opened", async () => {
-    const gate = deferredVoid();
-    const lifecycle = createPreviewLifecycle();
-    lifecycle.next();
-    void lifecycle.start(plan, fakeExecutor("a", [], gate.promise));
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const stale = lifecycle.settle(true);
-    lifecycle.next();
-    gate.resolve();
-    expect(await stale.decision).toBe(false);
-  });
-
-  test("closing the tab resolves pending runs with false and starts nothing new", async () => {
-    const log: string[] = [];
-    const gate = deferredVoid();
-    const lifecycle = createPreviewLifecycle();
-    void lifecycle.start(plan, fakeExecutor("a", log, gate.promise));
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const pending = lifecycle.settle(true);
+    const token = lifecycle.next();
     lifecycle.dispose();
-    const late = lifecycle.start(plan, fakeExecutor("b", log)).catch((error: unknown) => error);
-    gate.resolve();
-    expect(await pending.decision).toBe(false);
-    expect(isDmlPreviewCancelled(await late)).toBe(true);
-    expect(log.some((entry) => entry.startsWith("b:"))).toBe(false);
-  });
-});
-
-describe("third review fixes", () => {
-  const connection = {
-    id: "dml-preview-r4",
-    name: "PG",
-    kind: "postgres" as const,
-    connectionString: "postgresql://app@r4.example.test:5432/app",
-    sslMode: "prefer" as const,
-  };
-
-  test("the confirmed run waits while a preview statement is in flight on the editor session", async () => {
-    pg.active = true;
-    pg.editor = fakeSession();
-    let release!: () => void;
-    pg.countGate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    useServerOutputStore.getState().setEnabled(connection.id, true);
-    const lifecycle = createPreviewLifecycle();
-    const running = lifecycle.start(
-      ready("DELETE FROM orders WHERE id > 1", "postgres"),
-      dmlPreviewExecutor(connection, "app", 10),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const settlement = lifecycle.settle(true);
-    expect(settlement.wait).toBe(true);
-    release();
-    await running;
-    expect(await settlement.decision).toBe(true);
-    expect(lifecycle.holding()).toBe(false);
-    pg.countGate = null;
-    pg.active = false;
-    useServerOutputStore.getState().setEnabled(connection.id, false);
+    expect(lifecycle.decide(true, token)).toBe(false);
+    expect(lifecycle.decide(true, lifecycle.current())).toBe(false);
   });
 
-  test("every preview statement asks for a statement-only cancel", async () => {
-    invocations.length = 0;
-    await runDmlPreview(
-      ready("DELETE FROM t WHERE id > 1", "postgres"),
-      dmlPreviewExecutor(connection, "app", 10),
-    );
-    const queries = invocations.filter((entry) => entry.command === "execute_query");
-    expect(queries.length).toBeGreaterThan(0);
-    for (const entry of queries)
-      expect((entry.args.options as Record<string, unknown>).cancelMode).toBe("statement");
-  });
-
-  test("session and transaction are read when the preview opens, not when it is created", async () => {
-    pg.active = true;
-    pg.editor = fakeSession();
-    pg.pooled = fakeSession();
-    const executor = dmlPreviewExecutor(connection, "app", 10);
-    useServerOutputStore.getState().setEnabled(connection.id, true);
-    await runDmlPreview(ready("DELETE FROM orders WHERE id > 1", "postgres"), executor);
-    expect(pg.editor.log.length).toBeGreaterThan(0);
-    expect(pg.pooled.log).toEqual([]);
-    useServerOutputStore.getState().setEnabled(connection.id, false);
-    pg.active = false;
-  });
-
-  test("the editor session path is gated by a capability", () => {
-    const mysql = { ...connection, id: "dml-preview-my", kind: "mysql" as const };
-    useServerOutputStore.getState().setEnabled(mysql.id, true);
-    expect(previewSession(mysql, "app")).toBe("pooled");
-    useServerOutputStore.getState().setEnabled(mysql.id, false);
-  });
-
-  test("StrictMode mount, unmount and remount keeps a usable lifecycle", async () => {
+  test("StrictMode mount, unmount and remount keeps a usable lifecycle", () => {
     const ref: { current: ReturnType<typeof createPreviewLifecycle> | null } = { current: null };
     const detachFirst = attachPreviewLifecycle(ref);
     const first = ref.current;
@@ -1042,98 +616,20 @@ describe("third review fixes", () => {
     expect(first?.disposed()).toBe(true);
     const detachSecond = attachPreviewLifecycle(ref);
     expect(ref.current).not.toBe(first);
-    const outcome = await ref.current?.start(
-      { countSql: "SELECT COUNT(*) FROM t", sampleSql: "SELECT * FROM t", limit: 1 },
-      {
-        execute: async () => ({
-          columns: ["n"],
-          rows: [{ n: 0 }],
-          rows_affected: null,
-          execution_time_ms: 0,
-        }),
-        cancel: async () => false,
-      },
-    );
-    expect(outcome?.count).toBe(0);
-    expect(await ref.current?.settle(true).decision).toBe(true);
+    const token = ref.current?.next() ?? 0;
+    expect(ref.current?.decide(true, token)).toBe(true);
     detachSecond();
-    expect(await first?.settle(true).decision).toBe(false);
+    expect(ref.current?.decide(true, token)).toBe(false);
   });
 });
 
-describe("fourth review fixes", () => {
-  const connection = {
-    id: "dml-preview-r5",
-    name: "PG",
-    kind: "postgres" as const,
-    connectionString: "postgresql://app@r5.example.test:5432/app",
-    sslMode: "prefer" as const,
-  };
-
-  test("a failed rollback to the savepoint in the editor session is reported, not swallowed", async () => {
-    pg.active = true;
-    pg.editor = fakeSession();
-    runFakePg(pg.editor, "BEGIN");
-    useServerOutputStore.getState().setEnabled(connection.id, true);
-    failing.rollback = true;
-    const error = await runDmlPreview(
-      ready("DELETE FROM missing_table WHERE id > 1", "postgres"),
-      dmlPreviewExecutor(connection, "app", 10),
-    ).catch((reason: unknown) => reason);
-    failing.rollback = false;
-    useServerOutputStore.getState().setEnabled(connection.id, false);
-    pg.active = false;
-    expect(String(error)).toContain(EDITOR_SESSION_ABORTED_REASON);
-  });
-
-  test("a failed rollback inside a managed transaction blocks its commit", async () => {
-    useTransactionStore.setState({
-      transactions: [
-        {
-          txId: "tx-r5",
-          connectionId: connection.id,
-          connectionName: "PG",
-          database: "app",
-          scope: { type: "query" },
-          changes: [],
-          startedAt: 0,
-        },
-      ],
-      panelOpen: false,
-    });
-    failing.count = true;
-    failing.rollback = true;
-    invocations.length = 0;
-    const error = await runDmlPreview(
-      ready("DELETE FROM t WHERE id > 1", "postgres"),
-      dmlPreviewExecutor(connection, "app", 10),
-    ).catch((reason: unknown) => reason);
-    failing.count = false;
-    failing.rollback = false;
-    expect(String(error)).toContain(TRANSACTION_ABORTED_REASON);
-    const tx = useTransactionStore.getState().transactions[0];
-    expect(tx.abortedReason).toBe(TRANSACTION_ABORTED_REASON);
-    expect(useTransactionStore.getState().panelOpen).toBe(true);
-    await expect(finishManagedTransaction("tx-r5", true)).rejects.toThrow(
-      TRANSACTION_ABORTED_REASON,
+describe("bind parameters", () => {
+  test("editor and preview share one detection", () => {
+    expect(hasBindParameters("DELETE FROM t WHERE id = :id")).toBe(true);
+    expect(hasBindParameters("UPDATE t SET a = $1 WHERE id = $2")).toBe(true);
+    expect(hasBindParameters("DELETE FROM t WHERE note = ':id'")).toBe(false);
+    expect(editorBindParams("UPDATE t SET a = :new WHERE id = :id").map((ref) => ref.name)).toEqual(
+      ["id"],
     );
-    expect(invocations.some((entry) => entry.command === "commit_transaction")).toBe(false);
-    useTransactionStore.setState({ transactions: [] });
-  });
-
-  test("an unmounted tab keeps its disposed lifecycle and adopts nothing stale", async () => {
-    const ref: { current: ReturnType<typeof createPreviewLifecycle> | null } = {
-      current: createPreviewLifecycle(),
-    };
-    const early = ref.current;
-    const detach = attachPreviewLifecycle(ref);
-    expect(ref.current).toBe(early);
-    detach();
-    expect(ref.current).toBe(early);
-    expect(await ref.current?.settle(true).decision).toBe(false);
-    const remount = attachPreviewLifecycle(ref);
-    expect(ref.current).not.toBe(early);
-    expect(ref.current?.disposed()).toBe(false);
-    remount();
   });
 });

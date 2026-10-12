@@ -325,32 +325,6 @@ async function executeDynamoChanges(
   return { result, changes };
 }
 
-export const SAVEPOINT_KINDS: readonly string[] = [
-  "postgres",
-  "mysql",
-  "sqlite",
-  "mssql",
-  "oracle",
-];
-
-export interface TransactionSavepoint {
-  name: string;
-  begin: string;
-  rollback: string;
-  release: string | null;
-}
-
-export function transactionSavepoint(kind: string, prefix: string): TransactionSavepoint | null {
-  if (!SAVEPOINT_KINDS.includes(kind)) return null;
-  const name = `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-  return {
-    name,
-    begin: kind === "mssql" ? `SAVE TRANSACTION ${name}` : `SAVEPOINT ${name}`,
-    rollback: kind === "mssql" ? `ROLLBACK TRANSACTION ${name}` : `ROLLBACK TO SAVEPOINT ${name}`,
-    release: kind === "oracle" || kind === "mssql" ? null : `RELEASE SAVEPOINT ${name}`,
-  };
-}
-
 async function executeSnapshotChanges(
   connection: SavedConnection,
   database: string | null,
@@ -359,16 +333,19 @@ async function executeSnapshotChanges(
   executeOriginal: () => Promise<QueryResult>,
 ): Promise<{ result: QueryResult; changes: Change[] }> {
   const kind = connection.kind;
-  if (kind === "postgres" || !SAVEPOINT_KINDS.includes(kind)) {
+  if (!["mysql", "sqlite", "mssql", "oracle"].includes(kind)) {
     return { result: await executeOriginal(), changes: [] };
   }
   const internal = (sql: string) =>
     executeInTransaction(txId, sql, { confirmed: true, track: false });
-  const statements = transactionSavepoint(kind, "l8db_change");
-  if (!statements) return { result: await executeOriginal(), changes: [] };
-  const { begin, rollback } = statements;
-  const releaseSql = statements.release;
-  const release = releaseSql ? () => internal(releaseSql) : async () => {};
+  const savepoint = `l8db_change_${crypto.randomUUID().replaceAll("-", "")}`;
+  const begin = kind === "mssql" ? `SAVE TRANSACTION ${savepoint}` : `SAVEPOINT ${savepoint}`;
+  const rollback =
+    kind === "mssql" ? `ROLLBACK TRANSACTION ${savepoint}` : `ROLLBACK TO SAVEPOINT ${savepoint}`;
+  const release =
+    kind === "oracle" || kind === "mssql"
+      ? async () => {}
+      : () => internal(`RELEASE SAVEPOINT ${savepoint}`);
   const maxSnapshotRows = parsed.type === "insert" ? 1000 : 100;
   let keys: string[] = [];
   if (parsed.type === "update") {

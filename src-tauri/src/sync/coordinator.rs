@@ -4,10 +4,16 @@ use tauri::Runtime;
 
 const LEASE: Duration = Duration::from_secs(10 * 60);
 
+struct Lease {
+    owner: String,
+    token: String,
+    since: Instant,
+}
+
 #[derive(Default)]
 struct Coordinator {
     leader: Option<String>,
-    active: Option<(String, Instant)>,
+    active: Option<Lease>,
 }
 
 static STATE: Mutex<Coordinator> = Mutex::new(Coordinator {
@@ -22,6 +28,10 @@ fn with<T>(f: impl FnOnce(&mut Coordinator) -> T) -> T {
     f(&mut guard)
 }
 
+fn new_token() -> String {
+    format!("{:032x}", rand::random::<u128>())
+}
+
 fn claim(state: &mut Coordinator, label: &str, alive: impl Fn(&str) -> bool) -> bool {
     match state.leader.as_deref() {
         Some(current) if current == label => true,
@@ -33,35 +43,49 @@ fn claim(state: &mut Coordinator, label: &str, alive: impl Fn(&str) -> bool) -> 
     }
 }
 
-fn start(state: &mut Coordinator, label: &str, now: Instant, alive: impl Fn(&str) -> bool) -> bool {
-    match &state.active {
-        Some((owner, since))
-            if owner != label && now.duration_since(*since) < LEASE && alive(owner) =>
-        {
-            false
-        }
-        _ => {
-            state.active = Some((label.to_string(), now));
-            true
+fn start(
+    state: &mut Coordinator,
+    label: &str,
+    now: Instant,
+    alive: impl Fn(&str) -> bool,
+) -> Option<String> {
+    if let Some(lease) = &state.active {
+        if lease.owner != label && now.duration_since(lease.since) < LEASE && alive(&lease.owner) {
+            return None;
         }
     }
+    let token = new_token();
+    state.active = Some(Lease {
+        owner: label.to_string(),
+        token: token.clone(),
+        since: now,
+    });
+    Some(token)
 }
 
-fn finish(state: &mut Coordinator, label: &str) {
+fn finish(state: &mut Coordinator, token: &str) -> bool {
     if state
         .active
         .as_ref()
-        .is_some_and(|(owner, _)| owner == label)
+        .is_some_and(|lease| lease.token == token)
     {
         state.active = None;
+        return true;
     }
+    false
 }
 
 fn forget(state: &mut Coordinator, label: &str) {
     if state.leader.as_deref() == Some(label) {
         state.leader = None;
     }
-    finish(state, label);
+    if state
+        .active
+        .as_ref()
+        .is_some_and(|lease| lease.owner == label)
+    {
+        state.active = None;
+    }
 }
 
 pub fn claim_leader(label: &str, alive: impl Fn(&str) -> bool) -> bool {
@@ -76,12 +100,12 @@ pub fn release_leader(label: &str) {
     });
 }
 
-pub fn begin(label: &str, alive: impl Fn(&str) -> bool) -> bool {
+pub fn begin(label: &str, alive: impl Fn(&str) -> bool) -> Option<String> {
     with(|state| start(state, label, Instant::now(), alive))
 }
 
-pub fn end(label: &str) {
-    with(|state| finish(state, label));
+pub fn end(token: &str) -> bool {
+    with(|state| finish(state, token))
 }
 
 pub fn forget_window<R: Runtime>(window: &tauri::Window<R>) {
@@ -107,15 +131,25 @@ mod tests {
     fn single_sync_in_flight_with_stale_lease_recovery() {
         let mut state = Coordinator::default();
         let now = Instant::now();
-        assert!(start(&mut state, "main", now, |_| true));
-        assert!(!start(&mut state, "win-1", now, |_| true));
-        assert!(start(&mut state, "main", now, |_| true));
-        finish(&mut state, "win-1");
-        assert!(!start(&mut state, "win-1", now, |_| true));
-        assert!(start(&mut state, "win-1", now + LEASE, |_| true));
-        finish(&mut state, "win-1");
-        assert!(start(&mut state, "main", now, |_| true));
-        assert!(start(&mut state, "win-1", now, |label| label != "main"));
+        let first = start(&mut state, "main", now, |_| true).unwrap();
+        assert!(start(&mut state, "win-1", now, |_| true).is_none());
+        let expired = start(&mut state, "win-1", now + LEASE, |_| true).unwrap();
+        assert!(!finish(&mut state, &first));
+        assert!(finish(&mut state, &expired));
+        assert!(start(&mut state, "win-1", now, |label| label != "main").is_some());
+    }
+
+    #[test]
+    fn a_reloaded_window_cannot_release_another_acquisition() {
+        let mut state = Coordinator::default();
+        let now = Instant::now();
+        let stale = start(&mut state, "main", now, |_| true).unwrap();
+        let fresh = start(&mut state, "main", now, |_| true).unwrap();
+        assert_ne!(stale, fresh);
+        assert!(!finish(&mut state, &stale));
+        assert!(start(&mut state, "win-1", now, |_| true).is_none());
+        assert!(!finish(&mut state, "geraten"));
+        assert!(finish(&mut state, &fresh));
     }
 
     #[test]
@@ -123,9 +157,9 @@ mod tests {
         let mut state = Coordinator::default();
         let now = Instant::now();
         assert!(claim(&mut state, "win-1", |_| true));
-        assert!(start(&mut state, "win-1", now, |_| true));
+        assert!(start(&mut state, "win-1", now, |_| true).is_some());
         forget(&mut state, "win-1");
-        assert!(start(&mut state, "main", now, |_| true));
+        assert!(start(&mut state, "main", now, |_| true).is_some());
         assert!(claim(&mut state, "main", |_| true));
     }
 }

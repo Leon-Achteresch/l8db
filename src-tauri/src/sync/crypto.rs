@@ -49,7 +49,9 @@ struct CachedKey {
     key: DerivedKey,
 }
 
-static KEY_CACHE: Mutex<Option<CachedKey>> = Mutex::new(None);
+const KEY_CACHE_SIZE: usize = 4;
+
+static KEY_CACHE: Mutex<Vec<CachedKey>> = Mutex::new(Vec::new());
 
 fn passphrase_digest(passphrase: &str) -> [u8; 32] {
     let mut out = [0u8; 32];
@@ -82,10 +84,11 @@ fn derive(passphrase: &str, kdf: &KdfParams) -> Result<DerivedKey, String> {
     let salt = validate(kdf)?;
     let digest = passphrase_digest(passphrase);
     if let Ok(cache) = KEY_CACHE.lock() {
-        if let Some(cached) = cache.as_ref() {
-            if cached.passphrase == digest && &cached.kdf == kdf {
-                return Ok(cached.key.clone());
-            }
+        if let Some(cached) = cache
+            .iter()
+            .find(|cached| cached.passphrase == digest && &cached.kdf == kdf)
+        {
+            return Ok(cached.key.clone());
         }
     }
     let params = Params::new(kdf.m, kdf.t, kdf.p, Some(KEY_LEN))
@@ -95,7 +98,10 @@ fn derive(passphrase: &str, kdf: &KdfParams) -> Result<DerivedKey, String> {
         .hash_password_into(passphrase.as_bytes(), &salt, key.as_mut())
         .map_err(|e| format!("Schlüsselableitung fehlgeschlagen: {e}"))?;
     if let Ok(mut cache) = KEY_CACHE.lock() {
-        *cache = Some(CachedKey {
+        if cache.len() >= KEY_CACHE_SIZE {
+            cache.remove(0);
+        }
+        cache.push(CachedKey {
             passphrase: digest,
             kdf: kdf.clone(),
             key: key.clone(),
@@ -293,15 +299,15 @@ mod tests {
         for _ in 0..5 {
             let started = std::time::Instant::now();
             let sealed = seal("perf-passphrase", &payload, kdf.clone()).unwrap();
+            cached.push(started.elapsed());
             assert_eq!(
                 open("perf-passphrase", &sealed.envelope).unwrap().len(),
                 payload.len()
             );
-            cached.push(started.elapsed());
         }
         cached.sort();
         println!(
-            "performance sync-crypto: {{\"payloadBytes\":{},\"envelopeBytes\":{},\"kdfAndSealMs\":{},\"cachedSealOpenMedianMs\":{},\"cachedSealOpenMaxMs\":{}}}",
+            "performance sync-crypto: {{\"payloadBytes\":{},\"envelopeBytes\":{},\"kdfAndSealMs\":{},\"cachedSealMedianMs\":{},\"cachedSealMaxMs\":{}}}",
             payload.len(),
             first.envelope.len(),
             derive_and_seal.as_millis(),

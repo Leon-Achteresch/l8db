@@ -22,64 +22,6 @@ pub struct ExecutionOptions {
     pub query_timeout: Option<u64>,
     pub connection_timeout: Option<u64>,
     pub max_rows: Option<usize>,
-    pub cancel_mode: Option<String>,
-}
-
-pub struct Interruption<'a> {
-    session: Option<&'a AtomicBool>,
-    context: Option<Arc<AtomicBool>>,
-}
-
-impl<'a> Interruption<'a> {
-    pub fn arm(session: Option<&'a AtomicBool>, context: Option<Arc<AtomicBool>>) -> Self {
-        if let Some(flag) = session {
-            flag.store(true, Ordering::Release);
-        }
-        if let Some(flag) = &context {
-            flag.store(true, Ordering::Release);
-        }
-        Self { session, context }
-    }
-
-    pub fn clear(self) {
-        if let Some(flag) = self.session {
-            flag.store(false, Ordering::Release);
-        }
-        if let Some(flag) = &self.context {
-            flag.store(false, Ordering::Release);
-        }
-    }
-}
-
-pub fn is_cancellation(error: &str) -> bool {
-    error.contains("57014")
-        || error.contains("canceling statement")
-        || error.contains("user request")
-        || error.contains("statement timeout")
-}
-
-pub const DRAIN_PROBES: usize = 2;
-
-pub async fn drain_late_cancel<F, Fut>(mut probe: F) -> bool
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = Result<(), String>>,
-{
-    for _ in 0..DRAIN_PROBES {
-        match tokio::time::timeout(connection_duration(), probe()).await {
-            Ok(Ok(())) => return true,
-            Ok(Err(error)) if error.contains("25P02") => return true,
-            Ok(Err(error)) if is_cancellation(&error) => continue,
-            _ => return false,
-        }
-    }
-    false
-}
-
-pub fn statement_cancel() -> bool {
-    CONTEXT
-        .try_with(|ctx| ctx.options.cancel_mode.as_deref() == Some("statement"))
-        .unwrap_or(false)
 }
 
 #[derive(Clone)]
@@ -385,26 +327,13 @@ pub async fn postgres<T, F>(
 where
     F: Future<Output = Result<T, String>>,
 {
-    guarded_with_drain(client.cancel_token(), ssl, session, Some(client), future).await
+    guarded(client.cancel_token(), ssl, session, future).await
 }
 
 pub async fn guarded<T, F>(
     token: tokio_postgres::CancelToken,
     ssl: &super::connection::PgTls,
     session: Option<&PgSession>,
-    future: F,
-) -> Result<T, String>
-where
-    F: Future<Output = Result<T, String>>,
-{
-    guarded_with_drain(token, ssl, session, None, future).await
-}
-
-pub async fn guarded_with_drain<T, F>(
-    token: tokio_postgres::CancelToken,
-    ssl: &super::connection::PgTls,
-    session: Option<&PgSession>,
-    drain: Option<&tokio_postgres::Client>,
     future: F,
 ) -> Result<T, String>
 where
@@ -423,55 +352,35 @@ where
         _ = cancel.cancelled() => false,
         _ = tokio::time::sleep(query_duration()) => true,
     };
-    let statement_only = statement_cancel();
-    let interruption = Interruption::arm(
-        session.map(|session| &session.interrupted),
-        CONTEXT.try_with(|ctx| ctx.interrupted.clone()).ok(),
-    );
-    let cancellation = token.cancel_query(super::connection::tls_connector(ssl)?);
-    let confirmed = match tokio::time::timeout(connection_duration(), cancellation).await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => Err(error.to_string()),
-        Err(error) => Err(error.to_string()),
-    };
-    if let Err(error) = confirmed {
-        return Err(format!(
-            "Abbruch nicht bestätigt: {error}. Server- und Transaktionszustand prüfen."
-        ));
+    if let Some(session) = session {
+        session.interrupted.store(true, Ordering::Release);
     }
-    let Ok(settled) = tokio::time::timeout(connection_duration(), &mut future).await else {
-        return Err("Abbruch angefordert, Serverabschluss nicht bestätigt. Server- und Transaktionszustand prüfen.".into());
-    };
-    let consumed = matches!(&settled, Err(error) if is_cancellation(error));
-    if statement_only {
-        let clean = if consumed {
-            true
-        } else if let Some(client) = drain {
-            drain_late_cancel(|| async {
-                client
-                    .simple_query("SELECT 1")
-                    .await
-                    .map(|_| ())
-                    .map_err(super::map_pg_err)
-            })
-            .await
-        } else {
-            false
-        };
-        if clean {
-            interruption.clear();
+    let _ = CONTEXT.try_with(|ctx| ctx.interrupted.store(true, Ordering::Release));
+    let cancellation = token.cancel_query(super::connection::tls_connector(ssl)?);
+    match tokio::time::timeout(connection_duration(), cancellation).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            return Err(format!(
+                "Abbruch nicht bestätigt: {error}. Server- und Transaktionszustand prüfen."
+            ))
+        }
+        Err(error) => {
+            return Err(format!(
+                "Abbruch nicht bestätigt: {error}. Server- und Transaktionszustand prüfen."
+            ))
         }
     }
-    match settled {
-        Ok(result) => Ok(result),
-        Err(_) if consumed => {
+    match tokio::time::timeout(connection_duration(), &mut future).await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(error)) if error.contains("57014") || error.contains("canceling statement") || error.contains("user request") || error.contains("statement timeout") => {
             if timed_out {
                 Err(format!("Query-Timeout nach {} Sekunden: Abfrage vom Server abgebrochen. Offene Transaktion gegebenenfalls zurückrollen.", query_duration().as_secs()))
             } else {
                 Err("Abfrage vom Server abgebrochen. Offene Transaktion gegebenenfalls zurückrollen.".into())
             }
         }
-        Err(error) => Err(error),
+        Ok(Err(error)) => Err(error),
+        Err(_) => Err("Abbruch angefordert, Serverabschluss nicht bestätigt. Server- und Transaktionszustand prüfen.".into()),
     }
 }
 
@@ -516,160 +425,6 @@ mod tests {
         .await;
         assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
-    }
-
-    #[test]
-    fn interruption_stays_marked_on_every_early_exit() {
-        let session = AtomicBool::new(false);
-        let context = Arc::new(AtomicBool::new(false));
-        {
-            let _armed = Interruption::arm(Some(&session), Some(context.clone()));
-        }
-        assert!(session.load(Ordering::Acquire));
-        assert!(context.load(Ordering::Acquire));
-        Interruption::arm(Some(&session), Some(context.clone())).clear();
-        assert!(!session.load(Ordering::Acquire));
-        assert!(!context.load(Ordering::Acquire));
-    }
-
-    #[tokio::test]
-    async fn a_dropped_statement_future_leaves_the_session_marked() {
-        let session = AtomicBool::new(false);
-        let pending = async {
-            let armed = Interruption::arm(Some(&session), None);
-            std::future::pending::<()>().await;
-            armed.clear();
-        };
-        assert!(futures_util::FutureExt::now_or_never(pending).is_none());
-        assert!(session.load(Ordering::Acquire));
-    }
-
-    #[tokio::test]
-    async fn an_early_error_return_leaves_the_session_marked() {
-        let session = AtomicBool::new(false);
-        let failing = || -> Result<(), String> {
-            let _armed = Interruption::arm(Some(&session), None);
-            Err::<(), String>("TLS-Konfiguration ungültig".into())?;
-            Ok(())
-        };
-        assert!(failing().is_err());
-        assert!(session.load(Ordering::Acquire));
-    }
-
-    #[tokio::test]
-    async fn the_drain_absorbs_a_late_cancel_with_bounded_probes() {
-        use std::sync::atomic::AtomicUsize;
-        let run = |answers: Vec<Result<(), String>>| async move {
-            let calls = AtomicUsize::new(0);
-            let answers = std::sync::Mutex::new(answers.into_iter());
-            let clean = drain_late_cancel(|| {
-                calls.fetch_add(1, Ordering::Relaxed);
-                let next = answers.lock().unwrap().next().unwrap_or(Ok(()));
-                async move { next }
-            })
-            .await;
-            (clean, calls.load(Ordering::Relaxed))
-        };
-        let late = "ERROR: canceling statement due to user request (SQLSTATE 57014)".to_string();
-        assert_eq!(run(vec![Ok(())]).await, (true, 1));
-        assert_eq!(run(vec![Err(late.clone()), Ok(())]).await, (true, 2));
-        assert_eq!(
-            run(vec![
-                Err(late.clone()),
-                Err("current transaction is aborted (SQLSTATE 25P02)".into())
-            ])
-            .await,
-            (true, 2)
-        );
-        assert_eq!(
-            run(vec![Err(late.clone()), Err(late.clone())]).await,
-            (false, DRAIN_PROBES)
-        );
-        assert_eq!(run(vec![Err("connection closed".into())]).await, (false, 1));
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn statement_cancel_keeps_the_editor_session_and_transaction_usable() {
-        let url = std::env::var("L8DB_E2E_PG_URL")
-            .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".into());
-        let (config, ssl) = super::super::connection::parse_connection(&url, None).unwrap();
-        let session = PgSession::new(connect_postgres(&config, &ssl).await.unwrap());
-        session
-            .lock()
-            .await
-            .unwrap()
-            .batch_execute(
-                "BEGIN; CREATE TEMP TABLE l8db_soft_cancel(id int); \
-                 INSERT INTO l8db_soft_cancel VALUES (1); \
-                 SET LOCAL search_path TO pg_temp, public; SAVEPOINT l8db_preview_e2e",
-            )
-            .await
-            .unwrap();
-        let job = "statement-cancel-e2e".to_string();
-        let options = ExecutionOptions {
-            job_id: Some(job.clone()),
-            cancel_mode: Some("statement".into()),
-            query_timeout: Some(30),
-            ..Default::default()
-        };
-        let query = run(Some(options), true, async {
-            let client = session.lock().await?;
-            let outcome = postgres(&client, &ssl, Some(&session), async {
-                client
-                    .simple_query("SELECT pg_sleep(20)")
-                    .await
-                    .map(|_| ())
-                    .map_err(super::super::map_pg_err)
-            })
-            .await;
-            session.finish(outcome)
-        });
-        let canceller = async {
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            assert!(cancel(&job).unwrap());
-        };
-        let (result, _) = tokio::join!(query, canceller);
-        assert!(result.unwrap_err().contains("abgebrochen"));
-        assert!(session.available().await);
-        let client = session.lock().await.unwrap();
-        client
-            .batch_execute("ROLLBACK TO SAVEPOINT l8db_preview_e2e")
-            .await
-            .unwrap();
-        let count: i64 = client
-            .query_one("SELECT count(*) FROM l8db_soft_cancel", &[])
-            .await
-            .unwrap()
-            .get(0);
-        assert_eq!(count, 1);
-        let path: String = client
-            .query_one("SHOW search_path", &[])
-            .await
-            .unwrap()
-            .get(0);
-        assert!(path.starts_with("pg_temp"), "{path}");
-        client
-            .batch_execute("SAVEPOINT still_in_transaction; ROLLBACK")
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn statement_cancel_mode_is_scoped_to_its_request() {
-        let soft = run(
-            Some(ExecutionOptions {
-                cancel_mode: Some("statement".into()),
-                ..Default::default()
-            }),
-            false,
-            async { Ok(statement_cancel()) },
-        );
-        let hard = run(None, false, async { Ok(statement_cancel()) });
-        let (soft, hard) = tokio::join!(soft, hard);
-        assert!(soft.unwrap());
-        assert!(!hard.unwrap());
-        assert!(!statement_cancel());
     }
 
     #[tokio::test]

@@ -71,11 +71,7 @@ export function ensureManagedTransaction(
   return pending;
 }
 
-export async function runManagedOperation<T>(
-  txId: string,
-  op: () => Promise<T>,
-  options: { recordError?: boolean } = {},
-): Promise<T> {
+export async function runManagedOperation<T>(txId: string, op: () => Promise<T>): Promise<T> {
   if (useTransactionStore.getState().finalizingTransactions.includes(txId)) {
     throw new Error("Die Transaktion wird gerade abgeschlossen.");
   }
@@ -88,7 +84,6 @@ export async function runManagedOperation<T>(
   try {
     return await op();
   } catch (error) {
-    if (options.recordError === false) throw error;
     useTransactionStore.setState((state) => ({
       panelOpen: true,
       transactions: state.transactions.map((tx) =>
@@ -147,19 +142,9 @@ export async function confirmProductionCommit(
   if (!accepted) throw new Error("Commit vom Benutzer abgebrochen.");
 }
 
-export function markTransactionAborted(txId: string, reason: string): void {
-  useTransactionStore.setState((state) => ({
-    panelOpen: true,
-    transactions: state.transactions.map((tx) =>
-      tx.txId === txId ? { ...tx, lastError: reason, abortedReason: reason } : tx,
-    ),
-  }));
-}
-
 export async function finishManagedTransaction(txId: string, commit: boolean): Promise<void> {
   const state = useTransactionStore.getState();
   const tx = state.transactions.find((entry) => entry.txId === txId);
-  if (commit && tx?.abortedReason) throw new Error(tx.abortedReason);
   if (commit && tx) await confirmProductionCommit(tx.connectionId, tx.database, tx.changes);
   if (state.busyTransactions[txId] || state.finalizingTransactions.includes(txId)) {
     throw new Error("Bitte die laufende Operation dieser Transaktion abwarten.");

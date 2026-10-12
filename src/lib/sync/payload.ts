@@ -188,6 +188,24 @@ export async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function extraLines(extra: SyncExtra): string[] {
+  const lines: string[] = [];
+  for (const [collection, bucket] of Object.entries(extra.items)) {
+    if (!isRecord(bucket)) continue;
+    for (const [id, entry] of Object.entries(bucket)) {
+      if (!isRecord(entry)) continue;
+      const hash =
+        typeof entry.h === "string" && HASH_PATTERN.test(entry.h) ? entry.h : hashData(entry.data);
+      lines.push(`${collection}:${id}\t${hash}`);
+    }
+  }
+  for (const [collection, bucket] of Object.entries(extra.tombstones)) {
+    if (!isRecord(bucket)) continue;
+    for (const id of Object.keys(bucket)) lines.push(`${collection}:${id}\t${DELETED}`);
+  }
+  return lines;
+}
+
 export function contentSource(
   snapshot: SyncSnapshot,
   secretsFingerprint: string | null,
@@ -196,9 +214,9 @@ export function contentSource(
   const lines: string[] = [];
   for (const [key, entry] of snapshot.items) lines.push(`${key}\t${entry.hash}`);
   for (const key of snapshot.tombstones.keys()) lines.push(`${key}\t${DELETED}`);
+  if (extra) lines.push(...extraLines(extra));
   lines.sort();
   lines.push(`secrets\t${secretsFingerprint ?? ""}`);
-  if (extra) lines.push(`extra\t${hashText(canonicalJson(extra))}`);
   return lines.join("\n");
 }
 
