@@ -54,6 +54,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { IMPORT_FILE_EXTENSIONS } from "@/lib/import-file";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { useQueryHistoryStore } from "@/lib/query-history";
+import { queryTabLabel } from "@/lib/query-tab-title";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { type AiAccessLevel, AiAccessStrip } from "./ai-access-strip";
@@ -112,7 +113,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const editorTabTitle = useTableTabs((tabsState) => {
     const id = editorTabId ? decodeURIComponent(editorTabId) : null;
     const tab = tabsState.tabs.find((entry) => entry.kind === "query" && entry.id === id);
-    return tab?.kind === "query" ? tab.title || "Abfrage" : null;
+    return tab?.kind === "query" ? queryTabLabel(tab) || "Abfrage" : null;
   });
   const editorTab: ChatContextItem | null =
     editorContext && editorTabTitle !== null
@@ -595,7 +596,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     const tab = currentQueryTab();
     return {
       controller: tab ? editorAiController(tab.id) : undefined,
-      title: tab?.title ?? "",
+      title: tab ? queryTabLabel(tab) : "",
       storedSql: tab ? tab.sql : null,
       openTab: (sql: string, title: string) => {
         const tabId = useTableTabs.getState().openQueryTabWithSql(sql, title.slice(0, 40));
