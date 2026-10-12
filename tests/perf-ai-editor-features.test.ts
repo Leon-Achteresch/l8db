@@ -534,3 +534,45 @@ test("chat editor edits on a 5000-statement script stay fast and never touch the
   expect(edit.p95Ms).toBeLessThan(80);
   expect(read.p95Ms).toBeLessThan(10);
 });
+
+test("AI editor context label matches the tab bar for 200 tabs with a 5000-statement script", async () => {
+  const { queryTabLabel } = await import("@/lib/query-tab-title");
+  const { tabLabel } = await import("@/lib/tab-navigation");
+  const sql = script(5000);
+  const tabs = Array.from({ length: 200 }, (_, index) => ({
+    kind: "query" as const,
+    id: `q${index}`,
+    title: `Query ${index + 1}`,
+    sql,
+  }));
+  const target = "q199";
+  let label: string | null = null;
+  const select = () => {
+    const tab = tabs.find((entry) => entry.kind === "query" && entry.id === target);
+    label = tab ? queryTabLabel(tab) || "Abfrage" : null;
+  };
+  const timing = measure(select);
+  const edited = measure(() => {
+    const tab = { ...tabs[199] };
+    tabs[199] = tab;
+    label = queryTabLabel(tab);
+  }, 10);
+  const retained = retainedBytes(() => {
+    for (let index = 0; index < 100; index++) select();
+  });
+  await reportScenario("ai-editor-context-label", {
+    tabs: tabs.length,
+    sqlChars: sql.length,
+    label,
+    select: timing,
+    afterEdit: edited,
+    retainedBytesAfter100Calls: retained,
+  });
+  expect(label).toBe("Select orders");
+  expect(label).toBe(tabLabel(tabs[199] as Parameters<typeof tabLabel>[0]));
+  expect(timing.medianMs).toBeLessThan(2);
+  expect(timing.p95Ms).toBeLessThan(5);
+  expect(edited.medianMs).toBeLessThan(60);
+  expect(edited.p95Ms).toBeLessThan(120);
+  expect(retained).toBeLessThan(1_000_000);
+});

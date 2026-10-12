@@ -246,7 +246,12 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
               <span className="text-destructive">{snapshot.error}</span>
             )}
             {snapshot.warning && (
-              <span className="text-amber-700 dark:text-amber-300">{snapshot.warning}</span>
+              <span
+                title={snapshot.warning}
+                className="line-clamp-3 min-w-0 text-amber-700 dark:text-amber-300"
+              >
+                {snapshot.warning}
+              </span>
             )}
             <span className="ml-auto flex items-center gap-2">
               {snapshot.earlier.length > 0 && <span>Runde {snapshot.earlier.length + 1}</span>}

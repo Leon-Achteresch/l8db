@@ -1,5 +1,6 @@
 export type EditResult =
-  | { ok: true; text: string; mode: "blocks" | "full" }
+  | { ok: true; text: string; mode: "blocks" | "full" | "bare" }
+  | { ok: true; text: string; mode: "none" | "prose"; note: string }
   | { ok: false; error: string };
 
 interface EditBlock {
@@ -11,6 +12,57 @@ const SEARCH_MARK = /^\s*<{5,9}\s*SEARCH\s*$/;
 const DIVIDER_MARK = /^\s*={5,9}\s*$/;
 const REPLACE_MARK = /^\s*>{5,9}\s*REPLACE\s*$/;
 const FENCE = /^\s*(`{3,}|~{3,})/;
+const NO_CHANGE =
+  /^[\s*_`>#-]*(?:no[\s_-]?changes?|keine[\s_-]?änderung(?:en)?)(?![\p{L}\p{N}_])[\s*_`]*/iu;
+const NOTE_LIMIT = 400;
+
+function noteText(text: string): string {
+  const note = Array.from(
+    text
+      .slice(0, NOTE_LIMIT * 8)
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+  return note.length > NOTE_LIMIT ? `${note.slice(0, NOTE_LIMIT).join("")}…` : note.join("");
+}
+
+function firstCodeLine(lines: string[]): string {
+  let comment = false;
+  for (const raw of lines) {
+    let line = raw.trim();
+    if (comment) {
+      const end = line.indexOf("*/");
+      if (end < 0) continue;
+      comment = false;
+      line = line.slice(end + 2).trim();
+    }
+    while (line.startsWith("/*")) {
+      const end = line.indexOf("*/", 2);
+      if (end < 0) {
+        comment = true;
+        line = "";
+        break;
+      }
+      line = line.slice(end + 2).trim();
+    }
+    if (!line || line.startsWith("--") || line.startsWith("#") || line.startsWith("//")) continue;
+    return line;
+  }
+  return "";
+}
+
+function looksLikeProse(lines: string[]): boolean {
+  const plain = firstCodeLine(lines)
+    .replace(
+      /(^|[^\p{L}\p{N}_])(?:[NEXBR]|U&)?'(?:[^']|'')*(?:'|$)|"[^"]*(?:"|$)|`[^`]*(?:`|$)/giu,
+      "$1x",
+    )
+    .replace(/\/\*.*?(?:\*\/|$)|(?:--|\/\/|#\s).*$/g, "")
+    .trim();
+  const words = plain.match(/\p{L}{2,}/gu)?.length ?? 0;
+  if (/[\p{L}\p{N})][.!?]$/u.test(plain)) return words >= 2;
+  return /\p{L}:$/u.test(plain) && words >= 3;
+}
 
 export function stripFences(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -168,12 +220,26 @@ export function applyModelEdit(original: string, output: string): EditResult {
   const parsed = parseBlocks(output);
   if (typeof parsed === "string") return { ok: false, error: parsed };
   if (parsed === null) {
+    const lines = output.replace(/\r\n/g, "\n").split("\n");
+    const head = lines.findIndex((line) => line.trim());
+    const marker = head >= 0 ? NO_CHANGE.exec(lines[head]) : null;
+    if (marker) {
+      const rest = lines[head].slice(marker[0].length);
+      const reason =
+        !rest || rest.startsWith(":")
+          ? [rest.slice(1), ...lines.slice(head + 1)]
+          : lines.slice(head);
+      return { ok: true, mode: "none", text: original, note: noteText(reason.join("\n")) };
+    }
+    const fenced = lines.some((line) => FENCE.test(line));
+    if (!fenced && looksLikeProse(lines))
+      return { ok: true, mode: "prose", text: original, note: noteText(output) };
     const full = stripFences(output);
     if (!full.trim()) return { ok: false, error: "Die Antwort enthält keinen Code." };
     const withNewline = base.endsWith("\n") && !full.endsWith("\n") ? `${full}\n` : full;
     return {
       ok: true,
-      mode: "full",
+      mode: fenced ? "full" : "bare",
       text: eol === "\n" ? withNewline : withNewline.replace(/\n/g, eol),
     };
   }
