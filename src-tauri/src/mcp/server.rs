@@ -904,7 +904,6 @@ where
             query_timeout: Some(config.query_timeout),
             connection_timeout: Some(10),
             max_rows: None,
-            cancel_mode: None,
         }),
         matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         future,

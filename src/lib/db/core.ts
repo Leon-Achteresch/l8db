@@ -22,7 +22,6 @@ export interface QueryExecutionOptions {
   queryTimeout?: number;
   maxRows?: number;
   connectionId?: string;
-  cancelMode?: "statement";
 }
 
 const SQL_COMMANDS = new Set([
@@ -34,6 +33,7 @@ const SQL_COMMANDS = new Set([
 ]);
 const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,
+  "preview_dml",
   "test_connection",
   "test_connection_string",
   "list_databases",
@@ -235,7 +235,6 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     connectionTimeout: settings.connectionTimeout,
     ...(options.jobId ? { jobId: options.jobId } : {}),
     ...(options.maxRows ? { maxRows: options.maxRows } : {}),
-    ...(options.cancelMode ? { cancelMode: options.cancelMode } : {}),
   };
   if (SQL_COMMANDS.has(command)) {
     const { operationContext } = await import("@/lib/operation-context");

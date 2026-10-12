@@ -86,13 +86,19 @@ export class FakeRemote {
 
 export class FakeCoordinator {
   active: string | null = null;
+  token: string | null = null;
+  private counter = 0;
   begin(label: string) {
-    if (this.active && this.active !== label) return false;
+    if (this.active) return null;
     this.active = label;
-    return true;
+    this.token = `${label}-${++this.counter}`;
+    return this.token;
   }
-  end(label: string) {
-    if (this.active === label) this.active = null;
+  end(token: string) {
+    if (this.token !== token) return false;
+    this.active = null;
+    this.token = null;
+    return true;
   }
 }
 
@@ -124,9 +130,11 @@ export interface Device {
   collections: LocalCollections;
   base: SyncBase;
   secrets: Map<string, string>;
-  secretBase: Record<string, [string, number]>;
+  secretBase: { fingerprint: string | null; entries: Record<string, [string, number]> };
+  secretEdits: Record<string, number>;
+  keyFingerprint: string;
+  secretBackups: Map<string, Record<string, string | null>>;
   secretMerges: number;
-  lastMode: string | null;
   backups: string[];
   applied: number;
   deps: SyncDeps;
@@ -145,9 +153,11 @@ export function device(
     collections: emptyCollections(),
     base: new Map(),
     secrets: new Map(),
-    secretBase: {},
+    secretBase: { fingerprint: null, entries: {} },
+    secretEdits: {},
+    keyFingerprint: `key-${label}`,
+    secretBackups: new Map(),
     secretMerges: 0,
-    lastMode: null,
     backups: [],
     applied: 0,
     deps: undefined as unknown as SyncDeps,
@@ -168,7 +178,7 @@ export function device(
   state.deps = {
     transport: {
       begin: async () => coordinator.begin(label),
-      end: async () => coordinator.end(label),
+      end: async (token) => coordinator.end(token),
       fetch: (_target, opId) => remote.fetch(opId),
       store: (_target, content, ifMatch, expectAbsent, opId) =>
         remote.store(content, ifMatch, expectAbsent, opId),
@@ -184,34 +194,60 @@ export function device(
         const base: Record<string, [string, number]> = {};
         const agreed: Record<string, [string, number]> = {};
         const updated: string[] = [];
+        const conflicts: string[] = [];
+        const previous: [string, string | null][] = [];
         const values = request.accounts.map((account) => state.secrets.get(account) ?? null);
+        const baseEntries = request.keyFingerprint === state.keyFingerprint ? request.base : {};
+        const writes: [string, string | null][] = [];
         request.accounts.forEach((account, index) => {
           const value = values[index];
-          const known = request.base[account];
+          const known = baseEntries[account];
           const ours = value !== null ? value : known ? "-" : null;
-          const oursAt = known && known[0] === ours ? known[1] : request.now;
+          const unchanged = known !== undefined && known[0] === ours;
+          const editedAt = unchanged ? known[1] : request.editedAt[account];
+          const oursAt = editedAt ?? request.now;
           const entry = request.mode === "upload" ? undefined : remote[account];
           const theirs = entry ? (entry.v ?? "-") : null;
-          const takeRemote =
-            request.mode === "download"
-              ? theirs !== null
-              : request.mode === "upload" ||
-                  ours === theirs ||
-                  theirs === null ||
-                  theirs === known?.[0]
+          const bothChanged = ours !== theirs && ours !== known?.[0] && theirs !== known?.[0];
+          const firstContact =
+            ours !== null &&
+            theirs !== null &&
+            ours !== theirs &&
+            (!known || (bothChanged && editedAt === undefined));
+          let takeRemote: boolean;
+          if (request.mode === "upload") takeRemote = false;
+          else if (request.mode === "download") takeRemote = theirs !== null;
+          else if (firstContact) {
+            const resolution = request.resolutions?.[account];
+            if (!resolution) {
+              conflicts.push(account);
+              if (entry) merged[account] = entry;
+              return;
+            }
+            takeRemote = resolution === "remote";
+          } else
+            takeRemote =
+              ours === theirs || theirs === null || theirs === known?.[0]
                 ? false
-                : ours === null || ours === known?.[0] || !known
+                : ours === null || ours === known?.[0]
                   ? true
                   : (entry?.t ?? 0) > oursAt;
           const chosen =
             takeRemote && entry
               ? entry
-              : { v: value, t: ours === theirs && entry ? entry.t : oursAt };
+              : {
+                  v: value,
+                  t:
+                    ours === theirs && entry
+                      ? entry.t
+                      : firstContact && entry
+                        ? Math.max(oursAt, entry.t + 1)
+                        : oursAt,
+                };
           const state_ = takeRemote ? theirs : ours;
           if (takeRemote && entry && entry.v !== value) {
-            if (entry.v === null) state.secrets.delete(account);
-            else state.secrets.set(account, entry.v);
-            updated.push(account);
+            writes.push([account, entry.v]);
+            previous.push([account, value]);
           }
           if (state_ === null) return;
           if (theirs === state_) agreed[account] = [state_, chosen.t];
@@ -219,11 +255,32 @@ export function device(
           merged[account] = chosen;
           base[account] = [state_, chosen.t];
         });
+        let backup: string | null = null;
+        if (previous.length > 0) {
+          backup = request.backupId ?? `${request.now}-passwoerter`;
+          const existing = state.secretBackups.get(backup) ?? {};
+          for (const [account, value] of previous)
+            if (!(account in existing)) existing[account] = value;
+          state.secretBackups.set(backup, existing);
+        }
+        for (const [account, value] of writes) {
+          if (value === null) state.secrets.delete(account);
+          else state.secrets.set(account, value);
+          updated.push(account);
+        }
         const sealed =
           Object.keys(merged).length && request.mode !== "download"
             ? crypto.seal(JSON.stringify(merged), request.salt)
             : null;
-        return { sealed, base, agreed, updated };
+        return {
+          keyFingerprint: state.keyFingerprint,
+          sealed,
+          base,
+          agreed,
+          updated,
+          conflicts,
+          backup,
+        };
       },
       backup: async (content, reason) => {
         state.backups.push(content);
@@ -232,14 +289,17 @@ export function device(
           createdAt: 0,
           reason,
           size: content.length,
+          hasData: true,
+          hasSecrets: false,
         };
       },
     },
     local,
-    readSecretBase: () => ({ ...state.secretBase }),
+    readSecretBase: () => ({ ...state.secretBase, entries: { ...state.secretBase.entries } }),
     writeSecretBase: (base) => {
-      state.secretBase = { ...base };
+      state.secretBase = { ...base, entries: { ...base.entries } };
     },
+    readSecretEdits: () => ({ ...state.secretEdits }),
     readBase: () => new Map(state.base),
     writeBase: (base) => {
       state.base = new Map(base);

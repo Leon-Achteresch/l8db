@@ -90,7 +90,6 @@ pub struct Capabilities {
     pub dml_preview: bool,
     pub multi_target_query: bool,
     pub multi_target_schemas: bool,
-    pub editor_session_preview: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -160,7 +159,6 @@ const NONE: Capabilities = Capabilities {
     dml_preview: false,
     multi_target_query: false,
     multi_target_schemas: false,
-    editor_session_preview: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -215,7 +213,6 @@ impl DatabaseKind {
         match self {
             DatabaseKind::Postgres => Capabilities {
                 multi_target_schemas: true,
-                editor_session_preview: true,
                 health_advisor: true,
                 backup: true,
                 query_stats: true,
@@ -1078,15 +1075,6 @@ mod tests {
         assert!(!DatabaseKind::Mysql.capabilities().multi_target_schemas);
         assert!(!DatabaseKind::Redis.capabilities().multi_target_query);
         assert!(!DatabaseKind::Mongodb.capabilities().multi_target_query);
-        for kind in DatabaseKind::ALL {
-            let caps = kind.capabilities();
-            assert_eq!(
-                caps.editor_session_preview,
-                kind == DatabaseKind::Postgres,
-                "{kind:?}"
-            );
-            assert!(!caps.editor_session_preview || caps.dml_preview, "{kind:?}");
-        }
     }
 
     #[test]

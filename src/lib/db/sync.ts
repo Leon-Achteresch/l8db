@@ -41,7 +41,11 @@ export interface SyncBackupInfo {
   createdAt: number;
   reason: string;
   size: number;
+  hasData: boolean;
+  hasSecrets: boolean;
 }
+
+export type SecretResolution = "local" | "remote";
 
 export const SYNC_WEBDAV_ACCOUNT = "l8db-sync:webdav";
 export const SYNC_GITHUB_ACCOUNT = "l8db-sync:github";
@@ -86,9 +90,16 @@ export interface SecretMergeRequest {
   mode: "sync" | "upload" | "download";
   now: number;
   salt: string | null;
+  resolutions: Record<string, SecretResolution> | null;
+  backupId: string | null;
+  editedAt: Record<string, number>;
+  keyFingerprint: string | null;
 }
 
 export interface SyncSecretMerge {
+  keyFingerprint: string;
+  conflicts: string[];
+  backup: string | null;
   sealed: SyncSealed | null;
   base: SyncSecretBase;
   agreed: SyncSecretBase;
@@ -107,12 +118,22 @@ export function syncReleaseLeader(): Promise<void> {
   return invoke<void>("sync_release_leader");
 }
 
-export function syncBegin(): Promise<boolean> {
-  return invoke<boolean>("sync_begin");
+export function syncBegin(): Promise<string | null> {
+  return invoke<string | null>("sync_begin");
 }
 
-export function syncEnd(): Promise<void> {
-  return invoke<void>("sync_end");
+export function syncEnd(token: string): Promise<boolean> {
+  return invoke<boolean>("sync_end", { token });
+}
+
+export interface SyncSecretRestore {
+  restored: string[];
+  failed: string[];
+  backup: string | null;
+}
+
+export function syncBackupRestoreSecrets(id: string): Promise<SyncSecretRestore> {
+  return invoke<SyncSecretRestore>("sync_backup_restore_secrets", { id });
 }
 
 export function syncBackupSave(content: string, reason: string): Promise<SyncBackupInfo> {

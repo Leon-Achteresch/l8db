@@ -254,31 +254,76 @@ pub async fn sync_decrypt(envelope: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn sync_merge_secrets(
+#[allow(clippy::too_many_arguments)]
+pub async fn sync_merge_secrets<R: Runtime>(
+    app: AppHandle<R>,
     envelope: Option<String>,
     accounts: Vec<String>,
     base: std::collections::BTreeMap<String, secrets::BaseEntry>,
     mode: secrets::Mode,
     now: u64,
     salt: Option<String>,
+    resolutions: Option<std::collections::BTreeMap<String, secrets::Resolution>>,
+    backup_id: Option<String>,
+    edited_at: Option<std::collections::BTreeMap<String, u64>>,
+    key_fingerprint: Option<String>,
 ) -> Result<secrets::SecretMerge, String> {
     let passphrase = Zeroizing::new(secret(PASSPHRASE_ACCOUNT).await?);
     if passphrase.is_empty() {
         return Err("Keine Sync-Passphrase hinterlegt.".into());
     }
+    let dir = backup_dir(&app)?;
     tokio::task::spawn_blocking(move || {
-        secrets::run(
+        let result = secrets::run(
             &passphrase,
-            envelope.as_deref(),
-            accounts,
-            base,
-            mode,
-            now,
-            salt.as_deref(),
-        )
+            secrets::Request {
+                envelope: envelope.as_deref(),
+                accounts,
+                base,
+                mode,
+                now,
+                salt: salt.as_deref(),
+                resolutions: resolutions.unwrap_or_default(),
+                edited_at: edited_at.unwrap_or_default(),
+                key_fingerprint,
+                backup_dir: Some(&dir),
+                backup_id,
+            },
+        )?;
+        if result.backup.is_some() {
+            prune_backups(&dir)?;
+        }
+        Ok(result)
     })
     .await
     .map_err(|e| format!("Secrets konnten nicht synchronisiert werden: {e}"))?
+}
+
+#[tauri::command]
+pub async fn sync_backup_restore_secrets<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+) -> Result<secrets::RestoreResult, String> {
+    let passphrase = Zeroizing::new(secret(PASSPHRASE_ACCOUNT).await?);
+    if passphrase.is_empty() {
+        return Err(
+            "Zum Wiederherstellen der Passwörter wird die Sync-Passphrase benötigt.".into(),
+        );
+    }
+    let dir = backup_dir(&app)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    tokio::task::spawn_blocking(move || {
+        let result = secrets::restore_backup(&passphrase, &dir, &id, now)?;
+        if result.backup.is_some() {
+            prune_backups(&dir)?;
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -294,15 +339,15 @@ pub fn sync_release_leader<R: Runtime>(window: WebviewWindow<R>) {
 }
 
 #[tauri::command]
-pub fn sync_begin<R: Runtime>(app: AppHandle<R>, window: WebviewWindow<R>) -> bool {
+pub fn sync_begin<R: Runtime>(app: AppHandle<R>, window: WebviewWindow<R>) -> Option<String> {
     coordinator::begin(window.label(), |label| {
         app.get_webview_window(label).is_some()
     })
 }
 
 #[tauri::command]
-pub fn sync_end<R: Runtime>(window: WebviewWindow<R>) {
-    coordinator::end(window.label());
+pub fn sync_end(token: String) -> bool {
+    coordinator::end(&token)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -312,6 +357,8 @@ pub struct BackupInfo {
     pub created_at: u64,
     pub reason: String,
     pub size: u64,
+    pub has_data: bool,
+    pub has_secrets: bool,
 }
 
 fn backup_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -336,25 +383,52 @@ fn list_backups_in(dir: &std::path::Path) -> Result<Vec<BackupInfo>, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(e.to_string()),
     };
-    let mut backups: Vec<BackupInfo> = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            let id = name.strip_suffix(".json")?.to_string();
-            if !valid_backup_id(&id) {
-                return None;
-            }
-            let (created, reason) = id.split_once('-')?;
-            Some(BackupInfo {
-                created_at: created.parse().ok()?,
-                reason: reason.to_string(),
-                size: entry.metadata().ok()?.len(),
-                id,
-            })
-        })
-        .collect();
+    let mut found: std::collections::BTreeMap<String, BackupInfo> = Default::default();
+    for entry in entries.filter_map(Result::ok) {
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let (id, data) = match (name.strip_suffix(".json"), name.strip_suffix(".secrets")) {
+            (Some(id), _) => (id.to_string(), true),
+            (_, Some(id)) => (id.to_string(), false),
+            _ => continue,
+        };
+        if !valid_backup_id(&id) {
+            continue;
+        }
+        let Some((created, reason)) = id.split_once('-') else {
+            continue;
+        };
+        let Ok(created_at) = created.parse() else {
+            continue;
+        };
+        let size = entry.metadata().map(|meta| meta.len()).unwrap_or(0);
+        let info = found.entry(id.clone()).or_insert_with(|| BackupInfo {
+            id: id.clone(),
+            created_at,
+            reason: reason.to_string(),
+            size: 0,
+            has_data: false,
+            has_secrets: false,
+        });
+        info.size += size;
+        if data {
+            info.has_data = true;
+        } else {
+            info.has_secrets = true;
+        }
+    }
+    let mut backups: Vec<BackupInfo> = found.into_values().collect();
     backups.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
     Ok(backups)
+}
+
+fn prune_backups(dir: &std::path::Path) -> Result<(), String> {
+    for old in list_backups_in(dir)?.into_iter().skip(BACKUP_LIMIT) {
+        let _ = std::fs::remove_file(dir.join(format!("{}.json", old.id)));
+        let _ = std::fs::remove_file(dir.join(format!("{}.secrets", old.id)));
+    }
+    Ok(())
 }
 
 fn save_backup_in(
@@ -391,14 +465,14 @@ fn save_backup_in(
         .open(&path)
         .and_then(|mut file| file.write_all(content.as_bytes()))
         .map_err(|e| format!("Sicherung fehlgeschlagen: {e}"))?;
-    for old in list_backups_in(dir)?.into_iter().skip(BACKUP_LIMIT) {
-        let _ = std::fs::remove_file(dir.join(format!("{}.json", old.id)));
-    }
+    prune_backups(dir)?;
     Ok(BackupInfo {
         id,
         created_at: created,
         reason,
         size: content.len() as u64,
+        has_data: true,
+        has_secrets: false,
     })
 }
 
@@ -472,6 +546,11 @@ mod tests {
             .windows(2)
             .all(|pair| pair[0].created_at >= pair[1].created_at));
         assert!(!valid_backup_id("../secret"));
+        std::fs::write(dir.path().join("99999999999999-passwoerter.secrets"), "x").unwrap();
+        let mixed = list_backups_in(dir.path()).unwrap();
+        assert!(mixed[0].has_secrets && !mixed[0].has_data);
+        prune_backups(dir.path()).unwrap();
+        assert_eq!(list_backups_in(dir.path()).unwrap().len(), BACKUP_LIMIT);
         assert!(valid_backup_id(&backups[0].id));
     }
 

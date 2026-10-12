@@ -20,6 +20,7 @@ export interface SyncConfig {
   gistId: string;
   includeHistory: boolean;
   includeSecrets: boolean;
+  purgeRemoteSecrets: boolean;
   encryptAll: boolean;
   autoSync: boolean;
   intervalMinutes: number;
@@ -39,7 +40,7 @@ export interface SyncState extends SyncConfig {
   lastVersion: string | null;
   lastContentHash: string | null;
   lastSalt: string | null;
-  lastMode: string | null;
+  lastRemoteEncrypted: boolean | null;
   configure: (patch: Partial<Omit<SyncConfig, TargetField>>) => void;
   commitTarget: (patch: Partial<Pick<SyncConfig, TargetField>>) => void;
   report: (
@@ -53,7 +54,8 @@ export interface SyncState extends SyncConfig {
         | "lastVersion"
         | "lastContentHash"
         | "lastSalt"
-        | "lastMode"
+        | "lastRemoteEncrypted"
+        | "purgeRemoteSecrets"
         | "gistId"
       >
     >,
@@ -75,6 +77,7 @@ export const DEFAULT_SYNC_CONFIG: SyncConfig = {
   gistId: "",
   includeHistory: false,
   includeSecrets: false,
+  purgeRemoteSecrets: false,
   encryptAll: false,
   autoSync: false,
   intervalMinutes: 30,
@@ -123,7 +126,7 @@ const REMOTE_RESET = {
   lastVersion: null,
   lastContentHash: null,
   lastSalt: null,
-  lastMode: null,
+  lastRemoteEncrypted: null,
 };
 
 export const useSyncStore = create<SyncState>()(
@@ -141,15 +144,13 @@ export const useSyncStore = create<SyncState>()(
       lastVersion: null,
       lastContentHash: null,
       lastSalt: null,
-      lastMode: null,
+      lastRemoteEncrypted: null,
       configure: (patch) =>
-        set((state) => {
+        set(() => {
           const next = { ...patch };
           if (next.intervalMinutes !== undefined)
             next.intervalMinutes = clampInterval(next.intervalMinutes);
-          if (next.encryptAll && !(next.includeSecrets ?? state.includeSecrets))
-            next.encryptAll = false;
-          if (next.includeSecrets === false) next.encryptAll = false;
+          if (next.includeSecrets === true) next.purgeRemoteSecrets = false;
           return next;
         }),
       commitTarget: (patch) =>
@@ -175,6 +176,7 @@ export const useSyncStore = create<SyncState>()(
         gistId: state.gistId,
         includeHistory: state.includeHistory,
         includeSecrets: state.includeSecrets,
+        purgeRemoteSecrets: state.purgeRemoteSecrets,
         encryptAll: state.encryptAll,
         autoSync: state.autoSync,
         intervalMinutes: state.intervalMinutes,
@@ -188,7 +190,7 @@ export const useSyncStore = create<SyncState>()(
         lastVersion: state.lastVersion,
         lastContentHash: state.lastContentHash,
         lastSalt: state.lastSalt,
-        lastMode: state.lastMode,
+        lastRemoteEncrypted: state.lastRemoteEncrypted,
       }),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<SyncState>;
@@ -239,21 +241,34 @@ export function clearSyncBase(): void {
   storage()?.removeItem(SYNC_SECRET_BASE_KEY);
 }
 
-export function readSecretBase(): SyncSecretBase {
+export interface StoredSecretBase {
+  fingerprint: string | null;
+  entries: SyncSecretBase;
+}
+
+export function readSecretBase(): StoredSecretBase {
   try {
-    const parsed = JSON.parse(storage()?.getItem(SYNC_SECRET_BASE_KEY) ?? "{}") as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        ([, value]) =>
-          Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number",
-      ),
-    ) as SyncSecretBase;
+    const parsed = JSON.parse(storage()?.getItem(SYNC_SECRET_BASE_KEY) ?? "{}") as {
+      v?: unknown;
+      fingerprint?: unknown;
+      entries?: unknown;
+    };
+    if (parsed?.v !== 2 || !parsed.entries || typeof parsed.entries !== "object")
+      return { fingerprint: null, entries: {} };
+    return {
+      fingerprint: typeof parsed.fingerprint === "string" ? parsed.fingerprint : null,
+      entries: Object.fromEntries(
+        Object.entries(parsed.entries as Record<string, unknown>).filter(
+          ([, value]) =>
+            Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number",
+        ),
+      ) as SyncSecretBase,
+    };
   } catch {
-    return {};
+    return { fingerprint: null, entries: {} };
   }
 }
 
-export function writeSecretBase(base: SyncSecretBase): void {
-  storage()?.setItem(SYNC_SECRET_BASE_KEY, JSON.stringify(base));
+export function writeSecretBase(base: StoredSecretBase): void {
+  storage()?.setItem(SYNC_SECRET_BASE_KEY, JSON.stringify({ v: 2, ...base }));
 }

@@ -86,7 +86,6 @@ export interface Capabilities {
   dml_preview: boolean;
   multi_target_query: boolean;
   multi_target_schemas: boolean;
-  editor_session_preview: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

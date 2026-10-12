@@ -1,5 +1,7 @@
 import {
+  type SyncBackupInfo,
   syncBackupLoad,
+  syncBackupRestoreSecrets,
   syncBackupSave,
   syncBegin,
   syncCancel,
@@ -10,6 +12,7 @@ import {
   syncMergeSecrets,
   syncStore,
 } from "@/lib/db/sync";
+import { readSecretEdits } from "@/lib/secret-edits";
 import {
   runSync,
   type SyncDecider,
@@ -62,6 +65,7 @@ export const syncDeps: SyncDeps = {
   writeBase: writeSyncBase,
   readSecretBase: readSecretBase,
   writeSecretBase: writeSecretBase,
+  readSecretEdits: readSecretEdits,
   now: () => Date.now(),
 };
 
@@ -72,6 +76,10 @@ export function syncInProgress(): boolean {
 }
 
 function describe(outcome: SyncOutcome, mode: SyncMode): string {
+  if (outcome.downgradeBlocked)
+    return "Konflikt: Server verschlüsselt, dieses Gerät nicht. Bitte „Gesamte Sync-Datei verschlüsseln“ aktivieren und die Sync-Passphrase hinterlegen.";
+  if (outcome.status === "conflict" && outcome.secretConflicts > 0)
+    return `${outcome.secretConflicts} Passwort-Konflikt(e) offen – bitte manuell synchronisieren und entscheiden.`;
   if (outcome.status === "conflict")
     return `${outcome.conflicts} Konflikt(e) – bitte manuell synchronisieren.`;
   if (outcome.status === "cancelled") return "Abgebrochen.";
@@ -94,6 +102,7 @@ export async function performSync(
   decider: SyncDecider,
   signal?: AbortSignal,
   deps: SyncDeps = syncDeps,
+  allowDowngrade = false,
 ): Promise<SyncOutcome> {
   if (running) throw new Error("Es läuft bereits eine Synchronisierung.");
   const state = useSyncStore.getState();
@@ -107,15 +116,17 @@ export async function performSync(
       includeHistory: state.includeHistory,
       includeSecrets: state.includeSecrets,
       encryptAll: state.encryptAll,
+      purgeRemoteSecrets: state.purgeRemoteSecrets,
     },
-    memory: { deviceId: state.deviceId, lastSalt: state.lastSalt, lastMode: state.lastMode },
+    allowDowngrade,
+    memory: { deviceId: state.deviceId, lastSalt: state.lastSalt },
     decider,
     signal,
   });
   running = task;
   try {
     const outcome = await task;
-    const finished = outcome.status === "ok" || outcome.status === "skipped";
+    const finished = outcome.committed;
     useSyncStore.getState().report({
       lastStatus: outcome.status === "cancelled" ? "idle" : outcome.status,
       lastMessage: describe(outcome, mode),
@@ -126,7 +137,10 @@ export async function performSync(
             lastVersion: outcome.version,
             lastContentHash: outcome.contentHash,
             lastSalt: outcome.salt,
-            lastMode: outcome.mode,
+            lastRemoteEncrypted: outcome.remoteEncrypted,
+            ...(state.purgeRemoteSecrets && !outcome.remoteHasSecrets
+              ? { purgeRemoteSecrets: false }
+              : {}),
           }
         : {}),
       ...(outcome.gistId && outcome.gistId !== state.gistId ? { gistId: outcome.gistId } : {}),
@@ -146,6 +160,7 @@ export async function performSync(
 }
 
 export const autoDecider: SyncDecider = {
+  automatic: true,
   conflicts: async () => null,
   preview: async () => true,
 };
@@ -159,26 +174,58 @@ export function restoreScope(document: SyncDocument, includeHistory: boolean): S
   );
 }
 
-export async function restoreBackup(id: string): Promise<ChangeSummary> {
-  const document = parseDocument(await syncBackupLoad(id));
-  const include = restoreScope(document, useSyncStore.getState().includeHistory);
-  const snapshot = documentSnapshot(document);
-  const current = buildSnapshot(collectLocal(include.has("history")), new Map(), Date.now());
-  const summary = diffSnapshots(current, snapshot);
-  for (const collection of SYNC_COLLECTIONS)
-    if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
-  await syncBackupSave(
-    JSON.stringify(
-      toDocument(current, {
-        deviceId: useSyncStore.getState().deviceId,
-        updatedAt: Date.now(),
-        contentHash: "",
-        secrets: null,
-        include,
-      }),
-    ),
-    "restore",
-  );
-  applyLocal(snapshotCollections(snapshot), include);
-  return summary;
+export async function restoreBackup(
+  backup: Pick<SyncBackupInfo, "id" | "hasData" | "hasSecrets">,
+): Promise<{ summary: ChangeSummary | null; secrets: number }> {
+  if (running)
+    throw new Error("Eine Synchronisierung läuft gerade. Bitte warten Sie, bis sie beendet ist.");
+  const token = await syncBegin();
+  if (!token)
+    throw new Error(
+      "Eine Synchronisierung läuft gerade in einem anderen Fenster. Bitte warten Sie, bis sie beendet ist.",
+    );
+  try {
+    return await restoreUnderLease(backup);
+  } finally {
+    await syncEnd(token).catch(() => false);
+  }
+}
+
+async function restoreUnderLease(
+  backup: Pick<SyncBackupInfo, "id" | "hasData" | "hasSecrets">,
+): Promise<{ summary: ChangeSummary | null; secrets: number }> {
+  let secrets = 0;
+  if (backup.hasSecrets) {
+    const result = await syncBackupRestoreSecrets(backup.id);
+    forgetCachedSecrets([...result.restored, ...result.failed]);
+    if (result.failed.length > 0)
+      throw new Error(
+        `${result.failed.length} Passwort(e) konnten nicht wiederhergestellt werden. Die Daten wurden nicht angefasst.`,
+      );
+    secrets = result.restored.length;
+  }
+  let summary: ChangeSummary | null = null;
+  if (backup.hasData) {
+    const document = parseDocument(await syncBackupLoad(backup.id));
+    const include = restoreScope(document, useSyncStore.getState().includeHistory);
+    const snapshot = documentSnapshot(document);
+    const current = buildSnapshot(collectLocal(include.has("history")), new Map(), Date.now());
+    summary = diffSnapshots(current, snapshot);
+    for (const collection of SYNC_COLLECTIONS)
+      if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
+    await syncBackupSave(
+      JSON.stringify(
+        toDocument(current, {
+          deviceId: useSyncStore.getState().deviceId,
+          updatedAt: Date.now(),
+          contentHash: "",
+          secrets: null,
+          include,
+        }),
+      ),
+      "restore",
+    );
+    applyLocal(snapshotCollections(snapshot), include);
+  }
+  return { summary, secrets };
 }
