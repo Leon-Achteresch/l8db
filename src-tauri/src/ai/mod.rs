@@ -6,6 +6,7 @@ mod cli;
 pub mod complete;
 mod context;
 mod files;
+mod harness;
 mod integrations;
 pub mod knowledge;
 mod rpc;

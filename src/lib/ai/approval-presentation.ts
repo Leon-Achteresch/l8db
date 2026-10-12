@@ -32,6 +32,7 @@ export function approvalSummary(
       record.connectionName ?? record.connection ?? record.database ?? record.connectionId,
     );
     add("SQL", record.sql ?? record.query);
+    add("Auswirkung", record.impact);
     add("Befehl", record.command ?? record.cmd);
     add("Arbeitsverzeichnis", record.cwd);
     add("Datei", record.path ?? record.file_path ?? record.filePath);

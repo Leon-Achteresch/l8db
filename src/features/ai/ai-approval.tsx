@@ -1,10 +1,12 @@
 import { ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { type ApprovalAnswers, ApprovalCard } from "@/components/primitives/approval-card";
 import { RecommendationCard } from "@/components/primitives/recommendation-card";
 import { Button } from "@/components/ui/button";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
 import { type AiEvent, aiApprove, aiRespond } from "@/lib/db/ai";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AiSchemaField } from "./ai-schema-field";
 
 interface Props {
@@ -18,6 +20,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
   const [advanced, setAdvanced] = useState("");
   const [pending, setPending] = useState(false);
   const region = useRef<HTMLFieldSetElement>(null);
+  const impact = useNewFeatureVisibility<HTMLDivElement>("ai.chat.dry-run");
   const data = event.data;
   const id = String(data.id);
   useEffect(() => {
@@ -157,8 +160,14 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
           {summary.length > 0 && (
             <dl className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
               {summary.map((entry) => (
-                <div key={`${entry.label}-${entry.value}`}>
-                  <dt className="text-[10px] text-muted-foreground">{entry.label}</dt>
+                <div
+                  key={`${entry.label}-${entry.value}`}
+                  ref={entry.label === "Auswirkung" ? impact.ref : undefined}
+                >
+                  <dt className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    {entry.label}
+                    {entry.label === "Auswirkung" && impact.isNew && <NewBadge />}
+                  </dt>
                   <dd className="mt-0.5 whitespace-pre-wrap break-words text-foreground/90">
                     {entry.value}
                   </dd>

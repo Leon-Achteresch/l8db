@@ -241,6 +241,17 @@ test("approval summary exposes native arguments, changed files and permissions b
       _meta: { params: { name: "list_tables", connectionName: "Demo" } },
     }),
   ).toContainEqual({ label: "Verbindung", value: "Demo" });
+  expect(
+    approvalSummary({
+      connection: "Shop",
+      sql: "UPDATE orders SET status = 'paid' WHERE id = 1",
+      impact: "Probelauf: 1 Zeile betroffen, zurückgerollt",
+    }),
+  ).toEqual([
+    { label: "Verbindung", value: "Shop" },
+    { label: "SQL", value: "UPDATE orders SET status = 'paid' WHERE id = 1" },
+    { label: "Auswirkung", value: "Probelauf: 1 Zeile betroffen, zurückgerollt" },
+  ]);
 });
 
 test("AI storage quota failures preserve saved history and recover after explicit deletion", async () => {
