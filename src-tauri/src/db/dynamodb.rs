@@ -393,6 +393,10 @@ pub fn parse_table_meta(table: &Value) -> TableMeta {
     }
 }
 
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    aws::endpoint(value, "dynamodb", None, &["profile", "endpoint"])
+}
+
 impl DynamoAdapter {
     pub fn new(connection_string: &str, key: String) -> Result<Self, String> {
         Ok(Self {

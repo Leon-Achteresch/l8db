@@ -366,6 +366,120 @@ fn kill_statement(scope: &str, pid: i32) -> Result<String, String> {
     Ok(format!("KILL {scope} {pid}"))
 }
 
+pub struct MysqlUrl {
+    pub url: url::Url,
+    pub ssl: SslMode,
+    pub root_cert: Option<String>,
+    pub identity: Option<String>,
+    pub identity_password: Option<String>,
+}
+
+pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
+    let mut url = url::Url::parse(value.trim()).map_err(|_| "Ungültige MySQL-URL".to_string())?;
+    let token_auth = super::cloud_auth::has_marker(&url);
+    if !matches!(url.scheme(), "mysql" | "mariadb") {
+        return Err("Eine mysql:// URL ist erforderlich".to_string());
+    }
+    let mut ssl = SslMode::Prefer;
+    let mut root_cert = None;
+    let mut identity = None;
+    let mut identity_password = None;
+    let pairs: Vec<(String, String)> = url
+        .query_pairs()
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+    let mut kept = Vec::new();
+    for (k, v) in pairs {
+        let flag = matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
+        match k.as_str() {
+            "sslmode" => {
+                ssl = serde_json::from_value(serde_json::Value::String(v))
+                    .map_err(|_| "Ungültiger SSL-Modus".to_string())?;
+            }
+            "ssl-mode" | "ssl_mode" | "sslMode" => {
+                ssl = match v.to_lowercase().as_str() {
+                    "disabled" => SslMode::Disable,
+                    "preferred" => SslMode::Prefer,
+                    "required" => SslMode::Require,
+                    "verify_ca" => SslMode::VerifyCa,
+                    "verify_identity" => SslMode::VerifyFull,
+                    _ => return Err("Ungültiger SSL-Modus".to_string()),
+                };
+            }
+            "useSSL" | "useSsl" | "ssl" if !flag => ssl = SslMode::Disable,
+            "requireSSL" | "require_ssl" if flag => ssl = ssl.max(SslMode::Require),
+            "verifyServerCertificate" | "verify_ca" if flag => ssl = ssl.max(SslMode::VerifyCa),
+            "verify_identity" if flag => ssl = SslMode::VerifyFull,
+            "sslrootcert" | "ssl-ca" | "ssl_ca" | "sslca" => {
+                root_cert = Some(v).filter(|v| !v.is_empty())
+            }
+            "sslcert" | "ssl-cert" | "ssl_cert" | "clientCertificateKeyStoreUrl" => {
+                identity = Some(v.trim_start_matches("file:").to_string()).filter(|v| !v.is_empty())
+            }
+            "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
+                identity_password = Some(v)
+            }
+            "abs_conn_ttl"
+            | "abs_conn_ttl_jitter"
+            | "client_found_rows"
+            | "compression"
+            | "enable_cleartext_plugin"
+            | "max_allowed_packet"
+            | "prefer_socket"
+            | "reset_connection"
+            | "secure_auth"
+            | "socket"
+            | "stmt_cache_size"
+            | "tcp_keepalive"
+            | "tcp_nodelay"
+            | "wait_timeout"
+            | "pool_min"
+            | "pool_max"
+            | "inactive_connection_ttl"
+            | "ttl_check_interval"
+            | "conn_ttl" => kept.push((k, v)),
+            _ => {}
+        }
+    }
+    if token_auth {
+        ssl = ssl.max(SslMode::Require);
+    }
+    url.set_scheme("mysql").ok();
+    url.query_pairs_mut()
+        .clear()
+        .extend_pairs(kept.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    if url.query().is_some_and(str::is_empty) {
+        url.set_query(None);
+    }
+    Ok(MysqlUrl {
+        url,
+        ssl,
+        root_cert,
+        identity,
+        identity_password,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_mysql_url(value)?;
+    let opts =
+        Opts::from_url(parsed.url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
+    Ok(super::endpoint::EndpointIdentity {
+        host: opts
+            .ip_or_hostname()
+            .trim_matches(['[', ']'])
+            .to_ascii_lowercase(),
+        port: Some(opts.tcp_port()),
+        transport: String::new(),
+        tls: parsed.ssl >= SslMode::Require,
+        verify: parsed.ssl >= SslMode::VerifyCa,
+        database: opts.db_name().unwrap_or_default().to_string(),
+        schema: String::new(),
+        user: opts.user().unwrap_or_default().to_string(),
+        params: Vec::new(),
+    })
+}
+
 impl MysqlAdapter {
     pub fn new(
         connection_string: &str,
@@ -374,83 +488,13 @@ impl MysqlAdapter {
         key: String,
     ) -> Result<Self, String> {
         let resolved = super::cloud_auth::resolve(connection_string.trim())?;
-        let mut url = url::Url::parse(&resolved).map_err(|_| "Ungültige MySQL-URL".to_string())?;
-        let token_auth = super::cloud_auth::has_marker(&url);
-        if !matches!(url.scheme(), "mysql" | "mariadb") {
-            return Err("Eine mysql:// URL ist erforderlich".to_string());
-        }
-        let mut ssl = SslMode::Prefer;
-        let mut root_cert = None;
-        let mut identity = None;
-        let mut identity_password = None;
-        let pairs: Vec<(String, String)> = url
-            .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect();
-        let mut kept = Vec::new();
-        for (k, v) in pairs {
-            let flag = matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
-            match k.as_str() {
-                "sslmode" => {
-                    ssl = serde_json::from_value(serde_json::Value::String(v))
-                        .map_err(|_| "Ungültiger SSL-Modus".to_string())?;
-                }
-                "ssl-mode" | "ssl_mode" | "sslMode" => {
-                    ssl = match v.to_lowercase().as_str() {
-                        "disabled" => SslMode::Disable,
-                        "preferred" => SslMode::Prefer,
-                        "required" => SslMode::Require,
-                        "verify_ca" => SslMode::VerifyCa,
-                        "verify_identity" => SslMode::VerifyFull,
-                        _ => return Err("Ungültiger SSL-Modus".to_string()),
-                    };
-                }
-                "useSSL" | "useSsl" | "ssl" if !flag => ssl = SslMode::Disable,
-                "requireSSL" | "require_ssl" if flag => ssl = ssl.max(SslMode::Require),
-                "verifyServerCertificate" | "verify_ca" if flag => ssl = ssl.max(SslMode::VerifyCa),
-                "verify_identity" if flag => ssl = SslMode::VerifyFull,
-                "sslrootcert" | "ssl-ca" | "ssl_ca" | "sslca" => {
-                    root_cert = Some(v).filter(|v| !v.is_empty())
-                }
-                "sslcert" | "ssl-cert" | "ssl_cert" | "clientCertificateKeyStoreUrl" => {
-                    identity =
-                        Some(v.trim_start_matches("file:").to_string()).filter(|v| !v.is_empty())
-                }
-                "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
-                    identity_password = Some(v)
-                }
-                "abs_conn_ttl"
-                | "abs_conn_ttl_jitter"
-                | "client_found_rows"
-                | "compression"
-                | "enable_cleartext_plugin"
-                | "max_allowed_packet"
-                | "prefer_socket"
-                | "reset_connection"
-                | "secure_auth"
-                | "socket"
-                | "stmt_cache_size"
-                | "tcp_keepalive"
-                | "tcp_nodelay"
-                | "wait_timeout"
-                | "pool_min"
-                | "pool_max"
-                | "inactive_connection_ttl"
-                | "ttl_check_interval"
-                | "conn_ttl" => kept.push((k, v)),
-                _ => {}
-            }
-        }
-        if token_auth {
-            ssl = ssl.max(SslMode::Require);
-        }
-        url.set_scheme("mysql").ok();
-        url.query_pairs_mut()
-            .clear()
-            .extend_pairs(kept.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-        if url.query().is_some_and(str::is_empty) {
-            url.set_query(None);
-        }
+        let MysqlUrl {
+            url,
+            ssl,
+            root_cert,
+            identity,
+            identity_password,
+        } = parse_mysql_url(&resolved)?;
         let opts = Opts::from_url(url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
         let mut builder = OptsBuilder::from_opts(opts)
             .tcp_nodelay(true)

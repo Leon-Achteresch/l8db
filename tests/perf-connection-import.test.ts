@@ -12,6 +12,7 @@ import {
   resolveExternalImport,
 } from "../src/lib/connection-import";
 import type { SavedConnection } from "../src/lib/connections";
+import type { EndpointRequest, EndpointResult } from "../src/lib/db";
 import { measureScenario, reportScenario } from "./fixtures/usage-performance";
 
 const CONNECTIONS = 2_000;
@@ -153,21 +154,64 @@ const existing: SavedConnection[] = Array.from({ length: EXISTING }, (_, index) 
   sslMode: "prefer",
 }));
 
+const DEFAULT_PORTS: Record<string, number> = {
+  postgres: 5432,
+  mysql: 3306,
+  mssql: 1433,
+  clickhouse: 8123,
+};
+
+const ipc = { calls: 0, requests: 0 };
+
+async function syntheticEndpoints(requests: EndpointRequest[]): Promise<EndpointResult[]> {
+  ipc.calls++;
+  ipc.requests = requests.length;
+  return requests.map(({ kind, url }) => {
+    const parsed = new URL(url);
+    const mode = parsed.searchParams.get("sslmode") ?? "";
+    const tls = ["require", "verify-ca", "verify-full"].includes(mode);
+    return {
+      identity: {
+        host: parsed.hostname,
+        port: parsed.port ? Number(parsed.port) : (DEFAULT_PORTS[kind] ?? null),
+        transport: "",
+        tls,
+        verify: mode.startsWith("verify"),
+        database: decodeURIComponent(parsed.pathname.slice(1)),
+        schema: "",
+        user: decodeURIComponent(parsed.username),
+        params: [],
+      },
+      error: null,
+    };
+  });
+}
+
+function build(connections: Parameters<typeof buildExternalCandidates>[0]) {
+  return buildExternalCandidates(connections, existing, syntheticEndpoints);
+}
+
 function heapUsed() {
   Bun.gc(true);
   return heapStats().heapSize;
 }
 
 async function scenario(name: string, parse: () => Promise<ExternalParseResult>) {
-  let candidates = buildExternalCandidates((await parse()).connections, existing);
+  ipc.calls = 0;
+  let candidates = await build((await parse()).connections);
+  expect(ipc.calls).toBe(1);
+  expect(ipc.requests).toBe(
+    EXISTING + candidates.filter((candidate) => candidate.profile || candidate.endpoint).length,
+  );
+  const batch = ipc.requests;
   const timing = await measureScenario(async () => {
-    candidates = buildExternalCandidates((await parse()).connections, existing);
+    candidates = await build((await parse()).connections);
   }, RUNS);
   const retainedRounds: number[] = [];
   for (let round = 0; round < 3; round++) {
     candidates = [];
     const before = heapUsed();
-    candidates = buildExternalCandidates((await parse()).connections, existing);
+    candidates = await build((await parse()).connections);
     retainedRounds.push(heapUsed() - before);
   }
   const retainedBytes = Math.max(0, Math.min(...retainedRounds));
@@ -177,6 +221,8 @@ async function scenario(name: string, parse: () => Promise<ExternalParseResult>)
     connections: CONNECTIONS,
     existing: EXISTING,
     ...timing,
+    ipcCallsPerPreview: 1,
+    endpointRequests: batch,
     retainedBytes,
     imported: resolved.summary.imported,
     skipped: resolved.summary.skipped,

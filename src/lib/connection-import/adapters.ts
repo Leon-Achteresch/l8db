@@ -2,90 +2,18 @@ import type { DatabaseKind, SslMode } from "@/lib/db";
 
 export type TlsWriter = "sslmode" | "secure" | "ssl" | "mongo" | "scheme" | "none";
 
-export interface TlsRules {
-  tlsSchemes: string[];
-  plainSchemes: string[];
-  tlsPorts: number[];
-  modeKeys: string[];
-  modeOn: string[];
-  modeOff: string[];
-  order: "precedence" | "sequential";
-  cite: string;
-}
-
-const STRICT_ON = [
-  "require",
-  "required",
-  "verify-ca",
-  "verify_ca",
-  "verify-full",
-  "verify_identity",
-];
-
-const LIBPQ_TLS: TlsRules = {
-  tlsSchemes: ["https"],
-  plainSchemes: [],
-  tlsPorts: [],
-  modeKeys: ["sslmode"],
-  modeOn: STRICT_ON,
-  modeOff: ["disable", "disabled"],
-  order: "precedence",
-  cite: "connection.rs:104",
-};
-
-const NO_TLS_RULES: TlsRules = {
-  tlsSchemes: ["https"],
-  plainSchemes: [],
-  tlsPorts: [],
-  modeKeys: [],
-  modeOn: [],
-  modeOff: [],
-  order: "precedence",
-  cite: "",
-};
-
-const HTTP_TLS: TlsRules = {
-  tlsSchemes: ["https"],
-  plainSchemes: ["http"],
-  tlsPorts: [443, 9243],
-  modeKeys: ["sslmode", "ssl-mode"],
-  modeOn: STRICT_ON,
-  modeOff: ["disable", "disabled"],
-  order: "precedence",
-  cite: "http_api.rs:98-117",
-};
-
 export interface AdapterFacts {
-  tls: TlsRules;
-  sourceFlagKeys?: string[];
-  pathParams?: string[];
   scheme: string;
   tlsScheme: string;
   fieldPort: number | null;
   fieldTlsPort: number | null;
   httpsUrlPort: number | null;
-  implicitTlsPort: number | null;
   tlsWriter: TlsWriter;
   insecureParam: [string, string] | null;
   flagMode: SslMode;
   flagKeys: string[];
-  tlsInKey: boolean;
-  identity: string[];
   source: string;
 }
-
-const NO_TLS: Omit<AdapterFacts, "scheme" | "tlsScheme" | "fieldPort" | "fieldTlsPort" | "source"> =
-  {
-    httpsUrlPort: null,
-    implicitTlsPort: null,
-    tlsWriter: "none",
-    insecureParam: null,
-    flagMode: "verify-full",
-    flagKeys: [],
-    tlsInKey: false,
-    identity: [],
-    tls: NO_TLS_RULES,
-  };
 
 export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
   postgres: {
@@ -94,15 +22,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 5432,
     fieldTlsPort: 5432,
     httpsUrlPort: null,
-    implicitTlsPort: 5432,
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "verify-full",
     flagKeys: ["ssl"],
-    tlsInKey: false,
-    identity: ["options", "hostaddr"],
-    source: "connection.rs:104",
-    tls: LIBPQ_TLS,
+    source: "connection.rs parse_pg_url",
   },
   mysql: {
     scheme: "mysql",
@@ -110,15 +34,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 3306,
     fieldTlsPort: 3306,
     httpsUrlPort: null,
-    implicitTlsPort: 3306,
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "require",
     flagKeys: ["usessl", "requiressl", "ssl"],
-    tlsInKey: false,
-    identity: [],
-    source: "mysql.rs:394",
-    tls: { ...LIBPQ_TLS, modeKeys: ["sslmode", "ssl-mode", "ssl_mode"], cite: "mysql.rs:394-411" },
+    source: "mysql.rs parse_mysql_url",
   },
   mssql: {
     scheme: "mssql",
@@ -126,15 +46,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 1433,
     fieldTlsPort: 1433,
     httpsUrlPort: null,
-    implicitTlsPort: 1433,
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "verify-full",
     flagKeys: ["encrypt"],
-    tlsInKey: false,
-    identity: ["instance"],
-    source: "mssql.rs:508",
-    tls: { ...LIBPQ_TLS, cite: "mssql.rs:508-517" },
+    source: "mssql.rs parse_mssql_url",
   },
   cassandra: {
     scheme: "cassandra",
@@ -142,15 +58,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 9042,
     fieldTlsPort: 9042,
     httpsUrlPort: null,
-    implicitTlsPort: 9042,
     tlsWriter: "sslmode",
     insecureParam: null,
     flagMode: "require",
     flagKeys: ["ssl", "tls"],
-    tlsInKey: false,
-    identity: ["nodes|hosts"],
-    source: "cassandra.rs:285",
-    tls: { ...LIBPQ_TLS, cite: "cassandra.rs:285-290" },
+    source: "cassandra.rs parse_cassandra_url",
   },
   clickhouse: {
     scheme: "clickhouse",
@@ -158,24 +70,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 8123,
     fieldTlsPort: 8443,
     httpsUrlPort: 8443,
-    implicitTlsPort: 8443,
     tlsWriter: "secure",
     insecureParam: null,
     flagMode: "verify-full",
     flagKeys: ["secure", "ssl"],
-    tlsInKey: true,
-    identity: [],
-    source: "clickhouse.rs:75",
-    tls: {
-      tlsSchemes: ["https"],
-      plainSchemes: [],
-      tlsPorts: [8443, 443],
-      modeKeys: ["sslmode"],
-      modeOn: ["*"],
-      modeOff: ["disable", "prefer"],
-      order: "sequential",
-      cite: "clickhouse.rs:70-76",
-    },
+    source: "clickhouse.rs ClickhouseAdapter::new",
   },
   elasticsearch: {
     scheme: "elasticsearch",
@@ -183,15 +82,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 9200,
     fieldTlsPort: 9200,
     httpsUrlPort: null,
-    implicitTlsPort: 443,
     tlsWriter: "ssl",
     insecureParam: ["insecure", "true"],
     flagMode: "verify-full",
     flagKeys: ["tls", "ssl", "secure"],
-    tlsInKey: true,
-    identity: [],
-    source: "http_api.rs:115",
-    tls: HTTP_TLS,
+    source: "http_api.rs tls",
   },
   influxdb: {
     scheme: "influxdb",
@@ -199,15 +94,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 8086,
     fieldTlsPort: 8086,
     httpsUrlPort: null,
-    implicitTlsPort: 443,
     tlsWriter: "ssl",
     insecureParam: ["insecure", "true"],
     flagMode: "verify-full",
     flagKeys: ["tls", "ssl", "secure"],
-    tlsInKey: true,
-    identity: ["org|orgID|org_id", "db|bucket|database", "version"],
-    source: "http_api.rs:115",
-    tls: HTTP_TLS,
+    source: "http_api.rs tls",
   },
   mongodb: {
     scheme: "mongodb",
@@ -215,15 +106,11 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 27017,
     fieldTlsPort: 27017,
     httpsUrlPort: null,
-    implicitTlsPort: 27017,
     tlsWriter: "mongo",
     insecureParam: ["tlsAllowInvalidCertificates", "true"],
     flagMode: "verify-full",
     flagKeys: ["tls", "ssl"],
-    tlsInKey: false,
-    identity: ["replicaSet", "authSource"],
-    source: "mongodb.rs:126",
-    tls: { ...NO_TLS_RULES, cite: "mongodb.rs:126" },
+    source: "mongodb.rs endpoint (driver ConnectionString)",
   },
   redis: {
     scheme: "redis",
@@ -231,72 +118,22 @@ export const ADAPTERS: Partial<Record<DatabaseKind, AdapterFacts>> = {
     fieldPort: 6379,
     fieldTlsPort: 6379,
     httpsUrlPort: null,
-    implicitTlsPort: 6379,
     tlsWriter: "scheme",
     insecureParam: null,
     flagMode: "verify-full",
-    flagKeys: [],
-    sourceFlagKeys: ["ssl", "tls"],
-    tlsInKey: true,
-    identity: [],
-    source: "redis.rs:155",
-    tls: {
-      ...NO_TLS_RULES,
-      tlsSchemes: ["rediss", "https"],
-      plainSchemes: ["redis", "valkey"],
-      cite: "redis.rs:155",
-    },
+    flagKeys: ["ssl", "tls"],
+    source: "redis.rs normalize_redis_url",
   },
   oracle: {
-    ...NO_TLS,
     scheme: "oracle",
     tlsScheme: "oracle",
     fieldPort: 1521,
     fieldTlsPort: 1521,
-    implicitTlsPort: 1521,
-    identity: ["connect_string|tns"],
-    source: "oracle.rs:906",
-  },
-  snowflake: {
-    ...NO_TLS,
-    scheme: "snowflake",
-    tlsScheme: "snowflake",
-    fieldPort: null,
-    fieldTlsPort: null,
-    identity: ["warehouse", "role", "endpoint|host"],
-    pathParams: ["database|db", "schema"],
-    source: "snowflake.rs:313-341",
-  },
-  bigquery: {
-    ...NO_TLS,
-    scheme: "bigquery",
-    tlsScheme: "bigquery",
-    fieldPort: null,
-    fieldTlsPort: null,
-    identity: [
-      "project|project_id",
-      "location",
-      "endpoint|api_endpoint",
-      "credentials_file|key_file",
-    ],
-    source: "bigquery.rs:310",
-  },
-  athena: {
-    ...NO_TLS,
-    scheme: "athena",
-    tlsScheme: "athena",
-    fieldPort: null,
-    fieldTlsPort: null,
-    identity: ["schema", "output", "workgroup", "profile", "endpoint"],
-    source: "aws.rs:81",
-  },
-  dynamodb: {
-    ...NO_TLS,
-    scheme: "dynamodb",
-    tlsScheme: "dynamodb",
-    fieldPort: null,
-    fieldTlsPort: null,
-    identity: ["profile", "endpoint"],
-    source: "aws.rs:90",
+    httpsUrlPort: null,
+    tlsWriter: "none",
+    insecureParam: null,
+    flagMode: "verify-full",
+    flagKeys: [],
+    source: "oracle.rs parse_oracle_url",
   },
 };

@@ -316,6 +316,7 @@ pub fn run() {
             connection_import::read_dbeaver_workspace,
             connection_import::detect_dbeaver_workspace,
             connection_import::detect_jetbrains_ssh_configs,
+            connection_import::resolve_connection_endpoints,
             file_open::resolve_open_files,
             updates::check_update,
             windows::open_app_window,

@@ -59,6 +59,24 @@ fn int(v: &serde_json::Value) -> i64 {
     }
 }
 
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let adapter = ClickhouseAdapter::new(value, None)?;
+    let base =
+        url::Url::parse(&adapter.base).map_err(|_| "Ungültige ClickHouse-URL".to_string())?;
+    let tls = base.scheme() == "https";
+    Ok(super::endpoint::EndpointIdentity {
+        host: super::endpoint::host_of(&base),
+        port: base.port_or_known_default(),
+        transport: base.scheme().to_string(),
+        tls,
+        verify: tls,
+        database: adapter.database,
+        schema: String::new(),
+        user: adapter.user,
+        params: Vec::new(),
+    })
+}
+
 impl ClickhouseAdapter {
     pub fn new(connection_string: &str, database: Option<&str>) -> Result<Self, String> {
         let url = url::Url::parse(connection_string.trim())

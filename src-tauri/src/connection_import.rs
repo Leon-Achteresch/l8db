@@ -227,6 +227,15 @@ pub async fn decrypt_navicat_legacy_passwords(
         .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+pub async fn resolve_connection_endpoints(
+    requests: Vec<crate::db::endpoint::EndpointRequest>,
+) -> Result<Vec<crate::db::endpoint::EndpointResult>, String> {
+    tokio::task::spawn_blocking(move || crate::db::endpoint::resolve_all(&requests))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 pub fn jetbrains_config_roots(home: &Path, config_dir: Option<&Path>) -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = config_dir
         .map(|dir| dir.join("JetBrains"))

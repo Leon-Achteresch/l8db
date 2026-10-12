@@ -1,6 +1,8 @@
 export { ADAPTERS } from "./adapters";
+export type { EndpointResolver } from "./build";
 export {
   buildExternalCandidates,
+  buildExternalCandidatesWith,
   countExternalImport,
   externalConnectionString,
   persistImportedSecrets,
@@ -15,7 +17,7 @@ export {
   parseDataGripConfig,
 } from "./datagrip";
 export { DBEAVER_CREDENTIALS, DBEAVER_DATA_SOURCES, parseDbeaverConfig } from "./dbeaver";
-export { endpointKey } from "./identity";
+export { fileKey, identityKey } from "./identity";
 export { parseJdbcUrl } from "./jdbc";
 export type { LegacyDecryptor } from "./navicat";
 export { parseNavicatExport } from "./navicat";

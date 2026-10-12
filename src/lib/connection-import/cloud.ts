@@ -206,7 +206,11 @@ function dynamoTarget(connection: ExternalConnection): DynamoTarget | string {
     LOCAL_HOSTS.includes(value.host) ||
     value.host.endsWith(".local") ||
     (!aws && scheme === "http" && value.port === LOCAL_PORT);
-  const derived = awsRegion(connection, value.host);
+  const sourceHost = connection.host.trim().toLowerCase();
+  const derived =
+    param(connection, "AwsRegion", "region").toLowerCase() ||
+    (AWS_REGION.test(sourceHost) ? sourceHost : "") ||
+    regionFromHost(value.host);
   const region = derived || (value.host && !aws ? DEFAULT_REGION : "");
   if (!region) return "AWS-Region für DynamoDB fehlt.";
   if (standard && !configured) return { endpoint: "", local: false, region };

@@ -10,12 +10,12 @@ import {
   type SavedConnection,
   TAG_COLORS,
 } from "@/lib/connections";
-import type { DatabaseKind } from "@/lib/db";
+import type { DatabaseKind, EndpointRequest, EndpointResult } from "@/lib/db";
 import { injectUrlPassword } from "@/lib/secrets";
 import { cloudTarget } from "./cloud";
-import { endpointKey } from "./identity";
+import { fileKey, identityKey } from "./identity";
 import { CLOUD_KINDS, FILE_KINDS, PASSWORDLESS_KINDS } from "./products";
-import { type ResolvedTransport, resolveTransport } from "./transport";
+import { type IntendedTransport, type ResolvedTransport, resolveTransport } from "./transport";
 import type {
   ExternalConnection,
   ExternalImportCandidate,
@@ -71,7 +71,7 @@ export function externalConnectionString(
   let path = connection.database ? `/${encodeURIComponent(connection.database)}` : "";
   if (kind === "oracle" && (connection.oracleSid || connection.oracleDescriptor)) {
     path = "/";
-    query.set("connect_string", oracleDescriptor(connection, transport.sshRemotePort || 1521));
+    query.set("connect_string", oracleDescriptor(connection, transport.port ?? 1521));
   }
   const search = query.toString();
   return `${scheme}://${auth}${hostForUrl(connection.host)}${portPart}${path}${search ? `?${search}` : ""}`;
@@ -126,25 +126,47 @@ function skipReasonOf(connection: ExternalConnection): string | null {
   return null;
 }
 
-function existingIndex(existing: SavedConnection[]): Map<string, SavedConnection> {
-  const index = new Map<string, SavedConnection>();
-  for (const connection of existing) {
-    const key = endpointKey(
-      connection.kind,
-      connection.connectionString,
-      connection.ssh,
-      connection.proxy,
-    );
-    if (key && !index.has(key)) index.set(key, connection);
-  }
-  return index;
+export type EndpointResolver = (requests: EndpointRequest[]) => Promise<EndpointResult[]>;
+
+interface Draft {
+  candidate: ExternalImportCandidate;
+  intended: IntendedTransport | null;
 }
 
-function toCandidate(
-  connection: ExternalConnection,
-  index: number,
-  known: Map<string, SavedConnection>,
-): ExternalImportCandidate {
+function resolvable(kind: DatabaseKind): boolean {
+  return !FILE_KINDS.includes(kind);
+}
+
+function mismatch(intended: IntendedTransport, result: EndpointResult): string | null {
+  const identity = result.identity;
+  if (!identity) return `l8db kann die erzeugte URL nicht lesen: ${result.error ?? "unbekannt"}.`;
+  if (intended.tls !== null && identity.tls !== intended.tls)
+    return intended.tls
+      ? "l8db würde diese Verbindung ohne TLS aufbauen. Bitte manuell anlegen."
+      : "l8db würde diese Verbindung mit TLS aufbauen, die Quelle aber ohne. Bitte manuell anlegen.";
+  if (intended.verify === true && !identity.verify)
+    return "l8db würde das Zertifikat nicht prüfen, die Quelle schon. Bitte manuell anlegen.";
+  if (intended.port !== null && identity.port !== intended.port)
+    return `l8db würde Port ${identity.port ?? "?"} statt ${intended.port} verwenden. Bitte manuell anlegen.`;
+  return null;
+}
+
+function skipped(candidate: ExternalImportCandidate, reason: string): ExternalImportCandidate {
+  return {
+    ...candidate,
+    endpoint: "",
+    profile: null,
+    password: null,
+    sshSecret: null,
+    proxySecret: null,
+    skipReason: reason,
+    warnings: [],
+    missingPassword: false,
+    duplicateOf: null,
+  };
+}
+
+function toDraft(connection: ExternalConnection, index: number): Draft {
   const label = connection.name || `Eintrag ${index + 1}`;
   const base = {
     index,
@@ -176,16 +198,22 @@ function toCandidate(
   const skipReason = sourceSkip ?? cloud?.skipReason ?? missingAdapter;
   if (skipReason)
     return {
-      ...base,
-      endpoint: "",
-      profile: null,
-      password: null,
-      sshSecret: null,
-      proxySecret: null,
-      skipReason,
-      warnings: [],
-      missingPassword: false,
-      duplicateOf: null,
+      candidate: skipped(
+        {
+          ...base,
+          endpoint: "",
+          profile: null,
+          password: null,
+          sshSecret: null,
+          proxySecret: null,
+          skipReason,
+          warnings: [],
+          missingPassword: false,
+          duplicateOf: null,
+        },
+        skipReason,
+      ),
+      intended: null,
     };
   const kind = connection.kind as DatabaseKind;
   const warnings: string[] = [...(cloud?.warnings ?? [])];
@@ -207,13 +235,12 @@ function toCandidate(
     warnings.push(
       `Geheime Parameter nicht übernommen, bitte im Profil ergänzen: ${transport.stripped.join(", ")}.`,
     );
-  const ssh = sshProfile(connection, warnings, transport?.sshRemotePort ?? 0);
+  const ssh = sshProfile(connection, warnings, transport?.port ?? 0);
   const proxy = connection.proxy ? { ...connection.proxy } : null;
   if (proxy?.username && !connection.proxySecret) warnings.push("Proxy-Passwort fehlt.");
   const connectionString = cloud
     ? cloud.connectionString
     : externalConnectionString(connection, transport);
-  const endpoint = endpointKey(kind, connectionString, ssh, proxy) ?? "";
   const profile: ExportedConnection = {
     id: createConnectionId(),
     name: label,
@@ -231,25 +258,119 @@ function toCandidate(
     ...(connection.readOnly ? { readOnly: true } : {}),
   };
   return {
-    ...base,
-    endpoint,
-    profile,
-    password,
-    sshSecret: ssh && ssh.auth !== "agent" ? (connection.ssh?.secret ?? null) : null,
-    proxySecret: proxy?.username ? connection.proxySecret : null,
-    skipReason: null,
-    warnings,
-    missingPassword,
-    duplicateOf: endpoint ? (known.get(endpoint) ?? null) : null,
+    candidate: {
+      ...base,
+      endpoint: FILE_KINDS.includes(kind) ? fileKey(connectionString) : "",
+      profile,
+      password,
+      sshSecret: ssh && ssh.auth !== "agent" ? (connection.ssh?.secret ?? null) : null,
+      proxySecret: proxy?.username ? connection.proxySecret : null,
+      skipReason: null,
+      warnings,
+      missingPassword,
+      duplicateOf: null,
+    },
+    intended: transport
+      ? {
+          ...transport.intended,
+          port:
+            kind === "oracle" && (connection.oracleSid || connection.oracleDescriptor)
+              ? null
+              : transport.intended.port,
+        }
+      : { tls: null, verify: null, port: null },
   };
 }
 
-export function buildExternalCandidates(
+interface Plan {
+  drafts: Draft[];
+  existing: SavedConnection[];
+  existingRequests: SavedConnection[];
+  pending: Draft[];
+  requests: EndpointRequest[];
+}
+
+function plan(connections: ExternalConnection[], existing: SavedConnection[]): Plan {
+  const drafts = connections.map((connection, index) => toDraft(connection, index));
+  const existingRequests = existing.filter((connection) => resolvable(connection.kind));
+  const pending = drafts.filter(
+    (draft) => draft.candidate.profile && resolvable(draft.candidate.profile.kind),
+  );
+  const requests: EndpointRequest[] = [
+    ...existingRequests.map((connection) => ({
+      kind: connection.kind,
+      url: connection.connectionString,
+    })),
+    ...pending.map((draft) => {
+      const profile = draft.candidate.profile as ExportedConnection;
+      return { kind: profile.kind, url: profile.connectionString };
+    }),
+  ];
+  return { drafts, existing, existingRequests, pending, requests };
+}
+
+function finish(planned: Plan, results: EndpointResult[]): ExternalImportCandidate[] {
+  const known = new Map<string, SavedConnection>();
+  const remember = (key: string, connection: SavedConnection) => {
+    if (!known.has(key)) known.set(key, connection);
+  };
+  for (const connection of planned.existing)
+    if (FILE_KINDS.includes(connection.kind))
+      remember(fileKey(connection.connectionString), connection);
+  planned.existingRequests.forEach((connection, position) => {
+    const identity = results[position]?.identity;
+    if (identity)
+      remember(
+        identityKey(connection.kind, identity, connection.ssh, connection.proxy),
+        connection,
+      );
+  });
+  const resolved = new Map<Draft, EndpointResult>();
+  planned.pending.forEach((draft, position) => {
+    resolved.set(
+      draft,
+      results[planned.existingRequests.length + position] ?? {
+        identity: null,
+        error: "keine Antwort",
+      },
+    );
+  });
+  return planned.drafts.map((draft) => {
+    const candidate = draft.candidate;
+    const profile = candidate.profile;
+    if (!profile) return candidate;
+    const result = resolved.get(draft);
+    if (!result) return { ...candidate, duplicateOf: known.get(candidate.endpoint) ?? null };
+    const problem = draft.intended ? mismatch(draft.intended, result) : null;
+    if (problem || !result.identity) return skipped(candidate, problem ?? "");
+    const identity = result.identity;
+    const ssh = profile.ssh ? { ...profile.ssh, remotePort: identity.port ?? 0 } : null;
+    const endpoint = identityKey(profile.kind, identity, ssh, profile.proxy);
+    return {
+      ...candidate,
+      profile: { ...profile, ssh },
+      endpoint,
+      duplicateOf: known.get(endpoint) ?? null,
+    };
+  });
+}
+
+export function buildExternalCandidatesWith(
   connections: ExternalConnection[],
   existing: SavedConnection[],
+  lookup: (requests: EndpointRequest[]) => EndpointResult[],
 ): ExternalImportCandidate[] {
-  const known = existingIndex(existing);
-  return connections.map((connection, index) => toCandidate(connection, index, known));
+  const planned = plan(connections, existing);
+  return finish(planned, planned.requests.length ? lookup(planned.requests) : []);
+}
+
+export async function buildExternalCandidates(
+  connections: ExternalConnection[],
+  existing: SavedConnection[],
+  resolve: EndpointResolver,
+): Promise<ExternalImportCandidate[]> {
+  const planned = plan(connections, existing);
+  return finish(planned, planned.requests.length ? await resolve(planned.requests) : []);
 }
 
 function savedConnection(
