@@ -77,7 +77,6 @@ test("each preview is one isolated request with a bounded statement sequence", a
         "SET LOCAL statement_timeout",
         queries.countSql,
         queries.sampleSql,
-        "ROLLBACK",
       ];
       await new Promise((resolve) => setTimeout(resolve, 1));
       return {
@@ -106,14 +105,15 @@ test("each preview is one isolated request with a bounded statement sequence", a
     if (requests.length !== 1) throw new Error(`expected 1 request, saw ${requests.length}`);
   });
   expect(requests).toEqual([plan.countSql]);
-  expect(statements).toHaveLength(5);
+  expect(statements).toHaveLength(4);
   expect(retainedRows).toBe(100);
   expect(timing.p95Ms).toBeLessThan(50);
   await reportScenario("dml-preview-requests", {
     ...timing,
     requestsPerPreview: 1,
     serverStatementsPerPreview: statements.length,
-    statementSequence: "BEGIN READ ONLY, SET LOCAL statement_timeout, COUNT, sample, ROLLBACK",
+    statementSequence:
+      "BEGIN READ ONLY, SET LOCAL statement_timeout, COUNT, sample, close connection (implicit rollback)",
     serverRowsReturned: sampleRows.length,
     retainedSampleRows: retainedRows,
     simulatedLatencyMsPerRequest: 1,

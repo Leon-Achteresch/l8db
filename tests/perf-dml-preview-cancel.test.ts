@@ -31,7 +31,7 @@ mock.module("@tauri-apps/api/core", () => ({
         connections.discarded++;
       }
     }
-    log.push(request.sampleSql, "ROLLBACK");
+    log.push(request.sampleSql);
     connections.closedClean++;
     return {
       count: { columns: ["n"], rows: [{ n: "1" }], rows_affected: null, execution_time_ms: 0 },
@@ -83,7 +83,7 @@ test("200 previews cancelled mid-flight discard their isolated connections", asy
   expect(connections.opened - connections.discarded - connections.closedClean).toBe(0);
   expect(pending.size).toBe(0);
   expect(statements.slice(0, PREVIEWS).every((log) => log.length === 3)).toBe(true);
-  expect(statements.at(-1)).toHaveLength(5);
+  expect(statements.at(-1)).toHaveLength(4);
   expect(median).toBeLessThan(10);
   expect(p95).toBeLessThan(25);
 
@@ -114,7 +114,8 @@ test("200 previews cancelled mid-flight discard their isolated connections", asy
     requestBreakdown: "preview_dml, cancel_execution",
     statementsPerCancelledPreview: 3,
     statementsPerCompletedPreview: statements.at(-1)?.length,
-    statementSequence: "BEGIN READ ONLY, SET LOCAL statement_timeout, COUNT, sample, ROLLBACK",
+    statementSequence:
+      "BEGIN READ ONLY, SET LOCAL statement_timeout, COUNT, sample, close connection (implicit rollback)",
     discardedConnections: connections.discarded,
     leakedConnections: connections.opened - connections.discarded - connections.closedClean,
     pendingJobs: pending.size,

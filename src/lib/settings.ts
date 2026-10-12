@@ -87,6 +87,7 @@ export interface SettingsState {
   dmlPreviewMode: DmlPreviewMode;
   dmlPreviewRowLimit: number;
   dmlPreviewTimeout: number;
+  dmlPreviewLockTimeout: number;
   dmlPreviewWarnThreshold: number;
   multiTargetConcurrency: number;
   multiTargetRowLimit: number;
@@ -154,6 +155,7 @@ export interface SettingsState {
   setDmlPreviewMode: (v: DmlPreviewMode) => void;
   setDmlPreviewRowLimit: (v: number) => void;
   setDmlPreviewTimeout: (v: number) => void;
+  setDmlPreviewLockTimeout: (v: number) => void;
   setDmlPreviewWarnThreshold: (v: number) => void;
   setMultiTargetConcurrency: (v: number) => void;
   setMultiTargetRowLimit: (v: number) => void;
@@ -248,6 +250,7 @@ export const DEFAULT_SETTINGS = {
   dmlPreviewMode: "production" as DmlPreviewMode,
   dmlPreviewRowLimit: 100,
   dmlPreviewTimeout: 10,
+  dmlPreviewLockTimeout: 3,
   dmlPreviewWarnThreshold: 1000,
   multiTargetConcurrency: 4,
   multiTargetRowLimit: 1000,
@@ -345,6 +348,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ dmlPreviewMode: normalizeDmlPreviewMode(dmlPreviewMode) }),
       setDmlPreviewRowLimit: (dmlPreviewRowLimit) => set({ dmlPreviewRowLimit }),
       setDmlPreviewTimeout: (dmlPreviewTimeout) => set({ dmlPreviewTimeout }),
+      setDmlPreviewLockTimeout: (dmlPreviewLockTimeout) => set({ dmlPreviewLockTimeout }),
       setDmlPreviewWarnThreshold: (dmlPreviewWarnThreshold) => set({ dmlPreviewWarnThreshold }),
       setMultiTargetConcurrency: (multiTargetConcurrency) =>
         set({

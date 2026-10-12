@@ -16,7 +16,6 @@ import {
 import { multiTargetExecutor } from "@/lib/multi-target/executor";
 import { partialRiskStatements } from "@/lib/multi-target/script";
 import { invalidateAfterSql } from "@/lib/query-client";
-import { isServerOutputEnabled } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
 
 export interface PendingConfirmation {
@@ -63,8 +62,7 @@ export function useMultiTargetRun() {
         targets: gate.allowed,
         rejected: gate.rejected,
         sql,
-        scriptStatements: (target) =>
-          partialRiskStatements(sql, kind, isServerOutputEnabled(target.connectionId)),
+        scriptStatements: partialRiskStatements(sql, kind),
         concurrency: settings.multiTargetConcurrency,
         perServerLimit: MULTI_TARGET_PER_SERVER_LIMIT,
         timeoutSeconds: settings.multiTargetTimeout,

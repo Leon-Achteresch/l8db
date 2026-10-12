@@ -11,11 +11,18 @@ interface PreviewCall {
 const calls: PreviewCall[] = [];
 const cancels: string[] = [];
 const backend: {
+  searchPath: string | null;
   count: number;
   failWith: string | null;
   hold: ((error: Error) => void) | null;
   connections: { opened: number; closed: number };
-} = { count: 3, failWith: null, hold: null, connections: { opened: 0, closed: 0 } };
+} = {
+  searchPath: null,
+  count: 3,
+  failWith: null,
+  hold: null,
+  connections: { opened: 0, closed: 0 },
+};
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown>) => {
@@ -50,6 +57,7 @@ mock.module("@tauri-apps/api/core", () => ({
                 execution_time_ms: 1,
               },
         readOnly: args.kind === "postgres",
+        searchPath: backend.searchPath,
       };
     } finally {
       backend.connections.closed++;
@@ -71,9 +79,10 @@ const {
 const { attachPreviewLifecycle, createPreviewLifecycle } = await import(
   "../src/lib/dml-preview/lifecycle"
 );
-const { COMMITTED_STATE_NOTE, dmlPreviewExecutor } = await import(
+const { COMMITTED_STATE_NOTE, dmlPreviewExecutor, SESSION_VIEW_REASON } = await import(
   "../src/lib/dml-preview/executor"
 );
+const { LOCK_BLOCKED_REASON, SCHEMA_NOTE } = await import("../src/lib/dml-preview");
 const { useServerOutputStore } = await import("../src/lib/server-output");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
@@ -386,6 +395,7 @@ function response(count: number) {
             execution_time_ms: 1,
           } as QueryResult),
     readOnly: true,
+    searchPath: null,
   };
 }
 
@@ -631,5 +641,141 @@ describe("bind parameters", () => {
     expect(editorBindParams("UPDATE t SET a = :new WHERE id = :id").map((ref) => ref.name)).toEqual(
       ["id"],
     );
+  });
+});
+
+describe("isolated preview review fixes", () => {
+  const connection = {
+    id: "dml-preview-review",
+    name: "PG",
+    kind: "postgres" as const,
+    connectionString: "postgresql://app@review.example.test:5432/app",
+    sslMode: "prefer" as const,
+  };
+  const openTransaction = () =>
+    useTransactionStore.setState({
+      transactions: [
+        {
+          txId: "tx-review",
+          connectionId: connection.id,
+          connectionName: "PG",
+          database: "app",
+          scope: { type: "query" },
+          changes: [],
+          startedAt: 0,
+        },
+      ],
+    });
+
+  test("with an open transaction the preview uses a short lock timeout", async () => {
+    calls.length = 0;
+    await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    );
+    expect(calls[0].request).not.toHaveProperty("lockTimeoutMs");
+    expect(calls[0].options.queryTimeout).toBe(10);
+    openTransaction();
+    calls.length = 0;
+    await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    );
+    expect(calls[0].request.lockTimeoutMs).toBe(3000);
+    expect(calls[0].options.queryTimeout).toBe(5);
+    calls.length = 0;
+    await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 2, 3),
+    );
+    expect(calls[0].request.lockTimeoutMs).toBe(2000);
+    useTransactionStore.setState({ transactions: [] });
+  });
+
+  test("a preview blocked by locks of the open transaction becomes unavailable", async () => {
+    openTransaction();
+    for (const message of [
+      "ERROR: canceling statement due to lock timeout (SQLSTATE 55P03)",
+      "Query-Timeout nach 5 Sekunden: Abfrage vom Server abgebrochen.",
+      "Lock request time out period exceeded. (1222)",
+    ]) {
+      backend.failWith = message;
+      const error = await runDmlPreview(
+        ready("DELETE FROM t WHERE id > 1", "postgres"),
+        dmlPreviewExecutor(connection, "app", 10, 3),
+      ).catch((reason: unknown) => reason);
+      expect(isDmlPreviewUnavailable(error)).toBe(true);
+      expect(String(error)).toContain(LOCK_BLOCKED_REASON);
+    }
+    useTransactionStore.setState({ transactions: [] });
+    backend.failWith = "Query-Timeout nach 10 Sekunden";
+    const plain = await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewUnavailable(plain)).toBe(false);
+    backend.failWith = null;
+  });
+
+  test("the staging search_path of the editor session is applied or flagged", async () => {
+    useServerOutputStore.getState().setEnabled(connection.id, true);
+    backend.searchPath = "staging, public";
+    const applied = await runDmlPreview(
+      ready("DELETE FROM orders WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    );
+    expect(applied.schemaNote).toBeNull();
+    backend.searchPath = null;
+    const unknown = await runDmlPreview(
+      ready("DELETE FROM orders WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    );
+    expect(unknown.schemaNote).toBe(SCHEMA_NOTE);
+    const qualified = await runDmlPreview(
+      ready("DELETE FROM staging.orders WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    );
+    expect(qualified.schemaNote).toBeNull();
+    useServerOutputStore.getState().setEnabled(connection.id, false);
+    const idle = await runDmlPreview(
+      ready("DELETE FROM orders WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    );
+    expect(idle.schemaNote).toBeNull();
+  });
+
+  test("only undefined-table errors are treated as invisible tables", async () => {
+    backend.failWith = 'ERROR: column "missing" does not exist (SQLSTATE 42703)';
+    const error = await runDmlPreview(
+      ready("DELETE FROM t WHERE id > 1", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewUnavailable(error)).toBe(false);
+    expect(String(error)).toContain("42703");
+    backend.failWith = "Table 'app.scratch' doesn't exist (1146)";
+    const mysql = await runDmlPreview(
+      ready("DELETE FROM scratch WHERE id > 1", "mysql"),
+      dmlPreviewExecutor({ ...connection, kind: "mysql" }, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewUnavailable(mysql)).toBe(true);
+    backend.failWith = null;
+  });
+
+  test("session views are checked after expansion and never smuggle a COMMIT", async () => {
+    calls.length = 0;
+    useSessionViewsStore.getState().add(scopeKey(connection.id, "app"), {
+      name: "evil",
+      sql: "SELECT 1 AS id; COMMIT; DELETE FROM orders",
+      columns: ["id"],
+      createdAt: 0,
+    });
+    const error = await runDmlPreview(
+      ready("DELETE FROM orders WHERE id IN (SELECT id FROM evil)", "postgres"),
+      dmlPreviewExecutor(connection, "app", 10, 3),
+    ).catch((reason: unknown) => reason);
+    expect(isDmlPreviewUnavailable(error)).toBe(true);
+    expect(String(error)).toContain(SESSION_VIEW_REASON);
+    expect(calls).toHaveLength(0);
+    useSessionViewsStore.getState().clearConnection(connection.id);
   });
 });

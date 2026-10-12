@@ -358,7 +358,7 @@ pub(crate) fn ends_transaction(sql: &str) -> bool {
     })
 }
 
-fn single_read_statement(sql: &str) -> bool {
+pub(crate) fn single_read_statement(sql: &str) -> bool {
     [false, true].into_iter().all(|backslash_quotes| {
         let heads = statement_heads(sql, backslash_quotes);
         let mut statements = heads.iter().filter(|words| !words.is_empty());
