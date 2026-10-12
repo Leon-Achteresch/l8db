@@ -25,17 +25,23 @@ export const MISSING_TABLE_REASON =
   "Die Vorschau läuft auf einer eigenen Verbindung und sieht diese Tabelle nicht, zum Beispiel eine temporäre Tabelle der Editor-Sitzung.";
 
 export const LOCK_BLOCKED_REASON = "Vorschau blockiert durch Sperren deiner offenen Transaktion.";
+export const LOCK_OTHER_REASON = "Vorschau blockiert durch Sperren einer anderen Sitzung.";
+export const NOT_READ_ONLY_PREFIX = "Vorschau nicht lesend:";
 export const SCHEMA_NOTE = "Tabellen ohne Schema werden im Standard-Schema der Verbindung gesucht.";
 
 const MISSING_TABLE =
   /\b42P01\b|relation "[^"]*" does not exist|\b1146\b|Table '[^']*' doesn't exist|Invalid object name|ORA-00942|no such table|Table with name \S+ does not exist/i;
 const LOCK_BLOCKED =
-  /\b55P03\b|lock timeout|Lock request time out|\b1222\b|Lock wait timeout exceeded|\b1205\b|ORA-00054|ORA-30006/i;
+  /SQLSTATE 55P03|canceling statement due to lock timeout|Lock request time out period exceeded|Lock wait timeout exceeded; try restarting transaction|ORA-00054|ORA-30006/i;
 const TIMED_OUT = /Query-Timeout|\b57014\b|canceling statement due to statement timeout/i;
 
 export function isLockBlockedError(error: unknown, busy = false): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return LOCK_BLOCKED.test(message) || (busy && TIMED_OUT.test(message));
+}
+
+export function lockBlockedReason(busy: boolean): string {
+  return busy ? LOCK_BLOCKED_REASON : LOCK_OTHER_REASON;
 }
 
 export class DmlPreviewCancelled extends Error {
@@ -113,10 +119,12 @@ export async function runDmlPreview(
   } catch (error) {
     if (signal?.aborted || isDmlPreviewCancelled(error)) throw new DmlPreviewCancelled();
     if (isDmlPreviewUnavailable(error)) throw error;
+    const message = error instanceof Error ? error.message : String(error);
     if (isLockBlockedError(error, executor.busy))
       throw new DmlPreviewUnavailableError(
-        `${LOCK_BLOCKED_REASON} (${error instanceof Error ? error.message : String(error)})`,
+        `${lockBlockedReason(Boolean(executor.busy))} (${message})`,
       );
+    if (message.includes(NOT_READ_ONLY_PREFIX)) throw new DmlPreviewUnavailableError(message);
     if (isMissingTableError(error))
       throw new DmlPreviewUnavailableError(
         `${MISSING_TABLE_REASON} (${error instanceof Error ? error.message : String(error)})`,

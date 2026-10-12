@@ -25,6 +25,8 @@ export {
   isLockBlockedError,
   isMissingTableError,
   LOCK_BLOCKED_REASON,
+  LOCK_OTHER_REASON,
+  lockBlockedReason,
   MISSING_TABLE_REASON,
   type PreviewPlanQueries,
   runDmlPreview,

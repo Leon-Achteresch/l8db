@@ -271,6 +271,14 @@ impl PgSession {
         Ok(guard)
     }
 
+    pub fn try_lock_healthy(&self) -> Option<tokio::sync::MutexGuard<'_, tokio_postgres::Client>> {
+        if self.interrupted.load(Ordering::Acquire) {
+            return None;
+        }
+        let client = self.client.try_lock().ok()?;
+        (!client.is_closed() && !self.interrupted.load(Ordering::Acquire)).then_some(client)
+    }
+
     pub async fn available(&self) -> bool {
         let client = self.client.lock().await;
         !self.interrupted.load(Ordering::Acquire) && !client.is_closed()

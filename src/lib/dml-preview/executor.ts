@@ -38,7 +38,7 @@ export function dmlPreviewExecutor(
   const expand = (sql: string) =>
     safePreviewSql(expandSessionViews(sql, views, connection.kind), connection.kind);
   const note = previewNote(connection, database);
-  const busy = note !== null;
+  const busy = getQueryTransaction(connection.id, database) !== undefined;
   const shortTimeout = Math.min(timeoutSeconds, lockTimeoutSeconds);
   return {
     note,
