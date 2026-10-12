@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { compactResult } from "@/lib/ai/editor/compact";
+import { applyModelEdit } from "@/lib/ai/editor/edit-format";
 import { compactHistory, type HistoryMessage } from "@/lib/ai/editor/history";
 import { applyHunks, diffLines } from "@/lib/ai/editor/line-diff";
 import { redactSecrets } from "@/lib/ai/editor/redact";
@@ -275,4 +276,46 @@ test("compactHistory compacts 200 messages of 2 KB", async () => {
     result.messages.reduce((sum, message) => sum + message.text.length, 0),
   ).toBeLessThanOrEqual(24_000);
   expect(timing.medianMs).toBeLessThan(1);
+});
+
+test("applyModelEdit classifies 200 KB answers without blocks in linear time", async () => {
+  const sql = Array.from({ length: 2000 }, (_, index) => `select ${index} as value_${index};`).join(
+    "\n",
+  );
+  const sentence = "The plan already uses the index on `REF`, so it can't get faster. ";
+  const prose = `The statement is already as fast as it can be. ${sentence.repeat(3000)}`;
+  const bullets = `No change is needed:\n${`- ${sentence}\n`.repeat(3000)}`;
+  const sentinel = `NO CHANGE: ${sentence.repeat(3000)}`;
+  const quotes = `${"x = 'a' and y = \"b\" and `c` ".repeat(6000)}done.`;
+  const comments = `${"-- Uses the index.\n".repeat(10_000)}${sql}`;
+  const cases = { prose, bullets, sentinel, quotes, comments, sql };
+  const modes: Record<string, string> = {};
+  const notes: Record<string, number> = {};
+  const timings: Record<string, ReturnType<typeof measure>> = {};
+  for (const [name, output] of Object.entries(cases)) {
+    timings[name] = measure(() => {
+      const result = applyModelEdit(sql, output);
+      modes[name] = result.ok ? result.mode : "error";
+      notes[name] = result.ok && "note" in result ? result.note.length : 0;
+    }, 30);
+  }
+  await reportScenario("ai-editor-no-change", {
+    bytes: Object.fromEntries(Object.entries(cases).map(([name, text]) => [name, text.length])),
+    modes,
+    noteChars: notes,
+    ...timings,
+  });
+  expect(modes).toEqual({
+    prose: "prose",
+    bullets: "none",
+    sentinel: "none",
+    quotes: "prose",
+    comments: "bare",
+    sql: "bare",
+  });
+  for (const length of Object.values(notes)) expect(length).toBeLessThanOrEqual(401);
+  for (const timing of Object.values(timings)) {
+    expect(timing.medianMs).toBeLessThan(15);
+    expect(timing.p95Ms).toBeLessThan(40);
+  }
 });

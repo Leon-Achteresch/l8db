@@ -7,6 +7,7 @@ import { captureObject } from "./capture";
 import { PROJECT_PATH } from "./model";
 import { oracleIdentityMetadataSql } from "./oracle-metadata";
 import { deleteFile, encode, readFile, saveFile } from "./repository";
+import { METADATA_QUERY } from "./session";
 import { newManagedObject, sourceFiles } from "./sources";
 import type { ManagedObject, VersioningProject } from "./types";
 
@@ -51,6 +52,7 @@ export async function scanDrift(
             effectiveConnectionString(connection),
             oracleIdentityMetadataSql(schema),
             source.database ?? undefined,
+            METADATA_QUERY,
           )
         ).rows.map((row) => String(row.sequence))
       : [],

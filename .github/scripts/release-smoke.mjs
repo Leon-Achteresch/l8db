@@ -156,7 +156,15 @@ if (platform === "macos") {
     try {
       const app = join(mount, "l8db.app");
       execFileSync("codesign", ["--verify", "--deep", "--strict", app]);
-      execFileSync("xcrun", ["stapler", "validate", app]);
+      for (let attempt = 1; ; attempt++) {
+        try {
+          execFileSync("xcrun", ["stapler", "validate", app]);
+          break;
+        } catch (error) {
+          if (attempt === 5) throw error;
+          execFileSync("sleep", [String(attempt * 15)]);
+        }
+      }
       execFileSync("spctl", ["--assess", "--type", "execute", app]);
       rmSync(join(install, "l8db.app"), { recursive: true, force: true });
       execFileSync("ditto", [app, join(install, "l8db.app")]);

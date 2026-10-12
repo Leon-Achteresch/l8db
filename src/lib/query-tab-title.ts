@@ -253,6 +253,8 @@ function titleForStatement(text: string): string | null {
   return name ? `${verb} ${name}` : verb;
 }
 
+const labelCache = new WeakMap<object, string>();
+
 export function queryTitleFromSql(sql: string): string | null {
   for (const statement of splitSqlStatements(sql).statements) {
     const title = titleForStatement(statement.text);
@@ -263,5 +265,9 @@ export function queryTitleFromSql(sql: string): string | null {
 
 export function queryTabLabel(tab: { title: string; sql: string; filePath?: string }): string {
   if (tab.filePath || !AUTO_TITLE.test(tab.title)) return tab.title;
-  return queryTitleFromSql(tab.sql) ?? tab.title;
+  const cached = labelCache.get(tab);
+  if (cached !== undefined) return cached;
+  const label = queryTitleFromSql(tab.sql) ?? tab.title;
+  labelCache.set(tab, label);
+  return label;
 }
