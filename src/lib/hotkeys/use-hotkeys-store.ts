@@ -43,7 +43,7 @@ export function useResolvedHotkey(id: string): Hotkey {
   const override = useHotkeysStore((state) => state.overrides[id]);
   return useMemo(() => {
     const command = commandById(id);
-    return ((override ?? command?.defaultHotkey ?? "Escape") as Hotkey) ?? ("Escape" as Hotkey);
+    return (override ?? command?.defaultHotkey ?? "Escape") as Hotkey;
   }, [id, override]);
 }
 
