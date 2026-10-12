@@ -1,4 +1,5 @@
 use super::crypto;
+use crate::db::secrets::keychain_lock;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use ring::hmac;
@@ -11,13 +12,6 @@ const SECRET_SUFFIXES: [&str; 5] = ["", ":ssh", ":ssh-jumps", ":proxy", ":params
 const MAX_SECRET_ACCOUNTS: usize = 50_000;
 const DEVICE_KEY_ACCOUNT: &str = "l8db-sync:device-key";
 const DELETED: &str = "-";
-static KEYCHAIN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-fn keychain_lock() -> std::sync::MutexGuard<'static, ()> {
-    KEYCHAIN_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 pub fn key_fingerprint(key: &[u8]) -> String {
     digester(key)("l8db-sync-secret-base")
@@ -182,7 +176,10 @@ pub fn merge(
         let edited_at = if local_unchanged {
             known.map(|entry| entry.1)
         } else {
-            edited.get(account).copied()
+            edited
+                .get(account)
+                .copied()
+                .filter(|at| known.is_none_or(|entry| *at > entry.1))
         };
         let ours_at = edited_at.unwrap_or(now);
         let remote_entry = remote.and_then(|remote| remote.get(account));
@@ -866,6 +863,35 @@ mod tests {
         );
         assert_eq!(output.conflicts, vec!["c1".to_string()]);
         assert!(output.writes.is_empty());
+    }
+
+    #[test]
+    fn edit_times_not_newer_than_the_base_count_as_unknown() {
+        let store = keychain(&[("c1", "basis")]);
+        let synced = run_merge(&store, &["c1"], &BTreeMap::new(), None, Mode::Sync, 100);
+        store.lock().unwrap().insert("c1".into(), "lokal".into());
+        let mut remote = synced.merged.clone();
+        remote.insert(
+            "c1".into(),
+            RemoteSecret {
+                v: Some("server".into()),
+                t: 50,
+            },
+        );
+        let stale = merge(
+            &["c1".to_string()],
+            &synced.base,
+            Some(&remote),
+            Mode::Sync,
+            500,
+            &BTreeMap::new(),
+            &BTreeMap::from([("c1".to_string(), 100)]),
+            |account| Ok(store.lock().unwrap().get(account).cloned()),
+            digest(),
+        )
+        .unwrap();
+        assert_eq!(stale.conflicts, vec!["c1".to_string()]);
+        assert!(stale.writes.is_empty());
     }
 
     #[test]

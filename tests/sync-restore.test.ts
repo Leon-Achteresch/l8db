@@ -9,13 +9,14 @@ mock.module("@tauri-apps/api/core", () => ({
     if (command === "sync_begin") return lease;
     if (command === "sync_end") return true;
     if (command === "sync_backup_restore_secrets")
-      return { restored: [], failed: [], backup: null };
+      return { restored: ["conn-restored"], failed: [], backup: null };
     return null;
   },
   transformCallback: () => 1,
 }));
 
 const { restoreBackup } = await import("../src/lib/sync/controller");
+const { readSecretEdits } = await import("../src/lib/secret-edits");
 
 test("restoring a backup refuses while another window holds the sync lease", async () => {
   lease = null;
@@ -36,4 +37,5 @@ test("restoring a backup runs under the lease and releases its token", async () 
     "sync_end",
   ]);
   expect(calls[2].args).toEqual({ token: "token-1" });
+  expect(readSecretEdits()["conn-restored"]).toBeNumber();
 });

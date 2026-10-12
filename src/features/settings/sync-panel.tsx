@@ -26,6 +26,7 @@ import { SyncSecretConflictDialog } from "@/features/settings/sync-secret-confli
 import { SyncSecurityRow } from "@/features/settings/sync-security-row";
 import { errorMessage, performSync } from "@/lib/sync/controller";
 import {
+  type DowngradeReason,
   type SecretConflict,
   type SyncDecision,
   SyncDowngradeError,
@@ -52,7 +53,9 @@ export function SyncPanel() {
   const [conflicts, setConflicts] = useState<SyncConflict[] | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmUpload, setConfirmUpload] = useState(false);
-  const [downgradeMode, setDowngradeMode] = useState<SyncMode | null>(null);
+  const [downgrade, setDowngrade] = useState<{ mode: SyncMode; reason: DowngradeReason } | null>(
+    null,
+  );
   const [secretConflicts, setSecretConflicts] = useState<SecretConflict[] | null>(null);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const interactive = useRef<InteractiveDecider | null>(null);
@@ -92,7 +95,7 @@ export function SyncPanel() {
       if (outcome.status === "ok" || outcome.status === "skipped")
         toast.success(useSyncStore.getState().lastMessage ?? "Synchronisiert");
     } catch (error) {
-      if (error instanceof SyncDowngradeError) setDowngradeMode(mode);
+      if (error instanceof SyncDowngradeError) setDowngrade({ mode, reason: error.reason });
       else if (!(error instanceof Error && error.name === "AbortError"))
         toast.error(errorMessage(error));
     } finally {
@@ -163,6 +166,7 @@ export function SyncPanel() {
                 <div className="text-muted-foreground">
                   Letzte Synchronisierung: {lastSync} · Status:{" "}
                   {STATUS_LABELS[state.lastStatus] ?? state.lastStatus}
+                  {state.lastRemoteEncrypted ? " · Server-Datei verschlüsselt" : ""}
                   {state.lastMessage ? ` · ${state.lastMessage}` : ""}
                 </div>
                 {state.lastError && <div className="text-destructive">{state.lastError}</div>}
@@ -178,30 +182,33 @@ export function SyncPanel() {
         onResolve={(resolutions) => interactive.current?.resolveSecrets(resolutions)}
       />
       <Dialog
-        open={downgradeMode !== null}
+        open={downgrade !== null}
         onOpenChange={(open) => {
-          if (!open) setDowngradeMode(null);
+          if (!open) setDowngrade(null);
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Verschlüsselung auf dem Server aufheben?</DialogTitle>
+            <DialogTitle>
+              {downgrade?.reason === "undecryptable"
+                ? "Server-Datei kann nicht entschlüsselt werden"
+                : "Verschlüsselung auf dem Server aufheben?"}
+            </DialogTitle>
             <DialogDescription>
-              Die Sync-Datei auf dem Server ist vollständig verschlüsselt. Dieser Rechner hat die
-              Verschlüsselung nicht aktiviert. Wenn Sie fortfahren, wird die Datei unverschlüsselt
-              überschrieben und Verbindungen, Abfragen und Einstellungen sind auf dem Server lesbar.
-              Empfohlen: zuerst die Verschlüsselung aktivieren.
+              {downgrade?.reason === "undecryptable"
+                ? "Die Sync-Datei auf dem Server ist mit einer Passphrase verschlüsselt, die auf diesem Rechner fehlt oder nicht passt. Hinterlegen Sie unten die richtige Sync-Passphrase. Wenn Sie stattdessen überschreiben, gehen alle Daten anderer Rechner in der Server-Datei verloren."
+                : "Die Sync-Datei auf dem Server ist vollständig verschlüsselt. Dieser Rechner hat die Verschlüsselung nicht aktiviert. Wenn Sie fortfahren, wird die Datei unverschlüsselt überschrieben und Verbindungen, Abfragen und Einstellungen sind auf dem Server lesbar. Empfohlen: zuerst die Verschlüsselung aktivieren."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDowngradeMode(null)}>
+            <Button variant="outline" onClick={() => setDowngrade(null)}>
               Abbrechen
             </Button>
-            {state.storedSecrets.passphrase && (
+            {downgrade?.reason === "plain" && state.storedSecrets.passphrase && (
               <Button
                 onClick={() => {
-                  const mode = downgradeMode ?? "sync";
-                  setDowngradeMode(null);
+                  const mode = downgrade.mode;
+                  setDowngrade(null);
                   state.configure({ encryptAll: true });
                   void run(mode);
                 }}
@@ -212,12 +219,14 @@ export function SyncPanel() {
             <Button
               variant="destructive"
               onClick={() => {
-                const mode = downgradeMode ?? "upload";
-                setDowngradeMode(null);
+                const mode = downgrade?.mode ?? "upload";
+                setDowngrade(null);
                 void run(mode, true);
               }}
             >
-              Unverschlüsselt überschreiben
+              {downgrade?.reason === "undecryptable"
+                ? "Server-Datei überschreiben"
+                : "Unverschlüsselt überschreiben"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -56,7 +56,6 @@ export function SyncSecurityRow() {
           <div className="flex items-center gap-2">
             <Switch
               checked={encryptAll}
-              disabled={!passphraseStored && !encryptAll}
               onCheckedChange={(checked) => configure({ encryptAll: checked })}
               aria-label="Gesamte Sync-Datei verschlüsseln"
             />
