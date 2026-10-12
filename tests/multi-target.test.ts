@@ -752,33 +752,42 @@ describe("fourth review fixes", () => {
 });
 
 describe("isolated preview round", () => {
-  test("a connection error after the target was prepared does not claim partial execution", async () => {
-    const updates = new Map<string, TargetRun>();
-    const target = multiTarget("c5");
-    await startMultiTargetRun({
-      targets: [target],
-      sql: "UPDATE a SET x = 1; UPDATE b SET y = 2",
-      scriptStatements: () => 2,
-      concurrency: 1,
-      perServerLimit: 1,
-      timeoutSeconds: 30,
-      maxRows: 10,
-      executor: {
-        execute: async ({ onExecuting }) => {
-          onExecuting?.();
-          throw new Error("Verbindungs-Timeout nach 15 Sekunden");
+  test("once a statement was sent, any later failure keeps the partial notice", async () => {
+    for (const message of [
+      "ERROR 1044 (42000): Access denied for user 'app'@'%' to database 'audit'",
+      "could not establish connection: dblink_connect failed (SQLSTATE 08001)",
+    ]) {
+      const updates = new Map<string, TargetRun>();
+      const target = multiTarget("c5");
+      await startMultiTargetRun({
+        targets: [target],
+        sql: "UPDATE accounts SET a = 1; INSERT INTO audit.log SELECT 1",
+        scriptStatements: 2,
+        concurrency: 1,
+        perServerLimit: 1,
+        timeoutSeconds: 30,
+        maxRows: 10,
+        executor: {
+          execute: async ({ onExecuting }) => {
+            onExecuting?.();
+            throw new Error(message);
+          },
+          cancel: async () => false,
         },
-        cancel: async () => false,
-      },
-      onUpdate: (run) => updates.set(run.id, run),
-    }).done;
-    expect(updates.get(target.id)).toMatchObject({ status: "error", notice: null });
+        onUpdate: (run) => updates.set(run.id, run),
+      }).done;
+      expect(updates.get(target.id)).toMatchObject({
+        status: "error",
+        notice: PARTIAL_SCRIPT_NOTICE,
+      });
+    }
   });
 
-  test("a persistent session keeps the notice even for PostgreSQL scripts", () => {
-    const sql = "UPDATE a SET x = 1; UPDATE b SET y = 2;";
-    expect(partialRiskStatements(sql, "postgres")).toBe(1);
-    expect(partialRiskStatements(sql, "postgres", true)).toBe(2);
-    expect(partialRiskStatements(sql, undefined)).toBe(2);
+  test("the implicit-transaction rule depends only on transaction control in the script", () => {
+    expect(partialRiskStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", "postgres")).toBe(1);
+    expect(
+      partialRiskStatements("UPDATE a SET x = 1; COMMIT; UPDATE b SET y = 2;", "postgres"),
+    ).toBe(3);
+    expect(partialRiskStatements("UPDATE a SET x = 1; UPDATE b SET y = 2;", undefined)).toBe(2);
   });
 });

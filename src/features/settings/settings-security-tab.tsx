@@ -20,10 +20,12 @@ export function SettingsSecurityTab() {
     dmlPreviewMode,
     dmlPreviewRowLimit,
     dmlPreviewTimeout,
+    dmlPreviewLockTimeout,
     dmlPreviewWarnThreshold,
     setDmlPreviewMode,
     setDmlPreviewRowLimit,
     setDmlPreviewTimeout,
+    setDmlPreviewLockTimeout,
     setDmlPreviewWarnThreshold,
     setSshTrustNewHosts,
     setConnectionTimeout,
@@ -116,6 +118,23 @@ export function SettingsSecurityTab() {
                 className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
               Sekunden
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Input
+                type="number"
+                min={1}
+                max={30}
+                step={1}
+                aria-label="Zeitlimit bei offener Transaktion"
+                value={dmlPreviewLockTimeout}
+                onChange={(event) => {
+                  const value = Number.parseInt(event.target.value, 10);
+                  if (!Number.isNaN(value) && value >= 1 && value <= 30)
+                    setDmlPreviewLockTimeout(value);
+                }}
+                className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              Sekunden bei offener Transaktion
             </span>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Input

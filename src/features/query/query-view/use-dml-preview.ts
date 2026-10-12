@@ -117,14 +117,28 @@ export function useDmlPreview(
       if (derivation.status === "ready") {
         const controller = new AbortController();
         abortRef.current = controller;
-        const executor = dmlPreviewExecutor(connection, database, settings.dmlPreviewTimeout);
+        const executor = dmlPreviewExecutor(
+          connection,
+          database,
+          settings.dmlPreviewTimeout,
+          settings.dmlPreviewLockTimeout,
+        );
         const current = () => lifecycle.current() === token && !controller.signal.aborted;
         setState((state) => (state ? { ...state, note: executor.note ?? null } : state));
         runDmlPreview(derivation, executor, { signal: controller.signal }).then(
           (outcome) => {
             if (!current()) return;
             abortRef.current = null;
-            setState((state) => (state ? { ...state, phase: null, outcome } : state));
+            setState((state) =>
+              state
+                ? {
+                    ...state,
+                    phase: null,
+                    outcome,
+                    note: [executor.note, outcome.schemaNote].filter(Boolean).join(" ") || null,
+                  }
+                : state,
+            );
           },
           (error: unknown) => {
             if (isDmlPreviewCancelled(error) || !current()) return;

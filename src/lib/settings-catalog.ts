@@ -363,7 +363,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "security",
     title: "Grenzen der DML-Vorschau",
     description:
-      "Maximale Beispielzeilen, Zeitlimit der Vorschau-Abfragen und ab wie vielen betroffenen Zeilen deutlich gewarnt wird.",
+      "Maximale Beispielzeilen, Zeitlimit der Vorschau-Abfragen, kurzes Zeitlimit bei offener Transaktion (Sperren) und ab wie vielen betroffenen Zeilen deutlich gewarnt wird.",
     keywords: ["vorschau", "zeilen", "timeout", "warnung", "schwelle", "limit"],
   },
   {

@@ -22,8 +22,11 @@ export {
   DmlPreviewUnavailableError,
   isDmlPreviewCancelled,
   isDmlPreviewUnavailable,
+  isLockBlockedError,
   isMissingTableError,
+  LOCK_BLOCKED_REASON,
   MISSING_TABLE_REASON,
   type PreviewPlanQueries,
   runDmlPreview,
+  SCHEMA_NOTE,
 } from "./run";

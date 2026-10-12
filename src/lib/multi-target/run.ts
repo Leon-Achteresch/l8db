@@ -50,13 +50,6 @@ export const FAILED_AFTER_CANCEL_NOTICE =
 const CANCELLATION_ERROR =
   /\b57014\b|canceling statement|cancell?ed by user|query (?:was )?cancell?ed|ORA-01013|vom Server abgebrochen|Abfrage abgebrochen/i;
 
-const CONNECTION_ERROR =
-  /Verbindungs-Timeout|Verbindung (?:für .* )?fehlgeschlagen|connection refused|could not connect|ECONNREFUSED|password authentication failed|no pg_hba\.conf|Login failed|Access denied for user|ORA-12541|ORA-01017|ORA-12154|Tunnel|Ohne Passwort/i;
-
-export function isConnectionError(error: unknown): boolean {
-  return CONNECTION_ERROR.test(error instanceof Error ? error.message : String(error));
-}
-
 export function isCancellationError(error: unknown): boolean {
   return CANCELLATION_ERROR.test(error instanceof Error ? error.message : String(error));
 }
@@ -208,7 +201,7 @@ export function startMultiTargetRun(options: MultiTargetRunOptions): MultiTarget
         error: error instanceof Error ? error.message : String(error),
         notice: notices(
           requested && (supported ? FAILED_AFTER_CANCEL_NOTICE : UNSUPPORTED_CANCEL_NOTICE),
-          script && executing && !isConnectionError(error) && PARTIAL_SCRIPT_NOTICE,
+          script && executing && PARTIAL_SCRIPT_NOTICE,
         ),
       });
     } finally {
