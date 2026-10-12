@@ -67,6 +67,11 @@ function nextFrame(): Promise<void> {
   });
 }
 
+const RETRY_EDIT_FORMAT =
+  "Your answer had neither SEARCH/REPLACE blocks nor a NO CHANGE line. Answer again with only SEARCH/REPLACE blocks for TARGET, or with exactly one line NO CHANGE: <reason> when TARGET should stay as it is.";
+const RETRY_INSERT_FORMAT =
+  "Your answer was not SQL. Answer again with only the new SQL in a single ```sql block, or with exactly one line NO CHANGE: <reason> when nothing should be added.";
+
 const READ_ONLY_START = /^\s*(select|with|values|table|show|explain)\b/i;
 const WRITE_WORD = /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke)\b/i;
 const BIND_PARAM = /(^|[^:]):[A-Za-z_]\w*|\?|\$\d+|&\w+/;
@@ -338,6 +343,7 @@ export class InlineEditSession {
       let messages = prepared.messages;
       let result = "";
       let problem = "";
+      let note: string | null = null;
       for (let attempt = 0; attempt < 2; attempt++) {
         this.set({ status: attempt ? "Korrigiert …" : "Schreibt …", streamed: 0 });
         const response = await runEditorAi({
@@ -356,31 +362,48 @@ export class InlineEditSession {
                 "Die Antwort wurde am Token-Limit abgeschnitten. Nutze kleinere SEARCH/REPLACE-Blöcke.",
             }
           : applyModelEdit(sent, response.text);
-        problem = applied.ok ? "" : applied.error;
-        if (applied.ok) {
-          result = applied.text;
-          if (!sent.trim() && result) {
-            const value = model.getValue();
-            if (start > 0 && value[start - 1] !== "\n") result = `\n${result}`;
-            if (!result.endsWith("\n") && value.slice(end).trim()) result = `${result}\n`;
+        const loose =
+          applied.ok &&
+          (applied.mode === "prose" || (applied.mode === "bare" && Boolean(sent.trim())));
+        let retry = "";
+        if (loose && attempt === 0) retry = sent.trim() ? RETRY_EDIT_FORMAT : RETRY_INSERT_FORMAT;
+        else if (applied.ok && (applied.mode === "none" || applied.mode === "prose")) {
+          if (!result) note = applied.note;
+          break;
+        } else {
+          problem = applied.ok ? "" : applied.error;
+          if (applied.ok) {
+            result = applied.text;
+            if (!sent.trim() && result) {
+              const value = model.getValue();
+              if (start > 0 && value[start - 1] !== "\n") result = `\n${result}`;
+              if (!result.endsWith("\n") && value.slice(end).trim()) result = `${result}\n`;
+            }
+            this.set({ status: "Prüft …" });
+            problem = await validateEdit(env, sent, result);
           }
-          this.set({ status: "Prüft …" });
-          problem = await validateEdit(env, sent, result);
+          if (problem)
+            retry = `Problem with your answer: ${problem}\nAnswer again in the same format and fix only that problem.`;
         }
-        if (!problem || attempt === 1 || abort.signal.aborted) break;
+        if (!retry || attempt === 1 || abort.signal.aborted) break;
         metrics.retry(this.start.action);
         messages = [
           ...prepared.messages,
           { role: "assistant", text: response.text.trim() || "(empty answer)" },
-          {
-            role: "user",
-            text: `Problem with your answer: ${problem}\nAnswer again in the same format and fix only that problem.`,
-          },
+          { role: "user", text: retry },
         ];
       }
       if (this.disposed) return;
       if (abort.signal.aborted) {
         this.set({ phase: "input", status: "" });
+        return;
+      }
+      if (note !== null) {
+        this.set({
+          phase: "input",
+          status: "",
+          warning: note ? `Keine Änderung: ${note}` : "Die KI hat keine Änderung vorgeschlagen.",
+        });
         return;
       }
       if (this.regionText() !== sent) {
