@@ -2894,7 +2894,7 @@ fn has_client_lib(dir: &Path) -> bool {
         .map(|entries| {
             entries
                 .flatten()
-                .any(|e| is_client_lib(&e.file_name().to_string_lossy()))
+                .any(|e| is_client_lib(&e.file_name().to_string_lossy()) && e.path().exists())
         })
         .unwrap_or(false)
 }
