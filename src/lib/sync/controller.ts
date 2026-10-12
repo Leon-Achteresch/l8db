@@ -102,7 +102,7 @@ export async function performSync(
   decider: SyncDecider,
   signal?: AbortSignal,
   deps: SyncDeps = syncDeps,
-  allowDowngrade = false,
+  confirmedRemote: string | null = null,
 ): Promise<SyncOutcome> {
   if (running) throw new Error("Es läuft bereits eine Synchronisierung.");
   const state = useSyncStore.getState();
@@ -118,7 +118,7 @@ export async function performSync(
       encryptAll: state.encryptAll,
       purgeRemoteSecrets: state.purgeRemoteSecrets,
     },
-    allowDowngrade,
+    confirmedRemote,
     memory: { deviceId: state.deviceId, lastSalt: state.lastSalt },
     decider,
     signal,

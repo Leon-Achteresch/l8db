@@ -36,8 +36,29 @@ pub struct RemoteSecret {
     pub t: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct BaseEntry(pub String, pub u64);
+#[derive(Debug, Clone, PartialEq)]
+pub struct BaseEntry(pub String, pub u64, pub u64);
+
+impl Serialize for BaseEntry {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (&self.0, self.1, self.2).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for BaseEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Seen(String, u64, u64),
+            Legacy(String, u64),
+        }
+        Ok(match Repr::deserialize(deserializer)? {
+            Repr::Seen(hash, at, seen) => BaseEntry(hash, at, seen),
+            Repr::Legacy(hash, at) => BaseEntry(hash, at, at),
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -135,6 +156,13 @@ pub fn digester(key: &[u8]) -> impl Fn(&str) -> String {
     }
 }
 
+fn seen_at(known: Option<&BaseEntry>, state: &str, at: u64, now: u64) -> u64 {
+    match known {
+        Some(BaseEntry(hash, known_at, seen)) if hash == state && *known_at == at => *seen,
+        _ => now,
+    }
+}
+
 fn state_of(entry: Option<&RemoteSecret>, digest: &impl Fn(&str) -> String) -> Option<String> {
     entry.map(|entry| {
         entry
@@ -172,14 +200,14 @@ pub fn merge(
             None => known.map(|_| DELETED.to_string()),
         };
         let local_unchanged =
-            matches!((known, &ours), (Some(BaseEntry(hash, _)), Some(state)) if hash == state);
+            matches!((known, &ours), (Some(BaseEntry(hash, _, _)), Some(state)) if hash == state);
         let edited_at = if local_unchanged {
             known.map(|entry| entry.1)
         } else {
             edited
                 .get(account)
                 .copied()
-                .filter(|at| known.is_none_or(|entry| *at > entry.1))
+                .filter(|at| known.is_none_or(|entry| *at > entry.2))
         };
         let ours_at = edited_at.unwrap_or(now);
         let remote_entry = remote.and_then(|remote| remote.get(account));
@@ -241,18 +269,20 @@ pub fn merge(
         };
         let Some(state) = state else { continue };
         if theirs.as_deref() == Some(state.as_str()) {
-            output
-                .agreed
-                .insert(account.clone(), BaseEntry(state.clone(), entry.t));
+            output.agreed.insert(
+                account.clone(),
+                BaseEntry(state.clone(), entry.t, seen_at(known, &state, entry.t, now)),
+            );
         } else if let Some(known) = known {
             output.agreed.insert(account.clone(), known.clone());
         }
         if state == DELETED && now.saturating_sub(entry.t) > TOMBSTONE_TTL_MS {
             continue;
         }
-        output
-            .base
-            .insert(account.clone(), BaseEntry(state, entry.t));
+        output.base.insert(
+            account.clone(),
+            BaseEntry(state.clone(), entry.t, seen_at(known, &state, entry.t, now)),
+        );
         output.merged.insert(account.clone(), entry);
     }
     Ok(output)
@@ -303,16 +333,45 @@ pub fn write_backup(
     if !backup_id_valid(id) {
         return Err("Ungültige Sicherung.".into());
     }
-    let mut map: BTreeMap<String, Option<String>> = if dir.join(format!("{id}.secrets")).exists() {
-        read_backup(passphrase, dir, id)?
+    let existing = existing_backup(passphrase, dir, id)?;
+    seal_backup(
+        passphrase,
+        dir,
+        id,
+        existing,
+        previous,
+        crypto::kdf_for_salt(salt),
+    )
+}
+
+fn existing_backup(
+    passphrase: &str,
+    dir: &Path,
+    id: &str,
+) -> Result<BTreeMap<String, Option<String>>, String> {
+    if dir.join(format!("{id}.secrets")).exists() {
+        read_backup(passphrase, dir, id)
     } else {
-        BTreeMap::new()
-    };
+        Ok(BTreeMap::new())
+    }
+}
+
+fn seal_backup(
+    passphrase: &str,
+    dir: &Path,
+    id: &str,
+    mut map: BTreeMap<String, Option<String>>,
+    previous: &[(String, Option<String>)],
+    kdf: crypto::KdfParams,
+) -> Result<(), String> {
+    if !backup_id_valid(id) {
+        return Err("Ungültige Sicherung.".into());
+    }
     for (account, value) in previous {
         map.entry(account.clone()).or_insert_with(|| value.clone());
     }
     let plaintext = Zeroizing::new(serde_json::to_string(&map).map_err(|e| e.to_string())?);
-    let sealed = crypto::seal(passphrase, &plaintext, crypto::kdf_for_salt(salt))?;
+    let sealed = crypto::seal(passphrase, &plaintext, kdf)?;
     std::fs::create_dir_all(dir).map_err(|e| format!("Sicherung fehlgeschlagen: {e}"))?;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -402,7 +461,17 @@ pub fn run(passphrase: &str, request: Request<'_>) -> Result<SecretMerge, String
         )?))?),
         None => None,
     };
-    let _guard = keychain_lock();
+    let kdf = crypto::kdf_for_salt(request.salt);
+    crypto::warm(passphrase, &kdf)?;
+    let backup_id = request
+        .backup_id
+        .filter(|id| backup_id_valid(id))
+        .unwrap_or_else(|| format!("{}-passwoerter", request.now));
+    let existing = match request.backup_dir {
+        Some(dir) => existing_backup(passphrase, dir, &backup_id)?,
+        None => BTreeMap::new(),
+    };
+    let guard = keychain_lock();
     let key = device_key()?;
     let fingerprint = key_fingerprint(&key);
     let base = usable_base(
@@ -426,12 +495,15 @@ pub fn run(passphrase: &str, request: Request<'_>) -> Result<SecretMerge, String
         let dir = request
             .backup_dir
             .ok_or_else(|| "Kein Ordner für Sicherungen verfügbar.".to_string())?;
-        let id = request
-            .backup_id
-            .filter(|id| backup_id_valid(id))
-            .unwrap_or_else(|| format!("{}-passwoerter", request.now));
-        write_backup(passphrase, dir, &id, &output.previous, request.salt)?;
-        backup = Some(id);
+        seal_backup(
+            passphrase,
+            dir,
+            &backup_id,
+            existing,
+            &output.previous,
+            kdf.clone(),
+        )?;
+        backup = Some(backup_id);
     }
     let mut updated = Vec::new();
     for (account, value) in &output.writes {
@@ -441,16 +513,13 @@ pub fn run(passphrase: &str, request: Request<'_>) -> Result<SecretMerge, String
         }
         updated.push(account.clone());
     }
+    drop(guard);
     let sealed = if output.merged.is_empty() || mode == Mode::Download {
         None
     } else {
         let plaintext =
             Zeroizing::new(serde_json::to_string(&output.merged).map_err(|e| e.to_string())?);
-        Some(crypto::seal(
-            passphrase,
-            &plaintext,
-            crypto::kdf_for_salt(request.salt),
-        )?)
+        Some(crypto::seal(passphrase, &plaintext, kdf)?)
     };
     Ok(SecretMerge {
         key_fingerprint: fingerprint,
@@ -837,7 +906,7 @@ mod tests {
 
     #[test]
     fn a_lost_device_key_discards_the_base_instead_of_marking_everything_changed() {
-        let base = BTreeMap::from([("c1".to_string(), BaseEntry("abc".into(), 5))]);
+        let base = BTreeMap::from([("c1".to_string(), BaseEntry("abc".into(), 5, 5))]);
         let old = key_fingerprint(b"0123456789abcdef0123456789abcdef");
         let new = key_fingerprint(b"fedcba9876543210fedcba9876543210");
         assert_ne!(old, new);
@@ -892,6 +961,43 @@ mod tests {
         .unwrap();
         assert_eq!(stale.conflicts, vec!["c1".to_string()]);
         assert!(stale.writes.is_empty());
+    }
+
+    #[test]
+    fn local_edits_are_compared_with_the_local_seen_time_not_foreign_clocks() {
+        let store = keychain(&[("c1", "basis")]);
+        let synced = run_merge(&store, &["c1"], &BTreeMap::new(), None, Mode::Sync, 300_000);
+        let mut base = synced.base.clone();
+        base.get_mut("c1").unwrap().1 = 600_000;
+        store
+            .lock()
+            .unwrap()
+            .insert("c1".into(), "lokal-neu".into());
+        let mut remote = synced.merged.clone();
+        remote.get_mut("c1").unwrap().t = 600_000;
+        let output = merge(
+            &["c1".to_string()],
+            &base,
+            Some(&remote),
+            Mode::Sync,
+            320_000,
+            &BTreeMap::new(),
+            &BTreeMap::from([("c1".to_string(), 310_000)]),
+            |account| Ok(store.lock().unwrap().get(account).cloned()),
+            digest(),
+        )
+        .unwrap();
+        assert!(output.conflicts.is_empty());
+        assert!(output.writes.is_empty());
+        assert_eq!(output.merged["c1"].v.as_deref(), Some("lokal-neu"));
+        assert_eq!(output.base["c1"].2, 320_000);
+    }
+
+    #[test]
+    fn legacy_two_field_base_entries_still_load() {
+        let entry: BaseEntry = serde_json::from_str("[\"h\",5]").unwrap();
+        assert_eq!(entry, BaseEntry("h".into(), 5, 5));
+        assert_eq!(serde_json::to_string(&entry).unwrap(), "[\"h\",5,5]");
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SyncDecryptError } from "../src/lib/db/sync";
 import { autoSyncPlan, backoffDelay, startAutoSync } from "../src/lib/sync/auto-sync";
 import { autoDecider, restoreScope } from "../src/lib/sync/controller";
 import {
@@ -7,6 +8,7 @@ import {
   SyncBusyError,
   type SyncDecider,
   SyncDowngradeError,
+  type SyncOutcome,
   SyncRemoteChangedError,
 } from "../src/lib/sync/engine";
 import { createInteractiveDecider } from "../src/lib/sync/interactive-decider";
@@ -59,16 +61,23 @@ function sync(
   overrides: Partial<typeof settings> = {},
   decider: SyncDecider = acceptAll,
   signal?: AbortSignal,
-  allowDowngrade = false,
-) {
-  return runSync(dev.deps, {
-    mode,
-    target: webdav,
-    settings: { ...settings, ...overrides },
-    memory: { deviceId: dev.label, lastSalt: null },
-    decider,
-    signal,
-    allowDowngrade,
+  confirm: boolean | string = false,
+): Promise<SyncOutcome> {
+  const run = (confirmedRemote: string | null) =>
+    runSync(dev.deps, {
+      mode,
+      target: webdav,
+      settings: { ...settings, ...overrides },
+      memory: { deviceId: dev.label, lastSalt: null },
+      decider,
+      signal,
+      confirmedRemote,
+    });
+  if (typeof confirm === "string") return run(confirm);
+  if (!confirm) return run(null);
+  return run(null).catch((error) => {
+    if (!(error instanceof SyncDowngradeError)) throw error;
+    return run(error.remoteToken);
   });
 }
 
@@ -872,14 +881,7 @@ describe("fourth review regressions", () => {
     b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Offen", sql: "1" } }];
     await expect(sync(b, "upload")).rejects.toBeInstanceOf(SyncDowngradeError);
     expect(remote.puts).toBe(puts);
-    await runSync(b.deps, {
-      mode: "upload",
-      target: webdav,
-      settings,
-      memory: { deviceId: "b", lastSalt: null },
-      decider: acceptAll,
-      allowDowngrade: true,
-    });
+    await sync(b, "upload", {}, acceptAll, undefined, true);
     expect(remote.content).toContain("Offen");
     await sync(a, "upload", { includeSecrets: true, encryptAll: true });
     expect(remote.content).not.toContain("Offen");
@@ -1127,5 +1129,62 @@ describe("sixth review regressions", () => {
     const outcome = await sync(b, "sync", {}, autoDecider);
     expect(outcome).toMatchObject({ status: "conflict", downgradeBlocked: true });
     expect(decrypts).toBe(0);
+  });
+});
+
+describe("final review regressions", () => {
+  const encrypted = { includeSecrets: true, encryptAll: true };
+
+  test("only a real passphrase failure offers the overwrite path on upload", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a, "sync", encrypted);
+    const b = device("b", remote, new FakeCoordinator());
+    b.deps.transport.decrypt = async () => {
+      throw new SyncDecryptError("other", "Argon2 konnte keinen Speicher reservieren.");
+    };
+    await expect(sync(b, "upload", encrypted)).rejects.toThrow("Argon2");
+    b.deps.transport.decrypt = async () => {
+      throw new Error("IPC getrennt");
+    };
+    await expect(sync(b, "upload", encrypted)).rejects.toThrow("IPC getrennt");
+    b.deps.transport.decrypt = async () => "{kein json";
+    const corrupt = await sync(b, "upload", encrypted).catch((error) => error);
+    expect(corrupt).not.toBeInstanceOf(SyncDowngradeError);
+    b.deps.transport.decrypt = async () => {
+      throw new SyncDecryptError("auth", "Bitte zuerst die Sync-Passphrase hinterlegen.");
+    };
+    const missing = await sync(b, "upload", encrypted).catch((error) => error);
+    expect(missing).toBeInstanceOf(SyncDowngradeError);
+    expect((missing as SyncDowngradeError).reason).toBe("undecryptable");
+  });
+
+  test("a confirmation only covers the remote version the user saw", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Geheim", sql: "1" } }];
+    await sync(a, "sync", encrypted);
+    const first = (await sync(b, "upload").catch((error) => error)) as SyncDowngradeError;
+    expect(first).toBeInstanceOf(SyncDowngradeError);
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "Geheim2", sql: "1" } }];
+    const store = b.deps.transport.store;
+    let raced = false;
+    b.deps.transport.store = async (...args) => {
+      if (!raced) {
+        raced = true;
+        await sync(a, "sync", encrypted);
+      }
+      return store(...args);
+    };
+    const puts = remote.puts;
+    const second = await sync(b, "upload", {}, acceptAll, undefined, first.remoteToken).catch(
+      (error) => error,
+    );
+    expect(second).toBeInstanceOf(SyncDowngradeError);
+    expect((second as SyncDowngradeError).remoteToken).not.toBe(first.remoteToken);
+    expect(remote.puts).toBe(puts + 2);
+    expect(JSON.parse(remote.content as string)).toHaveProperty("encrypted");
   });
 });

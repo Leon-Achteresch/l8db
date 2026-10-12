@@ -1,4 +1,4 @@
-import type { SyncSealed, SyncTarget } from "../../src/lib/db/sync";
+import { SyncDecryptError, type SyncSealed, type SyncTarget } from "../../src/lib/db/sync";
 import type { SyncDecider, SyncDeps, SyncLocal } from "../../src/lib/sync/engine";
 import {
   hashText,
@@ -119,7 +119,10 @@ export function fakeCrypto(passphrase: { value: string }) {
   const open = (envelope: string) => {
     const parsed = JSON.parse(envelope) as { key: string; data: string };
     if (parsed.key !== hashText(passphrase.value))
-      throw new Error("Entschlüsselung fehlgeschlagen: Passphrase falsch oder Daten manipuliert.");
+      throw new SyncDecryptError(
+        "auth",
+        "Entschlüsselung fehlgeschlagen: Passphrase falsch oder Daten manipuliert.",
+      );
     return Buffer.from(parsed.data, "base64").toString();
   };
   return { seal, open };

@@ -77,8 +77,28 @@ export function syncEncrypt(plaintext: string, salt: string | null): Promise<Syn
   return invoke<SyncSealed>("sync_encrypt", { plaintext, salt });
 }
 
-export function syncDecrypt(envelope: string): Promise<string> {
-  return invoke<string>("sync_decrypt", { envelope });
+export class SyncDecryptError extends Error {
+  readonly kind: "auth" | "other";
+  constructor(kind: "auth" | "other", message: string) {
+    super(message);
+    this.name = "SyncDecryptError";
+    this.kind = kind;
+  }
+}
+
+export async function syncDecrypt(envelope: string): Promise<string> {
+  try {
+    return await invoke<string>("sync_decrypt", { envelope });
+  } catch (error) {
+    if (error && typeof error === "object" && "kind" in error && "message" in error) {
+      const failure = error as { kind: unknown; message: unknown };
+      throw new SyncDecryptError(
+        failure.kind === "auth" ? "auth" : "other",
+        String(failure.message),
+      );
+    }
+    throw error;
+  }
 }
 
 export type SyncSecretBase = Record<string, [string, number]>;
