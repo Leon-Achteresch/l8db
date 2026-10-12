@@ -51,6 +51,12 @@ const { useConnectionsStore } = await import("../src/lib/connections/store");
 const { useSettingsStore } = await import("../src/lib/settings");
 const { useWriteModeStore } = await import("../src/lib/environments");
 const { operationConnections } = await import("../src/lib/operation-context");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("../src/lib/providers");
+
+beforeEach(() => {
+  useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
+});
+
 type QueryResult = import("../src/lib/db/types").QueryResult;
 type SavedConnection = import("../src/lib/connections").SavedConnection;
 type TargetRun = import("../src/lib/multi-target").TargetRun;
