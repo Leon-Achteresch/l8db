@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 interface PreviewCall {
   kind: string;
@@ -89,6 +89,12 @@ const { useServerOutputStore } = await import("../src/lib/server-output");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useSessionViewsStore, scopeKey } = await import("../src/lib/session-views");
 const { editorBindParams } = await import("../src/lib/bind-params");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("../src/lib/providers");
+
+beforeEach(() => {
+  useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
+});
+
 type QueryResult = import("../src/lib/db/types").QueryResult;
 
 function ready(sql: string, dialect: string, limit = 100) {

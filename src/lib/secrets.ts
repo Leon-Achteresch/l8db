@@ -60,9 +60,10 @@ export async function loadSecret(account: string): Promise<string | null> {
 export async function deleteSecret(account: string): Promise<void> {
   bump(account);
   sessionSecrets.delete(account);
+  if (!isTrackedSecret(account)) return removeSecret(account);
   const previous = await storedValue(account);
   await removeSecret(account);
-  if (isTrackedSecret(account) && previous !== null) recordSecretEdit(account);
+  if (previous !== null) recordSecretEdit(account);
 }
 
 const REDACTED_SECRET = "***";
