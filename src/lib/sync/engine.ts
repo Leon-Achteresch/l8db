@@ -4,7 +4,6 @@ import type {
   SyncBackupInfo,
   SyncRemoteFile,
   SyncSealed,
-  SyncSecretBase,
   SyncSecretMerge,
   SyncStoreResult,
   SyncTarget,
@@ -43,6 +42,7 @@ import {
   summaryTotal,
   toDocument,
 } from "./payload";
+import type { StoredSecretBase } from "./store";
 
 export type SyncMode = "sync" | "upload" | "download";
 
@@ -80,11 +80,6 @@ export interface SyncDeps {
   writeSecretBase(base: StoredSecretBase): void;
   readSecretEdits(): Record<string, number>;
   now(): number;
-}
-
-export interface StoredSecretBase {
-  fingerprint: string | null;
-  entries: SyncSecretBase;
 }
 
 export interface SyncSettings {
@@ -126,12 +121,18 @@ export interface SyncDecider {
   secretConflicts?(conflicts: SecretConflict[]): Promise<SecretResolutions | null>;
 }
 
+export type DowngradeReason = "plain" | "undecryptable";
+
 export class SyncDowngradeError extends Error {
-  constructor() {
+  readonly reason: DowngradeReason;
+  constructor(reason: DowngradeReason = "plain") {
     super(
-      "Die Sync-Datei auf dem Server ist vollständig verschlüsselt, auf diesem Rechner ist die Verschlüsselung aber nicht aktiviert. Hochladen würde sie unverschlüsselt überschreiben. Aktivieren Sie die Verschlüsselung oder bestätigen Sie die Herabstufung ausdrücklich.",
+      reason === "plain"
+        ? "Die Sync-Datei auf dem Server ist vollständig verschlüsselt, auf diesem Rechner ist die Verschlüsselung aber nicht aktiviert. Aktivieren Sie die Verschlüsselung oder bestätigen Sie ausdrücklich, dass die Datei unverschlüsselt überschrieben wird."
+        : "Die Sync-Datei auf dem Server kann auf diesem Rechner nicht entschlüsselt werden (Sync-Passphrase fehlt oder ist falsch). Hinterlegen Sie die richtige Passphrase oder bestätigen Sie ausdrücklich, dass die Server-Datei mit allen Daten anderer Rechner überschrieben wird.",
     );
     this.name = "SyncDowngradeError";
+    this.reason = reason;
   }
 }
 
@@ -252,9 +253,10 @@ export function agreedBase(base: SyncBase, merged: SyncSnapshot, remote: SyncSna
   return next;
 }
 
-function verifyTaken(merged: SyncSnapshot, local: SyncSnapshot): void {
+function verifyTaken(merged: SyncSnapshot, local: SyncSnapshot, remote: SyncSnapshot): void {
   for (const [key, entry] of merged.items) {
     if (local.items.get(key)?.data === entry.data) continue;
+    if (remote.items.get(key)?.data !== entry.data) continue;
     const actual = hashData(entry.data);
     if (actual !== entry.hash) merged.items.set(key, { ...entry, hash: actual });
   }
@@ -327,9 +329,9 @@ export function changedPathHints(
 
 export async function decodeRemote(
   transport: Pick<SyncTransport, "decrypt">,
-  content: string,
+  content: string | ReturnType<typeof parseEnvelope>,
 ): Promise<{ document: SyncDocument; salt: string | null; encrypted: boolean }> {
-  const envelope = parseEnvelope(content);
+  const envelope = typeof content === "string" ? parseEnvelope(content) : content;
   if (!isEncryptedDocument(envelope))
     return { document: envelope, salt: envelopeSalt(envelope.secrets), encrypted: false };
   const plain = await transport.decrypt(envelope.encrypted);
@@ -370,7 +372,7 @@ export async function runSync(
       } catch (error) {
         if (
           !(error instanceof SyncRemoteChangedError) ||
-          mode !== "sync" ||
+          mode === "download" ||
           attempt >= MAX_SYNC_ATTEMPTS
         )
           throw error;
@@ -439,28 +441,24 @@ async function attemptSync(
   check();
   if (remoteFile.gistId) outcome.gistId = remoteFile.gistId;
   if (remoteFile.content) {
+    const envelope = parseEnvelope(remoteFile.content);
+    remoteEncrypted = isEncryptedDocument(envelope);
+    outcome.remoteEncrypted = remoteEncrypted;
+    if (remoteEncrypted && !settings.encryptAll && mode !== "download" && !options.allowDowngrade) {
+      if (decider.automatic) return { ...outcome, status: "conflict", downgradeBlocked: true };
+      throw new SyncDowngradeError("plain");
+    }
     try {
-      const decoded = await abortable(decodeRemote(deps.transport, remoteFile.content), signal);
+      const decoded = await abortable(decodeRemote(deps.transport, envelope), signal);
       remoteDocument = decoded.document;
-      remoteEncrypted = decoded.encrypted;
       outcome.salt = decoded.salt ?? outcome.salt;
       remote = documentSnapshot(remoteDocument);
     } catch (error) {
-      if (!(mode === "upload" && options.allowDowngrade)) throw error;
-      remoteEncrypted = true;
+      if (error instanceof SyncAbortedError) throw error;
+      if (!remoteEncrypted || mode !== "upload") throw error;
+      if (!options.allowDowngrade) throw new SyncDowngradeError("undecryptable");
     }
     check();
-  }
-  outcome.remoteEncrypted = remoteEncrypted;
-  if (
-    remoteFile.content &&
-    remoteEncrypted &&
-    !settings.encryptAll &&
-    mode !== "download" &&
-    !options.allowDowngrade
-  ) {
-    if (decider.automatic) return { ...outcome, status: "conflict", downgradeBlocked: true };
-    throw new SyncDowngradeError();
   }
   passThrough(local, remote, include);
   let merged: SyncSnapshot;
@@ -479,7 +477,7 @@ async function attemptSync(
       merged = resolveConflicts(result, strategy, now);
     } else merged = result.merged;
   }
-  if (mode !== "upload") verifyTaken(merged, local);
+  if (mode !== "upload") verifyTaken(merged, local, remote);
   const summary = diffSnapshots(local, merged);
   for (const collection of SYNC_COLLECTIONS)
     if (!include.has(collection)) summary[collection] = { added: 0, updated: 0, removed: 0 };
@@ -631,8 +629,8 @@ async function attemptSync(
           ? { ...target, gistId: outcome.gistId }
           : target,
         body,
-        mode === "sync" ? (remoteFile?.version ?? null) : null,
-        mode === "sync" && !remoteFile?.content,
+        remoteFile?.version ?? null,
+        !remoteFile?.content,
         opId,
       ),
       signal,

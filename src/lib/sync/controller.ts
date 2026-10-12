@@ -12,7 +12,7 @@ import {
   syncMergeSecrets,
   syncStore,
 } from "@/lib/db/sync";
-import { readSecretEdits } from "@/lib/secret-edits";
+import { readSecretEdits, recordSecretEdits } from "@/lib/secret-edits";
 import {
   runSync,
   type SyncDecider,
@@ -198,6 +198,7 @@ async function restoreUnderLease(
   if (backup.hasSecrets) {
     const result = await syncBackupRestoreSecrets(backup.id);
     forgetCachedSecrets([...result.restored, ...result.failed]);
+    recordSecretEdits(result.restored);
     if (result.failed.length > 0)
       throw new Error(
         `${result.failed.length} Passwort(e) konnten nicht wiederhergestellt werden. Die Daten wurden nicht angefasst.`,

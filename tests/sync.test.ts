@@ -1061,3 +1061,71 @@ describe("fifth review regressions", () => {
     expect(await contentHash(known, null, extra)).toBe(await contentHash(newer, null));
   });
 });
+
+describe("sixth review regressions", () => {
+  test("Hochladen writes against the fetched version and keeps a racing device's history", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const h = device("h", remote, new FakeCoordinator());
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a);
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A2", sql: "1" } }];
+    const store = a.deps.transport.store;
+    let raced = false;
+    const preconditions: (string | null)[] = [];
+    a.deps.transport.store = async (target, content, ifMatch, expectAbsent, opId) => {
+      preconditions.push(ifMatch);
+      if (!raced) {
+        raced = true;
+        h.collections.history = [
+          { id: "h1", data: { id: "h1", connectionId: "c", sql: "x", ranAt: 1 }, updatedAt: 1 },
+        ];
+        await sync(h, "sync", { includeHistory: true });
+      }
+      return store(target, content, ifMatch, expectAbsent, opId);
+    };
+    const outcome = await sync(a, "upload");
+    expect(outcome.attempts).toBe(2);
+    expect(preconditions.every((value) => value !== null)).toBe(true);
+    const document = parseDocument(remote.content as string);
+    expect(Object.keys(document.items.history ?? {})).toEqual(["h1"]);
+    expect(nameOf({ items: new Map(Object.entries(document.items.savedQueries ?? {})) }, "q")).toBe(
+      "A2",
+    );
+  });
+
+  test("Hochladen over a file this device cannot decrypt offers the explicit overwrite path", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator(), { passphrase: { value: "richtig" } });
+    const b = device("b", remote, new FakeCoordinator(), { passphrase: { value: "falsch" } });
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    const encrypted = { includeSecrets: true, encryptAll: true };
+    await sync(a, "sync", encrypted);
+    const puts = remote.puts;
+    const error = await sync(b, "upload", encrypted).catch((caught) => caught);
+    expect(error).toBeInstanceOf(SyncDowngradeError);
+    expect((error as SyncDowngradeError).reason).toBe("undecryptable");
+    expect(remote.puts).toBe(puts);
+    b.collections.savedQueries = [{ id: "q", data: { id: "q", name: "B", sql: "1" } }];
+    await sync(b, "upload", encrypted, acceptAll, undefined, true);
+    expect(remote.puts).toBe(puts + 1);
+    await expect(sync(a, "sync", encrypted)).rejects.toThrow("Passphrase falsch");
+  });
+
+  test("auto-sync detects an encrypted remote from the header without decrypting", async () => {
+    const remote = new FakeRemote();
+    const a = device("a", remote, new FakeCoordinator());
+    const b = device("b", remote, new FakeCoordinator(), { passphrase: { value: "keine" } });
+    a.collections.savedQueries = [{ id: "q", data: { id: "q", name: "A", sql: "1" } }];
+    await sync(a, "sync", { includeSecrets: true, encryptAll: true });
+    let decrypts = 0;
+    const decrypt = b.deps.transport.decrypt;
+    b.deps.transport.decrypt = async (envelope) => {
+      decrypts++;
+      return decrypt(envelope);
+    };
+    const outcome = await sync(b, "sync", {}, autoDecider);
+    expect(outcome).toMatchObject({ status: "conflict", downgradeBlocked: true });
+    expect(decrypts).toBe(0);
+  });
+});

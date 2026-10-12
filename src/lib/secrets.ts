@@ -7,16 +7,26 @@ import { recordSecretEdit } from "@/lib/secret-edits";
 
 const sessionSecrets = new Map<string, string>();
 
+async function storedValue(account: string): Promise<string | null | undefined> {
+  try {
+    return await readSecret(account);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function storeSecret(account: string, secret: string): Promise<void> {
-  const changed = sessionSecrets.get(account) !== secret;
+  const previous = await storedValue(account);
   sessionSecrets.set(account, secret);
   await persistSecret(account, secret);
-  if (changed) recordSecretEdit(account);
+  if (previous !== secret) recordSecretEdit(account);
 }
 
 export async function rememberSecret(account: string, secret: string): Promise<void> {
+  const previous = await storedValue(account);
   sessionSecrets.set(account, secret);
   await removeSecret(account);
+  if (previous !== null) recordSecretEdit(account);
 }
 
 export function forgetSessionSecret(account: string): void {
@@ -36,9 +46,10 @@ export async function loadSecret(account: string): Promise<string | null> {
 }
 
 export async function deleteSecret(account: string): Promise<void> {
+  const previous = await storedValue(account);
   sessionSecrets.delete(account);
   await removeSecret(account);
-  recordSecretEdit(account);
+  if (previous !== null) recordSecretEdit(account);
 }
 
 const REDACTED_SECRET = "***";

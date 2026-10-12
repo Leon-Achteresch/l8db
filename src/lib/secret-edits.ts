@@ -33,22 +33,28 @@ export function readSecretEdits(): Record<string, number> {
   return { ...cache };
 }
 
-export function recordSecretEdit(account: string, at: number = Date.now()): void {
-  if (!CONNECTION_SECRET.test(account)) return;
-  cache = null;
-  const edits = readSecretEdits();
-  edits[account] = at;
-  const entries = Object.entries(edits);
-  const kept =
-    entries.length > LIMIT
-      ? Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, LIMIT))
-      : edits;
-  cache = kept;
+export function recordSecretEdits(accounts: string[], at: number = Date.now()): void {
+  const relevant = accounts.filter((account) => CONNECTION_SECRET.test(account));
+  if (relevant.length === 0) return;
+  if (!cache) readSecretEdits();
+  const edits = cache ?? {};
+  for (const account of relevant) edits[account] = at;
+  if (Object.keys(edits).length > LIMIT)
+    cache = Object.fromEntries(
+      Object.entries(edits)
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, LIMIT),
+    );
+  else cache = edits;
   try {
-    storage()?.setItem(SECRET_EDITS_KEY, JSON.stringify(kept));
+    storage()?.setItem(SECRET_EDITS_KEY, JSON.stringify(cache));
   } catch {
     return;
   }
+}
+
+export function recordSecretEdit(account: string, at: number = Date.now()): void {
+  recordSecretEdits([account], at);
 }
 
 syncAcrossWindows(SECRET_EDITS_KEY, () => {
