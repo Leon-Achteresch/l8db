@@ -26,9 +26,9 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
             Geplant · Ausführung beim Commit
           </span>
         )}
-        {change.ctid && (
+        {(change.ctid || change.rowKey) && (
           <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-            ctid {change.ctid}
+            {change.rowKey ?? `ctid ${change.ctid}`}
           </span>
         )}
       </div>

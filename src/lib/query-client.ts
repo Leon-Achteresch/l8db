@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { isAuthFailure, isInterruptedQuery } from "@/lib/connection-url";
+import { enforceQueryCacheBudget } from "@/lib/query-cache-budget";
 
 export const METADATA_QUERY_ROOTS = [
   "databases",
@@ -11,6 +12,7 @@ export const METADATA_QUERY_ROOTS = [
   "columns-detailed",
   "view-definition",
   "functions",
+  "package-members",
   "procedures",
   "function-definition",
   "extensions",
@@ -114,5 +116,6 @@ export function createAppQueryClient() {
   client.setQueryDefaults(["rows"], { gcTime: 60_000 });
   client.setQueryDefaults(["column-search"], { gcTime: 30_000 });
   client.setQueryDefaults(["source-search"], { gcTime: 30_000 });
+  enforceQueryCacheBudget(client.getQueryCache());
   return client;
 }

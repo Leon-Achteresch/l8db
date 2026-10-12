@@ -387,6 +387,32 @@ fn is_influxql(statement: &str) -> bool {
             .is_some_and(|w| INFLUXQL_SHOW.contains(&w.as_str()))
 }
 
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let adapter = InfluxAdapter::new(value, None)?;
+    let base = url::Url::parse(&adapter.base).map_err(|_| "Ungültige InfluxDB-URL".to_string())?;
+    let tls = base.scheme() == "https";
+    Ok(super::endpoint::EndpointIdentity {
+        host: super::endpoint::host_of(&base),
+        port: base.port_or_known_default(),
+        transport: base.scheme().to_string(),
+        tls,
+        verify: tls && !adapter.insecure,
+        database: adapter.database.clone().unwrap_or_default(),
+        schema: String::new(),
+        user: String::new(),
+        params: super::endpoint::identity_params(&[
+            ("org", adapter.org.clone()),
+            (
+                "version",
+                adapter.forced.map(|version| match version {
+                    Version::V2 => "2".to_string(),
+                    Version::V3 => "3".to_string(),
+                }),
+            ),
+        ]),
+    })
+}
+
 impl InfluxAdapter {
     pub fn new(connection_string: &str, database: Option<&str>) -> Result<Self, String> {
         let url = url::Url::parse(connection_string.trim())
@@ -399,7 +425,8 @@ impl InfluxAdapter {
             .ok_or("Host fehlt in der URL")?
             .to_lowercase();
         let tls = http_api::tls(&url, host.ends_with(".influxdata.com"));
-        let port = url.port().unwrap_or(if tls.secure { 443 } else { 8086 });
+        let port = super::http_api::explicit_port(connection_string, &url)
+            .unwrap_or(if tls.secure { 443 } else { 8086 });
         let token = http_api::param(&url, &["token", "authToken", "auth_token"])
             .unwrap_or_else(|| http_api::decode(url.password().unwrap_or("")));
         let path_db = http_api::decode(url.path().trim_matches('/'));

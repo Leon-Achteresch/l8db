@@ -1,25 +1,24 @@
 import { useNavigate } from "@tanstack/react-router";
-import {
-  ChevronRightIcon,
-  CopyIcon,
-  HammerIcon,
-  PackageIcon,
-  SquareTerminalIcon,
-  TrashIcon,
-} from "lucide-react";
+import { ChevronRightIcon, PackageIcon } from "lucide-react";
 import { useState } from "react";
+import { CopyAsMenu } from "@/components/copy-as-menu";
+import { ToolsMenu } from "@/components/tools-menu";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "@/components/ui/sidebar";
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
+import { copyNameActions } from "@/lib/clipboard";
+import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import type { PackagePart } from "@/lib/plsql";
 import { useTableTabs } from "@/lib/table-tabs";
+import { PackageMatchingMembers } from "./package-matching-members";
 import { PartNode } from "./part-node";
 import { usePackageNavigate } from "./use-package-navigate";
 
@@ -28,6 +27,7 @@ export type DropKind = "package" | "body";
 interface PackageNodeProps {
   schema: string;
   name: string;
+  matchingMembers?: string[];
   invalid: boolean;
   canCopy: boolean;
   canCompile: boolean;
@@ -39,6 +39,7 @@ interface PackageNodeProps {
 export function PackageNode({
   schema,
   name,
+  matchingMembers,
   invalid,
   canCopy,
   canCompile,
@@ -60,7 +61,14 @@ export function PackageNode({
   return (
     <SidebarMenuItem>
       <ContextMenu>
-        <ContextMenuTrigger asChild>
+        <ContextMenuTrigger
+          asChild
+          onKeyDown={menuKeyHandler({
+            newQuery: openInEditor,
+            ...copyNameActions(name, label),
+            drop: () => onDrop("package"),
+          })}
+        >
           <SidebarMenuButton onClick={() => go()}>
             <ChevronRightIcon
               aria-expanded={open}
@@ -76,48 +84,44 @@ export function PackageNode({
           </SidebarMenuButton>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem onSelect={() => go()}>
+            Öffnen
+            <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.open)}</ContextMenuShortcut>
+          </ContextMenuItem>
           <ContextMenuItem onSelect={() => go("spec")}>Spec öffnen</ContextMenuItem>
           <ContextMenuItem onSelect={() => go("body")}>Body öffnen</ContextMenuItem>
-          <CompareObjectMenuItem schema={schema} name={name} objectType="package" />
-          <ContextMenuSeparator />
           <ContextMenuItem onSelect={openInEditor}>
-            <SquareTerminalIcon />
-            Aufruf im Editor
+            Neue Abfrage für {name}
+            <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.newQuery)}</ContextMenuShortcut>
           </ContextMenuItem>
-          <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(label)}>
-            <CopyIcon />
-            Namen kopieren
-          </ContextMenuItem>
-          {canCopy ? (
-            <ContextMenuItem onSelect={onCopy}>
-              <CopyIcon />
-              In anderem Schema erstellen
-            </ContextMenuItem>
-          ) : null}
+          <ContextMenuSeparator />
+          <CopyAsMenu name={name} qualifiedName={label} shortcuts />
+          <ContextMenuSeparator />
           {canCompile ? (
             <>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => onCompile("spec")}>
-                <HammerIcon />
-                Spec kompilieren
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => onCompile("body")}>
-                <HammerIcon />
-                Body kompilieren
-              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => onCompile("spec")}>Spec kompilieren</ContextMenuItem>
+              <ContextMenuItem onSelect={() => onCompile("body")}>Body kompilieren</ContextMenuItem>
             </>
           ) : null}
+          <ToolsMenu>
+            <CompareObjectMenuItem schema={schema} name={name} objectType="package" />
+            {canCopy ? (
+              <ContextMenuItem onSelect={onCopy}>In anderem Schema erstellen…</ContextMenuItem>
+            ) : null}
+          </ToolsMenu>
           <ContextMenuSeparator />
           <ContextMenuItem variant="destructive" onSelect={() => onDrop("body")}>
-            <TrashIcon />
-            Body löschen
+            Body löschen…
           </ContextMenuItem>
           <ContextMenuItem variant="destructive" onSelect={() => onDrop("package")}>
-            <TrashIcon />
-            Package löschen
+            Package löschen…
+            <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.drop)}</ContextMenuShortcut>
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {matchingMembers?.length ? (
+        <PackageMatchingMembers schema={schema} name={name} members={matchingMembers} />
+      ) : null}
       {open ? (
         <SidebarMenuSub>
           <PartNode schema={schema} name={name} part="spec" title="Spec" />

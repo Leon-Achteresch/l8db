@@ -1,9 +1,9 @@
-import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, DiffIcon, EllipsisIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { IconMenu, IconMenuCheckboxItem, IconMenuContent } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   type DefinitionDiffApi,
   DefinitionDiffEditor,
@@ -12,6 +12,7 @@ import {
 import { detailText } from "@/lib/schema-compare/diff";
 import { type CompareResult, OBJECT_TYPE_META, STATUS_LABEL } from "@/lib/schema-compare/types";
 import { SchemaObjectIcon } from "./schema-object-icon";
+import { StatusMarker } from "./status-marker";
 
 export function SchemaCompareDetail({
   result,
@@ -22,6 +23,7 @@ export function SchemaCompareDetail({
 }) {
   const item = result.items.find((entry) => entry.key === activeKey) ?? null;
   const [onlyDifferences, setOnlyDifferences] = useState(false);
+  const [layout, setLayout] = useState<"inline" | "side">("inline");
   const [stats, setStats] = useState<DiffStats>({ changes: 0, added: 0, removed: 0 });
   const diffRef = useRef<DefinitionDiffApi>(null);
   const texts = useMemo(
@@ -38,53 +40,87 @@ export function SchemaCompareDetail({
   if (!item)
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-xs text-muted-foreground">
-        Objekt in der Liste wählen, um Quelle und Ziel nebeneinander zu sehen.
+        Objekt in der Liste wählen.
       </div>
     );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b bg-muted/30 pr-1.5 pl-3 text-xs">
         <SchemaObjectIcon type={item.type} />
-        <span className="text-muted-foreground">{OBJECT_TYPE_META[item.type].label}</span>
         <span className="truncate font-mono font-medium">
           {item.parent && item.parent !== item.name ? `${item.parent}.` : ""}
           {item.name}
         </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {STATUS_LABEL[item.status]}
-        </Badge>
-        {item.differsBy.length > 0 && (
-          <span className="truncate text-muted-foreground">{item.differsBy.join(", ")}</span>
+        {item.status === "identical" ? (
+          <span className="text-muted-foreground">{STATUS_LABEL.identical}</span>
+        ) : (
+          <StatusMarker status={item.status} />
         )}
-        <div className="ml-auto flex items-center gap-1">
-          <Label className="flex items-center gap-1.5 text-xs font-normal">
-            <Switch checked={onlyDifferences} onCheckedChange={setOnlyDifferences} />
-            Nur Unterschiede
-          </Label>
+        <span className="truncate text-muted-foreground">
+          {OBJECT_TYPE_META[item.type].label}
+          {stats.changes > 0 &&
+            ` · ${stats.changes} ${stats.changes === 1 ? "Änderung" : "Änderungen"}`}
+          {item.differsBy.length > 0 && ` · ${item.differsBy.join(", ")}`}
+        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            spacing={0}
+            value={layout}
+            onValueChange={(value) => value && setLayout(value as "inline" | "side")}
+            aria-label="Diff-Darstellung"
+          >
+            <ToggleGroupItem value="inline" className="h-6 px-2 text-xs">
+              Inline
+            </ToggleGroupItem>
+            <ToggleGroupItem value="side" className="h-6 px-2 text-xs">
+              Nebeneinander
+            </ToggleGroupItem>
+          </ToggleGroup>
           <Button
             size="icon-sm"
             variant="ghost"
             aria-label="Vorherige Änderung"
+            title="Vorherige Änderung"
             disabled={stats.changes === 0}
             onClick={() => diffRef.current?.goToChange(-1)}
           >
-            <ChevronUpIcon className="size-3.5" />
+            <ArrowUpIcon className="size-3.5" />
           </Button>
           <Button
             size="icon-sm"
             variant="ghost"
             aria-label="Nächste Änderung"
+            title="Nächste Änderung"
             disabled={stats.changes === 0}
             onClick={() => diffRef.current?.goToChange(1)}
           >
-            <ChevronDownIcon className="size-3.5" />
+            <ArrowDownIcon className="size-3.5" />
           </Button>
+          <IconMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Diff-Optionen"
+                title="Diff-Optionen"
+              >
+                <EllipsisIcon className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <IconMenuContent>
+              <IconMenuCheckboxItem
+                icon={<DiffIcon />}
+                label="Nur Unterschiede"
+                checked={onlyDifferences}
+                onCheckedChange={(checked) => setOnlyDifferences(checked === true)}
+              />
+            </IconMenuContent>
+          </IconMenu>
         </div>
-      </div>
-      <div className="grid shrink-0 grid-cols-2 border-b px-3 py-1 text-[11px] text-muted-foreground">
-        <span className="truncate">Quelle: {result.sourceLabel}</span>
-        <span className="truncate">Ziel: {result.targetLabel}</span>
       </div>
       <div className="relative min-h-0 flex-1">
         <DefinitionDiffEditor
@@ -93,6 +129,7 @@ export function SchemaCompareDetail({
           modified={texts.target}
           onlyDifferences={onlyDifferences}
           onStats={setStats}
+          sideBySide={layout === "side"}
           readOnly
         />
       </div>

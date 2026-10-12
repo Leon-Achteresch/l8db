@@ -1,11 +1,22 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ListOrderedIcon } from "lucide-react";
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { CopyAsMenu } from "@/components/copy-as-menu";
+import { ToolsMenu } from "@/components/tools-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { copyNameActions } from "@/lib/clipboard";
+import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 
 export interface SidebarSequenceListProps {
@@ -45,27 +56,38 @@ export function SidebarSequenceList({
     <SidebarWindow count={items.length}>
       {(index) => {
         const item = items[index];
+        const qualifiedName = `${item.schema}.${item.name}`;
+        const open = () =>
+          target
+            ? target.open({ kind: "tool", tool: "sequences" })
+            : navigate({ to: "/sequences" });
         return (
-          <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+          <SidebarMenuItem key={qualifiedName}>
             <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <SidebarMenuButton
-                  onClick={() =>
-                    target
-                      ? target.open({ kind: "tool", tool: "sequences" })
-                      : navigate({ to: "/sequences" })
-                  }
-                >
+              <ContextMenuTrigger
+                asChild
+                onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
+              >
+                <SidebarMenuButton onClick={open}>
                   <ListOrderedIcon className="text-muted-foreground" />
                   <span className="truncate">{item.name}</span>
                 </SidebarMenuButton>
               </ContextMenuTrigger>
               <ContextMenuContent>
-                <CompareObjectMenuItem
-                  schema={item.schema}
-                  name={item.name}
-                  objectType="sequence"
-                />
+                <ContextMenuItem onSelect={open}>
+                  Öffnen
+                  <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.open)}</ContextMenuShortcut>
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <CopyAsMenu name={item.name} qualifiedName={qualifiedName} shortcuts />
+                <ContextMenuSeparator />
+                <ToolsMenu>
+                  <CompareObjectMenuItem
+                    schema={item.schema}
+                    name={item.name}
+                    objectType="sequence"
+                  />
+                </ToolsMenu>
               </ContextMenuContent>
             </ContextMenu>
           </SidebarMenuItem>

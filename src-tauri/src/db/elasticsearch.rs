@@ -366,6 +366,30 @@ pub fn is_index_ddl(statement: &str) -> bool {
     })
 }
 
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let adapter = ElasticAdapter::new(value)?;
+    let base =
+        url::Url::parse(&adapter.base).map_err(|_| "Ungültige Elasticsearch-URL".to_string())?;
+    let tls = base.scheme() == "https";
+    let user = match &adapter.auth {
+        Auth::Basic(user, _) => user.clone(),
+        Auth::ApiKey(_) => "apikey".to_string(),
+        Auth::Bearer(_) => "bearer".to_string(),
+        Auth::None => String::new(),
+    };
+    Ok(super::endpoint::EndpointIdentity {
+        host: super::endpoint::host_of(&base),
+        port: base.port_or_known_default(),
+        transport: base.scheme().to_string(),
+        tls,
+        verify: tls && !adapter.insecure,
+        database: base.path().trim_matches('/').to_string(),
+        schema: String::new(),
+        user,
+        params: Vec::new(),
+    })
+}
+
 impl ElasticAdapter {
     pub fn new(connection_string: &str) -> Result<Self, String> {
         let url = url::Url::parse(connection_string.trim())
@@ -381,7 +405,8 @@ impl ElasticAdapter {
             .ok_or("Host fehlt in der URL")?
             .to_lowercase();
         let tls = http_api::tls(&url, CLOUD_HOSTS.iter().any(|h| host.ends_with(h)));
-        let port = url.port().unwrap_or(if tls.secure { 443 } else { 9200 });
+        let port = super::http_api::explicit_port(connection_string, &url)
+            .unwrap_or(if tls.secure { 443 } else { 9200 });
         let prefix = url.path().trim_end_matches('/');
         let base = format!(
             "{}{}",

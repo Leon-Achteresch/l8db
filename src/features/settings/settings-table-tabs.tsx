@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/lib/settings";
@@ -9,10 +10,21 @@ export function SettingsTableTabs() {
   const reset = useSettingsStore((s) => s.resetTableDetailTabs);
 
   return (
-    <section className="space-y-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm">
+    <section
+      data-setting-id="table-tabs"
+      tabIndex={-1}
+      className="space-y-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">Tabbar für Tabellen & Views</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            Tabbar für Tabellen & Views
+            {hidden.length > 0 ? (
+              <Badge variant="secondary" className="text-[10px]">
+                Geändert
+              </Badge>
+            ) : null}
+          </h3>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             Sichtbare Tabs für alle Verbindungen festlegen. Auch per Rechtsklick auf die Tabbar. Je
             nach Datenbank und Objekttyp sind nicht alle Tabs verfügbar.

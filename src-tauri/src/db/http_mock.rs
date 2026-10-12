@@ -54,6 +54,17 @@ impl MockServer {
 pub(crate) fn start(
     handler: impl Fn(&MockRequest) -> (u16, Vec<u8>) + Send + Sync + 'static,
 ) -> MockServer {
+    start_with_headers(move |request| {
+        let (status, body) = handler(request);
+        (status, Vec::new(), body)
+    })
+}
+
+pub(crate) type MockResponse = (u16, Vec<(String, String)>, Vec<u8>);
+
+pub(crate) fn start_with_headers(
+    handler: impl Fn(&MockRequest) -> MockResponse + Send + Sync + 'static,
+) -> MockServer {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -100,9 +111,13 @@ pub(crate) fn start(
                     body: String::from_utf8_lossy(&body).into_owned(),
                 };
                 entries.lock().unwrap().push(request.clone());
-                let (status, payload) = handler(&request);
+                let (status, extra, payload) = handler(&request);
+                let extra: String = extra
+                    .iter()
+                    .map(|(name, value)| format!("{name}: {value}\r\n"))
+                    .collect();
                 let head = format!(
-                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n",
                     payload.len()
                 );
                 let _ = stream.write_all(head.as_bytes());

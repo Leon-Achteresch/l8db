@@ -1,28 +1,38 @@
 import {
   ArrowDownIcon,
   ArrowUpDownIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
+  ArrowUpIcon,
   DiffIcon,
   EllipsisIcon,
-  GitCompareIcon,
-  InfoIcon,
+  FileCodeIcon,
   LoaderIcon,
   RefreshCwIcon,
   SquarePenIcon,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   IconMenu,
   IconMenuCheckboxItem,
   IconMenuContent,
   IconMenuItem,
-  IconMenuSeparator,
 } from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
+import { CompareMigrationPanel } from "@/features/compare/compare-migration-panel";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
 import {
@@ -31,7 +41,6 @@ import {
   type DiffStats,
 } from "@/features/compare/definition-diff-editor";
 import { type MergeDraftApi, MergeDraftEditor } from "@/features/compare/merge-draft-editor";
-import { MergeReferenceEditor } from "@/features/compare/merge-reference-editor";
 import {
   type CompareSideSelection,
   compareLoadErrorMessage,
@@ -40,7 +49,7 @@ import {
 import { useConnectionsStore } from "@/lib/connections";
 import { definitionHunks, draftLineOrigins } from "@/lib/definition-merge";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { createScrollSyncGroup } from "@/lib/monaco/scroll-sync";
+import { createScrollSyncGroup, syncScrollGroup } from "@/lib/monaco/scroll-sync";
 
 interface SideState {
   definition: string;
@@ -87,12 +96,14 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const [transferSide, setTransferSide] = useState<"left" | "right">("left");
   const draftRef = useRef<MergeDraftApi>(null);
   const diffRef = useRef<DefinitionDiffApi>(null);
+  const activeEditor = useRef<"comparison" | "draft">("comparison");
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null);
   const draftFeature = useNewFeatureVisibility<HTMLButtonElement>("compare.draft-toggle");
   const [scrollSync] = useState(createScrollSyncGroup);
   scrollSync.enabled = props.syncScroll;
   const syncScrollFeature = useNewFeatureVisibility<HTMLButtonElement>("compare.scroll-sync");
-  const changeIndex = useRef(-1);
+  const [layout, setLayout] = useState<"inline" | "side">("side");
+  const [migrationOpen, setMigrationOpen] = useState(false);
   const draft = props.draft ?? rightState.definition;
   const transferState = transferSide === "left" ? leftState : rightState;
   const transferLabel = transferSide === "left" ? "Quelle" : "Ziel";
@@ -104,6 +115,20 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
     () => definitionHunks(rightState.definition, draft),
     [rightState.definition, draft],
   );
+  const scrollMappings = useMemo(
+    () =>
+      targetHunks.map((hunk) => ({
+        sourceStart: hunk.sourceStart,
+        sourceEnd: hunk.sourceEnd,
+        targetStart: hunk.draftStart,
+        targetEnd: hunk.draftEnd,
+      })),
+    [targetHunks],
+  );
+  useEffect(() => {
+    scrollSync.mappings = scrollMappings;
+    if (props.syncScroll && props.showDraft) syncScrollGroup(scrollSync);
+  }, [scrollSync, scrollMappings, props.syncScroll, props.showDraft]);
   const origins = useMemo(
     () => draftLineOrigins(sourceHunks, targetHunks, draft.split("\n").length),
     [sourceHunks, targetHunks, draft],
@@ -119,18 +144,11 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
     props.onDraftChange(value, leftState.definition, rightState.definition);
   const changeCount = props.showDraft ? changeLines.length : (diffStats?.changes ?? 0);
   const goToChange = (direction: 1 | -1) => {
-    if (!props.showDraft) {
+    if (!props.showDraft || activeEditor.current === "comparison") {
       diffRef.current?.goToChange(direction);
       return;
     }
-    if (changeLines.length === 0) return;
-    changeIndex.current =
-      changeIndex.current < 0
-        ? direction === 1
-          ? 0
-          : changeLines.length - 1
-        : (changeIndex.current + direction + changeLines.length) % changeLines.length;
-    draftRef.current?.goToLine(changeLines[changeIndex.current]);
+    draftRef.current?.goToChange(changeLines, direction);
   };
 
   const loadDefinition = useCallback(
@@ -185,49 +203,94 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
     );
   }
 
+  const ready = sideReady(left) && sideReady(right);
+  const blocked =
+    !ready ||
+    leftState.loading ||
+    rightState.loading ||
+    Boolean(leftState.error) ||
+    Boolean(rightState.error);
+  const status = !ready
+    ? "Definitionen vergleichen"
+    : leftState.loading || rightState.loading
+      ? "Wird geladen…"
+      : leftState.error || rightState.error
+        ? "Nicht verfügbar"
+        : !props.showDraft
+          ? diffStats === null
+            ? "Wird verglichen…"
+            : diffStats.changes === 0
+              ? "Keine Unterschiede"
+              : `${diffStats.changes} ${diffStats.changes === 1 ? "Änderung" : "Änderungen"}`
+          : leftState.definition === draft && rightState.definition === draft
+            ? "Keine Unterschiede"
+            : `${sourceHunks.length + targetHunks.length} Abweichungen`;
+  const statusDetail =
+    ready && !blocked
+      ? props.showDraft
+        ? `Abweichungen vom Entwurf: Quelle ${sourceHunks.length} · Ziel ${targetHunks.length}`
+        : diffStats && diffStats.changes > 0
+          ? `Quelle +${diffStats.removed} · Ziel +${diffStats.added}`
+          : undefined
+      : undefined;
+  const sideBySide = props.showDraft || layout === "side";
+  const reload = () => {
+    props.onReload();
+    setReloadToken((token) => token + 1);
+  };
+  const handleKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "F7" || event.metaKey || event.ctrlKey || event.altKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (changeCount > 0) goToChange(event.shiftKey ? -1 : 1);
+  };
+
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
-        <GitCompareIcon className="size-4 text-muted-foreground" />
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {!sideReady(left) || !sideReady(right)
-            ? "Definitionen vergleichen"
-            : leftState.loading || rightState.loading
-              ? "Wird geladen…"
-              : leftState.error || rightState.error
-                ? "Vergleich nicht verfügbar"
-                : !props.showDraft
-                  ? diffStats === null
-                    ? "Wird verglichen…"
-                    : diffStats.changes === 0
-                      ? "Keine Unterschiede"
-                      : `${diffStats.changes} Änderungen · Quelle +${diffStats.removed} · Ziel +${diffStats.added}`
-                  : leftState.definition === draft && rightState.definition === draft
-                    ? "Keine Unterschiede"
-                    : `Abweichungen: Quelle ${sourceHunks.length} · Ziel ${targetHunks.length}`}
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+      onKeyDownCapture={handleKey}
+    >
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+        <CompareSetupModal
+          {...props}
+          defaultOpen={props.initialSetupOpen}
+          onOpenChange={props.onSetupOpenChange}
+        />
+        <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
+        <span
+          className="shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums"
+          title={statusDetail}
+        >
+          {status}
         </span>
         <Button
-          size="sm"
+          size="icon-sm"
           variant="ghost"
-          className="size-7 p-0"
           aria-label="Vorherige Änderung"
-          title="Vorherige Änderung"
+          title="Vorherige Änderung (Umschalt+F7)"
           onClick={() => goToChange(-1)}
           disabled={changeCount === 0}
         >
-          <ChevronUpIcon className="size-3" />
+          <ArrowUpIcon className="size-3.5" />
         </Button>
         <Button
           size="sm"
           variant="ghost"
-          className="size-7 p-0"
+          className="h-7 gap-1.5 px-2 text-xs"
           aria-label="Nächste Änderung"
-          title="Nächste Änderung"
+          title="Nächste Änderung (F7)"
           onClick={() => goToChange(1)}
           disabled={changeCount === 0}
         >
-          <ChevronDownIcon className="size-3" />
+          <span className={props.showDraft ? "hidden 2xl:inline" : "hidden lg:inline"}>
+            Nächste Änderung
+          </span>
+          <ArrowDownIcon className="size-3.5" />
+          <Kbd className={props.showDraft ? "hidden 2xl:inline-flex" : "hidden lg:inline-flex"}>
+            F7
+          </Kbd>
         </Button>
+        <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
         <Button
           ref={draftFeature.ref}
           size="sm"
@@ -237,7 +300,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
           title="Gemeinsamen Entwurf zum Zusammenführen anzeigen"
           onClick={() => props.onShowDraftChange(!props.showDraft)}
         >
-          <SquarePenIcon className="size-3" />
+          <SquarePenIcon className="size-3.5" />
           Entwurf
           {draftFeature.isNew && <NewBadge />}
         </Button>
@@ -251,12 +314,29 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
             title="Quelle, Ziel und Entwurf gemeinsam scrollen"
             onClick={() => props.onSyncScrollChange(!props.syncScroll)}
           >
-            <ArrowUpDownIcon className="size-3" />
+            <ArrowUpDownIcon className="size-3.5" />
             Synchron scrollen
             {syncScrollFeature.isNew && <NewBadge />}
           </Button>
         )}
         <div className="ml-auto flex items-center gap-1">
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            spacing={0}
+            value={sideBySide ? "side" : "inline"}
+            disabled={props.showDraft}
+            onValueChange={(value) => value && setLayout(value as "inline" | "side")}
+            aria-label="Diff-Darstellung"
+          >
+            <ToggleGroupItem value="inline" className="h-7 px-2.5 text-xs">
+              Inline
+            </ToggleGroupItem>
+            <ToggleGroupItem value="side" className="h-7 px-2.5 text-xs">
+              Nebeneinander
+            </ToggleGroupItem>
+          </ToggleGroup>
           {props.workspaceActions}
           <IconMenu>
             <DropdownMenuTrigger asChild>
@@ -276,165 +356,192 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                 checked={onlyDifferences}
                 onCheckedChange={setOnlyDifferences}
               />
-              <IconMenuItem
-                icon={<RefreshCwIcon />}
-                label="Neu laden"
-                onSelect={() => {
-                  props.onReload();
-                  setReloadToken((token) => token + 1);
-                }}
-              />
-              <IconMenuSeparator />
-              <IconMenuItem
-                icon={<InfoIcon />}
-                label="Änderungen aus Quelle oder Ziel in den mittleren Entwurf übernehmen. Den Entwurf anschließend für jede Seite getrennt prüfen und speichern."
-                onSelect={(event) => event.preventDefault()}
-              />
+              <IconMenuItem icon={<RefreshCwIcon />} label="Neu laden" onSelect={reload} />
             </IconMenuContent>
           </IconMenu>
+          {ready && (
+            <Button
+              size="sm"
+              className="ml-1 h-7 gap-1.5 px-2.5 text-xs"
+              aria-pressed={migrationOpen}
+              disabled={blocked}
+              onClick={() => setMigrationOpen((open) => !open)}
+            >
+              <FileCodeIcon className="size-3.5" />
+              Migration erzeugen
+            </Button>
+          )}
         </div>
-        <CompareSetupModal
-          {...props}
-          defaultOpen={props.initialSetupOpen}
-          onOpenChange={props.onSetupOpenChange}
-        />
-        <CompareApplyDialog
-          connection={connections.find((item) => item.id === left.connectionId) ?? null}
-          side={left}
-          baseline={props.sourceBase ?? leftState.definition}
-          draft={draft}
-          disabled={
-            !sideReady(left) ||
-            !sideReady(right) ||
-            leftState.loading ||
-            rightState.loading ||
-            Boolean(leftState.error) ||
-            Boolean(rightState.error)
-          }
-          targetLabel="Quelle"
-          onDiscard={props.onDiscard}
-          onApplied={() => {
-            props.onApplied("left");
-            setReloadToken((token) => token + 1);
-          }}
-        />
-        <CompareApplyDialog
-          connection={connections.find((item) => item.id === right.connectionId) ?? null}
-          side={right}
-          baseline={props.draftBase ?? rightState.definition}
-          draft={draft}
-          disabled={
-            !sideReady(left) ||
-            !sideReady(right) ||
-            leftState.loading ||
-            rightState.loading ||
-            Boolean(leftState.error) ||
-            Boolean(rightState.error)
-          }
-          targetLabel="Ziel"
-          onDiscard={props.onDiscard}
-          onApplied={() => {
-            props.onApplied("right");
-            setReloadToken((token) => token + 1);
-          }}
-        />
       </div>
 
       {(sideReady(left) || sideReady(right)) && (
-        <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
-          <CompareSideSummary side={left} loading={leftState.loading} error={leftState.error} />
-          <CompareSideSummary side={right} loading={rightState.loading} error={rightState.error} />
+        <div className="grid shrink-0 grid-cols-2 divide-x border-b bg-muted/30">
+          <CompareSideSummary
+            label="Quelle"
+            side={left}
+            loading={leftState.loading}
+            error={leftState.error}
+          >
+            <CompareApplyDialog
+              connection={connections.find((item) => item.id === left.connectionId) ?? null}
+              side={left}
+              baseline={props.sourceBase ?? leftState.definition}
+              draft={draft}
+              disabled={blocked}
+              targetLabel="Quelle"
+              onDiscard={props.onDiscard}
+              onApplied={() => {
+                props.onApplied("left");
+                setReloadToken((token) => token + 1);
+              }}
+            />
+          </CompareSideSummary>
+          <CompareSideSummary
+            label="Ziel"
+            side={right}
+            loading={rightState.loading}
+            error={rightState.error}
+          >
+            <CompareApplyDialog
+              connection={connections.find((item) => item.id === right.connectionId) ?? null}
+              side={right}
+              baseline={props.draftBase ?? rightState.definition}
+              draft={draft}
+              disabled={blocked}
+              targetLabel="Ziel"
+              onDiscard={props.onDiscard}
+              onApplied={() => {
+                props.onApplied("right");
+                setReloadToken((token) => token + 1);
+              }}
+            />
+          </CompareSideSummary>
         </div>
       )}
 
-      {!sideReady(left) || !sideReady(right) ? (
+      {!ready ? (
         <div className="flex flex-1 items-center justify-center">
           <CompareSetupModal {...props} size="lg" />
         </div>
       ) : (
-        <div className="relative min-h-0 flex-1">
-          {!props.showDraft ? (
-            <DefinitionDiffEditor
-              ref={diffRef}
-              original={leftState.definition}
-              modified={rightState.definition}
-              onlyDifferences={onlyDifferences}
-              onStats={setDiffStats}
-              readOnly
-              minimap
-            />
-          ) : (
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex min-h-0 flex-1">
-                <div className="min-w-0 flex-1">
-                  <MergeReferenceEditor
-                    label="Quelle"
-                    source={leftState.definition}
-                    draft={draft}
-                    onlyDifferences={onlyDifferences}
-                    selected={transferSide === "left"}
-                    onSelect={() => setTransferSide("left")}
-                    onDraftChange={changeDraft}
-                    scrollSync={scrollSync}
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <MergeReferenceEditor
-                    label="Ziel"
-                    source={rightState.definition}
-                    draft={draft}
-                    onlyDifferences={onlyDifferences}
-                    selected={transferSide === "right"}
-                    onSelect={() => setTransferSide("right")}
-                    onDraftChange={changeDraft}
-                    scrollSync={scrollSync}
-                  />
-                </div>
-              </div>
-              <div className="relative flex h-9 shrink-0 items-center justify-center">
-                <div className="absolute inset-x-0 top-1/2 border-t" />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
-                  aria-label={`${transferLabel} in Entwurf übernehmen`}
-                  disabled={
-                    transferState.loading ||
-                    Boolean(transferState.error) ||
-                    transferState.definition === draft
-                  }
-                  onClick={() => changeDraft(transferState.definition)}
-                >
-                  <ArrowDownIcon className="size-3.5" />
-                  {transferLabel} in Entwurf
-                </Button>
-              </div>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
+            <ResizablePanel id="compare-main" minSize="30%" className="flex min-h-0 flex-col">
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
-                  Gemeinsamer Entwurf
-                </div>
-                <div className="relative min-h-0 flex-1">
-                  <MergeDraftEditor
-                    ref={draftRef}
-                    value={draft}
-                    origins={origins}
-                    onChange={changeDraft}
-                    scrollSync={scrollSync}
-                  />
-                  <div className="pointer-events-none absolute top-2 right-4 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
-                    <span className="flex items-center gap-1.5">
-                      <span className="merge-origin-source size-2.5 rounded-sm" />
-                      aus Quelle
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="merge-origin-target size-2.5 rounded-sm" />
-                      aus Ziel
-                    </span>
+                {props.showDraft && (
+                  <div className="grid shrink-0 grid-cols-2 border-b text-xs">
+                    {(["left", "right"] as const).map((side) => (
+                      <button
+                        key={side}
+                        type="button"
+                        aria-label={`${side === "left" ? "Quelle" : "Ziel"} auswählen`}
+                        aria-pressed={transferSide === side}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-muted ${transferSide === side ? "font-medium text-primary" : "text-muted-foreground"}`}
+                        onClick={() => setTransferSide(side)}
+                      >
+                        <span
+                          className={`size-2 shrink-0 rounded-full ${transferSide === side ? "bg-primary" : "border border-muted-foreground"}`}
+                        />
+                        {side === "left" ? "Quelle" : "Ziel"}
+                      </button>
+                    ))}
                   </div>
+                )}
+                <div className="min-h-0 flex-1">
+                  <DefinitionDiffEditor
+                    ref={diffRef}
+                    original={leftState.definition}
+                    modified={rightState.definition}
+                    onlyDifferences={onlyDifferences}
+                    onStats={setDiffStats}
+                    readOnly
+                    minimap
+                    sideBySide={sideBySide}
+                    draft={props.showDraft ? draft : undefined}
+                    onDraftChange={changeDraft}
+                    onSideSelect={setTransferSide}
+                    onActivate={() => {
+                      activeEditor.current = "comparison";
+                    }}
+                    scrollSync={props.showDraft ? scrollSync : undefined}
+                  />
                 </div>
               </div>
-            </div>
-          )}
+              {props.showDraft && (
+                <>
+                  <div className="relative flex h-9 shrink-0 items-center justify-center">
+                    <div className="absolute inset-x-0 top-1/2 border-t" />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
+                      aria-label={`${transferLabel} in Entwurf übernehmen`}
+                      disabled={
+                        transferState.loading ||
+                        Boolean(transferState.error) ||
+                        transferState.definition === draft
+                      }
+                      onClick={() => changeDraft(transferState.definition)}
+                    >
+                      <ArrowDownIcon className="size-3.5" />
+                      {transferLabel} in Entwurf
+                    </Button>
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <div className="flex shrink-0 items-center gap-3 border-b px-3 py-1.5 text-xs">
+                      <span className="font-medium">Merge-Ergebnis</span>
+                      <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <span className="merge-origin-source size-2.5 rounded-sm" />
+                          aus Quelle
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="merge-origin-target size-2.5 rounded-sm" />
+                          aus Ziel
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="merge-origin-manual size-2.5 rounded-sm" />
+                          eigene Änderungen
+                        </span>
+                      </span>
+                    </div>
+                    <div className="relative min-h-0 flex-1">
+                      <MergeDraftEditor
+                        ref={draftRef}
+                        value={draft}
+                        origins={origins}
+                        onChange={changeDraft}
+                        onActivate={() => {
+                          activeEditor.current = "draft";
+                        }}
+                        scrollSync={scrollSync}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </ResizablePanel>
+            {migrationOpen && !blocked && (
+              <>
+                <ResizableHandle />
+                <ResizablePanel
+                  id="compare-migration"
+                  defaultSize="24%"
+                  minSize="10%"
+                  className="flex min-h-0 flex-col"
+                >
+                  <CompareMigrationPanel
+                    left={left}
+                    right={right}
+                    leftDefinition={leftState.definition}
+                    rightDefinition={rightState.definition}
+                    draft={props.showDraft ? draft : null}
+                    onClose={() => setMigrationOpen(false)}
+                  />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
           {(leftState.loading || rightState.loading) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">
               <LoaderIcon className="size-4 animate-spin" />

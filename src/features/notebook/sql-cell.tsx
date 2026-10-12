@@ -1,9 +1,10 @@
-import { ListEndIcon, PlayIcon, SquareIcon } from "lucide-react";
+import { CircleCheckIcon, CircleXIcon } from "lucide-react";
 import { useMemo } from "react";
-import { IconButton } from "@/components/icon-button";
 import { Spinner } from "@/components/ui/spinner";
+import { ResultError } from "@/features/query/query-result-table/result-error";
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import type { ResultChartBinding } from "@/features/query/result-chart/types";
+import { formatRelative } from "@/lib/automation/format";
 import { useConnectionsStore } from "@/lib/connections";
 import type { QueryResult } from "@/lib/db";
 import { type NotebookCell, type NotebookOutput, useNotebookStore } from "@/lib/notebook";
@@ -20,7 +21,7 @@ export function SqlCell({
   output,
   running,
   onRun,
-  onRunFrom,
+  onRunAll,
   onCancel,
 }: {
   cell: SqlNotebookCell;
@@ -28,7 +29,7 @@ export function SqlCell({
   output: NotebookOutput | undefined;
   running: boolean;
   onRun: () => void;
-  onRunFrom: () => void;
+  onRunAll: () => void;
   onCancel: () => void;
 }) {
   const updateCell = useNotebookStore((s) => s.updateCell);
@@ -64,33 +65,22 @@ export function SqlCell({
   );
   const total = output?.totalRows ?? output?.rows.length ?? 0;
   const status = output
-    ? output.error
-      ? "Fehler"
-      : output.columns.length
-        ? `${total.toLocaleString("de-DE")} Zeilen${total > (output.rows.length ?? 0) ? ` (${output.rows.length} gespeichert)` : ""}`
-        : `${output.rowsAffected ?? 0} Zeilen betroffen`
+    ? output.columns.length
+      ? `${total.toLocaleString("de-DE")} Zeilen${total > output.rows.length ? ` (${output.rows.length.toLocaleString("de-DE")} gespeichert)` : ""}`
+      : `${(output.rowsAffected ?? 0).toLocaleString("de-DE")} Zeilen betroffen`
     : null;
+  const replace = (start: number, end: number, text: string) =>
+    updateCell(cell.id, (c) =>
+      c.type === "sql"
+        ? { ...c, source: c.source.slice(0, start) + text + c.source.slice(end) }
+        : c,
+    );
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center gap-1">
-        {running ? (
-          <IconButton variant="ghost" size="icon-xs" aria-label="Abbrechen" onClick={onCancel}>
-            <SquareIcon />
-          </IconButton>
-        ) : (
-          <IconButton variant="ghost" size="icon-xs" aria-label="Zelle ausführen" onClick={onRun}>
-            <PlayIcon />
-          </IconButton>
-        )}
-        <IconButton
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Ab hier ausführen"
-          disabled={running}
-          onClick={onRunFrom}
-        >
-          <ListEndIcon />
-        </IconButton>
+    <div className="grid">
+      <div className="flex h-9 items-center gap-2 border-b px-3">
+        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+          SQL
+        </span>
         <NotebookConnectionSelect
           label="Verbindung der Zelle"
           inheritLabel="Notebook-Verbindung"
@@ -98,36 +88,65 @@ export function SqlCell({
           onChange={(id) =>
             updateCell(cell.id, (c) => (c.type === "sql" ? { ...c, connectionId: id } : c))
           }
-          className="ml-1 w-44"
+          className="w-auto max-w-48 border-transparent bg-transparent px-1.5 text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
         />
         {connection?.readOnly && (
           <span className="text-[10px] text-muted-foreground">schreibgeschützt</span>
         )}
-        <span className="ml-auto flex items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
-          {running && <Spinner className="size-3" />}
-          {!running && status && (
-            <>
-              <span className={output?.error ? "text-destructive" : undefined}>{status}</span>
-              <span>{output?.executionMs} ms</span>
-            </>
-          )}
-        </span>
       </div>
       <NotebookSqlEditor
         value={cell.source}
         onChange={(source) => updateCell(cell.id, (c) => (c.type === "sql" ? { ...c, source } : c))}
         onRun={onRun}
+        onRunAll={onRunAll}
       />
-      {output?.error && (
-        <pre
-          role="alert"
-          className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-        >
-          {output.error}
-        </pre>
+      {(running || output) && (
+        <div className="flex h-8 items-center gap-1.5 border-t px-3 text-xs tabular-nums text-muted-foreground">
+          {running ? (
+            <>
+              <Spinner className="size-3" /> Wird ausgeführt…
+              <button
+                type="button"
+                className="ml-1 text-foreground underline-offset-2 hover:underline"
+                onClick={onCancel}
+              >
+                Abbrechen
+              </button>
+            </>
+          ) : output?.error ? (
+            <>
+              <CircleXIcon className="size-3.5 text-destructive" />
+              <span>Fehler nach {output.executionMs.toLocaleString("de-DE")} ms</span>
+            </>
+          ) : (
+            output && (
+              <>
+                <CircleCheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-foreground/80">{status}</span>
+                <span>·</span>
+                <span>{output.executionMs.toLocaleString("de-DE")} ms</span>
+                <span>·</span>
+                <span title={new Date(output.ranAt).toLocaleString("de-DE")}>
+                  {formatRelative(output.ranAt)}
+                </span>
+              </>
+            )
+          )}
+        </div>
+      )}
+      {output?.error && !running && (
+        <div className="border-t">
+          <ResultError
+            error={output.error}
+            kind={connection?.kind}
+            source={{ text: cell.source, base: 0 }}
+            sql={cell.source}
+            onReplace={replace}
+          />
+        </div>
       )}
       {result && result.columns.length > 0 && (
-        <div className="h-80 overflow-hidden rounded-md border">
+        <div className="h-72 overflow-hidden border-t">
           <QueryResultWorkbench
             result={result}
             isLoading={false}
@@ -138,7 +157,7 @@ export function SqlCell({
         </div>
       )}
       {result?.notice && !result.columns.length && (
-        <p className="text-xs text-muted-foreground">{result.notice}</p>
+        <p className="border-t px-3 py-2 text-xs text-muted-foreground">{result.notice}</p>
       )}
     </div>
   );

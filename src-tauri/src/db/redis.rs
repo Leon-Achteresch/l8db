@@ -141,6 +141,69 @@ pub fn split_command(line: &str) -> Result<Vec<Vec<u8>>, String> {
     Ok(args)
 }
 
+pub fn normalize_redis_url(value: &str, database: Option<&str>) -> Result<url::Url, String> {
+    let mut url = url::Url::parse(value.trim()).map_err(|_| "Ungültige Redis-URL".to_string())?;
+    if !matches!(
+        url.scheme(),
+        "redis" | "rediss" | "valkey" | "redis+unix" | "unix"
+    ) {
+        return Err("Eine redis:// URL ist erforderlich".to_string());
+    }
+    if url.scheme() == "valkey" {
+        url.set_scheme("redis").ok();
+    }
+    if let Some(db) = database.filter(|d| !d.is_empty()) {
+        db.parse::<u32>()
+            .map_err(|_| "Redis-Datenbanken sind Zahlen (0-15)".to_string())?;
+        if matches!(url.scheme(), "redis+unix" | "unix") {
+            let pairs: Vec<_> = url
+                .query_pairs()
+                .filter(|(key, _)| key != "db")
+                .map(|(key, value)| (key.into_owned(), value.into_owned()))
+                .collect();
+            url.set_query(None);
+            url.query_pairs_mut()
+                .extend_pairs(pairs)
+                .append_pair("db", db);
+        } else {
+            url.set_path(&format!("/{db}"));
+        }
+    }
+    Ok(url)
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    use redis::{ConnectionAddr, IntoConnectionInfo};
+    let url = normalize_redis_url(value, None)?;
+    let info = url.as_str().into_connection_info().map_err(map_err)?;
+    let (host, port, tls, verify) = match info.addr() {
+        ConnectionAddr::Tcp(host, port) => (host.clone(), Some(*port), false, false),
+        ConnectionAddr::TcpTls {
+            host,
+            port,
+            insecure,
+            ..
+        } => (host.clone(), Some(*port), true, !insecure),
+        ConnectionAddr::Unix(path) => (path.display().to_string(), None, false, false),
+        _ => (String::new(), None, false, false),
+    };
+    Ok(super::endpoint::EndpointIdentity {
+        host: host.trim_matches(['[', ']']).to_ascii_lowercase(),
+        port,
+        transport: if tls { "tls" } else { "tcp" }.to_string(),
+        tls,
+        verify,
+        database: info.redis_settings().db().to_string(),
+        schema: String::new(),
+        user: info
+            .redis_settings()
+            .username()
+            .unwrap_or_default()
+            .to_string(),
+        params: Vec::new(),
+    })
+}
+
 impl RedisAdapter {
     pub fn new(
         connection_string: &str,
@@ -148,34 +211,7 @@ impl RedisAdapter {
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let mut url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige Redis-URL".to_string())?;
-        if !matches!(
-            url.scheme(),
-            "redis" | "rediss" | "valkey" | "redis+unix" | "unix"
-        ) {
-            return Err("Eine redis:// URL ist erforderlich".to_string());
-        }
-        if url.scheme() == "valkey" {
-            url.set_scheme("redis").ok();
-        }
-        if let Some(db) = database.filter(|d| !d.is_empty()) {
-            db.parse::<u32>()
-                .map_err(|_| "Redis-Datenbanken sind Zahlen (0-15)".to_string())?;
-            if matches!(url.scheme(), "redis+unix" | "unix") {
-                let pairs: Vec<_> = url
-                    .query_pairs()
-                    .filter(|(key, _)| key != "db")
-                    .map(|(key, value)| (key.into_owned(), value.into_owned()))
-                    .collect();
-                url.set_query(None);
-                url.query_pairs_mut()
-                    .extend_pairs(pairs)
-                    .append_pair("db", db);
-            } else {
-                url.set_path(&format!("/{db}"));
-            }
-        }
+        let url = normalize_redis_url(connection_string, database)?;
         Ok(Self {
             url: url.to_string(),
             pool_state,

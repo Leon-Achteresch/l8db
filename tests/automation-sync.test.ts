@@ -135,6 +135,7 @@ describe("buildAutomationConnection", () => {
     const production = { ...base, environment: "production" as const };
     const locked = buildAutomationConnection(production);
     expect(locked.readOnly).toBe(true);
+    expect(locked.productionLocked).toBe(true);
     expect(locked.environment).toBe("production");
     expect(decodeURIComponent(locked.connectionString)).toContain(
       "default_transaction_read_only=on",
@@ -142,6 +143,7 @@ describe("buildAutomationConnection", () => {
     useSettingsStore.setState({ productionReadOnly: false });
     const unlocked = buildAutomationConnection(production);
     expect(unlocked.readOnly).toBe(false);
+    expect(unlocked.productionLocked).toBe(false);
     expect(unlocked.connectionString).not.toContain("default_transaction_read_only");
   });
 
@@ -155,6 +157,15 @@ describe("buildAutomationConnection", () => {
     });
     expect(mysql.readOnly).toBe(false);
     expect(mysql.connectionString).toBe("mysql://root@localhost:3306/app");
+    const production = buildAutomationConnection({
+      ...base,
+      id: "my-prod",
+      kind: "mysql",
+      connectionString: "mysql://root:pw@localhost:3306/app",
+      environment: "production",
+    });
+    expect(production.readOnly).toBe(false);
+    expect(production.productionLocked).toBe(true);
   });
 
   test("temporäre Verbindungen fehlen", () => {
@@ -206,6 +217,22 @@ describe("buildAutomationConnection", () => {
       port: 1080,
       username: "p",
     });
+  });
+
+  test("Befehls-Tunnel werden übernommen, leere Befehle nicht", () => {
+    const descriptor = buildAutomationConnection({
+      ...base,
+      commandTunnel: { command: "  kubectl port-forward svc/db {localPort}:5432 ", localPort: 0 },
+    });
+    expect(descriptor.commandTunnel).toEqual({
+      command: "kubectl port-forward svc/db {localPort}:5432",
+      localPort: null,
+      timeoutSecs: null,
+    });
+    expect(
+      buildAutomationConnection({ ...base, commandTunnel: { command: "   " } }).commandTunnel,
+    ).toBeNull();
+    expect(buildAutomationConnection(base).commandTunnel).toBeNull();
   });
 
   test("Key-Value-Strings verlieren ihr Passwort", () => {

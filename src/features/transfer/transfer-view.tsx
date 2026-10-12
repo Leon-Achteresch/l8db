@@ -1,18 +1,23 @@
-import { ArrowRightIcon, PlayIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRightIcon, FileCodeIcon, PlayIcon } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+import { getDatabaseOverview, type SchemaSize } from "@/lib/db";
+import { prepareConnection } from "@/lib/schema-compare/store";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { TransferCinema } from "./cinema/transfer-cinema";
 import { TransferEndpoint } from "./transfer-endpoint";
 import { TransferPlanDetails } from "./transfer-plan";
 import { TransferRunStatus } from "./transfer-run-status";
 import { TransferSchemas } from "./transfer-schemas";
+import { TransferSummary } from "./transfer-summary";
 import { useTransfer } from "./transfer-view/use-transfer";
 
 export function TransferView() {
   const transfer = useTransfer();
   const { plan } = transfer;
+  const [planTab, setPlanTab] = useState<string | null>(null);
   const conflicts = plan?.conflicts ?? [];
   const canStart = Boolean(plan) && conflicts.length === 0 && !transfer.running;
   const hint = transfer.readOnly
@@ -22,9 +27,35 @@ export function TransferView() {
       : transfer.error
         ? transfer.error
         : null;
+  const sourceId = transfer.source.connectionId;
+  const overview = useQuery({
+    queryKey: ["transfer-overview", sourceId, transfer.source.database],
+    enabled: Boolean(sourceId),
+    retry: false,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const ready = await prepareConnection(sourceId as string);
+      const result = await getDatabaseOverview(
+        ready.kind,
+        effectiveConnectionString(ready),
+        transfer.source.database ?? undefined,
+      );
+      return Object.fromEntries(result.schemas.map((entry) => [entry.schema, entry]));
+    },
+  });
+  const sizes: Record<string, SchemaSize> = overview.data ?? {};
+  const status = transfer.planning
+    ? transfer.planning
+    : plan
+      ? conflicts.length
+        ? `${conflicts.length} Objekte im Ziel bereits vorhanden`
+        : `${plan.tables.length} Tabellen bereit`
+      : transfer.outcome?.committed
+        ? "Abgeschlossen. Für einen weiteren Transfer die Auswahl ändern."
+        : "Quelle, Ziel und mindestens ein Schema wählen.";
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-auto p-4 md:p-6">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <TransferCinema
         open={transfer.cinema}
         source={transfer.sourceConnection}
@@ -39,114 +70,94 @@ export function TransferView() {
         onCancel={transfer.cancel}
         onClose={transfer.closeCinema}
       />
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold tracking-tight">Transfer</h1>
-          <p className="text-sm text-muted-foreground">
-            Kopiert Schemas mit Struktur und Daten in eine andere Verbindung, auch über
-            Datenbankfamilien hinweg. Alles oder nichts: Bei einem Fehler bleibt das Ziel
-            unverändert.
-          </p>
-        </div>
-
-        <div className="flex flex-col divide-y rounded-2xl border bg-card shadow-xs">
-          <div className="flex flex-col gap-3 p-4 md:flex-row md:items-start">
-            <TransferEndpoint
-              title="Quelle"
-              value={transfer.source}
-              onChange={transfer.setSource}
-              onSchemas={transfer.setSourceSchemas}
-            />
-            <ArrowRightIcon className="hidden size-4 shrink-0 self-center text-muted-foreground md:mt-7 md:block" />
-            <TransferEndpoint
-              title="Ziel"
-              value={transfer.target}
-              onChange={transfer.setTarget}
-              onSchemas={transfer.setTargetSchemas}
-            />
-          </div>
-
-          {transfer.sourceConnection && (
-            <div className="p-4">
-              {transfer.sourceSchemas.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Keine Schemas gefunden.</p>
-              ) : (
-                <TransferSchemas
-                  schemas={transfer.sourceSchemas}
-                  existing={transfer.targetSchemas}
-                  selected={transfer.schemas}
-                  mapping={transfer.mapping}
-                  onToggle={transfer.toggleSchema}
-                  onSelectAll={transfer.setSchemas}
-                  onMap={transfer.setMapping}
-                />
-              )}
-            </div>
-          )}
-
-          {transfer.crossFamily && (
-            <div className="flex items-center gap-3 px-4 py-3">
-              <Switch
-                id="transfer-fold"
-                checked={transfer.foldNames}
-                onCheckedChange={transfer.setFoldNames}
-              />
-              <Label htmlFor="transfer-fold" className="text-sm font-normal">
-                Namen an die Konvention des Ziels anpassen
-              </Label>
-            </div>
-          )}
-
-          {(transfer.running || transfer.outcome) && (
-            <div className="p-4">
-              <TransferRunStatus
-                running={transfer.running}
-                progress={transfer.progress}
-                outcome={transfer.outcome}
-                onCancel={transfer.cancel}
-              />
-            </div>
-          )}
-
-          {!transfer.running && (plan || transfer.planning || hint) && (
-            <div className="flex flex-col gap-3 p-4">
-              {hint && <p className="text-xs text-destructive">{hint}</p>}
-              {transfer.planning && (
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Spinner className="size-3.5" />
-                  {transfer.planning}
-                </p>
-              )}
-              {conflicts.length > 0 && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-                  <p className="font-medium">
-                    Im Ziel existieren bereits {conflicts.length} Objekte. Der Transfer überschreibt
-                    nichts; bitte ein anderes Zielschema wählen oder die Objekte entfernen.
-                  </p>
-                  <p className="mt-1 font-mono">{conflicts.slice(0, 30).join(", ")}</p>
-                </div>
-              )}
-              {plan && <TransferPlanDetails plan={plan} />}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3 p-4">
-            <span className="text-xs text-muted-foreground">
-              {plan
-                ? plan.atomic
-                  ? "Läuft in einer Zieltransaktion."
-                  : "Angelegte Objekte werden bei einem Fehler wieder entfernt."
-                : transfer.outcome?.committed
-                  ? "Abgeschlossen. Für einen weiteren Transfer die Auswahl ändern."
-                  : "Quelle, Ziel und mindestens ein Schema wählen."}
-            </span>
-            <Button onClick={() => void transfer.start()} disabled={!canStart}>
-              {transfer.running ? <Spinner className="size-4" /> : <PlayIcon className="size-4" />}
-              Transfer starten
-            </Button>
-          </div>
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+        <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          {transfer.planning && <Spinner className="size-3.5 shrink-0" />}
+          <span className="truncate tabular-nums">{status}</span>
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" disabled={!plan} onClick={() => setPlanTab("script")}>
+            <FileCodeIcon />
+            Skript anzeigen
+          </Button>
+          <Button size="sm" onClick={() => void transfer.start()} disabled={!canStart}>
+            {transfer.running ? <Spinner className="size-3.5" /> : <PlayIcon />}
+            Übertragung starten
+          </Button>
         </div>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+        <div className="flex shrink-0 items-stretch gap-2">
+          <TransferEndpoint
+            title="Quelle"
+            value={transfer.source}
+            onChange={transfer.setSource}
+            onSchemas={transfer.setSourceSchemas}
+          />
+          <span className="flex size-8 shrink-0 items-center justify-center self-center rounded-full border bg-card text-muted-foreground">
+            <ArrowRightIcon className="size-4" />
+          </span>
+          <TransferEndpoint
+            title="Ziel"
+            value={transfer.target}
+            onChange={transfer.setTarget}
+            onSchemas={transfer.setTargetSchemas}
+          />
+        </div>
+        {hint && (
+          <p role="alert" className="shrink-0 text-xs text-destructive">
+            {hint}
+          </p>
+        )}
+        {(transfer.running || transfer.outcome) && (
+          <div className="shrink-0 rounded-xl border bg-card p-3">
+            <TransferRunStatus
+              running={transfer.running}
+              progress={transfer.progress}
+              outcome={transfer.outcome}
+              onCancel={transfer.cancel}
+            />
+          </div>
+        )}
+        <div className="flex min-h-0 flex-1 gap-3">
+          {transfer.sourceConnection ? (
+            <TransferSchemas
+              schemas={transfer.sourceSchemas}
+              existing={transfer.targetSchemas}
+              selected={transfer.schemas}
+              mapping={transfer.mapping}
+              plan={plan}
+              sizes={sizes}
+              onToggle={transfer.toggleSchema}
+              onSelectAll={transfer.setSchemas}
+              onMap={transfer.setMapping}
+            />
+          ) : (
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">
+              Quelle wählen
+            </div>
+          )}
+          <TransferSummary
+            plan={plan}
+            selected={transfer.schemas}
+            sizes={sizes}
+            crossFamily={transfer.crossFamily}
+            foldNames={transfer.foldNames}
+            onFoldNames={transfer.setFoldNames}
+            onShowPlan={setPlanTab}
+          />
+        </div>
+      </div>
+      {plan && (
+        <TransferPlanDetails
+          plan={plan}
+          open={planTab !== null}
+          tab={planTab ?? "tables"}
+          onOpenChange={(open) => {
+            if (!open) setPlanTab(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -20,11 +20,13 @@ export function ChartLibraryDrawer({
   onOpenChange,
   dashboard,
   onLoaded,
+  pageId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dashboard: Dashboard;
   onLoaded: (id: string) => void;
+  pageId: string;
 }) {
   const listRef = useListAnimation<HTMLDivElement>();
   const library = useDashboardWorkspaceStore();
@@ -44,7 +46,7 @@ export function ChartLibraryDrawer({
     if (!confirmChartSql(chart)) return;
     const target = useDashboardsStore.getState().dashboards.find((d) => d.id === dashboard.id);
     if (!target) return;
-    const inserted = insertChartFile(target, chart);
+    const inserted = insertChartFile(target, chart, pageId);
     useDashboardsStore.getState().update(target.id, (d) => ({
       datasets: [...d.datasets, inserted.dataset],
       widgets: [...d.widgets, inserted.widget],

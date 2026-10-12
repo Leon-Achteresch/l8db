@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { copyText } from "@/lib/clipboard";
 import { s3Presign } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
 
@@ -55,7 +56,7 @@ export function PresignPanel({
       });
       setLink(value);
       await copyText(value);
-      toast.success("URL kopiert");
+      showCopiedMessage("URL kopiert");
     } catch (error) {
       toast.error(errorText(error));
     } finally {

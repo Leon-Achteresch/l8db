@@ -35,7 +35,7 @@ type Props = Pick<
   | "outgoingFkByColumn"
   | "paddingBottom"
   | "paddingTop"
-  | "rowVirtualizer"
+  | "measureRow"
   | "rows"
   | "scrollRef"
   | "selectedByRow"
@@ -89,7 +89,7 @@ export function DataTableBody({
   outgoingFkByColumn,
   paddingBottom,
   paddingTop,
-  rowVirtualizer,
+  measureRow,
   rows,
   scrollRef,
   selectedByRow,
@@ -170,7 +170,7 @@ export function DataTableBody({
                     isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}
-                    measureElement={rowVirtualizer.measureElement}
+                    measureElement={measureRow}
                     editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
                     activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}
                     activeMatch={activeMatch?.rowIndex === rowIndex ? activeMatch : null}

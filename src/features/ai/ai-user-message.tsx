@@ -83,6 +83,11 @@ export function AiUserMessage({
       className="group/message relative flex flex-col items-start gap-1.5"
     >
       {message.attachments?.length ? <AiAttachmentChips files={message.attachments} /> : null}
+      {message.contextLabels?.length ? (
+        <p className="text-[11px] text-muted-foreground" title="Mitgeschickter Kontext">
+          {message.contextLabels.join(" · ")}
+        </p>
+      ) : null}
       <div className="relative w-full">
         <div
           className={cn(

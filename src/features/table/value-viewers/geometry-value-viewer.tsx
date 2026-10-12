@@ -1,6 +1,5 @@
 import { CopyIcon } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { copyText } from "@/lib/clipboard";
@@ -11,6 +10,7 @@ import {
   toGeoJson,
   tryParseGeometry,
 } from "@/lib/value-viewers/geometry";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { GeometryMap, type GeometryMapItem } from "./geometry-map";
 
 const COLUMN_LIMIT = 5000;
@@ -97,7 +97,7 @@ export function GeometryValueViewer({
               size="sm"
               onClick={async () => {
                 await copyText(text);
-                toast.success(`${mode === "wkt" ? "WKT" : "GeoJSON"} kopiert`);
+                showCopiedMessage(`${mode === "wkt" ? "WKT" : "GeoJSON"} kopiert`);
               }}
             >
               <CopyIcon className="size-3.5" />

@@ -299,52 +299,126 @@ fn dml_count(stats: &Value) -> Option<u64> {
     Some(total)
 }
 
+pub struct SnowflakeUrl {
+    pub account: String,
+    pub user: String,
+    pub secret: String,
+    pub path_db: Option<String>,
+    pub schema: Option<String>,
+    pub warehouse: Option<String>,
+    pub role: Option<String>,
+    pub proxy_role: Option<String>,
+    pub authenticator: String,
+    pub key_file: Option<String>,
+    pub endpoint: Option<String>,
+}
+
+pub fn parse_snowflake_url(value: &str) -> Result<SnowflakeUrl, String> {
+    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige Snowflake-URL".to_string())?;
+    if url.scheme() != "snowflake" {
+        return Err("Eine snowflake:// URL ist erforderlich".to_string());
+    }
+    let host = percent(url.host_str().unwrap_or(""));
+    let account = host.trim_end_matches(".snowflakecomputing.com").to_string();
+    let mut user = percent(url.username());
+    let secret = percent(url.password().unwrap_or(""));
+    let mut segments = url
+        .path_segments()
+        .map(|s| s.map(percent).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|s| !s.is_empty());
+    let mut path_db = segments.next();
+    let mut schema = segments.next();
+    let mut warehouse = None;
+    let mut role = None;
+    let mut proxy_role = None;
+    let mut authenticator = String::new();
+    let mut key_file = None;
+    let mut endpoint = None;
+    for (k, v) in url.query_pairs() {
+        let v = v.trim().to_string();
+        if v.is_empty() {
+            continue;
+        }
+        match k.to_ascii_lowercase().as_str() {
+            "warehouse" => warehouse = Some(v),
+            "role" => role = Some(v),
+            "proxy_user" => proxy_role = Some(v),
+            "database" | "db" => path_db = Some(v),
+            "schema" => schema = Some(v),
+            "user" => user = v,
+            "authenticator" | "auth" => authenticator = v.to_ascii_lowercase(),
+            "private_key_file" | "private_key_path" => key_file = Some(v),
+            "endpoint" | "host" => endpoint = Some(v.trim_end_matches('/').to_string()),
+            _ => {}
+        }
+    }
+    if account.is_empty() {
+        return Err("Der Account-Identifier fehlt (snowflake://account/…).".into());
+    }
+    Ok(SnowflakeUrl {
+        account,
+        user,
+        secret,
+        path_db,
+        schema,
+        warehouse,
+        role,
+        proxy_role,
+        authenticator,
+        key_file,
+        endpoint,
+    })
+}
+
+fn default_endpoint(account: &str) -> String {
+    format!(
+        "https://{}.snowflakecomputing.com",
+        account.to_ascii_lowercase().replace('_', "-")
+    )
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_snowflake_url(value)?;
+    let base = parsed
+        .endpoint
+        .clone()
+        .unwrap_or_else(|| default_endpoint(&parsed.account));
+    let url =
+        url::Url::parse(&base).map_err(|_| format!("Ungültiger Snowflake-Endpunkt: {base}"))?;
+    let tls = url.scheme() == "https";
+    Ok(super::endpoint::EndpointIdentity {
+        host: super::endpoint::host_of(&url),
+        port: url.port_or_known_default(),
+        transport: url.scheme().to_string(),
+        tls,
+        verify: tls,
+        database: parsed.path_db.unwrap_or_default(),
+        schema: parsed.schema.unwrap_or_default(),
+        user: parsed.user,
+        params: super::endpoint::identity_params(&[
+            ("warehouse", parsed.warehouse),
+            ("role", parsed.proxy_role.or(parsed.role)),
+        ]),
+    })
+}
+
 impl SnowflakeAdapter {
     pub fn new(connection_string: &str, database: Option<&str>) -> Result<Self, String> {
-        let url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige Snowflake-URL".to_string())?;
-        if url.scheme() != "snowflake" {
-            return Err("Eine snowflake:// URL ist erforderlich".to_string());
-        }
-        let host = percent(url.host_str().unwrap_or(""));
-        let account = host.trim_end_matches(".snowflakecomputing.com").to_string();
-        let mut user = percent(url.username());
-        let secret = percent(url.password().unwrap_or(""));
-        let mut segments = url
-            .path_segments()
-            .map(|s| s.map(percent).collect::<Vec<_>>())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|s| !s.is_empty());
-        let mut path_db = segments.next();
-        let mut schema = segments.next();
-        let mut warehouse = None;
-        let mut role = None;
-        let mut proxy_role = None;
-        let mut authenticator = String::new();
-        let mut key_file = None;
-        let mut endpoint = None;
-        for (k, v) in url.query_pairs() {
-            let v = v.trim().to_string();
-            if v.is_empty() {
-                continue;
-            }
-            match k.to_ascii_lowercase().as_str() {
-                "warehouse" => warehouse = Some(v),
-                "role" => role = Some(v),
-                "proxy_user" => proxy_role = Some(v),
-                "database" | "db" => path_db = Some(v),
-                "schema" => schema = Some(v),
-                "user" => user = v,
-                "authenticator" | "auth" => authenticator = v.to_ascii_lowercase(),
-                "private_key_file" | "private_key_path" => key_file = Some(v),
-                "endpoint" | "host" => endpoint = Some(v.trim_end_matches('/').to_string()),
-                _ => {}
-            }
-        }
-        if account.is_empty() {
-            return Err("Der Account-Identifier fehlt (snowflake://account/…).".into());
-        }
+        let SnowflakeUrl {
+            account,
+            user,
+            secret,
+            path_db,
+            schema,
+            warehouse,
+            role,
+            proxy_role,
+            authenticator,
+            key_file,
+            endpoint,
+        } = parse_snowflake_url(connection_string)?;
         let key_pair = key_file.is_some() || secret.contains("-----BEGIN");
         let auth = match authenticator.as_str() {
             "" if key_pair => Self::key_auth(&secret, key_file)?,
@@ -368,12 +442,7 @@ impl SnowflakeAdapter {
             return Err("Für Key-Pair-Anmeldung ist der Benutzer erforderlich.".into());
         }
         Ok(Self {
-            endpoint: endpoint.unwrap_or_else(|| {
-                format!(
-                    "https://{}.snowflakecomputing.com",
-                    account.to_ascii_lowercase().replace('_', "-")
-                )
-            }),
+            endpoint: endpoint.unwrap_or_else(|| default_endpoint(&account)),
             account,
             user,
             auth,

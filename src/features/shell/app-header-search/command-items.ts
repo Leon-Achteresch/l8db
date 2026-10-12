@@ -1,6 +1,17 @@
 import type { useNavigate } from "@tanstack/react-router";
-import { Braces, Eye, Keyboard, NotebookPen, Package, Table } from "lucide-react";
+import {
+  Braces,
+  Download,
+  Eye,
+  GitCompare,
+  Keyboard,
+  NotebookPen,
+  Package,
+  Settings,
+  Table,
+} from "lucide-react";
 import type { CommandItem } from "@/components/motion/command-palette";
+import { SEARCH_ITEMS } from "@/features/settings/settings-search-results/search-items";
 import {
   emitHotkeyAction,
   formatHotkeyDisplay,
@@ -26,6 +37,7 @@ export function buildObjectItems(
   return buildObjectEntries(objects ?? {}).map((entry) => ({
     id: entry.key,
     label: entry.name,
+    kind: "object",
     group: OBJECT_TYPE_PLURAL[entry.type],
     icon:
       entry.type === "table"
@@ -93,13 +105,28 @@ export function buildHotkeyItems(
       command.id !== "palette.quickOpen" &&
       command.id !== "shortcuts.open" &&
       command.id !== "dialog.close" &&
+      command.id !== "settings.search" &&
+      command.id !== "go.connections" &&
+      command.id !== "objects.search" &&
       isCommandVisibleInRoute(command, pathname) &&
       isHotkeyAvailable(command.id, { hasConnection }),
   ).map((command) => ({
     id: `hotkey:${command.id}`,
-    label: command.label,
-    group: "Aktionen",
-    icon: Keyboard,
+    label:
+      command.id === "grid.export"
+        ? pathname.startsWith("/query")
+          ? "Ergebnis exportieren…"
+          : "Tabelle exportieren…"
+        : command.label,
+    kind: "command",
+    group: "Befehle",
+    context:
+      command.id === "grid.export"
+        ? pathname.startsWith("/query")
+          ? "Abfrage"
+          : "Tabelle"
+        : command.area,
+    icon: command.id === "grid.export" ? Download : Keyboard,
     hint: formatHotkeyDisplay(resolveHotkey(command.id)),
     keywords: [command.id, command.area, command.description, command.reference ?? ""],
     onSelect: () => {
@@ -129,6 +156,7 @@ export function buildNotebookItems(
     {
       id: "notebook:show",
       label: "SQL-Notebook anzeigen",
+      kind: "command",
       group: "Notebooks",
       icon: NotebookPen,
       keywords,
@@ -137,6 +165,7 @@ export function buildNotebookItems(
     {
       id: "notebook:new",
       label: "Neues SQL-Notebook",
+      kind: "command",
       group: "Notebooks",
       icon: NotebookPen,
       keywords,
@@ -147,6 +176,7 @@ export function buildNotebookItems(
     {
       id: "notebook:open",
       label: "SQL-Notebook aus Datei öffnen…",
+      kind: "command",
       group: "Notebooks",
       icon: NotebookPen,
       keywords,
@@ -155,6 +185,7 @@ export function buildNotebookItems(
     ...recent.map((entry) => ({
       id: `notebook:recent:${entry.path}`,
       label: entry.name,
+      kind: "object" as const,
       group: "Notebooks",
       icon: NotebookPen,
       hint: entry.path.split(/[\\/]/).pop(),
@@ -162,4 +193,72 @@ export function buildNotebookItems(
       onSelect: go(async () => (await import("@/lib/notebook/actions")).openNotebook(entry.path)),
     })),
   ];
+}
+
+export function buildCompareItems(
+  hasConnection: boolean,
+  setOpen: (open: boolean) => void,
+  navigate: ReturnType<typeof useNavigate>,
+): CommandItem[] {
+  if (!hasConnection) return [];
+  return [
+    {
+      id: "compare:new",
+      label: "Neuen Vergleich erstellen…",
+      kind: "command",
+      group: "Befehle",
+      context: "Vergleich",
+      icon: GitCompare,
+      featureId: "search.commands.new-compare",
+      keywords: [
+        "vergleich",
+        "vergleichen",
+        "compare",
+        "diff",
+        "neu",
+        "erstellen",
+        "quelle",
+        "ziel",
+      ],
+      onSelect: () => {
+        setOpen(false);
+        const id = crypto.randomUUID();
+        useTableTabs.getState().openToolTab("compare", id);
+        void navigate({ to: "/compare", search: { compareId: id, setup: true } });
+      },
+    },
+  ];
+}
+
+export function buildSettingsItems(
+  setOpen: (open: boolean) => void,
+  navigate: ReturnType<typeof useNavigate>,
+): CommandItem[] {
+  return SEARCH_ITEMS.map((setting) => ({
+    id: `setting:${setting.id}`,
+    label: setting.title,
+    kind: "setting",
+    group: "Einstellungen",
+    context: setting.tabLabel,
+    icon: Settings,
+    keywords: [setting.description, ...setting.keywords],
+    onSelect: () => {
+      setOpen(false);
+      void navigate({ to: "/settings", search: { tab: setting.tabId, setting: setting.id } });
+    },
+  }));
+}
+
+export function buildDiagramExportItems(pathname: string, hasConnection: boolean): CommandItem[] {
+  if (pathname !== "/er-diagram" || !hasConnection) return [];
+  return ["png", "svg", "pdf", "mermaid", "dbml"].map((format) => ({
+    id: `er.export.${format}`,
+    label: `ER-Diagramm als ${format === "mermaid" ? "Mermaid" : format.toUpperCase()} exportieren…`,
+    kind: "command",
+    group: "Befehle",
+    context: "ER-Diagramm",
+    icon: Download,
+    keywords: ["export", "diagram", format],
+    onSelect: () => emitHotkeyAction(`er.export.${format}`),
+  }));
 }

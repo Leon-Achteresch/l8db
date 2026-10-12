@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   ArchiveIcon,
+  ArrowRightLeftIcon,
   BlocksIcon,
   DownloadIcon,
   FilePlusIcon,
@@ -13,6 +14,7 @@ import {
   NotebookPenIcon,
   PlugIcon,
   RefreshCwIcon,
+  SettingsIcon,
   StethoscopeIcon,
   TriangleAlertIcon,
   TypeIcon,
@@ -21,6 +23,8 @@ import {
 import { type LazyExoticComponent, lazy } from "react";
 
 export type ToolId =
+  | "settings"
+  | "workbench"
   | "versioning"
   | "compare"
   | "schema-compare"
@@ -35,6 +39,7 @@ export type ToolId =
   | "query-builder"
   | "import"
   | "backup"
+  | "transfer"
   | "notebook"
   | "create-table"
   | "saved-plan"
@@ -49,6 +54,24 @@ type ToolEntry = {
 };
 
 export const TOOL_TABS: Record<ToolId, ToolEntry> = {
+  settings: {
+    path: "/settings",
+    label: "Einstellungen",
+    Icon: SettingsIcon,
+    iconColor: "text-muted-foreground",
+    Component: lazy(() =>
+      import("@/features/settings/settings-view").then((m) => ({ default: m.SettingsView })),
+    ),
+  },
+  workbench: {
+    path: "/workbench",
+    label: "Arbeitsbereich",
+    Icon: FileTextIcon,
+    iconColor: "text-muted-foreground",
+    Component: lazy(() =>
+      import("@/features/shell/workbench-view").then((m) => ({ default: m.WorkbenchView })),
+    ),
+  },
   versioning: {
     path: "/versioning",
     label: "Versionierung",
@@ -174,6 +197,15 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     iconColor: "text-emerald-500",
     Component: lazy(() =>
       import("@/features/import/import-view").then((m) => ({ default: m.ImportView })),
+    ),
+  },
+  transfer: {
+    path: "/transfer",
+    label: "Daten übertragen",
+    Icon: ArrowRightLeftIcon,
+    iconColor: "text-sky-500",
+    Component: lazy(() =>
+      import("@/features/transfer/transfer-view").then((m) => ({ default: m.TransferView })),
     ),
   },
   backup: {

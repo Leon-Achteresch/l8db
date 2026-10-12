@@ -3,7 +3,7 @@ import { ExtensionMarketSection } from "@/features/community-extensions/extensio
 
 export function SettingsExtensionsTab() {
   return (
-    <div className="space-y-6">
+    <div data-setting-id="extensions" tabIndex={-1} className="space-y-6">
       <div>
         <h2 className="text-base font-semibold tracking-tight">Erweiterungen</h2>
         <p className="text-xs text-muted-foreground">

@@ -1,11 +1,11 @@
 import { CopyIcon, LightbulbIcon, LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { adviseIndexes, type ExplainNode, type IndexAdvice } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface IndexAdvisorPanelProps {
   plan: ExplainNode;
@@ -88,7 +88,9 @@ export function IndexAdvisorPanel({ plan, connectionString, database }: IndexAdv
                   variant="ghost"
                   className="size-7 shrink-0"
                   title="SQL kopieren"
-                  onClick={() => void copyText(item.sql).then(() => toast.success("SQL kopiert."))}
+                  onClick={() =>
+                    void copyText(item.sql).then(() => showCopiedMessage("SQL kopiert."))
+                  }
                 >
                   <CopyIcon className="size-3.5" />
                 </Button>

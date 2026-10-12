@@ -20,33 +20,21 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
       title="Autovervollständigung"
       description="Vorschläge für Tabellen, Spalten, Funktionen und Snippets."
     >
-      <Row
-        title="Vorschläge beim Tippen"
-        description="Vorschlagsliste automatisch während der Eingabe öffnen."
-        compact={compact}
-      >
+      <Row settingId="editor-quick-suggestions" compact={compact}>
         <Switch
           checked={store.editorQuickSuggestions}
           onCheckedChange={store.setEditorQuickSuggestions}
           aria-label="Vorschläge beim Tippen"
         />
       </Row>
-      <Row
-        title="Trigger-Zeichen"
-        description="Vorschläge nach Zeichen wie dem Punkt (schema.tabelle) öffnen."
-        compact={compact}
-      >
+      <Row settingId="editor-suggest-on-trigger-characters" compact={compact}>
         <Switch
           checked={store.editorSuggestOnTriggerCharacters}
           onCheckedChange={store.setEditorSuggestOnTriggerCharacters}
           aria-label="Trigger-Zeichen"
         />
       </Row>
-      <Row
-        title="Verzögerung"
-        description="Wartezeit bis Vorschläge erscheinen (0 bis 500 ms)."
-        compact={compact}
-      >
+      <Row settingId="suggest-delay" compact={compact}>
         <div className="flex w-40 items-center gap-2">
           <Slider
             min={0}
@@ -59,11 +47,7 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
           <SliderValue value={String(store.editorSuggestDelay)} unit="ms" />
         </div>
       </Row>
-      <Row
-        title="Enter übernimmt Vorschlag"
-        description="Markierter Vorschlag wird mit Enter eingefügt."
-        compact={compact}
-      >
+      <Row settingId="editor-accept-suggestion-on-enter" compact={compact}>
         <Select
           value={store.editorAcceptSuggestionOnEnter}
           onValueChange={(value) =>
@@ -86,11 +70,7 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
           </SelectContent>
         </Select>
       </Row>
-      <Row
-        title="Tab-Vervollständigung"
-        description="Vorschläge zusätzlich per Tab-Taste einfügen."
-        compact={compact}
-      >
+      <Row settingId="editor-tab-completion" compact={compact}>
         <Select
           value={store.editorTabCompletion}
           onValueChange={(value) => store.setEditorTabCompletion(value as EditorTabCompletion)}
@@ -108,8 +88,8 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
         </Select>
       </Row>
       <Row
-        title="Parameter-Hinweise"
-        description="Signatur-Hilfe bei Funktionen wie SUBSTRING(…) einblenden."
+        settingId="editor-parameter-hints"
+        featureId="settings.editor.parameter-hints"
         compact={compact}
       >
         <Switch

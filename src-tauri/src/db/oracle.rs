@@ -10,11 +10,11 @@ use oracle::{Connector, Row};
 use super::pool::{BlockingPool, PoolState, IDLE_CHECK_AFTER};
 use super::server_output::ServerMessage;
 use super::{
-    create_table_ddl, create_table_sql, rows_to_objects, where_clause, AddColumnRequest,
-    AlterColumnRequest, ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo,
-    CreateTableRequest, DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo,
-    DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
-    InvalidObjectInfo, ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize,
+    create_table_ddl, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
+    ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
+    DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
+    ObjectGrantInfo, PackageMemberInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize,
     SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
@@ -33,6 +33,10 @@ pub fn quote(ident: &str) -> String {
 
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn requalify(sql: &str, from_schema: &str, to_schema: &str) -> String {
+    super::requalify_schema_folding(sql, from_schema, to_schema, str::to_uppercase)
 }
 
 fn view_create_script(
@@ -695,8 +699,19 @@ fn is_query(sql: &str) -> bool {
     matches!(first.as_str(), "SELECT" | "WITH")
 }
 
+fn is_plsql(sql: &str) -> bool {
+    let first = sql
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .next()
+        .unwrap_or("")
+        .to_uppercase();
+    matches!(first.as_str(), "BEGIN" | "DECLARE" | "CALL")
+}
+
 #[path = "oracle_catalog.rs"]
 mod catalog;
+#[path = "oracle_copy.rs"]
+mod copy;
 #[path = "oracle_plan.rs"]
 mod plan;
 #[path = "oracle_sql.rs"]
@@ -705,6 +720,29 @@ use sql::prepare;
 
 pub(crate) fn statement_count(sql: &str) -> usize {
     sql::split_statements(sql).len()
+}
+
+pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
+    sql::split_items(sql)
+}
+
+pub(crate) fn read_output(c: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = c
+        .statement("BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;")
+        .build()
+        .map_err(map_err)?;
+    let mut lines = Vec::new();
+    while lines.len() < 2000 {
+        stmt.execute(&[&OracleType::Varchar2(32767), &OracleType::Int64])
+            .map_err(map_err)?;
+        let status: i64 = stmt.bind_value(2).map_err(map_err)?;
+        if status != 0 {
+            break;
+        }
+        let line: Option<String> = stmt.bind_value(1).map_err(map_err)?;
+        lines.push(line.unwrap_or_default());
+    }
+    Ok(lines)
 }
 
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
@@ -799,17 +837,103 @@ fn run_query_named(
 }
 
 fn fetch(conn: &Connection, sql: &str) -> Result<Vec<Row>, String> {
+    fetch_bound(conn, sql, &[])
+}
+
+fn fetch_bound(
+    conn: &Connection,
+    sql: &str,
+    binds: &[(String, String)],
+) -> Result<Vec<Row>, String> {
     let mut stmt = conn
         .statement(sql)
         .fetch_array_size(1000)
         .build()
         .map_err(map_err)?;
+    let params: Vec<(&str, &dyn oracle::sql_type::ToSql)> = binds
+        .iter()
+        .map(|(name, value)| (name.as_str(), value as &dyn oracle::sql_type::ToSql))
+        .collect();
     let rows = stmt
-        .query(&[])
+        .query_named(&params)
         .map_err(map_err)?
         .map(|r| r.map_err(map_err))
         .collect::<Result<Vec<Row>, String>>()?;
     Ok(rows)
+}
+
+fn binds(values: &[(&str, &str)]) -> Vec<(String, String)> {
+    values
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect()
+}
+
+pub struct OracleUrl {
+    pub user: String,
+    pub password: String,
+    pub connect_string: String,
+    pub tcp: Option<(String, u16)>,
+}
+
+pub fn parse_oracle_url(value: &str) -> Result<OracleUrl, String> {
+    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige Oracle-URL".to_string())?;
+    if url.scheme() != "oracle" {
+        return Err(
+            "Eine oracle:// URL ist erforderlich (oracle://user:pass@host:1521/service)"
+                .to_string(),
+        );
+    }
+    let host = url.host_str().ok_or("Host fehlt")?.to_owned();
+    let service = percent(url.path().trim_start_matches('/'));
+    let mut connect_string = if service.is_empty() {
+        String::new()
+    } else {
+        format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
+    };
+    let mut from_override = false;
+    for (k, v) in url.query_pairs() {
+        if k == "connect_string" || k == "tns" {
+            connect_string = v.into_owned();
+            from_override = true;
+        }
+    }
+    if connect_string.is_empty() {
+        return Err("Service-Name fehlt in der URL".to_string());
+    }
+    let tcp = if from_override {
+        ezconnect_endpoint(&connect_string)
+    } else {
+        Some((host, url.port().unwrap_or(1521)))
+    };
+    Ok(OracleUrl {
+        user: match super::connection::proxy_user(&url) {
+            Some(target) => format!("{}[{target}]", percent(url.username())),
+            None => percent(url.username()),
+        },
+        password: percent(url.password().unwrap_or("")),
+        connect_string,
+        tcp,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_oracle_url(value)?;
+    let (host, port) = parsed
+        .tcp
+        .map(|(host, port)| (host, Some(port)))
+        .unwrap_or_default();
+    Ok(super::endpoint::EndpointIdentity {
+        host: host.trim_matches(['[', ']']).to_ascii_lowercase(),
+        port,
+        transport: String::new(),
+        tls: false,
+        verify: false,
+        database: parsed.connect_string,
+        schema: String::new(),
+        user: parsed.user,
+        params: Vec::new(),
+    })
 }
 
 impl OracleAdapter {
@@ -818,42 +942,15 @@ impl OracleAdapter {
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige Oracle-URL".to_string())?;
-        if url.scheme() != "oracle" {
-            return Err(
-                "Eine oracle:// URL ist erforderlich (oracle://user:pass@host:1521/service)"
-                    .to_string(),
-            );
-        }
-        let host = url.host_str().ok_or("Host fehlt")?.to_owned();
-        let service = percent(url.path().trim_start_matches('/'));
-        let mut connect_string = if service.is_empty() {
-            String::new()
-        } else {
-            format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
-        };
-        let mut from_override = false;
-        for (k, v) in url.query_pairs() {
-            if k == "connect_string" || k == "tns" {
-                connect_string = v.into_owned();
-                from_override = true;
-            }
-        }
-        if connect_string.is_empty() {
-            return Err("Service-Name fehlt in der URL".to_string());
-        }
-        let tcp = if from_override {
-            ezconnect_endpoint(&connect_string)
-        } else {
-            Some((host, url.port().unwrap_or(1521)))
-        };
+        let OracleUrl {
+            user,
+            password,
+            connect_string,
+            tcp,
+        } = parse_oracle_url(connection_string)?;
         Ok(Self {
-            user: match super::connection::proxy_user(&url) {
-                Some(target) => format!("{}[{target}]", percent(url.username())),
-                None => percent(url.username()),
-            },
-            password: percent(url.password().unwrap_or("")),
+            user,
+            password,
             connect_string,
             tcp,
             pool_state,
@@ -992,6 +1089,14 @@ impl OracleAdapter {
         self.run_meta(move |c| fetch(c, &sql)).await
     }
 
+    async fn rows_bound(
+        &self,
+        sql: String,
+        binds: Vec<(String, String)>,
+    ) -> Result<Vec<Row>, String> {
+        self.run_meta(move |c| fetch_bound(c, &sql, &binds)).await
+    }
+
     async fn source_script(
         &self,
         owner: &str,
@@ -1082,39 +1187,8 @@ impl OracleAdapter {
         object_type: &str,
         name: &str,
     ) -> Result<Vec<String>, String> {
-        if source_schema.is_empty() || target_schema.is_empty() {
-            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
-        }
-        let requalify = |sql: String| super::requalify_schema(&sql, source_schema, target_schema);
+        let requalify = |sql: String| requalify(&sql, source_schema, target_schema);
         match object_type {
-            "table" => {
-                let columns = self
-                    .list_table_columns_detailed(source_schema, name)
-                    .await?;
-                if columns.is_empty() {
-                    return Err(format!(
-                        "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
-                    ));
-                }
-                let req = CreateTableRequest {
-                    schema: target_schema.to_string(),
-                    name: name.to_string(),
-                    if_not_exists: false,
-                    columns: columns
-                        .iter()
-                        .map(|c| super::ColumnDefinition {
-                            name: c.name.clone(),
-                            data_type: c.data_type.clone(),
-                            is_nullable: c.is_nullable,
-                            default_value: c.column_default.clone().map(&requalify),
-                            is_primary_key: c.is_primary_key,
-                            is_unique: false,
-                        })
-                        .collect(),
-                    ..Default::default()
-                };
-                Ok(vec![create_table_sql(&req, quote, true)])
-            }
             "view" => Ok(vec![requalify(
                 self.get_view_definition(source_schema, name).await?,
             )]),
@@ -1147,6 +1221,27 @@ impl OracleAdapter {
             }
             other => Err(format!("Unbekannter Objekttyp: {other}")),
         }
+    }
+
+    async fn schema_copy_script(
+        &self,
+        target: &dyn DatabaseAdapter,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        check_copy_schemas(source_schema, target_schema)?;
+        if object_type == "table" {
+            return Ok(self
+                .table_copy_plan(target, source_schema, target_schema, name)
+                .await?
+                .script());
+        }
+        Ok(self
+            .schema_copy_statements(source_schema, target_schema, object_type, name)
+            .await?
+            .join("\n/\n\n"))
     }
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
@@ -1335,6 +1430,40 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
     Some((host.to_string(), port))
 }
 
+fn check_copy_schemas(source_schema: &str, target_schema: &str) -> Result<(), String> {
+    if source_schema.is_empty() || target_schema.is_empty() {
+        return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+    }
+    if source_schema == target_schema {
+        return Err("Quell- und Zielschema sind identisch.".to_string());
+    }
+    Ok(())
+}
+
+pub(crate) fn script_error(error: String, index: usize, total: usize) -> String {
+    if total <= 1 {
+        return error;
+    }
+    format!(
+        "Anweisung {} von {total} fehlgeschlagen ({index} bereits ausgeführt): {error}",
+        index + 1
+    )
+}
+
+pub(crate) fn add_affected(total: Option<u64>, rows: Option<u64>) -> Option<u64> {
+    match (total, rows) {
+        (Some(total), Some(rows)) => Some(total.saturating_add(rows)),
+        (total, rows) => total.or(rows),
+    }
+}
+
+pub(crate) fn combine_script_results(prior: Option<u64>, mut last: QueryResult) -> QueryResult {
+    if last.columns.is_empty() {
+        last.rows_affected = add_affected(prior, last.rows_affected);
+    }
+    last
+}
+
 async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     let statement = prepare(sql);
@@ -1348,11 +1477,12 @@ async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, 
             truncated: false,
         });
     }
+    let plsql = is_plsql(&statement);
     let affected = adapter.exec(statement).await?;
     Ok(QueryResult {
         columns: vec![],
         rows: vec![],
-        rows_affected: Some(affected),
+        rows_affected: (!plsql).then_some(affected),
         execution_time_ms: start.elapsed().as_millis() as u64,
         truncated: false,
     })
@@ -1516,11 +1646,22 @@ impl DatabaseAdapter for OracleAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
         let mut statements = sql::split_statements(sql);
-        let last = statements.pop().unwrap_or_else(|| sql.to_string());
-        for statement in statements {
-            execute_one(self, &statement).await?;
+        if statements.is_empty() {
+            statements.push(sql.to_string());
         }
-        let mut result = execute_one(self, &last).await?;
+        let total = statements.len();
+        let mut affected: Option<u64> = None;
+        let last = statements.pop().unwrap_or_default();
+        for (index, statement) in statements.iter().enumerate() {
+            let result = execute_one(self, statement)
+                .await
+                .map_err(|error| script_error(error, index, total))?;
+            affected = add_affected(affected, result.rows_affected);
+        }
+        let result = execute_one(self, &last)
+            .await
+            .map_err(|error| script_error(error, total - 1, total))?;
+        let mut result = combine_script_results(affected, result);
         result.execution_time_ms = start.elapsed().as_millis() as u64;
         Ok(result)
     }
@@ -1630,29 +1771,15 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
-        self.run(move |c| {
-            let mut stmt = c
-                .statement("BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;")
-                .build()
-                .map_err(map_err)?;
-            let mut lines = Vec::new();
-            while lines.len() < 2000 {
-                stmt.execute(&[&OracleType::Varchar2(32767), &OracleType::Int64])
-                    .map_err(map_err)?;
-                let status: i64 = stmt.bind_value(2).map_err(map_err)?;
-                if status != 0 {
-                    break;
-                }
-                let line: Option<String> = stmt.bind_value(1).map_err(map_err)?;
-                lines.push(ServerMessage {
-                    level: "OUTPUT".to_string(),
-                    message: line.unwrap_or_default(),
-                    detail: None,
-                });
-            }
-            Ok(lines)
-        })
-        .await
+        let lines = self.run(|c| read_output(c)).await?;
+        Ok(lines
+            .into_iter()
+            .map(|message| ServerMessage {
+                level: "OUTPUT".to_string(),
+                message,
+                detail: None,
+            })
+            .collect())
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -1786,6 +1913,26 @@ impl DatabaseAdapter for OracleAdapter {
             .collect())
     }
 
+    async fn list_package_members(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<PackageMemberInfo>, String> {
+        let sql = format!(
+            "SELECT DISTINCT owner, object_name, procedure_name FROM all_procedures WHERE {} AND object_type = 'PACKAGE' AND procedure_name IS NOT NULL ORDER BY object_name, procedure_name",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| PackageMemberInfo {
+                schema: s(r, 0),
+                package: s(r, 1),
+                name: s(r, 2),
+            })
+            .collect())
+    }
+
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let parts: Vec<&str> = oid.split('\u{1f}').collect();
         if parts.len() != 3 {
@@ -1842,7 +1989,7 @@ impl DatabaseAdapter for OracleAdapter {
         Ok(source
             .into_iter()
             .map(|(name, definition)| {
-                let rewritten = super::requalify_schema(&definition, source_schema, target_schema);
+                let rewritten = requalify(&definition, source_schema, target_schema);
                 let (status, target_definition) =
                     match target.iter().find(|(other, _)| other == &name) {
                         None => ("missing", String::new()),
@@ -1869,10 +2016,31 @@ impl DatabaseAdapter for OracleAdapter {
         object_type: &str,
         name: &str,
     ) -> Result<String, String> {
-        Ok(self
-            .schema_copy_statements(source_schema, target_schema, object_type, name)
-            .await?
-            .join("\n/\n\n"))
+        self.schema_copy_script(self, source_schema, target_schema, object_type, name)
+            .await
+    }
+
+    async fn preview_schema_object_copy_into(
+        &self,
+        target: &dyn DatabaseAdapter,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.schema_copy_script(target, source_schema, target_schema, object_type, name)
+            .await
+    }
+
+    async fn copy_schema_table_data(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+        limit: i64,
+    ) -> Result<super::SchemaDataCopy, String> {
+        self.copy_table_data(source_schema, target_schema, name, limit)
+            .await
     }
 
     async fn execute_schema_object_copy(
@@ -1882,9 +2050,7 @@ impl DatabaseAdapter for OracleAdapter {
         object_type: &str,
         name: &str,
     ) -> Result<String, String> {
-        let statements = self
-            .schema_copy_statements(source_schema, target_schema, object_type, name)
-            .await?;
+        check_copy_schemas(source_schema, target_schema)?;
         let exists = self
             .rows(format!(
                 "SELECT 1 FROM all_objects WHERE owner = {} AND object_name = {} AND ROWNUM = 1",
@@ -1897,8 +2063,16 @@ impl DatabaseAdapter for OracleAdapter {
                 "Namenskonflikt: {name} existiert bereits im Zielschema {target_schema}."
             ));
         }
+        if object_type == "table" {
+            return self
+                .execute_table_copy(source_schema, target_schema, name)
+                .await;
+        }
+        let statements = self
+            .schema_copy_statements(source_schema, target_schema, object_type, name)
+            .await?;
         for statement in &statements {
-            self.exec(statement.clone()).await?;
+            execute_one(self, statement).await?;
         }
         Ok(statements.join("\n/\n\n"))
     }
@@ -2258,18 +2432,16 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!(
+        let sql = String::from(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
              (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
              cc.comments \
              FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
-             WHERE c.owner = {} AND c.table_name = {} ORDER BY c.column_id",
-            lit(schema),
-            lit(table)
+             WHERE c.owner = :owner AND c.table_name = :tbl ORDER BY c.column_id"
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| DetailedColumnInfo {
@@ -2495,15 +2667,13 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ConstraintInfo>, String> {
-        let sql = format!(
+        let sql = String::from(
             "SELECT c.constraint_name, c.constraint_type, LISTAGG(cc.column_name, ',') WITHIN GROUP (ORDER BY cc.position), MAX(c.search_condition_vc) \
              FROM all_constraints c LEFT JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
-             WHERE c.owner = {} AND c.table_name = {} GROUP BY c.constraint_name, c.constraint_type ORDER BY c.constraint_type, c.constraint_name",
-            lit(schema),
-            lit(table)
+             WHERE c.owner = :owner AND c.table_name = :tbl GROUP BY c.constraint_name, c.constraint_type ORDER BY c.constraint_type, c.constraint_name"
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| {
@@ -2532,9 +2702,13 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
-        let sql = format!("SELECT sequence_owner, sequence_name, TO_CHAR(min_value), TO_CHAR(max_value), TO_CHAR(increment_by), cycle_flag, TO_CHAR(last_number) FROM all_sequences WHERE {} ORDER BY sequence_name", Self::owner_filter(schema, "sequence_owner"));
+        let (owner, values) = match schema {
+            Some(schema) => (":owner", binds(&[("owner", schema)])),
+            None => ("SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')", Vec::new()),
+        };
+        let sql = format!("SELECT sequence_owner, sequence_name, TO_CHAR(min_value), TO_CHAR(max_value), TO_CHAR(increment_by), cycle_flag, TO_CHAR(last_number) FROM all_sequences WHERE sequence_owner = {owner} ORDER BY sequence_name");
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, values)
             .await?
             .iter()
             .map(|r| SequenceInfo {
@@ -2614,6 +2788,7 @@ impl DatabaseAdapter for OracleAdapter {
                 wait_event: s_opt(r, 7),
                 is_self: i(r, 8) == 1,
                 blocked_by: Vec::new(),
+                ..Default::default()
             })
             .collect())
     }
@@ -2759,7 +2934,7 @@ fn has_client_lib(dir: &Path) -> bool {
         .map(|entries| {
             entries
                 .flatten()
-                .any(|e| is_client_lib(&e.file_name().to_string_lossy()))
+                .any(|e| is_client_lib(&e.file_name().to_string_lossy()) && e.path().exists())
         })
         .unwrap_or(false)
 }
@@ -2844,6 +3019,41 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn script_results_sum_affected_rows_and_report_progress() {
+        let dml = |rows| super::QueryResult {
+            columns: vec![],
+            rows: vec![],
+            rows_affected: Some(rows),
+            execution_time_ms: 1,
+            truncated: false,
+        };
+        let mut total = None;
+        for rows in [Some(500), None] {
+            total = super::add_affected(total, rows);
+        }
+        let combined = super::combine_script_results(total, dml(20));
+        assert_eq!(combined.rows_affected, Some(520));
+        assert_eq!(
+            super::combine_script_results(None, dml(20)).rows_affected,
+            Some(20)
+        );
+        let query = super::QueryResult {
+            columns: vec!["N".into()],
+            rows_affected: None,
+            ..dml(0)
+        };
+        assert_eq!(
+            super::combine_script_results(Some(500), query).rows_affected,
+            None
+        );
+        assert_eq!(
+            super::script_error("ORA-00942".into(), 1, 3),
+            "Anweisung 2 von 3 fehlgeschlagen (1 bereits ausgeführt): ORA-00942"
+        );
+        assert_eq!(super::script_error("ORA-00942".into(), 0, 1), "ORA-00942");
+    }
+
+    #[test]
     fn push_script_merges_package_spec_and_body() {
         let mut out = Vec::new();
         super::push_script(
@@ -2870,6 +3080,19 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn requalifies_unquoted_oracle_qualifiers_case_insensitively() {
+        let sql = "SELECT hr.f(x), Hr.T.id, \"HR\".u, \"hr\".v, hrx.w, x.hr.y, 'hr.z', nq'[hr.q]' FROM hr.t";
+        assert_eq!(
+            requalify(sql, "HR", "DEV"),
+            "SELECT \"DEV\".f(x), \"DEV\".T.id, \"DEV\".u, \"hr\".v, hrx.w, x.hr.y, 'hr.z', nq'[hr.q]' FROM \"DEV\".t"
+        );
+        assert_eq!(
+            requalify("SELECT \"Mixed\".a, mixed.b FROM dual", "Mixed", "DEV"),
+            "SELECT \"DEV\".a, mixed.b FROM dual"
+        );
+    }
 
     #[test]
     fn view_create_script_and_select_body() {
@@ -3078,6 +3301,65 @@ mod tests {
             .execute_query("BEGIN DBMS_SESSION.SLEEP(6); END;")
             .await;
         assert!(untimed.is_ok(), "{untimed:?}");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_transaction_plsql_changes() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a = OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "txdiff".into())
+            .unwrap();
+        let _ = a.execute_query("DROP TABLE L8_TXDIFF PURGE").await;
+        for sql in [
+            "CREATE TABLE L8_TXDIFF (ID NUMBER PRIMARY KEY, STATE VARCHAR2(20), NOTE CLOB)",
+            "INSERT INTO L8_TXDIFF VALUES (1, 'open', 'x')",
+            "INSERT INTO L8_TXDIFF VALUES (2, 'gone', NULL)",
+            "CREATE OR REPLACE PROCEDURE L8_TXDIFF_MOVE(p NUMBER, code OUT NUMBER) AS BEGIN UPDATE L8_TXDIFF SET STATE = 'moved' WHERE ID = p; INSERT INTO L8_TXDIFF VALUES (3, 'new', NULL); DELETE FROM L8_TXDIFF WHERE ID = 2; code := 0; DBMS_OUTPUT.PUT_LINE('code=' || code); END;",
+        ] {
+            a.execute_query(sql).await.expect(sql);
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        let mut conn = a.open_connection().await.unwrap().into_inner().unwrap();
+        tx_begin(&mut conn);
+        let block =
+            tx_execute(&conn, "DECLARE c NUMBER; BEGIN L8_TXDIFF_MOVE(1, c); END;").expect("block");
+        assert_eq!(block.rows_affected, None);
+        assert_eq!(read_output(&conn).unwrap(), vec!["code=0".to_string()]);
+        let seen = tx_execute(&conn, "SELECT STATE FROM L8_TXDIFF WHERE ID = 1").unwrap();
+        assert_eq!(seen.rows[0]["STATE"], "moved");
+        match tx_table_changes(&conn) {
+            Ok(tables) => {
+                let table = tables
+                    .iter()
+                    .find(|t| t.table == "L8_TXDIFF")
+                    .expect("table");
+                assert_eq!(table.note, None);
+                assert_eq!(table.key_columns, vec!["ID".to_string()]);
+                let mut added: Vec<String> =
+                    table.added.iter().map(|r| r["STATE"].to_string()).collect();
+                let mut removed: Vec<String> = table
+                    .removed
+                    .iter()
+                    .map(|r| r["STATE"].to_string())
+                    .collect();
+                added.sort();
+                removed.sort();
+                assert_eq!(added, vec!["\"moved\"", "\"new\""]);
+                assert_eq!(removed, vec!["\"gone\"", "\"open\""]);
+                assert!(table.added.iter().all(|r| r.get("NOTE").is_none()));
+            }
+            Err(e) => assert!(e.contains("V$LOCKED_OBJECT"), "{e}"),
+        }
+        tx_finish(&mut conn, false).unwrap();
+        let after = a
+            .execute_query("SELECT COUNT(*) AS N FROM L8_TXDIFF")
+            .await
+            .unwrap();
+        assert_eq!(after.rows[0]["N"], 2);
+        let _ = a.execute_query("DROP PROCEDURE L8_TXDIFF_MOVE").await;
+        let _ = a.execute_query("DROP TABLE L8_TXDIFF PURGE").await;
     }
 
     #[tokio::test]
@@ -3779,6 +4061,18 @@ mod tests {
             .find(|f| f.name == "L8_LIVE_PKG")
             .expect("pkg listed");
         assert_eq!(pkg.return_type, "PACKAGE");
+        for selected_schema in [Some(schema.as_str()), None] {
+            let members = a
+                .list_package_members(selected_schema)
+                .await
+                .expect("list_package_members");
+            let names: Vec<_> = members
+                .iter()
+                .filter(|member| member.schema == schema && member.package == "L8_LIVE_PKG")
+                .map(|member| member.name.as_str())
+                .collect();
+            assert_eq!(names, vec!["F", "P"]);
+        }
         assert!(!a
             .list_functions(None)
             .await
@@ -4326,6 +4620,133 @@ fn column_value(
 
 pub fn tx_begin(c: &mut Connection) {
     c.set_autocommit(false);
+    let _ = c.execute("BEGIN DBMS_OUTPUT.ENABLE(NULL); END;", &[]);
+}
+
+const TX_DIFF_MAX_TABLE_ROWS: usize = 200_000;
+const TX_DIFF_MAX_ROWS: usize = 100;
+
+#[derive(serde::Serialize)]
+pub struct TxTableChanges {
+    pub schema: String,
+    pub table: String,
+    pub key_columns: Vec<String>,
+    pub added: Vec<serde_json::Value>,
+    pub removed: Vec<serde_json::Value>,
+    pub note: Option<String>,
+}
+
+pub fn tx_table_changes(c: &Connection) -> Result<Vec<TxTableChanges>, String> {
+    let tables = fetch(
+        c,
+        "SELECT DISTINCT o.owner, o.object_name FROM v$locked_object l \
+         JOIN all_objects o ON o.object_id = l.object_id \
+         WHERE l.session_id = SYS_CONTEXT('USERENV', 'SID') AND o.object_type LIKE 'TABLE%' \
+         ORDER BY 1, 2",
+    )
+    .map_err(|e| {
+        format!("Geänderte Tabellen nicht ermittelbar (Leserecht auf V$LOCKED_OBJECT nötig): {e}")
+    })?;
+    let as_of = fetch(c, "SELECT TO_CHAR(current_scn) FROM v$database")
+        .or_else(|_| {
+            fetch(
+                c,
+                "SELECT TO_CHAR(DBMS_FLASHBACK.GET_SYSTEM_CHANGE_NUMBER) FROM dual",
+            )
+        })
+        .ok()
+        .and_then(|rows| rows.first().map(|row| s(row, 0)))
+        .filter(|scn| !scn.is_empty())
+        .map(|scn| format!("AS OF SCN {scn}"))
+        .unwrap_or_else(|| "AS OF TIMESTAMP SYSTIMESTAMP".to_string());
+    Ok(tables
+        .iter()
+        .map(|row| tx_table_diff(c, &s(row, 0), &s(row, 1), &as_of))
+        .filter(|t| t.note.is_some() || !t.added.is_empty() || !t.removed.is_empty())
+        .collect())
+}
+
+fn tx_table_diff(c: &Connection, owner: &str, table: &str, as_of: &str) -> TxTableChanges {
+    let mut out = TxTableChanges {
+        schema: owner.to_string(),
+        table: table.to_string(),
+        key_columns: vec![],
+        added: vec![],
+        removed: vec![],
+        note: None,
+    };
+    let target = format!("{}.{}", quote(owner), quote(table));
+    let names = binds(&[("o", owner), ("t", table)]);
+    let outcome = (|| -> Result<(), String> {
+        let count = fetch(
+            c,
+            &format!(
+                "SELECT COUNT(*) FROM {target} WHERE ROWNUM <= {}",
+                TX_DIFF_MAX_TABLE_ROWS + 1
+            ),
+        )?;
+        if count.first().map(|row| i(row, 0)).unwrap_or(0) as usize > TX_DIFF_MAX_TABLE_ROWS {
+            out.note = Some(format!(
+                "Mehr als {TX_DIFF_MAX_TABLE_ROWS} Zeilen; kein Zeilen-Diff."
+            ));
+            return Ok(());
+        }
+        let columns: Vec<String> = fetch_bound(
+            c,
+            "SELECT column_name FROM all_tab_columns WHERE owner = :o AND table_name = :t \
+             AND data_type_owner IS NULL \
+             AND data_type NOT IN ('CLOB', 'NCLOB', 'BLOB', 'BFILE', 'LONG', 'LONG RAW') \
+             ORDER BY column_id",
+            &names,
+        )?
+        .iter()
+        .map(|row| s(row, 0))
+        .collect();
+        if columns.is_empty() {
+            return Err("keine vergleichbaren Spalten".to_string());
+        }
+        out.key_columns = fetch_bound(
+            c,
+            "SELECT cc.column_name FROM all_constraints k JOIN all_cons_columns cc \
+             ON cc.owner = k.owner AND cc.constraint_name = k.constraint_name \
+             WHERE k.owner = :o AND k.table_name = :t AND k.constraint_type = 'P' \
+             ORDER BY cc.position",
+            &names,
+        )?
+        .iter()
+        .map(|row| s(row, 0))
+        .collect();
+        let list = columns
+            .iter()
+            .map(|col| quote(col))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let diff = |from: &str, minus: &str| {
+            run_query(
+                c,
+                &format!(
+                    "SELECT * FROM (SELECT {list} FROM {target} {from} MINUS SELECT {list} FROM {target} {minus}) WHERE ROWNUM <= {}",
+                    TX_DIFF_MAX_ROWS + 1
+                ),
+            )
+        };
+        let (cols, mut added) = diff("", as_of)?;
+        let (_, mut removed) = diff(as_of, "")?;
+        if added.len() > TX_DIFF_MAX_ROWS || removed.len() > TX_DIFF_MAX_ROWS {
+            out.note = Some(format!(
+                "Mehr als {TX_DIFF_MAX_ROWS} geänderte Zeilen; nur die ersten werden gezeigt."
+            ));
+            added.truncate(TX_DIFF_MAX_ROWS);
+            removed.truncate(TX_DIFF_MAX_ROWS);
+        }
+        out.added = rows_to_objects(&cols, added);
+        out.removed = rows_to_objects(&cols, removed);
+        Ok(())
+    })();
+    if let Err(e) = outcome {
+        out.note = Some(format!("Zeilen-Diff nicht möglich: {e}"));
+    }
+    out
 }
 
 pub fn tx_finish(c: &mut Connection, commit: bool) -> Result<(), String> {
@@ -4382,7 +4803,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     Ok(QueryResult {
         columns: vec![],
         rows: vec![],
-        rows_affected: Some(affected),
+        rows_affected: (!is_plsql(statement)).then_some(affected),
         execution_time_ms: start.elapsed().as_millis() as u64,
         truncated: false,
     })

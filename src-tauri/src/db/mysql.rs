@@ -366,6 +366,120 @@ fn kill_statement(scope: &str, pid: i32) -> Result<String, String> {
     Ok(format!("KILL {scope} {pid}"))
 }
 
+pub struct MysqlUrl {
+    pub url: url::Url,
+    pub ssl: SslMode,
+    pub root_cert: Option<String>,
+    pub identity: Option<String>,
+    pub identity_password: Option<String>,
+}
+
+pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
+    let mut url = url::Url::parse(value.trim()).map_err(|_| "Ungültige MySQL-URL".to_string())?;
+    let token_auth = super::cloud_auth::has_marker(&url);
+    if !matches!(url.scheme(), "mysql" | "mariadb") {
+        return Err("Eine mysql:// URL ist erforderlich".to_string());
+    }
+    let mut ssl = SslMode::Prefer;
+    let mut root_cert = None;
+    let mut identity = None;
+    let mut identity_password = None;
+    let pairs: Vec<(String, String)> = url
+        .query_pairs()
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+    let mut kept = Vec::new();
+    for (k, v) in pairs {
+        let flag = matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
+        match k.as_str() {
+            "sslmode" => {
+                ssl = serde_json::from_value(serde_json::Value::String(v))
+                    .map_err(|_| "Ungültiger SSL-Modus".to_string())?;
+            }
+            "ssl-mode" | "ssl_mode" | "sslMode" => {
+                ssl = match v.to_lowercase().as_str() {
+                    "disabled" => SslMode::Disable,
+                    "preferred" => SslMode::Prefer,
+                    "required" => SslMode::Require,
+                    "verify_ca" => SslMode::VerifyCa,
+                    "verify_identity" => SslMode::VerifyFull,
+                    _ => return Err("Ungültiger SSL-Modus".to_string()),
+                };
+            }
+            "useSSL" | "useSsl" | "ssl" if !flag => ssl = SslMode::Disable,
+            "requireSSL" | "require_ssl" if flag => ssl = ssl.max(SslMode::Require),
+            "verifyServerCertificate" | "verify_ca" if flag => ssl = ssl.max(SslMode::VerifyCa),
+            "verify_identity" if flag => ssl = SslMode::VerifyFull,
+            "sslrootcert" | "ssl-ca" | "ssl_ca" | "sslca" => {
+                root_cert = Some(v).filter(|v| !v.is_empty())
+            }
+            "sslcert" | "ssl-cert" | "ssl_cert" | "clientCertificateKeyStoreUrl" => {
+                identity = Some(v.trim_start_matches("file:").to_string()).filter(|v| !v.is_empty())
+            }
+            "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
+                identity_password = Some(v)
+            }
+            "abs_conn_ttl"
+            | "abs_conn_ttl_jitter"
+            | "client_found_rows"
+            | "compression"
+            | "enable_cleartext_plugin"
+            | "max_allowed_packet"
+            | "prefer_socket"
+            | "reset_connection"
+            | "secure_auth"
+            | "socket"
+            | "stmt_cache_size"
+            | "tcp_keepalive"
+            | "tcp_nodelay"
+            | "wait_timeout"
+            | "pool_min"
+            | "pool_max"
+            | "inactive_connection_ttl"
+            | "ttl_check_interval"
+            | "conn_ttl" => kept.push((k, v)),
+            _ => {}
+        }
+    }
+    if token_auth {
+        ssl = ssl.max(SslMode::Require);
+    }
+    url.set_scheme("mysql").ok();
+    url.query_pairs_mut()
+        .clear()
+        .extend_pairs(kept.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    if url.query().is_some_and(str::is_empty) {
+        url.set_query(None);
+    }
+    Ok(MysqlUrl {
+        url,
+        ssl,
+        root_cert,
+        identity,
+        identity_password,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_mysql_url(value)?;
+    let opts =
+        Opts::from_url(parsed.url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
+    Ok(super::endpoint::EndpointIdentity {
+        host: opts
+            .ip_or_hostname()
+            .trim_matches(['[', ']'])
+            .to_ascii_lowercase(),
+        port: Some(opts.tcp_port()),
+        transport: String::new(),
+        tls: parsed.ssl >= SslMode::Require,
+        verify: parsed.ssl >= SslMode::VerifyCa,
+        database: opts.db_name().unwrap_or_default().to_string(),
+        schema: String::new(),
+        user: opts.user().unwrap_or_default().to_string(),
+        params: Vec::new(),
+    })
+}
+
 impl MysqlAdapter {
     pub fn new(
         connection_string: &str,
@@ -374,83 +488,13 @@ impl MysqlAdapter {
         key: String,
     ) -> Result<Self, String> {
         let resolved = super::cloud_auth::resolve(connection_string.trim())?;
-        let mut url = url::Url::parse(&resolved).map_err(|_| "Ungültige MySQL-URL".to_string())?;
-        let token_auth = super::cloud_auth::has_marker(&url);
-        if !matches!(url.scheme(), "mysql" | "mariadb") {
-            return Err("Eine mysql:// URL ist erforderlich".to_string());
-        }
-        let mut ssl = SslMode::Prefer;
-        let mut root_cert = None;
-        let mut identity = None;
-        let mut identity_password = None;
-        let pairs: Vec<(String, String)> = url
-            .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect();
-        let mut kept = Vec::new();
-        for (k, v) in pairs {
-            let flag = matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
-            match k.as_str() {
-                "sslmode" => {
-                    ssl = serde_json::from_value(serde_json::Value::String(v))
-                        .map_err(|_| "Ungültiger SSL-Modus".to_string())?;
-                }
-                "ssl-mode" | "ssl_mode" | "sslMode" => {
-                    ssl = match v.to_lowercase().as_str() {
-                        "disabled" => SslMode::Disable,
-                        "preferred" => SslMode::Prefer,
-                        "required" => SslMode::Require,
-                        "verify_ca" => SslMode::VerifyCa,
-                        "verify_identity" => SslMode::VerifyFull,
-                        _ => return Err("Ungültiger SSL-Modus".to_string()),
-                    };
-                }
-                "useSSL" | "useSsl" | "ssl" if !flag => ssl = SslMode::Disable,
-                "requireSSL" | "require_ssl" if flag => ssl = ssl.max(SslMode::Require),
-                "verifyServerCertificate" | "verify_ca" if flag => ssl = ssl.max(SslMode::VerifyCa),
-                "verify_identity" if flag => ssl = SslMode::VerifyFull,
-                "sslrootcert" | "ssl-ca" | "ssl_ca" | "sslca" => {
-                    root_cert = Some(v).filter(|v| !v.is_empty())
-                }
-                "sslcert" | "ssl-cert" | "ssl_cert" | "clientCertificateKeyStoreUrl" => {
-                    identity =
-                        Some(v.trim_start_matches("file:").to_string()).filter(|v| !v.is_empty())
-                }
-                "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
-                    identity_password = Some(v)
-                }
-                "abs_conn_ttl"
-                | "abs_conn_ttl_jitter"
-                | "client_found_rows"
-                | "compression"
-                | "enable_cleartext_plugin"
-                | "max_allowed_packet"
-                | "prefer_socket"
-                | "reset_connection"
-                | "secure_auth"
-                | "socket"
-                | "stmt_cache_size"
-                | "tcp_keepalive"
-                | "tcp_nodelay"
-                | "wait_timeout"
-                | "pool_min"
-                | "pool_max"
-                | "inactive_connection_ttl"
-                | "ttl_check_interval"
-                | "conn_ttl" => kept.push((k, v)),
-                _ => {}
-            }
-        }
-        if token_auth {
-            ssl = ssl.max(SslMode::Require);
-        }
-        url.set_scheme("mysql").ok();
-        url.query_pairs_mut()
-            .clear()
-            .extend_pairs(kept.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-        if url.query().is_some_and(str::is_empty) {
-            url.set_query(None);
-        }
+        let MysqlUrl {
+            url,
+            ssl,
+            root_cert,
+            identity,
+            identity_password,
+        } = parse_mysql_url(&resolved)?;
         let opts = Opts::from_url(url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
         let mut builder = OptsBuilder::from_opts(opts)
             .tcp_nodelay(true)
@@ -1268,6 +1312,7 @@ impl DatabaseAdapter for MysqlAdapter {
                     wait_event: None,
                     is_self: self_id == Some(pid as u64),
                     blocked_by: Vec::new(),
+                    ..Default::default()
                 }
             })
             .collect())
@@ -1291,6 +1336,129 @@ impl DatabaseAdapter for MysqlAdapter {
 
     async fn drop_schema(&self, name: &str, _cascade: bool) -> Result<(), String> {
         self.exec(&format!("DROP DATABASE {}", quote(name))).await
+    }
+
+    async fn live_metrics(&self, include_details: bool) -> Result<super::LiveMetrics, String> {
+        let mut conn = self.conn().await?;
+        let rows: Vec<Row> = conn.query("SHOW GLOBAL STATUS").await.map_err(map_err)?;
+        let status: std::collections::HashMap<String, i64> = rows
+            .iter()
+            .filter_map(|r| cell(r, 1).parse().ok().map(|value| (cell(r, 0), value)))
+            .collect();
+        let stat = |name: &str| status.get(name).copied().unwrap_or(0);
+        let sum = |names: &[&str]| names.iter().map(|name| stat(name)).sum::<i64>();
+        let variables: Option<Row> = conn
+            .query_first("SELECT @@max_connections, @@version, @@time_zone, @@system_time_zone")
+            .await
+            .map_err(map_err)?;
+        let isolation: Option<String> = match conn
+            .query_first::<Row, _>("SELECT @@transaction_isolation")
+            .await
+        {
+            Ok(row) => row.and_then(|r| cell_opt(&r, 0)),
+            Err(_) => conn
+                .query_first::<Row, _>("SELECT @@tx_isolation")
+                .await
+                .ok()
+                .flatten()
+                .and_then(|r| cell_opt(&r, 0)),
+        };
+        let size = if include_details {
+            conn.query_first::<Row, _>(
+                "SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema = DATABASE()",
+            )
+            .await
+            .ok()
+            .flatten()
+            .map(|r| cell_i64(&r, 0))
+        } else {
+            None
+        };
+        let replica: Vec<Row> = match conn.query("SHOW REPLICA STATUS").await {
+            Ok(rows) => rows,
+            Err(_) => conn.query("SHOW SLAVE STATUS").await.unwrap_or_default(),
+        };
+        let replication: Vec<super::ReplicationStat> = replica
+            .iter()
+            .map(|r| {
+                let named = |names: &[&str]| {
+                    r.columns_ref()
+                        .iter()
+                        .position(|column| names.contains(&column.name_str().as_ref()))
+                        .and_then(|index| cell_opt(r, index))
+                };
+                let io = named(&["Replica_IO_Running", "Slave_IO_Running"]).unwrap_or_default();
+                let sql = named(&["Replica_SQL_Running", "Slave_SQL_Running"]).unwrap_or_default();
+                super::ReplicationStat {
+                    name: named(&["Channel_Name"])
+                        .filter(|name| !name.is_empty())
+                        .or_else(|| named(&["Source_Host", "Master_Host"]))
+                        .unwrap_or_default(),
+                    client_addr: named(&["Source_Host", "Master_Host"]),
+                    state: format!("IO {io} · SQL {sql}"),
+                    sync_state: None,
+                    write_lag_ms: None,
+                    flush_lag_ms: None,
+                    replay_lag_ms: named(&["Seconds_Behind_Source", "Seconds_Behind_Master"])
+                        .and_then(|value| value.parse::<f64>().ok())
+                        .map(|seconds| seconds * 1000.0),
+                    lag_bytes: None,
+                }
+            })
+            .collect();
+        let read = stat("Com_select");
+        let write = sum(&[
+            "Com_insert",
+            "Com_insert_select",
+            "Com_update",
+            "Com_update_multi",
+            "Com_delete",
+            "Com_delete_multi",
+            "Com_replace",
+            "Com_replace_select",
+            "Com_load",
+        ]);
+        Ok(super::LiveMetrics {
+            connections: stat("Threads_connected"),
+            max_connections: variables.as_ref().map(|r| cell_i64(r, 0)),
+            active_sessions: (stat("Threads_running") - 1).max(0),
+            waiting_locks: stat("Innodb_row_lock_current_waits"),
+            database_size_bytes: size,
+            commits: stat("Handler_commit"),
+            rollbacks: stat("Handler_rollback"),
+            queries_read: Some(read),
+            queries_write: Some(write),
+            queries_other: Some((stat("Questions") - read - write).max(0)),
+            rows_read: stat("Innodb_rows_read"),
+            rows_written: sum(&[
+                "Innodb_rows_inserted",
+                "Innodb_rows_updated",
+                "Innodb_rows_deleted",
+            ]),
+            blocks_read: stat("Innodb_buffer_pool_reads"),
+            blocks_hit: (stat("Innodb_buffer_pool_read_requests")
+                - stat("Innodb_buffer_pool_reads"))
+            .max(0),
+            temp_bytes: None,
+            deadlocks: status.get("Innodb_deadlocks").copied(),
+            cpu_busy: None,
+            cpu_total: None,
+            server_version: variables.as_ref().map(|r| cell(r, 1)).unwrap_or_default(),
+            uptime_seconds: status.get("Uptime").copied(),
+            timezone: variables.as_ref().and_then(|r| {
+                cell_opt(r, 2)
+                    .filter(|zone| zone != "SYSTEM")
+                    .or_else(|| cell_opt(r, 3))
+            }),
+            default_isolation: isolation.map(|level| level.replace('-', " ").to_lowercase()),
+            in_recovery: !replication.is_empty(),
+            replay_delay_ms: replication
+                .iter()
+                .filter_map(|r| r.replay_lag_ms)
+                .reduce(f64::max),
+            replication,
+            table_io: Vec::new(),
+        })
     }
 
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {

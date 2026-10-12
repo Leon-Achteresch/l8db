@@ -1,7 +1,11 @@
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
   DialogContent,
@@ -9,11 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/features/shell/workbench-dialog";
 import {
   findShortcutConflict,
   SNIPPET_PLACEHOLDER_HINT,
@@ -39,7 +39,7 @@ const EMPTY_FORM: SnippetInput = {
   body: "",
 };
 
-export function SnippetManagerDialog({
+function SnippetManagerDialogContent({
   open,
   onOpenChange,
   onInsert,
@@ -261,3 +261,5 @@ export function SnippetManagerDialog({
     </Dialog>
   );
 }
+
+export const SnippetManagerDialog = asWorkbenchTab(SnippetManagerDialogContent, "SQL-Snippets");

@@ -1,7 +1,15 @@
-import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon } from "lucide-react";
 import { useMemo } from "react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { copyWithToast } from "@/lib/clipboard";
 import type { TransferPlan, TransferStatement } from "@/lib/db";
 
 const PHASES: { key: keyof TransferPlan; label: string }[] = [
@@ -30,35 +38,48 @@ function script(plan: TransferPlan): string {
     .join("\n\n");
 }
 
-export function TransferPlanDetails({ plan }: { plan: TransferPlan }) {
+export function TransferPlanDetails({
+  plan,
+  open,
+  tab,
+  onOpenChange,
+}: {
+  plan: TransferPlan;
+  open: boolean;
+  tab: string;
+  onOpenChange: (open: boolean) => void;
+}) {
   const text = useMemo(() => script(plan), [plan]);
   const columns = plan.tables.reduce((sum, table) => sum + table.columns.length, 0);
   const statements = plan.preData.length + plan.postData.length + plan.finalize.length;
-  const notes = plan.manual.length + plan.warnings.length;
   return (
-    <Collapsible className="group/plan flex flex-col gap-3">
-      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg text-left text-xs text-muted-foreground transition-colors hover:text-foreground">
-        <ChevronDownIcon className="size-3.5 transition-transform group-data-[state=open]/plan:rotate-180" />
-        <span className="tabular-nums">
-          {plan.tables.length} Tabellen · {columns} Spalten · {statements} Anweisungen
-        </span>
-        {notes > 0 && (
-          <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
-            <TriangleAlertIcon className="size-3.5" />
-            {notes} Hinweise
-          </span>
-        )}
-        <span className="ml-auto">{plan.native ? "Native Struktur" : "Typumsetzung"}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <Tabs defaultValue="tables" className="flex flex-col gap-2">
-          <TabsList>
-            <TabsTrigger value="tables">Tabellen</TabsTrigger>
-            <TabsTrigger value="script">Skript</TabsTrigger>
-            <TabsTrigger value="manual">Manuell ({plan.manual.length})</TabsTrigger>
-            <TabsTrigger value="warnings">Hinweise ({plan.warnings.length})</TabsTrigger>
-          </TabsList>
-          <TabsContent value="tables" className="max-h-80 overflow-auto rounded-xl border">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Übertragungsplan</DialogTitle>
+          <DialogDescription className="tabular-nums">
+            {plan.tables.length} Tabellen · {columns} Spalten · {statements} Anweisungen ·{" "}
+            {plan.native ? "Native Struktur" : "Typumsetzung"}
+          </DialogDescription>
+        </DialogHeader>
+        <Tabs key={tab} defaultValue={tab} className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="tables">Tabellen</TabsTrigger>
+              <TabsTrigger value="script">Skript</TabsTrigger>
+              <TabsTrigger value="manual">Manuell ({plan.manual.length})</TabsTrigger>
+              <TabsTrigger value="warnings">Hinweise ({plan.warnings.length})</TabsTrigger>
+            </TabsList>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => void copyWithToast(text, "Skript")}
+            >
+              Skript kopieren
+            </Button>
+          </div>
+          <TabsContent value="tables" className="min-h-0 flex-1 overflow-auto rounded-xl border">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-background text-left text-muted-foreground">
                 <tr>
@@ -95,12 +116,12 @@ export function TransferPlanDetails({ plan }: { plan: TransferPlan }) {
               </tbody>
             </table>
           </TabsContent>
-          <TabsContent value="script" className="max-h-80 overflow-auto">
+          <TabsContent value="script" className="min-h-0 flex-1 overflow-auto">
             <pre className="rounded-xl border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
               {text}
             </pre>
           </TabsContent>
-          <TabsContent value="manual" className="max-h-80 overflow-auto">
+          <TabsContent value="manual" className="min-h-0 flex-1 overflow-auto">
             {plan.manual.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 Alle Objekte werden automatisch übertragen.
@@ -129,7 +150,7 @@ export function TransferPlanDetails({ plan }: { plan: TransferPlan }) {
               </div>
             )}
           </TabsContent>
-          <TabsContent value="warnings" className="max-h-80 overflow-auto">
+          <TabsContent value="warnings" className="min-h-0 flex-1 overflow-auto">
             {plan.warnings.length === 0 ? (
               <p className="text-xs text-muted-foreground">Keine Hinweise.</p>
             ) : (
@@ -147,7 +168,7 @@ export function TransferPlanDetails({ plan }: { plan: TransferPlan }) {
             )}
           </TabsContent>
         </Tabs>
-      </CollapsibleContent>
-    </Collapsible>
+      </DialogContent>
+    </Dialog>
   );
 }

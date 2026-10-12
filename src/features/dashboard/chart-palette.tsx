@@ -12,6 +12,7 @@ import {
   LayoutGridIcon,
   type LucideIcon,
   RadarIcon,
+  Rows3Icon,
   ScatterChartIcon,
   TableIcon,
   TargetIcon,
@@ -35,5 +36,6 @@ export const CHART_ICONS: Record<ChartKind, LucideIcon> = {
   gauge: TargetIcon,
   treemap: LayoutGridIcon,
   heatmap: Grid3x3Icon,
+  pivot: Rows3Icon,
   table: TableIcon,
 };

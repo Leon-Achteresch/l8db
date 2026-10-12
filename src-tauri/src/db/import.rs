@@ -864,6 +864,9 @@ impl TxSession for OracleTx {
     async fn rollback(&mut self) -> Result<(), String> {
         self.run(|c| super::oracle::tx_finish(c, false)).await
     }
+    async fn server_output(&mut self) -> Result<Vec<String>, String> {
+        self.run(|c| super::oracle::read_output(c)).await
+    }
 }
 
 struct AutoCommit {

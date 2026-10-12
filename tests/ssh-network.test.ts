@@ -245,10 +245,11 @@ describe("Proxy ohne SSH", () => {
     expect(useConnectionsStore.getState().activeId).toBeNull();
   });
 
-  test("Entfernen löscht auch Sprung-Host- und Proxy-Geheimnisse", () => {
+  test("Entfernen löscht auch Sprung-Host- und Proxy-Geheimnisse", async () => {
     keychain.set("chained:ssh-jumps", JSON.stringify(["a", "b"]));
     keychain.set("chained:proxy", "pw");
     useConnectionsStore.getState().removeConnection("chained");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const deleted = invocations
       .filter((entry) => entry.command === "delete_secret")
       .map((entry) => entry.args.account);

@@ -1,7 +1,7 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { CircleSlash, type LucideIcon } from "lucide-react";
 import { create } from "zustand";
-import type { AppTask } from "@/lib/tasks";
+import { type AppTask, isQueryTask } from "@/lib/tasks";
 
 export type IslandTone = "neutral" | "success" | "error" | "warning" | "celebrate";
 
@@ -41,6 +41,7 @@ interface Greeting {
 }
 
 export const ISLAND_TASK_DELAY = 500;
+export const ISLAND_QUEUE_LIMIT = 6;
 export const QUERY_MILESTONES = [100, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000];
 
 const VERSION_KEY = "l8db.island.version";
@@ -102,9 +103,11 @@ const SPECIAL_DAYS: Record<string, Greeting> = {
 export const useIslandStore = create<{ queue: IslandMoment[] }>(() => ({ queue: [] }));
 
 export function showIslandMoment(moment: IslandMoment): void {
-  useIslandStore.setState((state) => ({
-    queue: [...state.queue.filter((entry) => entry.key !== moment.key), moment].slice(-6),
-  }));
+  useIslandStore.setState((state) => {
+    const queue = [...state.queue.filter((entry) => entry.key !== moment.key), moment];
+    if (queue.length > ISLAND_QUEUE_LIMIT) queue.splice(1, queue.length - ISLAND_QUEUE_LIMIT);
+    return { queue };
+  });
 }
 
 export function dismissIslandMoment(key: string): void {
@@ -242,6 +245,7 @@ export function formatIslandDuration(ms: number): string {
 }
 
 export function taskMoment(task: AppTask): IslandMoment | null {
+  if (isQueryTask(task)) return null;
   const elapsed = (task.finishedAt ?? Date.now()) - task.startedAt;
   if (elapsed < ISLAND_TASK_DELAY || task.status === "interrupted") return null;
   const key = `done:${task.id}`;

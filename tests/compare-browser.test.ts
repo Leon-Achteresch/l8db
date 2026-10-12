@@ -67,7 +67,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       const modified = page.locator(".merge-draft-editor textarea");
       await modified.waitFor();
       await page.getByText("Definitionen werden geladen…").waitFor({ state: "hidden" });
-      expect(await page.getByText("Gemeinsamer Entwurf").isVisible()).toBe(true);
+      expect(await page.getByText("Merge-Ergebnis", { exact: true }).isVisible()).toBe(true);
       expect(await page.locator(".merge-reference-change").count()).toBe(0);
       expect(await page.locator("select:visible").count()).toBe(0);
       expect(await page.getByLabel("Vergleichsmodus").count()).toBe(0);
@@ -108,10 +108,8 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
           ?.textContent?.replace(/\s/g, " ")
           .includes("Entwurf bleibt"),
       );
-      await page
-        .getByRole("button", { name: "Änderung aus dem Ziel in den Entwurf übernehmen" })
-        .first()
-        .click();
+      await page.getByRole("button", { name: "Ziel auswählen" }).click();
+      await page.getByRole("button", { name: "Ziel in Entwurf übernehmen" }).click();
       await page.waitForFunction(() =>
         document.querySelector(".merge-draft-editor .view-lines")?.textContent?.includes("COLUMNS"),
       );

@@ -3,10 +3,11 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { SettingsTableAppearance } from "@/features/settings/settings-table-appearance";
 import { islandName, previewIsland } from "@/lib/dynamic-island";
 import { UI_SCALE_MAX, UI_SCALE_MIN, UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 
-export function SettingsAppearance() {
+export function SettingsAppearance({ onboarding = false }: { onboarding?: boolean }) {
   const {
     uiScale,
     uiDensity,
@@ -15,21 +16,17 @@ export function SettingsAppearance() {
     dynamicIsland,
     fitColumnsToHeader,
     monochromeCells,
+    tableStyle,
     setSidebarExtraCompact,
     setNavInHeader,
     setDynamicIsland,
-    setFitColumnsToHeader,
-    setMonochromeCells,
     setUiScale,
     setUiDensity,
     resetAppearance,
   } = useSettingsStore();
   return (
     <>
-      <SettingsRow
-        title="Oberflächengröße"
-        description="Schrift, Symbole und Bedienelemente in der gesamten App verkleinern oder vergrößern (80–150 %). Die Code-Schrift bleibt separat im SQL-Editor einstellbar."
-      >
+      <SettingsRow settingId="ui-scale">
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant="outline"
@@ -65,10 +62,7 @@ export function SettingsAppearance() {
           </output>
         </div>
       </SettingsRow>
-      <SettingsRow
-        title="UI-Dichte"
-        description="Zeilenhöhen und Abstände in Seitenleiste, Tabellen, Menüs und Steuerelementen. Die Schriftgröße bleibt gleich."
-      >
+      <SettingsRow settingId="density">
         <SegmentedControl
           value={uiDensity}
           onChange={setUiDensity}
@@ -80,31 +74,21 @@ export function SettingsAppearance() {
           ]}
         />
       </SettingsRow>
-      <SettingsRow
-        title="Seitenleiste extra kompakt"
-        description="Objektlisten ohne Zwischenräume und mit 20 px Zeilenhöhe bei 100 %. Die Schriftgröße bleibt erhalten. Gilt unabhängig von der UI-Dichte."
-      >
+      <SettingsRow settingId="sidebar-extra-compact">
         <Switch
           aria-label="Seitenleiste extra kompakt"
           checked={sidebarExtraCompact}
           onCheckedChange={setSidebarExtraCompact}
         />
       </SettingsRow>
-      <SettingsRow
-        title="Navigation im Header"
-        description="Bereiche wie früher oben im Header statt in der Leiste am linken Rand anzeigen."
-      >
+      <SettingsRow settingId="nav-in-header">
         <Switch
           aria-label="Navigation im Header"
           checked={navInHeader}
           onCheckedChange={setNavInHeader}
         />
       </SettingsRow>
-      <SettingsRow
-        title="Dynamic Island"
-        description="Die Suche im Header zeigt Ladezustände, Update-Installationen, Begrüßungen und kleine Überraschungen. Ein Klick öffnet weiterhin die Suche."
-        featureId="settings.general.dynamic-island"
-      >
+      <SettingsRow settingId="dynamic-island" featureId="settings.general.dynamic-island">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -121,48 +105,31 @@ export function SettingsAppearance() {
           />
         </div>
       </SettingsRow>
-      <SettingsRow
-        title="An Spaltentitel anpassen"
-        description="Tabellenspalten automatisch so breit darstellen, dass der Spaltentitel vollständig sichtbar ist."
-      >
-        <Switch
-          aria-label="An Spaltentitel anpassen"
-          checked={fitColumnsToHeader}
-          onCheckedChange={setFitColumnsToHeader}
-        />
-      </SettingsRow>
-      <SettingsRow
-        title="Einfarbige Tabellenwerte"
-        description="Zellwerte schwarz bzw. im Darkmode weiß anzeigen statt nach Datentyp einzufärben."
-      >
-        <Switch
-          aria-label="Einfarbige Tabellenwerte"
-          checked={monochromeCells}
-          onCheckedChange={setMonochromeCells}
-        />
-      </SettingsRow>
-      <SettingsRow
-        title="Darstellung zurücksetzen"
-        description="Oberflächengröße, UI-Dichte, Spaltenbreiten und Seitenleistenabstände auf Standard zurücksetzen. Änderungen werden sofort angewendet und gespeichert."
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={
-            uiScale === 100 &&
-            uiDensity === "normal" &&
-            !sidebarExtraCompact &&
-            !navInHeader &&
-            dynamicIsland &&
-            fitColumnsToHeader &&
-            monochromeCells
-          }
-          onClick={resetAppearance}
-        >
-          <RotateCcw className="size-3.5" />
-          Zurücksetzen
-        </Button>
-      </SettingsRow>
+      {onboarding ? null : (
+        <>
+          <SettingsTableAppearance />
+          <SettingsRow settingId="reset-appearance">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                uiScale === 100 &&
+                uiDensity === "normal" &&
+                !sidebarExtraCompact &&
+                !navInHeader &&
+                dynamicIsland &&
+                fitColumnsToHeader &&
+                monochromeCells &&
+                tableStyle === "classic"
+              }
+              onClick={resetAppearance}
+            >
+              <RotateCcw className="size-3.5" />
+              Zurücksetzen
+            </Button>
+          </SettingsRow>
+        </>
+      )}
     </>
   );
 }

@@ -14,7 +14,10 @@
   },
   "bundle": {
     "windows": {
-      "minimumWebview2Version": "111.0.0.0"
+      "minimumWebview2Version": "111.0.0.0",
+      "nsis": {
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,7 +8,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cancelTask, clearFinishedTasks, isTaskActive, useTasksStore } from "@/lib/tasks";
+import {
+  type AppTask,
+  cancelTask,
+  clearFinishedTasks,
+  isTaskActive,
+  useTasksStore,
+} from "@/lib/tasks";
+
+const NO_TASKS: AppTask[] = [];
 
 const STATUS_LABELS = {
   running: "Läuft",
@@ -20,8 +28,11 @@ const STATUS_LABELS = {
 };
 
 export function TasksDialog() {
-  const tasks = useTasksStore((state) => state.tasks);
   const open = useTasksStore((state) => state.open);
+  const live = useTasksStore((state) => (state.open ? state.tasks : null));
+  const shown = useRef(NO_TASKS);
+  if (live) shown.current = live;
+  const tasks = live ?? shown.current;
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!open) return;

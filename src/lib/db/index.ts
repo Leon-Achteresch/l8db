@@ -6,6 +6,7 @@ export * from "./backup";
 export * from "./branching";
 export * from "./catalog";
 export * from "./columns";
+export * from "./connection-import";
 export * from "./convex";
 export type { QueryExecutionOptions } from "./core";
 export {
@@ -34,5 +35,6 @@ export * from "./supabase";
 export * from "./transactions";
 export * from "./transfer";
 export * from "./types";
+export * from "./updates";
 export * from "./versioning";
 export * from "./windows";

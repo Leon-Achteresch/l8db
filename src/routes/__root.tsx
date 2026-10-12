@@ -3,6 +3,7 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
 import { lazy, Suspense, startTransition, useEffect, useState } from "react";
 import { WindowCloseGuard } from "@/features/shell/window-close-guard";
+import { WorkbenchHost } from "@/features/shell/workbench-host";
 import "../index.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
@@ -27,6 +28,12 @@ const FeatureVideoHost = lazy(() =>
   })),
 );
 
+const AutoSyncHost = lazy(() =>
+  import("@/features/shell/auto-sync-host").then(({ AutoSyncHost }) => ({
+    default: AutoSyncHost,
+  })),
+);
+
 function RootComponent() {
   const activeFeatureVideo = useFeatureVideoStore((state) => state.activeId);
   const [backgroundReady, setBackgroundReady] = useState(false);
@@ -40,6 +47,7 @@ function RootComponent() {
     <MotionConfig reducedMotion="user">
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
         <DbThemeRoot className="h-dvh">
+          <WorkbenchHost />
           <AppHotkeys />
           <SqlFileDrop />
           <AppHeader />
@@ -52,6 +60,11 @@ function RootComponent() {
         <WindowCloseGuard />
         <AppTourHost />
         <OnboardingHost />
+        {backgroundReady && (
+          <Suspense fallback={null}>
+            <AutoSyncHost />
+          </Suspense>
+        )}
         {(backgroundReady || activeFeatureVideo) && (
           <Suspense fallback={null}>
             <FeatureVideoHost />

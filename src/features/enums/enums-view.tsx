@@ -5,6 +5,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -74,9 +82,24 @@ export function EnumsView() {
         {isLoading ? (
           <p className="p-8 text-center text-sm text-muted-foreground">Lade Enums…</p>
         ) : (enums?.length ?? 0) === 0 ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">
-            Keine Enum-Typen gefunden.
-          </p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ListIcon />
+              </EmptyMedia>
+              <EmptyTitle>Keine Enum-Typen</EmptyTitle>
+              <EmptyDescription>
+                Enums beschränken eine Spalte auf eine feste Liste von Werten, etwa Status oder
+                Kategorien.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
+                <PlusIcon data-icon="inline-start" />
+                Enum anlegen
+              </Button>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div className="flex flex-col gap-2">
             {enums!.map((entry) => (

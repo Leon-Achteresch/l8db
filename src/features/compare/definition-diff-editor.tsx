@@ -3,7 +3,11 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import "monaco-editor/features/diffEditor/register";
 import "monaco-editor/features/diffEditorBreadcrumbs/register";
 
+import { diffChangeLines, nextDiffLine } from "@/features/compare/diff-navigation";
+import { attachDiffOverviewNavigation } from "@/features/compare/diff-overview-navigation";
 import { monaco } from "@/lib/monaco";
+import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
+import { useDefinitionDraftActions } from "./use-definition-draft-actions";
 import "./definition-diff-editor.css";
 
 function themeFor(resolved: string | undefined): string {
@@ -42,6 +46,12 @@ interface DefinitionDiffEditorProps {
   onModifiedChange?: (value: string) => void;
   readOnly?: boolean;
   minimap?: boolean;
+  draft?: string;
+  onDraftChange?: (value: string) => void;
+  onSideSelect?: (side: "left" | "right") => void;
+  onActivate?: () => void;
+  scrollSync?: ScrollSyncGroup;
+  sideBySide?: boolean;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -53,11 +63,17 @@ export function DefinitionDiffEditor({
   onModifiedChange,
   readOnly = false,
   minimap = false,
+  draft,
+  onDraftChange,
+  onSideSelect,
+  onActivate,
+  scrollSync,
+  sideBySide = true,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const diffRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
-  const indexRef = useRef(-1);
+  const activeSideRef = useRef<"original" | "modified">("modified");
   const statsRef = useRef<((stats: DiffStats) => void) | undefined>(onStats);
   const { resolvedTheme } = useTheme();
 
@@ -66,6 +82,8 @@ export function DefinitionDiffEditor({
   statsRef.current = onStats;
   const readOnlyRef = useRef(readOnly);
   const minimapRef = useRef(minimap);
+  const activateRef = useRef(onActivate);
+  activateRef.current = onActivate;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -95,12 +113,27 @@ export function DefinitionDiffEditor({
     });
     diffRef.current = editor;
 
+    const detachOverview = attachDiffOverviewNavigation(container, editor, (side) => {
+      activeSideRef.current = side;
+      activateRef.current?.();
+    });
+
+    const originalFocus = editor.getOriginalEditor().onDidFocusEditorWidget(() => {
+      activeSideRef.current = "original";
+      activateRef.current?.();
+    });
+    const modifiedFocus = editor.getModifiedEditor().onDidFocusEditorWidget(() => {
+      activeSideRef.current = "modified";
+      activateRef.current?.();
+    });
     const subscription = editor.onDidUpdateDiff(() => {
-      indexRef.current = -1;
       statsRef.current?.(diffStats(editor.getLineChanges() ?? []));
     });
 
     return () => {
+      detachOverview();
+      originalFocus.dispose();
+      modifiedFocus.dispose();
       subscription.dispose();
       const models = editor.getModel();
       editor.dispose();
@@ -145,6 +178,26 @@ export function DefinitionDiffEditor({
   }, [onlyDifferences]);
 
   useEffect(() => {
+    diffRef.current?.updateOptions({ renderSideBySide: sideBySide });
+  }, [sideBySide]);
+
+  useEffect(() => {
+    const editor = diffRef.current;
+    if (!editor || !scrollSync) return;
+    const modified = editor.getModifiedEditor();
+    const leave = joinScrollSyncGroup(scrollSync, modified);
+    const focus = editor.getOriginalEditor().onDidFocusEditorWidget(() => {
+      scrollSync.lastScrolled = modified;
+    });
+    return () => {
+      focus.dispose();
+      leave();
+    };
+  }, [scrollSync]);
+
+  useDefinitionDraftActions(diffRef, original, modified, draft, onDraftChange, onSideSelect);
+
+  useEffect(() => {
     if (diffRef.current) monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
 
@@ -153,11 +206,15 @@ export function DefinitionDiffEditor({
       const editor = diffRef.current;
       const changes = editor?.getLineChanges();
       if (!editor || !changes || changes.length === 0) return;
-      const next = (indexRef.current + direction + changes.length * 2) % changes.length;
-      indexRef.current = next;
-      const change = changes[next];
-      const line = change.modifiedStartLineNumber || change.originalStartLineNumber || 1;
-      const target = editor.getModifiedEditor();
+      const side = activeSideRef.current;
+      const target = side === "original" ? editor.getOriginalEditor() : editor.getModifiedEditor();
+      const line = nextDiffLine(
+        diffChangeLines(changes, side),
+        target.getPosition()?.lineNumber ?? 1,
+        direction,
+        target.getModel()?.getLineCount() ?? 1,
+      );
+      if (line === null) return;
       target.revealLineInCenter(line);
       target.setPosition({ lineNumber: line, column: 1 });
       target.focus();

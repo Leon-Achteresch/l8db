@@ -1,10 +1,11 @@
 import { CheckIcon, InfoIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
-import { type CSSProperties, type MouseEvent, useRef } from "react";
-import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { type CSSProperties, type MouseEvent, useEffect, useRef } from "react";
+import { Toaster as Sonner, type ToasterProps, toast } from "sonner";
 import { ToastDrop } from "@/components/motion/toast-drop";
 
 const OFFSET = { top: "calc(var(--app-header-height) + 24px)", bottom: "40px" };
+const MAX_TOASTS = 5;
 const WIDTH = { "--width": "min(380px, calc(100vw - 32px))" } as CSSProperties;
 
 function dismissOnClick(event: MouseEvent<HTMLDivElement>) {
@@ -30,6 +31,16 @@ function dismissOnClick(event: MouseEvent<HTMLDivElement>) {
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
   const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = root.current;
+    if (!container) return;
+    const observer = new MutationObserver(() => {
+      for (const entry of toast.getToasts().slice(0, -MAX_TOASTS)) toast.dismiss(entry.id);
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <>

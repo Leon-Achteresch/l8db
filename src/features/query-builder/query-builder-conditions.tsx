@@ -1,5 +1,5 @@
-import { PlusIcon, Trash2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { XIcon } from "lucide-react";
+import { IconButton } from "@/components/icon-button";
 import {
   Select,
   SelectContent,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { QueryBuilderSection } from "@/features/query-builder/query-builder-section";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import {
   type BuilderCondition,
@@ -35,20 +36,20 @@ export function QueryBuilderConditions({
 }: QueryBuilderConditionsProps) {
   const listRef = useListAnimation<HTMLDivElement>();
   return (
-    <div className="rounded-md border">
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="text-sm font-medium">Bedingungen (UND)</span>
-        <Button size="sm" variant="ghost" onClick={onAdd} disabled={options.length === 0}>
-          <PlusIcon />
-          Bedingung
-        </Button>
-      </div>
-      <div ref={listRef} className="space-y-2 p-3">
-        {conditions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Keine Bedingungen definiert.</p>
-        ) : (
-          conditions.map((condition) => (
-            <div key={condition.id} className="flex items-center gap-2">
+    <QueryBuilderSection
+      title="Filter"
+      count={conditions.length}
+      addLabel="Bedingung hinzufügen"
+      addDisabled={options.length === 0}
+      onAdd={onAdd}
+    >
+      <div ref={listRef} className="space-y-1.5">
+        {conditions.map((condition, index) => (
+          <div key={condition.id} className="space-y-1 rounded-md border bg-background p-1.5">
+            <div className="flex items-center gap-1">
+              <span className="w-7 shrink-0 text-center text-[11px] text-muted-foreground">
+                {index === 0 ? "wo" : "und"}
+              </span>
               <Select
                 value={columnOptionValue(condition.source, condition.column)}
                 onValueChange={(value) =>
@@ -58,7 +59,11 @@ export function QueryBuilderConditions({
                   })
                 }
               >
-                <SelectTrigger className="w-56">
+                <SelectTrigger
+                  size="sm"
+                  className="h-7 min-w-0 flex-1 font-mono text-xs"
+                  aria-label="Spalte"
+                >
                   <SelectValue placeholder="Spalte" />
                 </SelectTrigger>
                 <SelectContent searchable>
@@ -69,39 +74,40 @@ export function QueryBuilderConditions({
                   ))}
                 </SelectContent>
               </Select>
+              <IconButton
+                size="icon-xs"
+                variant="ghost"
+                className="text-muted-foreground"
+                aria-label="Bedingung entfernen"
+                onClick={() => onRemove(condition.id)}
+              >
+                <XIcon />
+              </IconButton>
+            </div>
+            <div className="flex items-center gap-1 pl-8">
               <FilterOperatorSelect
                 operator={condition.operator}
                 value={condition.value}
                 onChange={(operator, value) => onChange(condition.id, { operator, value })}
-                className="w-44"
+                className="h-7 w-28 shrink-0 text-xs"
                 size="sm"
                 date={isDateFilterType(condition.dataType)}
               />
-              {operatorNeedsValue(condition.operator) ? (
+              {operatorNeedsValue(condition.operator) && (
                 <FilterValueInput
                   key={condition.operator}
                   operator={condition.operator}
                   date={isDateFilterType(condition.dataType)}
-                  className="flex-1"
+                  className="h-7 min-w-0 flex-1 font-mono text-xs"
                   placeholder="Wert"
                   value={condition.value}
                   onValueChange={(value) => onChange(condition.id, { value })}
                 />
-              ) : (
-                <div className="flex-1" />
               )}
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Bedingung entfernen"
-                onClick={() => onRemove(condition.id)}
-              >
-                <Trash2Icon />
-              </Button>
             </div>
-          ))
-        )}
+          </div>
+        ))}
       </div>
-    </div>
+    </QueryBuilderSection>
   );
 }

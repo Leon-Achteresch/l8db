@@ -1,5 +1,4 @@
 import {
-  AppWindow,
   Archive,
   Copy,
   CopyPlus,
@@ -173,40 +172,25 @@ export function ConnectionPickCard({
           }
         />
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-52">
-        <ContextMenuItem onSelect={onOpen}>
-          <Play className="size-3.5" />
-          {active ? "Trennen" : "Verbinden"}
-        </ContextMenuItem>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={onOpen}>{active ? "Trennen" : "Verbinden"}</ContextMenuItem>
         {onOpenWindow && (
-          <ContextMenuItem onSelect={onOpenWindow}>
-            <AppWindow className="size-3.5" />
-            In neuem Fenster öffnen
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem onSelect={onEdit}>
-          <Pencil className="size-3.5" />
-          Bearbeiten
-        </ContextMenuItem>
-        {onBackup && (
-          <ContextMenuItem onSelect={onBackup}>
-            <Archive className="size-3.5" />
-            Sichern & Wiederherstellen…
-          </ContextMenuItem>
+          <ContextMenuItem onSelect={onOpenWindow}>In neuem Fenster öffnen</ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={onDuplicate}>
-          <Copy className="size-3.5" />
-          Duplizieren
+        <ContextMenuItem onSelect={onEdit}>Bearbeiten…</ContextMenuItem>
+        {onBackup && (
+          <ContextMenuItem onSelect={onBackup}>Sichern & Wiederherstellen…</ContextMenuItem>
+        )}
+        <ContextMenuItem onSelect={onToggleFavorite}>
+          {favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
         </ContextMenuItem>
-        <ContextMenuItem onSelect={onCreateSimilar}>
-          <CopyPlus className="size-3.5" />
-          Ähnliche erstellen
-        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onDuplicate}>Duplizieren</ContextMenuItem>
+        <ContextMenuItem onSelect={onCreateSimilar}>Ähnliche erstellen…</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={onDelete}>
-          <Trash2 className="size-3.5" />
-          Löschen
+          Löschen…
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

@@ -13,13 +13,8 @@ import {
   Undo2Icon,
 } from "lucide-react";
 import { useState } from "react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatBytes } from "@/lib/backup";
 import { expiryText, isExpired, relativeTime } from "@/lib/branching/model";
 import { branchingLocal, branchingVerify, type SnapshotInfo } from "@/lib/db";
@@ -129,7 +124,7 @@ export function SnapshotRow({
           </p>
         )}
       </div>
-      <DropdownMenu>
+      <IconMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
@@ -139,57 +134,59 @@ export function SnapshotRow({
             <MoreHorizontalIcon className="size-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="vcs-surface w-60 rounded-xl">
+        <IconMenuContent>
           {!damaged && (
             <>
-              <DropdownMenuItem
+              <IconMenuItem
+                icon={<Undo2Icon />}
+                label={
+                  exists
+                    ? `„${snapshot.database}“ wiederherstellen…`
+                    : "Datenbank existiert nicht mehr"
+                }
                 disabled={!writable || !exists}
                 onSelect={() => onRestore(snapshot)}
-              >
-                <Undo2Icon className="size-3.5" />
-                {exists
-                  ? `„${snapshot.database}“ wiederherstellen…`
-                  : "Datenbank existiert nicht mehr"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
+              />
+              <IconMenuItem
+                icon={<GitBranchPlusIcon />}
+                label="Als Branch öffnen…"
                 disabled={!writable}
                 onSelect={() => onCreate({ source: snapshot.database, snapshot: snapshot.id })}
-              >
-                <GitBranchPlusIcon className="size-3.5" />
-                Als Branch öffnen…
-              </DropdownMenuItem>
-              <DropdownMenuItem
+              />
+              <IconMenuItem
+                icon={<FileDiffIcon />}
+                label="Schema mit aktuellem Stand vergleichen"
                 onSelect={() =>
                   onCompare(
                     `snapshot:${snapshot.id}`,
                     `live:${exists ? snapshot.database : overview.root}`,
                   )
                 }
-              >
-                <FileDiffIcon className="size-3.5" />
-                Schema mit aktuellem Stand vergleichen
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={workspace.busy} onSelect={verify}>
-                <ShieldCheckIcon className="size-3.5" />
-                Integrität prüfen
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={workspace.busy} onSelect={() => setDialog("edit")}>
-                <PencilIcon className="size-3.5" />
-                Bearbeiten…
-              </DropdownMenuItem>
+              />
+              <IconMenuItem
+                icon={<ShieldCheckIcon />}
+                label="Integrität prüfen"
+                disabled={workspace.busy}
+                onSelect={verify}
+              />
+              <IconMenuSeparator />
+              <IconMenuItem
+                icon={<PencilIcon />}
+                label="Bearbeiten…"
+                disabled={workspace.busy}
+                onSelect={() => setDialog("edit")}
+              />
             </>
           )}
-          <DropdownMenuItem
+          <IconMenuItem
+            icon={<TrashIcon />}
+            label={snapshot.protected ? "Geschützt – nicht löschbar" : "Löschen…"}
             disabled={workspace.busy || snapshot.protected}
             variant="destructive"
             onSelect={() => setDialog("delete")}
-          >
-            <TrashIcon className="size-3.5" />
-            {snapshot.protected ? "Geschützt – nicht löschbar" : "Löschen…"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          />
+        </IconMenuContent>
+      </IconMenu>
       {dialog === "edit" && (
         <SnapshotEditDialog
           workspace={workspace}

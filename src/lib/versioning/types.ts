@@ -185,6 +185,7 @@ export interface RepositoryStatus {
 export interface RepositoryRequest {
   action:
     | "graph"
+    | "release-commits"
     | "merge-branch"
     | "delete-branch"
     | "fetch"

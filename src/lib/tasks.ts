@@ -35,6 +35,10 @@ export function isTaskActive(task: Pick<AppTask, "status">) {
   return task.status === "running" || task.status === "cancelling";
 }
 
+export function isQueryTask(task: Pick<AppTask, "title">): boolean {
+  return task.title === "SQL-Abfrage" || task.title === "SQL-Skript";
+}
+
 export const useTasksStore = create<TasksState>()(
   persist((): TasksState => ({ tasks: [], open: false }), {
     name: "l8db.tasks",

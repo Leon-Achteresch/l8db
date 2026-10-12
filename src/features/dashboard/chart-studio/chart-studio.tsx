@@ -12,13 +12,13 @@ import {
   applyOptions,
   CHARTS,
   type ChartTab,
-  chartFits,
   type Dataset,
   datasetShape,
   emptySimple,
   type SimpleDataset,
   useChartTabsStore,
   type Widget,
+  widgetFits,
   widgetOptions,
 } from "@/lib/dashboards";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -97,7 +97,7 @@ export function ChartStudio({
   const title = autoTitle(dataset, widget);
   const finished = finishedDraft(draft);
   const canFinish = canFinishDraft(draft);
-  const problem = chartFits(widget.chart, applyOptions(shape, [], widgetOptions(widget)).shape);
+  const problem = widgetFits(widget.chart, applyOptions(shape, [], widgetOptions(widget)).shape);
 
   const nodeKeys = useMemo(
     () =>

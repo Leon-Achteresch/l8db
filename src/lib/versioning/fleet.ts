@@ -4,6 +4,7 @@ import { control } from "./control";
 import { blockingGate, GATE_LABELS, runRequest } from "./delivery";
 import { assertReviewedToken, type DeploymentPlan, planDeployment } from "./deploy";
 import { readTargets } from "./repository";
+import { snapshotBeforeRollout } from "./rollout-snapshot";
 import type { DatabaseTarget, VersioningProject } from "./types";
 
 export interface FleetResult {
@@ -60,6 +61,7 @@ export async function deployFleet(
   releaseId: string,
   onProgress?: (message: string) => void,
   waveLimit = 1000,
+  snapshot = false,
 ) {
   const { store } = await readTargets(repo, project.id);
   const targets = reviewed.map((plan) => {
@@ -68,9 +70,27 @@ export async function deployFleet(
     return target;
   });
   const preflight = await preflightFleet(repo, project, targets, connections, releaseId);
+  if (!Number.isInteger(waveLimit) || waveLimit < 1 || waveLimit > 1000)
+    throw new Error("Ungültige Wellengröße.");
   for (const [index, result] of preflight.entries()) {
     if (!result.plan || result.error) throw new Error(`${result.target.name}: ${result.error}`);
     assertReviewedToken(reviewed[index].reviewToken, result.plan.reviewToken);
+  }
+  const wave = preflight
+    .flatMap((entry) => (entry.plan?.releases.length ? [entry.plan] : []))
+    .slice(0, waveLimit);
+  if (!wave.length) return [];
+  const snapshots = snapshot
+    ? await snapshotBeforeRollout(
+        project,
+        wave.map((plan) => plan.target),
+        connections,
+        releaseId,
+        onProgress,
+      )
+    : [];
+  for (const result of preflight) {
+    if (!result.plan) continue;
     const connection = connections.find((item) => item.id === result.target.connectionId);
     if (!connection) throw new Error("Zielverbindung fehlt.");
     if (result.plan.releases.length)
@@ -79,12 +99,6 @@ export async function deployFleet(
         artifact: result.plan.reviewToken.split(":")[1],
       });
   }
-  if (!Number.isInteger(waveLimit) || waveLimit < 1 || waveLimit > 1000)
-    throw new Error("Ungültige Wellengröße.");
-  const wave = preflight
-    .flatMap((entry) => (entry.plan?.releases.length ? [entry.plan] : []))
-    .slice(0, waveLimit);
-  if (!wave.length) return;
   const requests = wave.map((plan) => {
     const connection = connections.find((item) => item.id === plan.target.connectionId);
     if (!connection) throw new Error("Zielverbindung fehlt.");
@@ -98,8 +112,14 @@ export async function deployFleet(
       `${target?.name ?? "Rollout"}: ${status.status === "running" ? "Wird ausgeführt" : "Abgeschlossen"}`,
     );
     if (status.status === "failed")
-      throw new Error(status.error ?? "Rollout fehlgeschlagen. Datenbankjournal prüfen.");
-    if (status.status === "succeeded") return;
+      throw new Error(
+        `${status.error ?? "Rollout fehlgeschlagen. Datenbankjournal prüfen."}${
+          snapshots.length
+            ? ` Die Sicherung vor dem Rollout liegt unter Datenbank → Sicherungen („Vor Release ${releaseId}“).`
+            : ""
+        }`,
+      );
+    if (status.status === "succeeded") return snapshots;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }

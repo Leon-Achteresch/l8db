@@ -10,6 +10,7 @@ use tokio::sync::{oneshot, watch};
 pub struct AiState {
     pub runs: Mutex<HashMap<String, watch::Sender<bool>>>,
     pub approvals: Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    pub completions: Mutex<HashMap<String, watch::Sender<bool>>>,
 }
 
 #[derive(Default)]
@@ -58,7 +59,7 @@ impl Run {
 
     pub async fn approve(&self, title: &str, details: Value) -> Result<bool, String> {
         Ok(self
-            .wait("approval", title, details)
+            .wait("approval", title, details, true)
             .await?
             .as_bool()
             .unwrap_or(false))
@@ -81,10 +82,20 @@ impl Run {
     }
 
     pub async fn input(&self, title: &str, details: Value) -> Result<Value, String> {
-        self.wait("input", title, details).await
+        self.wait("input", title, details, true).await
     }
 
-    async fn wait(&self, kind: &str, title: &str, details: Value) -> Result<Value, String> {
+    pub async fn editor(&self, details: Value) -> Result<Value, String> {
+        self.wait("editor", "Editor", details, false).await
+    }
+
+    async fn wait(
+        &self,
+        kind: &str,
+        title: &str,
+        details: Value,
+        announce: bool,
+    ) -> Result<Value, String> {
         let id = super::new_id();
         let key = format!("{}:{}:{id}", self.owner, self.id);
         let (sender, receiver) = oneshot::channel();
@@ -101,7 +112,9 @@ impl Run {
             .map_err(|_| "Freigabespeicher nicht verfügbar")?
             .remove(&key);
         let allowed = result.ok().and_then(Result::ok).unwrap_or(json!(false));
-        self.emit("approvalResolved", json!({"id": id, "allowed": allowed}));
+        if announce {
+            self.emit("approvalResolved", json!({"id": id, "allowed": allowed}));
+        }
         Ok(allowed)
     }
 }

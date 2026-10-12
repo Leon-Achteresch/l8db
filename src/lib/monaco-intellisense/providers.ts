@@ -13,8 +13,9 @@ import {
   suggestCompletions,
   tokenAt,
 } from "@/lib/sql-intellisense";
+import { callAt, signatureHelp } from "@/lib/sql-intellisense/signature";
 import { attached, ctx, gotoUri } from "./context";
-import { hoverExtras, openSymbolTarget, packageMembers } from "./symbols";
+import { hoverExtras, openSymbolTarget, packageMembers, routineSignatures } from "./symbols";
 
 const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionItemKind> = {
   schema: monaco.languages.CompletionItemKind.Module,
@@ -104,6 +105,20 @@ for (const language of ["sql", "plsql"]) {
           range: item.afterDot ? dotRange : wordRange,
         })),
       };
+    },
+  });
+
+  monaco.languages.registerSignatureHelpProvider(language, {
+    signatureHelpTriggerCharacters: ["(", ","],
+    signatureHelpRetriggerCharacters: [",", ">"],
+    async provideSignatureHelp(model, position) {
+      if (!attached.has(model)) return null;
+      const offset = model.getOffsetAt(position);
+      const call = callAt(model.getValue().slice(Math.max(0, offset - 20_000), offset));
+      if (!call) return null;
+      const { label, signatures } = await routineSignatures(call.path, model.getValue());
+      const value = signatureHelp(signatures, call, label);
+      return value ? { value, dispose() {} } : null;
     },
   });
 

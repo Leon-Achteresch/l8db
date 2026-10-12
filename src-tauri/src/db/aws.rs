@@ -51,7 +51,16 @@ fn decode(value: &str) -> String {
         .into_owned()
 }
 
-pub fn parse_url(connection_string: &str, scheme: &str) -> Result<AwsConnection, String> {
+pub struct AwsTarget {
+    pub region: Option<String>,
+    pub user: String,
+    pub password: String,
+    pub endpoint: Option<url::Url>,
+    pub path: String,
+    pub params: HashMap<String, String>,
+}
+
+pub fn parse_target(connection_string: &str, scheme: &str) -> Result<AwsTarget, String> {
     let url = url::Url::parse(connection_string.trim())
         .map_err(|_| format!("Ungültige {scheme}:// URL"))?;
     if url.scheme() != scheme {
@@ -63,30 +72,6 @@ pub fn parse_url(connection_string: &str, scheme: &str) -> Result<AwsConnection,
         .query_pairs()
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
-    let user = decode(url.username());
-    let source = if !user.is_empty() {
-        let password = decode(url.password().unwrap_or(""));
-        let (secret, token) = match password.split_once(':') {
-            Some((secret, token)) => (secret.to_string(), Some(token.to_string())),
-            None => (password, None),
-        };
-        if secret.is_empty() {
-            return Err("Der Secret Access Key fehlt.".to_string());
-        }
-        CredentialSource::Static(Credentials {
-            access_key: user,
-            secret_key: secret,
-            session_token: token.filter(|t| !t.is_empty()),
-        })
-    } else if let Some(profile) = params.get("profile") {
-        CredentialSource::Profile(if profile.trim().is_empty() {
-            "default".to_string()
-        } else {
-            profile.trim().to_string()
-        })
-    } else {
-        CredentialSource::Default
-    };
     let endpoint = match params.get("endpoint").map(|e| e.trim()) {
         Some(e) if !e.is_empty() => {
             let parsed = url::Url::parse(e).map_err(|_| format!("Ungültiger Endpunkt: {e}"))?;
@@ -97,12 +82,81 @@ pub fn parse_url(connection_string: &str, scheme: &str) -> Result<AwsConnection,
         }
         _ => None,
     };
-    Ok(AwsConnection {
+    Ok(AwsTarget {
         region,
-        source,
+        user: decode(url.username()),
+        password: decode(url.password().unwrap_or("")),
         endpoint,
         path: decode(url.path().trim_matches('/')),
         params,
+    })
+}
+
+pub fn parse_url(connection_string: &str, scheme: &str) -> Result<AwsConnection, String> {
+    let target = parse_target(connection_string, scheme)?;
+    let source = if !target.user.is_empty() {
+        let (secret, token) = match target.password.split_once(':') {
+            Some((secret, token)) => (secret.to_string(), Some(token.to_string())),
+            None => (target.password.clone(), None),
+        };
+        if secret.is_empty() {
+            return Err("Der Secret Access Key fehlt.".to_string());
+        }
+        CredentialSource::Static(Credentials {
+            access_key: target.user.clone(),
+            secret_key: secret,
+            session_token: token.filter(|t| !t.is_empty()),
+        })
+    } else if let Some(profile) = target.params.get("profile") {
+        CredentialSource::Profile(if profile.trim().is_empty() {
+            "default".to_string()
+        } else {
+            profile.trim().to_string()
+        })
+    } else {
+        CredentialSource::Default
+    };
+    Ok(AwsConnection {
+        region: target.region,
+        source,
+        endpoint: target.endpoint,
+        path: target.path,
+        params: target.params,
+    })
+}
+
+pub fn endpoint(
+    connection_string: &str,
+    scheme: &str,
+    default_database: Option<&str>,
+    identity: &[&str],
+) -> Result<super::endpoint::EndpointIdentity, String> {
+    let target = parse_target(connection_string, scheme)?;
+    let (transport, port) = target
+        .endpoint
+        .as_ref()
+        .map(|url| (url.scheme().to_string(), url.port_or_known_default()))
+        .unwrap_or_else(|| ("https".to_string(), Some(443)));
+    let tls = transport == "https";
+    let value = |key: &str| target.params.get(key).map(|v| v.trim().to_string());
+    Ok(super::endpoint::EndpointIdentity {
+        host: target.region.clone().unwrap_or_default(),
+        port,
+        transport,
+        tls,
+        verify: tls,
+        database: Some(target.path.clone())
+            .filter(|path| !path.is_empty())
+            .or(default_database.map(str::to_string))
+            .unwrap_or_default(),
+        schema: String::new(),
+        user: target.user.clone(),
+        params: super::endpoint::identity_params(
+            &identity
+                .iter()
+                .map(|key| (*key, value(key)))
+                .collect::<Vec<_>>(),
+        ),
     })
 }
 

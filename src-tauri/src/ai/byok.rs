@@ -20,7 +20,7 @@ pub async fn limited_body(response: reqwest::Response, limit: usize) -> Result<S
     String::from_utf8(bytes).map_err(|_| "HTTP-Antwort ist kein UTF-8".into())
 }
 
-fn base(profile: &Profile) -> Result<String, String> {
+pub(super) fn base(profile: &Profile) -> Result<String, String> {
     let endpoint = if !profile.endpoint.trim().is_empty() {
         profile.endpoint.trim()
     } else {
@@ -113,7 +113,7 @@ pub fn pick_model(provider: &str, ids: &[String]) -> Option<String> {
     usable.first().map(|id| id.to_string())
 }
 
-async fn default_model(profile: &Profile) -> Result<String, String> {
+pub(super) async fn default_model(profile: &Profile) -> Result<String, String> {
     let list = models(profile).await?;
     let ids: Vec<String> = list["models"]
         .as_array()
@@ -130,7 +130,7 @@ async fn default_model(profile: &Profile) -> Result<String, String> {
     })
 }
 
-async fn key(profile: &Profile) -> Result<Option<String>, String> {
+pub(super) async fn key(profile: &Profile) -> Result<Option<String>, String> {
     let key = crate::db::secrets::load_secret(format!("ai:{}:key", profile.id)).await?;
     if key.is_none() && !keyless(&profile.provider) {
         return Err("API-Schlüssel fehlt. Im Provider speichern.".into());
@@ -138,7 +138,7 @@ async fn key(profile: &Profile) -> Result<Option<String>, String> {
     Ok(key)
 }
 
-fn auth(
+pub(super) fn auth(
     builder: reqwest::RequestBuilder,
     profile: &Profile,
     key: Option<&str>,
@@ -215,11 +215,20 @@ pub(super) struct StreamResult {
     pub calls: BTreeMap<usize, Call>,
     pub complete: bool,
     pub round: usize,
-    usage: Value,
+    pub allow_truncation: bool,
+    pub truncated: bool,
+    pub(super) usage: Value,
     anthropic_blocks: BTreeMap<usize, Value>,
 }
 
 impl StreamResult {
+    pub(super) fn truncatable() -> Self {
+        Self {
+            allow_truncation: true,
+            ..Self::default()
+        }
+    }
+
     pub(super) fn feed(&mut self, provider: &str, value: &Value) -> Result<String, String> {
         if let Some(usage) = value
             .get("usage")
@@ -260,7 +269,10 @@ impl StreamResult {
                 }
                 if value["type"] == "message_delta" {
                     if let Some(reason) = value["delta"]["stop_reason"].as_str() {
-                        if !matches!(reason, "end_turn" | "tool_use") {
+                        if self.allow_truncation && matches!(reason, "max_tokens" | "stop_sequence")
+                        {
+                            self.truncated |= reason == "max_tokens";
+                        } else if !matches!(reason, "end_turn" | "tool_use") {
                             return Err(
                                 "Anthropic hat die Ausgabe nicht vollständig abgeschlossen".into(),
                             );
@@ -299,7 +311,9 @@ impl StreamResult {
             }
             "google" => {
                 if let Some(reason) = value["candidates"][0]["finishReason"].as_str() {
-                    if reason != "STOP" {
+                    if self.allow_truncation && reason == "MAX_TOKENS" {
+                        self.truncated = true;
+                    } else if reason != "STOP" {
                         return Err("Gemini hat die Ausgabe nicht vollständig abgeschlossen".into());
                     }
                     self.complete = true;
@@ -334,7 +348,9 @@ impl StreamResult {
             }
             _ => {
                 if let Some(reason) = value["choices"][0]["finish_reason"].as_str() {
-                    if !matches!(reason, "stop" | "tool_calls") {
+                    if self.allow_truncation && reason == "length" {
+                        self.truncated = true;
+                    } else if !matches!(reason, "stop" | "tool_calls") {
                         return Err(
                             "Provider hat die Ausgabe nicht vollständig abgeschlossen".into()
                         );
@@ -389,9 +405,18 @@ fn blocks(messages: &[Value], provider: &str) -> Vec<Value> {
         let mut content = Vec::new();
         if role == "tool" {
             if provider == "anthropic" {
-                content.push(json!({"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]}));
+                let mut block = json!({"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]});
+                if message["isError"] == true {
+                    block["is_error"] = json!(true);
+                }
+                content.push(block);
             } else {
-                content.push(json!({"functionResponse": {"id": message["tool_call_id"], "name": message["name"], "response": {"result": message["content"]}}}));
+                let field = if message["isError"] == true {
+                    "error"
+                } else {
+                    "result"
+                };
+                content.push(json!({"functionResponse": {"id": message["tool_call_id"], "name": message["name"], "response": {field: message["content"]}}}));
             }
         } else {
             if provider == "anthropic" && message["nativeContent"].is_array() {
@@ -452,6 +477,122 @@ fn blocks(messages: &[Value], provider: &str) -> Vec<Value> {
     result
 }
 
+pub(super) fn gemini_model(profile: &Profile) -> Result<&str, String> {
+    let model = profile.model.trim_start_matches("models/");
+    if !model
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("Ungültiger Gemini-Modellname".into());
+    }
+    Ok(model)
+}
+
+pub(super) fn ephemeral() -> Value {
+    json!({"type": "ephemeral"})
+}
+
+fn cacheable(block: &Value) -> bool {
+    match block["type"].as_str() {
+        Some("thinking" | "redacted_thinking") | None => false,
+        Some("text") => block["text"].as_str().is_some_and(|text| !text.is_empty()),
+        Some(_) => true,
+    }
+}
+
+pub(super) fn fnv1a(text: &str) -> u64 {
+    text.bytes().fold(0xcbf29ce484222325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    })
+}
+
+pub(super) fn cache_key(text: &str) -> String {
+    format!("l8db-{:016x}", fnv1a(text))
+}
+
+pub(super) fn valid_effort(effort: &str) -> Result<(), String> {
+    if matches!(
+        effort,
+        "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+    ) {
+        Ok(())
+    } else {
+        Err("Ungültige Reasoning-Stufe".into())
+    }
+}
+
+const THINNED: &str = "[older tool result omitted to save context: ";
+
+fn message_size(message: &Value) -> usize {
+    let content = match &message["content"] {
+        Value::String(text) => text.len(),
+        Value::Null => 0,
+        other => other.to_string().len(),
+    };
+    content
+        + ["tool_calls", "nativeContent"]
+            .iter()
+            .filter_map(|field| message.get(*field))
+            .map(|value| value.to_string().len())
+            .sum::<usize>()
+}
+
+pub(super) fn thin_tool_results(
+    messages: &mut [Value],
+    keep_rounds: usize,
+    threshold_chars: usize,
+) -> usize {
+    if messages.iter().map(message_size).sum::<usize>() <= threshold_chars {
+        return 0;
+    }
+    let rounds: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, message)| {
+            message["role"] == "assistant"
+                && message["tool_calls"]
+                    .as_array()
+                    .is_some_and(|calls| !calls.is_empty())
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if rounds.len() <= keep_rounds {
+        return 0;
+    }
+    let cutoff = if keep_rounds == 0 {
+        messages.len()
+    } else {
+        rounds[rounds.len() - keep_rounds]
+    };
+    let mut thinned = 0;
+    for message in messages[..cutoff].iter_mut() {
+        if message["role"] != "tool" {
+            continue;
+        }
+        let text = match &message["content"] {
+            Value::String(text) => text.clone(),
+            Value::Null => continue,
+            other => other.to_string(),
+        };
+        if text.starts_with(THINNED) {
+            continue;
+        }
+        let start: String = text
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(120)
+            .collect();
+        message["content"] = json!(format!(
+            "{THINNED}{} chars; starts with: {start}]",
+            text.chars().count()
+        ));
+        thinned += 1;
+    }
+    thinned
+}
+
 pub(super) fn payload(
     profile: &Profile,
     instructions: &str,
@@ -463,17 +604,30 @@ pub(super) fn payload(
         return Err("Ein Modell auswählen oder eingeben".into());
     }
     let mut result = match profile.provider.as_str() {
-        "anthropic" => (
-            format!("{base}/messages"),
-            json!({"model": profile.model, "system": instructions, "messages": blocks(messages, "anthropic"), "max_tokens": 8192, "stream": true, "tools": tools.iter().map(|tool| json!({"name": tool["name"], "description": tool["description"], "input_schema": tool["inputSchema"]})).collect::<Vec<_>>() }),
-        ),
-        "google" => {
-            let model = profile.model.trim_start_matches("models/");
-            if !model.chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
-            }) {
-                return Err("Ungültiger Gemini-Modellname".into());
+        "anthropic" => {
+            let mut tools: Vec<Value> = tools.iter().map(|tool| json!({"name": tool["name"], "description": tool["description"], "input_schema": tool["inputSchema"]})).collect();
+            if let Some(last) = tools.last_mut() {
+                last["cache_control"] = ephemeral();
             }
+            let mut messages = blocks(messages, "anthropic");
+            if let Some(block) = messages
+                .last_mut()
+                .and_then(|message| message["content"].as_array_mut())
+                .and_then(|content| content.last_mut())
+            {
+                if cacheable(block) {
+                    block["cache_control"] = ephemeral();
+                }
+            }
+            let mut body = json!({"model": profile.model, "messages": messages, "max_tokens": 8192, "stream": true, "tools": tools});
+            if !instructions.is_empty() {
+                body["system"] =
+                    json!([{"type": "text", "text": instructions, "cache_control": ephemeral()}]);
+            }
+            (format!("{base}/messages"), body)
+        }
+        "google" => {
+            let model = gemini_model(profile)?;
             (
                 format!("{base}/models/{model}:streamGenerateContent?alt=sse"),
                 json!({"systemInstruction": {"parts": [{"text": instructions}]}, "contents": blocks(messages, "google"), "tools": [{"functionDeclarations": tools.iter().map(|tool| json!({"name": tool["name"], "description": tool["description"], "parametersJsonSchema": tool["inputSchema"]})).collect::<Vec<_>>()}]}),
@@ -485,23 +639,20 @@ pub(super) fn payload(
                 if message["role"] == "tool" {
                     if let Some(object) = message.as_object_mut() {
                         object.remove("name");
+                        object.remove("isError");
                     }
                 }
             }
             messages.insert(0, json!({"role": "system", "content": instructions}));
-            (
-                format!("{base}/chat/completions"),
-                json!({"model": profile.model, "messages": messages, "stream": true, "stream_options": {"include_usage": true}, "tools": tools.iter().map(|tool| json!({"type": "function", "function": {"name": tool["name"], "description": tool["description"], "parameters": tool["inputSchema"]}})).collect::<Vec<_>>() }),
-            )
+            let mut body = json!({"model": profile.model, "messages": messages, "stream": true, "stream_options": {"include_usage": true}, "tools": tools.iter().map(|tool| json!({"type": "function", "function": {"name": tool["name"], "description": tool["description"], "parameters": tool["inputSchema"]}})).collect::<Vec<_>>() });
+            if profile.provider == "openai" {
+                body["prompt_cache_key"] = json!(cache_key(instructions));
+            }
+            (format!("{base}/chat/completions"), body)
         }
     };
     if !profile.effort.is_empty() {
-        if !matches!(
-            profile.effort.as_str(),
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
-        ) {
-            return Err("Ungültige Reasoning-Stufe".into());
-        }
+        valid_effort(&profile.effort)?;
         match profile.provider.as_str() {
             "anthropic" => {
                 result.1["output_config"] = json!({"effort": profile.effort});
@@ -612,10 +763,13 @@ pub async fn run(
         .iter()
         .map(|message| json!({"role": message.role, "content": message.text}))
         .collect();
-    let mut tools = super::context::tool_definitions();
-    tools.extend(external.tools.clone());
+    let mut catalog =
+        super::tools::Catalog::new(config, !request.attachments.is_empty(), &external.tools);
+    let mut failures = super::tools::Failures::default();
     for round in 1..=12 {
-        let (url, body) = payload(profile, instructions, &messages, &tools)?;
+        let published = super::tools::published(catalog.tools());
+        thin_tool_results(&mut messages, 2, 120_000);
+        let (url, body) = payload(profile, instructions, &messages, catalog.tools())?;
         let response = auth(client.post(url).json(&body), profile, key.as_deref())
             .send()
             .await
@@ -697,12 +851,33 @@ pub async fn run(
                 &call.arguments
             })
             .map_err(|_| "Provider lieferte ungültige Tool-Argumente")?;
-            let result = if call.name.starts_with("ext_") {
+            let arguments =
+                crate::mcp::server::normalize_args(catalog.tools(), &call.name, arguments);
+            let key = super::tools::Failures::key(&call.name, &arguments);
+            let refusal = if failures.blocked(&key) {
+                Some("This exact call already failed twice. Change the arguments or use a different tool; do not repeat it unchanged.")
+            } else if !published.contains(&call.name) {
+                Some("This tool was not available in this round. Load it with discover_tools first, then call it in the next round.")
+            } else {
+                None
+            };
+            let result = if let Some(text) = refusal {
+                let result = json!({"content": [{"type": "text", "text": text}], "isError": true});
+                run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": "error"}));
+                result
+            } else if call.name == "discover_tools" {
+                let result = catalog.discover(&arguments);
+                run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": if result["isError"] == true { "error" } else { "completed" }}));
+                result
+            } else if call.name.starts_with("ext_") {
                 external.call(&call.name, arguments, run).await
             } else {
                 super::context::call(server, config, run, &call.name, arguments).await
             };
-            messages.push(json!({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": result.to_string()}));
+            if refusal.is_none() {
+                failures.record(key, &result);
+            }
+            messages.push(json!({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": super::tools::model_output(&result, config.max_chars), "isError": result["isError"] == true}));
         }
     }
     Err("Maximal 12 Tool-Runden erreicht. Mit einer neuen Nachricht fortsetzen.".into())

@@ -1,10 +1,10 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CopyIcon } from "lucide-react";
 import { useMemo, useRef } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { type ParsedVector, vectorStats } from "@/lib/value-viewers/vector";
+import { showCopiedMessage } from "@/lib/workspace-status";
 import { VectorCharts } from "./vector-charts";
 
 const PER_ROW = 8;
@@ -56,7 +56,7 @@ export function VectorValueViewer({ vector }: { vector: ParsedVector }) {
           size="sm"
           onClick={async () => {
             await copyText(`[${Array.from(vector.values).join(",")}]`);
-            toast.success("Vektor kopiert");
+            showCopiedMessage("Vektor kopiert");
           }}
         >
           <CopyIcon className="size-3.5" />

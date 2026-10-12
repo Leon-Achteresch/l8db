@@ -254,56 +254,104 @@ fn text(v: &serde_json::Value) -> String {
     }
 }
 
+struct CassandraUrl {
+    nodes: Vec<String>,
+    user: Option<(String, String)>,
+    keyspace: Option<String>,
+    tls: CassandraTls,
+}
+
+fn parse_cassandra_url(value: &str) -> Result<CassandraUrl, String> {
+    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige Cassandra-URL".to_string())?;
+    if !matches!(url.scheme(), "cassandra" | "scylla" | "cql") {
+        return Err("Eine cassandra:// URL ist erforderlich".to_string());
+    }
+    let host = url.host_str().ok_or("Host fehlt")?;
+    let port = url.port().unwrap_or(9042);
+    let mut nodes = vec![format!("{host}:{port}")];
+    let mut tls = CassandraTls {
+        host: host.trim_matches(['[', ']']).to_string(),
+        ..CassandraTls::default()
+    };
+    for (k, v) in url.query_pairs() {
+        let text = || Some(v.to_string()).filter(|v| !v.is_empty());
+        match k.as_ref() {
+            "nodes" | "hosts" => nodes.extend(v.split(',').map(|n| {
+                if n.contains(':') {
+                    n.to_string()
+                } else {
+                    format!("{n}:{port}")
+                }
+            })),
+            "sslmode" => {
+                tls.mode = serde_json::from_value(serde_json::Value::String(v.to_string()))
+                    .map_err(|_| "Ungültiger SSL-Modus".to_string())?
+            }
+            "ssl" | "tls" if matches!(v.as_ref(), "true" | "1") => {
+                tls.mode = tls.mode.max(SslMode::Require)
+            }
+            "sslrootcert" => tls.root_cert = text(),
+            "sslcert" => tls.cert = text(),
+            "sslkey" => tls.key = text(),
+            _ => {}
+        }
+    }
+    let user = if url.username().is_empty() {
+        None
+    } else {
+        Some((
+            percent(url.username()),
+            percent(url.password().unwrap_or("")),
+        ))
+    };
+    let keyspace = Some(percent(url.path().trim_start_matches('/'))).filter(|k| !k.is_empty());
+    Ok(CassandraUrl {
+        nodes,
+        user,
+        keyspace,
+        tls,
+    })
+}
+
+pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
+    let parsed = parse_cassandra_url(value)?;
+    let first = parsed.nodes.first().cloned().unwrap_or_default();
+    let (host, port) = match first.rsplit_once(':') {
+        Some((host, port)) => (host.to_string(), port.parse::<u16>().ok()),
+        None => (first, None),
+    };
+    let extra = parsed
+        .nodes
+        .iter()
+        .skip(1)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
+    Ok(super::endpoint::EndpointIdentity {
+        host: host.trim_matches(['[', ']']).to_ascii_lowercase(),
+        port,
+        transport: String::new(),
+        tls: parsed.tls.mode >= SslMode::Require,
+        verify: parsed.tls.mode >= SslMode::VerifyCa,
+        database: parsed.keyspace.unwrap_or_default(),
+        schema: String::new(),
+        user: parsed.user.map(|(user, _)| user).unwrap_or_default(),
+        params: super::endpoint::identity_params(&[("nodes", Some(extra))]),
+    })
+}
+
 impl CassandraAdapter {
     pub fn new(
         connection_string: &str,
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
-        let url = url::Url::parse(connection_string.trim())
-            .map_err(|_| "Ungültige Cassandra-URL".to_string())?;
-        if !matches!(url.scheme(), "cassandra" | "scylla" | "cql") {
-            return Err("Eine cassandra:// URL ist erforderlich".to_string());
-        }
-        let host = url.host_str().ok_or("Host fehlt")?;
-        let port = url.port().unwrap_or(9042);
-        let mut nodes = vec![format!("{host}:{port}")];
-        let mut tls = CassandraTls {
-            host: host.trim_matches(['[', ']']).to_string(),
-            ..CassandraTls::default()
-        };
-        for (k, v) in url.query_pairs() {
-            let text = || Some(v.to_string()).filter(|v| !v.is_empty());
-            match k.as_ref() {
-                "nodes" | "hosts" => nodes.extend(v.split(',').map(|n| {
-                    if n.contains(':') {
-                        n.to_string()
-                    } else {
-                        format!("{n}:{port}")
-                    }
-                })),
-                "sslmode" => {
-                    tls.mode = serde_json::from_value(serde_json::Value::String(v.to_string()))
-                        .map_err(|_| "Ungültiger SSL-Modus".to_string())?
-                }
-                "ssl" | "tls" if matches!(v.as_ref(), "true" | "1") => {
-                    tls.mode = tls.mode.max(SslMode::Require)
-                }
-                "sslrootcert" => tls.root_cert = text(),
-                "sslcert" => tls.cert = text(),
-                "sslkey" => tls.key = text(),
-                _ => {}
-            }
-        }
-        let user = if url.username().is_empty() {
-            None
-        } else {
-            Some((
-                percent(url.username()),
-                percent(url.password().unwrap_or("")),
-            ))
-        };
-        let keyspace = Some(percent(url.path().trim_start_matches('/'))).filter(|k| !k.is_empty());
+        let CassandraUrl {
+            nodes,
+            user,
+            keyspace,
+            tls,
+        } = parse_cassandra_url(connection_string)?;
         Ok(Self {
             nodes,
             user,

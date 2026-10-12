@@ -47,6 +47,7 @@ pub struct Capabilities {
     pub replication: bool,
     pub sessions: bool,
     pub locks: bool,
+    pub live_monitor: bool,
     pub transactions: bool,
     pub table_transactions: bool,
     pub row_edit: bool,
@@ -75,6 +76,7 @@ pub struct Capabilities {
     pub bind_parameters: bool,
     pub server_output: bool,
     pub query_cancel: bool,
+    pub dashboard_parallelism: u8,
     pub used_by: bool,
     pub object_grants: bool,
     pub synonyms: bool,
@@ -85,6 +87,9 @@ pub struct Capabilities {
     pub backup: bool,
     pub object_storage: bool,
     pub health_advisor: bool,
+    pub dml_preview: bool,
+    pub multi_target_query: bool,
+    pub multi_target_schemas: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -111,6 +116,7 @@ const NONE: Capabilities = Capabilities {
     replication: false,
     sessions: false,
     locks: false,
+    live_monitor: false,
     transactions: false,
     table_transactions: false,
     row_edit: false,
@@ -144,11 +150,15 @@ const NONE: Capabilities = Capabilities {
     object_admin: false,
     server_output: false,
     query_cancel: false,
+    dashboard_parallelism: 0,
     ssl: true,
     ssh: true,
     backup: false,
     object_storage: false,
     health_advisor: false,
+    dml_preview: false,
+    multi_target_query: false,
+    multi_target_schemas: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -170,6 +180,8 @@ const SQL_COMMON: Capabilities = Capabilities {
     import_conflicts: true,
     table_copy: true,
     test_data: true,
+    dml_preview: true,
+    multi_target_query: true,
     ..NONE
 };
 
@@ -200,6 +212,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                multi_target_schemas: true,
                 health_advisor: true,
                 backup: true,
                 query_stats: true,
@@ -233,12 +246,14 @@ impl DatabaseKind {
                 replication: true,
                 sessions: true,
                 locks: true,
+                live_monitor: true,
                 transactions: true,
                 table_transactions: true,
                 row_edit: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Mysql => Capabilities {
+                live_monitor: true,
                 backup: true,
                 query_stats: true,
                 sessions: true,
@@ -283,6 +298,9 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                multi_target_query: true,
+                query_cancel: true,
+                dashboard_parallelism: 2,
                 csv_import: true,
                 table_copy: true,
                 query_stats: true,
@@ -1009,6 +1027,54 @@ mod tests {
         assert!(kind_driver_status(DatabaseKind::Postgres)
             .install_command
             .is_none());
+    }
+
+    #[test]
+    fn dml_preview_is_gated_to_sql_families() {
+        for kind in DatabaseKind::ALL {
+            if kind.capabilities().dml_preview {
+                assert_eq!(kind.capabilities().query_language, "sql", "{kind:?}");
+            }
+        }
+        for kind in [
+            DatabaseKind::Postgres,
+            DatabaseKind::Mysql,
+            DatabaseKind::Sqlite,
+            DatabaseKind::Mssql,
+            DatabaseKind::Oracle,
+        ] {
+            assert!(kind.capabilities().dml_preview, "{kind:?}");
+        }
+        assert!(!DatabaseKind::Mongodb.capabilities().dml_preview);
+        assert!(!DatabaseKind::Clickhouse.capabilities().dml_preview);
+    }
+
+    #[test]
+    fn multi_target_query_is_gated_to_tabular_sql_families() {
+        for kind in DatabaseKind::ALL {
+            let caps = kind.capabilities();
+            if caps.multi_target_query {
+                assert_eq!(caps.query_language, "sql", "{kind:?}");
+            }
+            assert!(
+                !caps.multi_target_schemas || caps.multi_target_query,
+                "{kind:?}"
+            );
+        }
+        for kind in [
+            DatabaseKind::Postgres,
+            DatabaseKind::Mysql,
+            DatabaseKind::Sqlite,
+            DatabaseKind::Mssql,
+            DatabaseKind::Oracle,
+            DatabaseKind::Clickhouse,
+        ] {
+            assert!(kind.capabilities().multi_target_query, "{kind:?}");
+        }
+        assert!(DatabaseKind::Postgres.capabilities().multi_target_schemas);
+        assert!(!DatabaseKind::Mysql.capabilities().multi_target_schemas);
+        assert!(!DatabaseKind::Redis.capabilities().multi_target_query);
+        assert!(!DatabaseKind::Mongodb.capabilities().multi_target_query);
     }
 
     #[test]

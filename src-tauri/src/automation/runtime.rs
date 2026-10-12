@@ -19,6 +19,7 @@ pub struct Services {
     pub transactions: crate::db::transaction::TransactionState,
     pub sink: Sink,
     pub headless: bool,
+    pub require_password: bool,
 }
 
 impl Services {
@@ -30,6 +31,7 @@ impl Services {
             transactions: crate::db::transaction::create_transaction_state(),
             sink,
             headless,
+            require_password: true,
         }
     }
 

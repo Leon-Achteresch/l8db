@@ -142,18 +142,6 @@ export function stackValues(data: Record<string, unknown>[], keys: string[], sta
   );
 }
 
-export function valueDomain(stacks: Point[][]): [number, number] {
-  let min = 0;
-  let max = 0;
-  for (const series of stacks)
-    for (const [low, high] of series) {
-      min = Math.min(min, low, high);
-      max = Math.max(max, low, high);
-    }
-  const ticks = niceTicks(min, max);
-  return [ticks[0], ticks[ticks.length - 1]];
-}
-
 export function sectorPath(
   cx: number,
   cy: number,
@@ -188,4 +176,24 @@ export function roundArcPath(
     return `M${x},${y}L${x},${y}`;
   }
   return arcPath(cx, cy, r, start, end);
+}
+
+export function circlePath(cx: number, cy: number, r: number) {
+  return `M${cx - r},${cy}a${r},${r} 0 1 0 ${2 * r},0a${r},${r} 0 1 0 ${-2 * r},0Z`;
+}
+
+export function barPath(
+  c0: number,
+  size: number,
+  from: number,
+  to: number,
+  r: number,
+  horizontal: boolean,
+) {
+  const sign = to >= from ? 1 : -1;
+  const radius = Math.min(r, size / 2, Math.abs(to - from));
+  const pt = (u: number, v: number) => (horizontal ? `${v},${u}` : `${u},${v}`);
+  const c1 = c0 + size;
+  const bend = to - sign * radius;
+  return `M${pt(c0, from)}L${pt(c0, bend)}Q${pt(c0, to)} ${pt(c0 + radius, to)}L${pt(c1 - radius, to)}Q${pt(c1, to)} ${pt(c1, bend)}L${pt(c1, from)}Z`;
 }

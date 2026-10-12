@@ -70,6 +70,7 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
       (baseColumnsQuery.data ?? []).map((column) => ({
         name: column.name,
         dataType: column.data_type,
+        isPrimaryKey: column.is_primary_key,
       })),
     [baseColumnsQuery.data],
   );
@@ -79,6 +80,7 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
       (joinColumnsQuery.data ?? []).map((column) => ({
         name: column.name,
         dataType: column.data_type,
+        isPrimaryKey: column.is_primary_key,
       })),
     [joinColumnsQuery.data],
   );
@@ -173,6 +175,13 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
     });
   };
 
+  const setBaseColumns = (columns: string[]) => setState((current) => ({ ...current, columns }));
+
+  const setJoinColumns = (columns: string[]) =>
+    setState((current) =>
+      current.join ? { ...current, join: { ...current.join, columns } } : current,
+    );
+
   const changeJoinType = (type: JoinType) => {
     setJoinTypeDraft(type);
     setState((current) =>
@@ -262,6 +271,8 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
     selectTable,
     toggleBaseColumn,
     toggleJoinColumn,
+    setBaseColumns,
+    setJoinColumns,
     selectJoin,
     changeJoinType,
     addCondition,

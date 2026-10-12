@@ -8,15 +8,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { useId } from "react";
+import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { STEP_CATALOG, STEP_GROUP_TONE } from "@/lib/automation/step-catalog";
 import type { FlatStep } from "@/lib/automation/step-tree";
@@ -82,36 +76,43 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
             {step.enabled ? "Aktiv" : "Übersprungen"}
           </label>
         </div>
-        <DropdownMenu>
+        <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Schritt-Aktionen">
               <EllipsisIcon />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem onSelect={onDuplicate}>
-              <CopyIcon />
-              Duplizieren
-              <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={index === 0} onSelect={() => onMove(-1)}>
-              <ArrowUpIcon />
-              Nach oben
-              <DropdownMenuShortcut>⌥↑</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={index === siblings.length - 1} onSelect={() => onMove(1)}>
-              <ArrowDownIcon />
-              Nach unten
-              <DropdownMenuShortcut>⌥↓</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={onRemove}>
-              <Trash2Icon />
-              Löschen
-              <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <IconMenuContent>
+            <IconMenuItem
+              icon={<CopyIcon />}
+              label="Duplizieren"
+              shortcut="⌘D"
+              onSelect={onDuplicate}
+            />
+            <IconMenuItem
+              icon={<ArrowUpIcon />}
+              label="Nach oben"
+              shortcut="⌥↑"
+              disabled={index === 0}
+              onSelect={() => onMove(-1)}
+            />
+            <IconMenuItem
+              icon={<ArrowDownIcon />}
+              label="Nach unten"
+              shortcut="⌥↓"
+              disabled={index === siblings.length - 1}
+              onSelect={() => onMove(1)}
+            />
+            <IconMenuSeparator />
+            <IconMenuItem
+              icon={<Trash2Icon />}
+              label="Löschen"
+              shortcut="⌫"
+              variant="destructive"
+              onSelect={onRemove}
+            />
+          </IconMenuContent>
+        </IconMenu>
         {onClose && (
           <Button
             type="button"

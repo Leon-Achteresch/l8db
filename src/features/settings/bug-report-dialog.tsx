@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { copyText } from "@/lib/clipboard";
 import { collectSystemInfo, recentDiagnosticErrors } from "@/lib/diagnostics";
+import { showCopiedMessage } from "@/lib/workspace-status";
 
 const ISSUES_URL = "https://github.com/Leon-Achteresch/l8db/issues/new";
 const MAIL_TO = "leon.achteresch@gmail.com";
@@ -72,7 +73,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
   async function copyReport() {
     try {
       await copyText(`# ${title || "l8db Bugreport"}\n\n${body}`);
-      toast.success("Bugreport in die Zwischenablage kopiert");
+      showCopiedMessage("Bugreport in die Zwischenablage kopiert");
     } catch {
       toast.error("Kopieren fehlgeschlagen");
     }

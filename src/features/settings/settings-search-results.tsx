@@ -1,18 +1,23 @@
 import { ArrowRight, SearchX } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { SEARCH_ITEMS } from "./settings-search-results/search-items";
 
 interface SettingsSearchResultsProps {
   query: string;
-  onSelectTab: (tabId: string) => void;
+  modifiedOnly?: boolean;
+  modified: ReadonlySet<string>;
+  onSelectSetting: (tabId: string, settingId?: string) => void;
   onClearQuery: () => void;
 }
 
 export function SettingsSearchResults({
   query,
-  onSelectTab,
+  modifiedOnly = false,
+  modified,
+  onSelectSetting,
   onClearQuery,
 }: SettingsSearchResultsProps) {
   const normalized = query.trim().toLowerCase();
@@ -20,9 +25,10 @@ export function SettingsSearchResults({
 
   const results = SEARCH_ITEMS.filter((item) => {
     return (
-      item.title.toLowerCase().includes(normalized) ||
-      item.description.toLowerCase().includes(normalized) ||
-      item.keywords.some((k) => k.toLowerCase().includes(normalized))
+      (!modifiedOnly || modified.has(item.id)) &&
+      (item.title.toLowerCase().includes(normalized) ||
+        item.description.toLowerCase().includes(normalized) ||
+        item.keywords.some((k) => k.toLowerCase().includes(normalized)))
     );
   });
 
@@ -30,12 +36,18 @@ export function SettingsSearchResults({
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-8 text-center">
         <SearchX className="size-8 text-muted-foreground/60" />
-        <p className="mt-3 text-sm font-medium">Keine Einstellungen gefunden</p>
+        <p className="mt-3 text-sm font-medium">
+          {modifiedOnly && !normalized
+            ? "Keine geänderten Einstellungen"
+            : "Keine Einstellungen gefunden"}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Keine Treffer für &ldquo;{query}&rdquo;. Probiere einen anderen Suchbegriff.
+          {modifiedOnly && !normalized
+            ? "Alle Einstellungen entsprechen den Standardwerten."
+            : `Keine Treffer für „${query}“. Probiere einen anderen Suchbegriff.`}
         </p>
         <Button variant="outline" size="sm" className="mt-4" onClick={onClearQuery}>
-          Suche zurücksetzen
+          Filter zurücksetzen
         </Button>
       </div>
     );
@@ -45,7 +57,13 @@ export function SettingsSearchResults({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          {results.length} {results.length === 1 ? "Treffer" : "Treffer"} für &ldquo;{query}&rdquo;
+          {results.length}{" "}
+          {modifiedOnly
+            ? results.length === 1
+              ? "geänderte Einstellung"
+              : "geänderte Einstellungen"
+            : "Treffer"}
+          {normalized ? ` für „${query}“` : ""}
         </p>
         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onClearQuery}>
           Zurück zur Kategorie
@@ -61,6 +79,11 @@ export function SettingsSearchResults({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">{result.title}</span>
+                {modified.has(result.id) ? (
+                  <Badge variant="secondary" className="text-[10px]">
+                    Geändert
+                  </Badge>
+                ) : null}
                 {hasNewFeatures(`settings.${result.tabId}.${result.id}`, seenFeatures) ? (
                   <NewBadge />
                 ) : null}
@@ -76,7 +99,7 @@ export function SettingsSearchResults({
               size="sm"
               className="shrink-0 gap-1.5 text-xs"
               onClick={() => {
-                onSelectTab(result.tabId);
+                onSelectSetting(result.tabId, result.id);
                 onClearQuery();
               }}
             >
