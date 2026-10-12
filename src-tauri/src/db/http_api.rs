@@ -123,6 +123,21 @@ pub(crate) fn tls(url: &url::Url, default_secure: bool) -> Tls {
     Tls { secure, insecure }
 }
 
+pub(crate) fn explicit_port(raw: &str, url: &url::Url) -> Option<u16> {
+    url.port().or_else(|| {
+        let rest = raw.trim().split_once("://")?.1;
+        let authority = rest.split(['/', '?', '#']).next()?;
+        let host_port = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+        let (host, port) = host_port.rsplit_once(':')?;
+        if host.starts_with('[') && !host.ends_with(']') {
+            return None;
+        }
+        port.parse().ok()
+    })
+}
+
 pub(crate) fn base_url(
     url: &url::Url,
     secure: bool,

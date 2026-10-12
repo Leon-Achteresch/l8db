@@ -4,6 +4,7 @@ import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
 import {
   buildExternalCandidates,
   countExternalImport,
+  type ExternalImportCandidate,
   type ExternalParseResult,
   parseDataGripConfig,
   parseDbeaverConfig,
@@ -18,6 +19,7 @@ import { measureScenario, reportScenario } from "./fixtures/usage-performance";
 const CONNECTIONS = 2_000;
 const EXISTING = 2_000;
 const RUNS = 15;
+const RETAINED_ROUNDS = 5;
 const MEDIAN_BUDGET_MS = 150;
 const P95_BUDGET_MS = 300;
 const RETAINED_BUDGET_BYTES = 8 * 1024 * 1024;
@@ -207,14 +209,17 @@ async function scenario(name: string, parse: () => Promise<ExternalParseResult>)
   const timing = await measureScenario(async () => {
     candidates = await build((await parse()).connections);
   }, RUNS);
-  const retainedRounds: number[] = [];
-  for (let round = 0; round < 3; round++) {
-    candidates = [];
-    const before = heapUsed();
-    candidates = await build((await parse()).connections);
-    retainedRounds.push(heapUsed() - before);
-  }
-  const retainedBytes = Math.max(0, Math.min(...retainedRounds));
+  const held: ExternalImportCandidate[][] = [];
+  const parsedInputs = await Promise.all(
+    Array.from({ length: RETAINED_ROUNDS }, async () => (await parse()).connections),
+  );
+  candidates = [];
+  const before = heapUsed();
+  const objectsBefore = heapStats().objectCount;
+  for (const input of parsedInputs) held.push(await build(input));
+  const retainedBytes = Math.round((heapUsed() - before) / RETAINED_ROUNDS);
+  const retainedObjects = Math.round((heapStats().objectCount - objectsBefore) / RETAINED_ROUNDS);
+  candidates = held[held.length - 1] ?? [];
   const selected = new Set(candidates.map((candidate) => candidate.index));
   const resolved = resolveExternalImport(candidates, selected, "copy");
   reportScenario(name, {
@@ -224,6 +229,7 @@ async function scenario(name: string, parse: () => Promise<ExternalParseResult>)
     ipcCallsPerPreview: 1,
     endpointRequests: batch,
     retainedBytes,
+    retainedObjects,
     imported: resolved.summary.imported,
     skipped: resolved.summary.skipped,
     duplicates: candidates.filter((candidate) => candidate.duplicateOf).length,
@@ -239,6 +245,7 @@ async function scenario(name: string, parse: () => Promise<ExternalParseResult>)
   expect(candidates).toHaveLength(CONNECTIONS);
   expect(timing.medianMs).toBeLessThan(MEDIAN_BUDGET_MS);
   expect(timing.p95Ms).toBeLessThan(P95_BUDGET_MS);
+  expect(retainedBytes).toBeGreaterThan(0);
   expect(retainedBytes).toBeLessThan(RETAINED_BUDGET_BYTES);
   return { candidates, resolved };
 }
@@ -275,7 +282,7 @@ test("Navicat import of 2,000 connections batches legacy decryption into one req
       return values.map(() => "legacyPw123");
     }),
   );
-  const parses = 1 + 2 + RUNS + 3;
+  const parses = 1 + 2 + RUNS + RETAINED_ROUNDS;
   expect(requests).toBe(parses);
   expect(legacyValues).toBe(parses * (CONNECTIONS / 50));
   expect(candidates.filter((candidate) => candidate.password).length).toBe(

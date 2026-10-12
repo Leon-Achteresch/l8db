@@ -185,6 +185,7 @@ interface DynamoTarget {
   endpoint: string;
   local: boolean;
   region: string;
+  defaulted: boolean;
 }
 
 function dynamoTarget(connection: ExternalConnection): DynamoTarget | string {
@@ -213,12 +214,13 @@ function dynamoTarget(connection: ExternalConnection): DynamoTarget | string {
     regionFromHost(value.host);
   const region = derived || (value.host && !aws ? DEFAULT_REGION : "");
   if (!region) return "AWS-Region für DynamoDB fehlt.";
-  if (standard && !configured) return { endpoint: "", local: false, region };
+  if (standard && !configured) return { endpoint: "", local: false, region, defaulted: false };
   const port = value.port ?? (scheme === "http" && local ? LOCAL_PORT : null);
   return {
     endpoint: configured || `${scheme}://${hostForUrl(value.host)}${port ? `:${port}` : ""}`,
     local,
     region,
+    defaulted: !derived,
   };
 }
 
@@ -230,11 +232,7 @@ function dynamodb(connection: ExternalConnection): CloudTarget {
   const credentials = localDefaults
     ? { user: connection.user || "local", password: "local", profile: "", missing: false }
     : awsCredentials(connection, warnings);
-  if (
-    target.endpoint &&
-    !target.local &&
-    !awsRegion(connection, parseHostValue(target.endpoint).host)
-  )
+  if (target.defaulted && !target.local)
     warnings.push(`Region prüfen: ohne Angabe in der Quelle gilt ${DEFAULT_REGION}.`);
   return {
     connectionString: `dynamodb://${credentials.user ? `${encodeURIComponent(credentials.user)}@` : ""}${target.region}${query(

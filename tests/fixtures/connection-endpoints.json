@@ -4840,5 +4840,106 @@
       ]
     },
     "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@m1:27017/app?tls=true",
+    "identity": {
+      "host": "m1",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal:9200?ssl=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": true,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "mongodb",
+    "url": "mongodb://u@db:27017/app?tls=true",
+    "identity": {
+      "host": "db",
+      "port": 27017,
+      "transport": "mongodb",
+      "tls": true,
+      "verify": true,
+      "database": "app",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://u@es:9243/?insecure=true",
+    "identity": {
+      "host": "es",
+      "port": 9243,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "u",
+      "params": []
+    },
+    "error": null
+  },
+  {
+    "kind": "dynamodb",
+    "url": "dynamodb://A@eu-west-1?endpoint=http%3A%2F%2Fddb.lan%3A9000",
+    "identity": {
+      "host": "eu-west-1",
+      "port": 9000,
+      "transport": "http",
+      "tls": false,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "A",
+      "params": [
+        [
+          "endpoint",
+          "http://ddb.lan:9000"
+        ]
+      ]
+    },
+    "error": null
+  },
+  {
+    "kind": "elasticsearch",
+    "url": "elasticsearch://elastic@search.internal:9200/?ssl=true&insecure=true",
+    "identity": {
+      "host": "search.internal",
+      "port": 9200,
+      "transport": "https",
+      "tls": true,
+      "verify": false,
+      "database": "",
+      "schema": "",
+      "user": "elastic",
+      "params": []
+    },
+    "error": null
   }
 ]

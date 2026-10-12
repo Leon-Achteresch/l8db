@@ -1340,3 +1340,157 @@ describe("finding C: DynamoDB region precedence", () => {
       expect(candidate.profile?.connectionString).toBe(url);
     });
 });
+
+describe("review round 9", () => {
+  test("SRV imports from DBeaver, DataGrip and Navicat are not skipped as port downgrades", async () => {
+    const { parseDataGripConfig, parseDbeaverConfig, parseNavicatExport } = await import(
+      "../src/lib/connection-import"
+    );
+    const dbeaver = await parseDbeaverConfig(
+      JSON.stringify({
+        connections: {
+          m: {
+            provider: "mongodb",
+            driver: "mongodb",
+            name: "m",
+            configuration: { url: "jdbc:mongodb+srv://u@cluster.example.com/app" },
+          },
+        },
+      }),
+      null,
+    );
+    const datagrip = parseDataGripConfig([
+      {
+        name: "dataSources.xml",
+        text: `<project><data-source name="m" uuid="m1"><driver-ref>mongo</driver-ref><jdbc-url>mongodb+srv://u@cluster.example.com/app</jdbc-url></data-source></project>`,
+      },
+    ]);
+    const navicat = await parseNavicatExport(
+      `<Connections><Connection ConnectionName="m" ConnType="MONGODB" Host="cluster.example.com" Port="27017" Database="app" UserName="u" UseSRVRecord="true"/></Connections>`,
+    );
+    for (const parsed of [dbeaver, datagrip, navicat]) {
+      const [candidate] = buildExternalCandidatesWith(parsed.connections, [], fixtureEndpoints);
+      expect(candidate.skipReason).toBeNull();
+      expect(candidate.profile?.connectionString).toBe("mongodb+srv://u@cluster.example.com/app");
+      expect(candidate.endpoint.split("|")[1]).toBe("mongodb+srv");
+    }
+  });
+
+  test("SRV over SSH is skipped with a reason", () => {
+    const connection = emptyExternalConnection("s", "srv");
+    connection.kind = "mongodb";
+    connection.srv = true;
+    connection.host = "cluster.example.com";
+    connection.user = "u";
+    connection.database = "app";
+    connection.ssh = { ...JUMP };
+    const [candidate] = buildExternalCandidatesWith([connection], [], fixtureEndpoints);
+    expect(candidate.skipReason).toContain("mongodb+srv über SSH-Tunnel");
+  });
+
+  test("the SSH remote port never becomes 0", () => {
+    const connection = emptyExternalConnection("p", "pg");
+    connection.kind = "postgres";
+    connection.host = "db";
+    connection.user = "u";
+    connection.database = "app";
+    connection.ssh = { ...JUMP };
+    const [candidate] = buildExternalCandidatesWith([connection], [], (requests) =>
+      requests.map(() => ({
+        identity: {
+          host: "db",
+          port: null,
+          transport: "",
+          tls: false,
+          verify: false,
+          database: "app",
+          schema: "",
+          user: "u",
+          params: [],
+        },
+        error: null,
+      })),
+    );
+    expect(candidate.profile?.ssh?.remotePort).toBe(5432);
+  });
+
+  test("TLS implied by the port keeps the source's verification-off setting", () => {
+    const elastic = emptyExternalConnection("e", "es");
+    elastic.kind = "elasticsearch";
+    elastic.host = "es";
+    elastic.port = 9243;
+    elastic.user = "u";
+    elastic.params = [["verify_ssl", "false"]];
+    const clickhouse = emptyExternalConnection("c", "ch");
+    clickhouse.kind = "clickhouse";
+    clickhouse.host = "ch";
+    clickhouse.port = 8443;
+    clickhouse.user = "u";
+    clickhouse.database = "db";
+    clickhouse.params = [["skip_verify", "true"]];
+    const [es, ch] = buildExternalCandidatesWith([elastic, clickhouse], [], fixtureEndpoints);
+    expect(es.profile?.connectionString).toBe("elasticsearch://u@es:9243/?insecure=true");
+    expect(es.warnings.join(" ")).toContain("Zertifikatsprüfung ist aus");
+    expect(ch.profile?.connectionString).toBe("clickhouse://u@ch:8443/db");
+    expect(ch.warnings.join(" ")).toContain("prüft das Zertifikat trotzdem");
+  });
+
+  test("more than 20,000 URLs are deduplicated and resolved in bounded chunks", () => {
+    const existing: SavedConnection[] = Array.from({ length: 25_000 }, (_, index) => ({
+      id: `e${index}`,
+      name: "e",
+      kind: "postgres",
+      connectionString: `postgresql://u@db-${index % 12_000}/app`,
+      sslMode: "prefer",
+    }));
+    const chunkSizes: number[] = [];
+    const connection = emptyExternalConnection("p", "pg");
+    connection.kind = "postgres";
+    connection.host = "db-1";
+    connection.user = "u";
+    connection.database = "app";
+    const [candidate] = buildExternalCandidatesWith([connection], existing, (requests) => {
+      chunkSizes.push(requests.length);
+      return requests.map((request) => ({
+        identity: {
+          host: new URL(request.url).hostname,
+          port: 5432,
+          transport: "",
+          tls: false,
+          verify: false,
+          database: "app",
+          schema: "",
+          user: "u",
+          params: [],
+        },
+        error: null,
+      }));
+    });
+    expect(chunkSizes.reduce((sum, size) => sum + size, 0)).toBe(12_001);
+    expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(5_000);
+    expect(candidate.duplicateOf?.id).toBe("e1");
+  });
+
+  test("the DynamoDB region warning only appears when the region was defaulted", () => {
+    const [withRegion] = buildExternalCandidatesWith(
+      [
+        cloud("dynamodb", {
+          host: "ddb.lan",
+          port: 9000,
+          user: "A",
+          password: "s",
+          params: [["region", "eu-west-1"]],
+        }),
+      ],
+      [],
+      fixtureEndpoints,
+    );
+    expect(withRegion.warnings.join(" ")).not.toContain("Region prüfen");
+    const [without] = buildExternalCandidatesWith(
+      [cloud("dynamodb", { host: "ddb.lan", port: 9000, user: "A", password: "s" })],
+      [],
+      fixtureEndpoints,
+    );
+    expect(without.warnings.join(" ")).toContain("Region prüfen");
+  });
+});
