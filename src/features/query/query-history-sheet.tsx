@@ -116,7 +116,17 @@ export function QueryHistorySheet({
     const restoreHidden = hideOthers(content);
     const releasePortal = registerPortalContainer(content);
     const restoreToasters = suspendOutsideToasters(content);
+    const closeFromOutside = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.target instanceof Node && content.contains(event.target)) return;
+      if (document.querySelector('[aria-label="Command palette"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      latest.current.onOpenChange(false);
+    };
+    document.addEventListener("keydown", closeFromOutside, true);
     return () => {
+      document.removeEventListener("keydown", closeFromOutside, true);
       releaseBoundary();
       restoreHidden();
       releasePortal();

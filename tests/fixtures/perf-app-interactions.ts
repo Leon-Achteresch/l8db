@@ -50,3 +50,37 @@ export function interactionPercentiles(samples: number[]) {
     maxMs: sorted.at(-1),
   };
 }
+
+export async function closeWithEscape(page: Page, dialog: Locator) {
+  await page.evaluate(() => {
+    const describe = (node: EventTarget | null) =>
+      node instanceof Element
+        ? `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ""}${
+            node.getAttribute("aria-label") ? `[${node.getAttribute("aria-label")}]` : ""
+          }${node.getAttribute("data-slot") ? `{${node.getAttribute("data-slot")}}` : ""}`
+        : String(node);
+    const seen: { target: string; prevented: boolean }[] = [];
+    Object.assign(window, { __escapeEvents: seen });
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Escape")
+          seen.push({ target: describe(event.target), prevented: event.defaultPrevented });
+      },
+      { once: true },
+    );
+  });
+  await page.keyboard.press("Escape");
+  try {
+    await dialog.waitFor({ state: "detached", timeout: 10_000 });
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      active:
+        document.activeElement instanceof Element
+          ? document.activeElement.outerHTML.slice(0, 300)
+          : null,
+      escape: (window as unknown as { __escapeEvents: unknown[] }).__escapeEvents,
+    }));
+    throw new Error(`${String(error)}\nEscape diagnostics: ${JSON.stringify(state)}`);
+  }
+}
