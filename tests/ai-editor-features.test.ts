@@ -961,15 +961,40 @@ describe("chat editor tool", () => {
     return { state, controller: controller as never };
   }
 
-  function target(controller: unknown, storedSql: string | null = "") {
+  function target(
+    controller: unknown,
+    storedSql: string | null = "",
+    extra: { id: string; title: string; sql: string }[] = [],
+  ) {
     const opened: { sql: string; title: string }[] = [];
+    const shown: string[] = [];
+    const loaded: unknown[] = [];
+    const tabs = [
+      ...(storedSql === null ? [] : [{ id: "t1", title: "Bestellungen", sql: storedSql }]),
+      ...extra,
+    ];
+    let mounted = new Set(storedSql === null ? [] : ["t1"]);
     return {
       opened,
+      shown,
+      loaded,
       value: {
-        controller: controller as never,
-        title: "Bestellungen",
-        storedSql,
-        openTab: (sql: string, title: string) => opened.push({ sql, title }),
+        tabs: () => tabs,
+        visibleId: () => (storedSql === null ? null : "t1"),
+        controller: (id: string) => (mounted.has(id) ? (controller as never) : undefined),
+        show: async (id: string) => {
+          shown.push(id);
+          mounted = new Set([id]);
+          return controller as never;
+        },
+        openTab: (sql: string, title: string) => {
+          opened.push({ sql, title });
+          return `new${opened.length}`;
+        },
+        loadSource: async (object: { schema: string; name: string; type: string }) => {
+          loaded.push(object);
+          return `CREATE OR REPLACE ${object.type} ${object.schema}.${object.name} AS\nEND;`;
+        },
       },
     };
   }
@@ -992,7 +1017,7 @@ describe("chat editor tool", () => {
     const read = await handleChatEditorRequest({ action: "read" }, target(controller).value);
     expect(read).toEqual({
       ok: true,
-      text: 'Tab "Bestellungen", 2 Zeilen:\nselect 1\nfrom orders',
+      text: 'Tab t1 "Bestellungen", 2 Zeilen:\nselect 1\nfrom orders',
     });
     const big = fakeController("x".repeat(50_000)).controller;
     const capped = await handleChatEditorRequest({ action: "read" }, target(big).value);
@@ -1067,9 +1092,42 @@ describe("chat editor tool", () => {
       { action: "edit", sql: "select 1" },
       target(undefined, "select 0").value,
     );
-    expect(hidden).toEqual({
-      ok: false,
-      text: "Der Editor dieses Tabs ist gerade nicht sichtbar.",
-    });
+    expect(hidden).toEqual({ ok: false, text: "Der Editor von Tab t1 ließ sich nicht öffnen." });
+  });
+
+  test("list, open and tab let the chat edit several packages without a visible editor", async () => {
+    const { state, controller } = fakeController("CREATE OR REPLACE PACKAGE BODY HR.B AS\nEND;");
+    const workspace = target(controller, null, [
+      { id: "a", title: "A", sql: "select 1" },
+      { id: "b", title: "B", sql: "CREATE OR REPLACE PACKAGE BODY HR.B AS\nEND;" },
+    ]);
+    const list = await handleChatEditorRequest({ action: "list" }, workspace.value);
+    expect(list.text).toBe('a · "A" · 1 Zeilen\nb · "B" · 2 Zeilen');
+    expect((await handleChatEditorRequest({ action: "read" }, workspace.value)).ok).toBe(false);
+    const read = await handleChatEditorRequest({ action: "read", tab: "b" }, workspace.value);
+    expect(read.text).toContain('Tab b "B", 2 Zeilen');
+    const opened = await handleChatEditorRequest(
+      { action: "open", object: { schema: "HR", name: "PKG", type: "package body" } },
+      workspace.value,
+    );
+    expect(opened.ok).toBe(true);
+    expect(opened.text).toContain("Tab new1 mit HR.PKG (PACKAGE BODY) geöffnet, 2 Zeilen");
+    expect(workspace.loaded).toEqual([{ schema: "HR", name: "PKG", type: "PACKAGE BODY" }]);
+    expect(
+      (await handleChatEditorRequest({ action: "open", object: { name: "X" } }, workspace.value))
+        .ok,
+    ).toBe(false);
+    const edited = await handleChatEditorRequest(
+      { action: "edit", tab: "b", edits: [{ search: "END;", replace: "  NULL;\nEND;" }] },
+      workspace.value,
+    );
+    expect(edited.ok).toBe(true);
+    expect(workspace.shown).toEqual(["b"]);
+    expect(state.text).toBe("CREATE OR REPLACE PACKAGE BODY HR.B AS\n  NULL;\nEND;");
+    const missing = await handleChatEditorRequest(
+      { action: "edit", tab: "zzz", sql: "x" },
+      workspace.value,
+    );
+    expect(missing.ok).toBe(false);
   });
 });

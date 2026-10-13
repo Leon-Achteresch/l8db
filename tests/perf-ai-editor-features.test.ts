@@ -539,10 +539,12 @@ test("chat editor edits on a 5000-statement script stay fast and never touch the
     getSession: () => ({ getSnapshot: () => ({ pending: 20 }) }),
   };
   const target = {
-    controller: controller as never,
-    title: "Perf",
-    storedSql: sql,
-    openTab: () => {},
+    tabs: () => [{ id: "perf", title: "Perf", sql }],
+    visibleId: () => "perf",
+    controller: () => controller as never,
+    show: async () => controller as never,
+    openTab: () => "perf",
+    loadSource: async () => sql,
   };
   const before = invokeCalls.length;
   const durations: number[] = [];
