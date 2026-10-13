@@ -4,6 +4,10 @@ import {
   Database,
   Eye,
   FileUp,
+  FlaskConical,
+  ListChecks,
+  Network,
+  NotebookPen,
   Search,
   ShieldCheck,
   ShieldX,
@@ -35,6 +39,10 @@ const TOOL_NAMES: Record<string, string> = {
   import_file: "Dateiimport",
   workflow: "Workflow",
   editor: "Editor",
+  sandbox: "Sandbox-Probelauf",
+  drilldown: "Ursachenanalyse",
+  rules: "Datenregeln",
+  notebook: "Notebook",
 };
 
 function toolIcon(name: string) {
@@ -43,6 +51,10 @@ function toolIcon(name: string) {
   if (name === "import_file") return FileUp;
   if (name === "workflow") return Workflow;
   if (name === "editor") return SquarePen;
+  if (name === "sandbox") return FlaskConical;
+  if (name === "drilldown") return Network;
+  if (name === "rules") return ListChecks;
+  if (name === "notebook") return NotebookPen;
   if (/search|find|grep/i.test(name)) return Search;
   if (/query|sql|execute|benchmark/i.test(name)) return Database;
   if (/list|describe|read|get|schema|show/i.test(name)) return Eye;

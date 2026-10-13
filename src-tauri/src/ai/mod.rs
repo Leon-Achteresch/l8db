@@ -10,6 +10,7 @@ mod harness;
 mod integrations;
 pub mod knowledge;
 mod rpc;
+mod rules;
 mod runtime;
 mod tools;
 mod types;

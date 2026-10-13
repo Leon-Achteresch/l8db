@@ -57,8 +57,16 @@ export interface AiAttachment {
   rows: (string | null)[][];
   totalRows: number | null;
 }
+export interface AiInvariant {
+  name: string;
+  description: string;
+  sql: string;
+  violations?: number | null;
+  checkedAt?: number | null;
+}
 export interface AiKnowledge {
   rules?: string;
+  invariants?: AiInvariant[];
   notes: string;
   glossary: { term: string; meaning: string }[];
   tables: Record<string, { description: string; columns: Record<string, string> }>;

@@ -42,6 +42,7 @@ export const NEW_FEATURES = {
   "ai.chat.editor-edits": NEXT_FEATURE_VERSION,
   "ai.chat.editor-context": NEXT_FEATURE_VERSION,
   "ai.chat.plus.knowledge.rules": NEXT_FEATURE_VERSION,
+  "ai.chat.plus.knowledge.data-rules": NEXT_FEATURE_VERSION,
   "query.result.ask-ai": NEXT_FEATURE_VERSION,
   "automation.tasks": "0.10.0",
   "automation.schedules": "0.10.0",
