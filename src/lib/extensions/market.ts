@@ -1,4 +1,4 @@
-import { valid } from "semver";
+import valid from "semver/functions/valid";
 import { validateArchive } from "../../../packages/extension-api/src/manifest";
 import type { ExtensionArchive } from "./contracts";
 

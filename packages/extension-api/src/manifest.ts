@@ -1,4 +1,6 @@
-import { satisfies, valid, validRange } from "semver";
+import satisfies from "semver/functions/satisfies";
+import valid from "semver/functions/valid";
+import validRange from "semver/ranges/valid";
 import type { ExtensionArchive, ExtensionManifest, Permission } from "./index";
 
 export class ExtensionError extends Error {

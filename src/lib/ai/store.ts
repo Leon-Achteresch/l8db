@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { ChatContextItem } from "@/lib/ai/chat-context";
-import { sanitizeAiRich } from "@/lib/ai/rich";
+import { sanitizeAiRich } from "@/lib/ai/rich-core";
 import type { AiMessage, AiProfile, AiProvider, AiServer } from "@/lib/db/ai";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
