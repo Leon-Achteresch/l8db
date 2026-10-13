@@ -19,7 +19,7 @@ import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
 import { AppTourHost } from "@/features/tour/app-tour-host";
-import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
+import { UpdateAvailableGate } from "@/features/updates/update-available-gate";
 import { useFeatureVideoStore } from "@/lib/feature-videos/store";
 
 const FeatureVideoHost = lazy(() =>
@@ -53,7 +53,7 @@ function RootComponent() {
           <AppHeader />
           <AppFrame />
         </DbThemeRoot>
-        <UpdateAvailableDialog />
+        <UpdateAvailableGate />
         <PasswordPromptDialog />
         <SqlConfirmationDialog />
         <TasksDialog />

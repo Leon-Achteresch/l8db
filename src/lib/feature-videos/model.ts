@@ -1,4 +1,6 @@
-import { compare, prerelease, valid } from "semver";
+import compare from "semver/functions/compare";
+import prerelease from "semver/functions/prerelease";
+import valid from "semver/functions/valid";
 
 export const MEDIA_REPOSITORY = "Leon-Achteresch/l8db";
 export const MEDIA_TAG = "feature-videos";

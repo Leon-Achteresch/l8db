@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildColumnValueOptions,
+  parseCheckValues,
+  parseEnumTypeValues,
+} from "../src/lib/column-value-options";
+import {
   constraintDialectInfo,
   describeConstraint,
   emptyConstraint,
   foreignKeyIssues,
-  parseCheckValues,
-  parseEnumTypeValues,
   typeFamily,
 } from "../src/lib/constraint-designer";
 import type { DetailedColumnInfo, TableConstraintSpec } from "../src/lib/db";
