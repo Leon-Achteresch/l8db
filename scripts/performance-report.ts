@@ -57,6 +57,19 @@ export function combineFileRuns(runs: FileRun[]) {
   };
 }
 
+export function workloadResources(
+  total: ReturnType<typeof normalizeProcessResources>,
+  startup: ReturnType<typeof normalizeProcessResources> | null,
+  processes: number,
+) {
+  const extra = Math.max(0, processes - 1);
+  return {
+    peakRssBytes: total.peakRssBytes,
+    userCpuMs: Math.max(0, total.userCpuMs - (startup?.userCpuMs ?? 0) * extra),
+    systemCpuMs: Math.max(0, total.systemCpuMs - (startup?.systemCpuMs ?? 0) * extra),
+  };
+}
+
 export function testOutcomes(output: string): Map<string, "pass" | "fail"> {
   const colors = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
   const outcomes = new Map<string, "pass" | "fail">();

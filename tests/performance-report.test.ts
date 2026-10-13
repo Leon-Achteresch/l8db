@@ -10,6 +10,7 @@ import {
   resourceViolations,
   testNamePattern,
   testOutcomes,
+  workloadResources,
 } from "../scripts/performance-report";
 import { parsePerformanceArgs } from "../scripts/test-performance";
 
@@ -177,4 +178,16 @@ test("budget failures count only when the median of three attempts fails", () =>
   expect(confirmedFailures(failed, [rerun([]), rerun([])])).toEqual([]);
   expect(confirmedFailures(failed, [rerun([]), rerun([], 2)])).toEqual(failed);
   expect(confirmedFailures(failed, [rerun([]), rerun([], null)])).toEqual(failed);
+});
+
+test("per-file CPU budgets subtract the start-up cost of every extra test process", () => {
+  const total = { peakRssBytes: 400, userCpuMs: 30_000, systemCpuMs: 14_000 };
+  const startup = { peakRssBytes: 60, userCpuMs: 500, systemCpuMs: 300 };
+  expect(workloadResources(total, startup, 29)).toEqual({
+    peakRssBytes: 400,
+    userCpuMs: 16_000,
+    systemCpuMs: 5_600,
+  });
+  expect(workloadResources(total, null, 29)).toEqual(total);
+  expect(workloadResources(total, startup, 1)).toEqual(total);
 });
