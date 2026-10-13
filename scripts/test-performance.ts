@@ -10,6 +10,7 @@ import {
   resourceViolations,
   testNamePattern,
   testOutcomes,
+  workloadResources,
 } from "./performance-report";
 
 const SUITES = {
@@ -41,6 +42,7 @@ const SUITES = {
     "tests/perf-sync.test.ts",
     "tests/perf-secret-save.test.ts",
     "tests/perf-connection-import.test.ts",
+    "tests/perf-connection-import-datagrip.test.ts",
     "tests/abandoned-jobs.test.ts",
     "tests/performance-report.test.ts",
   ],
@@ -185,7 +187,10 @@ async function run() {
   const fileRuns: FileRun[] = [];
   let signal: string | null = null;
   let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
+  let startup: FileRun["resources"] = null;
   if (suite === "core") {
+    startup = (await runFiles(["tests/performance-report.test.ts"], "^l8db startup baseline$"))
+      .resources;
     for (const file of files) {
       const result = await runFiles([file]);
       signal ??= result.signal;
@@ -221,8 +226,10 @@ async function run() {
   const combined = combineFileRuns(fileRuns);
   const { exitCode, executedTests, resources } = combined;
   const wallMs = performance.now() - started;
-  const violations = resources
-    ? resourceViolations(resources, limits)
+  const budgeted =
+    resources && suite === "core" ? workloadResources(resources, startup, files.length) : resources;
+  const violations = budgeted
+    ? resourceViolations(budgeted, limits)
     : ["Resource usage unavailable"];
   if (executedTests === null) violations.push("Executed test count was not reported");
   else if (executedTests === 0) violations.push("No tests executed");
@@ -253,6 +260,8 @@ async function run() {
     heapLimitMb: suite === "throttle" ? heapLimitMb : null,
     wallMs,
     resources,
+    startupResources: startup,
+    budgetedResources: budgeted,
     resourceScope:
       suite === "core"
         ? "OS resource usage per test file subprocess: peak RSS is the largest file, CPU time is summed"
