@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { startTransition, useMemo, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
@@ -57,6 +57,7 @@ interface QueryViewProps {
 
 export function QueryView({ tabId }: QueryViewProps) {
   const workspace = useQueryWorkspace();
+  const navigatorVisible = useDeferredValue(workspace.navigatorVisible);
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   const [resultFocus, setResultFocus] = useState(false);
@@ -292,7 +293,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           editorFocus={editorFocus}
           resultFocus={resultFocus && !editorFocus}
           navigator={
-            workspace.navigatorVisible &&
+            navigatorVisible &&
             isSql &&
             connection && (
               <QuerySchemaBrowser
