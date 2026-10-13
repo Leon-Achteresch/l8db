@@ -1123,3 +1123,19 @@ tr[data-context-menu-target] > td {
 .monaco-editor.vs-dark:not(.focused) .l8db-selection {
   background-color: #3a3d41;
 }
+
+.dashboard-grid .l8-resize {
+  z-index: 10;
+}
+
+.dashboard-grid .l8-resize[data-l8-resize="se"]::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted-foreground);
+  border-bottom: 2px solid var(--muted-foreground);
+  opacity: 0.6;
+}

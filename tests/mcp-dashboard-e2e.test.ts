@@ -241,11 +241,11 @@ test.skipIf(!process.env.L8DB_MCP_DASH_E2E)(
       await page.goto(`${BASE}/dashboard`);
       await page.getByRole("heading", { name: "MCP Cockpit" }).waitFor();
       await expect(page.getByText("MCP", { exact: true }).isVisible()).resolves.toBe(true);
-      const cards = page.locator(".react-grid-item");
+      const cards = page.locator(".l8-item");
       await page.waitForFunction(
         (n) =>
-          document.querySelectorAll(".react-grid-item").length === n &&
-          !document.querySelector('.react-grid-item [data-slot="skeleton"]'),
+          document.querySelectorAll(".l8-item").length === n &&
+          !document.querySelector('.l8-item [data-slot="skeleton"]'),
         CHARTS.length,
       );
       expect(await cards.count()).toBe(CHARTS.length);
@@ -253,7 +253,7 @@ test.skipIf(!process.env.L8DB_MCP_DASH_E2E)(
         await expect(cards.getByText(chart.title, { exact: true }).count()).resolves.toBe(1);
       await expect(page.getByRole("alert").count()).resolves.toBe(0);
       await expect(page.getByText(/^Braucht|Kein Datensatz|Keine Daten/).count()).resolves.toBe(0);
-      expect(await page.locator(".react-grid-item svg").count()).toBeGreaterThan(6);
+      expect(await page.locator(".l8-item svg").count()).toBeGreaterThan(6);
       expect(sqlLog.filter((entry) => entry.error)).toEqual([]);
       expect(
         sqlLog.some((entry) => /WHERE q\."woche" >= '\d{4}-\d{2}-\d{2}'/.test(entry.sql)),

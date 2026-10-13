@@ -142,7 +142,7 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       await dialog.getByRole("switch", { name: "Werte direkt am Chart zeigen" }).check();
       await dialog.getByRole("button", { name: "Zum Dashboard hinzufügen", exact: true }).click();
       await dialog.waitFor({ state: "hidden" });
-      expect(await page.locator(".react-grid-item").count()).toBe(1);
+      expect(await page.locator(".l8-item").count()).toBe(1);
 
       const editChart = async (index: number) => {
         await page.getByRole("button", { name: "Chart bearbeiten" }).nth(index).click();
@@ -154,7 +154,7 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       await editor.getByRole("button", { name: "Weitere Aktionen" }).click();
       await page.getByRole("menuitem", { name: "Duplizieren" }).click();
       await editor.waitFor({ state: "hidden" });
-      await page.locator(".react-grid-item").nth(1).waitFor();
+      await page.locator(".l8-item").nth(1).waitFor();
       editor = await editChart(1);
       await editor.getByRole("button", { name: "Filter für revenue entfernen" }).first().click();
       await editor.getByRole("button", { name: "Speichern", exact: true }).click();
@@ -280,8 +280,8 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       expect(dashboardFile.connectionId).toBeUndefined();
       await dashboardDrawer.getByRole("button", { name: "Aus Datei laden", exact: true }).click();
       await dashboardDrawer.waitFor({ state: "hidden" });
-      await page.locator(".react-grid-item").first().waitFor();
-      expect(await page.locator(".react-grid-item").count()).toBe(4);
+      await page.locator(".l8-item").first().waitFor();
+      expect(await page.locator(".l8-item").count()).toBe(4);
       expect(errors).toEqual([]);
     } finally {
       await page.screenshot({ path: "/tmp/l8db-tableau-last.png" });
