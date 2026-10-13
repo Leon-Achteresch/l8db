@@ -21,7 +21,7 @@ import {
 import { chatWireMessages, summarizeChat } from "@/lib/ai/chat-history";
 import { aiConnections, mergeAiModels } from "@/lib/ai/context";
 import { setAiDropHandler } from "@/lib/ai/drop-target";
-import { handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
+import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
 import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AiFigureContext } from "@/lib/ai/figures";
@@ -47,6 +47,7 @@ import {
   aiSkills,
   aiStatus,
 } from "@/lib/db/ai";
+import { getFunctionDefinition } from "@/lib/db/transactions";
 import type { TableInfo } from "@/lib/db/types";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { isProduction, isProductionLocked } from "@/lib/environments";
@@ -55,6 +56,7 @@ import { IMPORT_FILE_EXTENSIONS } from "@/lib/import-file";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { queryTabLabel } from "@/lib/query-tab-title";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { type AiAccessLevel, AiAccessStrip } from "./ai-access-strip";
@@ -592,18 +594,63 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     const tab = currentQueryTab();
     return tab ? (editorAiController(tab.id)?.text() ?? tab.sql) : null;
   };
-  const editorTarget = () => {
-    const tab = currentQueryTab();
-    return {
-      controller: tab ? editorAiController(tab.id) : undefined,
-      title: tab ? queryTabLabel(tab) : "",
-      storedSql: tab ? tab.sql : null,
-      openTab: (sql: string, title: string) => {
-        const tabId = useTableTabs.getState().openQueryTabWithSql(sql, title.slice(0, 40));
-        void navigate({ to: "/query/$id", params: { id: tabId } });
-      },
-    };
+  const openQueryTab = (sql: string, title: string) => {
+    const tabId = useTableTabs.getState().openQueryTabWithSql(sql, title.slice(0, 40));
+    if (router.state.location.pathname === "/ai") useAiStore.getState().setOpen(true);
+    void navigate({ to: "/query/$id", params: { id: tabId } });
+    return tabId;
   };
+  const editorTarget = (): ChatEditorTarget => ({
+    tabs: () =>
+      useTableTabs
+        .getState()
+        .tabs.flatMap((tab) =>
+          tab.kind === "query" ? [{ id: tab.id, title: queryTabLabel(tab), sql: tab.sql }] : [],
+        ),
+    visibleId: () => currentQueryTab()?.id ?? null,
+    controller: (tabId) => editorAiController(tabId),
+    show: async (tabId) => {
+      if (currentQueryTab()?.id !== tabId) {
+        if (router.state.location.pathname === "/ai") useAiStore.getState().setOpen(true);
+        await navigate({ to: "/query/$id", params: { id: tabId } });
+      }
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const controller = editorAiController(tabId);
+        if (controller) return controller;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return undefined;
+    },
+    openTab: openQueryTab,
+    loadSource: async (object) => {
+      const current = useConnectionsStore.getState();
+      const connection = current.connections.find((entry) => entry.id === current.activeId);
+      if (!connection) throw new Error("Keine Verbindung aktiv.");
+      if (connection.kind !== "oracle")
+        throw new Error(
+          "object wird nur bei Oracle unterstützt. Quelltext per Abfrage lesen und mit sql öffnen.",
+        );
+      const database =
+        useDbSelectionStore.getState().databaseByConnection[connection.id] ??
+        databaseFromConnectionString(connection.connectionString) ??
+        undefined;
+      const load = (schema: string, name: string) =>
+        getFunctionDefinition(
+          connection.kind,
+          effectiveConnectionString(connection),
+          [schema, name, object.type].join("\u001f"),
+          database,
+        );
+      try {
+        return await load(object.schema, object.name);
+      } catch (reason) {
+        const schema = object.schema.toUpperCase();
+        const name = object.name.toUpperCase();
+        if (schema === object.schema && name === object.name) throw reason;
+        return load(schema, name);
+      }
+    },
+  });
   const withContext = async (items: ChatContextItem[]) => {
     if (!items.length) return {};
     const current = useConnectionsStore.getState();
