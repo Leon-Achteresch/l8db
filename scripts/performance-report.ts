@@ -29,6 +29,33 @@ export function resourceViolations(
   return violations;
 }
 
+export interface FileRun {
+  file: string;
+  exitCode: number | null;
+  executedTests: number | null;
+  resources: ReturnType<typeof normalizeProcessResources> | null;
+}
+
+export function combineFileRuns(runs: FileRun[]) {
+  const measured = runs.map((run) => run.resources);
+  const resources = measured.every((value) => value !== null)
+    ? {
+        peakRssBytes: Math.max(0, ...measured.map((value) => value?.peakRssBytes ?? 0)),
+        userCpuMs: measured.reduce((sum, value) => sum + (value?.userCpuMs ?? 0), 0),
+        systemCpuMs: measured.reduce((sum, value) => sum + (value?.systemCpuMs ?? 0), 0),
+      }
+    : null;
+  const counts = runs.map((run) => run.executedTests);
+  return {
+    exitCode: runs.find((run) => run.exitCode !== 0)?.exitCode ?? 0,
+    executedTests: counts.some((count) => count === null)
+      ? null
+      : counts.reduce<number>((sum, count) => sum + (count ?? 0), 0),
+    resources,
+    failedFiles: runs.filter((run) => run.exitCode !== 0).map((run) => run.file),
+  };
+}
+
 export function executedTestCount(output: string): number | null {
   const colors = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
   const plain = output.replace(colors, "");

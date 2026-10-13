@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  combineFileRuns,
   executedTestCount,
   normalizeProcessResources,
   resourceViolations,
@@ -117,4 +118,30 @@ test("performance profiles reject unsupported throttling instead of silently ski
     parsePerformanceArgs(["--suite", "browser", "--filter", "palette|onboarding"]).filter,
   ).toBe("palette|onboarding");
   expect(() => parsePerformanceArgs(["--filter"])).toThrow(/Invalid/);
+});
+
+test("per-file core runs report the largest peak, summed CPU and every failed file", () => {
+  const resources = (peakRssBytes: number, userCpuMs: number) => ({
+    peakRssBytes,
+    userCpuMs,
+    systemCpuMs: 1,
+  });
+  const combined = combineFileRuns([
+    { file: "a.test.ts", exitCode: 0, executedTests: 3, resources: resources(300, 10) },
+    { file: "b.test.ts", exitCode: 1, executedTests: 2, resources: resources(500, 20) },
+    { file: "c.test.ts", exitCode: 0, executedTests: 4, resources: resources(200, 5) },
+  ]);
+  expect(combined).toEqual({
+    exitCode: 1,
+    executedTests: 9,
+    resources: { peakRssBytes: 500, userCpuMs: 35, systemCpuMs: 3 },
+    failedFiles: ["b.test.ts"],
+  });
+  const crashed = combineFileRuns([
+    { file: "a.test.ts", exitCode: 0, executedTests: 3, resources: resources(300, 10) },
+    { file: "b.test.ts", exitCode: 3, executedTests: null, resources: null },
+  ]);
+  expect(crashed.executedTests).toBeNull();
+  expect(crashed.resources).toBeNull();
+  expect(crashed.failedFiles).toEqual(["b.test.ts"]);
 });
