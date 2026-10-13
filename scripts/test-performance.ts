@@ -41,6 +41,7 @@ const SUITES = {
     "tests/perf-versioning-pipeline.test.ts",
     "tests/perf-sync.test.ts",
     "tests/perf-invalid-objects.test.ts",
+    "tests/perf-nav-morph.test.ts",
     "tests/perf-secret-save.test.ts",
     "tests/perf-connection-import.test.ts",
     "tests/perf-connection-import-datagrip.test.ts",
