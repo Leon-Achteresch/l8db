@@ -89,6 +89,10 @@ impl Run {
         self.wait("editor", "Editor", details, false).await
     }
 
+    pub async fn notebook(&self, details: Value) -> Result<Value, String> {
+        self.wait("notebook", "Notebook", details, false).await
+    }
+
     async fn wait(
         &self,
         kind: &str,
