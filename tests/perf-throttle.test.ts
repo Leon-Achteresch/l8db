@@ -233,10 +233,14 @@ for (const view of ["/", "/tables/public/table_0000", "/query"]) {
         await page.keyboard.press("ControlOrMeta+b");
         await page.waitForTimeout(700);
       };
-      expectSmooth(`Sidebar zuklappen ${view}`, await sample(toggle));
-      expect(await sidebarHidden()).toBe(true);
-      expectSmooth(`Sidebar aufklappen ${view}`, await sample(toggle));
-      expect(await sidebarHidden()).toBe(false);
+      try {
+        expectSmooth(`Sidebar zuklappen ${view}`, await sample(toggle));
+        expect(await sidebarHidden()).toBe(true);
+        expectSmooth(`Sidebar aufklappen ${view}`, await sample(toggle));
+        expect(await sidebarHidden()).toBe(false);
+      } finally {
+        if (await sidebarHidden()) await toggle();
+      }
     },
     60000,
   );
@@ -258,16 +262,20 @@ test.skipIf(!ENABLED)(
       }).observe({ type: "event", durationThreshold: 16 });
     });
     await page.getByRole("button", { name: "Erweiterte Suche" }).click();
-    await page.getByRole("region", { name: "Suchergebnisse" }).waitFor();
-    await page.waitForTimeout(100);
-    const durations = await page.evaluate(
-      () => (window as unknown as { __searchClickDurations: number[] }).__searchClickDurations,
-    );
-    expect(durations.length).toBeGreaterThan(0);
-    const worst = Math.max(...durations);
-    console.log(`perf-throttle Erweiterte Suche Klick: ${worst} ms`);
-    expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
-    await page.keyboard.press("Escape");
+    try {
+      await page.getByRole("region", { name: "Suchergebnisse" }).waitFor();
+      await page.waitForTimeout(100);
+      const durations = await page.evaluate(
+        () => (window as unknown as { __searchClickDurations: number[] }).__searchClickDurations,
+      );
+      expect(durations.length).toBeGreaterThan(0);
+      const worst = Math.max(...durations);
+      console.log(`perf-throttle Erweiterte Suche Klick: ${worst} ms`);
+      expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
+    } finally {
+      await page.keyboard.press("Escape");
+      await page.getByRole("region", { name: "Suchergebnisse" }).waitFor({ state: "detached" });
+    }
   },
   60000,
 );
@@ -444,7 +452,7 @@ test.skipIf(!ENABLED)(
       }).observe({ type: "event", durationThreshold: 16 });
     });
     await page.getByRole("button", { name: "Chart erstellen", exact: true }).click();
-    await page.getByRole("dialog", { name: "Dein neuer Chart" }).waitFor();
+    await page.getByRole("textbox", { name: "Chart-Titel", exact: true }).waitFor();
     await page.waitForTimeout(100);
     const durations = await page.evaluate(
       () => (window as unknown as { __chartClickDurations: number[] }).__chartClickDurations,
