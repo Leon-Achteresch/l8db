@@ -55,15 +55,12 @@ function buildPlan(
     return { connection, statements: [], text: "", error: "Keine Änderungen für diese Seite." };
   try {
     const statements = buildCompareApplyPlan(connection.kind, selection, baseline, target);
-    const text = statements
-      .map((statement) =>
-        connection.kind === "oracle"
-          ? `${statement}\n/`
-          : /;\s*$/.test(statement)
-            ? statement
-            : `${statement};`,
-      )
-      .join("\n");
+    const text =
+      connection.kind === "oracle"
+        ? statements.join("\n/\n")
+        : statements
+            .map((statement) => (/;\s*$/.test(statement) ? statement : `${statement};`))
+            .join("\n");
     return { connection, statements, text, error: null };
   } catch (error) {
     return {
