@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
 import { afterPaint } from "@/lib/after-paint";
+import { useQueryWorkspace } from "@/lib/query-workspace";
 
 import type { QueryWorkspaceState } from "./types";
 
@@ -41,10 +42,12 @@ export function ToolbarViewControls({
           aria-label="Schema-Navigator umschalten"
           title="Schema und Statement-Navigator"
           aria-pressed={workspace.navigatorVisible}
-          onClick={() => {
-            const navigatorVisible = !workspace.navigatorVisible;
-            afterPaint(() => workspace.update({ navigatorVisible }));
-          }}
+          onClick={() =>
+            afterPaint(() => {
+              const current = useQueryWorkspace.getState();
+              current.update({ navigatorVisible: !current.navigatorVisible });
+            })
+          }
         >
           <PanelLeftIcon className="size-3.5" />
         </Button>

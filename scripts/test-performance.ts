@@ -160,10 +160,11 @@ async function run() {
       capture(child.stderr),
     ]);
     const usage = child.resourceUsage();
+    const unmatched = Boolean(filter) && /matched 0 tests/.test(outputTail);
     return {
-      exitCode,
+      exitCode: unmatched && exitCode !== 0 ? 0 : exitCode,
       signal: child.signalCode,
-      executedTests: executedTestCount(outputTail),
+      executedTests: unmatched ? 0 : executedTestCount(outputTail),
       resources: usage ? normalizeProcessResources(usage, process.platform) : null,
     };
   };

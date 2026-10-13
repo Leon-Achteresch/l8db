@@ -70,6 +70,9 @@ function suspendOutsideToasters(dialog: HTMLElement) {
   };
 }
 
+const NESTED_LAYER =
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';
+
 interface QueryHistorySheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -120,8 +123,7 @@ export function QueryHistorySheet({
       if (event.key !== "Escape" || event.isComposing) return;
       if (event.target instanceof Node && content.contains(event.target)) return;
       if (document.querySelector('[aria-label="Command palette"]')) return;
-      event.preventDefault();
-      event.stopPropagation();
+      if (event.target instanceof Element && event.target.closest(NESTED_LAYER)) return;
       latest.current.onOpenChange(false);
     };
     document.addEventListener("keydown", closeFromOutside, true);
@@ -181,11 +183,12 @@ export function QueryHistorySheet({
                 onKeyDown={(event) => {
                   if (event.key !== "Escape") return;
                   if (content?.querySelector('[aria-label="Command palette"]')) return;
+                  const target = event.target instanceof Element ? event.target : null;
+                  const inner = target?.closest(NESTED_LAYER);
                   if (
                     event.defaultPrevented &&
-                    content?.querySelector(
-                      '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]',
-                    )
+                    ((inner && inner !== event.currentTarget) ||
+                      content?.querySelector(NESTED_LAYER))
                   )
                     return;
                   event.preventDefault();

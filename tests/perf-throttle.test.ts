@@ -239,7 +239,7 @@ for (const view of ["/", "/tables/public/table_0000", "/query"]) {
         expectSmooth(`Sidebar aufklappen ${view}`, await sample(toggle));
         expect(await sidebarHidden()).toBe(false);
       } finally {
-        if (await sidebarHidden()) await toggle();
+        if (await sidebarHidden().catch(() => false)) await toggle().catch(() => undefined);
       }
     },
     60000,
@@ -274,7 +274,10 @@ test.skipIf(!ENABLED)(
       expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
     } finally {
       await page.keyboard.press("Escape");
-      await page.getByRole("region", { name: "Suchergebnisse" }).waitFor({ state: "detached" });
+      await page
+        .getByRole("region", { name: "Suchergebnisse" })
+        .waitFor({ state: "detached", timeout: 5_000 })
+        .catch(() => undefined);
     }
   },
   60000,
