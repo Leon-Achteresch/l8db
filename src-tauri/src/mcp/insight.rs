@@ -117,7 +117,7 @@ const NO_DRY_RUN: &[&str] = &[
     "comment",
 ];
 
-fn dry_run_statement(words: &[String]) -> bool {
+pub(crate) fn dry_run_statement(words: &[String]) -> bool {
     !words
         .first()
         .is_some_and(|word| NO_DRY_RUN.contains(&word.as_str()))

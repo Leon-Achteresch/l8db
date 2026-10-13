@@ -252,6 +252,30 @@ test("approval summary exposes native arguments, changed files and permissions b
     { label: "SQL", value: "UPDATE orders SET status = 'paid' WHERE id = 1" },
     { label: "Auswirkung", value: "Probelauf: 1 Zeile betroffen, zurückgerollt" },
   ]);
+  expect(
+    approvalSummary({
+      connection: "Shop",
+      title: "Preise +10 %",
+      statements: ["UPDATE products SET price = price * 1.1", "ALTER TABLE t ADD c int"],
+      probes: [{ name: "Marge", sql: "SELECT 1" }],
+      impact: "Wird immer zurückgerollt.",
+    }),
+  ).toEqual([
+    { label: "Aktion", value: "Preise +10 %" },
+    { label: "Verbindung", value: "Shop" },
+    {
+      label: "Anweisungen",
+      value: "UPDATE products SET price = price * 1.1;\nALTER TABLE t ADD c int",
+    },
+    { label: "Messungen", value: "Marge" },
+    { label: "Auswirkung", value: "Wird immer zurückgerollt." },
+  ]);
+  expect(
+    approvalSummary({
+      connection: "Shop",
+      rules: [{ name: "Versand braucht Datum", sql: "SELECT 1", violations: 3 }],
+    }),
+  ).toContainEqual({ label: "Datenregeln", value: "Versand braucht Datum: 3 Verletzungen" });
 });
 
 test("AI storage quota failures preserve saved history and recover after explicit deletion", async () => {

@@ -9,6 +9,9 @@ const MAX_TABLES: usize = 2_000;
 const MAX_TERMS: usize = 500;
 const MAX_PROMPT: usize = 24_000;
 const MAX_RULES: usize = 8_000;
+pub const MAX_INVARIANTS: usize = 100;
+const MAX_INVARIANT_SQL: usize = 4_000;
+const MAX_INVARIANT_PROMPT: usize = 6_000;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -23,6 +26,21 @@ pub struct Knowledge {
     pub tables: BTreeMap<String, TableNote>,
     #[serde(default)]
     pub rules: String,
+    #[serde(default)]
+    pub invariants: Vec<Invariant>,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Invariant {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub sql: String,
+    #[serde(default)]
+    pub violations: Option<u64>,
+    #[serde(default)]
+    pub checked_at: Option<u64>,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize, PartialEq, Debug)]
@@ -104,6 +122,25 @@ fn normalize(mut knowledge: Knowledge) -> Result<Knowledge, String> {
             !table.is_empty() && (!note.description.is_empty() || !note.columns.is_empty())
         })
         .collect();
+    let mut names = std::collections::HashSet::new();
+    knowledge.invariants = knowledge
+        .invariants
+        .into_iter()
+        .map(|rule| Invariant {
+            name: clean(&rule.name),
+            description: clean(&rule.description),
+            sql: rule.sql.trim().chars().take(MAX_INVARIANT_SQL).collect(),
+            ..rule
+        })
+        .filter(|rule| {
+            !rule.name.is_empty() && !rule.sql.is_empty() && names.insert(rule.name.to_lowercase())
+        })
+        .collect();
+    if knowledge.invariants.len() > MAX_INVARIANTS {
+        return Err(format!(
+            "Höchstens {MAX_INVARIANTS} Datenregeln pro Verbindung."
+        ));
+    }
     if knowledge.glossary.len() > MAX_TERMS || knowledge.tables.len() > MAX_TABLES {
         return Err(format!(
             "Zu viel KI-Wissen: höchstens {MAX_TERMS} Begriffe und {MAX_TABLES} Tabellen."
@@ -181,6 +218,17 @@ pub fn merge(mut knowledge: Knowledge, args: &Value) -> Result<(Knowledge, usize
     Ok((knowledge, changed))
 }
 
+pub fn update_invariants(
+    connection_id: &str,
+    change: impl FnOnce(Vec<Invariant>) -> Result<Vec<Invariant>, String>,
+) -> Result<Vec<Invariant>, String> {
+    update(connection_id, |mut knowledge| {
+        knowledge.invariants = change(std::mem::take(&mut knowledge.invariants))?;
+        Ok(knowledge)
+    })
+    .map(|knowledge| knowledge.invariants)
+}
+
 pub fn save_from_tool(connection_id: &str, args: &Value) -> Result<String, String> {
     let mut count = 0;
     update(connection_id, |knowledge| {
@@ -206,6 +254,22 @@ fn knowledge_prompt(knowledge: &Knowledge, name: &str) -> String {
     let mut text = String::new();
     if !knowledge.rules.is_empty() {
         text.push_str(&format!("\nRules the user set for connection {name} (follow them unless they conflict with safety restrictions):\n{}\n", knowledge.rules));
+    }
+    if !knowledge.invariants.is_empty() {
+        let mut block = format!("\nConfirmed data rules for connection {name} (each query returns violating rows; sandbox re-checks them, keep changes consistent with them):\n");
+        for rule in &knowledge.invariants {
+            block.push_str(&format!(
+                "- {}{}: {}\n",
+                rule.name,
+                if rule.description.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", rule.description)
+                },
+                rule.sql.split_whitespace().collect::<Vec<_>>().join(" ")
+            ));
+        }
+        text.push_str(&crate::mcp::server::cap(block, MAX_INVARIANT_PROMPT));
     }
     if knowledge.notes.is_empty() && knowledge.glossary.is_empty() && knowledge.tables.is_empty() {
         return text;
@@ -352,5 +416,49 @@ mod tests {
         let round_trip: Knowledge =
             serde_json::from_str(&serde_json::to_string(&base).unwrap()).unwrap();
         assert_eq!(round_trip, base);
+    }
+
+    #[test]
+    fn invariants_are_deduplicated_bounded_and_listed_in_the_prompt() {
+        let rule = |name: &str| Invariant {
+            name: name.into(),
+            sql: "SELECT id FROM orders\n  WHERE total < 0".into(),
+            ..Invariant::default()
+        };
+        let cleaned = normalize(Knowledge {
+            invariants: vec![
+                rule(" Summe positiv "),
+                rule("summe positiv"),
+                rule(""),
+                Invariant {
+                    name: "x".into(),
+                    ..Invariant::default()
+                },
+            ],
+            ..Knowledge::default()
+        })
+        .unwrap();
+        assert_eq!(cleaned.invariants.len(), 1);
+        assert_eq!(cleaned.invariants[0].name, "Summe positiv");
+        let prompt = knowledge_prompt(&cleaned, "Shop");
+        assert!(prompt.contains("Confirmed data rules for connection Shop"));
+        assert!(prompt.contains("- Summe positiv: SELECT id FROM orders WHERE total < 0"));
+        let many: Vec<Invariant> = (0..MAX_INVARIANTS)
+            .map(|index| Invariant {
+                sql: "SELECT 1 ".repeat(100),
+                ..rule(&format!("r{index}"))
+            })
+            .collect();
+        let big = normalize(Knowledge {
+            invariants: many.clone(),
+            ..Knowledge::default()
+        })
+        .unwrap();
+        assert!(knowledge_prompt(&big, "Shop").len() <= MAX_INVARIANT_PROMPT + 200);
+        assert!(normalize(Knowledge {
+            invariants: [many, vec![rule("one more")]].concat(),
+            ..Knowledge::default()
+        })
+        .is_err());
     }
 }

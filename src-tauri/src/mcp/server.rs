@@ -12,7 +12,7 @@ use crate::db::{
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const CACHE_TTL: Duration = Duration::from_secs(60);
-pub(super) const SQL_KINDS: &[DatabaseKind] = &[
+pub(crate) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Postgres,
     DatabaseKind::Mysql,
     DatabaseKind::Sqlite,
@@ -110,6 +110,7 @@ pub fn tool_definitions() -> Value {
         },
         super::insight::relations_definition(),
         super::insight::explain_definition(),
+        super::drilldown::tool_definition(),
         {
             "name": "query",
             "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows. Long cells are cut at the configured cell limit; set cellChars to read long values such as view or function definitions in full.",
@@ -224,7 +225,7 @@ impl Server {
             "workflow" => super::workflow::call(&args, "mcp").await,
             "open" => self.open(config, &args).await,
             "search" | "describe" | "query" | "execute" | "script" | "benchmark" | "health"
-            | "explain" | "relations" => {
+            | "explain" | "relations" | "drilldown" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
                 match find_connection(config, target)
                     .and_then(|connection| with_database(connection, &args))
@@ -240,6 +241,7 @@ impl Server {
                             "describe" => self.describe_tables(config, connection, &args).await,
                             "explain" => self.explain(config, connection, &args).await,
                             "relations" => self.relations(config, connection, &args).await,
+                            "drilldown" => self.drilldown(config, connection, &args).await,
                             "query" => self.query(config, connection, &args).await,
                             "script" => self.script(config, connection, &args).await,
                             "benchmark" => self.benchmark(config, connection, &args).await,
@@ -742,7 +744,7 @@ pub(super) fn cache_key(connection: &McpConnection) -> String {
     )
 }
 
-pub(super) fn with_database(
+pub(crate) fn with_database(
     connection: &McpConnection,
     args: &Value,
 ) -> Result<McpConnection, String> {
@@ -802,7 +804,7 @@ fn configured_database(raw: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(super) fn find_connection<'a>(
+pub(crate) fn find_connection<'a>(
     config: &'a McpConfig,
     target: &str,
 ) -> Result<&'a McpConnection, String> {
@@ -1344,7 +1346,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 11);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 12);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();
