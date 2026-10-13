@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheckIcon, RefreshCwIcon, StethoscopeIcon } from "lucide-react";
+import { CircleCheckIcon, HeartPulseIcon, RefreshCwIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,7 @@ export function HealthView() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div ref={ref} className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
-        <StethoscopeIcon className="size-4 text-rose-500" />
+        <HeartPulseIcon className="size-4 text-rose-500" />
         <span className="text-sm font-semibold">Health & Advisor</span>
         {isNew && <NewBadge />}
         {report.data && (
