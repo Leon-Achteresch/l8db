@@ -1,5 +1,5 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -21,9 +21,13 @@ import {
 } from "@/lib/queries";
 import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { useSettingsStore } from "@/lib/settings";
-import { availableTableDetailTabs, resolveTableDetailTab } from "@/lib/table-detail-tabs";
+import {
+  availableTableDetailTabs,
+  resolveTableDetailTab,
+  type TableDetailTab,
+} from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
-import { tableViewStateKey } from "@/lib/table-view-state";
+import { detailTabFor, tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import type { TableViewProps } from "../table-view";
 
@@ -67,7 +71,28 @@ export function useTableViewModel({
   const rowLimit = useSettingsStore((s) => s.rowLimit);
   const baseStateKey = tableViewStateKey(connection?.id, database, schema, table);
   const stateKey = inDrawer ? `${baseStateKey}:drawer:${drawerId}` : baseStateKey;
-  const [selectedTab, setDetailTab] = useTableViewState(stateKey, "detailTab", "data");
+  const [localTab, setLocalTab] = useState<TableDetailTab>("data");
+  const storedTab = useTableViewStateStore((s) => {
+    if (!stateKey) return undefined;
+    return inDrawer ? (s.views[stateKey]?.detailTab ?? "data") : detailTabFor(s, stateKey);
+  });
+  const selectedTab = storedTab ?? localTab;
+  useEffect(() => {
+    if (stateKey && !inDrawer) useTableViewStateStore.getState().keepDetailTab(stateKey);
+  }, [stateKey, inDrawer]);
+  const setDetailTab = useCallback(
+    (tab: TableDetailTab) => {
+      const store = useTableViewStateStore.getState();
+      if (!stateKey) setLocalTab(tab);
+      else if (inDrawer) store.patch(stateKey, { detailTab: tab });
+      else store.selectDetailTab(stateKey, tab);
+    },
+    [stateKey, inDrawer],
+  );
+  const showDataTab = useCallback(() => {
+    if (stateKey) useTableViewStateStore.getState().patch(stateKey, { detailTab: "data" });
+    else setLocalTab("data");
+  }, [stateKey]);
   const caps = useActiveCapabilities();
   const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const easyMode = useSettingsStore((s) => s.easyMode);
@@ -221,7 +246,7 @@ export function useTableViewModel({
     setFilterRaw(fkRaw ?? false);
     setSorting([]);
     setPage(0);
-    setDetailTab("data");
+    showDataTab();
     if (inDrawer) return;
     void routeNavigate({
       search: (previous) => ({ ...previous, fkFilter: undefined, fkRaw: undefined }),
@@ -235,7 +260,7 @@ export function useTableViewModel({
     setFilterRaw,
     setSorting,
     setPage,
-    setDetailTab,
+    showDataTab,
     inDrawer,
   ]);
 
