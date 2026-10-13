@@ -67,8 +67,34 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.getByRole("button", { name: "Anpassen", exact: true }).waitFor();
       await page.locator(".monaco-editor").first().waitFor();
       await page.screenshot({ path: "/tmp/l8db-query-before.png" });
+      const toolbar = page.locator('[data-tour="query-toolbar"]');
+      const toolbarLayout = () =>
+        toolbar.evaluate((node) => {
+          const buttons = [...node.querySelectorAll("button")]
+            .map((b) => b.getBoundingClientRect())
+            .filter((b) => b.width > 0);
+          const left = node.firstElementChild as HTMLElement;
+          return {
+            height: node.getBoundingClientRect().height,
+            rows: new Set(buttons.map((b) => Math.round(b.top + b.height / 2))).size,
+            overflow: node.scrollWidth - node.clientWidth,
+            leftOverflow: left.scrollWidth - left.clientWidth,
+          };
+        });
+      for (const width of [1440, 1100, 900, 760]) {
+        await page.setViewportSize({ width, height: 940 });
+        expect(await toolbarLayout()).toEqual({
+          height: 48,
+          rows: 1,
+          overflow: 0,
+          leftOverflow: 0,
+        });
+      }
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Abbrechen" }).waitFor();
+      expect(await toolbarLayout()).toEqual({ height: 48, rows: 1, overflow: 0, leftOverflow: 0 });
       await page.getByText("mara@example.test", { exact: true }).waitFor();
+      await page.setViewportSize({ width: 1440, height: 940 });
       for (const [format, title] of [
         ["CSV", "CSV exportieren"],
         ["XLSX", "XLSX exportieren"],
