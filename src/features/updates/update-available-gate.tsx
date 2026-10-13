@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 
 const UpdateAvailableDialog = lazy(() =>
@@ -9,10 +10,16 @@ const UpdateAvailableDialog = lazy(() =>
 
 export function UpdateAvailableGate() {
   const { update } = useUpdatePrompt();
-  if (!update) return null;
+  const [offered, setOffered] = useState(false);
+  useEffect(() => {
+    if (update) setOffered(true);
+  }, [update]);
+  if (!update && !offered) return null;
   return (
-    <Suspense fallback={null}>
-      <UpdateAvailableDialog />
-    </Suspense>
+    <PanelErrorBoundary label="Der Update-Dialog" source="update-dialog" compact>
+      <Suspense fallback={null}>
+        <UpdateAvailableDialog />
+      </Suspense>
+    </PanelErrorBoundary>
   );
 }
