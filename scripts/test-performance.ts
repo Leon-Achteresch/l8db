@@ -2,7 +2,9 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
+  combineFileRuns,
   executedTestCount,
+  type FileRun,
   normalizeProcessResources,
   resourceViolations,
 } from "./performance-report";
@@ -104,10 +106,11 @@ async function run() {
       return;
     }
   }
+  const files: readonly string[] = SUITES[suite];
   const command = [
     process.execPath,
     "test",
-    ...SUITES[suite],
+    ...files,
     ...(filter ? ["--test-name-pattern", filter] : []),
   ];
   const limits = {
@@ -120,46 +123,72 @@ async function run() {
   await Bun.write(log, "");
   const runId = crypto.randomUUID();
   const started = performance.now();
-  const child = Bun.spawn(command, {
-    env: {
-      ...process.env,
-      L8DB_PERF_REPORT_DIR: directory,
-      L8DB_PERF_RUN_ID: runId,
-      L8DB_PERF_ENGINE: engine,
-      L8DB_PERF_BROWSER: suite === "browser" ? "1" : "",
-      L8DB_PERF_APP: suite === "browser" ? "1" : "",
-      L8DB_PERF_STYLED: "1",
-      L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
-      L8DB_PERF_CPU_RATE: String(cpuRate),
-      L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: suite === "core" ? 60_000 : 900_000,
-  });
-  let outputTail = "";
-  const capture = async (stream: ReadableStream<Uint8Array>) => {
-    const decoder = new TextDecoder();
-    for await (const chunk of stream) {
-      process.stdout.write(chunk);
-      outputTail = (outputTail + decoder.decode(chunk, { stream: true })).slice(-16_384);
-      await appendFile(log, chunk);
-    }
+  const env = {
+    ...process.env,
+    L8DB_PERF_REPORT_DIR: directory,
+    L8DB_PERF_RUN_ID: runId,
+    L8DB_PERF_ENGINE: engine,
+    L8DB_PERF_BROWSER: suite === "browser" ? "1" : "",
+    L8DB_PERF_APP: suite === "browser" ? "1" : "",
+    L8DB_PERF_STYLED: "1",
+    L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
+    L8DB_PERF_CPU_RATE: String(cpuRate),
+    L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
-  const [exitCode] = await Promise.all([
-    child.exited,
-    capture(child.stdout),
-    capture(child.stderr),
-  ]);
+  const runFiles = async (selected: readonly string[]) => {
+    const child = Bun.spawn(
+      [process.execPath, "test", ...selected, ...(filter ? ["--test-name-pattern", filter] : [])],
+      {
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: suite === "core" ? 60_000 : 900_000,
+      },
+    );
+    let outputTail = "";
+    const capture = async (stream: ReadableStream<Uint8Array>) => {
+      const decoder = new TextDecoder();
+      for await (const chunk of stream) {
+        process.stdout.write(chunk);
+        outputTail = (outputTail + decoder.decode(chunk, { stream: true })).slice(-16_384);
+        await appendFile(log, chunk);
+      }
+    };
+    const [exitCode] = await Promise.all([
+      child.exited,
+      capture(child.stdout),
+      capture(child.stderr),
+    ]);
+    const usage = child.resourceUsage();
+    return {
+      exitCode,
+      signal: child.signalCode,
+      executedTests: executedTestCount(outputTail),
+      resources: usage ? normalizeProcessResources(usage, process.platform) : null,
+    };
+  };
+  const fileRuns: FileRun[] = [];
+  let signal: string | null = null;
+  if (suite === "core") {
+    for (const file of files) {
+      const result = await runFiles([file]);
+      signal ??= result.signal;
+      fileRuns.push({ file, ...result });
+    }
+  } else {
+    const result = await runFiles(files);
+    signal = result.signal;
+    fileRuns.push({ file: files.join(" "), ...result });
+  }
+  const combined = combineFileRuns(fileRuns);
+  const { exitCode, executedTests, resources } = combined;
   const wallMs = performance.now() - started;
-  const usage = child.resourceUsage();
-  const resources = usage ? normalizeProcessResources(usage, process.platform) : null;
   const violations = resources
     ? resourceViolations(resources, limits)
     : ["Resource usage unavailable"];
-  const executedTests = executedTestCount(outputTail);
   if (executedTests === null) violations.push("Executed test count was not reported");
   else if (executedTests === 0) violations.push("No tests executed");
+  for (const file of combined.failedFiles) violations.push(`Test run failed: ${file}`);
   const revision = Bun.spawnSync(["git", "rev-parse", "HEAD"]).stdout.toString().trim();
   const dirty = Bun.spawnSync(["git", "status", "--porcelain"]).stdout.length > 0;
   const report = {
@@ -187,11 +216,14 @@ async function run() {
     wallMs,
     resources,
     resourceScope:
-      "OS resource usage for the test subprocess; not a summed application process tree",
+      suite === "core"
+        ? "OS resource usage per test file subprocess: peak RSS is the largest file, CPU time is summed"
+        : "OS resource usage for the test subprocess; not a summed application process tree",
     limits,
     exitCode,
     executedTests,
-    signal: child.signalCode,
+    signal,
+    files: fileRuns,
     violations,
   };
   await Bun.write(resolve(directory, "resources.json"), JSON.stringify(report, null, 2));

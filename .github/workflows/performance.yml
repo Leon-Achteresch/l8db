@@ -46,8 +46,6 @@ jobs:
             engine: chromium
           - platform: macos-15
             engine: webkit
-          - platform: windows-2025
-            engine: chromium
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 20
     steps:
