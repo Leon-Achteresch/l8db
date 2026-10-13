@@ -362,6 +362,19 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           })),
         ).toEqual({ value: "auto", priority: "important", hosts: 1, children: 0 });
       }
+      await tools.click();
+      await page.getByRole("menuitem", { name: /Verlauf & Gespeichertes/ }).click();
+      await dialog.waitFor();
+      await page.evaluate(() =>
+        document.addEventListener(
+          "keydown",
+          (event) => {
+            if (event.key === "Escape") event.preventDefault();
+          },
+          { capture: true, once: true },
+        ),
+      );
+      await closeWithEscape(page, dialog);
       await page.evaluate(() =>
         document.getElementById("root")?.style.removeProperty("pointer-events"),
       );
