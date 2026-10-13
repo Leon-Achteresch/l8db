@@ -32,6 +32,27 @@ export function approvalSummary(
       record.connectionName ?? record.connection ?? record.database ?? record.connectionId,
     );
     add("SQL", record.sql ?? record.query);
+    if (Array.isArray(record.statements))
+      add(
+        "Anweisungen",
+        record.statements.filter((item): item is string => typeof item === "string").join(";\n"),
+      );
+    if (Array.isArray(record.probes))
+      add(
+        "Messungen",
+        record.probes.map((item) =>
+          item && typeof item === "object" ? String(item.name ?? "") : "",
+        ),
+      );
+    if (Array.isArray(record.rules))
+      add(
+        "Datenregeln",
+        record.rules.map((item) =>
+          item && typeof item === "object"
+            ? `${String(item.name ?? "")}: ${String(item.violations ?? "?")} Verletzungen`
+            : "",
+        ),
+      );
     add("Auswirkung", record.impact);
     add("Befehl", record.command ?? record.cmd);
     add("Arbeitsverzeichnis", record.cwd);
