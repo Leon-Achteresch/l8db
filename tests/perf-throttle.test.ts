@@ -222,7 +222,7 @@ for (const view of ["/", "/tables/public/table_0000", "/query"]) {
     async () => {
       await navigate(view);
       await page.waitForTimeout(2500);
-      await page.mouse.click(800, 12);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       const sidebarHidden = () =>
         page.evaluate(() => {
           const link = document.querySelector('a[data-name="table_0000"]');
