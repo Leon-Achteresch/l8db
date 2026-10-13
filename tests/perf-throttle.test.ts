@@ -402,7 +402,7 @@ test.skipIf(!ENABLED)(
   "Dashboard: Scrollen, Ziehen und Hover",
   async () => {
     await navigate("/dashboard");
-    await page.waitForSelector(".react-grid-item", { timeout: 30000 });
+    await page.waitForSelector(".l8-item", { timeout: 30000 });
     await page.waitForTimeout(3000);
     expectSmooth("Dashboard scrollen", await sample(() => wheel(900, 500, 40, 200)));
     expectSmooth(
@@ -415,17 +415,17 @@ test.skipIf(!ENABLED)(
         await page.waitForTimeout(300);
       }),
     );
-    const box = await page.locator(".react-grid-item").first().boundingBox();
+    const box = await page.locator(".l8-item [data-l8-handle]").first().boundingBox();
     if (!box) throw new Error("Kein Widget im Dashboard gefunden.");
     expectSmooth(
       "Dashboard ziehen",
       await sample(async () => {
-        await page.mouse.move(box.x + box.width / 2, box.y + 14);
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await page.mouse.down();
         for (let step = 0; step < 40; step++) {
           await page.mouse.move(
             box.x + box.width / 2 + Math.sin(step / 4) * 200,
-            box.y + 14 + step * 4,
+            box.y + box.height / 2 + step * 4,
           );
           await page.waitForTimeout(16);
         }
@@ -441,7 +441,7 @@ test.skipIf(!ENABLED)(
   "Dashboard: erster Chart-Klick bleibt reaktionsschnell",
   async () => {
     await navigate("/dashboard");
-    await page.waitForSelector(".react-grid-item", { timeout: 30000 });
+    await page.waitForSelector(".l8-item", { timeout: 30000 });
     const edit = page.getByRole("button", { name: "Dashboard bearbeiten", exact: true });
     if (await edit.count()) await edit.click();
     await page.waitForTimeout(300);

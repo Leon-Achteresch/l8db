@@ -121,7 +121,10 @@ export function WidgetCardInner({
           <div className="min-w-0">
             <div className="flex items-center gap-1 text-sm font-medium text-foreground">
               {!locked && (
-                <GripVerticalIcon className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing" />
+                <GripVerticalIcon
+                  data-l8-handle
+                  className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing"
+                />
               )}
               <span className="dashboard-widget-title truncate" title={title}>
                 {title}
