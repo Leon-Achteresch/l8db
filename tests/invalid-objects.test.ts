@@ -2,10 +2,14 @@ import { expect, test } from "bun:test";
 
 import type { InvalidObjectInfo } from "../src/lib/db";
 import {
+  buildInvalidProblems,
   buildInvalidSet,
   compileArgForInvalidType,
   filterInvalidByTypes,
+  filterInvalidProblems,
   INVALID_GROUP_TYPES,
+  invalidTypeLabel,
+  invalidTypeLabels,
   isFunctionInvalid,
   isPackageInvalid,
   isPackagePartInvalid,
@@ -13,10 +17,17 @@ import {
   isSynonymTargetInvalid,
   isTriggerInvalid,
   isViewInvalid,
+  parseCompileMessage,
 } from "../src/lib/invalid-objects";
 
 function item(schema: string, name: string, object_type: string): InvalidObjectInfo {
-  return { schema, name, object_type, status: "INVALID", oid: `${schema}\u{1f}${name}\u{1f}${object_type}` };
+  return {
+    schema,
+    name,
+    object_type,
+    status: "INVALID",
+    oid: `${schema}\u{1f}${name}\u{1f}${object_type}`,
+  };
 }
 
 const sample = [
@@ -76,4 +87,53 @@ test("isSynonymTargetInvalid treats only VALID as healthy", () => {
   expect(isSynonymTargetInvalid("valid")).toBe(false);
   expect(isSynonymTargetInvalid("INVALID")).toBe(true);
   expect(isSynonymTargetInvalid("UNKNOWN")).toBe(true);
+});
+
+test("buildInvalidProblems attaches compile errors to their object case-insensitively", () => {
+  const errors = [
+    { schema: "hr", name: "pkg", object_type: "package body", line: 3, position: 1, message: "x" },
+    { schema: "HR", name: "PKG", object_type: "PACKAGE", line: 1, position: 1, message: "y" },
+    { schema: "HR", name: "OTHER", object_type: "VIEW", line: 0, position: 0, message: "z" },
+  ];
+  const { problems, others, matched } = buildInvalidProblems(sample, errors);
+  expect(problems).toHaveLength(sample.length);
+  expect(others).toEqual([errors[2]]);
+  expect(matched).toBe(2);
+  expect(problems.find((p) => p.item.object_type === "PACKAGE BODY")?.errors).toEqual([errors[0]]);
+  expect(problems.find((p) => p.item.object_type === "PACKAGE")?.errors).toEqual([errors[1]]);
+  expect(problems.find((p) => p.item.name === "V_EMP")?.errors).toEqual([]);
+});
+
+test("filterInvalidProblems combines type label and schema-qualified search", () => {
+  const { problems } = buildInvalidProblems(sample, []);
+  expect(filterInvalidProblems(problems, null, "  ")).toBe(problems);
+  expect(filterInvalidProblems(problems, "Package", "").map((p) => p.item.object_type)).toEqual([
+    "PACKAGE",
+  ]);
+  expect(filterInvalidProblems(problems, null, "hr.pk").map((p) => p.item.object_type)).toEqual([
+    "PACKAGE",
+    "PACKAGE BODY",
+  ]);
+  expect(filterInvalidProblems(problems, "View", "calc")).toEqual([]);
+  expect(invalidTypeLabels(sample)).toEqual([
+    "Funktion",
+    "Prozedur",
+    "Package",
+    "Package Body",
+    "View",
+    "Trigger",
+  ]);
+});
+
+test("parseCompileMessage splits Oracle error codes from the message", () => {
+  expect(parseCompileMessage("PLS-00201: identifier 'X' must be declared")).toEqual({
+    code: "PLS-00201",
+    text: "identifier 'X' must be declared",
+  });
+  expect(parseCompileMessage("PL/SQL: SQL Statement ignored")).toEqual({
+    code: null,
+    text: "PL/SQL: SQL Statement ignored",
+  });
+  expect(invalidTypeLabel("materialized view")).toBe("Mat. View");
+  expect(invalidTypeLabel("JAVA CLASS")).toBe("JAVA CLASS");
 });

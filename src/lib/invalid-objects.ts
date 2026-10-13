@@ -1,4 +1,4 @@
-import type { InvalidObjectInfo } from "@/lib/db";
+import type { CompileErrorInfo, InvalidObjectInfo } from "@/lib/db";
 
 export function invalidKey(schema: string, name: string, objectType: string): string {
   return `${schema.toUpperCase()}.${name.toUpperCase()}.${objectType.toUpperCase()}`;
@@ -88,4 +88,88 @@ export function compileArgForInvalidType(objectType: string): string {
   if (t === "TYPE") return "type";
   if (t === "TYPE BODY") return "type_body";
   return "routine";
+}
+
+export const INVALID_RENDER_STEP = 200;
+export const INVALID_ERRORS_PER_OBJECT = 20;
+
+const INVALID_TYPE_LABELS: Record<string, string> = {
+  PACKAGE: "Package",
+  "PACKAGE BODY": "Package Body",
+  FUNCTION: "Funktion",
+  PROCEDURE: "Prozedur",
+  VIEW: "View",
+  "MATERIALIZED VIEW": "Mat. View",
+  TRIGGER: "Trigger",
+  TYPE: "Typ",
+  "TYPE BODY": "Type Body",
+  SYNONYM: "Synonym",
+};
+
+export function invalidTypeLabel(objectType: string): string {
+  return INVALID_TYPE_LABELS[objectType.toUpperCase()] ?? objectType;
+}
+
+export function parseCompileMessage(message: string): { code: string | null; text: string } {
+  const match = /^([A-Z]{3}-\d{5}):\s*([\s\S]*)$/.exec(message);
+  return match ? { code: match[1], text: match[2] } : { code: null, text: message };
+}
+
+export interface InvalidProblem {
+  item: InvalidObjectInfo;
+  errors: CompileErrorInfo[];
+}
+
+export interface InvalidProblemSet {
+  problems: InvalidProblem[];
+  others: CompileErrorInfo[];
+  matched: number;
+}
+
+export function buildInvalidProblems(
+  items: InvalidObjectInfo[],
+  errors: CompileErrorInfo[],
+): InvalidProblemSet {
+  const byKey = new Map<string, CompileErrorInfo[]>();
+  for (const error of errors) {
+    const key = invalidKey(error.schema, error.name, error.object_type);
+    const list = byKey.get(key);
+    if (list) list.push(error);
+    else byKey.set(key, [error]);
+  }
+  const used = new Set<string>();
+  let matched = 0;
+  const problems = items.map((item) => {
+    const key = invalidKey(item.schema, item.name, item.object_type);
+    const list = byKey.get(key) ?? [];
+    if (!used.has(key)) {
+      used.add(key);
+      matched += list.length;
+    }
+    return { item, errors: list };
+  });
+  const others: CompileErrorInfo[] = [];
+  for (const [key, list] of byKey) {
+    if (used.has(key)) continue;
+    for (const error of list) others.push(error);
+  }
+  return { problems, others, matched };
+}
+
+export function invalidTypeLabels(items: InvalidObjectInfo[]): string[] {
+  return [...new Set(items.map((item) => invalidTypeLabel(item.object_type)))];
+}
+
+export function filterInvalidProblems(
+  problems: InvalidProblem[],
+  typeLabel: string | null,
+  query: string,
+): InvalidProblem[] {
+  const needle = query.trim().toLowerCase();
+  if (!typeLabel && !needle) return problems;
+  return problems.filter(
+    ({ item }) =>
+      (!typeLabel || invalidTypeLabel(item.object_type) === typeLabel) &&
+      (!needle || `${item.schema}.${item.name}`.toLowerCase().includes(needle)),
+  );
 }
