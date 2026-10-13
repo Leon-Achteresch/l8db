@@ -3,6 +3,7 @@ import {
   CircleAlertIcon,
   DatabaseIcon,
   EllipsisIcon,
+  FileDownIcon,
   PlusIcon,
   RefreshCwIcon,
   ScanSearchIcon,
@@ -10,6 +11,7 @@ import {
   Settings2Icon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,7 @@ import { control } from "@/lib/versioning/control";
 import { targetStage } from "@/lib/versioning/delivery";
 import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
+import { saveMigrationScripts } from "@/lib/versioning/migration-script";
 import { snapshotTargets } from "@/lib/versioning/rollout-snapshot";
 import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
@@ -48,6 +51,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const { repo, project, releases, targets, run, refresh } = workspace;
   const connections = useConnectionsStore((state) => state.connections);
   const feature = useNewFeatureVisibility<HTMLDivElement>("versioning.targets.customers");
+  const scriptFeature = useNewFeatureVisibility<HTMLDivElement>("versioning.targets.script");
   const [customer, setCustomer] = useState("");
   const [environment, setEnvironment] = useState("Produktion");
   const [search, setSearch] = useState("");
@@ -747,7 +751,31 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       )}
       {plans.length > 0 && (
         <div className="flex flex-col gap-3 rounded-xl bg-muted/35 p-4">
-          <h2 className="text-xs font-semibold">Rollout prüfen</h2>
+          <div ref={scriptFeature.ref} className="flex items-center gap-1">
+            <h2 className="flex flex-1 items-center gap-2 text-xs font-semibold">
+              Rollout prüfen{scriptFeature.isNew && <NewBadge />}
+            </h2>
+            <VersioningIconButton
+              icon={FileDownIcon}
+              label={
+                plans.length === 1
+                  ? "Migrationsskript speichern (für Systeme ohne direkten Rollout)"
+                  : "Migrationsskripte aller Ziele in einen Ordner speichern"
+              }
+              className="size-7"
+              onClick={() =>
+                void run(async () => {
+                  const count = await saveMigrationScripts(plans, project.name);
+                  if (count)
+                    toast.success(
+                      count === 1
+                        ? "Migrationsskript gespeichert"
+                        : `${count} Migrationsskripte gespeichert`,
+                    );
+                })
+              }
+            />
+          </div>
           <p className="text-[11px] text-muted-foreground">
             Vor dem Start werden alle ausgewählten Ziele erneut geprüft. Freigabe: 15 Minuten.
             Spätere Release-Vorbedingungen werden nach ihren Vorgängern geprüft.
@@ -760,9 +788,22 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                 {item.differences.filter((difference) => difference.status !== "unchanged").length}{" "}
                 Abweichungen
               </summary>
-              <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">
-                {item.sql.join("\n\n")}
-              </pre>
+              <div className="mt-2 flex items-start gap-1">
+                <pre className="max-h-80 min-w-0 flex-1 overflow-auto whitespace-pre-wrap text-xs">
+                  {item.sql.join("\n\n")}
+                </pre>
+                <VersioningIconButton
+                  icon={FileDownIcon}
+                  label={`Migrationsskript für ${item.target.name} speichern`}
+                  className="size-7"
+                  onClick={() =>
+                    void run(async () => {
+                      if (await saveMigrationScripts([item], project.name))
+                        toast.success("Migrationsskript gespeichert");
+                    })
+                  }
+                />
+              </div>
               <p className="mt-2 text-muted-foreground">
                 {item.binding.label}
                 {item.binding.edition ? ` · Edition ${item.binding.edition}` : ""}

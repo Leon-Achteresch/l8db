@@ -2,6 +2,13 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { versioningForge, versioningRepository } from "@/lib/db";
 import { parseRelease, releaseTrack } from "./model";
 import { readFile } from "./repository";
+import {
+  DEFAULT_TICKETS,
+  findTickets,
+  type TicketConfiguration,
+  type TicketReference,
+  ticketPrefix,
+} from "./review";
 import { releaseRisks } from "./safety";
 import type { DatabaseRelease, VersioningProject } from "./types";
 
@@ -50,6 +57,63 @@ export interface PullDetail {
   own: boolean;
 }
 
+export interface PullComment {
+  id: string;
+  thread: string;
+  author: string;
+  body: string;
+  createdAt: string;
+  path: string | null;
+  line: number | null;
+  side: "new" | "old" | null;
+  review: "approved" | "changes_requested" | "commented" | null;
+  reply: boolean;
+}
+
+export interface CommentTarget {
+  path?: string;
+  line?: number;
+  side?: "new" | "old";
+  commit?: string | null;
+  replyTo?: string;
+}
+
+export function pullComments(repo: string, number: number) {
+  return forge<PullComment[]>(repo, "comments", { number });
+}
+
+export function commentPull(
+  repo: string,
+  number: number,
+  body: string,
+  target: CommentTarget = {},
+) {
+  return forge<null>(repo, "comment", {
+    number,
+    body,
+    ...target,
+    commit: target.commit ?? undefined,
+  });
+}
+
+export function updatePull(
+  repo: string,
+  number: number,
+  changes: { title?: string; body?: string; state?: "open" | "closed" },
+) {
+  return forge<PullRequest>(repo, "update", { number, ...changes });
+}
+
+export function commentThreads(comments: PullComment[]) {
+  const threads = new Map<string, PullComment[]>();
+  for (const comment of comments) {
+    const list = threads.get(comment.thread);
+    if (list) list.push(comment);
+    else threads.set(comment.thread, [comment]);
+  }
+  return [...threads.values()];
+}
+
 export interface ChangedFile {
   status: string;
   path: string;
@@ -84,8 +148,18 @@ const STATUS_LABELS: Record<string, string> = {
   T: "Typ geändert",
 };
 
-export function pullRequestBody(releases: DatabaseRelease[], files: ChangedFile[]) {
+export function pullRequestBody(
+  releases: DatabaseRelease[],
+  files: ChangedFile[],
+  tickets: TicketReference[] = [],
+) {
   const lines: string[] = [];
+  if (tickets.length) {
+    lines.push("## Tickets", "");
+    for (const ticket of tickets)
+      lines.push(`- ${ticket.url ? `[${ticket.key}](${ticket.url})` : ticket.key}`);
+    lines.push("");
+  }
   if (releases.length) {
     lines.push("## Datenbank-Releases", "");
     for (const release of releases) {
@@ -126,6 +200,7 @@ export async function pullRequestDraft(
   base: string,
   head: string,
   branch: string,
+  configuration: TicketConfiguration = DEFAULT_TICKETS,
 ) {
   const changes = await branchChanges(repo, base, head);
   const releases: DatabaseRelease[] = [];
@@ -135,11 +210,13 @@ export async function pullRequestDraft(
     if (text) releases.push(await parseRelease(text, project));
   }
   releases.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const tickets = findTickets([branch], configuration);
+  const title = releases.length
+    ? `Release ${releases.map((release) => release.id).join(", ")}`
+    : `Datenbankänderungen aus ${branch}`;
   return {
-    title: releases.length
-      ? `Release ${releases.map((release) => release.id).join(", ")}`
-      : `Datenbankänderungen aus ${branch}`,
-    body: pullRequestBody(releases, changes.files),
+    title: ticketPrefix(title, tickets),
+    body: pullRequestBody(releases, changes.files, tickets),
     releases,
     files: changes.files,
   };

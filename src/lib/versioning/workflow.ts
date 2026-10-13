@@ -3,6 +3,7 @@ import { changedFiles } from "./status";
 import type { DatabaseRelease, DatabaseTarget, RepositoryStatus } from "./types";
 
 export type VersioningArea =
+  | "overview"
   | "pipeline"
   | "history"
   | "development"

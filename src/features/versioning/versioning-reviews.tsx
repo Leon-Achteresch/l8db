@@ -1,30 +1,40 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLinkIcon, GitPullRequestIcon, LogOutIcon, RefreshCwIcon } from "lucide-react";
-import { useState } from "react";
+import { GitPullRequestIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
-import {
-  FORGE_LABELS,
-  type ForgeInfo,
-  forge,
-  openForgeUrl,
-  type PullRequest,
-} from "@/lib/versioning/forge";
+import { type ForgeInfo, forge, type PullRequest } from "@/lib/versioning/forge";
+import { findTickets } from "@/lib/versioning/review";
+import { useTickets } from "./use-tickets";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningForgeAccount } from "./versioning-forge-account";
 import { VersioningForgeConnect } from "./versioning-forge-connect";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningPullCreate } from "./versioning-pull-create";
-import { VersioningPullDetail } from "./versioning-pull-detail";
+import { VersioningPullPage } from "./versioning-pull-page";
 import { VersioningPullRow } from "./versioning-pull-row";
+import { VersioningTicketSettings } from "./versioning-ticket-settings";
+
+const FILTERS = [
+  ["open", "Offen"],
+  ["merged", "Gemergt"],
+  ["closed", "Geschlossen"],
+] as const;
+
+type PullState = (typeof FILTERS)[number][0];
 
 export function VersioningReviews({ workspace }: { workspace: VersioningWorkspace }) {
   const feature = useNewFeatureVisibility<HTMLElement>("versioning.reviews");
-  const { repo, run } = workspace;
+  const conversation = useNewFeatureVisibility<HTMLDivElement>("versioning.reviews.conversation");
+  const { repo } = workspace;
   const queryClient = useQueryClient();
-  const [state, setState] = useState<"open" | "merged">("open");
-  const [selected, setSelected] = useState<number | null>(null);
+  const tickets = useTickets(workspace);
+  const [state, setState] = useState<PullState>("open");
+  const [selected, setSelected] = useState<PullRequest | null>(null);
+  const [search, setSearch] = useState("");
   const info = useQuery({
     queryKey: ["versioning-forge", repo, "info"],
     retry: false,
@@ -41,12 +51,41 @@ export function VersioningReviews({ workspace }: { workspace: VersioningWorkspac
   });
   const reload = () => queryClient.invalidateQueries({ queryKey: ["versioning-forge", repo] });
   const remote = info.data?.remote;
+  const rows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return (pulls.data ?? [])
+      .map((pull) => ({
+        pull,
+        tickets: findTickets([pull.title, pull.head], tickets.configuration),
+      }))
+      .filter(
+        ({ pull, tickets: found }) =>
+          !needle ||
+          `${pull.number} ${pull.title} ${pull.author} ${pull.head} ${found.map((ticket) => ticket.key).join(" ")}`
+            .toLowerCase()
+            .includes(needle),
+      );
+  }, [pulls.data, search, tickets.configuration]);
+  const open =
+    selected && (pulls.data?.find((pull) => pull.number === selected.number) ?? selected);
+  if (connected && open)
+    return (
+      <div ref={conversation.ref}>
+        <VersioningPullPage
+          workspace={workspace}
+          pull={open}
+          tickets={tickets}
+          onBack={() => setSelected(null)}
+          onChanged={() => void reload()}
+        />
+      </div>
+    );
   return (
-    <section ref={feature.ref} className="space-y-5" aria-label="Reviews">
-      <div className="flex items-center gap-2">
-        <GitPullRequestIcon className="size-4 text-primary" />
+    <section ref={feature.ref} className="space-y-4" aria-label="Pull Requests">
+      <div className="flex items-center gap-1">
+        <GitPullRequestIcon className="mr-1 size-4 text-primary" />
         <h2 className="flex flex-1 items-center gap-2 text-sm font-semibold">
-          Reviews{feature.isNew && <NewBadge />}
+          Pull Requests{feature.isNew && <NewBadge />}
         </h2>
         {connected && (
           <VersioningIconButton
@@ -55,31 +94,11 @@ export function VersioningReviews({ workspace }: { workspace: VersioningWorkspac
             onClick={() => void reload()}
           />
         )}
-        {remote && (
-          <VersioningIconButton
-            icon={ExternalLinkIcon}
-            label="Repository im Browser öffnen"
-            onClick={() => void run(() => openForgeUrl(remote.web))}
-          />
-        )}
-        {connected && (
-          <VersioningIconButton
-            icon={LogOutIcon}
-            label="Verbindung zur Git-Plattform trennen"
-            onClick={() =>
-              void run(async () => {
-                await forge(repo, "disconnect");
-                await reload();
-              }, "Zugangstoken entfernt")
-            }
-          />
+        <VersioningTicketSettings workspace={workspace} tickets={tickets} />
+        {connected && info.data && (
+          <VersioningForgeAccount workspace={workspace} info={info.data} onChanged={reload} />
         )}
       </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Alle Kunden teilen ein Repository. Änderungen kommen über Pull Requests in den Hauptbranch;
-        Kolleginnen und Kollegen prüfen sie hier oder auf der Plattform. Ausgeliefert wird nur, was
-        gemergt ist.
-      </p>
       {info.isLoading && <Skeleton className="h-24 rounded-xl" />}
       {info.error && (
         <p role="alert" className="rounded-lg bg-destructive/5 p-3 text-xs text-destructive">
@@ -97,71 +116,69 @@ export function VersioningReviews({ workspace }: { workspace: VersioningWorkspac
       )}
       {connected && info.data && remote && (
         <>
-          <p className="text-[11px] text-muted-foreground">
-            {info.data.kind ? FORGE_LABELS[info.data.kind] : remote.host} ·{" "}
-            <span className="font-mono">{remote.path}</span> · angemeldet als {info.data.account}
-          </p>
           <VersioningPullCreate
             workspace={workspace}
             defaultBranch={info.data.defaultBranch ?? null}
-            onCreated={(number) => {
+            onCreated={(pull) => {
               setState("open");
-              setSelected(number);
+              setSelected(pull);
               void reload();
             }}
           />
-          <fieldset className="flex gap-1" aria-label="Pull Requests filtern">
-            {(
-              [
-                ["open", "Offen"],
-                ["merged", "Gemergt"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={state === value}
-                onClick={() => {
-                  setState(value);
-                  setSelected(null);
-                }}
-                className={cn(
-                  "rounded-lg px-2.5 py-1.5 text-xs transition-colors",
-                  state === value
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted/50",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </fieldset>
+          <div className="flex flex-wrap items-center gap-2">
+            <fieldset
+              className="flex gap-0.5 rounded-lg bg-muted/40 p-0.5"
+              aria-label="Pull Requests filtern"
+            >
+              {FILTERS.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={state === value}
+                  onClick={() => setState(value)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs transition-colors",
+                    state === value
+                      ? "bg-background font-medium text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </fieldset>
+            <div className="relative min-w-40 flex-1">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Pull Requests durchsuchen"
+                placeholder="Titel, Branch, Ticket…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+          </div>
           {pulls.isLoading && <Skeleton className="h-32 rounded-xl" />}
           {pulls.error && (
             <p role="alert" className="rounded-lg bg-destructive/5 p-3 text-xs text-destructive">
               {String(pulls.error)}
             </p>
           )}
-          {pulls.data && !pulls.data.length && (
-            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-              {state === "open" ? "Keine offenen Pull Requests." : "Noch nichts gemergt."}
+          {pulls.data && !rows.length && (
+            <p className="px-1 py-8 text-center text-xs text-muted-foreground">
+              {search.trim()
+                ? "Keine Treffer."
+                : state === "open"
+                  ? "Keine offenen Pull Requests."
+                  : state === "merged"
+                    ? "Noch nichts gemergt."
+                    : "Keine geschlossenen Pull Requests."}
             </p>
           )}
           <ul className="space-y-0.5">
-            {pulls.data?.map((pull) => (
+            {rows.map(({ pull, tickets: found }) => (
               <li key={pull.number}>
-                <VersioningPullRow
-                  pull={pull}
-                  selected={selected === pull.number}
-                  onSelect={() => setSelected(selected === pull.number ? null : pull.number)}
-                />
-                {selected === pull.number && (
-                  <VersioningPullDetail
-                    workspace={workspace}
-                    pull={pull}
-                    onChanged={() => void reload()}
-                  />
-                )}
+                <VersioningPullRow pull={pull} tickets={found} onSelect={() => setSelected(pull)} />
               </li>
             ))}
           </ul>
