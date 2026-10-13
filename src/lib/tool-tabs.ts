@@ -3,22 +3,24 @@ import {
   ArchiveIcon,
   ArrowRightLeftIcon,
   BlocksIcon,
+  DiffIcon,
   DownloadIcon,
   FilePlusIcon,
   FileTextIcon,
   GitBranchIcon,
-  GitCompareIcon,
+  GitCompareArrowsIcon,
   HashIcon,
+  HeartPulseIcon,
+  ListTreeIcon,
   type LucideIcon,
-  NetworkIcon,
   NotebookPenIcon,
   PlugIcon,
   RefreshCwIcon,
   SettingsIcon,
-  StethoscopeIcon,
   TriangleAlertIcon,
   TypeIcon,
-  WorkflowIcon,
+  WaypointsIcon,
+  ZapIcon,
 } from "lucide-react";
 import { type LazyExoticComponent, lazy } from "react";
 
@@ -86,7 +88,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   compare: {
     path: "/compare",
     label: "Vergleich",
-    Icon: GitCompareIcon,
+    Icon: DiffIcon,
     iconColor: "text-indigo-500",
     Component: lazy(() =>
       import("@/features/compare/compare-view").then((m) => ({ default: m.CompareView })),
@@ -95,7 +97,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   "schema-compare": {
     path: "/schema-compare",
     label: "Schema-Vergleich",
-    Icon: GitCompareIcon,
+    Icon: GitCompareArrowsIcon,
     iconColor: "text-indigo-500",
     Component: lazy(() =>
       import("@/features/schema-compare/schema-compare-view").then((m) => ({
@@ -106,7 +108,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   "er-diagram": {
     path: "/er-diagram",
     label: "ER-Diagramm",
-    Icon: NetworkIcon,
+    Icon: WaypointsIcon,
     iconColor: "text-blue-500",
     Component: lazy(() =>
       import("@/features/er-diagram/er-diagram-view").then((m) => ({ default: m.ErDiagramView })),
@@ -162,7 +164,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   health: {
     path: "/health",
     label: "Health",
-    Icon: StethoscopeIcon,
+    Icon: HeartPulseIcon,
     iconColor: "text-rose-500",
     Component: lazy(() =>
       import("@/features/health/health-view").then((m) => ({ default: m.HealthView })),
@@ -238,7 +240,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   "saved-plan": {
     path: "/saved-plan",
     label: "Gespeicherter Plan",
-    Icon: FileTextIcon,
+    Icon: ListTreeIcon,
     iconColor: "text-cyan-500",
     Component: lazy(() =>
       import("@/features/explain/saved-plan-view").then((m) => ({ default: m.SavedPlanView })),
@@ -247,7 +249,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   automation: {
     path: "/automation",
     label: "Automatisierung",
-    Icon: WorkflowIcon,
+    Icon: ZapIcon,
     iconColor: "text-fuchsia-500",
     Component: lazy(() =>
       import("@/features/automation/automation-view").then((m) => ({
