@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { afterAll, expect, mock, test } from "bun:test";
 import type { SavedConnection } from "../src/lib/connections";
 import type { ManagedObject } from "../src/lib/versioning/types";
 
@@ -44,4 +44,8 @@ test("Oracle metadata reads during capture stay out of the SQL task list", async
   await captureObject(connection, null, object("package", "APP_PKG"));
   expect(queryOptions).toHaveLength(3);
   for (const options of queryOptions) expect(options).toMatchObject({ track: false });
+});
+
+afterAll(() => {
+  mock.module("../src/lib/db", () => db);
 });
