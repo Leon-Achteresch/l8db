@@ -9,6 +9,7 @@ import {
   installAppRequestProbe,
   requestCounts,
   requestsSince,
+  waitForAppMetadata,
 } from "./fixtures/perf-app-requests";
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
@@ -58,7 +59,12 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const navigator = page.getByRole("complementary", { name: "Query-Navigator" });
       await navigator.waitFor();
       await navigator.getByText(/\d+ \/ \d+ Tabellen/).waitFor();
-      await page.waitForTimeout(500);
+      await waitForAppMetadata(page, [
+        "list_tables",
+        "list_all_columns",
+        "list_functions",
+        "list_procedures",
+      ]);
       const operationsBefore = await appRequestSnapshot(page);
       if (throttled) {
         const cdp = await page.context().newCDPSession(page);
