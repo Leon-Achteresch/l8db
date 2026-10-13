@@ -93,6 +93,20 @@ The final Chromium history diagnostic also recorded zero operation/idle database
 
 Import coverage currently validates one candidate against 5,000 saved entries; importing a 5,000-entry file still needs a separate bounded-rendering and resource gate. Immediate reopen, route unmount and editor-focus preservation after loading SQL also need dedicated coverage beyond the tested ordinary close/reopen cycles.
 
+### Confirmed open budgets (2026-10-13)
+
+Run `38373910606` on `f49cbad8` confirmed these failures with two reruns each (median of three attempts). Values are the three attempts in CI. In the follow-up run `38376093480` on `f714db40`, the three Chromium rows passed the median of three and Windows core was green. That run again confirmed 22 constrained failures (the route switches below plus `/tables`, `/query` and `/` sidebar toggles, table open, palette, SQL typing, chart click, SQL tool menu, SQL/table menus, proxy user menu and wide results) and the same 13 WebKit failures (the six grid FPS scenarios, wide result, workspace scroll, row heights, navigator, live monitor and the two history tests).
+
+| Suite | Scenario | Measured | Budget | Findings |
+| --- | --- | --- | --- | --- |
+| Chromium | History sheet cold open, 5,000 entries | 195-288 ms | 120 ms | Profile at 4x CPU: panel render 50 ms (virtualizer measurements for 5,000 rows 27 ms), Toaster 18 ms, search focus 44 ms forced layout, closing menu presence 25 ms. Explicit `dir` on `<html>` and non-modal menus showed no measurable effect. Next step: prepare the sheet while the tools menu is open. |
+| Chromium | Query navigator cold open, 3,700 objects | 123-161 ms | 120 ms | Mounting registers a resizable panel with a forced layout and relays out Monaco. Keeping the panel registered and only collapsing it showed no measurable effect. |
+| Chromium | Workspace table scroll, 5,000 x 120 | p95 21.9-22.3 ms | < 21 ms | Not analysed yet. |
+| Constrained | Route switches `/`, `/tables`, `/query`, `/er-diagram`, `/monitor`, `/sequences`, `/view-editor`, `/matviews`, `/dashboard`, `/settings`, `/release-notes` | worst frame 117-367 ms | 100 ms | Local breakdown of the longest task: rendering-bound views (`/tables`, `/matviews`, `/dashboard`, `/settings`, `/release-notes`, `/view-editor`) spend 110-144 ms in style recalculation for only 300-1,200 elements; selector matching is below 100 ms even with selector statistics enabled. JavaScript-bound views (`/query`, `/er-diagram`, `/monitor`, `/compare`, `/query-builder`, `/create-table`) spend 160-300 ms mounting. Fixes need view-specific work such as rendering only the visible part first. |
+| Constrained | Menus, palette, chart click, SQL typing, table open, wide results, sidebar on `/tables` | various | 48-100 ms | Several of these timed out before because earlier tests left the sidebar collapsed or a modal open; they now fail on timing only. |
+| WebKit (macOS) | Grid FPS (table/result 13/50/121 columns), wide result, workspace scroll, row heights | 52-59 fps | > 59 fps | macOS runners only; not reproducible on Linux WebKit. |
+| WebKit (macOS) | History focus and Tab order | - | - | macOS WebKit does not move Tab focus to buttons and handles programmatic focus differently; Linux WebKit passes. |
+
 ## Performance test (query editor and table tab)
 
 The query editor (Analyse → Performance) and the table/view tab *Performance* repeat one read-only statement and report min, median, p95, max, average, throughput and errors.
