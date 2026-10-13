@@ -39,6 +39,8 @@ const SUITES = {
     "tests/perf-live-monitor.test.ts",
     "tests/perf-dashboard-bi.test.ts",
     "tests/perf-versioning-pipeline.test.ts",
+    "tests/perf-versioning-drift.test.ts",
+    "tests/perf-versioning-review.test.ts",
     "tests/perf-sync.test.ts",
     "tests/perf-invalid-objects.test.ts",
     "tests/perf-nav-morph.test.ts",

@@ -34,6 +34,7 @@ export async function captureObject(
   object: ManagedObject,
   targetSchema?: string | null,
   transaction?: string,
+  knownOid?: string | null,
 ): Promise<ObjectSnapshot> {
   const side = {
     ...object.selection,
@@ -152,7 +153,9 @@ export async function captureObject(
       );
     }
   } else {
-    if (side.objectType === "routine" || side.objectType === "procedure") {
+    if (knownOid && (side.objectType === "routine" || side.objectType === "procedure")) {
+      side.objectOid = knownOid;
+    } else if (side.objectType === "routine" || side.objectType === "procedure") {
       const objects = await listCompareObjects(connection, side);
       const matches = objects.filter((entry) => entry.name === name);
       if (matches.length !== 1)

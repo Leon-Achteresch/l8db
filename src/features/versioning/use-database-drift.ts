@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type CompareSideSelection, EMPTY_COMPARE_SIDE } from "@/lib/compare-types";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { type DriftEntry, saveDrift, scanDrift } from "@/lib/versioning/drift";
+import {
+  clearDriftMemo,
+  type DriftEntry,
+  type DriftProgress,
+  recheckDrift,
+  saveDrift,
+  scanDrift,
+} from "@/lib/versioning/drift";
 import type { VersioningWorkspace } from "./use-versioning";
 
 const sourceKey = (projectId: string, branch: string | null | undefined) =>
@@ -57,7 +64,9 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
   const [scanning, setScanning] = useState(false);
   const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<DriftProgress | null>(null);
   const revision = useRef(0);
+  const controller = useRef<AbortController | null>(null);
   const alive = useRef(true);
   const connection = connections.find((item) => item.id === source.connectionId) ?? null;
   const mismatch = Boolean(connection && project && connection.kind !== project.kind);
@@ -66,28 +75,44 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
     ? [connection.name, source.database, source.schema].filter(Boolean).join(" · ")
     : "";
   const key = project && ready ? `${project.id}\u0000${status?.branch}\u0000${scope}` : "";
-  const scan = useCallback(async () => {
-    if (!project || !connection || mismatch || !source.schema)
-      throw new Error("Eine passende Entwicklungsdatenbank mit Schema verknüpfen.");
-    const request = ++revision.current;
-    setScanning(true);
-    setError(null);
-    try {
-      const result = await scanDrift(repo, project, connection, source, () => undefined);
-      if (request !== revision.current || !alive.current) return;
-      setEntries(result);
-      setSelected(result.map((entry) => entry.object.id));
-      setFocus((current) =>
-        current && result.some((entry) => entry.object.id === current) ? current : null,
-      );
-      setScannedAt(Date.now());
-    } catch (cause) {
-      if (request === revision.current && alive.current)
-        setError(String(cause).replace(/^Error: /, ""));
-    } finally {
-      if (request === revision.current && alive.current) setScanning(false);
-    }
-  }, [repo, project, connection, mismatch, source]);
+  const scan = useCallback(
+    async (full = false) => {
+      if (!project || !connection || mismatch || !source.schema)
+        throw new Error("Eine passende Entwicklungsdatenbank mit Schema verknüpfen.");
+      const request = ++revision.current;
+      controller.current?.abort();
+      const abort = new AbortController();
+      controller.current = abort;
+      setScanning(true);
+      setError(null);
+      setProgress(null);
+      try {
+        const result = await scanDrift(repo, project, connection, source, {
+          full,
+          signal: abort.signal,
+          progress: (next) => {
+            if (request === revision.current && alive.current) setProgress(next);
+          },
+        });
+        if (request !== revision.current || !alive.current) return;
+        setEntries(result);
+        setSelected(result.map((entry) => entry.object.id));
+        setFocus((current) =>
+          current && result.some((entry) => entry.object.id === current) ? current : null,
+        );
+        setScannedAt(Date.now());
+      } catch (cause) {
+        if (request === revision.current && alive.current && !abort.signal.aborted)
+          setError(String(cause).replace(/^Error: /, ""));
+      } finally {
+        if (request === revision.current && alive.current) {
+          setScanning(false);
+          setProgress(null);
+        }
+      }
+    },
+    [repo, project, connection, mismatch, source],
+  );
   const scanned = useRef("");
   useEffect(() => {
     if (!key || scanned.current === key || workspace.dirty) return;
@@ -98,6 +123,8 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
     alive.current = true;
     return () => {
       alive.current = false;
+      controller.current?.abort();
+      clearDriftMemo();
     };
   }, []);
   const setSource = (next: CompareSideSelection) => {
@@ -117,6 +144,8 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
     if (JSON.stringify(value) === JSON.stringify({ ...source, objectName: null, objectOid: null }))
       return;
     revision.current++;
+    controller.current?.abort();
+    clearDriftMemo();
     setSourceState(value);
     localStorage.setItem(sourceKey(project.id, status?.branch), JSON.stringify(value));
     setEntries(null);
@@ -125,9 +154,16 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
     setScanning(false);
   };
   const take = async (ids: string[]) => {
-    if (!project) return [];
+    if (!project || !connection || !source.schema) return [];
     const chosen = (entries ?? []).filter((entry) => ids.includes(entry.object.id));
     if (!chosen.length) return [];
+    const stale = await recheckDrift(connection, source, chosen);
+    if (stale.length) {
+      await scan();
+      throw new Error(
+        "Die Datenbank hat sich seit der letzten Prüfung geändert. Die Liste ist aktualisiert; Auswahl prüfen und erneut committen.",
+      );
+    }
     await saveDrift(repo, project, workspace.projectText, chosen);
     const taken = new Set(chosen.map((entry) => entry.object.id));
     setEntries((items) => items?.filter((entry) => !taken.has(entry.object.id)) ?? null);
@@ -152,8 +188,10 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
     setFocus,
     scanning,
     scannedAt,
+    progress,
     error,
     scan: () => void scan(),
+    scanFully: () => void scan(true),
     take,
   };
 }

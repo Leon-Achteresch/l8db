@@ -1,4 +1,4 @@
-import { CopyIcon, RocketIcon, TagIcon, Undo2Icon } from "lucide-react";
+import { CopyIcon, RocketIcon, TagIcon, TicketIcon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -10,9 +10,12 @@ import {
 import { relativeTime } from "@/lib/branching/model";
 import { cn } from "@/lib/utils";
 import { STAGE_LABELS } from "@/lib/versioning/delivery";
+import { openForgeUrl } from "@/lib/versioning/forge";
 import type { CommitMarks } from "@/lib/versioning/history";
+import type { TicketReference } from "@/lib/versioning/review";
 import type { DatabaseRelease, TargetStage } from "@/lib/versioning/types";
 import type { GitGraphCommit, graphLanes } from "@/lib/versioning/workflow";
+import { VersioningTicketChips } from "./versioning-ticket-chips";
 
 const ROW = 30;
 const LANE = 14;
@@ -26,8 +29,10 @@ export function VersioningHistoryRow({
   canRollback,
   onOpen,
   onRollout,
+  tickets = [],
 }: {
   row: ReturnType<typeof graphLanes>[number];
+  tickets?: TicketReference[];
   width: number;
   head: string | null;
   marks?: CommitMarks;
@@ -103,6 +108,11 @@ export function VersioningHistoryRow({
             <span className={cn("min-w-0 truncate text-xs", commit.id === head && "font-medium")}>
               {commit.subject}
             </span>
+            <VersioningTicketChips
+              tickets={tickets.slice(0, 2)}
+              linked={false}
+              className="shrink-0 flex-nowrap"
+            />
             <span className="flex min-w-0 flex-1 gap-1 overflow-hidden">
               {releases.map((release) => (
                 <span
@@ -202,6 +212,17 @@ export function VersioningHistoryRow({
             <CopyIcon />
             Commit-Hash kopieren
           </ContextMenuItem>
+          {tickets
+            .filter((ticket) => ticket.url)
+            .map((ticket) => (
+              <ContextMenuItem
+                key={ticket.key}
+                onSelect={() => void openForgeUrl(ticket.url ?? "").catch(() => undefined)}
+              >
+                <TicketIcon />
+                {ticket.key} öffnen
+              </ContextMenuItem>
+            ))}
         </ContextMenuContent>
       </ContextMenu>
     </li>

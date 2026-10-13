@@ -31,6 +31,22 @@ export async function readFile(
   return versioningRepository({ action: "read", repo, path, revision });
 }
 
+export async function readFiles(
+  repo: string,
+  paths: string[],
+): Promise<Record<string, string | null>> {
+  if (!paths.length) return {};
+  return versioningRepository({ action: "read-many", repo, paths });
+}
+
+export async function readDriftCache(repo: string): Promise<string | null> {
+  return versioningRepository({ action: "drift-cache-read", repo });
+}
+
+export async function writeDriftCache(repo: string, content: string): Promise<void> {
+  await versioningRepository({ action: "drift-cache-write", repo, content });
+}
+
 export async function saveFile(
   repo: string,
   path: string,
