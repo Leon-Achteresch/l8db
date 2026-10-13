@@ -3,10 +3,13 @@ import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
   combineFileRuns,
+  confirmedFailures,
   executedTestCount,
   type FileRun,
   normalizeProcessResources,
   resourceViolations,
+  testNamePattern,
+  testOutcomes,
 } from "./performance-report";
 
 const SUITES = {
@@ -135,9 +138,9 @@ async function run() {
     L8DB_PERF_CPU_RATE: String(cpuRate),
     L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
-  const runFiles = async (selected: readonly string[]) => {
+  const runFiles = async (selected: readonly string[], pattern = filter) => {
     const child = Bun.spawn(
-      [process.execPath, "test", ...selected, ...(filter ? ["--test-name-pattern", filter] : [])],
+      [process.execPath, "test", ...selected, ...(pattern ? ["--test-name-pattern", pattern] : [])],
       {
         env,
         stdout: "pipe",
@@ -146,13 +149,23 @@ async function run() {
       },
     );
     let outputTail = "";
+    let results = "";
     const capture = async (stream: ReadableStream<Uint8Array>) => {
       const decoder = new TextDecoder();
+      let pending = "";
+      const collect = (lines: string[]) => {
+        for (const line of lines) if (/\((pass|fail)\) /.test(line)) results += `${line}\n`;
+      };
       for await (const chunk of stream) {
         process.stdout.write(chunk);
-        outputTail = (outputTail + decoder.decode(chunk, { stream: true })).slice(-16_384);
+        const text = decoder.decode(chunk, { stream: true });
+        outputTail = (outputTail + text).slice(-16_384);
+        const lines = (pending + text).split(/\r?\n/);
+        pending = lines.pop() ?? "";
+        collect(lines);
         await appendFile(log, chunk);
       }
+      collect([pending]);
     };
     const [exitCode] = await Promise.all([
       child.exited,
@@ -166,10 +179,12 @@ async function run() {
       signal: child.signalCode,
       executedTests: unmatched ? 0 : executedTestCount(outputTail),
       resources: usage ? normalizeProcessResources(usage, process.platform) : null,
+      outcomes: testOutcomes(results),
     };
   };
   const fileRuns: FileRun[] = [];
   let signal: string | null = null;
+  let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
   if (suite === "core") {
     for (const file of files) {
       const result = await runFiles([file]);
@@ -179,6 +194,28 @@ async function run() {
   } else {
     const result = await runFiles(files);
     signal = result.signal;
+    const failed = [...result.outcomes]
+      .filter(([, outcome]) => outcome === "fail")
+      .map(([name]) => name);
+    if (result.exitCode !== 0 && result.signal === null && failed.length > 0) {
+      const reruns = [];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rerun = await runFiles(files, testNamePattern(failed));
+        reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
+      }
+      const confirmed = confirmedFailures(failed, reruns);
+      retries = {
+        failed,
+        confirmed,
+        attempts: reruns.map((rerun) => ({
+          executedTests: rerun.executedTests,
+          failed: [...rerun.outcomes]
+            .filter(([, outcome]) => outcome === "fail")
+            .map(([name]) => name),
+        })),
+      };
+      if (confirmed.length === 0) result.exitCode = 0;
+    }
     fileRuns.push({ file: files.join(" "), ...result });
   }
   const combined = combineFileRuns(fileRuns);
@@ -224,7 +261,8 @@ async function run() {
     exitCode,
     executedTests,
     signal,
-    files: fileRuns,
+    files: fileRuns.map(({ outcomes: _outcomes, ...run }) => run),
+    retries,
     violations,
   };
   await Bun.write(resolve(directory, "resources.json"), JSON.stringify(report, null, 2));

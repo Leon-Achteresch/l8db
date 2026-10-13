@@ -4,9 +4,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   combineFileRuns,
+  confirmedFailures,
   executedTestCount,
   normalizeProcessResources,
   resourceViolations,
+  testNamePattern,
+  testOutcomes,
 } from "../scripts/performance-report";
 import { parsePerformanceArgs } from "../scripts/test-performance";
 
@@ -144,4 +147,34 @@ test("per-file core runs report the largest peak, summed CPU and every failed fi
   expect(crashed.executedTests).toBeNull();
   expect(crashed.resources).toBeNull();
   expect(crashed.failedFiles).toEqual(["b.test.ts"]);
+});
+
+test("budget failures count only when the median of three attempts fails", () => {
+  const output = [
+    "\u001b[32m(pass)\u001b[0m /about: Wechsel [12.00ms]",
+    "(fail) /query: Wechsel, Leerlauf und Scrollen mit 4× CPU-Drosselung [2592.02ms]",
+    "(fail) Gruppe > Menü (erster) Klick",
+    "noise (pass) not a result",
+  ].join("\r\n");
+  const outcomes = testOutcomes(output);
+  expect([...outcomes]).toEqual([
+    ["/about: Wechsel", "pass"],
+    ["/query: Wechsel, Leerlauf und Scrollen mit 4× CPU-Drosselung", "fail"],
+    ["Gruppe > Menü (erster) Klick", "fail"],
+  ]);
+  const pattern = new RegExp(
+    testNamePattern(["/query: Wechsel 4× [x]", "Gruppe > Menü (erster) Klick"]),
+  );
+  expect(pattern.test("/query: Wechsel 4× [x]")).toBe(true);
+  expect(pattern.test("Gruppe Menü (erster) Klick")).toBe(true);
+  expect(pattern.test("Gruppe Menü (erster) Klick extra")).toBe(false);
+  const failed = ["a", "b", "c"];
+  const rerun = (failures: string[], executedTests: number | null = 3) => ({
+    outcomes: new Map(failures.map((name) => [name, "fail" as const])),
+    executedTests,
+  });
+  expect(confirmedFailures(failed, [rerun([]), rerun(["b"])])).toEqual(["b"]);
+  expect(confirmedFailures(failed, [rerun([]), rerun([])])).toEqual([]);
+  expect(confirmedFailures(failed, [rerun([]), rerun([], 2)])).toEqual(failed);
+  expect(confirmedFailures(failed, [rerun([]), rerun([], null)])).toEqual(failed);
 });
