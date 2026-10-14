@@ -57,6 +57,9 @@ export function createEditorKeydown({
       "query.comment": () => {
         void editor.getAction("editor.action.commentLine")?.run();
       },
+      "query.packageMembers": () => {
+        void editor.getAction("editor.action.quickOutline")?.run();
+      },
       "query.bookmark": toggleBookmarkAtCursor,
       "query.nextBookmark": () => gotoBookmarkLine("next"),
       "query.prevBookmark": () => gotoBookmarkLine("previous"),

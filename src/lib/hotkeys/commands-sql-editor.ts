@@ -117,6 +117,16 @@ export const SQL_EDITOR_COMMANDS: HotkeyCommand[] = [
     reference: "VS Code: Umschalt+Alt+F",
   },
   {
+    id: "query.packageMembers",
+    routeScope: "query",
+    label: "Package-Funktionen suchen",
+    description: "Funktionen und Prozeduren eines Oracle-Packages im Editor suchen und anspringen",
+    area: "SQL-Editor",
+    defaultHotkey: "Control+Shift+G",
+    origin: "l8db",
+    reference: "VS Code: Strg+Umschalt+O Symbol im Editor",
+  },
+  {
     id: "query.openFile",
     label: "SQL-Datei öffnen",
     description: "Datei als neuen Query-Tab laden",

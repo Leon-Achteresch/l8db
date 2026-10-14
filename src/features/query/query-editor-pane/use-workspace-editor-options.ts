@@ -13,7 +13,7 @@ export function useWorkspaceEditorOptions(
     editor.updateOptions({
       folding: workspace.folding,
       showFoldingControls: "always",
-      stickyScroll: { enabled: workspace.stickyScroll },
+      stickyScroll: { enabled: workspace.stickyScroll, defaultModel: "foldingProviderModel" },
       cursorStyle: workspace.cursorStyle,
       cursorBlinking: workspace.cursorBlinking,
       renderLineHighlight: workspace.highlightLine ? "line" : "none",
