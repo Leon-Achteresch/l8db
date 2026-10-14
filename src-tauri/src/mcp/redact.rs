@@ -1163,7 +1163,10 @@ mod tests {
         assert!(sql_words("select 1 # delete\nfrom t").contains(&"delete".to_string()));
         assert_eq!(statement_count("UPDATE t SET a = '\\'; COMMIT; --'"), 2);
         assert_eq!(statement_count("SELECT 1 # x; DELETE FROM t"), 2);
-        assert_eq!(write_word("SELECT 1 # x\n; DELETE FROM t").as_deref(), Some("delete"));
+        assert_eq!(
+            write_word("SELECT 1 # x\n; DELETE FROM t").as_deref(),
+            Some("delete")
+        );
         assert_eq!(statement_count("SELECT * FROM #temp"), 1);
         assert_eq!(statement_count("SELECT 'C:\\path\\' AS p"), 1);
         assert_eq!(
