@@ -88,7 +88,7 @@ export function DevView() {
               NEW-Badge
             </TabsTrigger>
             <TabsTrigger value="transfer-cartoon" className="flex-none px-4">
-              Transfer-Cartoon
+              Transfer-Animation
             </TabsTrigger>
           </TabsList>
         </div>

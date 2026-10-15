@@ -1,20 +1,20 @@
 export const STAGE_W = 960;
 export const STAGE_H = 540;
 export const GROUND = 430;
-export const SOURCE_X = 210;
-export const TARGET_X = 750;
-export const PORTAL = { x: 190, y: 105 };
+export const SOURCE_X = 230;
+export const TARGET_X = 730;
+export const PORTAL = { x: 250, y: 92 };
 export const MAX_PARTICLES = 700;
 
 export const TIMELINE = {
-  battle: 1.2,
+  battle: 1.4,
   portal: 8.6,
-  arrival: 9.3,
-  charge: 11,
-  barrage: 12.1,
-  boom: 13.7,
-  outro: 15.6,
-  done: 19,
+  arrival: 9.2,
+  charge: 11.2,
+  barrage: 12.3,
+  boom: 13.9,
+  outro: 15.8,
+  done: 19.5,
 } as const;
 
 export type Phase = "intro" | keyof typeof TIMELINE;
@@ -31,6 +31,16 @@ export const PHASES: Phase[] = [
   "done",
 ];
 
+export type Speaker = "source" | "target";
+
+export const SUBTITLES: { from: number; to: number; speaker: Speaker; text: string }[] = [
+  { from: 1.6, to: 3.4, speaker: "source", text: "Dein Name? Gehört ab jetzt mir." },
+  { from: 3.8, to: 5.8, speaker: "target", text: "W-was? Das … das ist mein Schema!" },
+  { from: 9.8, to: 11.6, speaker: "target", text: "Oh Mann … oh Mann, oh Mann …" },
+  { from: 11.9, to: 13.6, speaker: "source", text: "Wubba lubba DROP DROP." },
+  { from: 16.4, to: 18.8, speaker: "source", text: "Und das, mein Freund, ist ein Transfer." },
+];
+
 export type Glyph = "table" | "row" | "json" | "sql" | "bits";
 
 export type ParticleKind =
@@ -41,10 +51,10 @@ export type ParticleKind =
   | "spark"
   | "debris"
   | "smoke"
+  | "fire"
   | "hit"
   | "pop"
   | "ring"
-  | "say"
   | "flake";
 
 export type Particle = {
@@ -95,9 +105,8 @@ export type Scene = {
 };
 
 const GLYPHS: Glyph[] = ["table", "row", "json", "sql", "bits", "table", "row"];
-const SHOT_COLORS = ["#97ce4c", "#f2e94e", "#3fd0ff", "#ff7ad9", "#ff9f43"];
-const BOOMS = ["POW!", "ZACK!", "BAM!", "KLONK!", "WUMMS!"];
-const COSMETIC = new Set<ParticleKind>(["spark", "smoke", "flake", "ring", "debris"]);
+const SHOT_COLORS = ["#8fd14f", "#5fd4ff", "#ffd166", "#ff8fab"];
+const COSMETIC = new Set<ParticleKind>(["spark", "smoke", "fire", "flake", "ring", "debris"]);
 
 export function phaseAt(t: number): Phase {
   let phase: Phase = "intro";
@@ -119,43 +128,47 @@ export function easeInOut(value: number) {
 
 export function shipPose(t: number) {
   if (t < TIMELINE.arrival) return null;
-  const enter = easeOutCubic(clamp01((t - TIMELINE.arrival) / 1.5));
-  const leave = easeInOut(clamp01((t - TIMELINE.outro - 0.8) / 1.6));
+  const enter = easeInOut(clamp01((t - TIMELINE.arrival) / 2.2));
+  const leave = easeInOut(clamp01((t - TIMELINE.outro - 0.9) / 1.8));
   const travel = enter * (1 - leave);
   return {
-    x: PORTAL.x + (610 - PORTAL.x) * travel,
-    y: PORTAL.y + (116 - PORTAL.y) * travel + Math.sin(t * 2.1) * 4 * travel,
-    scale: 0.1 + 0.68 * travel,
-    tilt: (1 - enter) * -0.25 + leave * -0.2,
-    speed: (1 - enter) * enter * 4 + leave * (1 - leave) * 4,
+    x: PORTAL.x + (520 - PORTAL.x) * travel,
+    y: PORTAL.y + (66 - PORTAL.y) * travel + Math.sin(t * 0.9) * 3 * travel,
+    scale: 0.16 + 0.7 * travel,
+    tilt: (1 - enter) * 0.08 - leave * 0.06,
+    speed: clamp01((1 - enter) * enter * 4 + leave * (1 - leave) * 4),
   };
 }
 
 export function shipCannons(pose: NonNullable<ReturnType<typeof shipPose>>) {
-  return [-170, 150].map((offset) => ({
+  return [-210, 190].map((offset) => ({
     x: pose.x + offset * pose.scale,
-    y: pose.y + 62 * pose.scale,
+    y: pose.y + 74 * pose.scale,
   }));
 }
 
 export function shipOrb(pose: NonNullable<ReturnType<typeof shipPose>>) {
-  return { x: pose.x - 10 * pose.scale, y: pose.y + 74 * pose.scale };
+  return { x: pose.x - 10 * pose.scale, y: pose.y + 96 * pose.scale };
 }
 
 export function portalOpen(t: number) {
-  const open = easeOutCubic(clamp01((t - TIMELINE.portal) / 0.7));
-  const close = clamp01((t - TIMELINE.outro - 2.3) / 0.6);
-  return open * (1 - close * close);
+  const first =
+    easeOutCubic(clamp01((t - TIMELINE.portal) / 0.8)) *
+    (1 - easeInOut(clamp01((t - TIMELINE.arrival - 2) / 0.7)));
+  const second =
+    easeOutCubic(clamp01((t - TIMELINE.outro - 0.5) / 0.6)) *
+    (1 - easeInOut(clamp01((t - TIMELINE.outro - 2.7) / 0.6)));
+  return Math.max(first, second);
 }
 
 export function nameSlots(name: string, centerX: number) {
-  const width = 13;
+  const width = 11;
   const start = centerX - (name.length * width) / 2 + width / 2;
   return Array.from(name, (_, index) => start + index * width);
 }
 
-export const LABEL_Y = GROUND - 205;
-export const MUZZLE = { x: SOURCE_X + 118, y: GROUND - 82 };
+export const LABEL_Y = GROUND - 212;
+export const MUZZLE = { x: SOURCE_X + 106, y: GROUND - 80 };
 
 function random(scene: Scene) {
   scene.seed = (scene.seed + 0x6d2b79f5) | 0;
@@ -187,8 +200,8 @@ export function createScene(sourceName: string, targetName: string, seed = 7): S
     recoil: 0,
     flinch: 0,
     destroyed: false,
-    nextShot: TIMELINE.battle + 0.3,
-    nextLetter: TIMELINE.battle + 0.6,
+    nextShot: TIMELINE.battle + 0.4,
+    nextLetter: TIMELINE.battle + 0.8,
     nextLaser: TIMELINE.barrage,
     nextMissile: TIMELINE.barrage + 0.1,
     nextSmoke: TIMELINE.boom,
@@ -240,7 +253,7 @@ function sparks(scene: Scene, x: number, y: number, count: number, power: number
       life: between(scene, 0.25, 0.6),
       gravity: 900,
       drag: 2,
-      size: between(scene, 2, 4.5),
+      size: between(scene, 1.2, 2.6),
       color,
     });
   }
@@ -252,29 +265,40 @@ function smoke(scene: Scene, x: number, y: number, size: number, life: number) {
     x: x + between(scene, -6, 6),
     y: y + between(scene, -6, 6),
     vx: between(scene, -25, 25),
-    vy: between(scene, -70, -20),
+    vy: between(scene, -60, -18),
     life,
     size,
     drag: 1.2,
     rot: between(scene, 0, Math.PI * 2),
-    spin: between(scene, -1, 1),
+    spin: between(scene, -0.6, 0.6),
   });
 }
 
-function say(scene: Scene, x: number, y: number, text: string, life = 1.9) {
-  spawn(scene, { kind: "say", x, y, text, life });
+function fire(scene: Scene, x: number, y: number, size: number, spread: number) {
+  const angle = between(scene, 0, Math.PI * 2);
+  const speed = between(scene, 0.2, 1) * spread;
+  spawn(scene, {
+    kind: "fire",
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed * 0.7 - spread * 0.3,
+    life: between(scene, 0.35, 0.8),
+    size,
+    drag: 3.5,
+  });
 }
 
 function impact(scene: Scene, x: number, y: number, crit: boolean, damage: number) {
-  spawn(scene, { kind: "hit", x, y, life: crit ? 0.45 : 0.32, crit });
-  sparks(scene, x, y, crit ? 14 : 7, crit ? 520 : 360, crit ? "#ff5a5a" : "#fff6a8");
+  spawn(scene, { kind: "hit", x, y, life: crit ? 0.4 : 0.28, crit });
+  sparks(scene, x, y, crit ? 12 : 6, crit ? 480 : 320, crit ? "#ff9a76" : "#fff2c2");
   scene.flinch = 1;
-  scene.shake = Math.min(30, scene.shake + (crit ? 7 : 3.5));
+  scene.shake = Math.min(26, scene.shake + (crit ? 5 : 2.2));
   scene.hp = Math.max(0, scene.hp - damage);
 }
 
 function fireShot(scene: Scene) {
-  const tx = TARGET_X + between(scene, -38, 30);
+  const tx = TARGET_X + between(scene, -36, 28);
   const ty = GROUND - between(scene, 40, 150);
   const life = between(scene, 0.5, 0.78);
   const gravity = 820;
@@ -289,17 +313,17 @@ function fireShot(scene: Scene) {
     ty,
     glyph: pick(scene, GLYPHS),
     color: pick(scene, SHOT_COLORS),
-    spin: between(scene, -9, 9),
-    size: between(scene, 0.85, 1.15),
+    spin: between(scene, -7, 7),
+    size: between(scene, 0.8, 1.05),
     trail: [],
   });
   spawn(scene, {
     kind: "ring",
-    x: MUZZLE.x + 8,
+    x: MUZZLE.x + 6,
     y: MUZZLE.y,
-    life: 0.22,
-    size: 18,
-    color: "#97ce4c",
+    life: 0.2,
+    size: 16,
+    color: "#b6f05c",
   });
   scene.recoil = 1;
 }
@@ -311,33 +335,20 @@ function landShot(scene: Scene, shot: Particle) {
   spawn(scene, {
     kind: "pop",
     x: shot.x + between(scene, -10, 10),
-    y: shot.y - 18,
-    vy: -95,
+    y: shot.y - 16,
+    vy: -70,
     drag: 1.6,
     life: 0.9,
-    text: `+${rows.toLocaleString("de-DE")} Zeilen`,
-    size: 0.8,
+    text: `+${rows.toLocaleString("de-DE")}`,
   });
-  if (random(scene) < 0.22) {
-    spawn(scene, {
-      kind: "pop",
-      x: shot.x + between(scene, -50, 20),
-      y: shot.y - between(scene, 50, 80),
-      life: 0.6,
-      text: pick(scene, BOOMS),
-      size: 1.25,
-      crit: true,
-      rot: between(scene, -0.25, 0.25),
-    });
-  }
 }
 
 function launchLetter(scene: Scene) {
   const index = scene.launched++;
   const from = nameSlots(scene.targetName, TARGET_X)[index];
   const to = nameSlots(scene.targetName, SOURCE_X)[index];
-  const life = 0.95;
-  const gravity = 700;
+  const life = 1.05;
+  const gravity = 600;
   spawn(scene, {
     kind: "letter",
     x: from,
@@ -346,34 +357,21 @@ function launchLetter(scene: Scene) {
     life,
     gravity,
     text: scene.targetName[index],
-    spin: between(scene, 7, 13) * (random(scene) < 0.5 ? -1 : 1),
+    spin: between(scene, 4, 8) * (random(scene) < 0.5 ? -1 : 1),
     trail: [],
   });
-  sparks(scene, from, LABEL_Y, 4, 160, "#f2e94e");
+  sparks(scene, from, LABEL_Y, 4, 140, "#bdf5ff");
 }
 
 function fireLaser(scene: Scene) {
   const pose = shipPose(scene.t);
   if (!pose) return;
   const cannon = shipCannons(pose)[scene.cannon++ % 2];
-  const tx = TARGET_X + between(scene, -45, 45);
+  const tx = TARGET_X + between(scene, -42, 42);
   const ty = GROUND - between(scene, 20, 140);
-  spawn(scene, { kind: "laser", x: cannon.x, y: cannon.y, tx, ty, life: 0.16, color: "#ff4d6d" });
+  spawn(scene, { kind: "laser", x: cannon.x, y: cannon.y, tx, ty, life: 0.16 });
   impact(scene, tx, ty, true, 0.035);
   scene.rows += 25_000;
-  if (random(scene) < 0.45) {
-    spawn(scene, {
-      kind: "pop",
-      x: tx,
-      y: ty - 36,
-      vy: -70,
-      drag: 1.4,
-      life: 0.7,
-      text: "CRIT",
-      size: 0.95,
-      crit: true,
-    });
-  }
 }
 
 function fireMissile(scene: Scene) {
@@ -382,10 +380,10 @@ function fireMissile(scene: Scene) {
   const side = random(scene) < 0.5 ? -1 : 1;
   spawn(scene, {
     kind: "missile",
-    x: pose.x + side * 230 * pose.scale,
-    y: pose.y + 20 * pose.scale,
+    x: pose.x + side * 260 * pose.scale,
+    y: pose.y + 40 * pose.scale,
     vx: side * between(scene, 120, 260),
-    vy: between(scene, -260, -120),
+    vy: between(scene, -220, -100),
     life: 2.2,
     tx: TARGET_X + between(scene, -40, 40),
     ty: GROUND - between(scene, 30, 120),
@@ -395,19 +393,10 @@ function fireMissile(scene: Scene) {
 
 function burst(scene: Scene, x: number, y: number) {
   impact(scene, x, y, true, 0.04);
-  spawn(scene, { kind: "ring", x, y, life: 0.4, size: 70, color: "#ffb347" });
-  for (let index = 0; index < 6; index++)
-    smoke(scene, x, y, between(scene, 16, 30), between(scene, 0.8, 1.4));
-  spawn(scene, {
-    kind: "pop",
-    x: x + between(scene, -30, 30),
-    y: y - 50,
-    life: 0.7,
-    text: pick(scene, ["KRAWUMM!", "BOOM!", "WAMM!"]),
-    size: 1.4,
-    crit: true,
-    rot: between(scene, -0.3, 0.3),
-  });
+  spawn(scene, { kind: "ring", x, y, life: 0.35, size: 60, color: "#ffd8a8" });
+  for (let index = 0; index < 5; index++) fire(scene, x, y, between(scene, 14, 26), 120);
+  for (let index = 0; index < 5; index++)
+    smoke(scene, x, y, between(scene, 12, 24), between(scene, 0.8, 1.4));
   scene.rows += 60_000;
 }
 
@@ -415,7 +404,7 @@ function explode(scene: Scene) {
   scene.destroyed = true;
   scene.hp = 0;
   scene.flash = 1;
-  scene.shake = 34;
+  scene.shake = 30;
   const x = TARGET_X;
   const y = GROUND - 70;
   for (let index = 0; index < 3; index++) {
@@ -424,13 +413,13 @@ function explode(scene: Scene) {
       x,
       y,
       life: 0.6 + index * 0.25,
-      size: 240 + index * 120,
-      color: index === 0 ? "#ffffff" : "#97ce4c",
+      size: 240 + index * 130,
+      color: index === 0 ? "#ffffff" : "#c8f07a",
     });
   }
-  for (let index = 0; index < 28; index++) {
+  for (let index = 0; index < 26; index++) {
     const angle = between(scene, -Math.PI * 0.95, -Math.PI * 0.05);
-    const speed = between(scene, 380, 1050);
+    const speed = between(scene, 380, 1000);
     spawn(scene, {
       kind: "debris",
       x: x + between(scene, -40, 40),
@@ -440,39 +429,23 @@ function explode(scene: Scene) {
       life: between(scene, 2.2, 3.6),
       gravity: 1500,
       drag: 0.3,
-      size: between(scene, 8, 22),
+      size: between(scene, 6, 16),
       rot: between(scene, 0, Math.PI * 2),
-      spin: between(scene, -14, 14),
-      color: pick(scene, ["#5aa9e6", "#3d7fc0", "#9fd2ff", "#f2e94e"]),
-      glyph: pick(scene, GLYPHS),
+      spin: between(scene, -12, 12),
+      color: pick(scene, ["#f2d65a", "#d9b53a", "#b8932a", "#7a5530"]),
       trail: [],
     });
   }
-  sparks(scene, x, y, 70, 1100, "#fff6a8");
-  for (let index = 0; index < 34; index++)
+  for (let index = 0; index < 30; index++) fire(scene, x, y, between(scene, 26, 60), 420);
+  sparks(scene, x, y, 60, 1000, "#ffe8b0");
+  for (let index = 0; index < 30; index++) {
     smoke(
       scene,
       x + between(scene, -90, 90),
       y + between(scene, -60, 40),
-      between(scene, 30, 64),
+      between(scene, 26, 56),
       between(scene, 1.8, 3.2),
     );
-  spawn(scene, {
-    kind: "pop",
-    x: x - 150,
-    y: y - 130,
-    life: 2.6,
-    text: "DROP DATABASE!",
-    size: 1.6,
-    crit: true,
-    rot: -0.08,
-  });
-}
-
-function event(scene: Scene, key: string, at: number, run: () => void) {
-  if (scene.t >= at && !scene.fired.has(key)) {
-    scene.fired.add(key);
-    run();
   }
 }
 
@@ -499,8 +472,8 @@ function updateParticles(scene: Scene, dt: number) {
         p.vy *= 820 / speed;
       }
       p.rot = Math.atan2(p.vy, p.vx);
-      if (random(scene) < 0.7)
-        smoke(scene, p.x, p.y, between(scene, 6, 11), between(scene, 0.4, 0.8));
+      if (random(scene) < 0.6)
+        smoke(scene, p.x, p.y, between(scene, 4, 8), between(scene, 0.4, 0.8));
       if (distance < 26 || p.age >= p.life) {
         burst(scene, p.x, p.y);
         continue;
@@ -515,18 +488,25 @@ function updateParticles(scene: Scene, dt: number) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.rot += p.spin * dt;
-    if (p.kind === "debris" && p.y > GROUND - 4 && p.vy > 0) {
-      p.y = GROUND - 4;
-      p.vy *= -0.32;
+    if (p.kind === "debris" && p.y > GROUND - 3 && p.vy > 0) {
+      p.y = GROUND - 3;
+      p.vy *= -0.3;
       p.vx *= 0.6;
       p.spin *= 0.5;
     }
-    if (p.kind === "smoke") p.size += dt * 18;
+    if (p.kind === "smoke") p.size += dt * 16;
     if (p.age >= p.life) {
       if (p.kind === "shot") landShot(scene, p);
       if (p.kind === "letter") {
         scene.stolen++;
-        spawn(scene, { kind: "ring", x: p.x, y: p.y, life: 0.25, size: 16, color: "#f2e94e" });
+        spawn(scene, {
+          kind: "ring",
+          x: p.x,
+          y: p.y,
+          life: 0.3,
+          size: 14,
+          color: "#bdf5ff",
+        });
       }
       continue;
     }
@@ -539,54 +519,31 @@ export function stepScene(scene: Scene, dt: number) {
   scene.t += dt;
   const t = scene.t;
   scene.shake *= Math.exp(-dt * 7);
-  scene.flash *= Math.exp(-dt * 4);
+  scene.flash *= Math.exp(-dt * 3.5);
   scene.recoil *= Math.exp(-dt * 12);
   scene.flinch *= Math.exp(-dt * 9);
 
   if (t < TIMELINE.portal - 0.3) {
     while (t >= scene.nextShot) {
       fireShot(scene);
-      scene.nextShot += between(scene, 0.14, 0.34);
+      scene.nextShot += between(scene, 0.16, 0.36);
     }
   }
   const letters = scene.targetName.length;
-  const letterGap = (TIMELINE.portal - TIMELINE.battle - 1.8) / Math.max(1, letters);
+  const letterGap = (TIMELINE.portal - TIMELINE.battle - 2) / Math.max(1, letters);
   while (scene.launched < letters && t >= scene.nextLetter) {
     launchLetter(scene);
     scene.nextLetter += letterGap;
   }
-
-  event(scene, "taunt", TIMELINE.battle + 0.2, () =>
-    say(scene, SOURCE_X + 40, GROUND - 250, "Dein Name? Meiner.", 1.6),
-  );
-  event(scene, "whine", TIMELINE.battle + 2.6, () =>
-    say(scene, TARGET_X - 30, GROUND - 250, "H-hey! Das ist mein Schema!", 1.8),
-  );
-  event(scene, "portal", TIMELINE.portal, () =>
-    spawn(scene, {
-      kind: "ring",
-      x: PORTAL.x,
-      y: PORTAL.y,
-      life: 0.5,
-      size: 120,
-      color: "#97ce4c",
-    }),
-  );
-  event(scene, "geez", TIMELINE.arrival + 0.5, () =>
-    say(scene, TARGET_X - 20, GROUND - 260, "Oh geez … oh nein …", 2),
-  );
-  event(scene, "wubba", TIMELINE.arrival + 1.4, () =>
-    say(scene, SOURCE_X + 110, GROUND - 175, "Wubba lubba DROP DROP!", 2),
-  );
-  event(scene, "boom", TIMELINE.boom, () => explode(scene));
-  event(scene, "mine", TIMELINE.outro + 0.4, () =>
-    say(scene, SOURCE_X + 40, GROUND - 250, "Und DAS ist ein Transfer.", 2.4),
-  );
+  if (t >= TIMELINE.boom && !scene.fired.has("boom")) {
+    scene.fired.add("boom");
+    explode(scene);
+  }
 
   const pose = shipPose(t);
   if (pose && t >= TIMELINE.charge && t < TIMELINE.boom) {
     const orb = shipOrb(pose);
-    const count = Math.min(6, Math.ceil(dt * 160));
+    const count = Math.min(6, Math.ceil(dt * 140));
     for (let index = 0; index < count; index++) {
       const angle = between(scene, 0, Math.PI * 2);
       const radius = between(scene, 110, 220);
@@ -598,21 +555,21 @@ export function stepScene(scene: Scene, dt: number) {
         vx: (-Math.cos(angle) * radius) / life,
         vy: (-Math.sin(angle) * radius) / life,
         life,
-        size: between(scene, 1.5, 3.5),
-        color: random(scene) < 0.5 ? "#97ce4c" : "#3fd0ff",
+        size: between(scene, 1, 2.4),
+        color: random(scene) < 0.5 ? "#b6f05c" : "#7fe3ff",
         trail: [],
       });
     }
-    scene.shake = Math.max(scene.shake, 1.2 + clamp01((t - TIMELINE.charge) / 2.5) * 3);
+    scene.shake = Math.max(scene.shake, 0.8 + clamp01((t - TIMELINE.charge) / 2.5) * 2.4);
   }
   if (t >= TIMELINE.barrage && t < TIMELINE.boom - 0.35) {
     while (t >= scene.nextLaser) {
       fireLaser(scene);
-      scene.nextLaser += between(scene, 0.09, 0.18);
+      scene.nextLaser += between(scene, 0.1, 0.2);
     }
     while (t >= scene.nextMissile) {
       fireMissile(scene);
-      scene.nextMissile += between(scene, 0.16, 0.3);
+      scene.nextMissile += between(scene, 0.18, 0.32);
     }
   }
   if (scene.destroyed && t < TIMELINE.done) {
@@ -620,11 +577,11 @@ export function stepScene(scene: Scene, dt: number) {
       smoke(
         scene,
         TARGET_X + between(scene, -30, 30),
-        GROUND - 40,
-        between(scene, 10, 18),
-        between(scene, 1.2, 2),
+        GROUND - 36,
+        between(scene, 9, 16),
+        between(scene, 1.4, 2.2),
       );
-      scene.nextSmoke += 0.09;
+      scene.nextSmoke += 0.1;
     }
   }
 
