@@ -245,6 +245,19 @@ describe("resolveChatContext", () => {
     expect(text.length).toBeLessThan(6_300);
   });
 
+  test("long sql scripts mask secrets near the cap without scanning the whole script", async () => {
+    const key = `-----BEGIN PRIVATE KEY-----\n${"k".repeat(19_000)}\n-----END PRIVATE KEY-----`;
+    const sql = `${"s".repeat(5_900)}\n${key}\nselect 'postgres://u:hunter2@h/db'\n${"t".repeat(200_000)}`;
+    const text = await resolveChatContext(
+      [{ id: "sql:1-9", kind: "sql", label: "SQL", sql }],
+      deps({ tabSql: "select 1" }),
+    );
+    expect(text).not.toContain("kkkk");
+    expect(text).not.toContain("hunter2");
+    expect(text).toContain("chars)");
+    expect(text.length).toBeLessThan(6_300);
+  });
+
   test("editor tab names title and cursor and skips SQL already sent recently", async () => {
     const tab = {
       tabSql: "select * from orders",
