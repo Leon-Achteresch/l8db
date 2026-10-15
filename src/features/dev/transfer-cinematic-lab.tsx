@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { drawScene } from "./transfer-cartoon-draw";
+import { drawScene } from "./transfer-cinematic-draw";
 import {
   createScene,
   type Phase,
@@ -10,12 +10,12 @@ import {
   STAGE_W,
   stepScene,
   TIMELINE,
-} from "./transfer-cartoon-sim";
+} from "./transfer-cinematic-sim";
 
 const PHASE_LABELS: Record<Phase, string> = {
   intro: "Auftritt",
   battle: "Beschuss & Namensraub",
-  portal: "Portal öffnet sich",
+  rift: "Hyperraum-Riss",
   arrival: "Flaggschiff",
   charge: "Aufladen",
   barrage: "Sperrfeuer",
@@ -27,7 +27,7 @@ const PHASE_LABELS: Record<Phase, string> = {
 const JUMPS: { label: string; at: number }[] = [
   { label: "Start", at: 0 },
   { label: "Beschuss", at: TIMELINE.battle + 2 },
-  { label: "Portal", at: TIMELINE.portal - 0.2 },
+  { label: "Riss", at: TIMELINE.rift - 0.2 },
   { label: "Aufladen", at: TIMELINE.charge },
   { label: "Sperrfeuer", at: TIMELINE.barrage },
   { label: "Explosion", at: TIMELINE.boom - 0.6 },
@@ -39,7 +39,7 @@ const button =
 const input =
   "h-8 w-36 rounded-md border bg-background px-2 font-mono text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
 
-export function TransferCartoonLab() {
+export function TransferCinematicLab() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const phaseRef = useRef<HTMLSpanElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
@@ -104,8 +104,8 @@ export function TransferCartoonLab() {
           <h2 className="text-lg font-semibold tracking-tight">Transfer als Animation</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Die Quelle klaut dem Ziel Buchstabe für Buchstabe den Namen und beschießt es mit
-            Tabellen, Zeilen und JSON. Zum Schluss kommt das Flaggschiff durchs Portal und macht
-            kurzen Prozess.
+            Datenpaketen. Zum Schluss kommt das Flaggschiff aus dem Hyperraum und macht kurzen
+            Prozess.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -160,7 +160,7 @@ export function TransferCartoonLab() {
         ref={canvasRef}
         role="img"
         aria-label="Animation eines laufenden Transfers"
-        className="block aspect-video w-full rounded-xl border bg-[#efe9a8]"
+        className="block aspect-video w-full rounded-xl border bg-[#0b0d18]"
       />
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3">
