@@ -119,6 +119,7 @@ export function VersioningWorkbench({
               >
                 <VersioningSection
                   section={section}
+                  pending={drift.entries === null && !development.changes.size ? null : pending}
                   workspace={workspace}
                   onNavigate={onNavigate}
                 />

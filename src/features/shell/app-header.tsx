@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
+import { WitchHat } from "@/components/seasonal/witch-hat";
 import { AppHeaderNavigation } from "@/features/shell/app-header-navigation";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { EnvironmentBadge } from "@/features/shell/environment-badge";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/new-features";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
+import { useHalloween } from "@/lib/seasonal";
 import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 import { useTransactionStore } from "@/lib/transactions";
@@ -72,6 +74,7 @@ export function AppHeader() {
   const hasNewVersioningFeatures = useHasNewFeatures("versioning");
   const hasNewAiFeatures = useHasNewFeatures("ai");
   const hasAnyNewFeatures = useHasAnyNewFeatures();
+  const halloween = useHalloween();
 
   useWindowTitle();
 
@@ -136,8 +139,9 @@ export function AppHeader() {
         ) : (
           <Link
             to="/"
-            className="ml-3 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
+            className="relative ml-3 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
           >
+            {halloween ? <WitchHat className="-left-0.5 -top-0.5 w-3.5 -rotate-[14deg]" /> : null}
             l8db
           </Link>
         )}

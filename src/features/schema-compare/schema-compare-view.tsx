@@ -35,6 +35,7 @@ import {
 } from "@/lib/schema-compare/store";
 import type { CompareSide, DiffStatus } from "@/lib/schema-compare/types";
 import { compareTypesFor, OBJECT_TYPE_META, STATUS_LABEL } from "@/lib/schema-compare/types";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cn } from "@/lib/utils";
 import { SchemaCompareDetail } from "./schema-compare-detail";
 import { SchemaCompareOptionsMenu } from "./schema-compare-options-menu";
@@ -47,6 +48,8 @@ import { StatusMarker } from "./status-marker";
 type Focus = { type: CatalogObjectType | null; status: DiffStatus };
 
 const MARKERS = ["only_source", "different", "only_target"] as const;
+
+const SCOPE = "tool:schema-compare";
 
 function sameSide(a: CompareSide, b: CompareSide): boolean {
   return (
@@ -67,12 +70,12 @@ export function SchemaCompareView() {
   const state = useSchemaCompareStore();
   const { result, selection, activeKey, loading, error, source, target } = state;
   const set = useSchemaCompareStore.setState;
-  const [view, setView] = useState<"details" | "summary">("details");
-  const [scriptOpen, setScriptOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [showIdentical, setShowIdentical] = useState(false);
-  const [grouping, setGrouping] = useState<TreeGrouping>("type");
-  const [focus, setFocus] = useState<Focus | null>(null);
+  const [view, setView] = useTabState<"details" | "summary">(tabStateKey(SCOPE, "view"), "details");
+  const [scriptOpen, setScriptOpen] = useTabState(tabStateKey(SCOPE, "scriptOpen"), false);
+  const [query, setQuery] = useTabState(tabStateKey(SCOPE, "query"), "");
+  const [showIdentical, setShowIdentical] = useTabState(tabStateKey(SCOPE, "showIdentical"), false);
+  const [grouping, setGrouping] = useTabState<TreeGrouping>(tabStateKey(SCOPE, "grouping"), "type");
+  const [focus, setFocus] = useTabState<Focus | null>(tabStateKey(SCOPE, "focus"), null);
   const [now, setNow] = useState(() => Date.now());
   const search = useDeferredValue(query.trim().toLowerCase());
   const active = useActiveConnection();

@@ -9,6 +9,7 @@ import {
   installAppRequestProbe,
   requestCounts,
   requestsSince,
+  waitForAppMetadata,
 } from "./fixtures/perf-app-requests";
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
@@ -36,7 +37,12 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await installAppRequestProbe(page);
       await page.goto(`http://localhost:${server.port}/query`);
       await page.locator('.monaco-editor[role="code"]').waitFor();
-      await page.waitForTimeout(500);
+      await waitForAppMetadata(page, [
+        "list_tables",
+        "list_all_columns",
+        "list_functions",
+        "list_procedures",
+      ]);
       const operationsBefore = await appRequestSnapshot(page);
       if (throttled) {
         const cdp = await page.context().newCDPSession(page);

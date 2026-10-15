@@ -7,6 +7,7 @@ import { WorkbenchHost } from "@/features/shell/workbench-host";
 import "../index.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
+import { SpiderLayer } from "@/components/seasonal/spider-layer";
 import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
 import { OnboardingHost } from "@/features/onboarding/onboarding-host";
@@ -19,7 +20,7 @@ import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
 import { AppTourHost } from "@/features/tour/app-tour-host";
-import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
+import { UpdateAvailableGate } from "@/features/updates/update-available-gate";
 import { useFeatureVideoStore } from "@/lib/feature-videos/store";
 
 const FeatureVideoHost = lazy(() =>
@@ -52,8 +53,9 @@ function RootComponent() {
           <SqlFileDrop />
           <AppHeader />
           <AppFrame />
+          <SpiderLayer />
         </DbThemeRoot>
-        <UpdateAvailableDialog />
+        <UpdateAvailableGate />
         <PasswordPromptDialog />
         <SqlConfirmationDialog />
         <TasksDialog />

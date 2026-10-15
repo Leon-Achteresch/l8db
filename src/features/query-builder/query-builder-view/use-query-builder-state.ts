@@ -1,8 +1,9 @@
-import { type SetStateAction, useEffect, useMemo, useState } from "react";
+import { type SetStateAction, useEffect, useMemo } from "react";
 import { temporal } from "zundo";
 import { createStore, useStore } from "zustand";
 import { relationKey } from "@/features/query-builder/query-builder-join";
 import type { SavedConnection } from "@/lib/connections";
+import type { DatabaseKind } from "@/lib/db";
 import { useActiveSchema } from "@/lib/db-selection";
 import { useDetailedColumnsQuery, useForeignKeysQuery, useTablesQuery } from "@/lib/queries";
 import {
@@ -16,6 +17,7 @@ import {
   type QueryBuilderState,
   type QuerySource,
 } from "@/lib/query-builder";
+import { readTabState, tabStateKey, useTabState, writeTabState } from "@/lib/tab-state";
 import { groupRapidEdits, HISTORY_LIMIT } from "@/lib/undo-history";
 
 function createId(): string {
@@ -23,17 +25,28 @@ function createId(): string {
   return Math.random().toString(36).slice(2);
 }
 
+function createBuilderStore(kind: DatabaseKind | null) {
+  return createStore<{ builder: QueryBuilderState }>()(
+    temporal(() => ({ builder: emptyBuilderState(kind) }), {
+      limit: HISTORY_LIMIT,
+      equality: (past, current) => JSON.stringify(past.builder) === JSON.stringify(current.builder),
+      handleSet: groupRapidEdits,
+    }),
+  );
+}
+
+export function queryBuilderScope(connection: SavedConnection | null): string {
+  return `tool:query-builder:${connection?.id ?? ""}`;
+}
+
 export function useQueryBuilderState(connection: SavedConnection | null) {
   const schema = useActiveSchema();
-  const [store] = useState(() =>
-    createStore<{ builder: QueryBuilderState }>()(
-      temporal(() => ({ builder: emptyBuilderState(connection?.kind ?? null) }), {
-        limit: HISTORY_LIMIT,
-        equality: (past, current) =>
-          JSON.stringify(past.builder) === JSON.stringify(current.builder),
-        handleSet: groupRapidEdits,
-      }),
-    ),
+  const kind = connection?.kind ?? null;
+  const scope = queryBuilderScope(connection);
+  const storeKey = tabStateKey(scope, "store");
+  const store = useMemo(
+    () => readTabState<ReturnType<typeof createBuilderStore>>(storeKey) ?? createBuilderStore(kind),
+    [storeKey, kind],
   );
   const state = useStore(store, (current) => current.builder);
   const canUndo = useStore(store.temporal, (current) => current.pastStates.length > 0);
@@ -42,7 +55,10 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
     store.setState((current) => ({
       builder: typeof update === "function" ? update(current.builder) : update,
     }));
-  const [joinTypeDraft, setJoinTypeDraft] = useState<JoinType>("INNER");
+  const [joinTypeDraft, setJoinTypeDraft] = useTabState<JoinType>(
+    tabStateKey(scope, "joinType"),
+    "INNER",
+  );
 
   const tablesQuery = useTablesQuery();
   const baseColumnsQuery = useDetailedColumnsQuery(state.schema, state.table);
@@ -53,9 +69,11 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
   );
 
   useEffect(() => {
-    store.setState({ builder: emptyBuilderState(connection?.kind ?? null) });
+    writeTabState(storeKey, store);
+    if (store.getState().builder.kind === kind) return;
+    store.setState({ builder: emptyBuilderState(kind) });
     store.temporal.getState().clear();
-  }, [store, connection?.kind]);
+  }, [store, storeKey, kind]);
 
   const relations = useMemo(
     () =>
@@ -246,7 +264,7 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
   };
 
   const reset = () => {
-    setState(emptyBuilderState(connection?.kind ?? null));
+    setState(emptyBuilderState(kind));
     setJoinTypeDraft("INNER");
   };
 

@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { TABLE_PRIV_SHORT, TABLE_PRIVS } from "@/features/users/users-view/constants";
 import { PrivBar } from "@/features/users/users-view/priv-bar";
@@ -9,21 +9,24 @@ import { applicablePrivs, privKey } from "@/features/users/users-view/priv-key";
 import { TablePrivRow } from "@/features/users/users-view/table-priv-row";
 import type { PrivilegeChange, TablePrivileges } from "@/lib/db";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useTabState } from "@/lib/tab-state";
 
 export function SchemaTableGroup({
+  stateKey,
   schema,
   tables,
   roleName,
   pendingChanges,
   onToggle,
 }: {
+  stateKey: string;
   schema: string;
   tables: TablePrivileges[];
   roleName: string;
   pendingChanges: Set<string>;
   onToggle: (change: PrivilegeChange) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useTabState(stateKey, true);
 
   const grantedCount = useMemo(() => {
     let count = 0;

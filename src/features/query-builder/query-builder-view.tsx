@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
 import { RotateCcwIcon, TableIcon } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,16 +22,23 @@ import { QueryBuilderSqlPanel } from "@/features/query-builder/query-builder-sql
 import { useActiveConnection } from "@/lib/connections";
 import { supports } from "@/lib/providers";
 import { isBuilderReady } from "@/lib/query-builder";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
-import { useQueryBuilderState } from "./query-builder-view/use-query-builder-state";
+import {
+  queryBuilderScope,
+  useQueryBuilderState,
+} from "./query-builder-view/use-query-builder-state";
 
 export function QueryBuilderView() {
   const connection = useActiveConnection();
   const navigate = useNavigate();
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const hasForeignKeys = supports(connection, "foreign_keys");
-  const [mode, setMode] = useState<"visual" | "sql">("visual");
+  const [mode, setMode] = useTabState<"visual" | "sql">(
+    tabStateKey(queryBuilderScope(connection), "mode"),
+    "visual",
+  );
   const {
     state,
     setState,

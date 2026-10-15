@@ -5,7 +5,13 @@ import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { attachEditorAi, type EditorAiController } from "@/lib/ai/editor";
 import { buildEditorOptions } from "@/lib/editor-options";
 import { emitHotkeyAction } from "@/lib/hotkeys";
-import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
+import {
+  addSqlFormatAction,
+  attachPlsqlLint,
+  enablePackageOutline,
+  monaco,
+  showSqlError,
+} from "@/lib/monaco";
 import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { takeEditorFocus } from "@/lib/pending-editor-focus";
@@ -128,6 +134,7 @@ export function QueryEditorPane({
     });
 
     editorRef.current = editor;
+    enablePackageOutline(editor.getModel());
     decorationsRef.current = editor.createDecorationsCollection([]);
     bookmarkDecorationsRef.current = editor.createDecorationsCollection([]);
     slotDecorationsRef.current = Array.from({ length: 9 }, () =>

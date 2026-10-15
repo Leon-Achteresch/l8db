@@ -60,7 +60,7 @@ export function MonitorView() {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
         <div className="text-center">
-          <GaugeIcon className="mx-auto size-8 text-muted-foreground/50" />
+          <ActivityIcon className="mx-auto size-8 text-muted-foreground/50" />
           <h1 className="mt-3 text-lg font-semibold">Monitor</h1>
           <p className="mt-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
         </div>

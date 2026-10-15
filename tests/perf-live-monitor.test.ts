@@ -128,13 +128,16 @@ test("live monitor polling issues one request per interval and none when idle", 
       requests++;
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setImmediate(resolve));
       inFlight--;
     },
     schedule: (callback) => timers.push(callback),
     clear: () => undefined,
   });
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 1));
+  const settle = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+  };
   await settle();
   for (let tick = 1; tick < 360; tick++) {
     if (tick === 120) hidden = true;

@@ -76,7 +76,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const editorApiRef = useRef<QueryEditorApi | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const exec = useQueryExecutionState();
+  const exec = useQueryExecutionState(tabId);
   const exportState = useResultExport(exec.result);
   useLastResultSync(tabId, connection?.id ?? null, exec.executedSql, exec.result);
   const cursor = useEditorCursorState(sql);
@@ -207,35 +207,37 @@ export function QueryView({ tabId }: QueryViewProps) {
         className="flex h-full min-w-0 flex-1 flex-col"
       >
         <div
-          className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b bg-card px-3 py-2"
+          className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden border-b bg-card px-3"
           data-tour="query-toolbar"
         >
-          <RunControls
-            actions={actions}
-            exec={exec}
-            runLabel={runLabel}
-            hasSelection={hasSelection}
-            connected={Boolean(connection)}
-            hasSql={Boolean(sql.trim())}
-            showScript={isSql}
-            onOpenScript={script.handleOpenScriptDialog}
-            shortcutLabel={shortcutLabel}
-          />
-          {caps.dml_preview && (
-            <DmlPreviewButton
-              disabled={exec.isRunning || !connection || !sql.trim()}
-              shortcut={shortcutLabel("query.preview")}
-              onPreview={() => void actions.handlePreview()}
+          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+            <RunControls
+              actions={actions}
+              exec={exec}
+              runLabel={runLabel}
+              hasSelection={hasSelection}
+              connected={Boolean(connection)}
+              hasSql={Boolean(sql.trim())}
+              showScript={isSql}
+              onOpenScript={script.handleOpenScriptDialog}
+              shortcutLabel={shortcutLabel}
             />
-          )}
-          {caps.multi_target_query && (
-            <MultiTargetButton
-              disabled={!connection}
-              running={multiTargetRun.running}
-              onOpen={() => setMultiTargetOpen(true)}
-            />
-          )}
-          {isSql && <SelectRowLimit />}
+            {caps.dml_preview && (
+              <DmlPreviewButton
+                disabled={exec.isRunning || !connection || !sql.trim()}
+                shortcut={shortcutLabel("query.preview")}
+                onPreview={() => void actions.handlePreview()}
+              />
+            )}
+            {caps.multi_target_query && (
+              <MultiTargetButton
+                disabled={!connection}
+                running={multiTargetRun.running}
+                onOpen={() => setMultiTargetOpen(true)}
+              />
+            )}
+            {isSql && <SelectRowLimit />}
+          </div>
           <ToolbarViewControls
             workspace={workspace}
             isSql={isSql}

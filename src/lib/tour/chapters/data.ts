@@ -256,7 +256,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "query-run",
         title: "Frage abschicken",
-        body: "Schreibe deine Frage in das große Textfeld und klicke auf „Ausführen“ (oder ⌘/Strg+Enter). Das Ergebnis erscheint darunter als Tabelle. Hast du Text markiert, läuft nur die Markierung.",
+        body: "Schreibe deine Frage in das große Textfeld und klicke auf „Ausführen“ (▷, oder ⌘/Strg+Enter). Das Ergebnis erscheint darunter als Tabelle. Hast du Text markiert, läuft nur die Markierung.",
         action: "Probiere es aus: Tippe SELECT 1; und klicke auf „Ausführen“. Dann „Weiter“.",
         target: "[data-tour='query-run']",
         side: "bottom",

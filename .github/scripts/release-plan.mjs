@@ -11,11 +11,47 @@ import {
   REPOSITORY,
   releases,
   semanticBump,
+  VERSION_PATTERN,
 } from "./release-utils.mjs";
 
 export const COMPILED_ARTIFACTS = ["macos-arm64", "macos-x64", "linux", "windows"].map(
   (platform) => `compiled-${platform}`,
 );
+
+const NEW_FEATURES_FILE = "src/lib/new-features.ts";
+
+export function featureVersions(source) {
+  const next = source.match(/NEXT_FEATURE_VERSION = "([^"]+)"/)?.[1];
+  const entries = [...source.matchAll(/^\s+"([^"]+)": (NEXT_FEATURE_VERSION|"[^"]+"),$/gm)];
+  return {
+    next,
+    floating: new Set(
+      entries.filter(([, , value]) => value === "NEXT_FEATURE_VERSION").map(([, id]) => id),
+    ),
+    versions: Object.fromEntries(
+      entries.map(([, id, value]) => [
+        id,
+        value === "NEXT_FEATURE_VERSION" ? next : value.slice(1, -1),
+      ]),
+    ),
+  };
+}
+
+export function staleFeatureBadges(released, current, stable, target) {
+  const before = featureVersions(released);
+  const after = featureVersions(current);
+  const shipped =
+    !VERSION_PATTERN.test(before.next ?? "") || compareVersions(before.next, stable) <= 0;
+  const added = [...after.floating].some((id) => !Object.hasOwn(before.versions, id));
+  return [
+    ...(added && after.next !== target
+      ? [`NEXT_FEATURE_VERSION: set to "${target}" (now "${after.next ?? "missing"}")`]
+      : []),
+    ...(shipped ? [...before.floating].filter((id) => after.floating.has(id)) : []).map(
+      (id) => `${id}: pin to "${before.next}"`,
+    ),
+  ];
+}
 
 export function releaseState(sha, all, messages) {
   const published = all.find((release) => !release.draft && release.target_commitish === sha);
@@ -95,6 +131,19 @@ function assertStableMerged(tag, sha) {
   );
 }
 
+function assertFeatureBadges(tag, sha, target) {
+  const stale = staleFeatureBadges(
+    git("show", `${tag}:${NEW_FEATURES_FILE}`),
+    git("show", `${sha}:${NEW_FEATURES_FILE}`),
+    tag.slice(1),
+    target,
+  );
+  assert(
+    !stale.length,
+    `NEW badges are stale since ${tag}, update ${NEW_FEATURES_FILE}:\n${stale.join("\n")}`,
+  );
+}
+
 function reusableRun(canary, sha, stable, canaries, version) {
   const runs = api(
     `repos/${REPOSITORY}/actions/workflows/release.yml/runs?branch=${canary ? "canary" : "main"}&status=completed&per_page=20`,
@@ -128,8 +177,10 @@ function main() {
   const stable = releases();
   const canaries = canary ? releases("canary") : [];
   const state = plan(canary, sha, stable, canaries);
-  if (canary && state.mode === "publish" && state.previous_tag)
+  if (canary && state.mode === "publish" && state.previous_tag) {
     assertStableMerged(state.previous_tag, sha);
+    assertFeatureBadges(state.previous_tag, sha, state.version.split("-")[0]);
+  }
   state.reuse_run_id =
     state.mode === "publish" && process.env.RELEASE_REBUILD !== "true"
       ? reusableRun(canary, sha, stable, canaries, state.version)

@@ -1,4 +1,4 @@
-import { valid } from "semver";
+import valid from "semver/functions/valid";
 import { validateArchive } from "../../../packages/extension-api/src/manifest";
 import type { ExtensionArchive } from "./contracts";
 
@@ -68,7 +68,7 @@ export function validateMarketCatalog(value: unknown): MarketCatalog {
   return { schemaVersion: 1, extensions };
 }
 
-async function readLimited(response: Response, limit: number): Promise<Uint8Array> {
+async function readLimited(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > limit) throw new Error("Download ist zu groß.");

@@ -159,8 +159,8 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
       const save = page.getByRole("button", { name: "Speichern & schließen", exact: true });
       await save.click();
       await save.waitFor({ state: "hidden" });
-      await page.locator(".react-grid-item .chart-surface").nth(1).waitFor();
-      expect(await page.locator(".react-grid-item").count()).toBe(2);
+      await page.locator(".l8-item .chart-surface").nth(1).waitFor();
+      expect(await page.locator(".l8-item").count()).toBe(2);
       await page.waitForTimeout(500);
       expect(log.filter((entry) => entry.error)).toEqual([]);
       expect(errors).toEqual([]);

@@ -28,11 +28,10 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
-import { CompareMigrationPanel } from "@/features/compare/compare-migration-panel";
+import { CompareMigrationDialog } from "@/features/compare/compare-migration-dialog";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
 import {
@@ -210,6 +209,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
     rightState.loading ||
     Boolean(leftState.error) ||
     Boolean(rightState.error);
+  if (blocked && migrationOpen) setMigrationOpen(false);
   const status = !ready
     ? "Definitionen vergleichen"
     : leftState.loading || rightState.loading
@@ -363,9 +363,8 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
             <Button
               size="sm"
               className="ml-1 h-7 gap-1.5 px-2.5 text-xs"
-              aria-pressed={migrationOpen}
               disabled={blocked}
-              onClick={() => setMigrationOpen((open) => !open)}
+              onClick={() => setMigrationOpen(true)}
             >
               <FileCodeIcon className="size-3.5" />
               Migration erzeugen
@@ -425,123 +424,110 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-            <ResizablePanel id="compare-main" minSize="30%" className="flex min-h-0 flex-col">
-              <div className="flex min-h-0 flex-1 flex-col">
-                {props.showDraft && (
-                  <div className="grid shrink-0 grid-cols-2 border-b text-xs">
-                    {(["left", "right"] as const).map((side) => (
-                      <button
-                        key={side}
-                        type="button"
-                        aria-label={`${side === "left" ? "Quelle" : "Ziel"} auswählen`}
-                        aria-pressed={transferSide === side}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-muted ${transferSide === side ? "font-medium text-primary" : "text-muted-foreground"}`}
-                        onClick={() => setTransferSide(side)}
-                      >
-                        <span
-                          className={`size-2 shrink-0 rounded-full ${transferSide === side ? "bg-primary" : "border border-muted-foreground"}`}
-                        />
-                        {side === "left" ? "Quelle" : "Ziel"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="min-h-0 flex-1">
-                  <DefinitionDiffEditor
-                    ref={diffRef}
-                    original={leftState.definition}
-                    modified={rightState.definition}
-                    onlyDifferences={onlyDifferences}
-                    onStats={setDiffStats}
-                    readOnly
-                    minimap
-                    sideBySide={sideBySide}
-                    draft={props.showDraft ? draft : undefined}
-                    onDraftChange={changeDraft}
-                    onSideSelect={setTransferSide}
-                    onActivate={() => {
-                      activeEditor.current = "comparison";
-                    }}
-                    scrollSync={props.showDraft ? scrollSync : undefined}
-                  />
-                </div>
-              </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
               {props.showDraft && (
-                <>
-                  <div className="relative flex h-9 shrink-0 items-center justify-center">
-                    <div className="absolute inset-x-0 top-1/2 border-t" />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
-                      aria-label={`${transferLabel} in Entwurf übernehmen`}
-                      disabled={
-                        transferState.loading ||
-                        Boolean(transferState.error) ||
-                        transferState.definition === draft
-                      }
-                      onClick={() => changeDraft(transferState.definition)}
+                <div className="grid shrink-0 grid-cols-2 border-b text-xs">
+                  {(["left", "right"] as const).map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      aria-label={`${side === "left" ? "Quelle" : "Ziel"} auswählen`}
+                      aria-pressed={transferSide === side}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-muted ${transferSide === side ? "font-medium text-primary" : "text-muted-foreground"}`}
+                      onClick={() => setTransferSide(side)}
                     >
-                      <ArrowDownIcon className="size-3.5" />
-                      {transferLabel} in Entwurf
-                    </Button>
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="flex shrink-0 items-center gap-3 border-b px-3 py-1.5 text-xs">
-                      <span className="font-medium">Merge-Ergebnis</span>
-                      <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground">
-                        <span className="flex items-center gap-1.5">
-                          <span className="merge-origin-source size-2.5 rounded-sm" />
-                          aus Quelle
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="merge-origin-target size-2.5 rounded-sm" />
-                          aus Ziel
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="merge-origin-manual size-2.5 rounded-sm" />
-                          eigene Änderungen
-                        </span>
-                      </span>
-                    </div>
-                    <div className="relative min-h-0 flex-1">
-                      <MergeDraftEditor
-                        ref={draftRef}
-                        value={draft}
-                        origins={origins}
-                        onChange={changeDraft}
-                        onActivate={() => {
-                          activeEditor.current = "draft";
-                        }}
-                        scrollSync={scrollSync}
+                      <span
+                        className={`size-2 shrink-0 rounded-full ${transferSide === side ? "bg-primary" : "border border-muted-foreground"}`}
                       />
-                    </div>
-                  </div>
-                </>
+                      {side === "left" ? "Quelle" : "Ziel"}
+                    </button>
+                  ))}
+                </div>
               )}
-            </ResizablePanel>
-            {migrationOpen && !blocked && (
+              <div className="min-h-0 flex-1">
+                <DefinitionDiffEditor
+                  ref={diffRef}
+                  original={leftState.definition}
+                  modified={rightState.definition}
+                  onlyDifferences={onlyDifferences}
+                  onStats={setDiffStats}
+                  readOnly
+                  minimap
+                  sideBySide={sideBySide}
+                  draft={props.showDraft ? draft : undefined}
+                  onDraftChange={changeDraft}
+                  onSideSelect={setTransferSide}
+                  onActivate={() => {
+                    activeEditor.current = "comparison";
+                  }}
+                  scrollSync={props.showDraft ? scrollSync : undefined}
+                />
+              </div>
+            </div>
+            {props.showDraft && (
               <>
-                <ResizableHandle />
-                <ResizablePanel
-                  id="compare-migration"
-                  defaultSize="24%"
-                  minSize="10%"
-                  className="flex min-h-0 flex-col"
-                >
-                  <CompareMigrationPanel
-                    left={left}
-                    right={right}
-                    leftDefinition={leftState.definition}
-                    rightDefinition={rightState.definition}
-                    draft={props.showDraft ? draft : null}
-                    onClose={() => setMigrationOpen(false)}
-                  />
-                </ResizablePanel>
+                <div className="relative flex h-9 shrink-0 items-center justify-center">
+                  <div className="absolute inset-x-0 top-1/2 border-t" />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
+                    aria-label={`${transferLabel} in Entwurf übernehmen`}
+                    disabled={
+                      transferState.loading ||
+                      Boolean(transferState.error) ||
+                      transferState.definition === draft
+                    }
+                    onClick={() => changeDraft(transferState.definition)}
+                  >
+                    <ArrowDownIcon className="size-3.5" />
+                    {transferLabel} in Entwurf
+                  </Button>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex shrink-0 items-center gap-3 border-b px-3 py-1.5 text-xs">
+                    <span className="font-medium">Merge-Ergebnis</span>
+                    <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className="merge-origin-source size-2.5 rounded-sm" />
+                        aus Quelle
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="merge-origin-target size-2.5 rounded-sm" />
+                        aus Ziel
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="merge-origin-manual size-2.5 rounded-sm" />
+                        eigene Änderungen
+                      </span>
+                    </span>
+                  </div>
+                  <div className="relative min-h-0 flex-1">
+                    <MergeDraftEditor
+                      ref={draftRef}
+                      value={draft}
+                      origins={origins}
+                      onChange={changeDraft}
+                      onActivate={() => {
+                        activeEditor.current = "draft";
+                      }}
+                      scrollSync={scrollSync}
+                    />
+                  </div>
+                </div>
               </>
             )}
-          </ResizablePanelGroup>
+          </div>
+          <CompareMigrationDialog
+            open={migrationOpen}
+            onOpenChange={setMigrationOpen}
+            left={left}
+            right={right}
+            leftDefinition={leftState.definition}
+            rightDefinition={rightState.definition}
+            draft={props.showDraft ? draft : null}
+          />
           {(leftState.loading || rightState.loading) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">
               <LoaderIcon className="size-4 animate-spin" />

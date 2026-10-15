@@ -5,7 +5,6 @@ import {
   CheckCircle2Icon,
   UploadIcon,
 } from "lucide-react";
-import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CsvPresetBar } from "@/features/import/csv-preset-bar";
 import { CSV_MAX_IMPORT_ROWS, CSV_PREVIEW_ROWS, parseCsv } from "@/lib/csv-import";
 import { remapPreset } from "@/lib/csv-mapping-presets";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cancelTask, isTaskActive } from "@/lib/tasks";
 import { CsvConflictOptions } from "./csv-conflict-options";
 import { CsvParseOptions } from "./csv-import-panel/csv-parse-options";
@@ -82,7 +82,10 @@ export function CsvImportPanel({
     text,
     tooManyRows,
   } = csv;
-  const [previewMode, setPreviewMode] = useState<"mapped" | "file">("mapped");
+  const [previewMode, setPreviewMode] = useTabState<"mapped" | "file">(
+    tabStateKey(`import:${JSON.stringify([connection?.id, database, schema])}`, "previewMode"),
+    "mapped",
+  );
   const mapped = mappings.filter((mapping) => mapping.target !== null);
   const showMapped = previewMode === "mapped" && mapped.length > 0;
   const previewRows = parsed?.rows.slice(0, CSV_PREVIEW_ROWS) ?? [];

@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import {
@@ -11,6 +11,7 @@ import {
 import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { supports } from "@/lib/providers";
 import { sqlFileTitle } from "@/lib/sql-file";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { CsvImportPanel } from "./csv-import-panel";
 import { useCsvImport } from "./csv-import-panel/use-csv-import";
 import { ImportFileList } from "./import-file-list";
@@ -32,9 +33,13 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
   const csv = useCsvImport();
   const sqlKey = JSON.stringify([connection?.id, database]);
   const sqlDraft = useImportWorkspace((state) => state.sql[sqlKey] ?? EMPTY_SQL_IMPORT);
-  const [selected, setSelected] = useState<"data" | "sql">(() =>
+  const [selected, setSelected] = useTabState<"data" | "sql">(
+    tabStateKey(`import:${sqlKey}`, "pane"),
     csvEnabled && (tab === "csv" || !sqlDraft.fileName) ? "data" : "sql",
   );
+  useLayoutEffect(() => {
+    if (tab === "csv" && csvEnabled) setSelected("data");
+  }, [tab, csvEnabled, setSelected]);
   const [actions, setActions] = useState<HTMLDivElement | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
   const pane = csvEnabled ? selected : "sql";

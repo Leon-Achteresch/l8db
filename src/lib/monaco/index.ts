@@ -13,4 +13,5 @@ export {
 } from "./format";
 export type { SqlErrorSource } from "./markers";
 export { attachPlsqlLint, showQueryAssessment, showSqlError } from "./markers";
+export { enablePackageOutline } from "./outline";
 export { overflowWidgetsDomNode } from "./overflow";

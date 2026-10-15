@@ -17,14 +17,14 @@ export function MultiTargetButton({ disabled, running, onOpen }: MultiTargetButt
       ref={feature.ref}
       size="sm"
       variant="outline"
-      className="h-7 gap-1.5 px-3 text-xs"
+      className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
       data-tour="query-multi-target"
       onClick={onOpen}
       disabled={disabled}
       title="Dieselbe Abfrage auf mehreren Datenbanken, Schemas oder Verbindungen ausführen"
     >
       <LayersIcon className={running ? "size-3 animate-pulse" : "size-3"} />
-      Mehrere Ziele
+      <span className="sr-only @min-[54rem]/qtb:not-sr-only">Mehrere Ziele</span>
       {feature.isNew && <NewBadge />}
     </Button>
   );

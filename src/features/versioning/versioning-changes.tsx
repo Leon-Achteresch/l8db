@@ -1,4 +1,4 @@
-import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+import { LoaderCircleIcon, RefreshCwIcon, ScanSearchIcon } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { relativeTime } from "@/lib/branching/model";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -11,6 +11,7 @@ import { VersioningChangeList } from "./versioning-change-list";
 import { VersioningCommitBox } from "./versioning-commit-box";
 import { VersioningDriftList } from "./versioning-drift-list";
 import { VersioningIconButton } from "./versioning-icon-button";
+import { VersioningIgnoreSettings } from "./versioning-ignore-settings";
 
 export function VersioningChanges({
   workspace,
@@ -53,10 +54,20 @@ export function VersioningChanges({
           {feature.isNew && <NewBadge />}
         </span>
         {drift.scanning && (
-          <LoaderCircleIcon
-            aria-label="Datenbank wird geprüft"
-            className="size-3.5 shrink-0 animate-spin text-muted-foreground"
-          />
+          <span
+            role="status"
+            aria-label={
+              drift.progress
+                ? `Prüfung läuft: ${drift.progress.reused} unverändert übernommen, ${drift.progress.captured} neu gelesen${drift.progress.ignored ? `, ${drift.progress.ignored} ausgeschlossen` : ""}`
+                : "Datenbank wird geprüft"
+            }
+            className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-muted-foreground tabular-nums"
+          >
+            <LoaderCircleIcon aria-hidden className="size-3.5 animate-spin" />
+            {drift.progress && drift.progress.total > 0
+              ? `${drift.progress.done.toLocaleString("de-DE")}/${drift.progress.total.toLocaleString("de-DE")}`
+              : null}
+          </span>
         )}
         <button
           type="button"
@@ -84,6 +95,14 @@ export function VersioningChanges({
           disabled={!drift.ready || drift.scanning || workspace.busy}
           onClick={drift.scan}
         />
+        <VersioningIconButton
+          icon={ScanSearchIcon}
+          label="Vollständig prüfen: jedes Objekt neu aus der Datenbank lesen"
+          className="size-7"
+          disabled={!drift.ready || drift.scanning || workspace.busy}
+          onClick={drift.scanFully}
+        />
+        <VersioningIgnoreSettings workspace={workspace} onSaved={drift.scan} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-2">
         {!drift.ready && (

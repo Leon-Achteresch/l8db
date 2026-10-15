@@ -3,25 +3,6 @@ import { lintUnknownTables } from "@/lib/sql-lint";
 
 import type { SchemaRegistry } from "./types";
 
-const VIEW_STATE_KEY = "l8db.editor-view-state";
-
-export function readViewStates(): Record<string, monaco.editor.ICodeEditorViewState> {
-  try {
-    return JSON.parse(localStorage.getItem(VIEW_STATE_KEY) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-export function writeViewState(key: string, state: monaco.editor.ICodeEditorViewState | null) {
-  const all = readViewStates();
-  if (state) all[key] = state;
-  else delete all[key];
-  try {
-    localStorage.setItem(VIEW_STATE_KEY, JSON.stringify(all));
-  } catch {}
-}
-
 export function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
 }

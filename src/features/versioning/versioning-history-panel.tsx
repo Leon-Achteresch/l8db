@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { versioningRepository } from "@/lib/db";
 import { historyMarks, parseReleaseCommits } from "@/lib/versioning/history";
 import { deployable } from "@/lib/versioning/model";
+import { findTickets } from "@/lib/versioning/review";
 import { rollbackBases } from "@/lib/versioning/rollback";
 import {
   type GitGraphCommit,
@@ -9,6 +10,7 @@ import {
   parseGitGraph,
   type VersioningArea,
 } from "@/lib/versioning/workflow";
+import { useTickets } from "./use-tickets";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningHistoryRow } from "./versioning-history-row";
 
@@ -22,6 +24,7 @@ export function VersioningHistoryPanel({
   onNavigate: (area: VersioningArea) => void;
 }) {
   const { repo, status, project, releases, targets } = workspace;
+  const tickets = useTickets(workspace);
   const [commits, setCommits] = useState<GitGraphCommit[]>([]);
   const [releaseCommits, setReleaseCommits] = useState(new Map<string, string>());
   const [error, setError] = useState("");
@@ -77,6 +80,7 @@ export function VersioningHistoryPanel({
               width={width}
               head={status.head}
               marks={marks.get(row.commit.id)}
+              tickets={findTickets([row.commit.subject], tickets.configuration)}
               canRollback={(release) => rollbackBases(releases, release).length > 0}
               onOpen={deploys ? (release) => open(release.id) : undefined}
               onRollout={

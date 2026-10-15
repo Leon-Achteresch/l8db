@@ -12,6 +12,7 @@ import {
   HistoryIcon,
   LibraryIcon,
   MoreHorizontalIcon,
+  PackageSearchIcon,
   SaveAllIcon,
   SaveIcon,
   TerminalIcon,
@@ -19,7 +20,7 @@ import {
   WandSparklesIcon,
   WrenchIcon,
 } from "lucide-react";
-import type { RefObject } from "react";
+import { type RefObject, useRef } from "react";
 import {
   IconMenu,
   IconMenuContent,
@@ -28,9 +29,12 @@ import {
   IconMenuSubContent,
   IconMenuSubTrigger,
 } from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
 
 import { EDITOR_ACTIONS } from "./constants";
 
@@ -75,19 +79,32 @@ export function QueryToolsMenu({
   onFileSave,
   onClearEditor,
 }: QueryToolsMenuProps) {
+  const packageMembers = useNewFeatureVisibility<HTMLDivElement>("query.tools.package-members");
+  const toolsNew = useHasNewFeatures("query.tools") && isSql;
+  const pendingAction = useRef<string | null>(null);
   return (
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           size="icon-sm"
           variant="ghost"
+          className="relative"
           aria-label="Weitere Werkzeuge"
           title="Verlauf, Server-Ausgabe, Datei und Bearbeiten"
         >
           <MoreHorizontalIcon className="size-3.5" />
+          {toolsNew && <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />}
         </Button>
       </DropdownMenuTrigger>
-      <IconMenuContent>
+      <IconMenuContent
+        onCloseAutoFocus={(event) => {
+          const id = pendingAction.current;
+          if (!id) return;
+          pendingAction.current = null;
+          event.preventDefault();
+          editorApiRef.current?.action(id);
+        }}
+      >
         <IconMenuItem
           data-tour="query-history"
           icon={<HistoryIcon />}
@@ -121,7 +138,9 @@ export function QueryToolsMenu({
           </IconMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <IconMenuSubTrigger icon={<WrenchIcon />} label="Editor-Werkzeuge" />
+          <IconMenuSubTrigger icon={<WrenchIcon />} label="Editor-Werkzeuge">
+            {toolsNew && <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />}
+          </IconMenuSubTrigger>
           <IconMenuSubContent>
             <IconMenuItem
               icon={<TextSearchIcon />}
@@ -137,6 +156,22 @@ export function QueryToolsMenu({
                 onSelect={() => editorApiRef.current?.format()}
                 disabled={!hasSql}
               />
+            )}
+            {isSql && (
+              <IconMenuItem
+                ref={packageMembers.ref}
+                icon={<PackageSearchIcon />}
+                label="Package-Funktionen suchen"
+                shortcut={shortcutLabel("query.packageMembers")}
+                onSelect={() => {
+                  pendingAction.current = "editor.action.quickOutline";
+                }}
+                disabled={!hasSql}
+              >
+                {packageMembers.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
             )}
             {EDITOR_ACTIONS.map(([id, label, Icon]) => (
               <IconMenuItem

@@ -1,5 +1,5 @@
 import { PuzzleIcon } from "lucide-react";
-import { gt } from "semver";
+import gt from "semver/functions/gt";
 import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

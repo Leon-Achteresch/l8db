@@ -73,6 +73,30 @@ pub struct Evidence {
     pub base: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub id: String,
+    pub thread: String,
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
+    pub path: Option<String>,
+    pub line: Option<u64>,
+    pub side: Option<String>,
+    pub review: Option<String>,
+    pub reply: bool,
+}
+
+#[derive(Default)]
+pub struct Target<'a> {
+    pub path: Option<&'a str>,
+    pub line: Option<u64>,
+    pub old: bool,
+    pub commit: Option<&'a str>,
+    pub reply_to: Option<&'a str>,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Credential {
     kind: Kind,
@@ -95,6 +119,11 @@ pub struct Request {
     pub draft: Option<bool>,
     pub event: Option<String>,
     pub method: Option<String>,
+    pub path: Option<String>,
+    pub line: Option<u64>,
+    pub side: Option<String>,
+    pub commit: Option<String>,
+    pub reply_to: Option<String>,
 }
 
 fn text(value: &Value) -> String {
@@ -556,7 +585,8 @@ impl Client {
         }
     }
 
-    async fn pulls(&self, merged: bool) -> Result<Vec<Pull>, String> {
+    async fn pulls(&self, state: &str) -> Result<Vec<Pull>, String> {
+        let open = state == "open";
         let mut url = match self.kind {
             Kind::Github | Kind::Gitea => self.repo(&["pulls"])?,
             Kind::Gitlab => self.repo(&["merge_requests"])?,
@@ -567,20 +597,27 @@ impl Client {
             match self.kind {
                 Kind::Github => {
                     query
-                        .append_pair("state", if merged { "closed" } else { "open" })
+                        .append_pair("state", if open { "open" } else { "closed" })
                         .append_pair("sort", "updated")
                         .append_pair("direction", "desc")
                         .append_pair("per_page", "50");
                 }
                 Kind::Gitea => {
                     query
-                        .append_pair("state", if merged { "closed" } else { "open" })
+                        .append_pair("state", if open { "open" } else { "closed" })
                         .append_pair("sort", "recentupdate")
                         .append_pair("limit", "50");
                 }
                 Kind::Gitlab => {
                     query
-                        .append_pair("state", if merged { "merged" } else { "opened" })
+                        .append_pair(
+                            "state",
+                            match state {
+                                "merged" => "merged",
+                                "closed" => "closed",
+                                _ => "opened",
+                            },
+                        )
                         .append_pair("order_by", "updated_at")
                         .append_pair("per_page", "50");
                 }
@@ -588,7 +625,11 @@ impl Client {
                     query
                         .append_pair(
                             "searchCriteria.status",
-                            if merged { "completed" } else { "active" },
+                            match state {
+                                "merged" => "completed",
+                                "closed" => "abandoned",
+                                _ => "active",
+                            },
                         )
                         .append_pair("$top", "50");
                 }
@@ -603,7 +644,7 @@ impl Client {
         Ok(items
             .iter()
             .map(|item| self.pull(item))
-            .filter(|pull| (pull.state == "merged") == merged)
+            .filter(|pull| pull.state == state)
             .collect())
     }
 
@@ -921,6 +962,323 @@ impl Client {
         }
     }
 
+    async fn comments(&self, number: u64) -> Result<Vec<Comment>, String> {
+        let id = number.to_string();
+        let mut comments = Vec::new();
+        match self.kind {
+            Kind::Github => {
+                let mut general = self.repo(&["issues", &id, "comments"])?;
+                general.query_pairs_mut().append_pair("per_page", "100");
+                for item in self.get(general).await?.as_array().into_iter().flatten() {
+                    comments.push(general_comment(item, &item["user"]["login"]));
+                }
+                let mut inline = self.repo(&["pulls", &id, "comments"])?;
+                inline.query_pairs_mut().append_pair("per_page", "100");
+                for item in self.get(inline).await?.as_array().into_iter().flatten() {
+                    let own = id_text(&item["id"]);
+                    let thread = item["in_reply_to_id"]
+                        .as_u64()
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| own.clone());
+                    comments.push(Comment {
+                        id: own,
+                        thread,
+                        author: text(&item["user"]["login"]),
+                        body: text(&item["body"]),
+                        created_at: text(&item["created_at"]),
+                        path: optional(&item["path"]),
+                        line: item["line"].as_u64(),
+                        side: Some(if item["side"] == "LEFT" { "old" } else { "new" }.into()),
+                        review: None,
+                        reply: false,
+                    });
+                }
+                let mut reviews = self.repo(&["pulls", &id, "reviews"])?;
+                reviews.query_pairs_mut().append_pair("per_page", "100");
+                for item in self.get(reviews).await?.as_array().into_iter().flatten() {
+                    if let Some(comment) = review_comment(item, "submitted_at") {
+                        comments.push(comment);
+                    }
+                }
+            }
+            Kind::Gitea => {
+                let general = self.get(self.repo(&["issues", &id, "comments"])?).await?;
+                for item in general.as_array().into_iter().flatten() {
+                    comments.push(general_comment(item, &item["user"]["login"]));
+                }
+                let reviews = self.get(self.repo(&["pulls", &id, "reviews"])?).await?;
+                for review in reviews.as_array().into_iter().flatten().take(30) {
+                    if let Some(comment) = review_comment(review, "submitted_at") {
+                        comments.push(comment);
+                    }
+                    if review["comments_count"].as_u64() == Some(0) {
+                        continue;
+                    }
+                    let review_id = id_text(&review["id"]);
+                    let inline = self
+                        .get(self.repo(&["pulls", &id, "reviews", &review_id, "comments"])?)
+                        .await?;
+                    for item in inline.as_array().into_iter().flatten() {
+                        let new_line = item["position"].as_u64().filter(|line| *line > 0);
+                        let old_line = item["original_position"].as_u64().filter(|line| *line > 0);
+                        let side = if new_line.is_some() { "new" } else { "old" };
+                        let path = optional(&item["path"]);
+                        let line = new_line.or(old_line);
+                        comments.push(Comment {
+                            id: id_text(&item["id"]),
+                            thread: format!(
+                                "{}:{side}:{}",
+                                path.as_deref().unwrap_or_default(),
+                                line.unwrap_or(0)
+                            ),
+                            author: text(&item["user"]["login"]),
+                            body: text(&item["body"]),
+                            created_at: text(&item["created_at"]),
+                            path,
+                            line,
+                            side: Some(side.into()),
+                            review: None,
+                            reply: false,
+                        });
+                    }
+                }
+            }
+            Kind::Gitlab => {
+                let mut url = self.repo(&["merge_requests", &id, "discussions"])?;
+                url.query_pairs_mut().append_pair("per_page", "100");
+                for discussion in self.get(url).await?.as_array().into_iter().flatten() {
+                    let thread = id_text(&discussion["id"]);
+                    for note in discussion["notes"].as_array().into_iter().flatten() {
+                        if note["system"].as_bool() == Some(true) {
+                            continue;
+                        }
+                        let position = &note["position"];
+                        let new_line = position["new_line"].as_u64();
+                        let old_line = position["old_line"].as_u64();
+                        let path = optional(&position["new_path"])
+                            .or_else(|| optional(&position["old_path"]));
+                        comments.push(Comment {
+                            id: id_text(&note["id"]),
+                            thread: thread.clone(),
+                            author: text(&note["author"]["username"]),
+                            body: text(&note["body"]),
+                            created_at: text(&note["created_at"]),
+                            side: path.as_ref().map(|_| {
+                                if new_line.is_some() { "new" } else { "old" }.to_string()
+                            }),
+                            path,
+                            line: new_line.or(old_line),
+                            review: None,
+                            reply: false,
+                        });
+                    }
+                }
+            }
+            Kind::Azure => {
+                let value = self
+                    .get(self.repo(&["pullrequests", &id, "threads"])?)
+                    .await?;
+                for thread in value["value"].as_array().into_iter().flatten() {
+                    if thread["isDeleted"].as_bool() == Some(true) {
+                        continue;
+                    }
+                    let thread_id = id_text(&thread["id"]);
+                    let context = &thread["threadContext"];
+                    let right = context["rightFileStart"]["line"].as_u64();
+                    let left = context["leftFileStart"]["line"].as_u64();
+                    let path = optional(&context["filePath"])
+                        .map(|path| path.trim_start_matches('/').to_string());
+                    for comment in thread["comments"].as_array().into_iter().flatten() {
+                        if comment["commentType"] == "system"
+                            || comment["isDeleted"].as_bool() == Some(true)
+                        {
+                            continue;
+                        }
+                        comments.push(Comment {
+                            id: format!("{thread_id}/{}", id_text(&comment["id"])),
+                            thread: thread_id.clone(),
+                            author: optional(&comment["author"]["displayName"])
+                                .unwrap_or_else(|| text(&comment["author"]["uniqueName"])),
+                            body: text(&comment["content"]),
+                            created_at: text(&comment["publishedDate"]),
+                            side: path
+                                .as_ref()
+                                .map(|_| if right.is_some() { "new" } else { "old" }.to_string()),
+                            path: path.clone(),
+                            line: right.or(left),
+                            review: None,
+                            reply: false,
+                        });
+                    }
+                }
+            }
+        }
+        comments.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        let mut threads = std::collections::HashSet::new();
+        for comment in &mut comments {
+            comment.body = clip(&comment.body, 20_000);
+            comment.reply = !threads.insert(comment.thread.clone());
+        }
+        if comments.len() > 1000 {
+            comments.drain(..comments.len() - 1000);
+        }
+        Ok(comments)
+    }
+
+    async fn comment(&self, number: u64, body: &str, target: Target<'_>) -> Result<(), String> {
+        let id = number.to_string();
+        let inline = target.path.zip(target.line);
+        match self.kind {
+            Kind::Github => {
+                let (url, payload) = if let Some(root) = target.reply_to {
+                    (
+                        self.repo(&["pulls", &id, "comments", root, "replies"])?,
+                        json!({"body": body}),
+                    )
+                } else if let Some((path, line)) = inline {
+                    let commit = target
+                        .commit
+                        .ok_or("Für Zeilenkommentare fehlt der Commit des Pull Requests.")?;
+                    (
+                        self.repo(&["pulls", &id, "comments"])?,
+                        json!({"body": body, "commit_id": commit, "path": path, "line": line, "side": if target.old { "LEFT" } else { "RIGHT" }}),
+                    )
+                } else {
+                    (
+                        self.repo(&["issues", &id, "comments"])?,
+                        json!({"body": body}),
+                    )
+                };
+                self.send(Method::POST, url, Some(payload)).await?;
+            }
+            Kind::Gitea => {
+                if let Some((path, line)) = inline {
+                    let mut entry = json!({"path": path, "body": body});
+                    entry[if target.old {
+                        "old_position"
+                    } else {
+                        "new_position"
+                    }] = json!(line);
+                    let mut payload = json!({"body": "", "event": "COMMENT", "comments": [entry]});
+                    if let Some(commit) = target.commit {
+                        payload["commit_id"] = json!(commit);
+                    }
+                    self.send(
+                        Method::POST,
+                        self.repo(&["pulls", &id, "reviews"])?,
+                        Some(payload),
+                    )
+                    .await?;
+                } else {
+                    self.send(
+                        Method::POST,
+                        self.repo(&["issues", &id, "comments"])?,
+                        Some(json!({"body": body})),
+                    )
+                    .await?;
+                }
+            }
+            Kind::Gitlab => {
+                let (url, payload) = if let Some(thread) = target.reply_to {
+                    (
+                        self.repo(&["merge_requests", &id, "discussions", thread, "notes"])?,
+                        json!({"body": body}),
+                    )
+                } else if let Some((path, line)) = inline {
+                    let raw = self.raw_pull(number).await?;
+                    let refs = &raw["diff_refs"];
+                    if !refs["head_sha"].is_string() {
+                        return Err("Der Merge Request hat noch keinen prüfbaren Stand.".into());
+                    }
+                    let mut position = json!({"position_type": "text", "base_sha": refs["base_sha"], "start_sha": refs["start_sha"], "head_sha": refs["head_sha"], "new_path": path, "old_path": path});
+                    position[if target.old { "old_line" } else { "new_line" }] = json!(line);
+                    (
+                        self.repo(&["merge_requests", &id, "discussions"])?,
+                        json!({"body": body, "position": position}),
+                    )
+                } else {
+                    (
+                        self.repo(&["merge_requests", &id, "notes"])?,
+                        json!({"body": body}),
+                    )
+                };
+                self.send(Method::POST, url, Some(payload)).await?;
+            }
+            Kind::Azure => {
+                if let Some(thread) = target.reply_to {
+                    self.send(
+                        Method::POST,
+                        self.repo(&["pullrequests", &id, "threads", thread, "comments"])?,
+                        Some(json!({"content": body, "parentCommentId": 1, "commentType": 1})),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                let mut payload = json!({"comments": [{"parentCommentId": 0, "content": body, "commentType": 1}], "status": 1});
+                if let Some((path, line)) = inline {
+                    let position = json!({"line": line, "offset": 1});
+                    let (start, end) = if target.old {
+                        ("leftFileStart", "leftFileEnd")
+                    } else {
+                        ("rightFileStart", "rightFileEnd")
+                    };
+                    let mut context = json!({"filePath": format!("/{path}")});
+                    context[start] = position.clone();
+                    context[end] = position;
+                    payload["threadContext"] = context;
+                }
+                self.send(
+                    Method::POST,
+                    self.repo(&["pullrequests", &id, "threads"])?,
+                    Some(payload),
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn update(
+        &self,
+        number: u64,
+        title: Option<&str>,
+        body: Option<&str>,
+        state: Option<&str>,
+    ) -> Result<Pull, String> {
+        let id = number.to_string();
+        let mut payload = serde_json::Map::new();
+        if let Some(title) = title {
+            payload.insert("title".into(), json!(title));
+        }
+        let (method, url, body_key) = match self.kind {
+            Kind::Github | Kind::Gitea => (Method::PATCH, self.repo(&["pulls", &id])?, "body"),
+            Kind::Gitlab => (
+                Method::PUT,
+                self.repo(&["merge_requests", &id])?,
+                "description",
+            ),
+            Kind::Azure => (
+                Method::PATCH,
+                self.repo(&["pullrequests", &id])?,
+                "description",
+            ),
+        };
+        if let Some(body) = body {
+            payload.insert(body_key.into(), json!(body));
+        }
+        if let Some(state) = state {
+            let closed = state == "closed";
+            let (key, value) = match self.kind {
+                Kind::Github | Kind::Gitea => ("state", state),
+                Kind::Gitlab => ("state_event", if closed { "close" } else { "reopen" }),
+                Kind::Azure => ("status", if closed { "abandoned" } else { "active" }),
+            };
+            payload.insert(key.into(), json!(value));
+        }
+        let value = self.send(method, url, Some(Value::Object(payload))).await?;
+        Ok(self.pull(&value))
+    }
+
     async fn evidence(&self, commit: &str, branch: &str) -> Result<Option<Evidence>, String> {
         let candidates: Vec<Value> = match self.kind {
             Kind::Github => self
@@ -989,6 +1347,54 @@ impl Client {
             base: pull.base,
         }))
     }
+}
+
+fn id_text(value: &Value) -> String {
+    value
+        .as_u64()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| text(value))
+}
+
+fn general_comment(item: &Value, author: &Value) -> Comment {
+    let id = id_text(&item["id"]);
+    Comment {
+        thread: format!("comment-{id}"),
+        id,
+        author: text(author),
+        body: text(&item["body"]),
+        created_at: text(&item["created_at"]),
+        path: None,
+        line: None,
+        side: None,
+        review: None,
+        reply: false,
+    }
+}
+
+fn review_comment(item: &Value, time: &str) -> Option<Comment> {
+    let state = match item["state"].as_str() {
+        Some("APPROVED") => Some("approved"),
+        Some("CHANGES_REQUESTED" | "REQUEST_CHANGES") => Some("changes_requested"),
+        _ => None,
+    };
+    let body = text(&item["body"]);
+    if state.is_none() && body.trim().is_empty() {
+        return None;
+    }
+    let id = format!("review-{}", id_text(&item["id"]));
+    Some(Comment {
+        thread: id.clone(),
+        id,
+        author: text(&item["user"]["login"]),
+        body,
+        created_at: text(&item[time]),
+        path: None,
+        line: None,
+        side: None,
+        review: state.map(str::to_string).or(Some("commented".into())),
+        reply: false,
+    })
 }
 
 #[derive(Default)]
@@ -1329,7 +1735,11 @@ pub async fn handle(request: Request) -> Result<Value, String> {
             let client = Client::connected(remote).await?;
             Ok(json!(
                 client
-                    .pulls(request.state.as_deref() == Some("merged"))
+                    .pulls(match request.state.as_deref() {
+                        Some("merged") => "merged",
+                        Some("closed") => "closed",
+                        _ => "open",
+                    })
                     .await?
             ))
         }
@@ -1384,6 +1794,100 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 .review(request.number.ok_or("Pull Request fehlt")?, event, &body)
                 .await?;
             Ok(Value::Null)
+        }
+        "comments" => {
+            let client = Client::connected(remote).await?;
+            Ok(json!(
+                client
+                    .comments(request.number.ok_or("Pull Request fehlt")?)
+                    .await?
+            ))
+        }
+        "comment" => {
+            let body = request.body.unwrap_or_default();
+            if body.trim().is_empty() || body.len() > 60_000 {
+                return Err("Bitte einen Kommentar eingeben.".into());
+            }
+            let path = request.path.as_deref();
+            if path.is_some_and(|path| {
+                path.is_empty()
+                    || path.len() > 400
+                    || path.starts_with('/')
+                    || path.contains(['\0', '\\'])
+                    || path.split('/').any(|part| part.is_empty() || part == "..")
+            }) {
+                return Err("Ungültiger Dateipfad für den Kommentar.".into());
+            }
+            if path.is_some() != request.line.is_some()
+                || request
+                    .line
+                    .is_some_and(|line| line == 0 || line > 10_000_000)
+            {
+                return Err("Zeilenkommentare brauchen Datei und Zeile.".into());
+            }
+            let valid = |value: &str| {
+                !value.is_empty()
+                    && value.len() <= 120
+                    && value
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            };
+            if request
+                .reply_to
+                .as_deref()
+                .is_some_and(|value| !valid(value))
+                || request.commit.as_deref().is_some_and(|value| !valid(value))
+            {
+                return Err("Ungültiger Bezug für den Kommentar.".into());
+            }
+            let client = Client::connected(remote).await?;
+            client
+                .comment(
+                    request.number.ok_or("Pull Request fehlt")?,
+                    &body,
+                    Target {
+                        path,
+                        line: request.line,
+                        old: request.side.as_deref() == Some("old"),
+                        commit: request.commit.as_deref(),
+                        reply_to: request
+                            .reply_to
+                            .as_deref()
+                            .filter(|_| client.kind != Kind::Gitea),
+                    },
+                )
+                .await?;
+            Ok(Value::Null)
+        }
+        "update" => {
+            let title = request.title.as_deref().map(str::trim);
+            if title.is_some_and(|title| title.is_empty() || title.len() > 250)
+                || request
+                    .body
+                    .as_ref()
+                    .is_some_and(|body| body.len() > 60_000)
+            {
+                return Err("Titel (bis 250 Zeichen) und Beschreibung prüfen.".into());
+            }
+            let state = match request.state.as_deref() {
+                None => None,
+                Some(state @ ("open" | "closed")) => Some(state),
+                Some(_) => return Err("Unbekannter Status für den Pull Request.".into()),
+            };
+            if title.is_none() && request.body.is_none() && state.is_none() {
+                return Err("Keine Änderung angegeben.".into());
+            }
+            let client = Client::connected(remote).await?;
+            Ok(json!(
+                client
+                    .update(
+                        request.number.ok_or("Pull Request fehlt")?,
+                        title,
+                        request.body.as_deref(),
+                        state,
+                    )
+                    .await?
+            ))
         }
         "merge" => {
             let client = Client::connected(remote).await?;
@@ -1582,6 +2086,218 @@ mod tests {
             (body["head"].as_str(), body["base"].as_str()),
             (Some("feature"), Some("main"))
         );
+    }
+
+    #[tokio::test]
+    async fn github_conversation_merges_general_line_and_review_comments() {
+        let (base, seen) = serve(Box::new(|method, target, _| {
+            match (method, target) {
+            ("GET", "/api/v3/repos/acme/shop/issues/7/comments?per_page=100") => (
+                200,
+                json!([{"id": 1, "user": {"login": "bob"}, "body": "Allgemein", "created_at": "2026-10-01T10:00:00Z"}]).to_string(),
+            ),
+            ("GET", "/api/v3/repos/acme/shop/pulls/7/comments?per_page=100") => (
+                200,
+                json!([
+                    {"id": 2, "user": {"login": "carol"}, "body": "Index fehlt", "created_at": "2026-10-01T10:01:00Z", "path": "database/objects/orders.sql", "line": 4, "side": "RIGHT"},
+                    {"id": 3, "in_reply_to_id": 2, "user": {"login": "alice"}, "body": "Ergänzt", "created_at": "2026-10-01T10:02:00Z", "path": "database/objects/orders.sql", "line": null, "original_line": 4, "side": "RIGHT"}
+                ]).to_string(),
+            ),
+            ("GET", "/api/v3/repos/acme/shop/pulls/7/reviews?per_page=100") => (
+                200,
+                json!([
+                    {"id": 9, "user": {"login": "bob"}, "state": "APPROVED", "body": "", "submitted_at": "2026-10-01T10:03:00Z"},
+                    {"id": 10, "user": {"login": "carol"}, "state": "COMMENTED", "body": "", "submitted_at": "2026-10-01T10:01:00Z"}
+                ]).to_string(),
+            ),
+            ("POST", "/api/v3/repos/acme/shop/pulls/7/comments") => (201, "{}".into()),
+            ("POST", "/api/v3/repos/acme/shop/pulls/7/comments/2/replies") => (201, "{}".into()),
+            ("PATCH", "/api/v3/repos/acme/shop/pulls/7") => (
+                200,
+                json!({"number": 7, "title": "Neu", "user": {"login": "alice"}, "head": {"ref": "f", "sha": "h"}, "base": {"ref": "main"}, "state": "closed", "merged_at": null}).to_string(),
+            ),
+            _ => (404, json!({"message": "Not Found"}).to_string()),
+        }
+        }));
+        let client = client(&base, "acme/shop.git", Kind::Github);
+        let comments = client.comments(7).await.unwrap();
+        assert_eq!(
+            comments
+                .iter()
+                .map(|comment| (comment.id.as_str(), comment.thread.as_str(), comment.reply))
+                .collect::<Vec<_>>(),
+            [
+                ("1", "comment-1", false),
+                ("2", "2", false),
+                ("3", "2", true),
+                ("review-9", "review-9", false)
+            ]
+        );
+        assert_eq!((comments[1].line, comments[2].line), (Some(4), None));
+        assert_eq!(comments[1].side.as_deref(), Some("new"));
+        assert_eq!(comments[3].review.as_deref(), Some("approved"));
+        client
+            .comment(
+                7,
+                "Bitte prüfen",
+                Target {
+                    path: Some("database/objects/orders.sql"),
+                    line: Some(4),
+                    old: true,
+                    commit: Some("abc"),
+                    reply_to: None,
+                },
+            )
+            .await
+            .unwrap();
+        client
+            .comment(
+                7,
+                "Erledigt",
+                Target {
+                    reply_to: Some("2"),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let pull = client
+            .update(7, Some("Neu"), None, Some("closed"))
+            .await
+            .unwrap();
+        assert_eq!(pull.state, "closed");
+        let seen = seen.lock().unwrap();
+        let line: Value = serde_json::from_str(&seen[3].body).unwrap();
+        assert_eq!(
+            line,
+            json!({"body": "Bitte prüfen", "commit_id": "abc", "path": "database/objects/orders.sql", "line": 4, "side": "LEFT"})
+        );
+        let patch: Value = serde_json::from_str(&seen[5].body).unwrap();
+        assert_eq!(patch, json!({"title": "Neu", "state": "closed"}));
+    }
+
+    #[tokio::test]
+    async fn gitlab_gitea_and_azure_comments_use_their_native_threads() {
+        let (base, seen) = serve(Box::new(|method, target, _| {
+            match (method, target) {
+            ("GET", "/api/v4/projects/acme%2Fshop/merge_requests/5/discussions?per_page=100") => (
+                200,
+                json!([
+                    {"id": "d1", "notes": [
+                        {"id": 11, "system": false, "author": {"username": "bob"}, "body": "Spalte?", "created_at": "2026-10-01T10:00:00Z", "position": {"new_path": "database/objects/a.sql", "new_line": null, "old_line": 3}},
+                        {"id": 12, "system": false, "author": {"username": "alice"}, "body": "Ja", "created_at": "2026-10-01T10:01:00Z", "position": {"new_path": "database/objects/a.sql", "new_line": null, "old_line": 3}}
+                    ]},
+                    {"id": "d2", "notes": [{"id": 13, "system": true, "author": {"username": "bot"}, "body": "added 1 commit", "created_at": "2026-10-01T10:02:00Z"}]}
+                ]).to_string(),
+            ),
+            ("GET", "/api/v4/projects/acme%2Fshop/merge_requests/5") => (
+                200,
+                json!({"iid": 5, "diff_refs": {"base_sha": "b", "start_sha": "s", "head_sha": "h"}}).to_string(),
+            ),
+            ("POST", "/api/v4/projects/acme%2Fshop/merge_requests/5/discussions") => (201, "{}".into()),
+            ("PUT", "/api/v4/projects/acme%2Fshop/merge_requests/5") => (
+                200,
+                json!({"iid": 5, "state": "opened", "author": {"username": "alice"}}).to_string(),
+            ),
+            ("POST", "/api/v1/repos/acme/shop/pulls/3/reviews") => (200, "{}".into()),
+            ("POST", "/acme/Shop/_apis/git/repositories/schema/pullrequests/12/threads/44/comments?api-version=6.0") => (200, "{}".into()),
+            ("POST", "/acme/Shop/_apis/git/repositories/schema/pullrequests/12/threads?api-version=6.0") => (200, "{}".into()),
+            ("PATCH", "/acme/Shop/_apis/git/repositories/schema/pullrequests/12?api-version=6.0") => (
+                200,
+                json!({"pullRequestId": 12, "status": "abandoned", "createdBy": {"displayName": "Alice"}}).to_string(),
+            ),
+            _ => (404, json!({"message": "Not Found"}).to_string()),
+        }
+        }));
+        let gitlab = client(&base, "acme/shop.git", Kind::Gitlab);
+        let comments = gitlab.comments(5).await.unwrap();
+        assert_eq!(comments.len(), 2);
+        assert_eq!(
+            (comments[0].line, comments[0].side.as_deref()),
+            (Some(3), Some("old"))
+        );
+        assert!(comments[1].reply);
+        gitlab
+            .comment(
+                5,
+                "Neu",
+                Target {
+                    path: Some("database/objects/a.sql"),
+                    line: Some(8),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        gitlab
+            .update(5, None, Some("Text"), Some("open"))
+            .await
+            .unwrap();
+        client(&base, "acme/shop.git", Kind::Gitea)
+            .comment(
+                3,
+                "Hier",
+                Target {
+                    path: Some("database/objects/a.sql"),
+                    line: Some(2),
+                    commit: Some("h"),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let azure = client(&base, "acme/Shop/_git/schema", Kind::Azure);
+        azure
+            .comment(
+                12,
+                "Antwort",
+                Target {
+                    reply_to: Some("44"),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        azure
+            .comment(
+                12,
+                "Zeile",
+                Target {
+                    path: Some("database/objects/a.sql"),
+                    line: Some(5),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            azure
+                .update(12, None, None, Some("closed"))
+                .await
+                .unwrap()
+                .state,
+            "closed"
+        );
+        let seen = seen.lock().unwrap();
+        let body = |index: usize| serde_json::from_str::<Value>(&seen[index].body).unwrap();
+        assert_eq!(
+            body(2)["position"],
+            json!({"position_type": "text", "base_sha": "b", "start_sha": "s", "head_sha": "h", "new_path": "database/objects/a.sql", "old_path": "database/objects/a.sql", "new_line": 8})
+        );
+        assert_eq!(
+            body(3),
+            json!({"description": "Text", "state_event": "reopen"})
+        );
+        assert_eq!(
+            body(4),
+            json!({"body": "", "event": "COMMENT", "commit_id": "h", "comments": [{"path": "database/objects/a.sql", "body": "Hier", "new_position": 2}]})
+        );
+        assert_eq!(body(5)["parentCommentId"], 1);
+        assert_eq!(
+            body(6)["threadContext"],
+            json!({"filePath": "/database/objects/a.sql", "rightFileStart": {"line": 5, "offset": 1}, "rightFileEnd": {"line": 5, "offset": 1}})
+        );
+        assert_eq!(body(7), json!({"status": "abandoned"}));
     }
 
     #[tokio::test]

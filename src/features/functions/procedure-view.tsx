@@ -166,6 +166,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         onChange={edit.editing ? edit.setSql : undefined}
         revealLine={revealLine}
         error={objectError(compileResult?.message, edit.state)}
+        stateKey={edit.key}
       />
 
       <SqlEditFeedback state={edit.state} />

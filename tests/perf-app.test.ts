@@ -253,7 +253,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 test.skipIf(!process.env.L8DB_PERF_APP)(
   "Dashboard bleibt beim Scrollen flüssig",
   async () => {
-    const app = await open("/dashboard", ".react-grid-item");
+    const app = await open("/dashboard", ".l8-item");
     try {
       await app.page.waitForTimeout(2000);
       const scroll = await measure("dashboard-scroll", app.page, () =>
@@ -262,15 +262,15 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(scroll.fps).toBeGreaterThan(MIN_FPS);
       expect(scroll.p95).toBeLessThan(MAX_P95_DASHBOARD_MS);
 
-      const box = await app.page.locator(".react-grid-item").first().boundingBox();
+      const box = await app.page.locator(".l8-item [data-l8-handle]").first().boundingBox();
       if (!box) throw new Error("Kein Widget im Dashboard gefunden.");
       const drag = await measure("dashboard-drag", app.page, async () => {
-        await app.page.mouse.move(box.x + box.width / 2, box.y + 14);
+        await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await app.page.mouse.down();
         for (let step = 0; step < 40; step++) {
           await app.page.mouse.move(
             box.x + box.width / 2 + Math.sin(step / 4) * 200,
-            box.y + 14 + step * 4,
+            box.y + box.height / 2 + step * 4,
           );
           await app.page.waitForTimeout(16);
         }
@@ -290,7 +290,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 test.skipIf(!process.env.L8DB_PERF_APP)(
   "Dashboard lädt Monaco erst für eine eigene SQL-Abfrage",
   async () => {
-    const app = await open("/dashboard", ".react-grid-item");
+    const app = await open("/dashboard", ".l8-item");
     try {
       expect(await app.page.locator(".monaco-editor").count()).toBe(0);
       expect(
@@ -303,9 +303,10 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const edit = app.page.getByRole("button", { name: "Dashboard bearbeiten", exact: true });
       if (await edit.count()) await edit.click();
       await app.page.getByRole("button", { name: "Chart erstellen", exact: true }).click();
-      await app.page.getByRole("dialog", { name: "Dein neuer Chart" }).waitFor();
+      await app.page.getByRole("textbox", { name: "Chart-Titel", exact: true }).waitFor();
       expect(await app.page.locator(".monaco-editor").count()).toBe(0);
-      await app.page.getByRole("tab", { name: "Quelle & SQL" }).click();
+      await app.page.getByRole("tab", { name: "Eigenes SQL", exact: true }).click();
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
       await app.page.getByRole("button", { name: "Ich möchte selbst SQL schreiben" }).click();
       await app.page.locator('.monaco-editor[role="code"]').waitFor();
       expect(app.errors).toEqual([]);

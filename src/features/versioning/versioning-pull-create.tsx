@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { versioningRepository } from "@/lib/db";
 import { forge, type PullRequest, pullRequestDraft } from "@/lib/versioning/forge";
 import { changedFiles } from "@/lib/versioning/status";
+import { useTickets } from "./use-tickets";
 import type { VersioningWorkspace } from "./use-versioning";
 
 export function VersioningPullCreate({
@@ -15,13 +16,14 @@ export function VersioningPullCreate({
 }: {
   workspace: VersioningWorkspace;
   defaultBranch: string | null;
-  onCreated: (number: number) => void;
+  onCreated: (pull: PullRequest) => void;
 }) {
   const { repo, project, status, run } = workspace;
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState(false);
+  const tickets = useTickets(workspace);
   const branch = status?.branch;
   if (!project || !status?.head || !branch || !defaultBranch || branch === defaultBranch)
     return null;
@@ -34,6 +36,7 @@ export function VersioningPullCreate({
         `refs/remotes/origin/${defaultBranch}`,
         "HEAD",
         branch,
+        tickets.configuration,
       );
       setTitle(proposal.title);
       setBody(proposal.body);
@@ -51,7 +54,7 @@ export function VersioningPullCreate({
       });
       setOpen(false);
       await workspace.refresh();
-      onCreated(pull.number);
+      onCreated(pull);
     }, "Pull Request erstellt");
   if (!open)
     return (

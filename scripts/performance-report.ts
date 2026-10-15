@@ -29,6 +29,74 @@ export function resourceViolations(
   return violations;
 }
 
+export interface FileRun {
+  file: string;
+  exitCode: number | null;
+  executedTests: number | null;
+  resources: ReturnType<typeof normalizeProcessResources> | null;
+  outcomes?: Map<string, "pass" | "fail">;
+}
+
+export function combineFileRuns(runs: FileRun[]) {
+  const measured = runs.map((run) => run.resources);
+  const resources = measured.every((value) => value !== null)
+    ? {
+        peakRssBytes: Math.max(0, ...measured.map((value) => value?.peakRssBytes ?? 0)),
+        userCpuMs: measured.reduce((sum, value) => sum + (value?.userCpuMs ?? 0), 0),
+        systemCpuMs: measured.reduce((sum, value) => sum + (value?.systemCpuMs ?? 0), 0),
+      }
+    : null;
+  const counts = runs.map((run) => run.executedTests);
+  return {
+    exitCode: runs.find((run) => run.exitCode !== 0)?.exitCode ?? 0,
+    executedTests: counts.some((count) => count === null)
+      ? null
+      : counts.reduce<number>((sum, count) => sum + (count ?? 0), 0),
+    resources,
+    failedFiles: runs.filter((run) => run.exitCode !== 0).map((run) => run.file),
+  };
+}
+
+export function workloadResources(
+  total: ReturnType<typeof normalizeProcessResources>,
+  startup: ReturnType<typeof normalizeProcessResources> | null,
+  processes: number,
+) {
+  const extra = Math.max(0, processes - 1);
+  return {
+    peakRssBytes: total.peakRssBytes,
+    userCpuMs: Math.max(0, total.userCpuMs - (startup?.userCpuMs ?? 0) * extra),
+    systemCpuMs: Math.max(0, total.systemCpuMs - (startup?.systemCpuMs ?? 0) * extra),
+  };
+}
+
+export function testOutcomes(output: string): Map<string, "pass" | "fail"> {
+  const colors = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+  const outcomes = new Map<string, "pass" | "fail">();
+  for (const line of output.replace(colors, "").split(/\r?\n/)) {
+    const match = line.match(/^\((pass|fail)\) (.+?)(?: \[[0-9.]+ms\])?\s*$/);
+    if (match) outcomes.set(match[2], match[1] as "pass" | "fail");
+  }
+  return outcomes;
+}
+
+export function testNamePattern(names: readonly string[]) {
+  const literal = (text: string) => text.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
+  return `^(${names.map((name) => literal(name.split(" > ").join(" "))).join("|")})$`;
+}
+
+export function confirmedFailures(
+  failed: readonly string[],
+  reruns: readonly { outcomes: Map<string, "pass" | "fail">; executedTests: number | null }[],
+) {
+  return failed.filter(
+    (name) =>
+      !reruns.every(
+        (rerun) => rerun.executedTests === failed.length && rerun.outcomes.get(name) !== "fail",
+      ),
+  );
+}
+
 export function executedTestCount(output: string): number | null {
   const colors = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
   const plain = output.replace(colors, "");

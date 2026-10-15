@@ -45,7 +45,7 @@ export function AiApprovalPicker({ profile, disabled }: Props) {
           {feature.isNew && <NewBadge />}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-64 rounded-2xl">
+      <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-64">
         <DropdownMenuLabel className="text-[11px] text-muted-foreground">
           Freigaben · Datenbank-Änderungen fragen immer
         </DropdownMenuLabel>

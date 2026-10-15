@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { buildColumnValueOptions } from "@/lib/column-value-options";
 import { useActiveConnection } from "@/lib/connections";
-import { buildColumnValueOptions } from "@/lib/constraint-designer";
 import {
   columnValueOptions,
   getErSchema,

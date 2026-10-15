@@ -1,11 +1,12 @@
 use super::{
+    harness,
     integrations::{self, External},
     runtime::Run,
     types::{Profile, RunRequest},
 };
 use futures_util::StreamExt;
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 pub async fn limited_body(response: reqwest::Response, limit: usize) -> Result<String, String> {
@@ -523,7 +524,7 @@ pub(super) fn valid_effort(effort: &str) -> Result<(), String> {
 
 const THINNED: &str = "[older tool result omitted to save context: ";
 
-fn message_size(message: &Value) -> usize {
+pub(super) fn message_size(message: &Value) -> usize {
     let content = match &message["content"] {
         Value::String(text) => text.len(),
         Value::Null => 0,
@@ -564,9 +565,29 @@ pub(super) fn thin_tool_results(
     } else {
         rounds[rounds.len() - keep_rounds]
     };
+    let calls: HashMap<String, (String, String)> = messages[..cutoff]
+        .iter()
+        .flat_map(|message| message["tool_calls"].as_array().into_iter().flatten())
+        .filter_map(|call| {
+            let arguments = call["function"]["arguments"].as_str().unwrap_or("");
+            Some((
+                call["id"].as_str()?.to_string(),
+                (
+                    call["function"]["name"].as_str().unwrap_or("").to_string(),
+                    arguments
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(200)
+                        .collect(),
+                ),
+            ))
+        })
+        .collect();
     let mut thinned = 0;
     for message in messages[..cutoff].iter_mut() {
-        if message["role"] != "tool" {
+        if message["role"] != "tool" || message["name"] == "plan" {
             continue;
         }
         let text = match &message["content"] {
@@ -584,8 +605,14 @@ pub(super) fn thin_tool_results(
             .chars()
             .take(120)
             .collect();
+        let call = message["tool_call_id"]
+            .as_str()
+            .and_then(|id| calls.get(id))
+            .filter(|(name, _)| !name.is_empty())
+            .map(|(name, arguments)| format!("; call: {name} {arguments}"))
+            .unwrap_or_default();
         message["content"] = json!(format!(
-            "{THINNED}{} chars; starts with: {start}]",
+            "{THINNED}{} chars; starts with: {start}{call}]",
             text.chars().count()
         ));
         thinned += 1;
@@ -766,10 +793,28 @@ pub async fn run(
     let mut catalog =
         super::tools::Catalog::new(config, !request.attachments.is_empty(), &external.tools);
     let mut failures = super::tools::Failures::default();
-    for round in 1..=12 {
+    let mut plan = harness::Plan::default();
+    let mut repeats = harness::Repeats::default();
+    let start = messages.len();
+    if harness::guided(profile) {
+        harness::note(&mut messages, harness::GUIDED_REMINDER);
+    }
+    for round in 1..=harness::MAX_ROUNDS {
         let published = super::tools::published(catalog.tools());
-        thin_tool_results(&mut messages, 2, 120_000);
-        let (url, body) = payload(profile, instructions, &messages, catalog.tools())?;
+        let overhead = instructions.len()
+            + serde_json::to_string(catalog.tools())
+                .map(|tools| tools.len())
+                .unwrap_or(0);
+        let budget = harness::Budget::for_profile(profile, overhead);
+        thin_tool_results(&mut messages, 2, budget.soft);
+        harness::collapse(&mut messages, start, budget.hard, &plan);
+        if let Some(text) = harness::round_note(round) {
+            harness::note(&mut messages, &text);
+        }
+        let (url, mut body) = payload(profile, instructions, &messages, catalog.tools())?;
+        if round == harness::MAX_ROUNDS {
+            harness::forbid_tools(&profile.provider, &mut body);
+        }
         let response = auth(client.post(url).json(&body), profile, key.as_deref())
             .send()
             .await
@@ -818,6 +863,9 @@ pub async fn run(
             }
             return Ok(());
         }
+        if round == harness::MAX_ROUNDS {
+            break;
+        }
         for (index, call) in &result.calls {
             if let Some(block) = result.anthropic_blocks.get_mut(index) {
                 block["input"] = serde_json::from_str(if call.arguments.is_empty() {
@@ -865,6 +913,16 @@ pub async fn run(
                 let result = json!({"content": [{"type": "text", "text": text}], "isError": true});
                 run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": "error"}));
                 result
+            } else if call.name == "plan" {
+                let outcome = plan.update(&arguments);
+                if outcome.is_ok() {
+                    run.emit("metadata", plan.event());
+                }
+                let (text, error) = match outcome {
+                    Ok(text) => (text, false),
+                    Err(text) => (text, true),
+                };
+                json!({"content": [{"type": "text", "text": text}], "isError": error})
             } else if call.name == "discover_tools" {
                 let result = catalog.discover(&arguments);
                 run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": if result["isError"] == true { "error" } else { "completed" }}));
@@ -874,11 +932,19 @@ pub async fn run(
             } else {
                 super::context::call(server, config, run, &call.name, arguments).await
             };
+            let failed = result["isError"] == true;
+            let mut content = super::tools::model_output(&result, config.max_chars);
             if refusal.is_none() {
+                if let Some(reminder) = repeats.record(&key, failed, &call.name) {
+                    content.push_str(&reminder);
+                }
                 failures.record(key, &result);
             }
-            messages.push(json!({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": super::tools::model_output(&result, config.max_chars), "isError": result["isError"] == true}));
+            messages.push(json!({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": content, "isError": failed}));
         }
     }
-    Err("Maximal 12 Tool-Runden erreicht. Mit einer neuen Nachricht fortsetzen.".into())
+    Err(format!(
+        "Maximal {} Tool-Runden erreicht. Mit einer neuen Nachricht fortsetzen.",
+        harness::MAX_ROUNDS
+    ))
 }

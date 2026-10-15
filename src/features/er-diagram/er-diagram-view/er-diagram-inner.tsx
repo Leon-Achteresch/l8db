@@ -6,6 +6,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  type Viewport,
 } from "@xyflow/react";
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +32,7 @@ import {
   parseErFocusDepth,
 } from "@/lib/er-focus";
 import { useErSchemaQuery } from "@/lib/queries";
+import { readTabState, tabStateKey, writeTabState } from "@/lib/tab-state";
 
 export function ERDiagramInner() {
   const connection = useActiveConnection();
@@ -38,7 +40,7 @@ export function ERDiagramInner() {
   const activeSchema = useActiveSchema();
   const { data: fullSchema, isLoading, error } = useErSchemaQuery(activeSchema);
   const navigate = useNavigate();
-  const { fitView } = useReactFlow<ErNodeType>();
+  const { fitView, setViewport } = useReactFlow<ErNodeType>();
   const search = useSearch({ from: "/_app/_workspace/er-diagram", shouldThrow: false });
 
   const focus = useMemo(() => {
@@ -81,6 +83,11 @@ export function ERDiagramInner() {
 
   const [exporting, setExporting] = useState(false);
   const interacted = useRef(false);
+  const viewportKey = tabStateKey(
+    `tool:er-diagram:${connection?.id ?? ""}:${activeDatabase ?? ""}:${activeSchema}`,
+    `viewport:${focusKey}:${focus?.depth}`,
+  );
+  const restoredKey = useRef<string | null>(null);
   const { nodes, edges, clusters, onNodesChange, onVisibilityChange, prepareExport } =
     useClusterGraph(erSchema, exporting);
   const showOverview = useCallback(() => {
@@ -96,13 +103,21 @@ export function ERDiagramInner() {
   useEffect(() => {
     interacted.current = false;
     if (clusters.length === 0) return;
+    if (restoredKey.current !== viewportKey) {
+      restoredKey.current = viewportKey;
+      const saved = readTabState<Viewport>(viewportKey);
+      if (saved) {
+        void setViewport(saved);
+        return;
+      }
+    }
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         if (!interacted.current) showOverview();
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [clusters, showOverview]);
+  }, [clusters, showOverview, viewportKey, setViewport]);
 
   if (!connection) {
     return (
@@ -225,7 +240,8 @@ export function ERDiagramInner() {
             onNodesChange={onNodesChange}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 0.1 }}
+            defaultViewport={readTabState<Viewport>(viewportKey) ?? { x: 0, y: 0, zoom: 0.1 }}
+            onMoveEnd={(_, viewport) => writeTabState(viewportKey, viewport)}
             minZoom={0.02}
             maxZoom={2}
             panOnScroll

@@ -631,10 +631,76 @@ describe("applyModelEdit", () => {
       mode: "full",
       text: "select 1;\n",
     });
-    expect(applyModelEdit("x", "select 2;")).toEqual({ ok: true, mode: "full", text: "select 2;" });
+    expect(applyModelEdit("x", "select 2;")).toEqual({ ok: true, mode: "bare", text: "select 2;" });
     expect(applyModelEdit("x", "```\n```").ok).toBe(false);
     expect(stripFences("```sql\nselect 1;\n")).toBe("select 1;");
     expect(stripFences("no fences ")).toBe("no fences");
+  });
+
+  test("turns NO CHANGE and prose answers into a note instead of an edit", () => {
+    expect(applyModelEdit(original, "NO CHANGE: Die Abfrage ist bereits optimal.")).toEqual({
+      ok: true,
+      mode: "none",
+      text: original,
+      note: "Die Abfrage ist bereits optimal.",
+    });
+    expect(applyModelEdit(original, "\n**No change**:\nuses the index already")).toEqual({
+      ok: true,
+      mode: "none",
+      text: original,
+      note: "uses the index already",
+    });
+    expect(applyModelEdit("", "NO_CHANGE")).toEqual({ ok: true, mode: "none", text: "", note: "" });
+    const sql = 'SELECT * FROM "ETL_TEST"."AUFTRAG" FETCH FIRST 100 ROWS ONLY';
+    const prose = [
+      "No change is needed. The statement is already as fast as it can be without changing its result:",
+      "",
+      "- The plan uses `WINDOW NOSORT STOPKEY`, so Oracle stops after 100 rows.",
+      "",
+      "If you add a `WHERE` or `ORDER BY` on `REF`, I can suggest a `-- CREATE INDEX` comment.",
+    ].join("\n");
+    const answered = applyModelEdit(sql, prose);
+    expect(answered.ok && answered.mode).toBe("none");
+    expect(answered.ok && answered.text).toBe(sql);
+    expect(answered.ok && answered.mode === "none" && answered.note).toStartWith(
+      "No change is needed. The statement is already as fast as it can be without changing its result: - The plan",
+    );
+    for (const [text, note] of [
+      ["KEINE ÄNDERUNG: Die Abfrage ist bereits optimal", "Die Abfrage ist bereits optimal"],
+      ["No change needed - the query is optimal", "No change needed - the query is optimal"],
+      ["No changes are necessary, it is optimal", "No changes are necessary, it is optimal"],
+      ["-- No change needed.", "-- No change needed."],
+    ])
+      expect(applyModelEdit(sql, text)).toEqual({ ok: true, mode: "none", text: sql, note });
+    for (const text of [
+      "The query is already optimal.",
+      "# Analysis\nThe query is already optimal.",
+      "Here is why it can't be faster:\nselect 1",
+      "The limit is 100.",
+    ])
+      expect(applyModelEdit(sql, text)).toMatchObject({ ok: true, mode: "prose", text: sql });
+    const long = applyModelEdit(sql, `xy${"Ä😀 ".repeat(300)}Too long.`);
+    expect(long.ok && long.mode === "prose" && long.note).toEndWith("😀…");
+    expect(long.ok && long.mode === "prose" && Array.from(long.note).length).toBe(401);
+    for (const code of [
+      "select 2;",
+      "-- Uses the index.\nSELECT id FROM users WHERE name = 'Done.';",
+      "/* Returns active users.\n   Sorted by name. */\nselect * from users",
+      "SELECT 'It works.' AS note",
+      "db.users.find({ active: true })",
+      "db.users.find({ active: true }) // Returns active users.",
+      "SELECT id FROM users # Active users.",
+      "SELECT id,-- primary key.\n  name FROM users",
+      "SELECT id /* primary key. */ FROM users",
+      "INSERT INTO notes (body) VALUES ('Line one.\nLine two.');",
+      "SELECT N'Line one.\nLine two.'",
+    ])
+      expect(applyModelEdit(sql, code)).toMatchObject({ ok: true, mode: "bare" });
+    expect(applyModelEdit(sql, "Here it is:\n```sql\nselect 1;\n```")).toMatchObject({
+      ok: true,
+      mode: "full",
+      text: "select 1;",
+    });
   });
 });
 

@@ -38,6 +38,7 @@ Keep checks fast: run only what the change can break, once at the end, not after
 - Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, unrelated browser/perf/integration/E2E tests, `production:check`, `tauri build`. Scoped performance tests required above are included in the change's checks.
 - Do not re-run a check that already passed, and do not wait for CI.
 - If a check fails for reasons unrelated to your change, report it instead of fixing it.
+- Code review: at most one review per change, then exactly one fix round for its findings. Do not review the fixes again and do not start further review rounds; report findings you did not fix instead.
 
 ## Git & Releases
 

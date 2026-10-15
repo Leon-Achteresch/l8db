@@ -11,6 +11,7 @@ import { ProviderPickerLab } from "./provider-picker-lab";
 import { SettingsDesignLab } from "./settings-design-lab";
 import { TabPreview } from "./tab-preview";
 import { ToastDropLab } from "./toast-drop-lab";
+import { TransferCinematicLab } from "./transfer-cinematic-lab";
 
 const variants = [
   {
@@ -85,6 +86,9 @@ export function DevView() {
             </TabsTrigger>
             <TabsTrigger value="new-badge" className="flex-none px-4">
               NEW-Badge
+            </TabsTrigger>
+            <TabsTrigger value="transfer-cinematic" className="flex-none px-4">
+              Transfer-Animation
             </TabsTrigger>
           </TabsList>
         </div>
@@ -200,6 +204,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="new-badge">
           <NewBadgeExitLab />
+        </TabsContent>
+        <TabsContent value="transfer-cinematic">
+          <TransferCinematicLab />
         </TabsContent>
       </Tabs>
     </main>

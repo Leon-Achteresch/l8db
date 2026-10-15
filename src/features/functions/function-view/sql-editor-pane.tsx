@@ -1,6 +1,7 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 import { VimStatusLine } from "@/components/editor/vim-status-line";
+import { useViewStatePersistence } from "@/features/query/query-editor-pane/use-view-state-persistence";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
 import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
@@ -12,6 +13,7 @@ export interface SqlEditorPaneProps {
   onChange?: (value: string) => void;
   revealLine?: number;
   error?: string | null;
+  stateKey?: string;
 }
 
 export function SqlEditorPane({
@@ -20,6 +22,7 @@ export function SqlEditorPane({
   onChange,
   revealLine,
   error,
+  stateKey,
 }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const vimStatusRef = useRef<HTMLDivElement | null>(null);
@@ -102,6 +105,8 @@ export function SqlEditorPane({
       setExternalValueVersion((v) => v + 1);
     }
   }, [value]);
+
+  useViewStatePersistence(editorRef, stateKey);
 
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));

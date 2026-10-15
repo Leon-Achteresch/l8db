@@ -3,6 +3,7 @@ import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningActivity } from "./versioning-activity";
 import { VersioningBranches } from "./versioning-branches";
 import { VersioningHistoryPanel } from "./versioning-history-panel";
+import { VersioningOverview } from "./versioning-overview";
 import { VersioningPipeline } from "./versioning-pipeline";
 import { VersioningReleases } from "./versioning-releases";
 import { VersioningReviews } from "./versioning-reviews";
@@ -13,8 +14,10 @@ export function VersioningSection({
   section,
   workspace,
   onNavigate,
+  pending = null,
 }: {
   section: VersioningArea;
+  pending?: number | null;
   workspace: VersioningWorkspace;
   onNavigate: (area: VersioningArea) => void;
 }) {
@@ -23,6 +26,8 @@ export function VersioningSection({
   const branchKey = `${status.repo}:${project.id}:${status.branch}`;
   const projectKey = `${status.repo}:${project.id}`;
   switch (section) {
+    case "overview":
+      return <VersioningOverview workspace={workspace} pending={pending} onNavigate={onNavigate} />;
     case "pipeline":
       return <VersioningPipeline workspace={workspace} onNavigate={onNavigate} />;
     case "branches":

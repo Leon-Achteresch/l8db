@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import { reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
-import { interactionPercentiles, measureAppClick } from "./fixtures/perf-app-interactions";
+import {
+  closeWithEscape,
+  interactionPercentiles,
+  measureAppClick,
+} from "./fixtures/perf-app-interactions";
 import {
   appRequestSnapshot,
   installAppRequestProbe,
@@ -348,8 +352,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         await tools.click();
         await page.getByRole("menuitem", { name: /Verlauf & Gespeichertes/ }).click();
         await dialog.waitFor();
-        await page.keyboard.press("Escape");
-        await dialog.waitFor({ state: "detached" });
+        await closeWithEscape(page, dialog);
         expect(
           await page.evaluate(() => ({
             value: document.getElementById("root")?.style.getPropertyValue("pointer-events"),
@@ -359,6 +362,19 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           })),
         ).toEqual({ value: "auto", priority: "important", hosts: 1, children: 0 });
       }
+      await tools.click();
+      await page.getByRole("menuitem", { name: /Verlauf & Gespeichertes/ }).click();
+      await dialog.waitFor();
+      await page.evaluate(() =>
+        document.addEventListener(
+          "keydown",
+          (event) => {
+            if (event.key === "Escape") event.preventDefault();
+          },
+          { capture: true, once: true },
+        ),
+      );
+      await closeWithEscape(page, dialog);
       await page.evaluate(() =>
         document.getElementById("root")?.style.removeProperty("pointer-events"),
       );
