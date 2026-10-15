@@ -101,7 +101,7 @@ export function TransferCartoonLab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold tracking-tight">Transfer als Cartoon</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Transfer als Animation</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Die Quelle klaut dem Ziel Buchstabe für Buchstabe den Namen und beschießt es mit
             Tabellen, Zeilen und JSON. Zum Schluss kommt das Flaggschiff durchs Portal und macht
@@ -159,8 +159,8 @@ export function TransferCartoonLab() {
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label="Cartoon-Animation eines laufenden Transfers"
-        className="block aspect-video w-full rounded-xl border bg-[#1a0d36]"
+        aria-label="Animation eines laufenden Transfers"
+        className="block aspect-video w-full rounded-xl border bg-[#efe9a8]"
       />
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3">
