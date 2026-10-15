@@ -1,5 +1,6 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { memo, useId, useMemo } from "react";
+import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
 import { DataTableDraftRow } from "../data-table-draft-row";
@@ -111,6 +112,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     visibleColumns,
     waveRefs,
   } = useDataTable(props);
+  useSpiderVisit(scrollRef, columnNames, data);
   const columnScope = useId();
   const dragPreview = useColumnDragPreview({
     scope: columnScope,

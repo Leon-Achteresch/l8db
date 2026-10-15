@@ -103,6 +103,7 @@ export interface SettingsState {
   sidebarExtraCompact: boolean;
   navInHeader: boolean;
   dynamicIsland: boolean;
+  seasonalAccents: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   tableStyle: TableStyle;
@@ -172,6 +173,7 @@ export interface SettingsState {
   setSidebarExtraCompact: (value: boolean) => void;
   setNavInHeader: (value: boolean) => void;
   setDynamicIsland: (value: boolean) => void;
+  setSeasonalAccents: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
@@ -266,6 +268,7 @@ export const DEFAULT_SETTINGS = {
   sidebarExtraCompact: false,
   navInHeader: false,
   dynamicIsland: true,
+  seasonalAccents: true,
   fitColumnsToHeader: true,
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
@@ -368,6 +371,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
       setNavInHeader: (navInHeader) => set({ navInHeader }),
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
+      setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
@@ -378,6 +382,7 @@ export const useSettingsStore = create<SettingsState>()(
           sidebarExtraCompact: false,
           navInHeader: false,
           dynamicIsland: true,
+          seasonalAccents: true,
           fitColumnsToHeader: true,
           monochromeCells: true,
           tableStyle: "classic",
@@ -416,6 +421,7 @@ export const useSettingsStore = create<SettingsState>()(
           sidebarObjectNav: saved?.sidebarObjectNav === "select" ? "select" : "tabs",
           navInHeader: saved?.navInHeader === true,
           dynamicIsland: saved?.dynamicIsland !== false,
+          seasonalAccents: saved?.seasonalAccents !== false,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
