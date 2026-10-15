@@ -60,6 +60,10 @@ The following local measurements use the same Linux x64 VM and Bun 1.3.10. Brows
 | Palette inside history (4× CPU) | 5,000 history and 5,000 saved entries plus 3,000 tables; at most 15 palette options and 16 history rows; focus, hit testing, search, Escape and portal restoration | 71.4 / 105.7 ms | 120 ms warm p95; 1,000 ms cold |
 | Buffered grid ranges | 5,000 viewport updates over 100,000 rows; one retained window, at most 40 indices, 626 changed windows | 1.17 / 2.04 ms | 20 ms p95 |
 | Buffered column ranges | 5,000 updates over 100,000 columns with alternating partial edge visibility; at most 17 indices, 470 changed windows | 4.11 / 16.66 ms | 20 ms p95 |
+| Seasonal spider quip | 1,000,000 rows × 2,000 columns; reads at most 100 rows × 24 columns and 120 column names | 0.12 / 0.20 ms | 0.5 ms median, 1 ms p95 |
+| Seasonal spider visit (no throttling) | 5,000 × 120 table on 28 October; 23 spider DOM nodes, all removed after the visit; one 2.2 s timer, zero database reads during the visit and no further timer that day; closing the tab clears the pending timer and sends a running spider away within 2 s; out of season or disabled schedules no timer and renders no seasonal DOM | Chromium 59.9 FPS, WebKit 60.1 FPS; p95 16.9 / 17.0 ms | > 55 FPS, p95 < 28 ms, < 40 nodes |
+
+The spider visit's worst frame is not gated: WebKit measured 123–158 ms across four visits, while the same idle table already showed 189 ms before the spider appeared; Chromium measured 28.5–45 ms.
 
 The prior history-preview probe split every line and took 163.3 ms for 100 statements in a single sample; the new first-line scenario measured the percentiles above. The timestamp baseline created one formatter per entry and took 75.7 ms for 1,000 timestamps; its workload differs from the 5,000-entry warmed gate, so it is not a percentile comparison. Deterministic observer/scroll tests measure their test harness as well as helper work, and bound scheduled work rather than claiming measured application heap or actual DOM mounting time.
 

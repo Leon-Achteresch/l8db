@@ -14,6 +14,7 @@ import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { createGridWindowRange } from "@/lib/grid-window-range";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { useGridVirtualizer } from "@/lib/hooks/use-transition-virtualizer";
 import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
@@ -151,6 +152,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   const columns = useMemo(() => displayedResult?.columns ?? [], [displayedResult]);
   const rows = useMemo(() => displayedResult?.rows ?? [], [displayedResult]);
   const { markedRows, toggleRowMarker } = useRowMarkers(rows);
+  useSpiderVisit(scrollRef, columns, rows);
   const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
     () => applyResultView(rows, columns, sorts, deferredFilters),

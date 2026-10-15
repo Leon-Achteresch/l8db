@@ -194,6 +194,24 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "dynamicIsland",
   },
   {
+    id: "seasonal-accents",
+    tabId: "appearance",
+    title: "Saisonale Akzente",
+    description:
+      "Vom 18. bis 31. Oktober trägt das Logo einen Hexenhut, leere Ergebnisse bekommen Spinnweben und eine kleine Spinne schaut höchstens einmal am Tag in deine Ergebnisse, nie bei Produktionsverbindungen. Ein Klick scheucht sie weg.",
+    keywords: [
+      "halloween",
+      "saison",
+      "spinne",
+      "hexenhut",
+      "spinnweben",
+      "überraschung",
+      "easter egg",
+      "verspielt",
+    ],
+    key: "seasonalAccents",
+  },
+  {
     id: "fit-columns-to-header",
     tabId: "appearance",
     title: "An Spaltentitel anpassen",

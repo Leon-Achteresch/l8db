@@ -7,6 +7,7 @@ import { WorkbenchHost } from "@/features/shell/workbench-host";
 import "../index.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
+import { SpiderLayer } from "@/components/seasonal/spider-layer";
 import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
 import { OnboardingHost } from "@/features/onboarding/onboarding-host";
@@ -52,6 +53,7 @@ function RootComponent() {
           <SqlFileDrop />
           <AppHeader />
           <AppFrame />
+          <SpiderLayer />
         </DbThemeRoot>
         <UpdateAvailableGate />
         <PasswordPromptDialog />

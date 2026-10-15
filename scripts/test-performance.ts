@@ -47,6 +47,7 @@ const SUITES = {
     "tests/perf-invalid-objects.test.ts",
     "tests/perf-nav-morph.test.ts",
     "tests/perf-transfer-cinematic.test.ts",
+    "tests/perf-seasonal.test.ts",
     "tests/perf-secret-save.test.ts",
     "tests/perf-connection-import.test.ts",
     "tests/perf-connection-import-datagrip.test.ts",
@@ -69,6 +70,7 @@ const SUITES = {
     "tests/perf-segmented-control.test.ts",
     "tests/perf-palette-loading.test.ts",
     "tests/perf-onboarding.test.ts",
+    "tests/perf-seasonal-browser.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;

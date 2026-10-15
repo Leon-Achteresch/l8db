@@ -30,6 +30,7 @@ import {
   IconMenuSubContent,
   IconMenuSubTrigger,
 } from "@/components/icon-menu";
+import { Cobweb } from "@/components/seasonal/cobweb";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenuRadioGroup,
@@ -150,7 +151,8 @@ export function QueryResultWorkbench({
     return <QueryResultTable result={result} isLoading={isLoading} error={error} kind={kind} />;
   if (!result)
     return (
-      <div className="flex h-full items-center justify-center bg-muted/10 p-8">
+      <div className="relative flex h-full items-center justify-center bg-muted/10 p-8">
+        <Cobweb className="size-24 text-foreground/20" />
         <div className="max-w-sm space-y-3 text-center">
           <div className="mx-auto flex size-10 items-center justify-center rounded-lg border bg-background font-mono text-lg text-muted-foreground">
             ↳

@@ -154,6 +154,7 @@ export const NEW_FEATURES = {
   "settings.general.dynamic-island": "0.10.0",
   "settings.general.sidebar-object-nav": "0.10.0",
   "settings.appearance.table-style": "0.14.0",
+  "settings.appearance.seasonal": NEXT_FEATURE_VERSION,
   "query.transaction.changes": "0.7.0",
   "query.transaction.database-diff": "0.14.0",
   "settings.editor.parameter-hints": NEXT_FEATURE_VERSION,
