@@ -4,7 +4,7 @@ Neue Funktionen werden in `src/lib/new-features.ts` mit einer stabilen Kennung u
 
 Für eine neue Einstellung:
 
-1. Die Kennung und die aktuelle Version in `NEW_FEATURES` eintragen.
+1. Die Kennung in `NEW_FEATURES` mit `NEXT_FEATURE_VERSION` eintragen. Nach jedem stabilen Release werden alle Einträge mit `NEXT_FEATURE_VERSION` auf die veröffentlichte Version festgeschrieben und die Konstante auf die nächste stabile Version angehoben, sonst zeigen neue Funktionen der Folgeversion kein Badge.
 2. Die zugehörige `SettingsRow` mit `featureId="settings.data.transfer"` versehen. Die Zeile zeigt das Badge und meldet die Funktion als gesehen, sobald eine der beiden Regeln greift:
    - **Benutzt:** ein Klick auf das Element oder in das Element blendet das Badge sofort aus.
    - **Gesehen:** das Element lag insgesamt zwei Sekunden im Viewport eines sichtbaren Fensters. Die Zeit wird über Unterbrechungen hinweg aufsummiert (Wegscrollen, geschlossenes Menü, verborgenes Fenster) und beginnt erst mit dem nächsten App Start neu. Als sichtbar gilt mindestens die Hälfte des Elements; ist es größer als der Viewport, genügt jeder sichtbare Teil.
