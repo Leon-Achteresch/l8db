@@ -4,7 +4,7 @@ import {
   MAX_PARTICLES,
   stepScene,
   TIMELINE,
-} from "../src/features/dev/transfer-cartoon-sim";
+} from "../src/features/dev/transfer-cinematic-sim";
 
 function percentile(values: number[], p: number) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -22,12 +22,12 @@ function play(fps: number, name = "prod_shop_eu_west") {
   return { scene, durations };
 }
 
-test("transfer cartoon keeps particles bounded and steps fast for a full run", () => {
+test("transfer cinematic keeps particles bounded and steps fast for a full run", () => {
   const { scene, durations } = play(60);
   const median = percentile(durations, 0.5);
   const p95 = percentile(durations, 0.95);
   console.log(
-    `transfer-cartoon: ${durations.length} steps, peak ${scene.peak} particles, median ${median.toFixed(3)} ms, p95 ${p95.toFixed(3)} ms`,
+    `transfer-cinematic: ${durations.length} steps, peak ${scene.peak} particles, median ${median.toFixed(3)} ms, p95 ${p95.toFixed(3)} ms`,
   );
   expect(scene.peak).toBeLessThanOrEqual(MAX_PARTICLES + 40);
   expect(median).toBeLessThan(0.5);
@@ -37,7 +37,7 @@ test("transfer cartoon keeps particles bounded and steps fast for a full run", (
   expect(scene.particles.filter((p) => p.kind === "smoke").length).toBeLessThan(200);
 });
 
-test("transfer cartoon finishes the name theft at low frame rates", () => {
+test("transfer cinematic finishes the name theft at low frame rates", () => {
   for (const fps of [20, 30, 144]) {
     const { scene } = play(fps);
     expect(scene.stolen).toBe(scene.targetName.length);
@@ -45,7 +45,7 @@ test("transfer cartoon finishes the name theft at low frame rates", () => {
   }
 });
 
-test("transfer cartoon releases its particles after the run", () => {
+test("transfer cinematic releases its particles after the run", () => {
   const { scene } = play(60);
   for (let step = 0; step < 60 * 5; step++) stepScene(scene, 1 / 60);
   expect(scene.particles.length).toBe(0);
