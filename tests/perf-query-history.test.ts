@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import { reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
-import { interactionPercentiles, measureAppClick } from "./fixtures/perf-app-interactions";
+import {
+  closeWithEscape,
+  interactionPercentiles,
+  measureAppClick,
+} from "./fixtures/perf-app-interactions";
 import {
   appRequestSnapshot,
   installAppRequestProbe,
@@ -225,10 +229,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.getByText("Gespeichert 4999", { exact: true }).waitFor();
       const openSamples: number[] = [];
       for (let turn = 0; turn < 11; turn++) {
-        await page.keyboard.press("Escape");
-        await page.getByRole("dialog", { name: "Verlauf & Gespeichertes" }).waitFor({
-          state: "detached",
-        });
+        await closeWithEscape(page, page.getByRole("dialog", { name: "Verlauf & Gespeichertes" }));
         await page.getByRole("button", { name: "Weitere Werkzeuge" }).click();
         const duration = await measureAppClick(
           page,

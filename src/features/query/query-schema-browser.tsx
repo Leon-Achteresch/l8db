@@ -3,6 +3,7 @@ import { DatabaseIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { afterPaint } from "@/lib/after-paint";
 import type { ColumnInfo, DatabaseKind, TableInfo } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
@@ -74,7 +75,8 @@ export function QuerySchemaBrowser({
   sessionViews = [],
   onRemoveSessionView,
 }: QuerySchemaBrowserProps) {
-  const [tab, setTab] = useState<"schema" | "outline">("schema");
+  const [selectedTab, setTab] = useState<"schema" | "outline">("schema");
+  const tab = useDeferredValue(selectedTab);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const schemaScrollRef = useRef<HTMLDivElement>(null);
@@ -222,7 +224,7 @@ export function QuerySchemaBrowser({
                       type="button"
                       onClick={() => {
                         setActiveMember(member.name);
-                        onJump(member.line, 1);
+                        afterPaint(() => onJump(member.line, 1));
                       }}
                       title={`${member.kind} ${member.name} · Zeile ${member.line}`}
                       className={
@@ -251,10 +253,10 @@ export function QuerySchemaBrowser({
         {(["schema", "outline"] as const).map((id) => (
           <Button
             key={id}
-            variant={tab === id ? "secondary" : "ghost"}
+            variant={selectedTab === id ? "secondary" : "ghost"}
             size="sm"
             className="h-7 text-xs"
-            aria-pressed={tab === id}
+            aria-pressed={selectedTab === id}
             onClick={() => setTab(id)}
           >
             {id === "schema" ? "Schema" : "Statements"}
@@ -456,7 +458,7 @@ export function QuerySchemaBrowser({
                   <button
                     type="button"
                     className="block w-full rounded-md p-2 text-left hover:bg-muted focus-visible:outline-ring"
-                    onClick={() => onJump(statement.line, statement.column)}
+                    onClick={() => afterPaint(() => onJump(statement.line, statement.column))}
                   >
                     <span className="flex justify-between text-[10px] text-muted-foreground">
                       <span>

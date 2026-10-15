@@ -67,6 +67,7 @@ export const BlockCard = memo(function BlockCard({
       {!locked && (
         <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 rounded-md border bg-popover/95 p-0.5 opacity-0 shadow-sm transition-opacity group-focus-within/block:opacity-100 group-hover/block:opacity-100">
           <GripVerticalIcon
+            data-l8-handle
             aria-label={`${BLOCK_LABEL[block.type]} verschieben`}
             className="widget-drag-handle size-3.5 cursor-grab text-muted-foreground active:cursor-grabbing"
           />

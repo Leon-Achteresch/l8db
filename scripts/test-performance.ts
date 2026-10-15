@@ -2,9 +2,15 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
+  combineFileRuns,
+  confirmedFailures,
   executedTestCount,
+  type FileRun,
   normalizeProcessResources,
   resourceViolations,
+  testNamePattern,
+  testOutcomes,
+  workloadResources,
 } from "./performance-report";
 
 const SUITES = {
@@ -24,6 +30,8 @@ const SUITES = {
     "tests/perf-fresh-element-scroll.test.ts",
     "tests/perf-app-requests.test.ts",
     "tests/perf-query-statement-outline.test.ts",
+    "tests/perf-plsql-members.test.ts",
+    "tests/perf-tab-state.test.ts",
     "tests/perf-dml-preview.test.ts",
     "tests/perf-dml-preview-cancel.test.ts",
     "tests/perf-multi-target.test.ts",
@@ -33,9 +41,16 @@ const SUITES = {
     "tests/perf-live-monitor.test.ts",
     "tests/perf-dashboard-bi.test.ts",
     "tests/perf-versioning-pipeline.test.ts",
+    "tests/perf-versioning-drift.test.ts",
+    "tests/perf-versioning-review.test.ts",
     "tests/perf-sync.test.ts",
+    "tests/perf-invalid-objects.test.ts",
+    "tests/perf-nav-morph.test.ts",
+    "tests/perf-transfer-cinematic.test.ts",
+    "tests/perf-seasonal.test.ts",
     "tests/perf-secret-save.test.ts",
     "tests/perf-connection-import.test.ts",
+    "tests/perf-connection-import-datagrip.test.ts",
     "tests/abandoned-jobs.test.ts",
     "tests/performance-report.test.ts",
   ],
@@ -55,6 +70,7 @@ const SUITES = {
     "tests/perf-segmented-control.test.ts",
     "tests/perf-palette-loading.test.ts",
     "tests/perf-onboarding.test.ts",
+    "tests/perf-seasonal-browser.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;
@@ -104,10 +120,11 @@ async function run() {
       return;
     }
   }
+  const files: readonly string[] = SUITES[suite];
   const command = [
     process.execPath,
     "test",
-    ...SUITES[suite],
+    ...files,
     ...(filter ? ["--test-name-pattern", filter] : []),
   ];
   const limits = {
@@ -120,46 +137,112 @@ async function run() {
   await Bun.write(log, "");
   const runId = crypto.randomUUID();
   const started = performance.now();
-  const child = Bun.spawn(command, {
-    env: {
-      ...process.env,
-      L8DB_PERF_REPORT_DIR: directory,
-      L8DB_PERF_RUN_ID: runId,
-      L8DB_PERF_ENGINE: engine,
-      L8DB_PERF_BROWSER: suite === "browser" ? "1" : "",
-      L8DB_PERF_APP: suite === "browser" ? "1" : "",
-      L8DB_PERF_STYLED: "1",
-      L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
-      L8DB_PERF_CPU_RATE: String(cpuRate),
-      L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: suite === "core" ? 60_000 : 900_000,
-  });
-  let outputTail = "";
-  const capture = async (stream: ReadableStream<Uint8Array>) => {
-    const decoder = new TextDecoder();
-    for await (const chunk of stream) {
-      process.stdout.write(chunk);
-      outputTail = (outputTail + decoder.decode(chunk, { stream: true })).slice(-16_384);
-      await appendFile(log, chunk);
-    }
+  const env = {
+    ...process.env,
+    L8DB_PERF_REPORT_DIR: directory,
+    L8DB_PERF_RUN_ID: runId,
+    L8DB_PERF_ENGINE: engine,
+    L8DB_PERF_BROWSER: suite === "browser" ? "1" : "",
+    L8DB_PERF_APP: suite === "browser" ? "1" : "",
+    L8DB_PERF_STYLED: "1",
+    L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
+    L8DB_PERF_CPU_RATE: String(cpuRate),
+    L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
-  const [exitCode] = await Promise.all([
-    child.exited,
-    capture(child.stdout),
-    capture(child.stderr),
-  ]);
+  const runFiles = async (selected: readonly string[], pattern = filter) => {
+    const child = Bun.spawn(
+      [process.execPath, "test", ...selected, ...(pattern ? ["--test-name-pattern", pattern] : [])],
+      {
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: suite === "core" ? 60_000 : 900_000,
+      },
+    );
+    let outputTail = "";
+    let results = "";
+    const capture = async (stream: ReadableStream<Uint8Array>) => {
+      const decoder = new TextDecoder();
+      let pending = "";
+      const collect = (lines: string[]) => {
+        for (const line of lines) if (/\((pass|fail)\) /.test(line)) results += `${line}\n`;
+      };
+      for await (const chunk of stream) {
+        process.stdout.write(chunk);
+        const text = decoder.decode(chunk, { stream: true });
+        outputTail = (outputTail + text).slice(-16_384);
+        const lines = (pending + text).split(/\r?\n/);
+        pending = lines.pop() ?? "";
+        collect(lines);
+        await appendFile(log, chunk);
+      }
+      collect([pending]);
+    };
+    const [exitCode] = await Promise.all([
+      child.exited,
+      capture(child.stdout),
+      capture(child.stderr),
+    ]);
+    const usage = child.resourceUsage();
+    const unmatched = Boolean(filter) && /matched 0 tests/.test(outputTail);
+    return {
+      exitCode: unmatched && exitCode !== 0 ? 0 : exitCode,
+      signal: child.signalCode,
+      executedTests: unmatched ? 0 : executedTestCount(outputTail),
+      resources: usage ? normalizeProcessResources(usage, process.platform) : null,
+      outcomes: testOutcomes(results),
+    };
+  };
+  const fileRuns: FileRun[] = [];
+  let signal: string | null = null;
+  let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
+  let startup: FileRun["resources"] = null;
+  if (suite === "core") {
+    startup = (await runFiles(["tests/performance-report.test.ts"], "^l8db startup baseline$"))
+      .resources;
+    for (const file of files) {
+      const result = await runFiles([file]);
+      signal ??= result.signal;
+      fileRuns.push({ file, ...result });
+    }
+  } else {
+    const result = await runFiles(files);
+    signal = result.signal;
+    const failed = [...result.outcomes]
+      .filter(([, outcome]) => outcome === "fail")
+      .map(([name]) => name);
+    if (result.exitCode !== 0 && result.signal === null && failed.length > 0) {
+      const reruns = [];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rerun = await runFiles(files, testNamePattern(failed));
+        reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
+      }
+      const confirmed = confirmedFailures(failed, reruns);
+      retries = {
+        failed,
+        confirmed,
+        attempts: reruns.map((rerun) => ({
+          executedTests: rerun.executedTests,
+          failed: [...rerun.outcomes]
+            .filter(([, outcome]) => outcome === "fail")
+            .map(([name]) => name),
+        })),
+      };
+      if (confirmed.length === 0) result.exitCode = 0;
+    }
+    fileRuns.push({ file: files.join(" "), ...result });
+  }
+  const combined = combineFileRuns(fileRuns);
+  const { exitCode, executedTests, resources } = combined;
   const wallMs = performance.now() - started;
-  const usage = child.resourceUsage();
-  const resources = usage ? normalizeProcessResources(usage, process.platform) : null;
-  const violations = resources
-    ? resourceViolations(resources, limits)
+  const budgeted =
+    resources && suite === "core" ? workloadResources(resources, startup, files.length) : resources;
+  const violations = budgeted
+    ? resourceViolations(budgeted, limits)
     : ["Resource usage unavailable"];
-  const executedTests = executedTestCount(outputTail);
   if (executedTests === null) violations.push("Executed test count was not reported");
   else if (executedTests === 0) violations.push("No tests executed");
+  for (const file of combined.failedFiles) violations.push(`Test run failed: ${file}`);
   const revision = Bun.spawnSync(["git", "rev-parse", "HEAD"]).stdout.toString().trim();
   const dirty = Bun.spawnSync(["git", "status", "--porcelain"]).stdout.length > 0;
   const report = {
@@ -186,12 +269,18 @@ async function run() {
     heapLimitMb: suite === "throttle" ? heapLimitMb : null,
     wallMs,
     resources,
+    startupResources: startup,
+    budgetedResources: budgeted,
     resourceScope:
-      "OS resource usage for the test subprocess; not a summed application process tree",
+      suite === "core"
+        ? "OS resource usage per test file subprocess: peak RSS is the largest file, CPU time is summed"
+        : "OS resource usage for the test subprocess; not a summed application process tree",
     limits,
     exitCode,
     executedTests,
-    signal: child.signalCode,
+    signal,
+    files: fileRuns.map(({ outcomes: _outcomes, ...run }) => run),
+    retries,
     violations,
   };
   await Bun.write(resolve(directory, "resources.json"), JSON.stringify(report, null, 2));

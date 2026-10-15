@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { forgetEditorKnowledge } from "@/lib/ai/editor/context";
 import { type AiKnowledge, aiKnowledgeGet, aiKnowledgeSet } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AiDataRules } from "./ai-data-rules";
 
 const EMPTY: AiKnowledge = { notes: "", glossary: [], tables: {} };
 
@@ -25,16 +26,20 @@ export function AiKnowledgeDialog({
   open,
   onOpenChange,
   onGenerate,
+  onDiscoverRules,
 }: {
   connectionId: string;
   connectionName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onGenerate?: () => void;
+  onDiscoverRules?: () => void;
 }) {
   const [knowledge, setKnowledge] = useState<AiKnowledge>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [removedRules, setRemovedRules] = useState<string[]>([]);
   const rulesFeature = useNewFeatureVisibility<HTMLElement>(
     open ? "ai.chat.plus.knowledge.rules" : undefined,
   );
@@ -42,9 +47,14 @@ export function AiKnowledgeDialog({
     if (!open) return;
     let live = true;
     setLoading(true);
+    setLoadFailed(false);
+    setRemovedRules([]);
     void aiKnowledgeGet(connectionId)
       .then((value) => live && setKnowledge(value))
-      .catch((error) => toast.error(String(error)))
+      .catch((error) => {
+        if (live) setLoadFailed(true);
+        toast.error(String(error));
+      })
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
@@ -66,7 +76,11 @@ export function AiKnowledgeDialog({
   const store = async () => {
     setSaving(true);
     try {
-      setKnowledge(await aiKnowledgeSet(connectionId, knowledge));
+      const latest = await aiKnowledgeGet(connectionId);
+      const invariants = (latest.invariants ?? []).filter(
+        (rule) => !removedRules.includes(rule.name),
+      );
+      setKnowledge(await aiKnowledgeSet(connectionId, { ...knowledge, invariants }));
       forgetEditorKnowledge(connectionId);
       toast.success("KI-Wissen gespeichert");
       onOpenChange(false);
@@ -119,6 +133,25 @@ export function AiKnowledgeDialog({
             onChange={(event) => setKnowledge({ ...knowledge, rules: event.target.value })}
           />
         </section>
+        <AiDataRules
+          open={open}
+          rules={knowledge.invariants ?? []}
+          onRemove={(name) => {
+            setRemovedRules([...removedRules, name]);
+            setKnowledge({
+              ...knowledge,
+              invariants: (knowledge.invariants ?? []).filter((rule) => rule.name !== name),
+            });
+          }}
+          onDiscover={
+            onDiscoverRules
+              ? () => {
+                  onDiscoverRules();
+                  onOpenChange(false);
+                }
+              : undefined
+          }
+        />
         <section className="space-y-2" aria-label="Begriffe">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">Begriffe</h3>
@@ -242,7 +275,7 @@ export function AiKnowledgeDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Abbrechen
           </Button>
-          <Button disabled={loading || saving} onClick={() => void store()}>
+          <Button disabled={loading || saving || loadFailed} onClick={() => void store()}>
             Speichern
           </Button>
         </DialogFooter>

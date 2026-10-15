@@ -70,6 +70,9 @@ function suspendOutsideToasters(dialog: HTMLElement) {
   };
 }
 
+const NESTED_LAYER =
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';
+
 interface QueryHistorySheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -116,7 +119,16 @@ export function QueryHistorySheet({
     const restoreHidden = hideOthers(content);
     const releasePortal = registerPortalContainer(content);
     const restoreToasters = suspendOutsideToasters(content);
+    const closeFromOutside = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.target instanceof Node && content.contains(event.target)) return;
+      if (document.querySelector('[aria-label="Command palette"]')) return;
+      if (event.target instanceof Element && event.target.closest(NESTED_LAYER)) return;
+      latest.current.onOpenChange(false);
+    };
+    document.addEventListener("keydown", closeFromOutside, true);
     return () => {
+      document.removeEventListener("keydown", closeFromOutside, true);
       releaseBoundary();
       restoreHidden();
       releasePortal();
@@ -169,8 +181,16 @@ export function QueryHistorySheet({
                 data-state="open"
                 className="pointer-events-auto fixed inset-y-0 right-0 z-50 flex h-full w-[min(100vw-1rem,480px)] flex-col gap-0 rounded-l-xl border-l bg-popover p-0 text-sm text-popover-foreground shadow-lg outline-none"
                 onKeyDown={(event) => {
-                  if (event.key !== "Escape" || event.defaultPrevented) return;
+                  if (event.key !== "Escape") return;
                   if (content?.querySelector('[aria-label="Command palette"]')) return;
+                  const target = event.target instanceof Element ? event.target : null;
+                  const inner = target?.closest(NESTED_LAYER);
+                  if (
+                    event.defaultPrevented &&
+                    ((inner && inner !== event.currentTarget) ||
+                      content?.querySelector(NESTED_LAYER))
+                  )
+                    return;
                   event.preventDefault();
                   onOpenChange(false);
                 }}

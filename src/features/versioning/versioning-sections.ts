@@ -4,6 +4,7 @@ import {
   GitCommitHorizontalIcon,
   GitPullRequestIcon,
   HistoryIcon,
+  LayoutDashboardIcon,
   type LucideIcon,
   ServerIcon,
   SproutIcon,
@@ -19,11 +20,12 @@ export const VERSIONING_SECTIONS: {
   deploy?: boolean;
   tool?: boolean;
 }[] = [
+  { id: "overview", label: "Übersicht", icon: LayoutDashboardIcon },
   { id: "development", label: "Änderungen", icon: FileDiffIcon },
   { id: "history", label: "Verlauf", icon: GitCommitHorizontalIcon },
   { id: "pipeline", label: "Pipeline", icon: WorkflowIcon, deploy: true },
   { id: "releases", label: "Releases", icon: TagIcon, deploy: true },
-  { id: "reviews", label: "Reviews", icon: GitPullRequestIcon },
+  { id: "reviews", label: "Pull Requests", icon: GitPullRequestIcon },
   { id: "targets", label: "Kunden", icon: ServerIcon, deploy: true },
   { id: "branches", label: "Branches", icon: GitBranchIcon, tool: true },
   { id: "seeds", label: "Seeds", icon: SproutIcon, deploy: true, tool: true },

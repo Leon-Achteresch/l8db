@@ -23,6 +23,7 @@ import { capabilitiesFor } from "@/lib/providers";
 import { prepareConnection } from "@/lib/schema-compare/store";
 import { defaultCompareTypes } from "@/lib/schema-compare/types";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { readTabState, tabStateKey, useTabState, writeTabState } from "@/lib/tab-state";
 import { nativeScript } from "@/lib/transfer/native-script";
 
 export interface TransferSide {
@@ -89,7 +90,10 @@ export function useTransfer() {
   const connections = useConnectionsStore((state) => state.connections);
   const active = useActiveConnection();
   const activeDatabase = useActiveDatabase();
-  const [source, setSource] = useState<TransferSide>(() =>
+  const scope = `tool:transfer:${active?.id ?? ""}`;
+  const plannedKey = tabStateKey(scope, "plannedKey");
+  const planStateKey = tabStateKey(scope, "plan");
+  const [initialSource] = useState<TransferSide>(() =>
     active && capabilitiesFor(active.kind).table_copy
       ? {
           connectionId: active.id,
@@ -98,13 +102,17 @@ export function useTransfer() {
         }
       : EMPTY_TRANSFER_SIDE,
   );
-  const [target, setTarget] = useState<TransferSide>(EMPTY_TRANSFER_SIDE);
+  const [source, setSource] = useTabState(tabStateKey(scope, "source"), initialSource);
+  const [target, setTarget] = useTabState(tabStateKey(scope, "target"), EMPTY_TRANSFER_SIDE);
   const [sourceSchemas, setSourceSchemas] = useState<string[]>([]);
   const [targetSchemas, setTargetSchemas] = useState<string[]>([]);
-  const [schemas, setSchemas] = useState<string[]>([]);
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [foldNames, setFoldNames] = useState(true);
-  const [plan, setPlan] = useState<TransferPlan | null>(null);
+  const [schemas, setSchemas] = useTabState<string[]>(tabStateKey(scope, "schemas"), []);
+  const [mapping, setMapping] = useTabState<Record<string, string>>(
+    tabStateKey(scope, "mapping"),
+    {},
+  );
+  const [foldNames, setFoldNames] = useTabState(tabStateKey(scope, "foldNames"), true);
+  const [plan, setPlan] = useTabState<TransferPlan | null>(planStateKey, null);
   const [planning, setPlanning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -149,6 +157,7 @@ export function useTransfer() {
   }, [running]);
 
   useEffect(() => {
+    if (planKey && readTabState(plannedKey) === planKey && readTabState(planStateKey)) return;
     setPlan(null);
     setError(null);
     setOutcome(null);
@@ -178,7 +187,10 @@ export function useTransfer() {
           next = await withNativeStructure(next, from, (text) => {
             if (alive()) setPlanning(text);
           });
-        if (alive()) setPlan(next);
+        if (alive()) {
+          setPlan(next);
+          writeTabState(plannedKey, planKey);
+        }
       } catch (cause) {
         if (alive()) setError(errorText(cause));
       } finally {
@@ -235,6 +247,7 @@ export function useTransfer() {
     );
 
   return {
+    scope,
     source,
     setSource: (value: TransferSide) => {
       setSource(value);

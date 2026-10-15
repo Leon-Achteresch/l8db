@@ -119,6 +119,11 @@ export function useQueryViewHotkeys({
         options: { ignoreInputs: false },
       },
       {
+        hotkey: hotkeyFor("query.packageMembers", "Control+Shift+G"),
+        callback: editorCommand(() => editorApiRef.current?.action("editor.action.quickOutline")),
+        options: { ignoreInputs: false },
+      },
+      {
         hotkey: hotkeyFor("query.bookmark", "Mod+Alt+B"),
         callback: editorCommand(() => editorApiRef.current?.toggleBookmark()),
         options: { ignoreInputs: false },
@@ -162,6 +167,9 @@ export function useQueryViewHotkeys({
     const stop = [
       onHotkeyAction("query.format", () => editorApiRef.current?.format()),
       onHotkeyAction("query.comment", () => editorApiRef.current?.toggleComment()),
+      onHotkeyAction("query.packageMembers", () =>
+        editorApiRef.current?.action("editor.action.quickOutline"),
+      ),
       onHotkeyAction("query.bookmark", () => editorApiRef.current?.toggleBookmark()),
       onHotkeyAction("query.nextBookmark", () => editorApiRef.current?.gotoBookmark("next")),
       onHotkeyAction("query.prevBookmark", () => editorApiRef.current?.gotoBookmark("previous")),

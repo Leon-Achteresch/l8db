@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useObjectDraft } from "@/lib/hooks/use-object-draft";
+import { objectDraftKey } from "@/lib/object-drafts";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { applyRoutine, checkRoutine, type RoutineEdit } from "./sql-object-edit/replace-routine";
 
@@ -16,6 +17,7 @@ export type SqlEditState =
   | { status: "error"; scope: "check" | "apply"; message: string };
 
 export interface SqlObjectEdit {
+  key: string;
   editing: boolean;
   sql: string;
   setSql: (value: string) => void;
@@ -100,7 +102,9 @@ export function useSqlObjectEdit(
     }
   }, [routineEdit, label, queryClient, sql, clearSavedDraft, onApplied]);
 
-  return { editing, sql, setSql, state, start, cancel, check, apply };
+  const key = objectDraftKey(connection?.id ?? "", database, objectKey);
+
+  return { key, editing, sql, setSql, state, start, cancel, check, apply };
 }
 
 export { OpenInQueryEditorButton } from "./sql-object-edit/open-in-query-editor-button";

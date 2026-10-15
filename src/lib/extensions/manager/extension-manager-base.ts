@@ -1,4 +1,4 @@
-import { satisfies } from "semver";
+import satisfies from "semver/functions/satisfies";
 import type { ExtensionEvents } from "../../../../packages/extension-api/src";
 import type {
   CoreServices,

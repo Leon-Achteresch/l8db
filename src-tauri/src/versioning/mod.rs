@@ -333,6 +333,40 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 Ok(json!(read(&file)?))
             }
         }
+        "read-many" => {
+            let paths = request.paths.ok_or("Dateiliste fehlt")?;
+            if paths.len() > 20_000 {
+                return Err("Zu viele Dateien".into());
+            }
+            let mut total = 0usize;
+            let mut files = serde_json::Map::new();
+            for path in paths {
+                let content = read(&safe_file(&root, &path)?)?;
+                total += content.as_ref().map_or(0, String::len);
+                if total > 8 * LIMIT {
+                    return Err("Die Projektdateien sind zusammen zu groß".into());
+                }
+                files.insert(path, json!(content));
+            }
+            Ok(Value::Object(files))
+        }
+        "drift-cache-read" | "drift-cache-write" => {
+            let file = common.join("l8db-drift-cache.json");
+            if fs::symlink_metadata(&file).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err("Symbolische Links sind nicht zulässig".into());
+            }
+            if request.action == "drift-cache-read" {
+                return Ok(json!(read(&file).ok().flatten()));
+            }
+            let content = request.content.ok_or("Inhalt fehlt")?;
+            if content.len() > 4 * 1024 * 1024 {
+                return Err("Prüf-Cache ist zu groß".into());
+            }
+            serde_json::from_str::<Value>(&content).map_err(|e| e.to_string())?;
+            let current = read(&file).ok().flatten();
+            write(&file, &content, current.as_deref())?;
+            Ok(Value::Null)
+        }
         "write" => {
             if path.starts_with("database/releases/")
                 && !git(&root, &["log", "-1", "--format=%H", "--", path])

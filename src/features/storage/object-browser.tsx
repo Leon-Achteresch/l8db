@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { TableDataError } from "@/features/table/table-data-error";
 import { s3CreateFolder, s3RenameObject } from "@/lib/db";
+import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
 import { setBucketDropHandler } from "@/lib/storage/drop-target";
 import { basename, parentPrefix } from "@/lib/storage/s3";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { CopyMoveDialog } from "./copy-move-dialog";
 import { DeleteObjectsDialog } from "./delete-objects-dialog";
 import { ObjectDetails } from "./object-details";
@@ -18,15 +20,32 @@ import { UploadOptionsDialog } from "./upload-options-dialog";
 import { useObjectActions } from "./use-object-actions";
 import { type BrowserMode, type BrowserRow, useObjectListing } from "./use-object-listing";
 
-export function ObjectBrowser({ bucket, active }: { bucket: string; active: boolean }) {
+const EMPTY_SELECTION = new Set<string>();
+
+export function ObjectBrowser({
+  bucket,
+  scope,
+  active,
+}: {
+  bucket: string;
+  scope: string;
+  active: boolean;
+}) {
   const actions = useObjectActions(bucket);
-  const [prefix, setPrefix] = useState("");
-  const [showVersions, setShowVersions] = useState(false);
-  const [filter, setFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [anchor, setAnchor] = useState<number | null>(null);
-  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [prefix, setPrefix] = useTabState(tabStateKey(scope, "prefix"), "");
+  const [showVersions, setShowVersions] = useTabState(tabStateKey(scope, "showVersions"), false);
+  const [filter, setFilter] = useTabState(tabStateKey(scope, "filter"), "");
+  const [search, setSearch] = useTabState(tabStateKey(scope, "search"), "");
+  const [selected, setSelected] = useTabState<Set<string>>(
+    tabStateKey(scope, "selected"),
+    EMPTY_SELECTION,
+  );
+  const [anchor, setAnchor] = useTabState<number | null>(tabStateKey(scope, "anchor"), null);
+  const [detailsId, setDetailsId] = useTabState<string | null>(
+    tabStateKey(scope, "detailsId"),
+    null,
+  );
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [renameRow, setRenameRow] = useState<BrowserRow | null>(null);
   const [copyMove, setCopyMove] = useState<{ rows: BrowserRow[]; move: boolean } | null>(null);
@@ -52,11 +71,17 @@ export function ObjectBrowser({ bucket, active }: { bucket: string; active: bool
   const details = rows.find((row) => row.id === detailsId && row.kind === "object") ?? null;
   const truncated = listing.data?.pages.at(-1)?.truncated ?? false;
 
+  const seen = useRef({ scope, prefix, mode });
   useEffect(() => {
+    const last = seen.current;
+    seen.current = { scope, prefix, mode };
+    if (last.scope !== scope || (last.prefix === prefix && last.mode === mode)) return;
     setSelected(new Set());
     setAnchor(null);
     setDetailsId(null);
-  }, [prefix, mode, bucket]);
+  }, [scope, prefix, mode, setSelected, setAnchor, setDetailsId]);
+
+  useTableScrollState(scrollRef, scope, "objects");
 
   useEffect(() => {
     if (!active || actions.readOnly) return;
@@ -157,7 +182,7 @@ export function ObjectBrowser({ bucket, active }: { bucket: string; active: bool
           onMove={() => setCopyMove({ rows: selectedRows, move: true })}
           onDelete={() => setDeleteRows(selectedRows)}
         />
-        <div className="min-h-0 flex-1 overflow-auto" tabIndex={-1}>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" tabIndex={-1}>
           {listing.isLoading ? (
             <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
               <Spinner /> Lade Objekte…
@@ -221,6 +246,7 @@ export function ObjectBrowser({ bucket, active }: { bucket: string; active: bool
         <ObjectDetails
           key={details.id}
           bucket={bucket}
+          scope={scope}
           row={details}
           readOnly={actions.readOnly}
           onClose={() => setDetailsId(null)}

@@ -14,6 +14,7 @@ import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { createGridWindowRange } from "@/lib/grid-window-range";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { useGridVirtualizer } from "@/lib/hooks/use-transition-virtualizer";
 import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
@@ -37,10 +38,15 @@ import { ResultFilterCell } from "./query-result-table/result-filter-cell";
 import { ResultLoading } from "./query-result-table/result-loading";
 import { ResultSortHeader } from "./query-result-table/result-sort-header";
 import { ResultToolbar } from "./query-result-table/result-toolbar";
+import {
+  useResultViewPersistence,
+  useSavedResultView,
+} from "./query-result-table/use-result-view-state";
 
 const PINNED_COLUMNS = [0];
 
 interface QueryResultTableProps {
+  stateKey?: string;
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
@@ -50,6 +56,7 @@ interface QueryResultTableProps {
 }
 
 export const QueryResultTable = memo(function QueryResultTable({
+  stateKey,
   result: rawResult,
   isLoading,
   error,
@@ -96,11 +103,20 @@ export const QueryResultTable = memo(function QueryResultTable({
     100;
   const [rowMeasurement, setRowMeasurement] = useState({ input: rowHeight, size: rowHeight });
   const estimatedRowHeight = rowMeasurement.input === rowHeight ? rowMeasurement.size : rowHeight;
-  const [sorts, setSorts] = useState<ResultSort[]>([]);
-  const [filters, setFilters] = useState<ResultFilters>({});
-  const [filterRowOpen, setFilterRowOpen] = useState(false);
-  const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>({});
+  const saved = useSavedResultView(stateKey, rawResult);
+  const [sorts, setSorts] = useState<ResultSort[]>(() => saved?.sorts ?? []);
+  const [filters, setFilters] = useState<ResultFilters>(() => saved?.filters ?? {});
+  const [filterRowOpen, setFilterRowOpen] = useState(() => saved?.filterRowOpen ?? false);
+  const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>(
+    () => saved?.autoColumnWidths ?? {},
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
+  useResultViewPersistence(
+    stateKey,
+    scrollRef,
+    { result: rawResult, sorts, filters, filterRowOpen, autoColumnWidths },
+    saved,
+  );
   const [lastView, setLastView] = useState({ result, isLoading, error });
   const viewChanged =
     result !== lastView.result || isLoading !== lastView.isLoading || error !== lastView.error;
@@ -136,6 +152,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   const columns = useMemo(() => displayedResult?.columns ?? [], [displayedResult]);
   const rows = useMemo(() => displayedResult?.rows ?? [], [displayedResult]);
   const { markedRows, toggleRowMarker } = useRowMarkers(rows);
+  useSpiderVisit(scrollRef, columns, rows);
   const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
     () => applyResultView(rows, columns, sorts, deferredFilters),

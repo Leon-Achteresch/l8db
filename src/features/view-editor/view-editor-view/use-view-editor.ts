@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { copyText } from "@/lib/clipboard";
@@ -8,6 +7,8 @@ import { useActiveConnection } from "@/lib/connections";
 import { listAllColumns, listTables, updateViewDefinition } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useObjectDraft } from "@/lib/hooks/use-object-draft";
+import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { objectDraftKey } from "@/lib/object-drafts";
 import {
   useDetailedColumnsQuery,
   useForeignKeysQuery,
@@ -21,6 +22,7 @@ import { invalidateConnectionQueries } from "@/lib/query-client";
 import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { tableViewStateKey } from "@/lib/table-view-state";
 
@@ -34,13 +36,18 @@ export function useViewEditor(schema: string, view: string) {
   const { data: foreignKeys } = useForeignKeysQuery(schema, view);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
 
-  const [activeTab, setActiveTab] = useState<
+  const stateKey = tableViewStateKey(connection?.id, database, schema, view);
+  const objectKey = `view-editor:${schema}.${view}`;
+  const [activeTab, setActiveTab] = useTabState<
     "data" | "columns" | "definition" | "used-by" | "grants"
-  >("data");
-  const [filter, setFilter] = useState("");
-  const [filterRaw, setFilterRaw] = useState(false);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [page, setPage] = useState(0);
+  >(
+    tabStateKey(`view-editor:${connection?.id}:${database}:${schema}.${view}`, "activeTab"),
+    "data",
+  );
+  const [filter, setFilter] = useTableViewState(stateKey, "filter", "");
+  const [filterRaw, setFilterRaw] = useTableViewState(stateKey, "filterRaw", false);
+  const [sorting, setSorting] = useTableViewState(stateKey, "sorting", []);
+  const [page, setPage] = useTableViewState(stateKey, "page", 0);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
@@ -62,7 +69,6 @@ export function useViewEditor(schema: string, view: string) {
   const countLabel = approximateRowCount(rowCount);
 
   const { data: columnDetails } = useDetailedColumnsQuery(schema, view);
-  const stateKey = tableViewStateKey(connection?.id, database, schema, view);
 
   const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(
     schema,
@@ -71,7 +77,7 @@ export function useViewEditor(schema: string, view: string) {
   );
 
   const [savedDraft, setDraft, clearSavedDraft, draftBase] = useObjectDraft(
-    `view-editor:${schema}.${view}`,
+    objectKey,
     `${schema}.${view}`,
     definition ?? "",
   );
@@ -89,14 +95,6 @@ export function useViewEditor(schema: string, view: string) {
     setCompileStatus("idle");
     setCompileError(null);
   }, [schema, view, definition]);
-
-  useEffect(() => {
-    setFilter("");
-    setFilterRaw(false);
-    setSorting([]);
-    setPage(0);
-    setActiveTab("data");
-  }, [schema, view]);
 
   const { data: schemas } = useSchemasQuery();
 
@@ -230,6 +228,7 @@ export function useViewEditor(schema: string, view: string) {
     database,
     ddl,
     defLoading,
+    editorStateKey: objectDraftKey(connection?.id ?? "", database, objectKey),
     error,
     filter,
     filterRaw,

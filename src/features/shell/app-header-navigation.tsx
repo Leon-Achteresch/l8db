@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Menu, Plug } from "lucide-react";
+import { Plug, PlugZap } from "lucide";
+import { ChevronRight, Menu } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -26,7 +28,12 @@ const COLLAPSIBLE_URLS = new Set([
   "/query-builder",
 ]);
 
-const connectItem: AppSidebarNavItem = { title: "Verbindungen", url: "/connections", icon: Plug };
+const connectItem: AppSidebarNavItem = {
+  title: "Verbindungen",
+  url: "/connections",
+  icon: Plug,
+  activeIcon: PlugZap,
+};
 
 function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
@@ -75,7 +82,12 @@ export function AppHeaderNavigation() {
             active && "bg-primary/12 text-foreground hover:bg-primary/12",
           )}
         >
-          <item.icon className="size-4" strokeWidth={2} />
+          <MorphIcon
+            icon={active ? item.activeIcon : item.icon}
+            reducedMotion="user"
+            className="size-4"
+            strokeWidth={2}
+          />
           {hasNewFeatures(item.featureScope, seenFeatures) && (
             <span
               className="absolute right-0 top-0 size-1.5 rounded-full bg-primary"
@@ -158,7 +170,11 @@ export function AppHeaderNavigation() {
                   preloadDelay={80}
                   aria-current={item.url === activeUrl ? "page" : undefined}
                 >
-                  <item.icon className="size-4" />
+                  <MorphIcon
+                    icon={item.url === activeUrl ? item.activeIcon : item.icon}
+                    reducedMotion="user"
+                    className="size-4"
+                  />
                   {item.title}
                   {hasNewFeatures(item.featureScope, seenFeatures) && (
                     <span

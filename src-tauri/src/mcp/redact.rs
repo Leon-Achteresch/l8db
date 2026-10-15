@@ -142,6 +142,14 @@ pub enum Token {
 }
 
 pub fn tokenize(sql: &str) -> Vec<Token> {
+    tokenize_as(sql, true)
+}
+
+fn readings(sql: &str) -> [Vec<Token>; 2] {
+    [tokenize_as(sql, true), tokenize_as(sql, false)]
+}
+
+fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut chars = sql.chars().peekable();
@@ -161,7 +169,7 @@ pub fn tokenize(sql: &str) -> Vec<Token> {
                             chars.next();
                         }
                         Some('\'') | None => break,
-                        Some('\\') => {
+                        Some('\\') if mysql => {
                             chars.next();
                         }
                         Some(_) => {}
@@ -220,7 +228,7 @@ pub fn tokenize(sql: &str) -> Vec<Token> {
                     }
                 }
             }
-            '#' => {
+            '#' if mysql => {
                 flush(&mut current, &mut tokens);
                 for n in chars.by_ref() {
                     if n == '\n' {
@@ -286,8 +294,11 @@ pub fn tokenize(sql: &str) -> Vec<Token> {
 }
 
 pub fn sql_words(sql: &str) -> Vec<String> {
-    tokenize(sql)
+    let [mysql, plain] = readings(sql);
+    let extra = if plain == mysql { Vec::new() } else { plain };
+    mysql
         .into_iter()
+        .chain(extra)
         .filter_map(|token| match token {
             Token::Word(word) => Some(word),
             _ => None,
@@ -540,7 +551,12 @@ const FROM_END: &[&str] = &[
 ];
 
 pub fn write_word(sql: &str) -> Option<String> {
-    let tokens = tokenize(sql);
+    readings(sql)
+        .iter()
+        .find_map(|tokens| write_word_in(tokens))
+}
+
+fn write_word_in(tokens: &[Token]) -> Option<String> {
     let word_at = |i: usize| match tokens.get(i) {
         Some(Token::Word(word)) => Some(word.as_str()),
         _ => None,
@@ -563,7 +579,12 @@ pub fn write_word(sql: &str) -> Option<String> {
 }
 
 pub fn dangerous_word(sql: &str) -> Option<String> {
-    let tokens = tokenize(sql);
+    readings(sql)
+        .iter()
+        .find_map(|tokens| dangerous_word_in(tokens))
+}
+
+fn dangerous_word_in(tokens: &[Token]) -> Option<String> {
     for (i, token) in tokens.iter().enumerate() {
         if let Token::Word(word) = token {
             let always = DANGEROUS_ALWAYS.contains(&word.as_str())
@@ -588,9 +609,17 @@ pub fn is_ddl(sql: &str) -> bool {
 }
 
 pub fn statement_count(sql: &str) -> usize {
+    readings(sql)
+        .iter()
+        .map(|tokens| statement_count_in(tokens))
+        .max()
+        .unwrap_or(0)
+}
+
+fn statement_count_in(tokens: &[Token]) -> usize {
     let mut count = 0;
     let mut seen = false;
-    for token in tokenize(sql) {
+    for token in tokens {
         match token {
             Token::Semi => {
                 if seen {
@@ -822,7 +851,17 @@ pub fn check_references(sql: &str, index: &SchemaIndex, row_values: bool) -> Res
     if let Some(pattern) = &index.invalid_pattern {
         return Err(invalid_pattern_error(pattern));
     }
-    let tokens = tokenize(sql);
+    for tokens in readings(sql) {
+        check_references_in(&tokens, index, row_values)?;
+    }
+    Ok(())
+}
+
+fn check_references_in(
+    tokens: &[Token],
+    index: &SchemaIndex,
+    row_values: bool,
+) -> Result<(), String> {
     let word_at = |i: usize| match tokens.get(i) {
         Some(Token::Word(word)) => Some(word.as_str()),
         _ => None,
@@ -1121,10 +1160,15 @@ mod tests {
             sql_words("select 1 /* outer /* inner */ delete */"),
             vec!["select", "1"]
         );
+        assert!(sql_words("select 1 # delete\nfrom t").contains(&"delete".to_string()));
+        assert_eq!(statement_count("UPDATE t SET a = '\\'; COMMIT; --'"), 2);
+        assert_eq!(statement_count("SELECT 1 # x; DELETE FROM t"), 2);
         assert_eq!(
-            sql_words("select 1 # delete\nfrom t"),
-            vec!["select", "1", "from", "t"]
+            write_word("SELECT 1 # x\n; DELETE FROM t").as_deref(),
+            Some("delete")
         );
+        assert_eq!(statement_count("SELECT * FROM #temp"), 1);
+        assert_eq!(statement_count("SELECT 'C:\\path\\' AS p"), 1);
         assert_eq!(
             sql_words("select [Password] from t"),
             vec!["select", "password", "from", "t"]

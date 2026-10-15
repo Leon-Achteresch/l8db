@@ -222,7 +222,7 @@ for (const view of ["/", "/tables/public/table_0000", "/query"]) {
     async () => {
       await navigate(view);
       await page.waitForTimeout(2500);
-      await page.mouse.click(800, 12);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       const sidebarHidden = () =>
         page.evaluate(() => {
           const link = document.querySelector('a[data-name="table_0000"]');
@@ -233,10 +233,14 @@ for (const view of ["/", "/tables/public/table_0000", "/query"]) {
         await page.keyboard.press("ControlOrMeta+b");
         await page.waitForTimeout(700);
       };
-      expectSmooth(`Sidebar zuklappen ${view}`, await sample(toggle));
-      expect(await sidebarHidden()).toBe(true);
-      expectSmooth(`Sidebar aufklappen ${view}`, await sample(toggle));
-      expect(await sidebarHidden()).toBe(false);
+      try {
+        expectSmooth(`Sidebar zuklappen ${view}`, await sample(toggle));
+        expect(await sidebarHidden()).toBe(true);
+        expectSmooth(`Sidebar aufklappen ${view}`, await sample(toggle));
+        expect(await sidebarHidden()).toBe(false);
+      } finally {
+        if (await sidebarHidden().catch(() => false)) await toggle().catch(() => undefined);
+      }
     },
     60000,
   );
@@ -258,16 +262,23 @@ test.skipIf(!ENABLED)(
       }).observe({ type: "event", durationThreshold: 16 });
     });
     await page.getByRole("button", { name: "Erweiterte Suche" }).click();
-    await page.getByRole("region", { name: "Suchergebnisse" }).waitFor();
-    await page.waitForTimeout(100);
-    const durations = await page.evaluate(
-      () => (window as unknown as { __searchClickDurations: number[] }).__searchClickDurations,
-    );
-    expect(durations.length).toBeGreaterThan(0);
-    const worst = Math.max(...durations);
-    console.log(`perf-throttle Erweiterte Suche Klick: ${worst} ms`);
-    expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
-    await page.keyboard.press("Escape");
+    try {
+      await page.getByRole("region", { name: "Suchergebnisse" }).waitFor();
+      await page.waitForTimeout(100);
+      const durations = await page.evaluate(
+        () => (window as unknown as { __searchClickDurations: number[] }).__searchClickDurations,
+      );
+      expect(durations.length).toBeGreaterThan(0);
+      const worst = Math.max(...durations);
+      console.log(`perf-throttle Erweiterte Suche Klick: ${worst} ms`);
+      expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
+    } finally {
+      await page.keyboard.press("Escape");
+      await page
+        .getByRole("region", { name: "Suchergebnisse" })
+        .waitFor({ state: "detached", timeout: 5_000 })
+        .catch(() => undefined);
+    }
   },
   60000,
 );
@@ -391,7 +402,7 @@ test.skipIf(!ENABLED)(
   "Dashboard: Scrollen, Ziehen und Hover",
   async () => {
     await navigate("/dashboard");
-    await page.waitForSelector(".react-grid-item", { timeout: 30000 });
+    await page.waitForSelector(".l8-item", { timeout: 30000 });
     await page.waitForTimeout(3000);
     expectSmooth("Dashboard scrollen", await sample(() => wheel(900, 500, 40, 200)));
     expectSmooth(
@@ -404,17 +415,17 @@ test.skipIf(!ENABLED)(
         await page.waitForTimeout(300);
       }),
     );
-    const box = await page.locator(".react-grid-item").first().boundingBox();
+    const box = await page.locator(".l8-item [data-l8-handle]").first().boundingBox();
     if (!box) throw new Error("Kein Widget im Dashboard gefunden.");
     expectSmooth(
       "Dashboard ziehen",
       await sample(async () => {
-        await page.mouse.move(box.x + box.width / 2, box.y + 14);
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await page.mouse.down();
         for (let step = 0; step < 40; step++) {
           await page.mouse.move(
             box.x + box.width / 2 + Math.sin(step / 4) * 200,
-            box.y + 14 + step * 4,
+            box.y + box.height / 2 + step * 4,
           );
           await page.waitForTimeout(16);
         }
@@ -430,7 +441,7 @@ test.skipIf(!ENABLED)(
   "Dashboard: erster Chart-Klick bleibt reaktionsschnell",
   async () => {
     await navigate("/dashboard");
-    await page.waitForSelector(".react-grid-item", { timeout: 30000 });
+    await page.waitForSelector(".l8-item", { timeout: 30000 });
     const edit = page.getByRole("button", { name: "Dashboard bearbeiten", exact: true });
     if (await edit.count()) await edit.click();
     await page.waitForTimeout(300);
@@ -444,7 +455,7 @@ test.skipIf(!ENABLED)(
       }).observe({ type: "event", durationThreshold: 16 });
     });
     await page.getByRole("button", { name: "Chart erstellen", exact: true }).click();
-    await page.getByRole("dialog", { name: "Dein neuer Chart" }).waitFor();
+    await page.getByRole("textbox", { name: "Chart-Titel", exact: true }).waitFor();
     await page.waitForTimeout(100);
     const durations = await page.evaluate(
       () => (window as unknown as { __chartClickDurations: number[] }).__chartClickDurations,

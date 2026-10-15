@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
+import { afterPaint } from "@/lib/after-paint";
+import { useQueryWorkspace } from "@/lib/query-workspace";
 
 import type { QueryWorkspaceState } from "./types";
 
@@ -32,7 +34,7 @@ export function ToolbarViewControls({
   toolsMenu,
 }: ToolbarViewControlsProps) {
   return (
-    <div className="ml-auto flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1">
       {isSql && (
         <Button
           size="icon-sm"
@@ -40,7 +42,12 @@ export function ToolbarViewControls({
           aria-label="Schema-Navigator umschalten"
           title="Schema und Statement-Navigator"
           aria-pressed={workspace.navigatorVisible}
-          onClick={() => workspace.update({ navigatorVisible: !workspace.navigatorVisible })}
+          onClick={() =>
+            afterPaint(() => {
+              const current = useQueryWorkspace.getState();
+              current.update({ navigatorVisible: !current.navigatorVisible });
+            })
+          }
         >
           <PanelLeftIcon className="size-3.5" />
         </Button>
@@ -48,13 +55,13 @@ export function ToolbarViewControls({
       <Button
         size="sm"
         variant={analysisOpen ? "secondary" : "ghost"}
-        className="h-7 gap-1.5 text-xs"
+        className="h-7 gap-1.5 px-2 text-xs @min-[62rem]/qtb:px-3"
         aria-pressed={analysisOpen}
         onClick={onOpenAnalysis}
         title="Explain und Performance-Test"
       >
         <GaugeIcon className="size-3.5" />
-        Analyse
+        <span className="sr-only @min-[62rem]/qtb:not-sr-only">Analyse</span>
       </Button>
       <Button
         size="icon-sm"

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { releaseBody, releaseNotes } from "../.github/scripts/release.mjs";
-import { canaryState, previousCanary, releaseState } from "../.github/scripts/release-plan.mjs";
+import {
+  canaryState,
+  featureVersions,
+  previousCanary,
+  releaseState,
+  staleFeatureBadges,
+} from "../.github/scripts/release-plan.mjs";
 import {
   buildNeutral,
   compareReleases,
@@ -8,6 +14,7 @@ import {
   nextVersion,
   semanticBump,
 } from "../.github/scripts/release-utils.mjs";
+import { NEW_FEATURES } from "../src/lib/new-features";
 
 const sha = "a".repeat(40);
 const published = {
@@ -164,4 +171,71 @@ test("reuses compiled snapshots only when no build input changed", () => {
   expect(buildNeutral([".github/actions/setup-rust/action.yml"])).toBe(false);
   expect(buildNeutral(["src/main.tsx"])).toBe(false);
   expect(buildNeutral(["src-tauri/Cargo.toml"])).toBe(false);
+});
+
+describe("NEW badge versions before a canary", () => {
+  const registry = (next: string, entries: Record<string, string>) =>
+    `export const NEXT_FEATURE_VERSION = "${next}";
+export const NEW_FEATURES = {
+${Object.entries(entries)
+  .map(([id, value]) => `  "${id}": ${value === "next" ? "NEXT_FEATURE_VERSION" : `"${value}"`},`)
+  .join("\n")}
+} as const;
+`;
+  const released = registry("0.14.0", { "a.old": "0.13.0", "a.shipped": "next", "a.gone": "next" });
+
+  test("accepts pinned shipped entries and a next version matching the canary", () => {
+    const current = registry("0.15.0", {
+      "a.old": "0.13.0",
+      "a.shipped": "0.14.0",
+      "a.new": "next",
+    });
+    expect(staleFeatureBadges(released, current, "0.14.0", "0.15.0")).toEqual([]);
+    expect(featureVersions(current).versions["a.new"]).toBe("0.15.0");
+  });
+
+  test("names every value to fix when the next version stayed at the release", () => {
+    const current = registry("0.14.0", { "a.old": "0.13.0", "a.shipped": "next", "a.new": "next" });
+    expect(staleFeatureBadges(released, current, "0.14.0", "0.15.0")).toEqual([
+      'NEXT_FEATURE_VERSION: set to "0.15.0" (now "0.14.0")',
+      'a.shipped: pin to "0.14.0"',
+    ]);
+  });
+
+  test("pins to the version a feature shipped with, also after a hotfix tag", () => {
+    const hotfix = registry("0.15.0", { "h.feature": "next" });
+    const current = registry("0.16.0", { "h.feature": "next", "h.new": "next" });
+    expect(staleFeatureBadges(hotfix, current, "0.15.1", "0.16.0")).toEqual([
+      'h.feature: pin to "0.15.0"',
+    ]);
+  });
+
+  test("allows a shipped feature to launch again under a new version", () => {
+    for (const value of ["next", "0.15.0"])
+      expect(
+        staleFeatureBadges(
+          released,
+          registry("0.15.0", { "a.old": value, "a.shipped": "0.14.0" }),
+          "0.14.0",
+          "0.15.0",
+        ),
+      ).toEqual([]);
+  });
+
+  test("ignores the next version when no new entry uses it", () => {
+    const current = registry("0.15.0", { "a.old": "0.13.0", "a.shipped": "0.14.0" });
+    expect(staleFeatureBadges(released, current, "0.14.0", "0.14.1")).toEqual([]);
+  });
+
+  test("reports a malformed next version without throwing", () => {
+    const current = registry("0.15", { "a.shipped": "0.14.0", "a.new": "next" });
+    expect(staleFeatureBadges(released, current, "0.14.0", "0.15.0")).toEqual([
+      'NEXT_FEATURE_VERSION: set to "0.15.0" (now "0.15")',
+    ]);
+  });
+
+  test("parses every entry of the real registry", async () => {
+    const source = await Bun.file("src/lib/new-features.ts").text();
+    expect(featureVersions(source).versions).toEqual({ ...NEW_FEATURES });
+  });
 });

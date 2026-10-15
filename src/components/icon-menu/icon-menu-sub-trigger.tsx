@@ -9,10 +9,12 @@ export function IconMenuSubTrigger({
   className,
   onPointerMove,
   onPointerLeave,
+  children,
   ...props
 }: Omit<ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>, "children"> & {
   icon: ReactNode;
   label: string;
+  children?: ReactNode;
 }) {
   const aim = useIconMenuAimHandlers(onPointerMove, onPointerLeave);
   return (
@@ -28,6 +30,7 @@ export function IconMenuSubTrigger({
       {...aim}
     >
       {icon}
+      {children}
     </DropdownMenuPrimitive.SubTrigger>
   );
 }

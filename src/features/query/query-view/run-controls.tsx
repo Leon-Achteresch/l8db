@@ -1,5 +1,5 @@
 import { Loader, Play, ShieldCheck, TextSelect } from "lucide";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, SquareIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 
 import { Button } from "@/components/ui/button";
@@ -45,14 +45,14 @@ export function RunControls({
         <Button
           size="sm"
           variant="default"
-          className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-3 text-xs"
+          className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs @min-[42rem]/qtb:px-3"
           data-tour="query-run"
           onClick={actions.handleRun}
           disabled={runDisabled}
           title={`${runLabel} (${shortcutLabel("query.run")})`}
         >
           <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
-          {runLabel}
+          <span className="sr-only @min-[42rem]/qtb:not-sr-only">{runLabel}</span>
         </Button>
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
@@ -104,7 +104,7 @@ export function RunControls({
       <Button
         size="sm"
         variant="outline"
-        className="h-7 gap-1.5 px-3 text-xs"
+        className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
         data-tour="query-check"
         onClick={() => void actions.handleCheck()}
         disabled={isRunning || isChecking || !connected || !hasSql}
@@ -114,22 +114,27 @@ export function RunControls({
           icon={isChecking ? Loader : ShieldCheck}
           className={cn("size-3", isChecking && "animate-spin")}
         />
-        {isChecking ? "Prüfe…" : "Prüfen"}
+        <span className="sr-only @min-[54rem]/qtb:not-sr-only">
+          {isChecking ? "Prüfe…" : "Prüfen"}
+        </span>
       </Button>
       {isRunning && (
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs"
+          className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
           disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
           onClick={stopActiveJob}
           title={
             activeJob?.cancellable
-              ? shortcutLabel("query.cancel")
+              ? `Abbrechen (${shortcutLabel("query.cancel")})`
               : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch. Das konfigurierte Timeout bleibt wirksam."
           }
         >
-          {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
+          <SquareIcon className="size-3" />
+          <span className="sr-only @min-[54rem]/qtb:not-sr-only">
+            {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
+          </span>
         </Button>
       )}
     </>

@@ -1,17 +1,21 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Hammer, Loader } from "lucide";
-import { EraserIcon, RefreshCwIcon, TerminalIcon, XCircleIcon } from "lucide-react";
+import { CircleCheckIcon, CircleXIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { useActiveConnection } from "@/lib/connections";
-import { useActiveCapabilities } from "@/lib/db-selection";
-import { compileArgForInvalidType } from "@/lib/invalid-objects";
+import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import {
+  buildInvalidProblems,
+  compileArgForInvalidType,
+  filterInvalidProblems,
+  INVALID_RENDER_STEP,
+  invalidTypeLabels,
+} from "@/lib/invalid-objects";
 import {
   useCompileErrorsQuery,
   useCompileInvalidObjectsMutation,
@@ -19,9 +23,13 @@ import {
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { InvalidOtherMessages } from "./invalid-other-messages";
+import { InvalidProblemGroup } from "./invalid-problem-group";
 
 export function InvalidObjectsView() {
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
   const caps = useActiveCapabilities();
   const invalidQuery = useInvalidObjectsQuery();
   const errorsQuery = useCompileErrorsQuery();
@@ -35,6 +43,33 @@ export function InvalidObjectsView() {
   const [compilingOid, setCompilingOid] = useState<string | null>(null);
   const invalid = useMemo(() => invalidQuery.data ?? [], [invalidQuery.data]);
   const errors = useMemo(() => errorsQuery.data ?? [], [errorsQuery.data]);
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [limit, setLimit] = useState(INVALID_RENDER_STEP);
+  const [othersOpen, setOthersOpen] = useState(false);
+  const scope = `${connection?.id ?? ""}\u001f${database ?? ""}\u001f${schema ?? ""}`;
+  const [scopeSeen, setScopeSeen] = useState(scope);
+  if (scopeSeen !== scope) {
+    setScopeSeen(scope);
+    setQuery("");
+    setTypeFilter(null);
+    setCollapsed(new Set());
+    setLimit(INVALID_RENDER_STEP);
+    setOthersOpen(false);
+  }
+  const { problems, others } = useMemo(
+    () => buildInvalidProblems(invalid, errors),
+    [invalid, errors],
+  );
+  const messages = errorsQuery.isError ? "error" : errorsQuery.isLoading ? "loading" : "ready";
+  const types = useMemo(() => invalidTypeLabels(invalid), [invalid]);
+  const activeType = typeFilter && types.includes(typeFilter) ? typeFilter : null;
+  const visible = useMemo(
+    () => filterInvalidProblems(problems, activeType, query),
+    [problems, activeType, query],
+  );
+  const showOthers = others.length > 0 && !activeType && query.trim() === "";
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
@@ -63,9 +98,13 @@ export function InvalidObjectsView() {
       if (results.length === 0) {
         toast.success("Keine invaliden Objekte gefunden");
       } else if (bad === 0) {
-        toast.success(`${ok} Objekte kompiliert`, { description: "Alle Objekte sind jetzt VALID" });
+        toast.success(`${ok} ${ok === 1 ? "Objekt" : "Objekte"} kompiliert`, {
+          description: "Alle Objekte sind jetzt VALID",
+        });
       } else {
-        toast.error(`${bad} Objekte weiterhin INVALID`, { description: `${ok} kompiliert` });
+        toast.error(`${bad} ${bad === 1 ? "Objekt" : "Objekte"} weiterhin INVALID`, {
+          description: `${ok} kompiliert`,
+        });
       }
     } catch (e) {
       toast.error("Kompilieren fehlgeschlagen", { description: String(e) });
@@ -99,25 +138,74 @@ export function InvalidObjectsView() {
       toast.info(`${schema}.${name} (${objectType}) kann hier nicht geöffnet werden`);
     }
   };
+  const toggle = (oid: string) => {
+    const next = new Set(collapsed);
+    if (next.has(oid)) next.delete(oid);
+    else next.add(oid);
+    setCollapsed(next);
+  };
+  const selectType = (type: string | null) => {
+    setTypeFilter(type);
+    setLimit(INVALID_RENDER_STEP);
+  };
+  const shown = visible.slice(0, limit);
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
-        <XCircleIcon className="size-4 text-destructive" />
-        <span className="text-sm font-semibold">Invalid Objects</span>
-        <Badge variant={invalid.length > 0 ? "destructive" : "outline"} className="tabular-nums">
-          {invalid.length}
-        </Badge>
-        <span className="text-xs text-muted-foreground">Outputs: {errors.length}</span>
-        <span className="flex-1" />
-        <Button variant="ghost" size="xs" onClick={handleRefresh} title="Neu laden">
-          <RefreshCwIcon data-icon="inline-start" />
-          Neu laden
+      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+        <div className="flex h-7 w-56 shrink-0 items-center gap-1.5 rounded-md border bg-muted/40 px-2 focus-within:ring-2 focus-within:ring-ring/50">
+          <SearchIcon className="size-3.5 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setLimit(INVALID_RENDER_STEP);
+            }}
+            placeholder="Objekte filtern"
+            aria-label="Invalide Objekte filtern"
+            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          <button
+            type="button"
+            aria-pressed={!activeType}
+            onClick={() => selectType(null)}
+            className={cn(
+              "h-7 shrink-0 cursor-pointer rounded-md px-2 text-xs text-muted-foreground hover:bg-muted",
+              !activeType && "bg-muted text-foreground",
+            )}
+          >
+            Alle <span className="tabular-nums">{invalid.length}</span>
+          </button>
+          {types.map((type) => (
+            <button
+              key={type}
+              type="button"
+              aria-pressed={activeType === type}
+              onClick={() => selectType(activeType === type ? null : type)}
+              className={cn(
+                "h-7 shrink-0 cursor-pointer rounded-md px-2 text-xs text-muted-foreground hover:bg-muted",
+                activeType === type && "bg-muted text-foreground",
+              )}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={handleRefresh}
+          title="Neu laden"
+          aria-label="Neu laden"
+        >
+          <RefreshCwIcon />
         </Button>
         <Button
           variant="outline"
           size="xs"
           onClick={() => void handleCompileAll()}
-          disabled={compileAll.isPending || invalid.length === 0}
+          disabled={compileAll.isPending || compilingOid !== null || invalid.length === 0}
           title="Alle invaliden Objekte kompilieren"
         >
           <MorphIcon
@@ -125,123 +213,88 @@ export function InvalidObjectsView() {
             data-icon="inline-start"
             className={cn(compileAll.isPending && "animate-spin")}
           />
-          Compile invalid objects
+          Alle kompilieren
         </Button>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-2">
-        <div className="flex min-h-0 flex-col border-r">
-          <div className="shrink-0 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
-            Invalide Objekte ({invalid.length})
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {invalidQuery.isLoading ? (
+          <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+            <Spinner />
+            Lade invalide Objekte…
           </div>
-          <ScrollArea className="min-h-0 flex-1">
-            {invalidQuery.isLoading ? (
-              <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-                <Spinner />
-                Lade invalide Objekte…
-              </div>
-            ) : invalidQuery.isError ? (
-              <p className="p-4 text-sm text-destructive">{String(invalidQuery.error)}</p>
-            ) : invalid.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">Alle Objekte sind VALID.</p>
-            ) : (
-              <ul className="divide-y">
-                {invalid.map((item) => (
-                  <li key={item.oid} className="flex items-center gap-2 px-4 py-2 text-sm">
-                    <XCircleIcon className="size-4 shrink-0 text-destructive" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-xs">
-                        {item.schema}.{item.name}
-                      </span>
-                      <span className="block text-[11px] text-muted-foreground">
-                        {item.object_type}
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => handleOpen(item.schema, item.name, item.object_type, item.oid)}
-                      title="Öffnen"
-                    >
-                      Öffnen
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      disabled={
-                        compilingOid === item.oid || item.object_type.toUpperCase() === "SYNONYM"
-                      }
-                      onClick={() =>
-                        void handleCompileOne(
-                          item.oid,
-                          compileArgForInvalidType(item.object_type),
-                          `${item.schema}.${item.name}`,
-                        )
-                      }
-                      title={
-                        item.object_type.toUpperCase() === "SYNONYM"
-                          ? "Synonyme können nicht kompiliert werden"
-                          : "Einzeln kompilieren"
-                      }
-                    >
-                      <MorphIcon
-                        icon={compilingOid === item.oid ? Loader : Hammer}
-                        data-icon="inline-start"
-                        className={cn(compilingOid === item.oid && "animate-spin")}
-                      />
-                      Kompilieren
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+        ) : invalidQuery.isError ? (
+          <p className="p-4 text-sm text-destructive">{String(invalidQuery.error)}</p>
+        ) : invalid.length === 0 && others.length === 0 ? (
+          <p className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+            <CircleCheckIcon className="size-4 text-emerald-500" />
+            Keine Probleme. Alle Objekte sind VALID.
+          </p>
+        ) : visible.length === 0 && !showOthers ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">
+            Keine Treffer für diesen Filter.
+          </p>
+        ) : (
+          <ul className="py-1 font-mono text-xs">
+            {shown.map((problem) => (
+              <InvalidProblemGroup
+                key={problem.item.oid}
+                problem={problem}
+                open={!collapsed.has(problem.item.oid)}
+                compiling={compilingOid === problem.item.oid}
+                blocked={compileAll.isPending}
+                messages={messages}
+                onToggle={() => toggle(problem.item.oid)}
+                onOpen={() =>
+                  handleOpen(
+                    problem.item.schema,
+                    problem.item.name,
+                    problem.item.object_type,
+                    problem.item.oid,
+                  )
+                }
+                onCompile={() =>
+                  void handleCompileOne(
+                    problem.item.oid,
+                    compileArgForInvalidType(problem.item.object_type),
+                    `${problem.item.schema}.${problem.item.name}`,
+                  )
+                }
+              />
+            ))}
+            {visible.length > shown.length && (
+              <li className="px-3 py-2 font-sans">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setLimit(limit + INVALID_RENDER_STEP)}
+                >
+                  Weitere {Math.min(INVALID_RENDER_STEP, visible.length - shown.length)} von{" "}
+                  {visible.length - shown.length} anzeigen
+                </Button>
+              </li>
             )}
-          </ScrollArea>
-        </div>
-        <div className="flex min-h-0 flex-col">
-          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
-            <TerminalIcon className="size-3.5" />
-            Outputs (ALL_ERRORS) ({errors.length})
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            {errorsQuery.isLoading ? (
-              <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-                <Spinner />
-                Lade Outputs…
-              </div>
-            ) : errorsQuery.isError ? (
-              <p className="p-4 text-sm text-destructive">{String(errorsQuery.error)}</p>
-            ) : errors.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 p-6 text-center">
-                <EraserIcon className="size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Keine Outputs vorhanden.</p>
-              </div>
-            ) : (
-              <ul className="divide-y">
-                {errors.map((err, idx) => (
-                  <li
-                    key={`${err.schema}.${err.name}.${err.object_type}.${idx}`}
-                    className="px-4 py-2"
-                  >
-                    <div className="flex items-center gap-2 text-xs">
-                      <Badge variant="destructive" className="shrink-0 text-[10px]">
-                        {err.object_type}
-                      </Badge>
-                      <span className="truncate font-mono">
-                        {err.schema}.{err.name}
-                      </span>
-                      <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                        {err.line != null ? `Zeile ${err.line}` : ""}
-                        {err.position != null ? `, Pos ${err.position}` : ""}
-                      </span>
-                    </div>
-                    <pre className="mt-1 whitespace-pre-wrap break-all font-mono text-xs text-destructive select-text">
-                      {err.message}
-                    </pre>
-                  </li>
-                ))}
-              </ul>
+            {showOthers && (
+              <InvalidOtherMessages
+                messages={others}
+                open={othersOpen}
+                onToggle={() => setOthersOpen(!othersOpen)}
+              />
             )}
-          </ScrollArea>
-        </div>
+          </ul>
+        )}
+      </div>
+      <div className="flex h-6 shrink-0 items-center gap-3 border-t bg-muted/40 px-3 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <CircleXIcon className="size-3 text-destructive" />
+          <span className="tabular-nums">{messages === "ready" ? errors.length : "–"}</span>
+          {errors.length === 1 ? "Meldung" : "Meldungen"}
+        </span>
+        <span className="tabular-nums">
+          {invalid.length} {invalid.length === 1 ? "Objekt" : "Objekte"}
+        </span>
+        {errorsQuery.isError && <span className="text-destructive">Meldungen nicht geladen</span>}
+        <span className="flex-1" />
+        <span>Quelle: ALL_ERRORS</span>
       </div>
     </div>
   );

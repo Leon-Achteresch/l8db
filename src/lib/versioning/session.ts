@@ -11,6 +11,8 @@ import { bindingForContext } from "./binding";
 import { defaultSafety } from "./safety";
 import type { DatabaseRelease, DatabaseTarget, VersioningProject } from "./types";
 
+export const METADATA_QUERY = { confirmed: true, track: false } as const;
+
 export const quoteIdentifier = (value: string) => `"${value.replaceAll('"', '""')}"`;
 
 const contextSql = (kind: VersioningProject["kind"]) =>
@@ -33,6 +35,7 @@ export async function databaseBinding(
         effectiveConnectionString(connection),
         sql,
         target.database ?? undefined,
+        METADATA_QUERY,
       );
   const row = result.rows[0];
   if (result.rows.length !== 1 || !row?.database || !row.user)

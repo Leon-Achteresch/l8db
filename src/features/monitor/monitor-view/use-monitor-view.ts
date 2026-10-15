@@ -16,12 +16,14 @@ import {
   useServerOutputStore,
 } from "@/lib/server-output";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 
 export function useMonitorView() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();
-  const [tab, setTab] = useState<MonitorTab>("live");
+  const scope = `tool:monitor:${connection?.id ?? ""}`;
+  const [tab, setTab] = useTabState<MonitorTab>(tabStateKey(scope, "tab"), "live");
   const overviewQuery = useDatabaseOverviewQuery(tab === "performance" ? 30_000 : undefined);
   const historyEntries = useQueryHistoryStore((state) => state.entries);
   const clearHistory = useQueryHistoryStore((state) => state.clearForConnection);
@@ -32,10 +34,16 @@ export function useMonitorView() {
     connection ? (state.entries[connection.id] ?? EMPTY_SERVER_OUTPUT) : EMPTY_SERVER_OUTPUT,
   );
   const clearServerOutput = useServerOutputStore((state) => state.clear);
-  const [range, setRange] = useState<HistoryRange>("7d");
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
-  const [historySearch, setHistorySearch] = useState("");
-  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [range, setRange] = useTabState<HistoryRange>(tabStateKey(scope, "historyRange"), "7d");
+  const [historyFilter, setHistoryFilter] = useTabState<HistoryFilter>(
+    tabStateKey(scope, "historyFilter"),
+    "all",
+  );
+  const [historySearch, setHistorySearch] = useTabState(tabStateKey(scope, "historySearch"), "");
+  const [expandedHistoryId, setExpandedHistoryId] = useTabState<string | null>(
+    tabStateKey(scope, "expandedHistoryId"),
+    null,
+  );
   const [serverOutputBusy, setServerOutputBusy] = useState(false);
 
   useEffect(() => {

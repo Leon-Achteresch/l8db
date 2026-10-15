@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { Plug } from "lucide-react";
+import { Plug, PlugZap } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { type AppSidebarNavItem, appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useActiveConnection } from "@/lib/connections";
@@ -10,7 +11,12 @@ import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
-const connectItem: AppSidebarNavItem = { title: "Verbindungen", url: "/connections", icon: Plug };
+const connectItem: AppSidebarNavItem = {
+  title: "Verbindungen",
+  url: "/connections",
+  icon: Plug,
+  activeIcon: PlugZap,
+};
 
 function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
@@ -61,7 +67,12 @@ export function AppNavRail() {
                 active && "bg-sidebar-accent text-foreground",
               )}
             >
-              <item.icon className="size-[18px]" strokeWidth={2} />
+              <MorphIcon
+                icon={active ? item.activeIcon : item.icon}
+                reducedMotion="user"
+                className="size-[18px]"
+                strokeWidth={2}
+              />
               {hasNewFeatures(item.featureScope, seenFeatures) && (
                 <span
                   className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"

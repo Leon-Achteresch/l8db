@@ -6,6 +6,10 @@ const CORE: &[&str] = &[
     "connections",
     "search",
     "describe",
+    "relations",
+    "explain",
+    "drilldown",
+    "sandbox",
     "query",
     "execute",
     "visualize",
@@ -34,6 +38,13 @@ impl Catalog {
                             .iter()
                             .any(|entry| !entry.writes_blocked() && entry.allow_ddl)
                 }
+                "sandbox" => config.connections.iter().any(|entry| {
+                    crate::mcp::sandbox::supported(entry.kind) && !entry.writes_blocked()
+                }),
+                "drilldown" => config
+                    .connections
+                    .iter()
+                    .any(|entry| crate::mcp::server::SQL_KINDS.contains(&entry.kind)),
                 "health" => config
                     .connections
                     .iter()
@@ -47,9 +58,10 @@ impl Catalog {
             .filter(|tool| CORE.contains(&tool["name"].as_str().unwrap_or("")))
             .cloned()
             .collect();
+        loaded.push(super::harness::plan_definition());
         loaded.push(json!({
             "name": "discover_tools",
-            "description": "Find and load tools for dashboards, workflows, benchmarks, health checks, opening things in l8db, saving knowledge, importing attachments and external MCPs. Search with query or request exact names. Empty arguments list available names and brief descriptions. Loaded tools become callable in the next round; do not call them in this round.",
+            "description": "Find and load tools for data rules (discover, verify and save invariants), notebooks, dashboards, workflows, benchmarks, health checks, opening things in l8db, saving knowledge, importing attachments and external MCPs. Search with query or request exact names. Empty arguments list available names and brief descriptions. Loaded tools become callable in the next round; do not call them in this round.",
             "inputSchema": {"type": "object", "properties": {
                 "query": {"type": "string", "description": "Tool name or words describing the task"},
                 "names": {"type": "array", "items": {"type": "string"}, "maxItems": 8, "description": "Exact tool names to load"}

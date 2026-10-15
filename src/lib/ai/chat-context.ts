@@ -86,8 +86,17 @@ const SECTION_CAP = 6_000;
 const NO_OBJECTS: TableInfo[] = [];
 const NO_COLUMNS: ColumnInfo[] = [];
 
+const REDACT_MARGIN = 24_000;
+
 function cap(text: string, max = SECTION_CAP): string {
   return text.length > max ? `${text.slice(0, max)}\n…(+${text.length - max} chars)` : text;
+}
+
+function capRedacted(text: string, max = SECTION_CAP): string {
+  const scanned = Math.min(text.length, max + REDACT_MARGIN);
+  const head = redactSecrets(text.slice(0, scanned));
+  const dropped = head.length - max + text.length - scanned;
+  return dropped > 0 ? `${head.slice(0, max)}\n…(+${dropped} chars)` : head;
 }
 
 async function allColumns(deps: ChatContextDeps): Promise<ColumnInfo[]> {
@@ -142,7 +151,7 @@ function editorTabSection(deps: ChatContextDeps): string {
   const where = deps.tabSelection ? `, ${deps.tabSelection}` : "";
   const head = `Current editor tab${title}${where}. The user works in this tab; apply SQL changes there with the editor tool.`;
   if (!deps.tabSql.trim()) return `${head}\nThe tab is empty.`;
-  const body = `\`\`\`sql\n${cap(redactSecrets(deps.tabSql))}\n\`\`\``;
+  const body = `\`\`\`sql\n${capRedacted(deps.tabSql)}\n\`\`\``;
   if (deps.recentContext?.some((context) => context.includes(body)))
     return `${head}\nIts SQL is unchanged since an earlier message in this conversation.`;
   return `${head}\n${body}`;
@@ -185,13 +194,13 @@ export async function resolveChatContext(
       sections.push(editorTabSection(deps));
     } else if (item.kind === "sql" && item.sql?.trim()) {
       sections.push(
-        `SQL from the editor (${item.label}):\n\`\`\`sql\n${cap(redactSecrets(item.sql.trim()))}\n\`\`\``,
+        `SQL from the editor (${item.label}):\n\`\`\`sql\n${capRedacted(item.sql.trim())}\n\`\`\``,
       );
     } else if (item.kind === "result") {
       const last = lastResult(deps.connection?.id ?? null);
       sections.push(
         last
-          ? `Last query result${last.sql ? ` of:\n\`\`\`sql\n${cap(redactSecrets(last.sql), 2_000)}\n\`\`\`` : ""}\n${compactResult(
+          ? `Last query result${last.sql ? ` of:\n\`\`\`sql\n${capRedacted(last.sql, 2_000)}\n\`\`\`` : ""}\n${compactResult(
               {
                 columns: last.result.columns,
                 rows: last.result.rows,
@@ -203,9 +212,7 @@ export async function resolveChatContext(
       );
     } else if (item.kind === "history") {
       const lines = historyLines(deps.history, deps.connection?.id ?? null);
-      sections.push(
-        `Recent queries (newest first):\n${lines ? cap(redactSecrets(lines)) : "none"}`,
-      );
+      sections.push(`Recent queries (newest first):\n${lines ? capRedacted(lines) : "none"}`);
     }
   }
   return sections.length

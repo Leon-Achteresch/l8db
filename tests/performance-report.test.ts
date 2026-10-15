@@ -3,9 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  combineFileRuns,
+  confirmedFailures,
   executedTestCount,
   normalizeProcessResources,
   resourceViolations,
+  testNamePattern,
+  testOutcomes,
+  workloadResources,
 } from "../scripts/performance-report";
 import { parsePerformanceArgs } from "../scripts/test-performance";
 
@@ -117,4 +122,72 @@ test("performance profiles reject unsupported throttling instead of silently ski
     parsePerformanceArgs(["--suite", "browser", "--filter", "palette|onboarding"]).filter,
   ).toBe("palette|onboarding");
   expect(() => parsePerformanceArgs(["--filter"])).toThrow(/Invalid/);
+});
+
+test("per-file core runs report the largest peak, summed CPU and every failed file", () => {
+  const resources = (peakRssBytes: number, userCpuMs: number) => ({
+    peakRssBytes,
+    userCpuMs,
+    systemCpuMs: 1,
+  });
+  const combined = combineFileRuns([
+    { file: "a.test.ts", exitCode: 0, executedTests: 3, resources: resources(300, 10) },
+    { file: "b.test.ts", exitCode: 1, executedTests: 2, resources: resources(500, 20) },
+    { file: "c.test.ts", exitCode: 0, executedTests: 4, resources: resources(200, 5) },
+  ]);
+  expect(combined).toEqual({
+    exitCode: 1,
+    executedTests: 9,
+    resources: { peakRssBytes: 500, userCpuMs: 35, systemCpuMs: 3 },
+    failedFiles: ["b.test.ts"],
+  });
+  const crashed = combineFileRuns([
+    { file: "a.test.ts", exitCode: 0, executedTests: 3, resources: resources(300, 10) },
+    { file: "b.test.ts", exitCode: 3, executedTests: null, resources: null },
+  ]);
+  expect(crashed.executedTests).toBeNull();
+  expect(crashed.resources).toBeNull();
+  expect(crashed.failedFiles).toEqual(["b.test.ts"]);
+});
+
+test("budget failures count only when the median of three attempts fails", () => {
+  const output = [
+    "\u001b[32m(pass)\u001b[0m /about: Wechsel [12.00ms]",
+    "(fail) /query: Wechsel, Leerlauf und Scrollen mit 4× CPU-Drosselung [2592.02ms]",
+    "(fail) Gruppe > Menü (erster) Klick",
+    "noise (pass) not a result",
+  ].join("\r\n");
+  const outcomes = testOutcomes(output);
+  expect([...outcomes]).toEqual([
+    ["/about: Wechsel", "pass"],
+    ["/query: Wechsel, Leerlauf und Scrollen mit 4× CPU-Drosselung", "fail"],
+    ["Gruppe > Menü (erster) Klick", "fail"],
+  ]);
+  const pattern = new RegExp(
+    testNamePattern(["/query: Wechsel 4× [x]", "Gruppe > Menü (erster) Klick"]),
+  );
+  expect(pattern.test("/query: Wechsel 4× [x]")).toBe(true);
+  expect(pattern.test("Gruppe Menü (erster) Klick")).toBe(true);
+  expect(pattern.test("Gruppe Menü (erster) Klick extra")).toBe(false);
+  const failed = ["a", "b", "c"];
+  const rerun = (failures: string[], executedTests: number | null = 3) => ({
+    outcomes: new Map(failures.map((name) => [name, "fail" as const])),
+    executedTests,
+  });
+  expect(confirmedFailures(failed, [rerun([]), rerun(["b"])])).toEqual(["b"]);
+  expect(confirmedFailures(failed, [rerun([]), rerun([])])).toEqual([]);
+  expect(confirmedFailures(failed, [rerun([]), rerun([], 2)])).toEqual(failed);
+  expect(confirmedFailures(failed, [rerun([]), rerun([], null)])).toEqual(failed);
+});
+
+test("per-file CPU budgets subtract the start-up cost of every extra test process", () => {
+  const total = { peakRssBytes: 400, userCpuMs: 30_000, systemCpuMs: 14_000 };
+  const startup = { peakRssBytes: 60, userCpuMs: 500, systemCpuMs: 300 };
+  expect(workloadResources(total, startup, 29)).toEqual({
+    peakRssBytes: 400,
+    userCpuMs: 16_000,
+    systemCpuMs: 5_600,
+  });
+  expect(workloadResources(total, null, 29)).toEqual(total);
+  expect(workloadResources(total, startup, 1)).toEqual(total);
 });

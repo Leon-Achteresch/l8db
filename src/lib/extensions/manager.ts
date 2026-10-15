@@ -1,4 +1,4 @@
-import { gt } from "semver";
+import gt from "semver/functions/gt";
 import { validateArchive } from "../../../packages/extension-api/src/manifest";
 import type {
   ExtensionArchive,

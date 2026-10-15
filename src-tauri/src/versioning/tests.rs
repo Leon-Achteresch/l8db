@@ -180,6 +180,48 @@ fn writes_require_matching_previous_content() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[tokio::test]
+async fn reads_many_files_and_keeps_the_drift_cache_outside_the_worktree() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    fs::create_dir_all(root.join("database/objects")).unwrap();
+    fs::write(root.join("database/objects/a.sql"), "A").unwrap();
+    let mut many = request(&root, "read-many");
+    many.paths = Some(vec![
+        "database/objects/a.sql".into(),
+        "database/objects/missing.sql".into(),
+    ]);
+    let files = handle(many).await.unwrap();
+    assert_eq!(files["database/objects/a.sql"], "A");
+    assert!(files["database/objects/missing.sql"].is_null());
+    let mut escape = request(&root, "read-many");
+    escape.paths = Some(vec!["../secret.sql".into()]);
+    assert!(handle(escape).await.is_err());
+    assert!(handle(request(&root, "drift-cache-read"))
+        .await
+        .unwrap()
+        .is_null());
+    let mut save = request(&root, "drift-cache-write");
+    save.content = Some("{\"format\":1}".into());
+    handle(save).await.unwrap();
+    let mut again = request(&root, "drift-cache-write");
+    again.content = Some("{\"format\":1,\"scopes\":{}}".into());
+    handle(again).await.unwrap();
+    assert_eq!(
+        handle(request(&root, "drift-cache-read")).await.unwrap(),
+        "{\"format\":1,\"scopes\":{}}"
+    );
+    let mut invalid = request(&root, "drift-cache-write");
+    invalid.content = Some("not json".into());
+    assert!(handle(invalid).await.is_err());
+    let status = handle(request(&root, "status")).await.unwrap();
+    assert!(!status["changes"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("drift"));
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn detects_incomplete_merge_markers() {
     assert!(has_conflict_markers("<<<<<<< Aktueller Branch\nours\n"));

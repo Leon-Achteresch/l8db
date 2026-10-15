@@ -16,16 +16,24 @@ const definitions = { ...(await import("../src/lib/compare-definition")) };
 const capture = { ...(await import("../src/lib/versioning/capture")) };
 const db = { ...(await import("../src/lib/db")) };
 const sequences = ["ISEQ$$_123", "ISEQ$$_USER", "APP_SEQUENCE"];
+const queryOptions: unknown[] = [];
 
 mock.module("../src/lib/db", () => ({
   ...db,
-  executeQuery: async () => ({ rows: [{ sequence: "ISEQ$$_123" }] }),
+  executeQuery: async (...args: unknown[]) => {
+    queryOptions.push(args[4]);
+    return { rows: [{ sequence: "ISEQ$$_123" }] };
+  },
 }));
 
 mock.module("../src/lib/versioning/repository", () => ({
   ...repository,
   encode: (value: unknown) => `${JSON.stringify(value, null, 2)}\n`,
   readFile: async (_repo: string, path: string) => files.get(path) ?? null,
+  readFiles: async (_repo: string, paths: string[]) =>
+    Object.fromEntries(paths.map((path) => [path, files.get(path) ?? null])),
+  readDriftCache: async () => null,
+  writeDriftCache: async () => {},
   saveFile: async (_repo: string, path: string, content: string, expected: string | null) => {
     if ((files.get(path) ?? null) !== expected) throw new Error(`conflict ${path}`);
     files.set(path, content);
@@ -93,7 +101,7 @@ test("Oracle discovery excludes actual identity sequences while retaining explic
     objectOid: null,
   };
   for (const name of sequences) database[name] = `SEQUENCE app.${name}`;
-  const scan = () => scanDrift("/r", project, connection, source, () => {});
+  const scan = () => scanDrift("/r", project, connection, source);
   try {
     expect((await scan()).map((entry) => entry.object.selection.objectName)).toEqual([
       "ISEQ$$_USER",
@@ -108,6 +116,8 @@ test("Oracle discovery excludes actual identity sequences while retaining explic
     expect((await scan()).find((entry) => entry.object.id === "ISEQ$$_123")?.status).toBe(
       "changed",
     );
+    expect(queryOptions.length).toBeGreaterThan(0);
+    for (const options of queryOptions) expect(options).toMatchObject({ track: false });
   } finally {
     for (const name of sequences) delete database[name];
     useProvidersStore.setState(providers);
@@ -135,7 +145,7 @@ test("detects changed, new and dropped objects and writes the database state bac
     objectName: null,
     objectOid: null,
   };
-  const entries = await scanDrift("/r", project, connection, source, () => {});
+  const entries = await scanDrift("/r", project, connection, source);
   expect(entries.map((entry) => [entry.object.selection.objectName, entry.status])).toEqual([
     ["orders", "changed"],
     ["fresh", "added"],
@@ -146,7 +156,7 @@ test("detects changed, new and dropped objects and writes the database state bac
   expect(files.has("database/objects/gone.sql")).toBe(false);
   const saved = JSON.parse(files.get("database/project.json") ?? "") as VersioningProject;
   expect(saved.objects.map((object) => object.selection.objectName)).toEqual(["orders", "fresh"]);
-  expect(await scanDrift("/r", saved, connection, source, () => {})).toEqual([]);
+  expect(await scanDrift("/r", saved, connection, source)).toEqual([]);
 });
 
 afterAll(() => {

@@ -32,6 +32,7 @@ Die folgenden Schritte gelten für beide Kanäle.
 - **Upgrade-Prüfung:** von der letzten stabilen Version auf das Canary.
 - **Warteschlangen:** Läufe auf `main` und `canary` haben getrennte Concurrency-Gruppen (`release-<branch>`). Ein wartender Canary-Lauf verdrängt so nie einen wartenden stabilen Lauf.
 - **Hotfix-Schutz:** Enthält der letzte stabile Tag Commits, die auf `canary` fehlen (außer `packaging/`), bricht `prepare` mit `… has commits missing on canary` ab. Dann `main` nach `development` mergen und `/canary` erneut ausführen.
+- **Badge-Schutz:** Hängen Einträge aus `src/lib/new-features.ts`, die schon im letzten stabilen Release steckten, noch an `NEXT_FEATURE_VERSION`, oder nutzen neue Einträge eine Konstante, die nicht der gebauten Version entspricht, bricht `prepare` mit `NEW badges are stale since vX.Y.Z` ab. Jede Zeile der Meldung nennt den einzutragenden Wert (`docs/new-feature-badges.md`). Danach `/canary` erneut ausführen.
 
 ## Hotfix
 

@@ -14,6 +14,7 @@ import {
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 
 export function useAlterTable(schema: string, table: string) {
   const connection = useActiveConnection();
@@ -38,17 +39,21 @@ export function useAlterTable(schema: string, table: string) {
     enabled: !!connection,
   });
 
-  const [editingColumn, setEditingColumn] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<AlterColumnRequest>({
+  const scope = `alter-table:${connection?.id}:${database}:${schema}.${table}`;
+  const [editingColumn, setEditingColumn] = useTabState<string | null>(
+    tabStateKey(scope, "editingColumn"),
+    null,
+  );
+  const [editForm, setEditForm] = useTabState<AlterColumnRequest>(tabStateKey(scope, "editForm"), {
     old_name: "",
     drop_default: false,
   });
-  const [addingColumn, setAddingColumn] = useState(false);
-  const [addForm, setAddForm] = useState<AddColumnRequest>(() => ({
+  const [addingColumn, setAddingColumn] = useTabState(tabStateKey(scope, "addingColumn"), false);
+  const [addForm, setAddForm] = useTabState<AddColumnRequest>(tabStateKey(scope, "addForm"), {
     name: "",
     data_type: defaultDataType(connection?.kind),
     is_nullable: true,
-  }));
+  });
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 

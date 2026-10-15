@@ -20,7 +20,9 @@ mock.module("@tauri-apps/api/core", () => ({
 const { CHAT_CONTEXT_KEYWORDS, contextSuggestions, resolveChatContext } = await import(
   "@/lib/ai/chat-context"
 );
-const { CHAT_HISTORY_CHARS, chatWireMessages, wireMessage } = await import("@/lib/ai/chat-history");
+const { CHAT_HISTORY_CHARS, WORK_LOG_CHARS, chatWireMessages, wireMessage, workLog } = await import(
+  "@/lib/ai/chat-history"
+);
 const { clearLastResult, lastResult, setLastResult } = await import("@/lib/ai/last-result");
 const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
 
@@ -243,6 +245,19 @@ describe("resolveChatContext", () => {
     expect(text.length).toBeLessThan(6_300);
   });
 
+  test("long sql scripts mask secrets near the cap without scanning the whole script", async () => {
+    const key = `-----BEGIN PRIVATE KEY-----\n${"k".repeat(19_000)}\n-----END PRIVATE KEY-----`;
+    const sql = `${"s".repeat(5_900)}\n${key}\nselect 'postgres://u:hunter2@h/db'\n${"t".repeat(200_000)}`;
+    const text = await resolveChatContext(
+      [{ id: "sql:1-9", kind: "sql", label: "SQL", sql }],
+      deps({ tabSql: "select 1" }),
+    );
+    expect(text).not.toContain("kkkk");
+    expect(text).not.toContain("hunter2");
+    expect(text).toContain("chars)");
+    expect(text.length).toBeLessThan(6_300);
+  });
+
   test("editor tab names title and cursor and skips SQL already sent recently", async () => {
     const tab = {
       tabSql: "select * from orders",
@@ -341,6 +356,46 @@ describe("chatWireMessages", () => {
       role: "assistant",
       text: "ok",
     });
+  });
+
+  test("carries a compact work log of finished tool calls into the next turn", () => {
+    const rich: AiMessage["rich"] = [
+      { type: "plan", id: "plan", items: [] },
+      {
+        type: "tool",
+        id: "t1",
+        name: "query",
+        status: "success",
+        sql: "SELECT status,\n  count(*)\nFROM orders\nGROUP BY status",
+        output: "status\tcount\npaid\t3\n(1 rows)",
+      },
+      {
+        type: "tool",
+        id: "t2",
+        name: "describe",
+        status: "error",
+        output: "Tabelle 'order' nicht gefunden. search nutzen.\nmore",
+      },
+      { type: "tool", id: "t3", name: "plan", status: "success", output: "Plan saved" },
+      { type: "tool", id: "t4", name: "explain", status: "running", output: "" },
+    ];
+    expect(wireMessage({ role: "assistant", text: "Drei bezahlte Bestellungen.", rich })).toEqual({
+      role: "assistant",
+      text: "Drei bezahlte Bestellungen.\n\n<work-log>\n- query SELECT status, count(*) FROM orders GROUP BY status -> (1 rows)\n- describe -> error: Tabelle 'order' nicht gefunden. search nutzen.\n</work-log>",
+    });
+    expect(wireMessage({ role: "user", text: "hi", rich })).toEqual({ role: "user", text: "hi" });
+    const many: AiMessage["rich"] = Array.from({ length: 200 }, (_, index) => ({
+      type: "tool" as const,
+      id: `q${index}`,
+      name: "query",
+      status: "success",
+      sql: `SELECT ${index} ${"x".repeat(400)}`,
+      output: "a\n(1 rows)",
+    }));
+    const log = workLog(many);
+    expect(log.length).toBeLessThanOrEqual(WORK_LOG_CHARS + 40);
+    expect(log).toContain("SELECT 199");
+    expect(log).not.toContain("SELECT 0 ");
   });
 
   test("short histories pass through untouched", () => {

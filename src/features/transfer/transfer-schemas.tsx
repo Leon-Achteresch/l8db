@@ -1,13 +1,15 @@
 import { ArrowRightIcon, ChevronRightIcon, FilterIcon, LayersIcon, TableIcon } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatBytes } from "@/lib/backup";
 import type { SchemaSize, TransferPlan } from "@/lib/db";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cn } from "@/lib/utils";
 
 export function TransferSchemas({
+  scope,
   schemas,
   existing,
   selected,
@@ -18,6 +20,7 @@ export function TransferSchemas({
   onSelectAll,
   onMap,
 }: {
+  scope: string;
   schemas: string[];
   existing: string[];
   selected: string[];
@@ -28,9 +31,15 @@ export function TransferSchemas({
   onSelectAll: (value: string[]) => void;
   onMap: (schema: string, target: string) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [only, setOnly] = useState<"all" | "selected">("all");
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [query, setQuery] = useTabState(tabStateKey(scope, "schemaQuery"), "");
+  const [only, setOnly] = useTabState<"all" | "selected">(
+    tabStateKey(scope, "schemaFilter"),
+    "all",
+  );
+  const [open, setOpen] = useTabState<Record<string, boolean>>(
+    tabStateKey(scope, "schemaOpen"),
+    {},
+  );
   const needle = query.trim().toLowerCase();
   const visible = schemas.filter(
     (schema) =>

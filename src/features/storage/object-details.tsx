@@ -10,10 +10,10 @@ import {
   TagIcon,
   XIcon,
 } from "lucide-react";
-import { useState } from "react";
 import { IconButton } from "@/components/icon-button";
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import { previewKind, selectFormat } from "@/lib/storage/s3";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { DetailTabTrigger } from "./detail-tab-trigger";
 import { ObjectLockPanel } from "./object-lock-panel";
 import { ObjectPreview } from "./object-preview";
@@ -26,6 +26,7 @@ import type { BrowserRow } from "./use-object-listing";
 
 export function ObjectDetails({
   bucket,
+  scope,
   row,
   readOnly,
   onClose,
@@ -33,13 +34,19 @@ export function ObjectDetails({
   onDownload,
 }: {
   bucket: string;
+  scope: string;
   row: BrowserRow;
   readOnly: boolean;
   onClose: () => void;
   onEdit: () => void;
   onDownload: () => void;
 }) {
-  const [tab, setTab] = useState("preview");
+  const [detailsTab, setDetailsTab] = useTabState(tabStateKey(scope, "detailsTab"), {
+    id: row.id,
+    tab: "preview",
+  });
+  const tab = detailsTab.id === row.id ? detailsTab.tab : "preview";
+  const setTab = (next: string) => setDetailsTab({ id: row.id, tab: next });
   const versionId = row.versionId && row.versionId !== "null" ? row.versionId : null;
   const editable =
     !readOnly && !row.versionId && ["text", "json", "csv"].includes(previewKind(row.key, null));

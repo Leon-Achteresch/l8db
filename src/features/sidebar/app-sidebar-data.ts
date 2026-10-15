@@ -1,19 +1,32 @@
 import {
-  GaugeIcon,
+  Activity,
+  Blocks,
+  CalendarClock,
+  ChartSpline,
+  Diff,
+  FileDiff,
   GitCompare,
   GitCompareArrows,
-  HammerIcon,
-  Home,
+  Grid2x2Plus,
+  HeartPlus,
+  HeartPulse,
+  House,
+  HousePlug,
+  type IconNode,
   LayoutDashboard,
-  type LucideIcon,
+  LayoutGrid,
+  ListChecks,
+  ListTree,
   Network,
-  NotebookPenIcon,
-  Route as RouteIcon,
-  SquareTerminalIcon,
-  StethoscopeIcon,
-  Table2,
-  WorkflowIcon,
-} from "lucide-react";
+  NotebookPen,
+  NotebookText,
+  OctagonAlert,
+  SquareTerminal,
+  Terminal,
+  TriangleAlert,
+  Waypoints,
+  Zap,
+} from "lucide";
 
 import type { Capabilities } from "@/lib/db";
 import type { FileRouteTypes } from "@/routeTree.gen";
@@ -21,7 +34,8 @@ import type { FileRouteTypes } from "@/routeTree.gen";
 export type AppSidebarNavItem = {
   title: string;
   url: FileRouteTypes["to"];
-  icon: LucideIcon;
+  icon: IconNode;
+  activeIcon: IconNode;
   available?: (caps: Capabilities) => boolean;
   featureScope?: string;
   connectionFree?: boolean;
@@ -29,59 +43,85 @@ export type AppSidebarNavItem = {
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, featureScope: "dashboard" },
-    { title: "Übersicht", url: "/", icon: Home, available: (caps) => caps.overview },
-    { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: LayoutDashboard,
+      activeIcon: LayoutGrid,
+      featureScope: "dashboard",
+    },
+    {
+      title: "Übersicht",
+      url: "/",
+      icon: House,
+      activeIcon: HousePlug,
+      available: (caps) => caps.overview,
+    },
+    { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminal, activeIcon: Terminal },
     {
       title: "SQL-Notebooks",
       url: "/notebook",
-      icon: NotebookPenIcon,
+      icon: NotebookPen,
+      activeIcon: NotebookText,
       available: (caps) => caps.query_language === "sql",
     },
     {
       title: "Invalid Objects",
       url: "/invalid-objects",
-      icon: HammerIcon,
+      icon: TriangleAlert,
+      activeIcon: OctagonAlert,
       available: (caps) => caps.compile_objects,
     },
-    { title: "Monitor", url: "/monitor", icon: GaugeIcon },
+    { title: "Monitor", url: "/monitor", icon: Activity, activeIcon: ChartSpline },
     {
       title: "Health",
       url: "/health",
-      icon: StethoscopeIcon,
+      icon: HeartPulse,
+      activeIcon: HeartPlus,
       featureScope: "health",
       available: (caps) => caps.health_advisor,
     },
     {
       title: "Query Builder",
       url: "/query-builder",
-      icon: Table2,
+      icon: Blocks,
+      activeIcon: Grid2x2Plus,
       available: (caps) => caps.query_language === "sql",
     },
     {
       title: "ER-Diagramm",
       url: "/er-diagram",
-      icon: Network,
+      icon: Waypoints,
+      activeIcon: Network,
       featureScope: "er-diagram",
       available: (caps) => caps.foreign_keys,
     },
-    { title: "Vergleich", url: "/compare", icon: GitCompare, featureScope: "compare" },
+    {
+      title: "Vergleich",
+      url: "/compare",
+      icon: Diff,
+      activeIcon: FileDiff,
+      featureScope: "compare",
+    },
     {
       title: "Schema-Vergleich",
       url: "/schema-compare",
       icon: GitCompareArrows,
+      activeIcon: GitCompare,
       available: (caps) => caps.schema_object_copy,
     },
     {
       title: "Gespeicherte Pläne",
       url: "/saved-plan",
-      icon: RouteIcon,
+      icon: ListTree,
+      activeIcon: ListChecks,
       available: (caps) => caps.explain,
     },
     {
       title: "Automatisierung",
       url: "/automation",
-      icon: WorkflowIcon,
+      icon: Zap,
+      activeIcon: CalendarClock,
       featureScope: "automation",
       connectionFree: true,
     },

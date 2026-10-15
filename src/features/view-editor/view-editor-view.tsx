@@ -52,6 +52,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     database,
     ddl,
     defLoading,
+    editorStateKey,
     error,
     filter,
     filterRaw,
@@ -173,6 +174,9 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
               />
             </div>
             <DataTable
+              key={stateKey}
+              stateKey={stateKey}
+              scrollIdentity={JSON.stringify([filter, filterRaw, sorting, page, rowLimit])}
               className="h-full min-h-0 flex-1"
               columns={data?.columns ?? []}
               data={data?.rows ?? []}
@@ -270,6 +274,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                   onChange={handleChange}
                   onRun={handleExecute}
                   registry={registry}
+                  stateKey={editorStateKey}
                 />
               </Suspense>
             </div>

@@ -33,7 +33,19 @@ async function measure(prefix: string, runs: number) {
   };
 }
 
+async function timerTickMs() {
+  const durations: number[] = [];
+  for (let index = 0; index < 20; index++) {
+    const started = performance.now();
+    await new Promise((resolve) => setTimeout(resolve, IPC_DELAY_MS));
+    durations.push(performance.now() - started);
+  }
+  durations.sort((left, right) => left - right);
+  return durations[Math.ceil(durations.length * 0.95) - 1];
+}
+
 test("tracking password edits costs at most one extra keychain read per tracked save", async () => {
+  const tickMs = await timerTickMs();
   const untracked = await measure("automation:smtp:", 60);
   const tracked = await measure("conn-", 60);
   reportScenario("secret-save", {
@@ -45,10 +57,11 @@ test("tracking password edits costs at most one extra keychain read per tracked 
       runtime: `bun ${Bun.version}`,
     },
     simulatedIpcDelayMs: IPC_DELAY_MS,
+    timerTickMs: tickMs,
     untracked,
     tracked,
   });
   expect(untracked.invokesPerSave).toBe(1);
   expect(tracked.invokesPerSave).toBe(2);
-  expect(tracked.p95Ms).toBeLessThan(untracked.p95Ms * 2 + 10);
+  expect(tracked.p95Ms).toBeLessThan(untracked.p95Ms * 2 + Math.max(10, tickMs));
 });

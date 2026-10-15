@@ -21,6 +21,7 @@ import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { supports } from "@/lib/providers";
 import { runSqlScript } from "@/lib/script-runner";
 import { splitSqlStatements } from "@/lib/sql-statements";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cancelTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
@@ -44,7 +45,10 @@ export function SqlImportPanel({
   void transactions;
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useTabState<number | null>(
+    tabStateKey(`import:${key}`, "activeStatement"),
+    null,
+  );
   const running = preparing || Boolean(task && isTaskActive(task));
   const mode: ScriptRunMode = existing
     ? "existing-transaction"

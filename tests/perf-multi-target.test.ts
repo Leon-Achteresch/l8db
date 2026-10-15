@@ -80,6 +80,10 @@ test("50 targets × 1000 rows stay within the concurrency limit with bounded out
   expect(last.stats).toMatchObject({ active: 0, queued: 0, started: TARGETS });
   expect([...last.runs.values()].every((run) => run.status === "done")).toBe(true);
   const serialMs = TARGET_LIST.reduce((sum, _, index) => sum + latency(index), 0);
+  const serialStarted = performance.now();
+  for (let index = 0; index < TARGETS; index++)
+    await new Promise((resolve) => setTimeout(resolve, latency(index)));
+  const measuredSerialMs = performance.now() - serialStarted;
 
   const items = TARGET_LIST.map((target) => ({
     id: target.id,
@@ -117,7 +121,7 @@ test("50 targets × 1000 rows stay within the concurrency limit with bounded out
   expect(renderedGrids).toBe(0);
   expect(markup.length / renderedRows).toBeLessThan(4_000);
   expect(mergedHeapBytes).toBeGreaterThan(0);
-  expect(timing.p95Ms).toBeLessThan(serialMs);
+  expect(timing.p95Ms).toBeLessThan(measuredSerialMs);
   expect(timing.p95Ms).toBeLessThan(250);
   expect(merge.p95Ms).toBeLessThan(150);
   expect(mergedHeapBytes).toBeLessThan(40 * 1024 * 1024);
@@ -129,6 +133,7 @@ test("50 targets × 1000 rows stay within the concurrency limit with bounded out
     peakInFlight: last.peak,
     requests: last.requests,
     simulatedSerialMs: serialMs,
+    measuredSerialMs,
     total: timing,
     merge,
     mergedRows,

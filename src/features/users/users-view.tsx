@@ -38,6 +38,7 @@ import { alterRole, dropRole } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { useWorkspacePane } from "@/lib/workspace-pane";
@@ -53,8 +54,11 @@ export function UsersView({ name }: { name: string }) {
 
   const role = roles?.find((r) => r.name === name);
 
-  const [editing, setEditing] = useState(false);
-  const [editState, setEditState] = useState<EditFormState | null>(null);
+  const [editState, setEditState] = useTabState<EditFormState | null>(
+    tabStateKey(`role:${connection?.id}:${database}:${name}`, "editState"),
+    null,
+  );
+  const editing = editState !== null;
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -65,14 +69,12 @@ export function UsersView({ name }: { name: string }) {
 
   const handleEdit = useCallback(() => {
     if (!role) return;
-    setEditing(true);
     setEditState(roleEditState(role));
-  }, [role]);
+  }, [role, setEditState]);
 
   const handleCancel = useCallback(() => {
-    setEditing(false);
     setEditState(null);
-  }, []);
+  }, [setEditState]);
 
   const handleSave = useCallback(async () => {
     if (!connection || !role || !editState) return;
@@ -86,7 +88,6 @@ export function UsersView({ name }: { name: string }) {
         database ?? undefined,
       );
       await queryClient.invalidateQueries({ queryKey: ["roles"] });
-      setEditing(false);
       setEditState(null);
       toast.success(`Rolle "${role.name}" aktualisiert`);
     } catch (e) {
@@ -94,7 +95,7 @@ export function UsersView({ name }: { name: string }) {
     } finally {
       setSaving(false);
     }
-  }, [connection, database, role, editState, queryClient]);
+  }, [connection, database, role, editState, queryClient, setEditState]);
 
   const handleDelete = useCallback(async () => {
     if (!connection || !role) return;
@@ -121,7 +122,7 @@ export function UsersView({ name }: { name: string }) {
       if (!editState) return;
       setEditState(toggleMembershipState(editState, roleName));
     },
-    [editState],
+    [editState, setEditState],
   );
 
   if (!connection) {
