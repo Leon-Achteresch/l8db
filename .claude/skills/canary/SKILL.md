@@ -34,6 +34,7 @@ Grundregeln:
    - `Release vX.Y.Z-canary.N (previous vA.B.C)`: diese Version entsteht.
    - `No release: skip`: seit dem letzten Canary nichts mit Release-Wirkung. Melden und nur auf ausdrücklichen Wunsch trotzdem pushen; der Lauf endet dann ohne Release.
    - Fehler `… has commits missing on canary`: Ein Hotfix auf `main` fehlt in `development`. Zuerst `origin/main` nach `development` mergen (Hotfix-Abschnitt in `/release`), dann `/canary` neu starten.
+   - Fehler `NEW badges are stale since vX.Y.Z`: Nach dem letzten stabilen Release wurden die NEW-Badges nicht fortgeschrieben. In `src/lib/new-features.ts` die Werte aus der Meldung eintragen (`pin to` und `set to`), auf `development` committen, dann `/canary` neu starten.
 3. CI des Ziel-Commits prüfen:
    ```bash
    gh run list --workflow ci.yml --branch development --commit "$(git rev-parse origin/development)" --limit 1 --json status,conclusion,url
