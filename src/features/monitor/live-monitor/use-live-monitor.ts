@@ -20,6 +20,7 @@ import {
 } from "@/lib/live-monitor";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export const LIVE_SESSION_RENDER_LIMIT = 200;
@@ -54,12 +55,19 @@ export function useLiveMonitor() {
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const [interval, setIntervalMs] = useState<LiveInterval>(5000);
   const [paused, setPaused] = useState(false);
-  const [range, setRange] = useState<LiveRange>(30);
+  const scope = `tool:monitor:${connection?.id ?? ""}`;
+  const [range, setRange] = useTabState<LiveRange>(tabStateKey(scope, "liveRange"), 30);
   const pollNow = useRef<(() => void) | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
-  const [selectedPid, setSelectedPid] = useState<number | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
-  const [filters, setFilters] = useState<LiveSessionFilters>(EMPTY_FILTERS);
+  const [selectedPid, setSelectedPid] = useTabState<number | null>(
+    tabStateKey(scope, "selectedPid"),
+    null,
+  );
+  const [detailsOpen, setDetailsOpen] = useTabState(tabStateKey(scope, "detailsOpen"), true);
+  const [filters, setFilters] = useTabState<LiveSessionFilters>(
+    tabStateKey(scope, "filters"),
+    EMPTY_FILTERS,
+  );
   const [actingPid, setActingPid] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const pollInterval = paused ? false : interval;

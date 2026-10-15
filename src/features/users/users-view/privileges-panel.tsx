@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { SCHEMA_PRIVS } from "@/features/users/users-view/constants";
@@ -11,6 +11,7 @@ import { modifyPrivilege, type PrivilegeChange, type TablePrivileges } from "@/l
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useRolePrivilegesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 
 export function PrivilegesPanel({ roleName }: { roleName: string }) {
   const connection = useActiveConnection();
@@ -18,7 +19,11 @@ export function PrivilegesPanel({ roleName }: { roleName: string }) {
   const queryClient = useQueryClient();
   const { data: privileges, isLoading, isError, error } = useRolePrivilegesQuery(roleName);
 
-  const [pendingChanges, setPendingChanges] = useState<Set<string>>(new Set());
+  const scope = `role-privileges:${connection?.id}:${database}:${roleName}`;
+  const [pendingChanges, setPendingChanges] = useTabState(
+    tabStateKey(scope, "pendingChanges"),
+    new Set<string>(),
+  );
 
   const schemaGroups = useMemo(() => {
     if (!privileges) return [];
@@ -59,7 +64,7 @@ export function PrivilegesPanel({ roleName }: { roleName: string }) {
         });
       }
     },
-    [connection, database, queryClient],
+    [connection, database, queryClient, setPendingChanges],
   );
 
   if (isLoading) {
@@ -131,6 +136,7 @@ export function PrivilegesPanel({ roleName }: { roleName: string }) {
             {schemaGroups.map((group) => (
               <SchemaTableGroup
                 key={group.schema}
+                stateKey={tabStateKey(scope, `collapsed:${group.schema}`)}
                 schema={group.schema}
                 tables={group.tables}
                 roleName={roleName}

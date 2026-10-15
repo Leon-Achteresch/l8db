@@ -1,5 +1,5 @@
 import { EyeIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 
 import { Collapse } from "@/components/motion/collapse";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import type { ResultChartBinding } from "@/features/query/result-chart/types";
 import type { DatabaseKind, TableInfo } from "@/lib/db";
 import type { SqlMarker } from "@/lib/sql-diagnostics";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 
 import { ResultHeader } from "./result-header";
 import type { QueryExecutionState } from "./use-query-execution-state";
@@ -45,7 +46,7 @@ export function QueryResultsContent({
   onToggleMaximized,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError, viewSource, scriptEntries } = exec;
-  const [classic, setClassic] = useState(false);
+  const [classic, setClassic] = useTabState(tabStateKey(exec.scope, "classic"), false);
   const viewable =
     viewSource !== null && !scriptEntries && !error && result !== null && result.columns.length > 0;
   const showView = viewable && !classic && !isRunning;
@@ -98,6 +99,8 @@ export function QueryResultsContent({
           />
         ) : (
           <QueryResultWorkbench
+            key={exec.scope}
+            stateKey={tabStateKey(exec.scope, "resultView")}
             result={result}
             isLoading={isRunning}
             error={error}

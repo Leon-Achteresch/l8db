@@ -19,6 +19,7 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { readViewStates } from "@/lib/editor-view-states";
 import { buildInvalidSet, isPackagePartInvalid } from "@/lib/invalid-objects";
 import {
   PACKAGE_OUTLINE_DEFAULT_WIDTH,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/package-view-prefs";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { useWorkspacePane } from "@/lib/workspace-pane";
@@ -50,7 +52,11 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const pane = useWorkspacePane();
   const capabilities = useActiveCapabilities();
-  const [activePart, setActivePart] = useState<PackagePart>(part ?? "body");
+  const outlineKey = packageOutlinePrefKey(connection?.id ?? "", schema, name);
+  const [activePart, setActivePart] = useTabState<PackagePart>(
+    tabStateKey(`package:${outlineKey}`, "part"),
+    part ?? "body",
+  );
   const [activeMember, setActiveMember] = useState(member?.toUpperCase());
   const [activeLine, setActiveLine] = useState<number>();
   const spec = useFunctionDefinitionQuery(packageOid(schema, name, "spec"));
@@ -76,8 +82,10 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
     : undefined;
   const memberLine =
     activeLine ?? (activeMember ? members.find((m) => m.name === activeMember)?.line : undefined);
-  const revealLine = activeMember ? memberLine : (highlightLine ?? members[0]?.line);
-  const outlineKey = packageOutlinePrefKey(connection?.id ?? "", schema, name);
+  const restored = useMemo(() => readViewStates()[edit.key] !== undefined, [edit.key]);
+  const revealLine = activeMember
+    ? memberLine
+    : (highlightLine ?? (restored ? undefined : members[0]?.line));
   const outlineWidth = usePackageViewPrefs(
     (state) => state.widths[outlineKey] ?? PACKAGE_OUTLINE_DEFAULT_WIDTH,
   );
@@ -91,7 +99,7 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
     if (part) setActivePart(part);
     setActiveMember(member?.toUpperCase());
     setActiveLine(undefined);
-  }, [part, member]);
+  }, [part, member, setActivePart]);
 
   useEffect(() => {
     resetCompile();
@@ -214,6 +222,7 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
               onChange={edit.editing ? edit.setSql : undefined}
               revealLine={compileResult?.line ?? revealLine}
               error={objectError(compileResult?.message, edit.state)}
+              stateKey={edit.key}
             />
             {compileResult && compileResult.status !== "VALID" ? (
               <div className="flex flex-col gap-1 border-t bg-destructive/5 px-4 py-2.5">

@@ -76,7 +76,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const editorApiRef = useRef<QueryEditorApi | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const exec = useQueryExecutionState();
+  const exec = useQueryExecutionState(tabId);
   const exportState = useResultExport(exec.result);
   useLastResultSync(tabId, connection?.id ?? null, exec.executedSql, exec.result);
   const cursor = useEditorCursorState(sql);

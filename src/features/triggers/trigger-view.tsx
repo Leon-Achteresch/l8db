@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { useObjectDraft } from "@/lib/hooks/use-object-draft";
+import { objectDraftKey } from "@/lib/object-drafts";
 import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -48,7 +50,12 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
     [triggers, triggerName],
   );
 
-  const [draft, setDraft] = useState<string | null>(null);
+  const objectKey = `trigger:${schema}.${table}.${triggerName}`;
+  const [draft, setDraft] = useObjectDraft(
+    objectKey,
+    `${schema}.${table}.${triggerName}`,
+    trigger?.definition ?? "",
+  );
   const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
   const [execution, setExecution] = useState<ExecutionState>({ status: "idle" });
 
@@ -60,22 +67,24 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
   }, [schema, table, triggerName, openTab]);
 
   useEffect(() => {
-    setDraft(null);
     setValidation({ status: "idle" });
     setExecution({ status: "idle" });
   }, [schema, table, triggerName, trigger?.definition]);
 
-  const handleChange = useCallback((value: string) => {
-    setDraft(value);
-    setValidation({ status: "idle" });
-    setExecution({ status: "idle" });
-  }, []);
+  const handleChange = useCallback(
+    (value: string) => {
+      setDraft(value === trigger?.definition ? null : value);
+      setValidation({ status: "idle" });
+      setExecution({ status: "idle" });
+    },
+    [setDraft, trigger?.definition],
+  );
 
   const handleReset = useCallback(() => {
     setDraft(null);
     setValidation({ status: "idle" });
     setExecution({ status: "idle" });
-  }, []);
+  }, [setDraft]);
 
   const buildDropSql = useCallback(
     () => triggerDropSql(connection?.kind, schema, table, triggerName),
@@ -130,6 +139,7 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
     trigger?.definition,
     currentValue,
     queryClient,
+    setDraft,
   ]);
 
   if (!connection) {
@@ -257,6 +267,7 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
       <TriggerEditorPane
         value={currentValue}
         onChange={handleChange}
+        stateKey={objectDraftKey(connection.id, database, objectKey)}
         error={feedbackState.status === "error" ? feedbackState.message : null}
         errorPrefix={
           feedbackState === execution

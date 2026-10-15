@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { useObjectDraft } from "@/lib/hooks/use-object-draft";
+import { objectDraftKey } from "@/lib/object-drafts";
 import { useExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -60,8 +62,11 @@ export function ExtensionView({ name }: { name: string }) {
 
   const ext = extensions?.find((e) => e.name === name);
 
-  const [editing, setEditing] = useState(false);
-  const [editedSql, setEditedSql] = useState("");
+  const displaySql = ext ? buildExtensionSql(ext) : "";
+  const objectKey = `extension:${name}`;
+  const [draft, setDraft] = useObjectDraft(objectKey, name, displaySql);
+  const editing = draft !== null;
+  const editedSql = draft ?? "";
   const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
   const [execution, setExecution] = useState<ExecutionState>({ status: "idle" });
 
@@ -69,21 +74,17 @@ export function ExtensionView({ name }: { name: string }) {
     if (!pane) openExtensionTab({ name });
   }, [name, openExtensionTab, pane]);
 
-  const displaySql = ext ? buildExtensionSql(ext) : "";
-
   const handleEdit = useCallback(() => {
-    setEditing(true);
-    setEditedSql(displaySql);
+    setDraft(displaySql);
     setValidation({ status: "idle" });
     setExecution({ status: "idle" });
-  }, [displaySql]);
+  }, [displaySql, setDraft]);
 
   const handleCancel = useCallback(() => {
-    setEditing(false);
-    setEditedSql("");
+    setDraft(null);
     setValidation({ status: "idle" });
     setExecution({ status: "idle" });
-  }, []);
+  }, [setDraft]);
 
   const handleValidate = useCallback(async () => {
     if (!connection) return;
@@ -115,12 +116,11 @@ export function ExtensionView({ name }: { name: string }) {
       setExecution({ status: "success", time: result.execution_time_ms });
       setValidation({ status: "idle" });
       await queryClient.invalidateQueries({ queryKey: ["extensions"] });
-      setEditing(false);
-      setEditedSql("");
+      setDraft(null);
     } catch (e) {
       setExecution({ status: "error", message: String(e) });
     }
-  }, [connection, database, editedSql, queryClient]);
+  }, [connection, database, editedSql, queryClient, setDraft]);
 
   if (!connection) {
     return (
@@ -225,7 +225,8 @@ export function ExtensionView({ name }: { name: string }) {
       <SqlEditorPane
         value={editing ? editedSql : displaySql}
         readOnly={!editing}
-        onChange={editing ? setEditedSql : undefined}
+        onChange={editing ? setDraft : undefined}
+        stateKey={objectDraftKey(connection.id, database, objectKey)}
       />
 
       {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
