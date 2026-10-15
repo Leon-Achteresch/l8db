@@ -122,6 +122,7 @@ export function TransferView() {
         <div className="flex min-h-0 flex-1 gap-3">
           {transfer.sourceConnection ? (
             <TransferSchemas
+              scope={transfer.scope}
               schemas={transfer.sourceSchemas}
               existing={transfer.targetSchemas}
               selected={transfer.schemas}

@@ -1,6 +1,7 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 import { VimStatusLine } from "@/components/editor/vim-status-line";
+import { useViewStatePersistence } from "@/features/query/query-editor-pane/use-view-state-persistence";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
 import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { themeFor } from "./theme-for";
@@ -10,9 +11,16 @@ export interface TriggerEditorPaneProps {
   onChange: (value: string) => void;
   error: string | null;
   errorPrefix: string;
+  stateKey?: string;
 }
 
-export function TriggerEditorPane({ value, onChange, error, errorPrefix }: TriggerEditorPaneProps) {
+export function TriggerEditorPane({
+  value,
+  onChange,
+  error,
+  errorPrefix,
+  stateKey,
+}: TriggerEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const vimStatusRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -82,6 +90,8 @@ export function TriggerEditorPane({ value, onChange, error, errorPrefix }: Trigg
       editor.setValue(value);
     }
   }, [value]);
+
+  useViewStatePersistence(editorRef, stateKey);
 
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));

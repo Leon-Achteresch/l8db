@@ -66,6 +66,7 @@ const ResultChartView = lazy(() =>
 );
 
 export function QueryResultWorkbench({
+  stateKey,
   result,
   isLoading,
   error,
@@ -74,6 +75,7 @@ export function QueryResultWorkbench({
   actions,
   chart,
 }: {
+  stateKey?: string;
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
@@ -336,6 +338,7 @@ export function QueryResultWorkbench({
       ) : (
         <div className="min-h-0 flex-1">
           <QueryResultTable
+            stateKey={stateKey}
             result={filtered}
             isLoading={false}
             error={null}

@@ -37,10 +37,15 @@ import { ResultFilterCell } from "./query-result-table/result-filter-cell";
 import { ResultLoading } from "./query-result-table/result-loading";
 import { ResultSortHeader } from "./query-result-table/result-sort-header";
 import { ResultToolbar } from "./query-result-table/result-toolbar";
+import {
+  useResultViewPersistence,
+  useSavedResultView,
+} from "./query-result-table/use-result-view-state";
 
 const PINNED_COLUMNS = [0];
 
 interface QueryResultTableProps {
+  stateKey?: string;
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
@@ -50,6 +55,7 @@ interface QueryResultTableProps {
 }
 
 export const QueryResultTable = memo(function QueryResultTable({
+  stateKey,
   result: rawResult,
   isLoading,
   error,
@@ -96,11 +102,20 @@ export const QueryResultTable = memo(function QueryResultTable({
     100;
   const [rowMeasurement, setRowMeasurement] = useState({ input: rowHeight, size: rowHeight });
   const estimatedRowHeight = rowMeasurement.input === rowHeight ? rowMeasurement.size : rowHeight;
-  const [sorts, setSorts] = useState<ResultSort[]>([]);
-  const [filters, setFilters] = useState<ResultFilters>({});
-  const [filterRowOpen, setFilterRowOpen] = useState(false);
-  const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>({});
+  const saved = useSavedResultView(stateKey, rawResult);
+  const [sorts, setSorts] = useState<ResultSort[]>(() => saved?.sorts ?? []);
+  const [filters, setFilters] = useState<ResultFilters>(() => saved?.filters ?? {});
+  const [filterRowOpen, setFilterRowOpen] = useState(() => saved?.filterRowOpen ?? false);
+  const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>(
+    () => saved?.autoColumnWidths ?? {},
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
+  useResultViewPersistence(
+    stateKey,
+    scrollRef,
+    { result: rawResult, sorts, filters, filterRowOpen, autoColumnWidths },
+    saved,
+  );
   const [lastView, setLastView] = useState({ result, isLoading, error });
   const viewChanged =
     result !== lastView.result || isLoading !== lastView.isLoading || error !== lastView.error;

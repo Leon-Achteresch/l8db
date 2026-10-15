@@ -1,5 +1,6 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
+import { useViewStatePersistence } from "@/features/query/query-editor-pane/use-view-state-persistence";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { themeFor } from "./theme-for";
 
@@ -7,9 +8,10 @@ export interface SqlEditorPaneProps {
   value: string;
   readOnly: boolean;
   onChange?: (value: string) => void;
+  stateKey?: string;
 }
 
-export function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
+export function SqlEditorPane({ value, readOnly, onChange, stateKey }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
@@ -82,6 +84,8 @@ export function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps)
       editor.setValue(value);
     }
   }, [value]);
+
+  useViewStatePersistence(editorRef, stateKey);
 
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));

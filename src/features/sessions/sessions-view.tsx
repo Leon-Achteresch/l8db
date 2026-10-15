@@ -23,6 +23,7 @@ import {
 } from "@/lib/session-filters";
 import { useSessionViewPrefs } from "@/lib/session-view-prefs";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { SchedulerJobsPanel } from "./scheduler-jobs-panel";
 import { SessionRow } from "./session-row";
 import { SessionsFilterBar } from "./sessions-filter-bar";
@@ -32,9 +33,13 @@ export function SessionsView() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("sessions");
+  const scope = `tool:sessions:${connection?.id ?? ""}`;
+  const [tab, setTab] = useTabState(tabStateKey(scope, "tab"), "sessions");
   const [actingPid, setActingPid] = useState<number | null>(null);
-  const [filters, setFilters] = useState<SessionFilters>(EMPTY_SESSION_FILTERS);
+  const [filters, setFilters] = useTabState<SessionFilters>(
+    tabStateKey(scope, "filters"),
+    EMPTY_SESSION_FILTERS,
+  );
   const [highlightedPid, setHighlightedPid] = useState<number | null>(null);
   const { data: sessions, isLoading, isError, error, refetch } = useSessionsQuery();
   const { data: locks } = useLocksQuery();

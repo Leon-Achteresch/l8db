@@ -135,6 +135,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         onChange={edit.editing ? edit.setSql : undefined}
         revealLine={compileResult?.line ?? line}
         error={objectError(compileResult?.message, edit.state)}
+        stateKey={edit.key}
       />
 
       {compileResult && compileResult.status !== "VALID" ? (

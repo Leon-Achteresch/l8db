@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { CircleCheckIcon, HeartPulseIcon, RefreshCwIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,7 @@ import { type HealthCategory, runDatabaseHealthChecks } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cn } from "@/lib/utils";
 import { HealthCheckItem } from "./health-check-item";
 import {
@@ -33,7 +34,10 @@ export function HealthView() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const caps = useActiveCapabilities();
-  const [category, setCategory] = useState<HealthCategory | null>(null);
+  const [category, setCategory] = useTabState<HealthCategory | null>(
+    tabStateKey(`tool:health:${connection?.id ?? ""}`, "category"),
+    null,
+  );
   const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>("health.advisor");
   const report = useQuery({
     queryKey: ["health-checks", connection?.id, database],

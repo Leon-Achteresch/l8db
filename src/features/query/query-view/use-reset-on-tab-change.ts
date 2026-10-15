@@ -9,15 +9,13 @@ export function useResetOnTabChange(
   exec: QueryExecutionState,
 ) {
   const { setSelectedSql, setCursorOffset, setCursorPosition } = cursor;
-  const { setStatementRange, setStatementError, setScriptEntries, setScriptActiveIndex } = exec;
+  const { setStatementRange, setStatementError } = exec;
   useEffect(() => {
     setSelectedSql("");
     setCursorOffset(0);
     setCursorPosition({ line: 1, column: 1, offset: 0 });
     setStatementRange(null);
     setStatementError(null);
-    setScriptEntries(null);
-    setScriptActiveIndex(null);
   }, [
     tabId,
     setSelectedSql,
@@ -25,7 +23,5 @@ export function useResetOnTabChange(
     setCursorPosition,
     setStatementRange,
     setStatementError,
-    setScriptEntries,
-    setScriptActiveIndex,
   ]);
 }

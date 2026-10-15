@@ -1,6 +1,7 @@
 import { ArchiveIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import { BucketSettings } from "./bucket-settings";
@@ -12,7 +13,8 @@ export function BucketView({ bucket }: { bucket: string }) {
   const { connection } = useStorageConnection();
   const openBucketTab = useTableTabs((state) => state.openBucketTab);
   const pane = useWorkspacePane();
-  const [tab, setTab] = useState("objects");
+  const scope = `bucket:${connection?.id ?? ""}:${bucket}`;
+  const [tab, setTab] = useTabState(tabStateKey(scope, "tab"), "objects");
 
   useEffect(() => {
     if (!pane) openBucketTab({ bucket });
@@ -40,7 +42,7 @@ export function BucketView({ bucket }: { bucket: string }) {
         </TabsList>
       </header>
       <TabsContent value="objects" className="min-h-0 flex-1">
-        <ObjectBrowser bucket={bucket} active={tab === "objects"} />
+        <ObjectBrowser bucket={bucket} scope={scope} active={tab === "objects"} />
       </TabsContent>
       <TabsContent value="settings" className="min-h-0 flex-1 overflow-auto">
         <BucketSettings bucket={bucket} />
