@@ -23,8 +23,8 @@
 # solange die Release-Artefakte noch nicht stabil sind; danach echten Hash setzen.
 
 cask "l8db" do
-  version "0.13.0"
-  sha256 "91b5f7c3de082aa917e2605a29da52f52491e0bcfa82f16cdf9b9fff15639aeb"
+  version "0.14.0"
+  sha256 "0358a3ee091a2f9f2acd9a0aaab925098ff0bf0b20672dbe8c0c1dcddc43f41e"
 
   url "https://github.com/Leon-Achteresch/l8db/releases/download/v#{version}/l8db_#{version}_universal.dmg"
   name "l8db"
