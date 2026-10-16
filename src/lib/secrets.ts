@@ -185,6 +185,15 @@ export function injectUrlPassword(redactedUrl: string, password: string): string
   return `${prefix}${user}:${encodeURIComponent(password)}${authority.slice(at)}${tail}`;
 }
 
+export function replaceUrlUser(url: string, user: string): string {
+  const scheme = url.indexOf("://");
+  if (!user || scheme < 0) return url;
+  const rest = url.slice(scheme + 3);
+  const authority = rest.split(/[/?#]/)[0];
+  const host = rest.slice(authority.lastIndexOf("@") + 1);
+  return `${url.slice(0, scheme + 3)}${encodeURIComponent(user)}@${host}`;
+}
+
 export function withSslModeParam(value: string, sslMode: string): string {
   if (!value.trim()) return "";
   const url = new URL(value.trim());

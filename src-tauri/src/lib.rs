@@ -19,6 +19,7 @@ mod pocketbase;
 mod process;
 mod supabase;
 mod sync;
+mod team;
 mod updates;
 mod versioning;
 mod windows;
@@ -491,6 +492,10 @@ pub fn run() {
             db::secrets::store_secret,
             db::secrets::load_secret,
             db::secrets::delete_secret,
+            team::team_login,
+            team::team_cancel_login,
+            team::team_connections,
+            team::team_logout,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,

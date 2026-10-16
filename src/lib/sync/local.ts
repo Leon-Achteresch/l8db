@@ -105,7 +105,7 @@ export function collectLocal(includeHistory: boolean): LocalCollections {
       workspace[section] = { ...preserved[section], ...(workspace[section] as object) };
   return {
     connections: connections.connections
-      .filter((connection) => !connection.temporary)
+      .filter((connection) => !connection.temporary && !connection.team)
       .map((connection) => ({
         id: connection.id,
         data: toSyncConnection(connection),
@@ -177,7 +177,9 @@ export function mergeConnections(
   const ids = new Set(next.map((connection) => connection.id));
   return [
     ...next,
-    ...current.filter((connection) => connection.temporary && !ids.has(connection.id)),
+    ...current.filter(
+      (connection) => (connection.temporary || connection.team) && !ids.has(connection.id),
+    ),
   ];
 }
 

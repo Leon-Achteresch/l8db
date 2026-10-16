@@ -80,6 +80,12 @@ export interface NetworkCommand {
   timeoutSecs?: number | null;
 }
 
+export interface TeamLink {
+  hub: string;
+  id: string;
+  base: Record<string, unknown>;
+}
+
 export interface SavedConnection {
   id: string;
   name: string;
@@ -102,6 +108,7 @@ export interface SavedConnection {
   maskRules?: MaskRule[];
   temporary?: boolean;
   vault?: boolean;
+  team?: TeamLink | null;
 }
 
 export function usesTunnel<

@@ -888,6 +888,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     ],
   },
   {
+    id: "team",
+    tabId: "general",
+    title: "Team-Verbindungen",
+    description:
+      "Mit dem Firmenkonto beim Team-Hub anmelden und die freigegebenen Verbindungen automatisch erhalten.",
+    keywords: ["team", "firma", "hub", "sso", "oidc", "entra", "unternehmen", "verbindungen"],
+  },
+  {
     id: "sync-secrets",
     tabId: "general",
     title: "Passwörter synchronisieren",
