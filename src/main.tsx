@@ -103,6 +103,8 @@ Promise.all([
           .then(({ initAiActivity }) => initAiActivity())
           .catch(() => undefined);
         if (isMainWindow)
+          void import("@/lib/team/sync").then(({ syncTeam }) => syncTeam()).catch(() => undefined);
+        if (isMainWindow)
           void import("@/lib/mcp-open")
             .then(({ initMcpOpen }) => initMcpOpen())
             .catch(() => undefined);

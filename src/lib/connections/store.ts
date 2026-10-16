@@ -272,7 +272,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
               ? connection
               : connection.temporary
                 ? { temporary: true, ...input, id }
-                : { ...input, id },
+                : { team: connection.team, ...input, id },
           ),
         })),
       removeConnection: (id) => {
@@ -301,6 +301,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
           name: `${source.name} (Kopie)`,
           favorite: false,
           vault: false,
+          team: null,
         };
         for (const suffix of ["", ...NETWORK_SECRET_SUFFIXES]) {
           void loadSecret(`${id}${suffix}`)

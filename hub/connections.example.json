@@ -1,0 +1,19 @@
+{
+  "connections": [
+    {
+      "id": "reporting",
+      "name": "Reporting",
+      "kind": "postgres",
+      "connectionString": "postgres://reporting.intern:5432/bi",
+      "sslMode": "require"
+    },
+    {
+      "id": "erp-prod",
+      "name": "ERP Produktion",
+      "kind": "mssql",
+      "connectionString": "mssql://erp.intern:1433/erp?encrypt=true",
+      "environment": "production",
+      "groups": ["00000000-0000-0000-0000-000000000000", "l8db-erp"]
+    }
+  ]
+}

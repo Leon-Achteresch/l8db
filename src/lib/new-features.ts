@@ -6,6 +6,7 @@ export const NEXT_FEATURE_VERSION = "0.15.0";
 export const NEW_FEATURES = {
   "settings.general.workspace-tab": "0.9.1",
   "settings.general.sync": "0.14.0",
+  "settings.general.team": NEXT_FEATURE_VERSION,
   "settings.statistics.overview": "0.14.0",
   "settings.cli.install": "0.14.0",
   "workspace.inline-tabs": "0.9.1",

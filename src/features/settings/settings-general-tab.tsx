@@ -8,6 +8,7 @@ import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-p
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
 import { SyncPanel } from "@/features/settings/sync-panel";
+import { TeamPanel } from "@/features/settings/team-panel";
 import { TourSection } from "@/features/settings/tour-section";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -91,6 +92,8 @@ export function SettingsGeneralTab() {
         <PortableWorkspacePanel />
 
         <SyncPanel />
+
+        <TeamPanel />
 
         <SettingsRow settingId="reset">
           <Button variant="outline" size="sm" onClick={handleReset}>
