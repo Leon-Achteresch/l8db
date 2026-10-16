@@ -892,8 +892,19 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "general",
     title: "Team-Verbindungen",
     description:
-      "Mit dem Firmenkonto beim Team-Hub anmelden und die freigegebenen Verbindungen automatisch erhalten.",
-    keywords: ["team", "firma", "hub", "sso", "oidc", "entra", "unternehmen", "verbindungen"],
+      "Mit dem Firmenkonto (Microsoft 365 oder eigener Team-Hub) anmelden und die freigegebenen Verbindungen automatisch erhalten.",
+    keywords: [
+      "team",
+      "firma",
+      "hub",
+      "sso",
+      "oidc",
+      "entra",
+      "microsoft",
+      "sharepoint",
+      "unternehmen",
+      "verbindungen",
+    ],
   },
   {
     id: "sync-secrets",

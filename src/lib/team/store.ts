@@ -11,7 +11,12 @@ export interface TeamState {
   name: string | null;
   lastSyncAt: number | null;
   lastError: string | null;
+  warnings: string[];
+  url: string | null;
+  expiredSince: number | null;
   managedHub: string | null;
+  allowedHosts: string[];
+  policyError: string | null;
   promptOpen: boolean;
 }
 
@@ -23,12 +28,23 @@ export const useTeamStore = create<TeamState>()(
       name: null,
       lastSyncAt: null,
       lastError: null,
+      warnings: [],
+      url: null,
+      expiredSince: null,
       managedHub: null,
+      allowedHosts: [],
+      policyError: null,
       promptOpen: false,
     }),
     {
       name: TEAM_STORE_KEY,
-      partialize: ({ managedHub: _managed, promptOpen: _prompt, ...persisted }) => persisted,
+      partialize: ({
+        managedHub: _managed,
+        promptOpen: _prompt,
+        allowedHosts: _allowed,
+        policyError: _policy,
+        ...persisted
+      }) => persisted,
     },
   ),
 );

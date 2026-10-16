@@ -20,6 +20,7 @@ mod process;
 mod supabase;
 mod sync;
 mod team;
+mod team_m365;
 mod updates;
 mod versioning;
 mod windows;
@@ -497,6 +498,7 @@ pub fn run() {
             team::team_connections,
             team::team_logout,
             team::team_managed_hub,
+            team_m365::team_microsoft_available,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,

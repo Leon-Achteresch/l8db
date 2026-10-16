@@ -23,6 +23,17 @@ function currentUser(connection: SavedConnection): string {
   }
 }
 
+function targetOf(connection: SavedConnection): string {
+  try {
+    if (connection.ssh?.host)
+      return `${connection.ssh.remoteHost}:${connection.ssh.remotePort} über ${connection.ssh.host}`;
+    const { host, port } = connectionSummary(connection.connectionString, connection.kind);
+    return port ? `${host}:${port}` : host;
+  } catch {
+    return "";
+  }
+}
+
 export function PasswordPromptDialog() {
   const connection = usePasswordPrompt((state) => state.connection);
   const message = usePasswordPrompt((state) => state.message);
@@ -78,6 +89,11 @@ export function PasswordPromptDialog() {
                   ? `Das gespeicherte Passwort für „${connection?.name}“ wurde abgelehnt.`
                   : `Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
             </DialogDescription>
+            {connection?.team && targetOf(connection) && (
+              <p className="text-xs text-muted-foreground">
+                Von deiner Organisation bereitgestellt. Ziel: {targetOf(connection)}
+              </p>
+            )}
           </DialogHeader>
           <div className="grid gap-3 py-2">
             {askUser && (

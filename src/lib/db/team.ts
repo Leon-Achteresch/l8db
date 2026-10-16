@@ -6,9 +6,12 @@ export interface TeamUser {
 }
 
 export interface TeamPayload {
-  name?: string;
+  name?: string | null;
   user?: TeamUser;
   connections?: unknown[];
+  warnings?: string[];
+  url?: string | null;
+  complete?: boolean;
 }
 
 export interface TeamLogin {
@@ -16,8 +19,8 @@ export interface TeamLogin {
   user: TeamUser;
 }
 
-export function teamLogin(hubUrl: string): Promise<TeamLogin> {
-  return invoke<TeamLogin>("team_login", { hubUrl });
+export function teamLogin(hubUrl: string, admin = false): Promise<TeamLogin> {
+  return invoke<TeamLogin>("team_login", { hubUrl, admin });
 }
 
 export function teamCancelLogin(): Promise<void> {
@@ -34,8 +37,14 @@ export function teamLogout(hubUrl: string): Promise<void> {
 
 export interface ManagedHub {
   url: string;
+  source: string;
+  allowedHosts: string[];
 }
 
 export function teamManagedHub(): Promise<ManagedHub | null> {
   return invoke<ManagedHub | null>("team_managed_hub");
+}
+
+export function teamMicrosoftAvailable(): Promise<boolean> {
+  return invoke<boolean>("team_microsoft_available");
 }
