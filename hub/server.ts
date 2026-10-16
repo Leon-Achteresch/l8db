@@ -100,7 +100,11 @@ function page(message: string, status = 400): Response {
 
 function urlPassword(value: string): boolean {
   try {
-    return new URL(value).password !== "";
+    const url = new URL(value);
+    return (
+      url.password !== "" ||
+      [...url.searchParams.keys()].some((key) => /^(password|pwd|passwd)$/i.test(key))
+    );
   } catch {
     return /(^|;)\s*(password|pwd)\s*=/i.test(value);
   }

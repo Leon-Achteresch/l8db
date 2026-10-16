@@ -294,6 +294,20 @@ describe("team hub", () => {
     expect(() =>
       parseConnections(
         JSON.stringify({
+          connections: [
+            {
+              id: "a",
+              name: "A",
+              kind: "postgres",
+              connectionString: "postgres://h/db?Password=pw",
+            },
+          ],
+        }),
+      ),
+    ).toThrow("Passwort");
+    expect(() =>
+      parseConnections(
+        JSON.stringify({
           connections: [{ id: "a b", name: "A", kind: "x", connectionString: "x://h" }],
         }),
       ),

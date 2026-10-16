@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="l8db" namespace="L8db.Policies" />
+    <using prefix="windows" namespace="Microsoft.Policies.Windows" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <categories>
+    <category name="L8db" displayName="$(string.L8db)" />
+  </categories>
+  <policies>
+    <policy name="Microsoft" class="Machine" displayName="$(string.Microsoft)" explainText="$(string.Microsoft_Help)" key="Software\Policies\l8db" valueName="Microsoft">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="MicrosoftSiteUrl" class="Machine" displayName="$(string.MicrosoftSiteUrl)" explainText="$(string.MicrosoftSiteUrl_Help)" presentation="$(presentation.MicrosoftSiteUrl)" key="Software\Policies\l8db">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <elements><text id="MicrosoftSiteUrl" valueName="MicrosoftSiteUrl" required="true" /></elements>
+    </policy>
+    <policy name="MicrosoftScope" class="Machine" displayName="$(string.MicrosoftScope)" explainText="$(string.MicrosoftScope_Help)" presentation="$(presentation.MicrosoftScope)" key="Software\Policies\l8db">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <elements>
+        <enum id="MicrosoftScope" valueName="MicrosoftScope" required="true">
+          <item displayName="$(string.ScopeAll)"><value><string>all</string></value></item>
+          <item displayName="$(string.ScopeSelected)"><value><string>selected</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="MicrosoftTenant" class="Machine" displayName="$(string.MicrosoftTenant)" explainText="$(string.MicrosoftTenant_Help)" presentation="$(presentation.MicrosoftTenant)" key="Software\Policies\l8db">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <elements><text id="MicrosoftTenant" valueName="MicrosoftTenant" required="true" /></elements>
+    </policy>
+    <policy name="MicrosoftClientId" class="Machine" displayName="$(string.MicrosoftClientId)" explainText="$(string.MicrosoftClientId_Help)" presentation="$(presentation.MicrosoftClientId)" key="Software\Policies\l8db">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <elements><text id="MicrosoftClientId" valueName="MicrosoftClientId" required="true" /></elements>
+    </policy>
+    <policy name="HubUrl" class="Machine" displayName="$(string.HubUrl)" explainText="$(string.HubUrl_Help)" presentation="$(presentation.HubUrl)" key="Software\Policies\l8db">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <elements><text id="HubUrl" valueName="HubUrl" required="true" /></elements>
+    </policy>
+    <policy name="AllowedHosts" class="Machine" displayName="$(string.AllowedHosts)" explainText="$(string.AllowedHosts_Help)" presentation="$(presentation.AllowedHosts)" key="Software\Policies\l8db">
+      <parentCategory ref="L8db" />
+      <supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+      <elements><text id="AllowedHosts" valueName="AllowedHosts" required="true" /></elements>
+    </policy>
+  </policies>
+</policyDefinitions>

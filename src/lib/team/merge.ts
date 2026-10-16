@@ -1,3 +1,4 @@
+import { SECRET_PARAM } from "@/lib/connection-export/types";
 import type { SavedConnection } from "@/lib/connections/types";
 
 const isString = (value: unknown): value is string => typeof value === "string";
@@ -48,11 +49,117 @@ const TEAM_FIELDS = {
 const FIELDS = Object.keys(TEAM_FIELDS) as (keyof typeof TEAM_FIELDS)[];
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const USERINFO_PASSWORD = /:\/\/[^/@?#]*:[^/@?#]*@/;
+const FORBIDDEN_PARAMS = new Set([
+  "integratedsecurity",
+  "trustedconnection",
+  "privatekey",
+  "privatekeyfile",
+  "privatekeypath",
+  "authenticator",
+  "auth",
+  "sslkey",
+  "sslcert",
+  "sslrootcert",
+  "sslca",
+  "sslcrl",
+  "authmechanism",
+  "l8dbauth",
+  "l8dbaccesstoken",
+  "clientcertificatekeystoreurl",
+  "trustservercertificateca",
+  "tlscertificatekeyfile",
+  "tlscertificatefile",
+  "tlscafile",
+  "socket",
+  "unixsocket",
+  "socketpath",
+  "enablecleartextplugin",
+]);
+const HOST_KEY =
+  /^(server|host|hostaddr|endpoint|data source|address|addr|network address|failover partner|nodes|hosts|contact points)$/i;
+
+function forbiddenParam(key: string): boolean {
+  return FORBIDDEN_PARAMS.has(key.toLowerCase().replace(/[\s_-]/g, ""));
+}
+
+function hostOnly(server: string): string | null {
+  const value = decodeURIComponentSafe(server).trim().replace(/^tcp:/i, "");
+  const bracketed = value.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketed) return bracketed[1].toLowerCase();
+  const [base, port, ...rest] = value.split(",");
+  if (rest.length || (port !== undefined && !/^\s*\d+\s*$/.test(port))) return null;
+  const parts = base.split(":");
+  if (parts.length > 2 || (parts.length === 2 && !/^\d+$/.test(parts[1]))) return null;
+  return parts[0].toLowerCase() || null;
+}
+
+function parameters(value: string): [string, string][] {
+  return value
+    .split(/[?&;]/)
+    .filter((part) => part.includes("="))
+    .map((part) => {
+      const index = part.indexOf("=");
+      return [decodeURIComponentSafe(part.slice(0, index)).trim(), part.slice(index + 1).trim()];
+    });
+}
+
+function decodeURIComponentSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function hostsOf(fields: Record<string, unknown>): (string | null)[] {
+  const value = fields.connectionString as string;
+  const match = value.match(AUTHORITY);
+  const listed = parameters(value)
+    .filter(([key]) => HOST_KEY.test(key))
+    .map(([, server]) => server);
+  if (match) listed.push(match[2].slice(match[2].lastIndexOf("@") + 1));
+  const servers = match ? listed.flatMap((server) => server.split(",")) : listed;
+  const ssh = fields.ssh as
+    | { host: string; remoteHost: string; jumpHosts?: { host: string }[] }
+    | undefined;
+  const proxy = fields.proxy as { host: string } | undefined;
+  return [
+    ...(servers.length ? servers.map(hostOnly) : [null]),
+    ...(ssh
+      ? [ssh.host, ssh.remoteHost, ...(ssh.jumpHosts ?? []).map((hop) => hop.host)].map(hostOnly)
+      : []),
+    ...(proxy ? [hostOnly(proxy.host)] : []),
+  ];
+}
+
+export function hostAllowed(host: string | null, patterns: string[]): boolean {
+  if (!host) return false;
+  return patterns.some((pattern) =>
+    pattern.startsWith("*.") ? host.endsWith(pattern.slice(1)) : host === pattern,
+  );
+}
+
+export const TEAM_KINDS = [
+  "postgres",
+  "mysql",
+  "mssql",
+  "oracle",
+  "clickhouse",
+  "mongodb",
+  "redis",
+  "cassandra",
+  "elasticsearch",
+  "influxdb",
+  "snowflake",
+];
 const AUTHORITY = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)/i;
 
 export interface TeamMerge {
   connections: SavedConnection[];
   removed: string[];
+  retargeted: string[];
+  warnings: string[];
   added: number;
   updated: number;
 }
@@ -64,43 +171,144 @@ export function teamConnectionId(hub: string, id: string): string {
   return `team-${(hash >>> 0).toString(16)}-${id}`;
 }
 
-function pick(entry: unknown): Record<string, unknown> | null {
-  if (!entry || typeof entry !== "object") return null;
+function pick(entry: unknown, allowedHosts: string[]): Record<string, unknown> | string {
+  if (!entry || typeof entry !== "object") return "Ungültiger Eintrag übersprungen";
   const source = entry as Record<string, unknown>;
-  if (typeof source.id !== "string" || !SAFE_ID.test(source.id)) return null;
+  const label = `„${typeof source.name === "string" ? source.name : String(source.id)}“`;
+  if (typeof source.id !== "string" || !SAFE_ID.test(source.id))
+    return `${label}: ungültige id, übersprungen`;
   for (const field of ["name", "kind", "connectionString"])
-    if (typeof source[field] !== "string" || !source[field]) return null;
+    if (typeof source[field] !== "string" || !source[field])
+      return `${label}: ${field} fehlt, übersprungen`;
+  if (!TEAM_KINDS.includes(source.kind as string))
+    return `${label}: Typ „${String(source.kind)}“ ist für Team-Verbindungen nicht erlaubt, übersprungen`;
+  const connectionString = source.connectionString as string;
+  if (
+    /[\u0000-\u001f\u007f]/.test(connectionString) ||
+    (connectionString.includes("://") && connectionString.includes("\\"))
+  )
+    return `${label}: Adresse enthält Steuerzeichen oder einen Backslash, übersprungen`;
+  const authority = connectionString.match(AUTHORITY);
+  if (authority && connectionString.slice(authority[0].length).includes("@"))
+    return `${label}: Adresse enthält ein @ nach dem Host, übersprungen`;
+  const keys = parameters(connectionString).map(([key]) => key);
+  if (USERINFO_PASSWORD.test(connectionString) || keys.some((key) => SECRET_PARAM.test(key)))
+    return `${label}: enthält ein Passwort oder Token, übersprungen`;
+  const forbidden = keys.find(forbiddenParam);
+  if (forbidden)
+    return `${label}: Parameter „${forbidden}“ ist für Team-Verbindungen nicht erlaubt, übersprungen`;
   const picked: Record<string, unknown> = { id: source.id };
   for (const field of FIELDS)
     if (source[field] !== undefined && TEAM_FIELDS[field](source[field]))
       picked[field] = source[field];
+  if (isRecord(picked.ssh)) {
+    const local = (hop: Record<string, unknown>) => {
+      const { agentSocket: _socket, ...rest } = hop;
+      return { ...rest, keyFile: "" };
+    };
+    const ssh = picked.ssh as Record<string, unknown> & { jumpHosts?: Record<string, unknown>[] };
+    picked.ssh = {
+      ...local(ssh),
+      ...(ssh.jumpHosts ? { jumpHosts: ssh.jumpHosts.map(local) } : {}),
+    };
+  }
+  if (allowedHosts.length) {
+    const blocked = hostsOf(picked).find((host) => !hostAllowed(host, allowedHosts));
+    if (blocked !== undefined)
+      return `${label}: Host „${blocked ?? "unbekannt"}“ ist von der IT nicht freigegeben, übersprungen`;
+  }
   return picked;
+}
+
+export function withoutPassword(value: string): string {
+  return value
+    .replace(/^([a-z][a-z0-9+.-]*:\/\/[^/?#@:]*):[^/?#@]*@/i, "$1@")
+    .replace(/(^|;)\s*(password|pwd)\s*=[^;]*/gi, "");
+}
+
+type Hop = { host?: unknown; port?: unknown; keyFile?: unknown; agentSocket?: unknown };
+
+function sshTarget(ssh: unknown): unknown {
+  if (!isRecord(ssh)) return null;
+  const hops = Array.isArray(ssh.jumpHosts) ? (ssh.jumpHosts as Hop[]) : [];
+  return [
+    ssh.host,
+    ssh.port,
+    ssh.remoteHost,
+    ssh.remotePort,
+    hops.map((hop) => [hop.host, hop.port]),
+  ];
+}
+
+function withLocalKeys(incoming: unknown, local: unknown): unknown {
+  if (!isRecord(incoming)) return incoming;
+  const own = isRecord(local) ? (local as Hop & { jumpHosts?: Hop[] }) : {};
+  const keep = (hop: Hop, mine: Hop | undefined) => ({
+    ...hop,
+    keyFile: typeof mine?.keyFile === "string" ? mine.keyFile : "",
+    ...(typeof mine?.agentSocket === "string" ? { agentSocket: mine.agentSocket } : {}),
+  });
+  const hops = Array.isArray(incoming.jumpHosts) ? (incoming.jumpHosts as Hop[]) : null;
+  return {
+    ...keep(incoming as Hop, own),
+    ...(hops
+      ? {
+          jumpHosts: hops.map((hop) =>
+            keep(
+              hop,
+              own.jumpHosts?.find((mine) => mine.host === hop.host),
+            ),
+          ),
+        }
+      : {}),
+  };
+}
+
+function target(fields: Record<string, unknown>): string {
+  const value = typeof fields.connectionString === "string" ? fields.connectionString : "";
+  const match = value.match(AUTHORITY);
+  const endpoint = match
+    ? `${match[1]}${match[2].slice(match[2].lastIndexOf("@") + 1)}${value.slice(match[0].length)}`
+    : value;
+  return JSON.stringify([
+    fields.kind ?? null,
+    endpoint,
+    fields.sslMode ?? null,
+    sshTarget(fields.ssh),
+    fields.proxy ?? null,
+  ]);
 }
 
 function same(left: unknown, right: unknown): boolean {
   return left === right || JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function carryCredentials(next: string, previous: string): string {
-  const target = next.match(AUTHORITY);
+export function carryCredentials(next: string, previous: string, withPassword = true): string {
+  const destination = next.match(AUTHORITY);
   const source = previous.match(AUTHORITY);
-  if (!target || !source || target[2].includes("@")) return next;
+  if (!destination || !source || destination[2].includes("@")) return next;
   const at = source[2].lastIndexOf("@");
   if (at < 0) return next;
-  return `${target[1]}${source[2].slice(0, at + 1)}${next.slice(target[0].length - target[2].length)}`;
+  const userinfo = source[2].slice(0, at);
+  const kept = withPassword ? userinfo : userinfo.split(":")[0];
+  return `${destination[1]}${kept}@${next.slice(destination[0].length - destination[2].length)}`;
 }
 
 export function mergeTeamConnections(
   local: SavedConnection[],
   hub: string,
   entries: unknown[],
+  allowedHosts: string[] = [],
 ): TeamMerge {
   const remote = new Map<string, Record<string, unknown>>();
+  const warnings: string[] = [];
   for (const entry of entries) {
-    const picked = pick(entry);
-    if (picked) remote.set(teamConnectionId(hub, picked.id as string), picked);
+    const picked = pick(entry, allowedHosts);
+    if (typeof picked === "string") warnings.push(picked);
+    else remote.set(teamConnectionId(hub, picked.id as string), picked);
   }
   const removed: string[] = [];
+  const retargeted: string[] = [];
   let updated = 0;
   const connections: SavedConnection[] = [];
   for (const connection of local) {
@@ -117,10 +325,20 @@ export function mergeTeamConnections(
     for (const field of FIELDS) {
       if (same(incoming[field], base[field])) continue;
       changed = true;
-      next[field] =
-        field === "connectionString"
-          ? carryCredentials(incoming[field] as string, connection.connectionString)
-          : incoming[field];
+      next[field] = field === "ssh" ? withLocalKeys(incoming.ssh, connection.ssh) : incoming[field];
+    }
+    if (changed) {
+      const moved = target(incoming) !== target(base);
+      if (moved) retargeted.push(connection.id);
+      next.connectionString = same(incoming.connectionString, base.connectionString)
+        ? moved
+          ? withoutPassword(connection.connectionString)
+          : connection.connectionString
+        : carryCredentials(
+            incoming.connectionString as string,
+            connection.connectionString,
+            !moved,
+          );
     }
     if (!changed) {
       connections.push(connection);
@@ -142,5 +360,5 @@ export function mergeTeamConnections(
       team: { hub, id: id as string, base: fields },
     });
   }
-  return { connections, removed, added: remote.size, updated };
+  return { connections, removed, retargeted, warnings, added: remote.size, updated };
 }

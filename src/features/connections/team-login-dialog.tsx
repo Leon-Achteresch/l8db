@@ -1,4 +1,4 @@
-import { Building2Icon, LogInIcon } from "lucide-react";
+import { Building2Icon, LogInIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,13 @@ import {
 } from "@/components/ui/dialog";
 import { teamCancelLogin } from "@/lib/db/team";
 import { useTeamStore } from "@/lib/team/store";
-import { isLoginCancelled, loginTeam, teamErrorText } from "@/lib/team/sync";
+import {
+  isLoginCancelled,
+  loginTeam,
+  MICROSOFT_HUB,
+  needsConsent,
+  teamErrorText,
+} from "@/lib/team/sync";
 
 function hostOf(url: string): string {
   try {
@@ -26,16 +32,17 @@ export function TeamLoginDialog() {
   const open = useTeamStore((state) => state.promptOpen);
   const hub = useTeamStore((state) => state.managedHub);
   const [waiting, setWaiting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const microsoft = hub === MICROSOFT_HUB;
 
   const close = () => useTeamStore.setState({ promptOpen: false });
 
-  const login = async () => {
+  const login = async (admin = false) => {
     if (!hub) return;
     setWaiting(true);
     setError(null);
     try {
-      const result = await loginTeam(hub);
+      const result = await loginTeam(hub, admin);
       close();
       toast.success(
         `Angemeldet. ${result?.added ?? 0} Team-Verbindungen wurden für dich eingerichtet.`,
@@ -45,7 +52,7 @@ export function TeamLoginDialog() {
       if (useTeamStore.getState().user) {
         close();
         toast.error(`Angemeldet, aber der Abgleich schlug fehl: ${teamErrorText(failure)}`);
-      } else setError(teamErrorText(failure));
+      } else setError(failure);
     } finally {
       setWaiting(false);
     }
@@ -68,8 +75,8 @@ export function TeamLoginDialog() {
           </DialogTitle>
           <DialogDescription>
             Deine Organisation stellt Datenbankverbindungen über{" "}
-            {hub ? hostOf(hub) : "den Team-Hub"} bereit. Nach der Anmeldung richtet l8db sie
-            automatisch für dich ein.
+            {microsoft ? "Microsoft 365" : hub ? hostOf(hub) : "den Team-Hub"} bereit. Nach der
+            Anmeldung richtet l8db sie automatisch für dich ein.
           </DialogDescription>
         </DialogHeader>
         <p className="text-xs text-muted-foreground">
@@ -77,22 +84,30 @@ export function TeamLoginDialog() {
             ? "Die Anmeldung läuft in deinem Browser. Danach geht es hier automatisch weiter."
             : "Die Anmeldung öffnet sich in deinem Browser. Was du in einer Datenbank darfst, regelt dein Datenbank-Benutzer."}
         </p>
-        {error && (
-          <p className="whitespace-pre-wrap break-words text-destructive text-sm">{error}</p>
+        {error !== null && (
+          <p className="whitespace-pre-wrap break-words text-destructive text-sm">
+            {teamErrorText(error)}
+          </p>
         )}
-        <DialogFooter>
+        <DialogFooter className="sm:flex-wrap">
           {waiting ? (
             <Button variant="outline" onClick={() => void teamCancelLogin()}>
               Abbrechen
             </Button>
           ) : (
             <>
+              {microsoft && needsConsent(error) && (
+                <Button variant="outline" onClick={() => void login(true)}>
+                  <ShieldCheckIcon className="size-3.5" />
+                  Für die Organisation freigeben
+                </Button>
+              )}
               <Button variant="outline" onClick={close}>
                 Später
               </Button>
               <Button onClick={() => void login()} autoFocus>
                 <LogInIcon className="size-3.5" />
-                Anmelden
+                {microsoft ? "Mit Microsoft anmelden" : "Anmelden"}
               </Button>
             </>
           )}
