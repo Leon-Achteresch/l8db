@@ -57,10 +57,6 @@ export interface TeamMerge {
   updated: number;
 }
 
-export function normalizeHubUrl(value: string): string {
-  return value.trim().replace(/\/+$/, "");
-}
-
 export function teamConnectionId(hub: string, id: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < hub.length; index++)

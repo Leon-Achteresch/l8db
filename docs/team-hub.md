@@ -75,9 +75,34 @@ Andere Anbieter (Google Workspace, Keycloak, Authentik, Okta) funktionieren gena
 
 *Einstellungen* → *Allgemein* → *Team-Verbindungen*: Hub-Adresse eintragen und *Mit Firmenkonto anmelden* wählen. Danach erscheinen die Verbindungen in der normalen Verbindungsliste. Beim ersten Öffnen fragt l8db nach Datenbank-Benutzer und Passwort.
 
+### Automatische Anmeldung per `hub.json`
+
+Legt die IT eine Datei `hub.json` an einem festen Ort ab, zeigt l8db beim Start automatisch den Dialog *Mit Firmenkonto anmelden*, auch vor dem Onboarding beim ersten Start. Nach der Anmeldung werden die Verbindungen ohne weiteres Zutun eingerichtet. Bei späteren Starts wird nur noch still abgeglichen. Wer *Später* wählt, wird beim nächsten Start erneut gefragt. Die Hub-Adresse in den Einstellungen ist dann fest vorgegeben.
+
+```json
+{ "url": "https://l8db.firma.example" }
+```
+
+l8db sucht in dieser Reihenfolge und nimmt die erste vorhandene Datei:
+
+| | Für alle Benutzer (empfohlen, per GPO/Intune/MDM) | Nur für einen Benutzer |
+|---|---|---|
+| Windows | `%ProgramData%\l8db\hub.json` (meist `C:\ProgramData\l8db\hub.json`) | `%LOCALAPPDATA%\com.leon.l8db\hub.json` |
+| macOS | `/Library/Application Support/l8db/hub.json` | `~/Library/Application Support/com.leon.l8db/hub.json` |
+| Linux | `/etc/l8db/hub.json` | `~/.local/share/com.leon.l8db/hub.json` (bzw. `$XDG_DATA_HOME/com.leon.l8db/hub.json`) |
+
+Zusätzlich hat `L8DB_HUB_FILE=<Pfad>` Vorrang vor allen anderen Orten. Die Datei enthält keine Geheimnisse und darf für alle lesbar sein. Sie darf mit UTF-8-BOM gespeichert werden (PowerShell, Notepad). Ist eine Datei ungültig, zum Beispiel ohne `https://`, überspringt l8db sie und prüft den nächsten Ort. Ist keine gültig, startet l8db ohne Dialog und schreibt eine Warnung ins Log. Wechselt die IT die Adresse, meldet l8db beim nächsten Start vom alten Hub ab und fragt nach der Anmeldung am neuen.
+
+Beispiel für Windows (PowerShell als Administrator):
+
+```powershell
+New-Item -ItemType Directory -Force "$env:ProgramData\l8db" | Out-Null
+'{ "url": "https://l8db.firma.example" }' | Set-Content -Encoding utf8 "$env:ProgramData\l8db\hub.json"
+```
+
 ## Grenzen
 
-- Keine Erkennung des Hubs über die E-Mail-Domain. Die Adresse wird eingetippt.
+- Keine Erkennung des Hubs über die E-Mail-Domain. Die Adresse wird eingetippt oder per `hub.json` vorgegeben.
 - Keine Weboberfläche für Admins: Die Verbindungen stehen in einer JSON-Datei auf dem Hub-Server.
 - Anmeldevorgänge liegen im Speicher. Eine Hub-Instanz pro Adresse; nach einem Neustart läuft eine gerade laufende Anmeldung ins Leere.
 - Hub-Tokens lassen sich nicht einzeln widerrufen. Sie laufen ab, oder `L8DB_HUB_SESSION_SECRET` wird gewechselt. Da der Hub keine Passwörter ausliefert, sperrt man den Datenbankzugriff über den Datenbank-Benutzer.

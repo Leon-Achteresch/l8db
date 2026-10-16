@@ -102,8 +102,9 @@ Promise.all([
         void import("@/lib/automation/ai-activity")
           .then(({ initAiActivity }) => initAiActivity())
           .catch(() => undefined);
-        if (isMainWindow)
-          void import("@/lib/team/sync").then(({ syncTeam }) => syncTeam()).catch(() => undefined);
+        void import("@/lib/team/sync")
+          .then(({ initTeam }) => initTeam(isMainWindow))
+          .catch(() => undefined);
         if (isMainWindow)
           void import("@/lib/mcp-open")
             .then(({ initMcpOpen }) => initMcpOpen())

@@ -11,8 +11,13 @@ export interface TeamPayload {
   connections?: unknown[];
 }
 
-export function teamLogin(hubUrl: string): Promise<TeamUser> {
-  return invoke<TeamUser>("team_login", { hubUrl });
+export interface TeamLogin {
+  hub: string;
+  user: TeamUser;
+}
+
+export function teamLogin(hubUrl: string): Promise<TeamLogin> {
+  return invoke<TeamLogin>("team_login", { hubUrl });
 }
 
 export function teamCancelLogin(): Promise<void> {
@@ -25,4 +30,12 @@ export function teamConnections(hubUrl: string): Promise<TeamPayload> {
 
 export function teamLogout(hubUrl: string): Promise<void> {
   return invoke<void>("team_logout", { hubUrl });
+}
+
+export interface ManagedHub {
+  url: string;
+}
+
+export function teamManagedHub(): Promise<ManagedHub | null> {
+  return invoke<ManagedHub | null>("team_managed_hub");
 }

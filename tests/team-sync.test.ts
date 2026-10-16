@@ -5,6 +5,7 @@ import { measureScenario, reportScenario } from "./fixtures/usage-performance";
 const calls: { command: string; args: unknown }[] = [];
 let payload: unknown = { connections: [] };
 let gate: Promise<void> | null = null;
+let managed: unknown = null;
 
 mock.module("@tauri-apps/api/core", () => ({
   transformCallback: () => 1,
@@ -12,9 +13,18 @@ mock.module("@tauri-apps/api/core", () => ({
     calls.push({ command, args });
     if (command === "team_connections") {
       await gate;
+      if (payload instanceof Error) throw payload;
       return payload;
     }
-    if (command === "team_login") return { email: "max@firma.de", name: "Max" };
+    if (command === "team_login")
+      return {
+        hub: (args as { hubUrl: string }).hubUrl.replace(/\/+$/, ""),
+        user: { email: "max@firma.de", name: "Max" },
+      };
+    if (command === "team_managed_hub") {
+      if (managed instanceof Error) throw managed;
+      return managed;
+    }
     return null;
   },
 }));
@@ -24,7 +34,7 @@ const { carryCredentials, mergeTeamConnections, teamConnectionId } = await impor
 );
 const { useConnectionsStore } = await import("@/lib/connections");
 const { useTeamStore } = await import("@/lib/team/store");
-const { loginTeam, logoutTeam, syncTeam } = await import("@/lib/team/sync");
+const { initTeam, loginTeam, logoutTeam, syncTeam } = await import("@/lib/team/sync");
 const { needsPassword, needsUser } = await import("@/lib/password-prompt");
 const { replaceUrlUser } = await import("@/lib/secrets");
 const { collectLocal } = await import("@/lib/sync/local");
@@ -52,9 +62,18 @@ function local(overrides: Partial<SavedConnection> = {}): SavedConnection {
 beforeEach(() => {
   calls.length = 0;
   gate = null;
+  managed = null;
   payload = { connections: [] };
   useConnectionsStore.setState({ connections: [], activeId: null });
-  useTeamStore.setState({ hubUrl: "", user: null, name: null, lastSyncAt: null, lastError: null });
+  useTeamStore.setState({
+    hubUrl: "",
+    user: null,
+    name: null,
+    lastSyncAt: null,
+    lastError: null,
+    managedHub: null,
+    promptOpen: false,
+  });
 });
 
 describe("team connection merge", () => {
@@ -161,13 +180,102 @@ test("malformed nested fields from the hub are dropped", () => {
   expect(mergeTeamConnections([], HUB, [{ ...erp, ssh }]).connections[0].ssh).toEqual(ssh);
 });
 
+describe("managed hub file", () => {
+  test("without a file startup only checks for it", async () => {
+    await initTeam();
+    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
+    expect(useTeamStore.getState().promptOpen).toBe(false);
+  });
+
+  test("an unreadable file behaves like no file", async () => {
+    managed = new Error("/etc/l8db/hub.json: kaputt");
+    await initTeam();
+    expect(useTeamStore.getState()).toMatchObject({ managedHub: null, promptOpen: false });
+  });
+
+  test("a file opens the login prompt without contacting the hub", async () => {
+    managed = { url: HUB };
+    await initTeam();
+    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
+    expect(useTeamStore.getState()).toMatchObject({
+      managedHub: HUB,
+      hubUrl: HUB,
+      promptOpen: true,
+    });
+    payload = { connections: [erp] };
+    await loginTeam(useTeamStore.getState().managedHub ?? "");
+    expect(useConnectionsStore.getState().connections).toHaveLength(1);
+  });
+
+  test("a signed-in user is synced once instead of prompted", async () => {
+    managed = { url: HUB };
+    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
+    payload = { connections: [erp] };
+    await initTeam();
+    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub", "team_connections"]);
+    expect(useTeamStore.getState().promptOpen).toBe(false);
+  });
+
+  test("an expired hub token prompts again instead of failing silently", async () => {
+    managed = { url: HUB };
+    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
+    payload = new Error("Team-Anmeldung abgelaufen. Bitte erneut anmelden.");
+    await initTeam();
+    expect(useTeamStore.getState().promptOpen).toBe(true);
+  });
+
+  test("secondary windows only learn the managed hub", async () => {
+    managed = { url: HUB };
+    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
+    await initTeam(false);
+    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
+    expect(useTeamStore.getState()).toMatchObject({ managedHub: HUB, promptOpen: false });
+  });
+
+  test("startup with a managed hub stays fast and makes at most one hub request", async () => {
+    managed = { url: HUB };
+    payload = {
+      connections: Array.from({ length: 500 }, (_, index) => ({ ...erp, id: `db${index}` })),
+    };
+    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
+    await initTeam();
+    calls.length = 0;
+    const signedIn = await measureScenario(() => initTeam(), 15);
+    const starts = 15 + 2;
+    expect(calls.filter((call) => call.command === "team_managed_hub")).toHaveLength(starts);
+    expect(calls.filter((call) => call.command === "team_connections")).toHaveLength(starts);
+    reportScenario("team-startup-managed-signed-in", { connections: 500, ...signedIn });
+    expect(signedIn.p95Ms).toBeLessThan(30);
+
+    useTeamStore.setState({ user: null });
+    calls.length = 0;
+    const prompt = await measureScenario(() => initTeam(), 15);
+    expect(calls.every((call) => call.command === "team_managed_hub")).toBe(true);
+    reportScenario("team-startup-managed-prompt", prompt);
+    expect(prompt.p95Ms).toBeLessThan(5);
+  });
+
+  test("a hub switched by the admin signs out of the old one and prompts", async () => {
+    payload = { connections: [erp] };
+    await loginTeam("https://alt.firma.de");
+    managed = { url: HUB };
+    calls.length = 0;
+    await initTeam();
+    expect(
+      calls.map((call) => call.command).filter((command) => command.startsWith("team_")),
+    ).toEqual(["team_managed_hub", "team_logout"]);
+    expect(useConnectionsStore.getState().connections).toHaveLength(0);
+    expect(useTeamStore.getState()).toMatchObject({ user: null, hubUrl: HUB, promptOpen: true });
+  });
+});
+
 describe("team sync", () => {
   test("login stores the user, pulls connections and the prompt asks for the database user", async () => {
     payload = { name: "Firma", connections: [erp] };
     useConnectionsStore.setState({ connections: [local()] });
     const merge = await loginTeam(`${HUB}/`);
     expect(calls.map((call) => call.command)).toEqual(["team_login", "team_connections"]);
-    expect(calls[0].args).toEqual({ hubUrl: HUB });
+    expect(calls[0].args).toEqual({ hubUrl: `${HUB}/` });
     expect(merge?.added).toBe(1);
     expect(useTeamStore.getState()).toMatchObject({ hubUrl: HUB, name: "Firma", lastError: null });
     const team = useConnectionsStore.getState().connections.find((entry) => entry.team);
