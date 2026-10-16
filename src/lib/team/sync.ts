@@ -1,13 +1,20 @@
 import { useConnectionsStore } from "@/lib/connections";
-import { teamConnections, teamLogin, teamLogout } from "@/lib/db/team";
-import { mergeTeamConnections, normalizeHubUrl, type TeamMerge } from "./merge";
+import { teamConnections, teamLogin, teamLogout, teamManagedHub } from "@/lib/db/team";
+import { mergeTeamConnections, type TeamMerge } from "./merge";
 import { useTeamStore } from "./store";
+
+export const TEAM_LOGIN_CANCELLED = "Anmeldung abgebrochen.";
+export const TEAM_LOGIN_EXPIRED = "Team-Anmeldung abgelaufen. Bitte erneut anmelden.";
 
 let running: Promise<TeamMerge | null> | null = null;
 let generation = 0;
 
-function message(error: unknown): string {
+export function teamErrorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function isLoginCancelled(error: unknown): boolean {
+  return teamErrorText(error) === TEAM_LOGIN_CANCELLED;
 }
 
 async function pull(): Promise<TeamMerge | null> {
@@ -31,7 +38,7 @@ async function pull(): Promise<TeamMerge | null> {
     });
     return merge;
   } catch (error) {
-    if (started === generation) useTeamStore.setState({ lastError: message(error) });
+    if (started === generation) useTeamStore.setState({ lastError: teamErrorText(error) });
     throw error;
   }
 }
@@ -46,8 +53,7 @@ export function syncTeam(): Promise<TeamMerge | null> {
 }
 
 export async function loginTeam(hubUrl: string): Promise<TeamMerge | null> {
-  const hub = normalizeHubUrl(hubUrl);
-  const user = await teamLogin(hub);
+  const { hub, user } = await teamLogin(hubUrl.trim());
   generation++;
   running = null;
   useTeamStore.setState({ hubUrl: hub, user, lastError: null });
@@ -62,4 +68,31 @@ export async function logoutTeam(): Promise<void> {
   for (const connection of store.connections)
     if (connection.team?.hub === hubUrl) store.removeConnection(connection.id);
   useTeamStore.setState({ user: null, name: null, lastSyncAt: null, lastError: null });
+}
+
+export async function initTeam(main = true): Promise<void> {
+  const managed = await teamManagedHub().catch((error) => {
+    console.warn(`Team-Hub-Datei ungültig: ${teamErrorText(error)}`);
+    return null;
+  });
+  if (!main) {
+    useTeamStore.setState({ managedHub: managed?.url ?? null });
+    return;
+  }
+  if (!managed) {
+    useTeamStore.setState({ managedHub: null });
+    await syncTeam().catch(() => undefined);
+    return;
+  }
+  const hub = managed.url;
+  const { hubUrl, user } = useTeamStore.getState();
+  if (user && hubUrl !== hub) await logoutTeam();
+  useTeamStore.setState({ managedHub: hub, hubUrl: hub });
+  if (!useTeamStore.getState().user) {
+    useTeamStore.setState({ promptOpen: true });
+    return;
+  }
+  await syncTeam().catch((error) => {
+    if (teamErrorText(error) === TEAM_LOGIN_EXPIRED) useTeamStore.setState({ promptOpen: true });
+  });
 }

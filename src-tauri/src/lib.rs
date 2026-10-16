@@ -496,6 +496,7 @@ pub fn run() {
             team::team_cancel_login,
             team::team_connections,
             team::team_logout,
+            team::team_managed_hub,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,

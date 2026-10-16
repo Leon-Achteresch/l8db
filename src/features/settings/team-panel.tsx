@@ -7,11 +7,7 @@ import { SettingsRow } from "@/features/settings/settings-row";
 import { useConnectionsStore } from "@/lib/connections";
 import { teamCancelLogin } from "@/lib/db/team";
 import { useTeamStore } from "@/lib/team/store";
-import { loginTeam, logoutTeam, syncTeam } from "@/lib/team/sync";
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { isLoginCancelled, loginTeam, logoutTeam, syncTeam, teamErrorText } from "@/lib/team/sync";
 
 function summary(result: { added: number; updated: number; removed: string[] } | null): string {
   if (!result) return "Team-Verbindungen abgeglichen";
@@ -19,11 +15,12 @@ function summary(result: { added: number; updated: number; removed: string[] } |
 }
 
 export function TeamPanel() {
-  const { hubUrl, user, name, lastSyncAt, lastError } = useTeamStore();
+  const { hubUrl, user, name, lastSyncAt, lastError, managedHub } = useTeamStore();
   const count = useConnectionsStore(
     (state) => state.connections.filter((connection) => connection.team?.hub === hubUrl).length,
   );
-  const [address, setAddress] = useState(hubUrl);
+  const [typed, setAddress] = useState(hubUrl);
+  const address = managedHub ?? typed;
   const [busy, setBusy] = useState<"login" | "sync" | null>(null);
 
   const run = async (kind: "login" | "sync", work: () => ReturnType<typeof syncTeam>) => {
@@ -31,7 +28,7 @@ export function TeamPanel() {
     try {
       toast.success(summary(await work()));
     } catch (error) {
-      if (errorText(error) !== "Anmeldung abgebrochen.") toast.error(errorText(error));
+      if (!isLoginCancelled(error)) toast.error(teamErrorText(error));
     } finally {
       setBusy(null);
     }
@@ -104,6 +101,8 @@ export function TeamPanel() {
             placeholder="https://l8db.firma.de"
             value={address}
             disabled={busy !== null}
+            readOnly={managedHub !== null}
+            title={managedHub ? "Von deiner Organisation vorgegeben" : undefined}
             onChange={(event) => setAddress(event.target.value)}
             className="h-8 w-64 text-xs"
           />

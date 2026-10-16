@@ -1,6 +1,7 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -21,6 +22,22 @@ static LOGIN: Mutex<Option<Arc<Notify>>> = Mutex::new(None);
 pub struct TeamUser {
     pub email: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ManagedHub {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamLogin {
+    pub hub: String,
+    pub user: TeamUser,
+}
+
+#[derive(Deserialize)]
+struct HubFile {
+    url: String,
 }
 
 #[derive(Deserialize)]
@@ -226,8 +243,59 @@ async fn fetch_connections(hub: &str, token: &str) -> Result<serde_json::Value, 
         .map_err(|e| format!("Ungültige Antwort vom Team-Hub: {e}"))
 }
 
+fn managed_hub_paths(local_data: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = std::env::var_os("L8DB_HUB_FILE")
+        .map(PathBuf::from)
+        .into_iter()
+        .collect();
+    #[cfg(target_os = "windows")]
+    paths.push(
+        PathBuf::from(std::env::var_os("ProgramData").unwrap_or_else(|| "C:\\ProgramData".into()))
+            .join("l8db")
+            .join("hub.json"),
+    );
+    #[cfg(target_os = "macos")]
+    paths.push(PathBuf::from("/Library/Application Support/l8db/hub.json"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    paths.push(PathBuf::from("/etc/l8db/hub.json"));
+    paths.extend(local_data.map(|dir| dir.join("hub.json")));
+    paths
+}
+
+fn read_managed_hub(paths: &[PathBuf]) -> Result<Option<ManagedHub>, String> {
+    let mut errors = Vec::new();
+    for path in paths {
+        let raw = match std::fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
+                continue;
+            }
+        };
+        let parsed = serde_json::from_str::<HubFile>(raw.trim_start_matches('\u{feff}'))
+            .map_err(|e| e.to_string())
+            .and_then(|file| normalize_hub(&file.url));
+        match parsed {
+            Ok(url) => return Ok(Some(ManagedHub { url })),
+            Err(error) => errors.push(format!("{}: {error}", path.display())),
+        }
+    }
+    if errors.is_empty() {
+        Ok(None)
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
+#[tauri::command(async)]
+pub fn team_managed_hub(app: tauri::AppHandle) -> Result<Option<ManagedHub>, String> {
+    use tauri::Manager;
+    read_managed_hub(&managed_hub_paths(app.path().app_local_data_dir().ok()))
+}
+
 #[tauri::command]
-pub async fn team_login(app: tauri::AppHandle, hub_url: String) -> Result<TeamUser, String> {
+pub async fn team_login(app: tauri::AppHandle, hub_url: String) -> Result<TeamLogin, String> {
     use tauri_plugin_opener::OpenerExt;
     let hub = normalize_hub(&hub_url)?;
     let (token, user) = login_with(&hub, |url| {
@@ -237,7 +305,7 @@ pub async fn team_login(app: tauri::AppHandle, hub_url: String) -> Result<TeamUs
     })
     .await?;
     store_secret(account(&hub), token).await?;
-    Ok(user)
+    Ok(TeamLogin { hub, user })
 }
 
 #[tauri::command]
@@ -265,6 +333,43 @@ mod tests {
     use crate::db::http_mock;
 
     static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    #[test]
+    fn managed_hub_file_is_found_in_order_and_validated() {
+        let dir = std::env::temp_dir().join(format!("l8db-hub-file-{}", rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let machine = dir.join("machine.json");
+        let user = dir.join("user.json");
+        let paths = [machine.clone(), user.clone()];
+        assert_eq!(read_managed_hub(&paths).unwrap(), None);
+        std::fs::write(&user, "\u{feff}{\"url\":\"https://l8db.firma.de/\"}").unwrap();
+        assert_eq!(
+            read_managed_hub(&paths).unwrap().unwrap().url,
+            "https://l8db.firma.de"
+        );
+        std::fs::write(&machine, r#"{"url":"https://zentral.firma.de"}"#).unwrap();
+        assert_eq!(
+            read_managed_hub(&paths).unwrap().unwrap().url,
+            "https://zentral.firma.de"
+        );
+        std::fs::write(&machine, r#"{"url":"http://unsicher.firma.de"}"#).unwrap();
+        assert_eq!(
+            read_managed_hub(&paths).unwrap().unwrap().url,
+            "https://l8db.firma.de"
+        );
+        std::fs::write(&machine, "kein json").unwrap();
+        std::fs::remove_file(&user).unwrap();
+        assert!(read_managed_hub(&paths)
+            .unwrap_err()
+            .contains("machine.json"));
+        assert_eq!(
+            normalize_hub("https://L8DB.Firma.de:443/").unwrap(),
+            normalize_hub("https://l8db.firma.de").unwrap()
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+        let defaults = managed_hub_paths(Some(PathBuf::from("/data")));
+        assert_eq!(defaults.last().unwrap(), &PathBuf::from("/data/hub.json"));
+    }
 
     #[test]
     fn pkce_challenge_matches_rfc_7636() {
