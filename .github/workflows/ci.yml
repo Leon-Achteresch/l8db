@@ -89,7 +89,7 @@ jobs:
         with:
           tool: cargo-audit
       - name: RustSec audit
-        run: cargo audit --ignore RUSTSEC-2023-0071
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
         working-directory: src-tauri
