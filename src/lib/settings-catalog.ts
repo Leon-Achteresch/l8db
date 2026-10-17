@@ -250,6 +250,27 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "tableStyle",
   },
   {
+    id: "filter-bar-style",
+    tabId: "appearance",
+    title: "Filterleiste",
+    description:
+      "Wie Tabellenfilter und Farbregeln bedient werden: klassisches Panel ohne KI, Omnibar mit einer Eingabezeile oder Pill-Leiste. Omnibar und Pill-Leiste setzen Filter auf Wunsch per KI.",
+    keywords: [
+      "filter",
+      "filterleiste",
+      "omnibar",
+      "pill",
+      "pille",
+      "ki",
+      "ai",
+      "farbregel",
+      "markieren",
+      "where",
+      "sql",
+    ],
+    key: "filterBarStyle",
+  },
+  {
     id: "reset-appearance",
     tabId: "appearance",
     title: "Darstellung zurücksetzen",

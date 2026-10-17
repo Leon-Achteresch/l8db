@@ -6,7 +6,13 @@ import { fnv1a } from "./prompts";
 import { useEditorAiSettings } from "./settings";
 
 const CLI_EDITOR = new Set(["claude", "codex"]);
-const FAST_ACTIONS = new Set<EditorAiAction>(["inline", "comment", "testdata", "summary"]);
+const FAST_ACTIONS = new Set<EditorAiAction>([
+  "inline",
+  "comment",
+  "testdata",
+  "summary",
+  "filter",
+]);
 
 export class EditorAiUnavailable extends Error {}
 

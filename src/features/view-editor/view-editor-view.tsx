@@ -18,7 +18,7 @@ import { DataTable } from "@/features/table/data-table";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
-import { TableFilterPanel } from "@/features/table/table-filter-panel";
+import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
@@ -164,7 +164,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
               }}
             />
             <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
-              <TableFilterPanel
+              <TableFilterBar
                 key={stateKey}
                 stateKey={stateKey}
                 columns={data?.columns ?? []}
