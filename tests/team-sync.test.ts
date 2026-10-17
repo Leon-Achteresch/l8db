@@ -6,6 +6,7 @@ const calls: { command: string; args: unknown }[] = [];
 let payload: unknown = { connections: [] };
 let gate: Promise<void> | null = null;
 let managed: unknown = null;
+const keychain = new Map<string, string>();
 
 mock.module("@tauri-apps/api/core", () => ({
   transformCallback: () => 1,
@@ -21,6 +22,19 @@ mock.module("@tauri-apps/api/core", () => ({
         hub: (args as { hubUrl: string }).hubUrl.replace(/\/+$/, ""),
         user: { email: "max@firma.de", name: "Max" },
       };
+    if (command === "team_share")
+      return { entryId: "abc12345-shared", webUrl: "https://firma.sharepoint.com/x.json" };
+    if (command === "store_secret") {
+      const { account, secret } = args as { account: string; secret: string };
+      keychain.set(account, secret);
+      return null;
+    }
+    if (command === "load_secret")
+      return keychain.get((args as { account: string }).account) ?? null;
+    if (command === "delete_secret") {
+      keychain.delete((args as { account: string }).account);
+      return null;
+    }
     if (command === "team_managed_hub") {
       if (managed instanceof Error) throw managed;
       return managed;
@@ -40,6 +54,9 @@ const { MICROSOFT_HUB, initTeam, loginTeam, logoutTeam, needsConsent, syncTeam }
 const { needsPassword, needsUser } = await import("@/lib/password-prompt");
 const { replaceUrlUser } = await import("@/lib/secrets");
 const { collectLocal } = await import("@/lib/sync/local");
+const { shareProblem, shareTeamConnection, teamEntry, withoutUser } = await import(
+  "@/lib/team/share"
+);
 
 const HUB = "https://hub.firma.de";
 const erp = {
@@ -786,4 +803,109 @@ test("team sync of 2,000 hub connections next to 2,000 private ones stays within
   calls.length = 0;
   await syncTeam();
   expect(calls).toHaveLength(1);
+});
+
+describe("sharing with the team", () => {
+  const own = (overrides: Partial<SavedConnection> = {}): SavedConnection => ({
+    id: "own-erp",
+    name: "ERP Produktion",
+    kind: "postgres",
+    connectionString: "postgres://max:geheim@erp.firma.intern:5432/erp?sslmode=require&token=t",
+    sslMode: "require",
+    environment: "production",
+    ssh: {
+      host: "bastion.firma.intern",
+      port: 22,
+      user: "tunnel",
+      auth: "key",
+      keyFile: "/home/max/.ssh/id",
+      agentSocket: "/run/agent",
+      remoteHost: "erp.firma.intern",
+      remotePort: 5432,
+    },
+    ...overrides,
+  });
+
+  test("the shared file carries no personal credentials or local paths", () => {
+    const entry = teamEntry(own(), "x1");
+    expect(entry).toMatchObject({
+      id: "erp-produktion-x1",
+      name: "ERP Produktion",
+      kind: "postgres",
+      environment: "production",
+      sslMode: "require",
+    });
+    expect(entry.connectionString).toBe("postgres://erp.firma.intern:5432/erp?sslmode=require");
+    expect(entry.ssh).toMatchObject({ user: "tunnel", keyFile: "" });
+    expect(entry.ssh).not.toHaveProperty("agentSocket");
+    expect(withoutUser("Server=h;User Id=max;Password=x;Database=d")).toBe("Server=h;Database=d");
+    expect(withoutUser("clickhouse://h:8123/db?user=max&secure=1&Username=m")).toBe(
+      "clickhouse://h:8123/db?secure=1",
+    );
+    expect(teamEntry(own({ name: "Müller Größe" }), "x").id).toBe("mueller-groesse-x");
+  });
+
+  test("connections that cannot work for the team are explained before uploading", () => {
+    useConnectionsStore.setState({ connections: [], activeId: "own-erp" });
+    expect(shareProblem(own())).toBeNull();
+    expect(shareProblem(own({ team: { hub: MICROSOFT_HUB, id: "x", base: {} } }))).toContain(
+      "bereits",
+    );
+    expect(shareProblem(own({ kind: "sqlite", connectionString: "sqlite:///tmp/x.db" }))).toContain(
+      "nicht erlaubt",
+    );
+    expect(shareProblem(own({ temporary: true }))).toContain("speichern");
+    useTeamStore.setState({ allowedHosts: ["*.example.com"] });
+    expect(shareProblem(own())).toContain("nicht freigegeben");
+    useTeamStore.setState({ allowedHosts: [] });
+  });
+
+  test("sharing links the existing connection to the team copy without moving anything", async () => {
+    keychain.clear();
+    keychain.set("own-erp", "geheim");
+    useConnectionsStore.setState({
+      connections: [own()],
+      activeId: "own-erp",
+      recentIds: ["own-erp"],
+    });
+    useTeamStore.setState({ hubUrl: MICROSOFT_HUB, user: { email: "max@firma.de", name: "Max" } });
+    calls.length = 0;
+    const shared = await shareTeamConnection("own-erp", "folder-1");
+    expect(shared.id).toBe("own-erp");
+    expect(shared.team?.id).toBe("abc12345-shared");
+    expect(useConnectionsStore.getState()).toMatchObject({
+      activeId: "own-erp",
+      recentIds: ["own-erp"],
+    });
+    expect(calls.some((call) => /secret/.test(call.command))).toBe(false);
+    expect(keychain.get("own-erp")).toBe("geheim");
+    const upload = calls.find((call) => call.command === "team_share")?.args as {
+      folder: string;
+      content: Record<string, unknown>;
+    };
+    expect(upload.folder).toBe("folder-1");
+    payload = { connections: [{ ...upload.content, id: "abc12345-shared" }] };
+    const merge = await syncTeam();
+    expect(merge).toMatchObject({ retargeted: [], removed: [], added: 0, updated: 0 });
+    const [kept] = useConnectionsStore.getState().connections;
+    expect(useConnectionsStore.getState().connections).toHaveLength(1);
+    expect(kept.connectionString).toContain("max:geheim@");
+    expect(kept.ssh?.keyFile).toBe("/home/max/.ssh/id");
+    payload = { connections: [] };
+    expect((await syncTeam())?.removed).toEqual(["own-erp"]);
+  });
+
+  test("checking 2,000 connections for sharing stays fast", async () => {
+    useConnectionsStore.setState({ activeId: null });
+    const many = Array.from({ length: 2000 }, (_, index) =>
+      own({ id: `c${index}`, name: `DB ${index}` }),
+    );
+    let problems = 0;
+    const timing = await measureScenario(() => {
+      problems = many.filter((connection) => shareProblem(connection) !== null).length;
+    }, 9);
+    reportScenario("team-share-check", { connections: 2000, ...timing });
+    expect(problems).toBe(0);
+    expect(timing.p95Ms).toBeLessThan(100);
+  });
 });

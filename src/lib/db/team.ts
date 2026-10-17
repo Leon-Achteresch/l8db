@@ -48,3 +48,30 @@ export function teamManagedHub(): Promise<ManagedHub | null> {
 export function teamMicrosoftAvailable(): Promise<boolean> {
   return invoke<boolean>("team_microsoft_available");
 }
+
+export interface ShareFolder {
+  id: string;
+  name: string;
+  webUrl: string;
+}
+
+export interface SharedConnection {
+  entryId: string;
+  webUrl: string;
+}
+
+export function teamShareFolders(): Promise<ShareFolder[]> {
+  return invoke<ShareFolder[]>("team_share_folders");
+}
+
+export function teamShare(
+  folder: string,
+  name: string,
+  content: Record<string, unknown>,
+): Promise<SharedConnection> {
+  return invoke<SharedConnection>("team_share", { folder, name, content });
+}
+
+export function teamShareConsent(): Promise<void> {
+  return invoke<void>("team_share_consent");
+}

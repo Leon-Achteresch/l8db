@@ -15,6 +15,8 @@ pub const CLIENT_ID: &str = "";
 pub const CONSENT_REQUIRED: &str = "Deine IT muss l8db einmal für eure Organisation freigeben.";
 const DEFAULT_SITE: &str = "l8db";
 const SCOPES: &str = "openid profile offline_access https://graph.microsoft.com/Sites.Read.All";
+const WRITE_SCOPES: &str =
+    "openid profile offline_access https://graph.microsoft.com/Sites.ReadWrite.All";
 const SELECTED_SCOPES: &str =
     "openid profile offline_access https://graph.microsoft.com/Sites.Selected";
 const MAX_FOLDERS: usize = 200;
@@ -211,7 +213,7 @@ fn consent_needed(text: &str) -> bool {
 
 fn explain(error: String) -> String {
     if consent_needed(&error) {
-        return format!("{CONSENT_REQUIRED} Eine Person mit Administratorrechten wählt dazu in l8db unter „Für die IT“ „Für die Organisation freigeben“.");
+        return format!("{CONSENT_REQUIRED} Wer dort Administratorrechte hat, klickt auf „Für die Organisation freigeben“.");
     }
     let known = [
         ("AADSTS50105", "Dein Konto ist für l8db nicht freigeschaltet. Bitte wende dich an deine IT."),
@@ -280,6 +282,7 @@ async fn token(settings: &Settings, tenant: &str, form: &[(&str, &str)]) -> Resu
 
 async fn grant_consent(
     settings: &Settings,
+    scopes: &str,
     open: impl FnOnce(Url) -> Result<(), String>,
 ) -> Result<(), String> {
     let loopback = loopback_login(
@@ -293,7 +296,7 @@ async fn grant_consent(
             target
                 .query_pairs_mut()
                 .append_pair("client_id", &settings.client_id)
-                .append_pair("scope", settings.scopes)
+                .append_pair("scope", scopes)
                 .append_pair("redirect_uri", &format!("http://127.0.0.1:{port}"))
                 .append_pair("state", state);
             Ok(target)
@@ -310,14 +313,17 @@ async fn grant_consent(
 
 async fn login_with(
     settings: &Settings,
+    scopes: &str,
+    hint: Option<&Stored>,
     open: impl FnOnce(Url) -> Result<(), String>,
 ) -> Result<(Stored, String), String> {
+    let tenant = hint.map_or(settings.tenant.as_str(), |known| known.tenant.as_str());
     let loopback = loopback_login(
         "/",
         |port, state, code_challenge| {
             let mut target = Url::parse(&format!(
                 "{}/{}/oauth2/v2.0/authorize",
-                settings.authority, settings.tenant
+                settings.authority, tenant
             ))
             .map_err(|e| e.to_string())?;
             target
@@ -326,11 +332,22 @@ async fn login_with(
                 .append_pair("response_type", "code")
                 .append_pair("response_mode", "query")
                 .append_pair("redirect_uri", &format!("http://127.0.0.1:{port}"))
-                .append_pair("scope", settings.scopes)
+                .append_pair("scope", scopes)
                 .append_pair("state", state)
                 .append_pair("code_challenge", code_challenge)
-                .append_pair("code_challenge_method", "S256")
-                .append_pair("prompt", "select_account");
+                .append_pair("code_challenge_method", "S256");
+            match hint {
+                Some(known) => {
+                    target
+                        .query_pairs_mut()
+                        .append_pair("login_hint", &known.user.email);
+                }
+                None => {
+                    target
+                        .query_pairs_mut()
+                        .append_pair("prompt", "select_account");
+                }
+            }
             Ok(target)
         },
         open,
@@ -342,14 +359,14 @@ async fn login_with(
     let redirect = format!("http://127.0.0.1:{}", loopback.port);
     let tokens = token(
         settings,
-        &settings.tenant,
+        tenant,
         &[
             ("client_id", settings.client_id.as_str()),
             ("grant_type", "authorization_code"),
             ("code", code.as_str()),
             ("redirect_uri", redirect.as_str()),
             ("code_verifier", verifier.as_str()),
-            ("scope", settings.scopes),
+            ("scope", scopes),
         ],
     )
     .await?;
@@ -368,6 +385,16 @@ async fn login_with(
         name: claims["name"].as_str().unwrap_or(&email).to_string(),
         email,
     };
+    if let Some(known) = hint {
+        if !known.tenant.eq_ignore_ascii_case(&tenant)
+            || !known.user.email.eq_ignore_ascii_case(&user.email)
+        {
+            return Err(format!(
+                "Bitte mit demselben Konto anmelden ({}).",
+                known.user.email
+            ));
+        }
+    }
     let refresh = tokens
         .refresh_token
         .ok_or("Microsoft lieferte kein Refresh-Token.")?;
@@ -390,9 +417,9 @@ pub fn team_microsoft_available(app: tauri::AppHandle) -> bool {
 pub async fn login(app: &tauri::AppHandle, admin: bool) -> Result<TeamLogin, String> {
     let settings = settings(app)?;
     if admin {
-        grant_consent(&settings, browser(app)).await?;
+        grant_consent(&settings, settings.scopes, browser(app)).await?;
     }
-    let (stored, _) = login_with(&settings, browser(app)).await?;
+    let (stored, _) = login_with(&settings, settings.scopes, None, browser(app)).await?;
     save(&stored).await?;
     Ok(TeamLogin {
         hub: HUB.into(),
@@ -719,13 +746,7 @@ async fn fetch(settings: &Settings, stored: &mut Stored) -> Result<Value, String
         .is_some_and(|(key, _)| *key == settings.site_key());
     let listing = list_files(settings, &tokens.access_token, pinned).await?;
     if let Some((site_id, _, _)) = &listing.site {
-        let key = settings.site_key();
-        match &stored.site {
-            Some((known_key, known_id)) if *known_key == key && known_id != site_id => {
-                return Err(format!("Die SharePoint-Website „{key}“ wurde durch eine andere ersetzt. l8db übernimmt aus Sicherheitsgründen nichts. Bitte die IT prüfen lassen und dann ab- und wieder anmelden."));
-            }
-            _ => stored.site = Some((key, site_id.clone())),
-        }
+        check_pin(settings, stored, site_id)?;
     }
     let downloads: Vec<_> = stream::iter(listing.files)
         .map(|(id, url, name)| async move {
@@ -771,6 +792,233 @@ async fn fetch(settings: &Settings, stored: &mut Stored) -> Result<Value, String
         "warnings": warnings,
         "complete": complete,
     }))
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ShareFolder {
+    id: String,
+    name: String,
+    #[serde(rename = "webUrl")]
+    web_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Shared {
+    #[serde(rename = "entryId")]
+    entry_id: String,
+    #[serde(rename = "webUrl")]
+    web_url: String,
+}
+
+async fn stored_session(settings: &Settings) -> Result<Stored, String> {
+    let raw = load_secret(account(HUB)).await?.ok_or(EXPIRED)?;
+    let stored: Stored = serde_json::from_str(&raw).map_err(|_| EXPIRED.to_string())?;
+    if is_guid(&settings.tenant) && !stored.tenant.eq_ignore_ascii_case(&settings.tenant) {
+        return Err(EXPIRED.into());
+    }
+    Ok(stored)
+}
+
+async fn refreshed(
+    settings: &Settings,
+    stored: &mut Stored,
+    scopes: &str,
+) -> Result<String, String> {
+    let tokens = token(
+        settings,
+        &stored.tenant,
+        &[
+            ("client_id", settings.client_id.as_str()),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", stored.refresh.as_str()),
+            ("scope", scopes),
+        ],
+    )
+    .await?;
+    if let Some(refresh) = tokens.refresh_token {
+        stored.refresh = refresh;
+        save(stored).await?;
+    }
+    Ok(tokens.access_token)
+}
+
+fn write_scopes(settings: &Settings) -> &'static str {
+    if settings.scopes == SELECTED_SCOPES {
+        SELECTED_SCOPES
+    } else {
+        WRITE_SCOPES
+    }
+}
+
+async fn folders_with(
+    settings: &Settings,
+    access: &str,
+) -> Result<(String, Vec<ShareFolder>), String> {
+    let site = resolve_site(settings, access)
+        .await?
+        .ok_or("Die SharePoint-Website für Team-Verbindungen ist nicht erreichbar.")?;
+    let site_id = site["id"]
+        .as_str()
+        .ok_or("SharePoint-Website ohne ID.")?
+        .to_string();
+    let mut folders = vec![ShareFolder {
+        id: "root".into(),
+        name: "Oberste Ebene".into(),
+        web_url: site["webUrl"].as_str().unwrap_or_default().into(),
+    }];
+    let mut next = format!(
+        "{}/v1.0/sites/{site_id}/drive/root/children?$top=200",
+        settings.graph
+    );
+    loop {
+        let Some(page) = graph_get(settings, access, &next).await? else {
+            break;
+        };
+        for item in page["value"].as_array().into_iter().flatten() {
+            if item.get("folder").is_some() {
+                folders.push(ShareFolder {
+                    id: item["id"].as_str().unwrap_or_default().into(),
+                    name: item["name"].as_str().unwrap_or_default().into(),
+                    web_url: item["webUrl"].as_str().unwrap_or_default().into(),
+                });
+            }
+        }
+        match page["@odata.nextLink"].as_str() {
+            Some(link) => next = link.to_string(),
+            None => break,
+        }
+    }
+    Ok((site_id, folders))
+}
+
+async fn upload(
+    settings: &Settings,
+    access: &str,
+    site_id: &str,
+    folder: &str,
+    stem: &str,
+    content: &Value,
+) -> Result<Shared, String> {
+    let raw = serde_json::to_string_pretty(content).map_err(|e| e.to_string())?;
+    let mut warnings = Vec::new();
+    let mut complete = true;
+    if connections_from_file("check", "check.json", &raw, &mut warnings, &mut complete).len() != 1 {
+        return Err(warnings
+            .join(" ")
+            .trim()
+            .to_string()
+            .replace("check.json: ", ""));
+    }
+    let local = content["id"].as_str().map(safe_id).unwrap_or_default();
+    for attempt in 1..=20 {
+        let name = if attempt == 1 {
+            format!("{stem}.json")
+        } else {
+            format!("{stem}-{attempt}.json")
+        };
+        let target = if folder == "root" {
+            format!(
+                "{}/v1.0/sites/{site_id}/drive/root:/{name}:/content",
+                settings.graph
+            )
+        } else {
+            format!(
+                "{}/v1.0/sites/{site_id}/drive/items/{folder}:/{name}:/content",
+                settings.graph
+            )
+        };
+        let response = http()
+            .put(format!("{target}?@microsoft.graph.conflictBehavior=fail"))
+            .bearer_auth(access)
+            .header("content-type", "application/json")
+            .body(raw.clone())
+            .send()
+            .await
+            .map_err(|e| format!("Microsoft Graph nicht erreichbar: {e}"))?;
+        match response.status().as_u16() {
+            200 | 201 => {
+                let item: Value = response.json().await.map_err(|e| e.to_string())?;
+                let item_id = item["id"].as_str().ok_or("SharePoint lieferte keine Datei-ID.")?;
+                return Ok(Shared {
+                    entry_id: format!("{}-{local}", short_hash(item_id)),
+                    web_url: item["webUrl"].as_str().unwrap_or_default().into(),
+                });
+            }
+            409 => continue,
+            401 => return Err(EXPIRED.into()),
+            403 => return Err("Du darfst in diesem Ordner nichts ablegen. Schreibrechte vergibt die IT in SharePoint.".into()),
+            status => return Err(format!("Microsoft Graph antwortete mit {status}.")),
+        }
+    }
+    Err("Es gibt bereits zu viele Dateien mit diesem Namen.".into())
+}
+
+fn check_pin(settings: &Settings, stored: &mut Stored, site_id: &str) -> Result<(), String> {
+    let key = settings.site_key();
+    match &stored.site {
+        Some((known_key, known_id)) if *known_key == key && known_id != site_id => Err(format!("Die SharePoint-Website „{key}“ wurde durch eine andere ersetzt. l8db übernimmt aus Sicherheitsgründen nichts. Bitte die IT prüfen lassen und dann ab- und wieder anmelden.")),
+        _ => {
+            stored.site = Some((key, site_id.to_string()));
+            Ok(())
+        }
+    }
+}
+
+async fn write_access(
+    app: &tauri::AppHandle,
+    settings: &Settings,
+) -> Result<(String, Stored), String> {
+    let mut stored = stored_session(settings).await?;
+    let scopes = write_scopes(settings);
+    match refreshed(settings, &mut stored, scopes).await {
+        Ok(access) => Ok((access, stored)),
+        Err(error) if error == EXPIRED || error.starts_with(CONSENT_REQUIRED) => {
+            let (mut fresh, access) =
+                login_with(settings, scopes, Some(&stored), browser(app)).await?;
+            fresh.site = stored.site;
+            save(&fresh).await?;
+            Ok((access, fresh))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+#[tauri::command]
+pub async fn team_share_folders(app: tauri::AppHandle) -> Result<Vec<ShareFolder>, String> {
+    let settings = settings(&app)?;
+    let mut stored = stored_session(&settings).await?;
+    let access = refreshed(&settings, &mut stored, settings.scopes).await?;
+    let (site_id, folders) = folders_with(&settings, &access).await?;
+    check_pin(&settings, &mut stored, &site_id)?;
+    save(&stored).await?;
+    Ok(folders)
+}
+
+#[tauri::command]
+pub async fn team_share(
+    app: tauri::AppHandle,
+    folder: String,
+    name: String,
+    content: Value,
+) -> Result<Shared, String> {
+    let settings = settings(&app)?;
+    let stem = safe_id(&name.to_lowercase());
+    if stem.is_empty() {
+        return Err("Ungültiger Dateiname.".into());
+    }
+    let (access, mut stored) = write_access(&app, &settings).await?;
+    let (site_id, folders) = folders_with(&settings, &access).await?;
+    check_pin(&settings, &mut stored, &site_id)?;
+    if !folders.iter().any(|entry| entry.id == folder) {
+        return Err("Der gewählte Ordner existiert nicht mehr.".into());
+    }
+    upload(&settings, &access, &site_id, &folder, &stem, &content).await
+}
+
+#[tauri::command]
+pub async fn team_share_consent(app: tauri::AppHandle) -> Result<(), String> {
+    let settings = settings(&app)?;
+    grant_consent(&settings, write_scopes(&settings), browser(&app)).await
 }
 
 pub async fn connections(app: &tauri::AppHandle) -> Result<Value, String> {
@@ -856,6 +1104,19 @@ mod tests {
             let base = shared.get().cloned().unwrap_or_default();
             let route = request.route().to_string();
             let site = *id.lock().unwrap();
+            if request.method == "PUT" {
+                return match route.as_str() {
+                    "/v1.0/sites/site-1/drive/items/folder-1:/crm.json:/content" => (409, b"{}".to_vec()),
+                    "/v1.0/sites/site-1/drive/items/folder-1:/crm-2.json:/content" => (
+                        201,
+                        json!({ "id": "new-item", "webUrl": "https://firma.sharepoint.com/sites/l8db/Vertrieb/crm-2.json" })
+                            .to_string()
+                            .into_bytes(),
+                    ),
+                    "/v1.0/sites/site-1/drive/items/locked:/crm.json:/content" => (403, b"{}".to_vec()),
+                    _ => (404, b"{}".to_vec()),
+                };
+            }
             let body = match route.as_str() {
                 path if path.ends_with("/oauth2/v2.0/token") => {
                     if request.form("refresh_token").as_deref() == Some("stale") {
@@ -882,7 +1143,7 @@ mod tests {
                 {
                     json!({
                         "value": [
-                            { "id": "folder-1", "name": "Vertrieb", "folder": {} },
+                            { "id": "folder-1", "name": "Vertrieb", "folder": {}, "webUrl": "https://firma.sharepoint.com/sites/l8db/Vertrieb" },
                             { "id": "file-1", "name": "kunden.json", "file": {}, "size": 100,
                               "@microsoft.graph.downloadUrl": format!("{base}/download/kunden") },
                             { "id": "file-big", "name": "riesig.json", "file": {}, "size": 999999 },
@@ -938,7 +1199,7 @@ mod tests {
         let _serial = SERIAL.lock().await;
         let mock = graph_mock();
         let settings = settings(&mock.server.base);
-        let (stored, access) = login_with(&settings, |url| {
+        let (stored, access) = login_with(&settings, settings.scopes, None, |url| {
             let query = query(&url);
             assert_eq!(url.path(), "/organizations/oauth2/v2.0/authorize");
             assert_eq!(query["prompt"], "select_account");
@@ -977,7 +1238,7 @@ mod tests {
         let _serial = SERIAL.lock().await;
         let mock = graph_mock();
         let settings = settings(&mock.server.base);
-        grant_consent(&settings, |url| {
+        grant_consent(&settings, settings.scopes, |url| {
             let query = query(&url);
             assert_eq!(url.path(), "/organizations/v2.0/adminconsent");
             assert!(query["scope"].ends_with("Sites.Read.All"));
@@ -990,7 +1251,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let error = login_with(&settings, |url| {
+        let error = login_with(&settings, settings.scopes, None, |url| {
             let query = query(&url);
             let callback = format!(
                 "{}/?error=consent_required&error_description=AADSTS65001+needs+admin&state={}",
@@ -1126,6 +1387,88 @@ mod tests {
             graph_get(&settings, "token", "https://graph.example.evil/v1.0/x")
                 .await
                 .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_write_login_must_stay_with_the_same_account_and_tenant() {
+        let _serial = SERIAL.lock().await;
+        let mock = graph_mock();
+        let settings = settings(&mock.server.base);
+        let known = Stored {
+            user: TeamUser {
+                email: "erika@firma.de".into(),
+                name: "Erika".into(),
+            },
+            ..stored("first")
+        };
+        let error = login_with(&settings, WRITE_SCOPES, Some(&known), |url| {
+            let query = query(&url);
+            assert_eq!(url.path(), format!("/{TENANT}/oauth2/v2.0/authorize"));
+            assert_eq!(query["login_hint"], "erika@firma.de");
+            assert!(!query.contains_key("prompt"));
+            assert!(query["scope"].contains("Sites.ReadWrite.All"));
+            let callback = format!(
+                "{}/?code=abc&state={}",
+                query["redirect_uri"], query["state"]
+            );
+            tokio::spawn(async move { reqwest::get(callback).await.unwrap() });
+            Ok(())
+        })
+        .await
+        .unwrap_err();
+        assert!(error.contains("demselben Konto"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn sharing_lists_folders_and_uploads_without_overwriting() {
+        let mock = graph_mock();
+        let settings = settings(&mock.server.base);
+        let (site_id, folders) = folders_with(&settings, "access").await.unwrap();
+        assert_eq!(site_id, "site-1");
+        assert_eq!(
+            folders.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(),
+            ["root", "folder-1"]
+        );
+        assert_eq!(
+            folders[1].web_url,
+            "https://firma.sharepoint.com/sites/l8db/Vertrieb"
+        );
+        let content = json!({ "id": "crm", "name": "CRM", "kind": "mssql", "connectionString": "mssql://crm.firma.intern:1433/crm" });
+        let shared = upload(&settings, "access", &site_id, "folder-1", "crm", &content)
+            .await
+            .unwrap();
+        assert_eq!(shared.entry_id, format!("{}-crm", short_hash("new-item")));
+        let puts: Vec<_> = mock
+            .server
+            .requests()
+            .into_iter()
+            .filter(|r| r.method == "PUT")
+            .collect();
+        assert_eq!(puts.len(), 2);
+        assert!(puts
+            .iter()
+            .all(|r| r.path.contains("conflictBehavior=fail")));
+        assert_eq!(
+            serde_json::from_str::<Value>(&puts[1].body).unwrap(),
+            content
+        );
+        let locked = upload(&settings, "access", &site_id, "locked", "crm", &content)
+            .await
+            .unwrap_err();
+        assert!(locked.contains("Schreibrechte"), "{locked}");
+        let secret = json!({ "id": "x", "name": "X", "kind": "postgres", "connectionString": "postgres://u:pw@h/db" });
+        let refused = upload(&settings, "access", &site_id, "folder-1", "x", &secret)
+            .await
+            .unwrap_err();
+        assert!(refused.contains("Passwort"), "{refused}");
+        assert_eq!(
+            mock.server
+                .requests()
+                .iter()
+                .filter(|r| r.method == "PUT")
+                .count(),
+            3
         );
     }
 

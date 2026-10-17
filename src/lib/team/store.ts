@@ -17,6 +17,7 @@ export interface TeamState {
   managedHub: string | null;
   allowedHosts: string[];
   policyError: string | null;
+  sharing: string | null;
   promptOpen: boolean;
 }
 
@@ -34,6 +35,7 @@ export const useTeamStore = create<TeamState>()(
       managedHub: null,
       allowedHosts: [],
       policyError: null,
+      sharing: null,
       promptOpen: false,
     }),
     {
@@ -43,6 +45,7 @@ export const useTeamStore = create<TeamState>()(
         promptOpen: _prompt,
         allowedHosts: _allowed,
         policyError: _policy,
+        sharing: _sharing,
         ...persisted
       }) => persisted,
     },

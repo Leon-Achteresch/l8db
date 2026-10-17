@@ -21,7 +21,8 @@ Es gibt zwei Wege:
 
 1. **l8db freigeben.** Eine Person mit der Rolle *Globale Administration* oder *Cloudanwendungsadministration* öffnet in l8db *Einstellungen → Allgemein → Team-Verbindungen → Für die IT → Für die Organisation freigeben*. Microsoft zeigt die angefragten Berechtigungen; *Akzeptieren* gilt für alle im Unternehmen. Alternativ im Entra Admin Center unter *Unternehmensanwendungen → l8db → Berechtigungen → Administratorzustimmung erteilen*.
 2. **SharePoint-Website `l8db` anlegen** als *Kommunikationswebsite* (nicht als Microsoft-Team: Team-Mitglieder dürfen Dateien bearbeiten). Besitzer: nur die IT. Am besten sofort anlegen, damit niemand anderes den Namen belegt, und die Adresse zusätzlich per Richtlinie festlegen (`siteUrl`, siehe unten). In der Dokumentbibliothek pro Zielgruppe einen Ordner anlegen, zum Beispiel `Alle`, `Vertrieb`, `Finanzen`.
-3. **Freigeben.** Jeden Ordner über *Zugriff verwalten* mit **Leserechten** für die passende Entra-Gruppe freigeben und die Verbindungsdateien hineinlegen (siehe unten). Schreibrechte nur für die IT: Wer schreiben darf, bestimmt, wohin sich alle Leser verbinden.
+3. **Freigeben.** Jeden Ordner über *Zugriff verwalten* mit **Leserechten** für die passende Entra-Gruppe freigeben. Schreibrechte nur für die IT: Wer schreiben darf, bestimmt, wohin sich alle Leser verbinden.
+4. **Verbindungen teilen.** In l8db die Verbindung wie gewohnt anlegen und testen, dann im Menü der Verbindung *Für Team freigeben…* wählen und den Ordner aussuchen. l8db legt die Datei ohne Benutzer, Passwort, Tokens und lokale Schlüsselpfade ab; die eigene Verbindung wird dabei zur Team-Verbindung, Passwort, Verlauf und Tabs bleiben. Wird die Datei später in SharePoint gelöscht, verschwindet die Verbindung bei allen, auch bei der Person, die sie geteilt hat. *Zugriff in SharePoint verwalten* öffnet den Ordner. JSON von Hand ist nicht nötig, aber möglich (siehe unten).
 
 Dringend empfohlen: per Richtlinie `MicrosoftSiteUrl` und `AllowedHosts` setzen (siehe *Richtlinie*). Erst damit kann weder eine fremde Website gleichen Namens noch jemand mit Schreibrecht Nutzer auf einen anderen Server lotsen.
 
@@ -33,6 +34,14 @@ Fertig. Neue Mitarbeitende bekommen ihre Verbindungen über die Gruppenmitglieds
 - Verschachtelte Entra-Sicherheitsgruppen funktionieren, Änderungen können wegen Caches bis zu einer Stunde dauern. Microsoft-365-Gruppen lassen sich nicht verschachteln.
 - Ausnahmen („Vertrieb außer Max“) kennt SharePoint nicht; dafür eine eigene Gruppe anlegen.
 - Eine Verbindung für mehrere Gruppen: eine Datei für mehrere Gruppen freigeben statt Kopien in mehrere Ordner legen (Kopien erscheinen doppelt).
+
+### Für Team freigeben
+
+Der Menüpunkt erscheint nur, wenn man mit Microsoft angemeldet ist, und nur bei eigenen, gespeicherten Verbindungen. Beim ersten Freigeben fragt Microsoft einmalig nach Schreibrechten (mit demselben Konto; ein anderes Konto wird abgelehnt). Erlaubt die Organisation keine Zustimmung durch Benutzer, bietet der Dialog *Als Administrator freigeben* an. Angefordert wird `Sites.ReadWrite.All`; im Modus `Sites.Selected` genügt eine Schreib-Zuweisung der App zur Website. Normale Nutzer erhalten diese Berechtigung nie, weil l8db sie nur beim Freigeben anfordert; ablegen kann ohnehin nur, wer in SharePoint Schreibrechte auf den Ordner hat. Verbindungen, die die Regeln für Team-Verbindungen verletzen (z. B. SQLite, Windows-Authentifizierung, nicht erlaubter Host), lehnt l8db vor dem Hochladen mit Begründung ab.
+
+### Ohne Unternehmen
+
+Ohne Richtlinie und ohne Anmeldung zeigt l8db von Team-Verbindungen nichts außer dem Bereich in den Einstellungen: kein Dialog beim Start, kein Menüpunkt, keine Hinweise.
 
 ### Was Nutzer tun
 
@@ -92,7 +101,7 @@ Wer der App des l8db-Projekts nicht vertrauen möchte, registriert eine eigene: 
 
 ### Für Maintainer: Projekt-App
 
-Die Anwendungs-ID der Projekt-App steht in `CLIENT_ID` in `src-tauri/src/team_m365.rs`. Registrierung: Kontotyp *Konten in einem beliebigen Organisationsverzeichnis*, Plattform *Mobile und Desktop* mit `http://127.0.0.1` (Manifest) und `http://localhost`, *Öffentliche Clientflows zulassen* = Ja, delegierte Graph-Berechtigungen `openid`, `profile`, `offline_access`, `Sites.Read.All`, `Sites.Selected`, kein Secret. Pflicht: mindestens zwei Besitzer mit phishing-resistenter MFA; empfohlen: Herausgeberüberprüfung, damit Microsoft die App als verifiziert anzeigt. Ist `CLIENT_ID` leer, blendet l8db den Microsoft-Weg aus, außer eine Richtlinie setzt `clientId`.
+Die Anwendungs-ID der Projekt-App steht in `CLIENT_ID` in `src-tauri/src/team_m365.rs`. Registrierung: Kontotyp *Konten in einem beliebigen Organisationsverzeichnis*, Plattform *Mobile und Desktop* mit `http://127.0.0.1` (Manifest) und `http://localhost`, *Öffentliche Clientflows zulassen* = Ja, delegierte Graph-Berechtigungen `openid`, `profile`, `offline_access`, `Sites.Read.All`, `Sites.ReadWrite.All` (nur fürs Freigeben angefordert), `Sites.Selected`, kein Secret. Pflicht: mindestens zwei Besitzer mit phishing-resistenter MFA; empfohlen: Herausgeberüberprüfung, damit Microsoft die App als verifiziert anzeigt. Ist `CLIENT_ID` leer, blendet l8db den Microsoft-Weg aus, außer eine Richtlinie setzt `clientId`.
 
 ## Eigener Team-Hub
 
