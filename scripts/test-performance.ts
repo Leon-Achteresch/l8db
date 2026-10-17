@@ -22,6 +22,7 @@ const SUITES = {
     "tests/perf-schema-object-loading.test.ts",
     "tests/virtual-row-model.test.ts",
     "tests/perf-virtual-row-model.test.ts",
+    "tests/perf-rows-window.test.ts",
     "tests/perf-query-history-format.test.ts",
     "tests/perf-history-modal-boundary.test.ts",
     "tests/perf-virtual-item-measurement.test.ts",

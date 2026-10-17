@@ -45,7 +45,8 @@ export function TableView(props: TableViewProps) {
     tableTab,
     tableRows,
     masked,
-    updateRowMutation,
+    saveRow,
+    addRow,
     insertRowMutation,
     handleFilterChange,
     requestAddRow,
@@ -80,9 +81,11 @@ export function TableView(props: TableViewProps) {
     sorting,
     setSorting,
     revealColumn,
-    page,
     setPage,
     addRowSignal,
+    rowOffset,
+    rowExtent,
+    onVisibleRowsChange,
   } = useTableViewModel(props);
 
   const extensionActions = useTableExtensionActions(
@@ -113,9 +116,12 @@ export function TableView(props: TableViewProps) {
       stateKey={stateKey}
       caps={caps}
       tableRows={tableRows}
+      rowOffset={rowOffset}
+      rowExtent={rowExtent}
+      onVisibleRowsChange={onVisibleRowsChange}
       masked={masked}
-      updateRowMutation={updateRowMutation}
-      insertRowMutation={insertRowMutation}
+      saveRow={saveRow}
+      addRow={addRow}
       handleFilterChange={handleFilterChange}
       handleDeleteRow={handleDeleteRow}
       handleRefresh={handleRefresh}
@@ -136,7 +142,6 @@ export function TableView(props: TableViewProps) {
       sorting={sorting}
       setSorting={setSorting}
       revealColumn={revealColumn}
-      page={page}
       setPage={setPage}
       addRowSignal={addRowSignal}
       schema={schema}

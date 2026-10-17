@@ -5,11 +5,11 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { useActiveConnection } from "@/lib/connections";
+import type { TableData } from "@/lib/db";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
 import type { DataExportFormat } from "@/lib/export-formats";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import { applyMasks, type ColumnMask } from "@/lib/masking";
-import type { useTableRowsQuery } from "@/lib/queries";
 import { useTableExportRequest } from "@/lib/table-export-request";
 
 type Options = {
@@ -20,7 +20,7 @@ type Options = {
   sorting: SortingState;
   isView: boolean;
   totalCount: number | null | undefined;
-  data: ReturnType<typeof useTableRowsQuery>["data"];
+  data: TableData | undefined;
   connection: ReturnType<typeof useActiveConnection>;
   masks?: ColumnMask[];
 };

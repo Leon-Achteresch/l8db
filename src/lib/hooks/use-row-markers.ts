@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { stableMarkerKey } from "@/lib/row-markers";
 
-export function useRowMarkers<T>(rows: T[], scope?: string, primaryKeys: string[] = []) {
+export function useRowMarkers<T>(
+  rows: T[],
+  scope?: string,
+  primaryKeys: string[] = [],
+  prune = true,
+) {
   const [state, setState] = useState<{ rows: T[]; scope?: string; keys: Set<string | T> }>(() => ({
     rows,
     scope,
@@ -13,7 +18,9 @@ export function useRowMarkers<T>(rows: T[], scope?: string, primaryKeys: string[
     if (state.scope !== scope || state.keys.size === 0) keys = new Set();
     else {
       const available = new Set(rows.map(keyOf));
-      keys = new Set([...state.keys].filter((key) => available.has(key)));
+      keys = new Set(
+        [...state.keys].filter((key) => (!prune && typeof key === "string") || available.has(key)),
+      );
     }
     setState({ rows, scope, keys });
   }

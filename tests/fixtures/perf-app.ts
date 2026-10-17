@@ -34,12 +34,14 @@ export async function seedApp(
         ordinal_position: i + 1,
         character_maximum_length: null,
       }));
-      const rows = Array.from({ length: rowCount }, (_, row) => {
+      const rowAt = (row: number) => {
         const record: Record<string, unknown> = { __ctid__: `(0,${row})` };
         for (const column of columns)
           record[column.name] = column.name === "id" ? row : `value ${row * 13}`;
         return record;
-      });
+      };
+      const rows =
+        rowCount <= 10_000 ? Array.from({ length: rowCount }, (_, row) => rowAt(row)) : [];
       const invoke = async (command: string, args: Record<string, unknown> | undefined) => {
         switch (command) {
           case "list_databases":
@@ -114,12 +116,23 @@ export async function seedApp(
             ];
           case "list_table_columns_detailed":
             return columns;
-          case "fetch_table_rows":
-            return { columns: columns.map((column) => column.name), rows };
+          case "fetch_table_rows": {
+            const offset = Number(args?.offset ?? 0);
+            const end = Math.min(rowCount, offset + Number(args?.limit ?? rowCount));
+            return {
+              columns: columns.map((column) => column.name),
+              rows: Array.from(
+                { length: Math.max(0, end - offset) },
+                (_, index) => rows[offset + index] ?? rowAt(offset + index),
+              ),
+            };
+          }
           case "count_table_rows":
-            return rows.length;
+            return rowCount;
           case "count_table_rows_capped":
-            return { count: rows.length, exact: true, estimate: null };
+            return rowCount > 100_000
+              ? { count: 100_001, exact: false, estimate: rowCount }
+              : { count: rowCount, exact: true, estimate: null };
           case "get_database_overview":
             return {
               database: "l8db_perf",

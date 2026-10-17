@@ -80,3 +80,15 @@ test("replacing query data invalidates all cached row values", () => {
   expect(next.rowsById["row-0"]).toBe(next.rows[0]);
   expect(next.rowsById["row-1"]).toBeUndefined();
 });
+
+test("appended pages keep unchanged rows so visible grid rows skip re-rendering", () => {
+  const grid = table();
+  const first = grid.getRowModel().rows[3];
+  grid.setOptions((previous) => ({ ...previous, data: [...data, { id: "row-extra", value: 1 }] }));
+  const next = grid.getRowModel();
+  expect(next.rows[3]).toBe(first);
+  expect(next.rows.length).toBe(data.length + 1);
+  grid.setOptions((previous) => ({ ...previous, data: data.slice(1) }));
+  expect(grid.getRowModel().rows[3]).not.toBe(first);
+  expect(grid.getRowModel().rows[3].index).toBe(3);
+});

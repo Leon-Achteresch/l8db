@@ -15,11 +15,12 @@ import {
   useForeignKeysQuery,
   useInsertRowMutation,
   useTableRowCountQuery,
-  useTableRowsQuery,
+  useTableRowsWindow,
   useUpdateRowMutation,
   useViewsQuery,
 } from "@/lib/queries";
 import { approximateRowCount, exactRowCount } from "@/lib/row-count";
+import { ROWS_WINDOW_MAX_EXTENT } from "@/lib/rows-window";
 import { useSettingsStore } from "@/lib/settings";
 import {
   availableTableDetailTabs,
@@ -107,24 +108,50 @@ export function useTableViewModel({
   const [revealColumn, setRevealColumn] = useState<{ name: string; nonce: number } | null>(null);
   const [page, setPage] = useTableViewState(stateKey, "page", 0);
   const [addRowSignal, setAddRowSignal] = useState(0);
-  const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
-    schema,
-    table,
-    filter,
-    sorting,
-    isView,
-    page,
-    filterRaw,
+  const {
+    columns: windowColumns,
+    pages,
+    rowOffset,
+    rowExtent,
+    onVisibleRowsChange,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refresh,
+  } = useTableRowsWindow(schema, table, filter, sorting, isView, filterRaw, page, setPage);
+  const data = useMemo(
+    () =>
+      windowColumns
+        ? { columns: windowColumns, rows: pages.flatMap((entry) => entry.rows) }
+        : undefined,
+    [windowColumns, pages],
   );
   const { active: activeMasks } = useActiveMasks(data?.columns ?? []);
   const masked = activeMasks.length > 0;
-  const tableRows = useMemo(() => {
-    const rows =
-      caps.query_language === "redis"
-        ? (data?.rows ?? []).map((row) => ({ ...row, __ctid__: JSON.stringify(row.key) }))
-        : (data?.rows ?? []);
-    return masked ? applyMasks(data?.columns ?? [], rows, activeMasks, page) : rows;
-  }, [data?.rows, data?.columns, caps.query_language, masked, activeMasks, page]);
+  const pageRows = useMemo(() => {
+    const cache = new WeakMap<object, Record<string, unknown>[]>();
+    return (rows: Record<string, unknown>[], rowsPage: number) => {
+      let out = cache.get(rows);
+      if (out) return out;
+      out =
+        caps.query_language === "redis"
+          ? rows.map((row) => ({ ...row, __ctid__: JSON.stringify(row.key) }))
+          : rows;
+      if (masked) out = applyMasks(windowColumns ?? [], out, activeMasks, rowsPage);
+      cache.set(rows, out);
+      return out;
+    };
+  }, [caps.query_language, masked, activeMasks, windowColumns]);
+  const tableRows = useMemo(
+    () => pages.flatMap((entry) => pageRows(entry.rows, entry.page)),
+    [pages, pageRows],
+  );
+  const exportData = useMemo(
+    () => (masked && data ? { columns: data.columns, rows: tableRows } : data),
+    [masked, data, tableRows],
+  );
+  const refetch = useCallback(() => refresh().catch(() => undefined), [refresh]);
   const { data: rowCount } = useTableRowCountQuery(
     schema,
     table,
@@ -135,14 +162,26 @@ export function useTableViewModel({
   const totalCount = exactRowCount(rowCount);
   const exactCount = useExactRowCountMutation(schema, table, filter, filterRaw);
   const approximate = approximateRowCount(rowCount);
-  const countLabel = approximate && exactCount.isPending ? `${approximate} (zählt…)` : approximate;
-  const handleExactCount =
-    approximate && !exactCount.isPending
-      ? () =>
-          exactCount.mutate(undefined, {
-            onError: (err) => toast.error(`Zählen fehlgeschlagen: ${String(err)}`),
-          })
-      : undefined;
+  const gridTotal =
+    totalCount !== undefined && totalCount > ROWS_WINDOW_MAX_EXTENT ? undefined : totalCount;
+  const countLabel =
+    approximate && exactCount.isPending
+      ? `${approximate} (zählt…)`
+      : (approximate ??
+        (gridTotal === undefined && totalCount !== undefined
+          ? totalCount.toLocaleString("de-DE")
+          : undefined));
+  const countExactly = exactCount.mutate;
+  const handleExactCount = useMemo(
+    () =>
+      approximate && !exactCount.isPending
+        ? () =>
+            countExactly(undefined, {
+              onError: (err) => toast.error(`Zählen fehlgeschlagen: ${String(err)}`),
+            })
+        : undefined,
+    [approximate, exactCount.isPending, countExactly],
+  );
   useEffect(() => {
     if (totalCount === undefined || isFetching) return;
     const lastPage = Math.max(0, Math.ceil(totalCount / rowLimit) - 1);
@@ -169,37 +208,56 @@ export function useTableViewModel({
     sorting,
     isView,
     totalCount,
-    data,
+    data: exportData,
     connection,
-    masks: activeMasks,
   });
   const updateRowMutation = useUpdateRowMutation(schema, table);
   const insertRowMutation = useInsertRowMutation(schema, table);
   const deleteRowMutation = useDeleteRowMutation(schema, table);
 
-  const handleFilterChange = (newFilter: string, raw = true) => {
-    setFilter(newFilter);
-    setFilterRaw(raw);
-    setPage(0);
-  };
+  const handleFilterChange = useCallback(
+    (newFilter: string, raw = true) => {
+      setFilter(newFilter);
+      setFilterRaw(raw);
+      setPage(0);
+    },
+    [setFilter, setFilterRaw, setPage],
+  );
+  const updateRow = updateRowMutation.mutateAsync;
+  const saveRow = useCallback(
+    async (
+      ctid: string,
+      updates: Record<string, string | null>,
+      oldValues: Record<string, unknown>,
+    ) => {
+      await updateRow({ ctid, updates, oldValues });
+    },
+    [updateRow],
+  );
+  const insertRow = insertRowMutation.mutateAsync;
+  const addRow = useCallback(
+    async (values: Record<string, string | null>) => {
+      await insertRow(values);
+    },
+    [insertRow],
+  );
 
   const requestAddRow = () => setAddRowSignal((n) => n + 1);
 
-  const handleDeleteRow = async (ctid: string, oldValues: Record<string, unknown>) => {
-    try {
-      await deleteRowMutation.mutateAsync({ ctid, oldValues });
-      toast.success("Zeile gelöscht.");
-    } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
-    }
-  };
+  const deleteRow = deleteRowMutation.mutateAsync;
+  const handleDeleteRow = useCallback(
+    async (ctid: string, oldValues: Record<string, unknown>) => {
+      try {
+        await deleteRow({ ctid, oldValues });
+        toast.success("Zeile gelöscht.");
+      } catch (err) {
+        toast.error(typeof err === "string" ? err : String(err));
+      }
+    },
+    [deleteRow],
+  );
 
-  const handleRefresh = useMemo(() => {
-    return async () => {
-      const result = await refetch();
-      if (result.error) throw result.error;
-    };
-  }, [refetch]);
+  const handleRefresh = refresh;
 
   const handleNavigateToTable = useMemo(() => {
     return (targetSchema: string, targetTable: string, filterWhere?: string, inTab?: boolean) => {
@@ -281,9 +339,13 @@ export function useTableViewModel({
     viewTab,
     tableTab,
     tableRows,
+    rowOffset,
+    rowExtent,
+    onVisibleRowsChange,
     masked,
-    updateRowMutation,
     insertRowMutation,
+    saveRow,
+    addRow,
     handleFilterChange,
     requestAddRow,
     handleDeleteRow,
@@ -296,7 +358,7 @@ export function useTableViewModel({
     isError,
     error,
     refetch,
-    totalCount,
+    totalCount: gridTotal,
     countLabel,
     handleExactCount,
     columnDetails,

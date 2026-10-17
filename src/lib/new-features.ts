@@ -92,6 +92,7 @@ export const NEW_FEATURES = {
   "versioning.targets.script": "0.15.0",
   "versioning.ignore": "0.15.0",
   "table.pagination.keyboard": "0.7.0",
+  "table.infinite-scroll": NEXT_FEATURE_VERSION,
   "table.filter.rules": "0.10.0",
   "table.filter.ai": NEXT_FEATURE_VERSION,
   "table.cell.json-editor": "0.10.0",
