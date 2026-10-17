@@ -60,8 +60,7 @@ type Props = Pick<
   > & {
     columnNames: string[];
     stateKey?: string;
-    page: number;
-    pageSize: number;
+    rowOffset: number;
   };
 
 export function DataTableBody({
@@ -111,8 +110,7 @@ export function DataTableBody({
   emptyMessage,
   onSaveRow,
   canEditCell,
-  page,
-  pageSize,
+  rowOffset,
   onInsertRow,
   onDeleteRow,
   columnDetails,
@@ -193,7 +191,7 @@ export function DataTableBody({
                     columnVisibility={columnVisibility}
                     columnPinning={columnPinning}
                     columns={columns}
-                    pageOffset={page * pageSize}
+                    pageOffset={rowOffset}
                     fontSize={(12 * uiScale) / 100}
                     columnScale={columnScale}
                   />
@@ -211,7 +209,7 @@ export function DataTableBody({
       {menuRow && (
         <DataTableRowMenu
           menuRow={menuRow}
-          rowOffset={page * pageSize}
+          rowOffset={rowOffset}
           columns={visibleColumns.map((column) => column.id).filter((id) => id !== "__row_index__")}
           canDuplicate={!!onInsertRow}
           duplicateDisabled={hasDraft || isSaving}

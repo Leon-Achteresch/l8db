@@ -27,12 +27,11 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     onSaveRow,
     canEditCell,
     cellEditorKind,
-    page = 0,
     totalCount,
     countLabel,
     onExactCount,
     pageSize = 100,
-    onPageChange,
+    rowExtent,
     foreignKeys,
     currentSchema,
     currentTable,
@@ -42,6 +41,10 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     columnDetails,
   } = props;
   const {
+    infinite,
+    rowOffset,
+    navPage,
+    changePage,
     hasNextPage,
     activeCell,
     activeMatch,
@@ -268,8 +271,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       emptyMessage={emptyMessage}
                       onSaveRow={onSaveRow}
                       canEditCell={canEditCell}
-                      page={page}
-                      pageSize={pageSize}
+                      rowOffset={rowOffset}
                       onInsertRow={onInsertRow}
                       onDeleteRow={onDeleteRow}
                       columnDetails={columnDetails}
@@ -291,8 +293,13 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
           </div>
           {rows.length > 0 && (
             <DataTableFooter
-              rowCount={rows.length}
-              page={page}
+              infinite={infinite}
+              rowCount={
+                infinite
+                  ? Math.max(0, Math.min(pageSize, (rowExtent ?? 0) - navPage * pageSize))
+                  : rows.length
+              }
+              page={navPage}
               pageSize={pageSize}
               totalCount={totalCount}
               countLabel={countLabel}
@@ -306,7 +313,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
               autoRefreshMs={autoRefreshMs}
               autoRefreshPause={autoRefreshPause}
               onAutoRefreshChange={setAutoRefreshMs}
-              onPageChange={onPageChange}
+              onPageChange={changePage}
             />
           )}
           <DataTableCellDialogs

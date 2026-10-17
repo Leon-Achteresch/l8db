@@ -16,6 +16,7 @@ import { formatHotkeyDisplay, useResolvedHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 type Props = {
+  infinite: boolean;
   rowCount: number;
   page: number;
   pageSize: number;
@@ -35,6 +36,7 @@ type Props = {
 };
 
 export const DataTableFooter = memo(function DataTableFooter({
+  infinite,
   rowCount,
   page,
   pageSize,
@@ -57,6 +59,7 @@ export const DataTableFooter = memo(function DataTableFooter({
   const nextPageHotkey = useResolvedHotkey("grid.nextPage");
   const prevPageHotkey = useResolvedHotkey("grid.prevPage");
   const paginationFeature = useNewFeatureVisibility<HTMLDivElement>("table.pagination.keyboard");
+  const infiniteFeature = useNewFeatureVisibility<HTMLSpanElement>("table.infinite-scroll");
   const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
   const openEnded = totalPages == null && countLabel !== undefined;
   const rangeStart = page * pageSize + 1;
@@ -64,7 +67,8 @@ export const DataTableFooter = memo(function DataTableFooter({
   const total = totalCount ?? countLabel;
   return (
     <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
-      <span className="whitespace-nowrap">
+      <span ref={infinite ? infiniteFeature.ref : undefined} className="whitespace-nowrap">
+        {infinite && infiniteFeature.isNew && <NewBadge />}
         {total != null
           ? `${rangeStart}–${rangeEnd} von ${total}`
           : `${rowCount} ${rowCount === 1 ? "Zeile" : "Zeilen"}`}

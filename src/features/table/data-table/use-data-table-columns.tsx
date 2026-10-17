@@ -17,8 +17,7 @@ type Options = {
   data: TableRow[];
   columnDetails?: DetailedColumnInfo[];
   isFetching: boolean;
-  page: number;
-  pageSize: number;
+  rowOffset: number;
   fkByColumn: Map<string, ForeignKeyInfo[]>;
   onNavigateToTable: DataTableProps["onNavigateToTable"];
   currentSchema?: string;
@@ -31,8 +30,7 @@ export function useDataTableColumns({
   data,
   columnDetails,
   isFetching,
-  page,
-  pageSize,
+  rowOffset,
   fkByColumn,
   onNavigateToTable,
   currentSchema,
@@ -52,8 +50,8 @@ export function useDataTableColumns({
     [columnDetails],
   );
   const contentFit = useSettingsStore((state) => state.tableStyle !== "classic");
-  const headerStateRef = useRef({ typeInfoByColumn, isFetching, page, pageSize });
-  headerStateRef.current = { typeInfoByColumn, isFetching, page, pageSize };
+  const headerStateRef = useRef({ typeInfoByColumn, isFetching, rowOffset });
+  headerStateRef.current = { typeInfoByColumn, isFetching, rowOffset };
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -71,7 +69,7 @@ export function useDataTableColumns({
         enableResizing: false,
         cell: (info) => (
           <span className="font-mono text-xs tabular-nums text-muted-foreground/60 select-none">
-            {info.row.index + 1 + headerStateRef.current.page * headerStateRef.current.pageSize}
+            {info.row.index + 1 + headerStateRef.current.rowOffset}
           </span>
         ),
         size: 48,

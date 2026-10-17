@@ -35,7 +35,10 @@ async function instrument(page: Page) {
       const original = internals.invoke;
       const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
       internals.invoke = async (command, args) => {
-        const result = await original(command, args);
+        const result = await original(
+          command,
+          command === "fetch_table_rows" ? { ...args, offset: 0, limit: total } : args,
+        );
         if (command === "fetch_table_rows") {
           await wait(40);
           const data = result as { columns: string[]; rows: Record<string, unknown>[] };
@@ -406,21 +409,29 @@ test.skipIf(!BASE_URL)(
         },
         800,
       );
-      const afterSort = await firstId();
       const paging = await track(
         page,
         "next-page",
         async () => {
           await page.getByRole("button", { name: "Nächste Seite", exact: true }).click();
           await page.waitForFunction(
-            (before) =>
-              document.querySelector('tbody tr[data-index="0"] td[data-col="col_1"]')
-                ?.textContent !== before,
-            afterSort,
+            (pageSize) =>
+              [...document.querySelectorAll("tbody tr[data-index] td:first-child")].some(
+                (cell) => cell.textContent === String(pageSize + 1),
+              ),
+            PAGE_SIZE,
           );
         },
         800,
       );
+      await page
+        .locator("[data-grid-scroll]")
+        .first()
+        .evaluate((element) => {
+          element.scrollTop = 0;
+        });
+      await cell(1, "col_1").waitFor();
+      await settle(page);
       const search = await track(page, "grid-search-rows", async () => {
         await cell(1, "col_1").click();
         await page.keyboard.press("ControlOrMeta+f");

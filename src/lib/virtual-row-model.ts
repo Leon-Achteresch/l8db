@@ -10,11 +10,14 @@ export function getVirtualRowModel<T extends RowData>(cacheSize = 512) {
   return (table: Table<T>): (() => RowModel<T>) => {
     let source: T[] | undefined;
     let model: RowModel<T>;
+    let previous = new Map<number, Row<T>>();
     return () => {
       const data = table.options.data;
       if (source === data) return model;
       source = data;
+      const reusable = previous;
       const cache = new Map<number, Row<T>>();
+      previous = cache;
       const cachedIndicesById = new Map<string, number>();
       let indicesById: Map<string, number> | undefined;
       const getId = (index: number) =>
@@ -22,7 +25,14 @@ export function getVirtualRowModel<T extends RowData>(cacheSize = 512) {
       const getRow = (index: number) => {
         let row = cache.get(index);
         if (row) cache.delete(index);
-        else row = createRow(table, getId(index), data[index], index, 0);
+        else {
+          const id = getId(index);
+          const old = reusable.get(index);
+          row =
+            old && old.original === data[index] && old.id === id
+              ? old
+              : createRow(table, id, data[index], index, 0);
+        }
         cache.set(index, row);
         cachedIndicesById.set(row.id, index);
         if (cache.size > Math.max(1, cacheSize)) {

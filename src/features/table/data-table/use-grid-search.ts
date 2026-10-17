@@ -5,13 +5,14 @@ import { cellsByRow } from "@/lib/grid-selection";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import type { TableRow } from "../data-table-types";
 
-export function useGridSearch(data: TableRow[], searchColumns: string[]) {
+export function useGridSearch(data: TableRow[], searchColumns: string[], resetKey: unknown) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"rows" | "columns">("columns");
   const searchRegex = useRegexEnabled("grid");
   const setSearchRegex = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const [matchIndex, setMatchIndex] = useState(0);
+  const [navSeq, setNavSeq] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const searchResult = useMemo(
@@ -46,14 +47,32 @@ export function useGridSearch(data: TableRow[], searchColumns: string[]) {
   const stepMatch = useCallback(
     (step: number) => {
       setMatchIndex((current) => stepMatchIndex(current, navCount, step));
+      setNavSeq((seq) => seq + 1);
     },
     [navCount],
   );
 
+  const activeRow = useRef<{ row: TableRow; columnId: string } | null>(null);
+  useEffect(() => {
+    const target = activeRow.current;
+    if (!target) return;
+    const index = matches.findIndex(
+      (match) => match.columnId === target.columnId && data[match.rowIndex] === target.row,
+    );
+    if (index >= 0) setMatchIndex(index);
+  }, [matches, data]);
+  useEffect(() => {
+    activeRow.current = activeMatch && {
+      row: data[activeMatch.rowIndex],
+      columnId: activeMatch.columnId,
+    };
+  });
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: Treffer neu zählen bei Query- oder Datenwechsel
   useEffect(() => {
     setMatchIndex(0);
-  }, [searchQuery, data, searchMode]);
+    if (searchOpen) setNavSeq((seq) => seq + 1);
+  }, [deferredSearchQuery, resetKey, searchMode, searchRegex, searchOpen]);
 
   return {
     searchOpen,
@@ -70,6 +89,7 @@ export function useGridSearch(data: TableRow[], searchColumns: string[]) {
     searchError,
     matchesByRow,
     activeMatch,
+    navSeq,
     columnMatches,
     navCount,
     activeColumnMatch,
