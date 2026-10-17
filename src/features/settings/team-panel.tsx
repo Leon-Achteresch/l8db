@@ -159,14 +159,17 @@ export function TeamPanel() {
             </p>
           )}
           {warnings.length > 0 && (
-            <ul aria-label="Hinweise zu Team-Verbindungen" className="space-y-1">
-              {warnings.map((warning) => (
-                <li key={warning} className="flex gap-1.5 text-amber-700 dark:text-amber-400">
-                  <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{warning}</span>
-                </li>
-              ))}
-            </ul>
+            <details className="text-muted-foreground">
+              <summary className="cursor-pointer">Hinweise für die IT ({warnings.length})</summary>
+              <ul aria-label="Hinweise für die IT" className="mt-1 space-y-1">
+                {warnings.map((warning) => (
+                  <li key={warning} className="flex gap-1.5">
+                    <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                    <span>{warning}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
           <div className="flex flex-wrap gap-2">
             <Button

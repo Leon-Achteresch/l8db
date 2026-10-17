@@ -184,7 +184,7 @@ function pick(entry: unknown, allowedHosts: string[]): Record<string, unknown> |
     return `${label}: Typ „${String(source.kind)}“ ist für Team-Verbindungen nicht erlaubt, übersprungen`;
   const connectionString = source.connectionString as string;
   if (
-    /[\u0000-\u001f\u007f]/.test(connectionString) ||
+    [...connectionString].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
     (connectionString.includes("://") && connectionString.includes("\\"))
   )
     return `${label}: Adresse enthält Steuerzeichen oder einen Backslash, übersprungen`;
@@ -312,13 +312,18 @@ export function mergeTeamConnections(
   let updated = 0;
   const connections: SavedConnection[] = [];
   for (const connection of local) {
-    const incoming = remote.get(connection.id);
+    const key = remote.has(connection.id)
+      ? connection.id
+      : connection.team?.hub === hub
+        ? teamConnectionId(hub, connection.team.id)
+        : connection.id;
+    const incoming = remote.get(key);
     if (!incoming) {
       if (connection.team?.hub === hub) removed.push(connection.id);
       else connections.push(connection);
       continue;
     }
-    remote.delete(connection.id);
+    remote.delete(key);
     const base = connection.team?.hub === hub ? connection.team.base : {};
     const next: Record<string, unknown> = { ...connection };
     let changed = connection.team?.hub !== hub;
