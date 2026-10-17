@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
-export const NEXT_FEATURE_VERSION = "0.15.0";
+export const NEXT_FEATURE_VERSION = "0.16.0";
 
 export const NEW_FEATURES = {
   "settings.general.workspace-tab": "0.9.1",
@@ -40,11 +40,11 @@ export const NEW_FEATURES = {
   "settings.editor.ai": "0.14.0",
   "settings.editor.ai-metrics": "0.14.0",
   "ai.chat.context-mentions": "0.14.0",
-  "ai.chat.dry-run": NEXT_FEATURE_VERSION,
+  "ai.chat.dry-run": "0.15.0",
   "ai.chat.editor-edits": "0.14.0",
   "ai.chat.editor-context": "0.14.0",
   "ai.chat.plus.knowledge.rules": "0.14.0",
-  "ai.chat.plus.knowledge.data-rules": NEXT_FEATURE_VERSION,
+  "ai.chat.plus.knowledge.data-rules": "0.15.0",
   "query.result.ask-ai": "0.14.0",
   "automation.tasks": "0.10.0",
   "automation.schedules": "0.10.0",
@@ -86,11 +86,11 @@ export const NEW_FEATURES = {
   "versioning.reviews": "0.10.0",
   "versioning.pipeline": "0.14.0",
   "versioning.working-copy": "0.14.0",
-  "versioning.reviews.conversation": NEXT_FEATURE_VERSION,
-  "versioning.tickets": NEXT_FEATURE_VERSION,
-  "versioning.overview": NEXT_FEATURE_VERSION,
-  "versioning.targets.script": NEXT_FEATURE_VERSION,
-  "versioning.ignore": NEXT_FEATURE_VERSION,
+  "versioning.reviews.conversation": "0.15.0",
+  "versioning.tickets": "0.15.0",
+  "versioning.overview": "0.15.0",
+  "versioning.targets.script": "0.15.0",
+  "versioning.ignore": "0.15.0",
   "table.pagination.keyboard": "0.7.0",
   "table.filter.rules": "0.10.0",
   "table.cell.json-editor": "0.10.0",
@@ -99,7 +99,7 @@ export const NEW_FEATURES = {
   "query.result-view": "0.14.0",
   "query.dml-preview": "0.14.0",
   "query.multi-target": "0.14.0",
-  "query.tools.package-members": NEXT_FEATURE_VERSION,
+  "query.tools.package-members": "0.15.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",
@@ -156,7 +156,7 @@ export const NEW_FEATURES = {
   "settings.general.dynamic-island": "0.10.0",
   "settings.general.sidebar-object-nav": "0.10.0",
   "settings.appearance.table-style": "0.14.0",
-  "settings.appearance.seasonal": NEXT_FEATURE_VERSION,
+  "settings.appearance.seasonal": "0.15.0",
   "query.transaction.changes": "0.7.0",
   "query.transaction.database-diff": "0.14.0",
   "settings.editor.parameter-hints": "0.14.0",
