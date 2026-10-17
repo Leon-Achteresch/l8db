@@ -48,18 +48,17 @@ function editorAppearance(
     {
       "&": { height: "100%", backgroundColor: "transparent", color: "var(--foreground)" },
       "&.cm-focused": { outline: "none" },
-      ".cm-scroller": {
-        overflow: singleLine ? "auto hidden" : "auto",
-        scrollbarWidth: singleLine ? "none" : "auto",
-        alignItems: singleLine ? "center" : "stretch",
-        fontFamily: family,
-        fontSize: `${size}px`,
-      },
-      ".cm-content": {
-        minHeight: singleLine ? "auto" : "100%",
-        lineHeight: `${lineHeight}px`,
-        padding: singleLine ? "0" : "8px 0",
-      },
+      ".cm-scroller": singleLine
+        ? {
+            overflow: "auto hidden",
+            scrollbarWidth: "none",
+            fontFamily: family,
+            fontSize: `${size}px`,
+          }
+        : { overflow: "auto", fontFamily: family, fontSize: `${size}px` },
+      ".cm-content": singleLine
+        ? { minHeight: "auto", lineHeight: `${lineHeight}px`, padding: "4px 0" }
+        : { minHeight: "100%", lineHeight: `${lineHeight}px`, padding: "8px 0" },
       ".cm-gutters": { backgroundColor: "transparent", border: "none" },
       ".cm-activeLine": { backgroundColor: "transparent" },
     },
