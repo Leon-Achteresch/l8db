@@ -5,7 +5,7 @@ import { AiFlash } from "@/features/automation/ai-flash";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
-import { TableFilterPanel } from "@/features/table/table-filter-panel";
+import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
@@ -125,7 +125,7 @@ export function TableDataContent({
         className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
         data-tour="table-filter"
       >
-        <TableFilterPanel
+        <TableFilterBar
           key={stateKey}
           stateKey={stateKey}
           columns={data?.columns ?? []}

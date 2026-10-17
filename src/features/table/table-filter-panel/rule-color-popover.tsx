@@ -13,18 +13,10 @@ import {
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { ROW_RULE_COLORS } from "@/lib/row-rules";
 import { cn } from "@/lib/utils";
 
-const RULE_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#14b8a6",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-];
+const RULE_COLORS = ROW_RULE_COLORS.map((color) => color.value);
 
 export function RuleColorPopover({
   color,

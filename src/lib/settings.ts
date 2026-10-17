@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
+import { type FilterBarStyle, normalizeFilterBarStyle } from "@/lib/filter-bar-style";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -107,6 +108,7 @@ export interface SettingsState {
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   tableStyle: TableStyle;
+  filterBarStyle: FilterBarStyle;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -177,6 +179,7 @@ export interface SettingsState {
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
+  setFilterBarStyle: (value: FilterBarStyle) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -272,6 +275,7 @@ export const DEFAULT_SETTINGS = {
   fitColumnsToHeader: true,
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
+  filterBarStyle: "classic" as FilterBarStyle,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -375,6 +379,8 @@ export const useSettingsStore = create<SettingsState>()(
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
+      setFilterBarStyle: (filterBarStyle) =>
+        set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
       resetAppearance: () =>
         set({
           uiScale: 100,
@@ -386,6 +392,7 @@ export const useSettingsStore = create<SettingsState>()(
           fitColumnsToHeader: true,
           monochromeCells: true,
           tableStyle: "classic",
+          filterBarStyle: "classic",
         }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -425,6 +432,7 @@ export const useSettingsStore = create<SettingsState>()(
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
+          filterBarStyle: normalizeFilterBarStyle(saved?.filterBarStyle),
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",

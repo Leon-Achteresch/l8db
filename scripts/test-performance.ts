@@ -52,6 +52,7 @@ const SUITES = {
     "tests/perf-connection-import.test.ts",
     "tests/perf-connection-import-datagrip.test.ts",
     "tests/abandoned-jobs.test.ts",
+    "tests/perf-filter-bar.test.ts",
     "tests/performance-report.test.ts",
   ],
   browser: [

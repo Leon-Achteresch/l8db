@@ -1,6 +1,29 @@
 import { filterOperatorLabel, operatorNeedsValue, parseFilterList } from "@/lib/sql-filter";
 import type { FilterCondition, RowRule } from "@/lib/table-view-state";
 
+export const ROW_RULE_COLORS = [
+  { name: "red", label: "Rot", value: "#ef4444" },
+  { name: "orange", label: "Orange", value: "#f97316" },
+  { name: "yellow", label: "Gelb", value: "#eab308" },
+  { name: "green", label: "Grün", value: "#22c55e" },
+  { name: "teal", label: "Türkis", value: "#14b8a6" },
+  { name: "blue", label: "Blau", value: "#3b82f6" },
+  { name: "violet", label: "Violett", value: "#8b5cf6" },
+  { name: "pink", label: "Pink", value: "#ec4899" },
+] as const;
+
+export function nextRuleColor(rules: { color: string }[]): string {
+  const used = new Set(rules.map((rule) => rule.color.toLowerCase()));
+  return (
+    ROW_RULE_COLORS.find((color) => !used.has(color.value))?.value ??
+    ROW_RULE_COLORS[rules.length % ROW_RULE_COLORS.length].value
+  );
+}
+
+export function ruleColorLabel(color: string): string {
+  return ROW_RULE_COLORS.find((entry) => entry.value === color.toLowerCase())?.label ?? color;
+}
+
 function text(value: unknown): string {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }

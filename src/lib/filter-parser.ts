@@ -179,7 +179,8 @@ export function parseFilterExpression(
     const token = current();
     if (!token || !["word", "identifier"].includes(token.kind)) return expected("Ein Spaltenname");
     index++;
-    const matches = columns.filter((column) => column.toLowerCase() === token.value.toLowerCase());
+    const lower = token.value.toLowerCase();
+    const matches = columns.filter((column) => column.toLowerCase() === lower);
     const column = columns.includes(token.value)
       ? token.value
       : matches.length === 1
