@@ -952,7 +952,7 @@ pub(crate) mod tests {
         let browser = std::env::var("L8DB_TEAM_E2E_BROWSER").expect("L8DB_TEAM_E2E_BROWSER");
         let expected = std::env::var("L8DB_TEAM_E2E_EXPECT").unwrap_or_default();
         let (token, user) = login_with(&hub, |url| {
-            std::process::Command::new("bun")
+            crate::process::std_command("bun")
                 .args([browser.as_str(), url.as_str()])
                 .spawn()
                 .map(|_| ())
