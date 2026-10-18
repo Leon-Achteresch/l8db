@@ -1338,7 +1338,13 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const main = (
     <>
       {!fullPage && (
-        <div className={cn(!figures.length || view !== "chat" || minimized ? "border-b" : "")}>
+        <div
+          className={cn(
+            minimized
+              ? "group-data-active/mini:border-b"
+              : (!figures.length || view !== "chat") && "border-b",
+          )}
+        >
           <AiPanelHeader
             title={session?.title || "KI-Assistent"}
             view={view}
