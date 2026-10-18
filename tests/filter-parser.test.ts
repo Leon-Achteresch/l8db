@@ -136,6 +136,12 @@ test("accepts unquoted values, LIKE, BETWEEN, NULL comparisons and case-insensit
     { column: "id", operator: "gte", value: "1" },
     { column: "id", operator: "lte", value: "5" },
   ]);
+  expect(conditions("id >= DATE '2025-10-12' AND id < date '2025-10-13'")).toEqual([
+    { column: "id", operator: "gte", value: "2025-10-12" },
+    { column: "id", operator: "lt", value: "2025-10-13" },
+  ]);
+  expect(conditions("id < TIMESTAMP '2025-10-12 08:00:00'")[0].value).toBe("2025-10-12 08:00:00");
+  expect(conditions("name = date")[0].value).toBe("date");
   expect(conditions("name = NULL AND id != null")).toEqual([
     { column: "name", operator: "isNull", value: "" },
     { column: "id", operator: "isNotNull", value: "" },
@@ -143,7 +149,18 @@ test("accepts unquoted values, LIKE, BETWEEN, NULL comparisons and case-insensit
   expect(conditions("name in (abc, 2026-01-01, 3)")).toEqual([
     { column: "name", operator: "in", value: '["abc","2026-01-01","3"]' },
   ]);
-  for (const source of ["name = id", "name like '%a%b%'", "name like '%'", "id = 1;", "id = ;"]) {
+  for (const source of [
+    "id > DATE '2025-10-12'",
+    "id = DATE '2025-10-12'",
+    "id <= DATE '2025-10-12'",
+    "id between DATE '2025-10-01' and DATE '2025-10-31'",
+    "name like DATE '2025%'",
+    "name = id",
+    "name like '%a%b%'",
+    "name like '%'",
+    "id = 1;",
+    "id = ;",
+  ]) {
     expect(() => parseFilterExpression(source, columns), source).toThrow();
   }
 });

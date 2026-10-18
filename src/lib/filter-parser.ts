@@ -142,7 +142,13 @@ export function parseFilterExpression(
     return true;
   };
   const expected = (value: string) => fail(`${value} erwartet`, current()?.at ?? source.length);
-  const literal = (): { value: string; text: boolean } => {
+  const literal = (typed = false): { value: string; text: boolean } => {
+    if (
+      typed &&
+      (keyword("DATE") || keyword("TIME") || keyword("TIMESTAMP")) &&
+      tokens[index + 1]?.kind === "string"
+    )
+      index++;
     const token = current();
     const isBool = keyword("TRUE") || keyword("FALSE");
     if (
@@ -247,7 +253,7 @@ export function parseFilterExpression(
     if ((found === "eq" || found === "neq") && acceptKeyword("NULL")) {
       return make(found === "eq" ? "isNull" : "isNotNull");
     }
-    return make(found, literal());
+    return make(found, literal(found === "gte" || found === "lt"));
   };
   const primary = (depth: number): Node => {
     if (depth > 64) return expected("Weniger verschachtelte Klammern");
