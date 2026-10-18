@@ -52,7 +52,7 @@
     "feature-videos:cleanup": "bun scripts/feature-videos/publish.ts cleanup"
   },
   "dependencies": {
-    "@base-ui/react": "^1.8.0",
+    "@base-ui/react": "^1.9.0",
     "@central-icons-react/round-outlined-radius-2-stroke-2": "^1.2.5",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/lang-sql": "^6.10.0",
