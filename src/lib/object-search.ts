@@ -34,7 +34,12 @@ export const OBJECT_TYPE_PLURAL: Record<ObjectEntryType, string> = {
   package: "Packages",
 };
 
-function entryKey(type: ObjectEntryType, schema: string, name: string, detail: string): string {
+export function entryKey(
+  type: ObjectEntryType,
+  schema: string,
+  name: string,
+  detail: string,
+): string {
   return `${type}:${schema}.${name}${detail ? `(${detail})` : ""}`;
 }
 

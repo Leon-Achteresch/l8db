@@ -39,3 +39,33 @@ export function withHistory(items: CommandItem[], history: PaletteHistory, query
   const ids = new Set(pinned.map((item) => item.id));
   return [...pinned, ...items.filter((item) => !ids.has(item.id))];
 }
+
+export function withoutChildren(items: CommandItem[], query: string) {
+  return query.trim() ? items : items.filter((item) => !item.parentId);
+}
+
+export function nestUnderParents(ranked: CommandItem[], byId: ReadonlyMap<string, CommandItem>) {
+  if (!ranked.some((item) => item.parentId)) return ranked;
+  const children = new Map<string, CommandItem[]>();
+  for (const item of ranked) {
+    if (!item.parentId) continue;
+    const list = children.get(item.parentId) ?? [];
+    list.push(item);
+    children.set(item.parentId, list);
+  }
+  const placed = new Set<string>();
+  const result: CommandItem[] = [];
+  for (const item of ranked) {
+    const parent = item.parentId ? byId.get(item.parentId) : item;
+    if (!parent) {
+      result.push({ ...item, parentId: undefined });
+      continue;
+    }
+    if (placed.has(parent.id)) continue;
+    placed.add(parent.id);
+    result.push(parent);
+    for (const child of children.get(parent.id) ?? [])
+      result.push({ ...child, group: parent.group });
+  }
+  return result;
+}
