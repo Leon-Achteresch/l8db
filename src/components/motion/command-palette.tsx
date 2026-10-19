@@ -9,7 +9,13 @@ import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/rea
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NewBadge } from "@/components/new-badge";
-import { paletteSearchItems, parsePaletteQuery, withHistory } from "@/lib/command-palette-search";
+import {
+  nestUnderParents,
+  paletteSearchItems,
+  parsePaletteQuery,
+  withHistory,
+  withoutChildren,
+} from "@/lib/command-palette-search";
 import { EASE_OUT } from "@/lib/ease";
 import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -148,19 +154,32 @@ export function CommandPalette({
 
   const { commandsOnly, search } = parsePaletteQuery(query, Boolean(commandFeatureId));
   const searchItems = useMemo(
-    () => withHistory(paletteSearchItems(items, commandsOnly), history, search),
+    () =>
+      withHistory(
+        withoutChildren(paletteSearchItems(items, commandsOnly), search),
+        history,
+        search,
+      ),
     [items, commandsOnly, history, search],
   );
   const { query: rankedQuery, list: ranked } = useRankedCommands(searchItems, search, maxVisible);
   const searchFeature = useNewFeatureVisibility<HTMLDivElement>(featureId);
   const commandFeature = useNewFeatureVisibility<HTMLDivElement>(commandFeatureId);
-  const filtered = useMemo(
+  const itemsById = useMemo(
     () =>
-      queryItem && !commandsOnly && rankedQuery.trim()
-        ? [...ranked, queryItem(rankedQuery.trim())]
-        : paletteSearchItems(ranked, commandsOnly),
-    [queryItem, commandsOnly, rankedQuery, ranked],
+      new Map(
+        items.some((item) => item.parentId)
+          ? items.filter((item) => !item.parentId).map((item) => [item.id, item] as const)
+          : [],
+      ),
+    [items],
   );
+  const filtered = useMemo(() => {
+    const nested = nestUnderParents(ranked, itemsById);
+    return queryItem && !commandsOnly && rankedQuery.trim()
+      ? [...nested, queryItem(rankedQuery.trim())]
+      : paletteSearchItems(nested, commandsOnly);
+  }, [queryItem, commandsOnly, rankedQuery, ranked, itemsById]);
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.

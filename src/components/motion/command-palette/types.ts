@@ -14,6 +14,7 @@ export type CommandItem = {
   icon?: LucideIcon;
   badge?: ReactNode;
   featureId?: NewFeatureId;
+  parentId?: string;
   onSelect: () => void;
 };
 

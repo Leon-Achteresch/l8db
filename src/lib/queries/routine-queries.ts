@@ -50,6 +50,22 @@ export function usePackageMembersQuery(enabled = true) {
   });
 }
 
+export function useAllPackageMembersQuery(enabled = true) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["package-members", connection?.id, database, undefined],
+    queryFn: () =>
+      listPackageMembers(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: enabled && supports(connection, "functions"),
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useProceduresQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();

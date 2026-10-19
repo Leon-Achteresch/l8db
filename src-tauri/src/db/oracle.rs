@@ -1919,7 +1919,10 @@ impl DatabaseAdapter for OracleAdapter {
     ) -> Result<Vec<PackageMemberInfo>, String> {
         let sql = format!(
             "SELECT DISTINCT owner, object_name, procedure_name FROM all_procedures WHERE {} AND object_type = 'PACKAGE' AND procedure_name IS NOT NULL ORDER BY object_name, procedure_name",
-            Self::owner_filter(schema, "owner")
+            match schema {
+                Some(_) => Self::owner_filter(schema, "owner"),
+                None => "owner = USER".to_string(),
+            }
         );
         Ok(self
             .rows(sql)
