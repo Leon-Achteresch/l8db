@@ -18,10 +18,18 @@ export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
   ignoreSequenceValues: true,
 };
 
+export interface SnapshotRef {
+  path: string;
+  kind: DatabaseKind;
+  createdAt: string;
+  connectionName: string;
+}
+
 export interface CompareSide {
   connectionId: string | null;
   database: string | null;
   schema: string | null;
+  snapshot?: SnapshotRef | null;
 }
 
 export const EMPTY_SIDE: CompareSide = { connectionId: null, database: null, schema: null };

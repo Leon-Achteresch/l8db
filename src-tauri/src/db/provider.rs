@@ -261,6 +261,7 @@ impl DatabaseKind {
                 table_transactions: true,
                 row_edit: true,
                 data_compare: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Sqlite => Capabilities {
@@ -274,6 +275,7 @@ impl DatabaseKind {
                 table_transactions: false,
                 row_edit: true,
                 data_compare: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Duckdb => Capabilities {
@@ -295,6 +297,7 @@ impl DatabaseKind {
                 table_transactions: true,
                 row_edit: true,
                 data_compare: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
@@ -335,6 +338,7 @@ impl DatabaseKind {
                 transactions: true,
                 table_transactions: true,
                 row_edit: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Cassandra => Capabilities {

@@ -168,6 +168,7 @@ export const NEW_FEATURES = {
   "settings.editor.blank-line-terminator": NEXT_FEATURE_VERSION,
   "compare.scroll-sync": "0.7.0",
   "compare.draft-toggle": "0.11.0",
+  "schema-compare.snapshot": NEXT_FEATURE_VERSION,
   "split.pane-tables": "0.8.0",
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",

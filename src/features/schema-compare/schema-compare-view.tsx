@@ -27,13 +27,14 @@ import { useSchemasQuery } from "@/lib/queries";
 import { buildSyncScript, renderSyncScript } from "@/lib/schema-compare/script";
 import {
   activeTypes,
-  connectionFor,
   reverseSchemaCompare,
   runSchemaCompare,
+  sameSide,
   setupProblem,
+  sideKind,
   useSchemaCompareStore,
 } from "@/lib/schema-compare/store";
-import type { CompareSide, DiffStatus } from "@/lib/schema-compare/types";
+import type { DiffStatus } from "@/lib/schema-compare/types";
 import { compareTypesFor, OBJECT_TYPE_META, STATUS_LABEL } from "@/lib/schema-compare/types";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cn } from "@/lib/utils";
@@ -50,14 +51,6 @@ type Focus = { type: CatalogObjectType | null; status: DiffStatus };
 const MARKERS = ["only_source", "different", "only_target"] as const;
 
 const SCOPE = "tool:schema-compare";
-
-function sameSide(a: CompareSide, b: CompareSide): boolean {
-  return (
-    a.connectionId === b.connectionId &&
-    (a.database ?? "") === (b.database ?? "") &&
-    a.schema === b.schema
-  );
-}
 
 function comparedAgo(iso: string, now: number): string {
   const minutes = Math.floor((now - new Date(iso).getTime()) / 60000);
@@ -82,7 +75,7 @@ export function SchemaCompareView() {
   const activeDatabase = useActiveDatabase();
   const activeSchema = useActiveSchema();
   const activeReady = useSchemasQuery().isSuccess;
-  const kind = connectionFor(source)?.kind ?? connectionFor(target)?.kind;
+  const kind = sideKind(source) ?? sideKind(target);
   const problem = setupProblem(source, target, activeTypes(state, kind));
   const stale = Boolean(
     result && (!sameSide(result.source, source) || !sameSide(result.target, target)),
@@ -90,7 +83,8 @@ export function SchemaCompareView() {
 
   useEffect(() => {
     if (!active || !activeReady || compareTypesFor(active.kind).length === 0) return;
-    if (useSchemaCompareStore.getState().source.connectionId) return;
+    const current = useSchemaCompareStore.getState().source;
+    if (current.connectionId || current.snapshot) return;
     set({
       source: {
         connectionId: active.id,

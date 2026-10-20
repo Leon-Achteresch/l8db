@@ -1,6 +1,12 @@
-import type { DetailedColumnInfo } from "@/lib/db";
+import type { CatalogObject, CatalogObjectType, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
+import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
+import { columnDefinitionSql, columnTypeSql } from "@/lib/migration-script/sql";
+import { OBJECT_TYPE_META } from "@/lib/schema-compare/types";
 
 export const SCHEMA_SNAPSHOT_VERSION = 1;
+export const CATALOG_SNAPSHOT_VERSION = 2;
+const CATALOG_KINDS = new Set<string>(["oracle", "postgres", "mysql", "mssql", "sqlite"]);
+export const SNAPSHOT_FILE_FILTERS = [{ name: "Snapshot", extensions: ["json"] }];
 
 export interface SnapshotColumn {
   name: string;
@@ -110,7 +116,31 @@ export function buildSnapshot(
   };
 }
 
-export function serializeSnapshot(snapshot: SchemaSnapshot): string {
+export interface CatalogSnapshot {
+  version: number;
+  kind: DatabaseKind;
+  connection_name: string;
+  database: string | null;
+  schema: string;
+  created_at: string;
+  types: CatalogObjectType[];
+  objects: CatalogObject[];
+}
+
+export function buildCatalogSnapshot(
+  scope: Pick<CatalogSnapshot, "kind" | "connection_name" | "database" | "schema" | "types">,
+  objects: CatalogObject[],
+  createdAt: Date = new Date(),
+): CatalogSnapshot {
+  return {
+    version: CATALOG_SNAPSHOT_VERSION,
+    ...scope,
+    created_at: createdAt.toISOString(),
+    objects,
+  };
+}
+
+export function serializeSnapshot(snapshot: SchemaSnapshot | CatalogSnapshot): string {
   return `${JSON.stringify(snapshot, null, 2)}\n`;
 }
 
@@ -159,6 +189,109 @@ export function parseSnapshot(text: string): SchemaSnapshot {
     }
   }
   return candidate as SchemaSnapshot;
+}
+
+function isCatalogObject(value: unknown): value is CatalogObject {
+  if (!value || typeof value !== "object") return false;
+  const object = value as Partial<CatalogObject>;
+  return (
+    typeof object.object_type === "string" &&
+    Object.hasOwn(OBJECT_TYPE_META, object.object_type) &&
+    typeof object.name === "string" &&
+    typeof object.ddl === "string" &&
+    (object.parent === null || typeof object.parent === "string") &&
+    Boolean(object.attributes) &&
+    typeof object.attributes === "object" &&
+    Object.values(object.attributes as object).every((item) => typeof item === "string") &&
+    (object.depends_on == null ||
+      (Array.isArray(object.depends_on) &&
+        object.depends_on.every((item) => typeof item === "string")))
+  );
+}
+
+function legacyCatalog(snapshot: SchemaSnapshot): CatalogSnapshot {
+  const kind = snapshot.scope.kind as DatabaseKind;
+  const style = identifierStyleForKind(kind);
+  const objects: CatalogObject[] = [];
+  for (const table of snapshot.tables) {
+    const columns: CatalogObject[] = table.columns.map((column) => ({
+      object_type: "column",
+      name: column.name,
+      parent: table.name,
+      ddl: columnDefinitionSql(column, style),
+      attributes: {
+        type: columnTypeSql(column),
+        nullable: column.is_nullable ? "YES" : "NO",
+        ...(column.column_default === null ? {} : { default: column.column_default }),
+      },
+    }));
+    const name = `${quoteIdentifier(snapshot.scope.schema, style)}.${quoteIdentifier(table.name, style)}`;
+    objects.push(
+      {
+        object_type: "table",
+        name: table.name,
+        parent: null,
+        ddl: `CREATE TABLE ${name} (\n  ${columns.map((column) => column.ddl).join(",\n  ")}\n)`,
+        attributes: {},
+      },
+      ...columns,
+    );
+  }
+  return {
+    version: CATALOG_SNAPSHOT_VERSION,
+    kind,
+    connection_name: snapshot.scope.connection_name,
+    database: snapshot.scope.database,
+    schema: snapshot.scope.schema,
+    created_at: snapshot.captured_at,
+    types: ["table"],
+    objects,
+  };
+}
+
+export function parseCatalogSnapshot(text: string): CatalogSnapshot {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error("Snapshot-Datei ist kein gültiges JSON.");
+  }
+  const candidate = (raw ?? {}) as Partial<CatalogSnapshot> & Partial<SchemaSnapshot>;
+  if (candidate.version === SCHEMA_SNAPSHOT_VERSION) {
+    const legacy = parseSnapshot(text);
+    if (!CATALOG_KINDS.has(legacy.scope.kind))
+      throw new Error(`Snapshots für ${legacy.scope.kind} werden nicht unterstützt.`);
+    return legacyCatalog(legacy);
+  }
+  if (candidate.version !== CATALOG_SNAPSHOT_VERSION)
+    throw new Error(
+      `Snapshot-Version ${String(candidate.version)} wird nicht unterstützt (erwartet ${CATALOG_SNAPSHOT_VERSION}).`,
+    );
+  if (typeof candidate.kind !== "string" || !CATALOG_KINDS.has(candidate.kind))
+    throw new Error(`Snapshots für ${String(candidate.kind)} werden nicht unterstützt.`);
+  if (
+    typeof candidate.schema !== "string" ||
+    !candidate.schema ||
+    typeof candidate.created_at !== "string"
+  )
+    throw new Error("Snapshot-Datei ist unvollständig (Schema oder Zeitstempel fehlt).");
+  if (
+    !Array.isArray(candidate.types) ||
+    !candidate.types.every((type) => Object.hasOwn(OBJECT_TYPE_META, type))
+  )
+    throw new Error("Snapshot-Datei enthält eine ungültige Liste der Objekttypen.");
+  if (!Array.isArray(candidate.objects) || !candidate.objects.every(isCatalogObject))
+    throw new Error("Snapshot-Datei enthält ein ungültiges Objekt.");
+  return {
+    version: CATALOG_SNAPSHOT_VERSION,
+    kind: candidate.kind,
+    connection_name: String(candidate.connection_name ?? ""),
+    database: typeof candidate.database === "string" ? candidate.database : null,
+    schema: candidate.schema,
+    created_at: candidate.created_at,
+    types: candidate.types,
+    objects: candidate.objects,
+  };
 }
 
 function qualified(table: SnapshotTable): string {
