@@ -10,6 +10,8 @@ import {
   resolveSymbol,
   type Suggestion,
   type SymbolTarget,
+  scopeAt,
+  statementBounds,
   suggestCompletions,
   tokenAt,
 } from "@/lib/sql-intellisense";
@@ -31,30 +33,25 @@ const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionIte
 
 const MAX_SUGGESTIONS = 300;
 
-function textBefore(model: monaco.editor.ITextModel, position: monaco.Position) {
-  const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
-  let startLineNumber = position.lineNumber;
-  while (
-    startLineNumber > 1 &&
-    !model
-      .getLineContent(startLineNumber - 1)
-      .trimEnd()
-      .endsWith(";")
-  )
-    startLineNumber -= 1;
-  const text = model.getValueInRange({
-    startLineNumber,
-    startColumn: 1,
-    endLineNumber: position.lineNumber,
-    endColumn: position.column,
-  });
-  return { line, text };
+function statementAt(model: monaco.editor.ITextModel, position: monaco.Position) {
+  const source = model.getValue();
+  const offset = model.getOffsetAt(position);
+  const dialect = ctx.registry.dialect;
+  const bounds = statementBounds(source, offset, dialect);
+  const statement = source.slice(bounds.start, bounds.end);
+  const local = offset - bounds.start;
+  return {
+    source,
+    text: statement.slice(0, local),
+    scope: scopeAt(statement, local, dialect),
+  };
 }
 
 export function symbolAt(model: monaco.editor.ITextModel, position: monaco.Position) {
   const token = tokenAt(model.getLineContent(position.lineNumber), position.column);
   if (!token) return null;
-  const target = resolveSymbol(ctx.registry, token, model.getValue());
+  const { source, scope } = statementAt(model, position);
+  const target = resolveSymbol(ctx.registry, token, source, scope);
   if (!target) return null;
   const range = new monaco.Range(
     position.lineNumber,
@@ -70,7 +67,7 @@ for (const language of ["sql", "plsql"]) {
     triggerCharacters: ["."],
     async provideCompletionItems(model, position) {
       if (!attached.has(model)) return { suggestions: [] };
-      const { line, text } = textBefore(model, position);
+      const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
       const word = model.getWordUntilPosition(position);
       const wordRange: monaco.IRange = {
         startLineNumber: position.lineNumber,
@@ -84,9 +81,13 @@ for (const language of ["sql", "plsql"]) {
         endColumn: position.column,
       };
       const pkg = packageForQualifier(ctx.registry, line);
-      const items = pkg
-        ? memberSuggestions(await packageMembers(pkg.schema, pkg.name))
-        : suggestCompletions(ctx.registry, text, line, useSnippetsStore.getState().snippets);
+      let items: Suggestion[];
+      if (pkg) items = memberSuggestions(await packageMembers(pkg.schema, pkg.name));
+      else {
+        const { text, scope } = statementAt(model, position);
+        const snippets = useSnippetsStore.getState().snippets;
+        items = suggestCompletions(ctx.registry, text, line, snippets, scope);
+      }
       const typed = pkg ? "" : word.word;
       const matches = limitMatches(items, typed, MAX_SUGGESTIONS);
       return {
