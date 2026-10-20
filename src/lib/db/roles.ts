@@ -1,4 +1,4 @@
-import { invoke } from "./core";
+import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 import type {
   AlterRoleOptions,
@@ -89,6 +89,7 @@ export async function listForeignKeys(
   schema: string,
   table: string,
   database?: string,
+  options?: QueryExecutionOptions,
 ): Promise<ForeignKeyInfo[]> {
   return invoke("list_foreign_keys", {
     kind,
@@ -96,6 +97,7 @@ export async function listForeignKeys(
     database,
     schema,
     table,
+    options,
   });
 }
 

@@ -180,11 +180,13 @@ test("foreign keys load once per table per cache period with bounded concurrency
     tables,
     new AbortController().signal,
     fetch,
+    () => undefined,
   );
   const coldMs = performance.now() - first;
   const coldRequests = requests.length;
   const cached = await measureScenario(async () => {
-    await loadForeignKeys(client, "perf", null, tables, new AbortController().signal, fetch);
+    const signal = new AbortController().signal;
+    await loadForeignKeys(client, "perf", null, tables, signal, fetch, () => undefined);
   }, 15);
   await reportScenario("sql-intellisense-foreign-keys", {
     tables: tables.length,
@@ -202,23 +204,75 @@ test("foreign keys load once per table per cache period with bounded concurrency
   client.clear();
 });
 
-test("closing the completion popup cancels queued foreign key requests", async () => {
+test("closing the completion popup cancels foreign key requests and frees the queue", async () => {
   const { registry, byTable } = fixture();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const requests: string[] = [];
-  const fetch = async (_schema: string, name: string) => {
+  const cancelled: string[] = [];
+  const pending = new Map<string, () => void>();
+  let active = 0;
+  let maxConcurrency = 0;
+  const fetch = (_schema: string, name: string, jobId: string) => {
     requests.push(name);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    return byTable.get(name) ?? [];
+    active++;
+    maxConcurrency = Math.max(maxConcurrency, active);
+    return new Promise<ForeignKeyInfo[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        active--;
+        resolve(byTable.get(name) ?? []);
+      }, 5_000);
+      pending.set(jobId, () => {
+        clearTimeout(timer);
+        active--;
+        reject(new Error("Abfrage abgebrochen"));
+      });
+    });
   };
-  const tables = registry.tables.slice(0, 8);
+  const cancel = (jobId: string) => {
+    cancelled.push(jobId);
+    pending.get(jobId)?.();
+  };
   const controller = new AbortController();
-  const pending = loadForeignKeys(client, "perf", null, tables, controller.signal, fetch);
+  const aborted = loadForeignKeys(
+    client,
+    "perf",
+    null,
+    registry.tables.slice(0, 8),
+    controller.signal,
+    fetch,
+    cancel,
+  );
   await new Promise((resolve) => setTimeout(resolve, 1));
   controller.abort();
-  await expect(pending).rejects.toThrow();
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(requests.length).toBeLessThanOrEqual(2);
+  await expect(aborted).rejects.toThrow();
+  const dispatched = requests.length;
+  const fastFetch = async (_schema: string, name: string) => {
+    requests.push(name);
+    return byTable.get(name) ?? [];
+  };
+  const next = performance.now();
+  const loaded = await loadForeignKeys(
+    client,
+    "perf",
+    null,
+    registry.tables.slice(20, 22),
+    new AbortController().signal,
+    fastFetch,
+    cancel,
+  );
+  const nextMs = performance.now() - next;
+  await reportScenario("sql-intellisense-foreign-keys-cancel", {
+    dispatchedBeforeAbort: dispatched,
+    cancelled: cancelled.length,
+    maxConcurrency,
+    nextRequestMs: nextMs,
+  });
+  expect(dispatched).toBeLessThanOrEqual(2);
+  expect(cancelled).toHaveLength(dispatched);
+  expect(active).toBe(0);
+  expect(loaded.length).toBeGreaterThan(0);
+  expect(nextMs).toBeLessThan(1_000);
+  expect(requests.length).toBe(dispatched + 2);
   expect(client.isFetching()).toBe(0);
   client.clear();
 });

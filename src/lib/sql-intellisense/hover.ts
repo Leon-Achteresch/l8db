@@ -1,7 +1,7 @@
 import type { DatabaseKind, FunctionInfo } from "@/lib/db";
 import type { PlsqlMember } from "@/lib/plsql";
 import { quoteIdent as quoteFor } from "@/lib/sql-filter/quote";
-import { SQL_KEYWORDS } from "./keywords";
+import { isReserved } from "./reserved";
 import { eq } from "./resolve";
 import type { SqlObjectRegistry, SymbolTarget } from "./types";
 
@@ -71,7 +71,6 @@ export function hoverMarkdown(
   return lines.join("\n");
 }
 
-const RESERVED = new Set(SQL_KEYWORDS.flatMap((keyword) => keyword.split(" ")));
 const FOLD_LOWER = /^[a-z_][a-z0-9_$]*$/;
 const PRESERVE_CASE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const UNQUOTED: Partial<Record<DatabaseKind, RegExp>> = {
@@ -92,5 +91,5 @@ const UNQUOTED_DEFAULT = /^(?:[a-z_][a-z0-9_$#]*|[A-Z_][A-Z0-9_$#]*)$/;
 
 export function quoteIdent(name: string, dialect?: DatabaseKind): string {
   const pattern = (dialect && UNQUOTED[dialect]) || UNQUOTED_DEFAULT;
-  return pattern.test(name) && !RESERVED.has(name.toUpperCase()) ? name : quoteFor(name, dialect);
+  return pattern.test(name) && !isReserved(name, dialect) ? name : quoteFor(name, dialect);
 }

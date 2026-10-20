@@ -465,3 +465,71 @@ describe("join suggestions", () => {
     expect(others.every((item) => item.sortText > first.sortText)).toBe(true);
   });
 });
+
+describe("review fixes", () => {
+  const events: SqlObjectRegistry = {
+    ...registry,
+    dialect: "clickhouse",
+    schemas: ["default"],
+    tables: [{ schema: "default", name: "events" }],
+    columns: [{ schema: "default", table: "events", name: "ts", data_type: "DateTime" }],
+  };
+  it("accepts keyword-like table and CTE names", () => {
+    expect(labels(complete("SELECT e.| FROM default.events e", events))).toEqual(["ts"]);
+    expect(labels(complete("SELECT * FROM events FINAL WHERE events.|", events))).toEqual(["ts"]);
+    expect(
+      labels(complete("WITH final AS (SELECT id FROM orders) SELECT f.| FROM final f")),
+    ).toEqual(["id"]);
+  });
+  it("quotes per-dialect reserved words only", () => {
+    expect(quoteIdent("desc", "postgres")).toBe('"desc"');
+    expect(quoteIdent("user", "postgres")).toBe('"user"');
+    expect(quoteIdent("key", "postgres")).toBe("key");
+    expect(quoteIdent("date", "postgres")).toBe("date");
+    expect(quoteIdent("key", "mysql")).toBe("`key`");
+    expect(quoteIdent("COMMENT", "oracle")).toBe('"COMMENT"');
+    expect(quoteIdent("user", "mssql")).toBe("[user]");
+    expect(quoteIdent("column", "sqlite")).toBe('"column"');
+  });
+  it("skips index hints and locking clauses instead of reading them as aliases", () => {
+    const mysql = { ...registry, dialect: "mysql" as const };
+    const sql =
+      "SELECT * FROM orders o USE INDEX (idx_a) JOIN employees e FORCE KEY FOR JOIN (i) ON |";
+    const scope = scopeAt(sql, sql.length, "mysql");
+    expect(scope.tables.map((ref) => ref.alias)).toEqual(["o", "e"]);
+    expect(labels(complete("SELECT o.| FROM orders o IGNORE INDEX (idx_a)", mysql))).toEqual([
+      "id",
+    ]);
+    const locked = "SELECT * FROM orders o WHERE o.id = 1 FOR UPDATE OF o NOWAIT";
+    expect(scopeAt(locked, 20).tables.map((ref) => ref.name)).toEqual(["orders"]);
+  });
+  it("keeps derived tables in extra parentheses isolated", () => {
+    const sql = "SELECT * FROM employees e JOIN ((SELECT * FROM orders WHERE |)) x ON 1 = 1";
+    const scope = scopeAt(sql.replace("|", ""), sql.indexOf("|"));
+    expect(scope.tables.map((ref) => ref.name)).toEqual(["orders"]);
+  });
+  it("treats LEFT( and RIGHT( as functions inside join conditions", () => {
+    expect(
+      joins("SELECT * FROM customers c JOIN orders o ON LEFT(o.code, 2) = RIGHT(c.code, 2) AND |"),
+    ).toEqual(["o.customer_id = c.id"]);
+  });
+  it("does not derive column names from keywords", () => {
+    expect(
+      labels(
+        complete(
+          "WITH x AS (SELECT CASE WHEN id > 1 THEN 1 END, NULL, TRUE, id, 2 AS hash FROM orders) SELECT x.| FROM x",
+        ),
+      ),
+    ).toEqual(["id", "hash"]);
+  });
+  it("reads backslash escapes in MySQL strings", () => {
+    const mysql = { ...registry, dialect: "mysql" as const };
+    expect(labels(complete("SELECT 'O\\'Brien' AS n, o.| FROM orders o", mysql))).toEqual(["id"]);
+  });
+  it("prefers aliases over packages with the same name", () => {
+    const sql = "SELECT pkg_emp. FROM orders pkg_emp";
+    const scope = scopeAt(sql, 15);
+    expect(packageForQualifier(registry, "SELECT pkg_emp.", scope)).toBeNull();
+    expect(packageForQualifier(registry, "SELECT pkg_emp.")?.name).toBe("PKG_EMP");
+  });
+});
