@@ -11,6 +11,8 @@ export {
   resolveSymbol,
   tokenAt,
 } from "./resolve";
+export type { CteDef, QueryScope, TableRef } from "./scope";
+export { findRef, scopeAt, statementBounds } from "./scope";
 export type {
   SnippetLike,
   SqlObjectRegistry,

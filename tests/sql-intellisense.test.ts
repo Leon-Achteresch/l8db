@@ -8,6 +8,8 @@ import {
   resolveSymbol,
   rowsMarkdownTable,
   type SqlObjectRegistry,
+  scopeAt,
+  statementBounds,
   suggestCompletions,
   tokenAt,
 } from "@/lib/sql-intellisense";
@@ -243,5 +245,106 @@ describe("quoteIdent", () => {
     const oracle = suggestCompletions({ ...registry, dialect: "oracle" }, "SELECT ", "SELECT ");
     expect(oracle.find((s) => s.label === "EMP_ID")?.insertText).toBe("EMP_ID");
     expect(oracle.find((s) => s.label === "id")?.insertText).toBe('"id"');
+  });
+});
+
+function complete(marked: string, target: SqlObjectRegistry = registry) {
+  const offset = marked.indexOf("|");
+  const sql = marked.replace("|", "");
+  const bounds = statementBounds(sql, offset, target.dialect);
+  const statement = sql.slice(bounds.start, bounds.end);
+  const local = offset - bounds.start;
+  const before = statement.slice(0, local);
+  const line = before.slice(before.lastIndexOf("\n") + 1);
+  return suggestCompletions(target, before, line, [], scopeAt(statement, local, target.dialect));
+}
+
+const labels = (items: { label: string }[]) => items.map((item) => item.label);
+
+describe("query scope", () => {
+  it("offers CTE names as tables with their columns", () => {
+    const items = complete(
+      "WITH recent AS (SELECT o.id, count(*) cnt, sum(o.id) AS total, o.id + 1 FROM orders o)\nSELECT * FROM |",
+    );
+    expect(items[0]).toMatchObject({ label: "recent", kind: "table", detail: "CTE" });
+    expect(items[0].documentation).toBe("id, cnt, total");
+  });
+  it("completes declared and derived CTE columns after an alias", () => {
+    expect(
+      labels(
+        complete(
+          "WITH a(order_id, amount) AS (SELECT id, 1 FROM orders), b AS (SELECT name AS who FROM employees)\nSELECT x.| FROM a x JOIN b y ON 1 = 1",
+        ),
+      ),
+    ).toEqual(["order_id", "amount"]);
+    expect(
+      labels(
+        complete(
+          "WITH a(order_id, amount) AS (SELECT id, 1 FROM orders), b AS (SELECT name AS who FROM employees)\nSELECT y.| FROM a x JOIN b y ON 1 = 1",
+        ),
+      ),
+    ).toEqual(["who"]);
+  });
+  it("completes derived table columns", () => {
+    expect(labels(complete("SELECT x.| FROM (SELECT id AS order_id FROM orders) x"))).toEqual([
+      "order_id",
+    ]);
+  });
+  it("resolves aliases in the innermost query block first", () => {
+    const sql = "SELECT * FROM employees e WHERE EXISTS (SELECT 1 FROM orders e WHERE e.|)";
+    expect(labels(complete(sql))).toEqual(["id"]);
+    expect(labels(complete(sql.replace("e.|)", "e.id) AND e.|")))).toEqual(["EMP_ID", "NAME"]);
+  });
+  it("sees outer tables in correlated subqueries", () => {
+    expect(
+      labels(
+        complete(
+          "SELECT * FROM employees e WHERE EXISTS (SELECT 1 FROM orders o WHERE o.id = e.|)",
+        ),
+      ),
+    ).toEqual(["EMP_ID", "NAME"]);
+  });
+  it("isolates derived tables and CTE bodies from outer tables", () => {
+    const sql = "SELECT * FROM employees e JOIN (SELECT * FROM orders WHERE |) x ON 1 = 1";
+    const offset = sql.indexOf("|");
+    const scope = scopeAt(sql.replace("|", ""), offset);
+    expect(scope.tables.map((ref) => ref.name)).toEqual(["orders"]);
+    const cte = "WITH c AS (SELECT * FROM orders WHERE |) SELECT * FROM employees, c";
+    expect(scopeAt(cte.replace("|", ""), cte.indexOf("|")).tables.map((ref) => ref.name)).toEqual([
+      "orders",
+    ]);
+  });
+  it("finds the statement with the splitter instead of line endings", () => {
+    const sql = "SELECT 'a;\nb' AS x, e.| FROM employees e;\nSELECT 1 FROM orders o";
+    expect(labels(complete(sql))).toEqual(["EMP_ID", "NAME"]);
+    expect(labels(complete("SELECT 1 FROM employees e;\nSELECT e.| FROM orders e"))).toEqual([
+      "id",
+    ]);
+    expect(statementBounds("SELECT * FROM t WHERE   ", 24)).toEqual({ start: 0, end: 24 });
+    expect(statementBounds("SELECT 1;\n\nSELECT 2", 10)).toEqual({ start: 9, end: 11 });
+  });
+  it("reads backtick and bracket identifiers", () => {
+    const mysql = { ...registry, dialect: "mysql" as const };
+    expect(labels(complete("SELECT o.| FROM `orders` AS o", mysql))).toEqual(["id"]);
+    const mssql = { ...registry, dialect: "mssql" as const };
+    expect(labels(complete("SELECT o.| FROM [public].[orders] o", mssql))).toEqual(["id"]);
+  });
+  it("keeps schema completion while typing a qualified table", () => {
+    expect(labels(complete("SELECT * FROM e JOIN hr.|"))).toEqual([
+      "EMPLOYEES",
+      "EMP_V",
+      "PKG_EMP",
+      "PROC_A",
+    ]);
+  });
+  it("resolves hover targets through the scope", () => {
+    const sql =
+      "SELECT e.name FROM orders e WHERE e.id IN (SELECT 1 FROM employees e WHERE e.name = '')";
+    const offset = sql.lastIndexOf("e.name") + 3;
+    const token = tokenAt(sql, offset + 1);
+    expect(token && resolveSymbol(registry, token, sql, scopeAt(sql, offset))).toMatchObject({
+      name: "EMPLOYEES",
+      column: "NAME",
+    });
   });
 });
