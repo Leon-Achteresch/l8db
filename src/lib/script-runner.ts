@@ -6,6 +6,7 @@ import {
   confirmSqlExecution,
   executeInTransaction,
   executeQuery,
+  listTableColumnsDetailed,
   type QueryResult,
 } from "@/lib/db";
 import { sqlSearchPath } from "@/lib/db/sql-include";
@@ -24,6 +25,7 @@ import {
   applySqlPlusSetting,
   askMissingVariables,
   createSubstitutionState,
+  oracleObjectName,
   parseSqlPlusCommand,
   type SubstitutionSession,
   substitute,
@@ -155,14 +157,59 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       error = message;
       if (stopOnError || (txId && !oracle)) halted = true;
     };
-    const runCommand = async (text: string): Promise<ScriptRunStatus> => {
+    const runCommand = async (text: string, entry: ScriptRunEntry): Promise<ScriptRunStatus> => {
       const command = parseSqlPlusCommand(text);
-      if (command.type === "whenever") stopOnError = command.exit;
+      if (command.type === "describe") {
+        const result = await describe(command.name);
+        entry.result = result;
+        entry.rowCount = result.rows.length;
+        lastResult = result;
+      } else if (command.type === "whenever") stopOnError = command.exit;
       else if (command.type === "exit") halted = true;
       else if (command.type === "serveroutput") await switchServerOutput(command.enabled);
       else if (command.type !== "prompt" && !applySqlPlusSetting(command, session.state))
         return "ignored";
       return "success";
+    };
+    const describe = async (name: string): Promise<QueryResult> => {
+      const started = performance.now();
+      const target = oracleObjectName(name);
+      if (!target)
+        throw new Error(`DESC unterstützt Tabellen und Views der Form [schema.]name: ${name}`);
+      const options = { confirmed: true, track: false, session: jobId };
+      const schema =
+        target.schema ??
+        String(
+          Object.values(
+            (
+              await executeQuery(
+                connection.kind,
+                url,
+                "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual",
+                database ?? undefined,
+                options,
+              )
+            ).rows[0] ?? {},
+          )[0] ?? "",
+        );
+      const columns = await listTableColumnsDetailed(
+        connection.kind,
+        url,
+        schema,
+        target.object,
+        database ?? undefined,
+      );
+      if (!columns.length) throw new Error(`Tabelle oder View nicht gefunden: ${name}`);
+      return {
+        columns: ["Name", "Null?", "Typ"],
+        rows: columns.map((column) => ({
+          Name: column.name,
+          "Null?": column.is_nullable ? "" : "NOT NULL",
+          Typ: column.data_type,
+        })),
+        rows_affected: null,
+        execution_time_ms: Math.round(performance.now() - started),
+      };
     };
     const switchServerOutput = async (enabled: boolean) => {
       if (!supports(connection, "server_output")) return;
@@ -186,7 +233,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         continue;
       }
       if (item.kind === "command") {
-        entry.status = await runCommand(item.text).catch((failure: unknown) => {
+        entry.status = await runCommand(item.text, entry).catch((failure: unknown) => {
           entry.error = failure instanceof Error ? failure.message : String(failure);
           fail(entry.error);
           return "error" as const;

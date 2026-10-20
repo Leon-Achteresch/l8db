@@ -148,6 +148,13 @@
       ]
     },
     {
+      "name": "oracle DESC is a SQL*Plus command, ORDER BY … DESC stays SQL",
+      "dialect": "oracle",
+      "sql": "DESC emp\nSELECT * FROM emp ORDER BY 1\nDESC;\ndescribe hr.\"Dept\"",
+      "statements": ["SELECT * FROM emp ORDER BY 1\nDESC"],
+      "commands": ["DESC emp", "describe hr.\"Dept\""]
+    },
+    {
       "name": "mssql GO separates batches and procedure bodies stay together",
       "dialect": "mssql",
       "sql": "CREATE OR ALTER PROCEDURE dbo.p AS\nBEGIN\n  SET NOCOUNT ON;\n  SELECT 'C:\\';\nEND;\nGO\nSELECT 1;\ngo\nSELECT [a;b], #tmp.x FROM #tmp;\nGO -- done\nSELECT 2",
