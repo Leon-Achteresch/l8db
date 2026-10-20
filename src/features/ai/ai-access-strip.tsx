@@ -146,7 +146,9 @@ export function AiAccessStrip({
               </DropdownMenuItem>
             ))}
             <p className="px-2 pt-1 pb-1.5 text-[10px] leading-relaxed text-muted-foreground">
-              Verbindungsschutz, Produktionssperren und Maskierung gelten immer.
+              {production
+                ? "Produktion: Schreibrechte erst nach doppelter Bestätigung, nur für dieses Gespräch."
+                : "Verbindungsschutz, Produktionssperren und Maskierung gelten immer."}
             </p>
           </DropdownMenuContent>
         </DropdownMenu>

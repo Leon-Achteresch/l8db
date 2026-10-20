@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { aiConnections } from "@/lib/ai/context";
 import { compactResult } from "@/lib/ai/editor/compact";
 import { applyModelEdit } from "@/lib/ai/editor/edit-format";
 import { compactHistory, type HistoryMessage } from "@/lib/ai/editor/history";
@@ -11,6 +12,7 @@ import {
   schemaContextStats,
   schemaOverview,
 } from "@/lib/ai/editor/schema-context";
+import type { SavedConnection } from "@/lib/connections";
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from "@/lib/db/types";
 import { reportScenario } from "../scripts/performance-report";
 
@@ -318,4 +320,28 @@ test("applyModelEdit classifies 200 KB answers without blocks in linear time", a
     expect(timing.medianMs).toBeLessThan(15);
     expect(timing.p95Ms).toBeLessThan(40);
   }
+});
+
+test("aiConnections scopes 50 mentions out of 5000 connections with one production grant", async () => {
+  const connections: SavedConnection[] = Array.from({ length: 5000 }, (_, index) => ({
+    id: `c${index}`,
+    name: `c${index}`,
+    kind: "postgres",
+    connectionString: `postgres://user@localhost/db${index}`,
+    sslMode: "prefer",
+    environment: index % 2 ? "production" : "development",
+  }));
+  const mentioned = Array.from({ length: 50 }, (_, index) => `c${index * 97}`);
+  let result = aiConnections(connections, "c1", mentioned, {}, {}, "c1");
+  const timing = measure(() => {
+    result = aiConnections(connections, "c1", mentioned, {}, {}, "c1");
+  });
+  await reportScenario("ai-chat-production-grant", {
+    connections: connections.length,
+    selected: result.length,
+    granted: result.filter((entry) => entry.productionWrites).length,
+    scope: timing,
+  });
+  expect(result.filter((entry) => entry.productionWrites).map((entry) => entry.id)).toEqual(["c1"]);
+  expect(timing.p95Ms).toBeLessThan(20);
 });
