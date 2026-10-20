@@ -70,7 +70,16 @@ function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
 }
 
-export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResult {
+export interface SqlSplitOptions {
+  blankLines?: boolean;
+}
+
+export function splitSqlStatements(
+  sql: string,
+  dialect?: string,
+  options: SqlSplitOptions = {},
+): SqlSplitResult {
+  const blankLines = options.blankLines === true;
   if (dialect === "redis") {
     let offset = 0;
     const statements: SqlStatement[] = [];
@@ -498,6 +507,18 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       continue;
     }
 
+    if (
+      ch === "\n" &&
+      blankLines &&
+      hasCode &&
+      !plsql &&
+      !batch &&
+      blockDepth === 0 &&
+      delimiter === ";"
+    ) {
+      const lineStart = sql.lastIndexOf("\n", index - 1) + 1;
+      if (!sql.slice(lineStart, index).trim()) flush(lineStart);
+    }
     if (!isSpace(ch)) hasCode = true;
     index += 1;
   }
@@ -514,8 +535,9 @@ export function statementAtOffset(
   sql: string,
   offset: number,
   dialect?: string,
+  options?: SqlSplitOptions,
 ): SqlStatement | null {
-  const split = splitSqlStatements(sql, dialect);
+  const split = splitSqlStatements(sql, dialect, options);
   if (split.unterminated) return null;
   const statements = split.commands.length
     ? [...split.statements, ...split.commands].sort((a, b) => a.start - b.start)

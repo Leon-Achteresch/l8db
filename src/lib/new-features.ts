@@ -165,6 +165,7 @@ export const NEW_FEATURES = {
   "query.transaction.changes": "0.7.0",
   "query.transaction.database-diff": "0.14.0",
   "settings.editor.parameter-hints": "0.14.0",
+  "settings.editor.blank-line-terminator": NEXT_FEATURE_VERSION,
   "compare.scroll-sync": "0.7.0",
   "compare.draft-toggle": "0.11.0",
   "split.pane-tables": "0.8.0",

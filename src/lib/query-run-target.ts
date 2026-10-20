@@ -1,4 +1,4 @@
-import { sqlToRun, statementAtOffset } from "@/lib/sql-statements";
+import { type SqlSplitOptions, sqlToRun, statementAtOffset } from "@/lib/sql-statements";
 
 export type QueryRunTarget = "selection-or-all" | "selection-or-statement" | "all";
 
@@ -8,9 +8,10 @@ export function resolveQueryRunTarget(
   offset: number,
   target: QueryRunTarget,
   dialect?: string,
+  options?: SqlSplitOptions,
 ): string {
   if (target === "all") return sql;
   if (target === "selection-or-all") return sqlToRun(sql, selection);
   if (selection.trim()) return selection;
-  return statementAtOffset(sql, offset, dialect)?.text ?? "";
+  return statementAtOffset(sql, offset, dialect, options)?.text ?? "";
 }

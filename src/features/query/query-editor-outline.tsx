@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSettingsStore } from "@/lib/settings";
 import { splitSqlStatements, summarizeStatement } from "@/lib/sql-statements";
 
 interface QueryEditorOutlineProps {
@@ -16,7 +17,11 @@ interface QueryEditorOutlineProps {
 }
 
 export function QueryEditorOutline({ sql, dialect, onJump }: QueryEditorOutlineProps) {
-  const statements = useMemo(() => splitSqlStatements(sql, dialect).statements, [sql, dialect]);
+  const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
+  const statements = useMemo(
+    () => splitSqlStatements(sql, dialect, { blankLines }).statements,
+    [sql, dialect, blankLines],
+  );
 
   return (
     <DropdownMenu>

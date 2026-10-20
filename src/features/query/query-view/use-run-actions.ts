@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { validateSql } from "@/lib/db";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
+import { useSettingsStore } from "@/lib/settings";
 import { locateText } from "@/lib/sql-diagnostics";
 import { statementAtOffset } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -48,6 +49,7 @@ export function useRunActions({
     setError,
     setErrorSource,
   } = exec;
+  const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
 
   const handleRun = useCallback(() => {
     setEditorFocus(false);
@@ -59,6 +61,7 @@ export function useRunActions({
       cursorOffset,
       workspace.runTarget,
       connection?.kind,
+      { blankLines },
     );
     if (!target.trim()) {
       setStatementError("Kein ausführbares Statement an der Cursorposition.");
@@ -71,6 +74,7 @@ export function useRunActions({
     selectedSql,
     cursorOffset,
     workspace.runTarget,
+    blankLines,
     connection?.kind,
     setEditorFocus,
     setStatementRange,
@@ -89,7 +93,7 @@ export function useRunActions({
       handleRunSelection();
       return;
     }
-    const statement = statementAtOffset(sql, cursorOffset, connection?.kind);
+    const statement = statementAtOffset(sql, cursorOffset, connection?.kind, { blankLines });
     if (!statement) {
       setStatementRange(null);
       setStatementError(
@@ -107,6 +111,7 @@ export function useRunActions({
     selectedSql,
     sql,
     connection?.kind,
+    blankLines,
     setStatementRange,
     setStatementError,
   ]);
@@ -118,6 +123,7 @@ export function useRunActions({
       cursorOffset,
       workspace.runTarget,
       connection?.kind,
+      { blankLines },
     );
     if (!connection || !target.trim() || isChecking) return;
     setIsChecking(true);
@@ -146,6 +152,7 @@ export function useRunActions({
     selectedSql,
     cursorOffset,
     workspace.runTarget,
+    blankLines,
     database,
     isChecking,
     setIsChecking,
@@ -163,6 +170,7 @@ export function useRunActions({
       cursorOffset,
       workspace.runTarget,
       connection?.kind,
+      { blankLines },
     );
     if (!connection || !target.trim() || exec.runningRef.current) return;
     setStatementError(null);
@@ -173,6 +181,7 @@ export function useRunActions({
     selectedSql,
     cursorOffset,
     workspace.runTarget,
+    blankLines,
     exec.runningRef,
     previewSql,
     runSql,
