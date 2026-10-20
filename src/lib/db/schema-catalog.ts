@@ -26,6 +26,7 @@ export interface CatalogObject {
   parent: string | null;
   ddl: string;
   attributes: Record<string, string>;
+  depends_on?: string[] | null;
 }
 
 export async function loadSchemaCatalog(

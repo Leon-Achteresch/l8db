@@ -12,7 +12,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { activeTypes, connectionFor, useSchemaCompareStore } from "@/lib/schema-compare/store";
+import { activeTypes, sideKind, useSchemaCompareStore } from "@/lib/schema-compare/store";
 import {
   compareTypesFor,
   DEFAULT_COMPARE_OPTIONS,
@@ -49,7 +49,7 @@ const keep = (event: Event) => event.preventDefault();
 export function SchemaCompareOptionsMenu() {
   const state = useSchemaCompareStore();
   const set = useSchemaCompareStore.setState;
-  const kind = connectionFor(state.source)?.kind ?? connectionFor(state.target)?.kind;
+  const kind = sideKind(state.source) ?? sideKind(state.target);
   const supported = compareTypesFor(kind);
   const selected = activeTypes(state, kind);
 
