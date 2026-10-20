@@ -440,7 +440,7 @@ pub fn create_transaction_state() -> TransactionState {
 impl TransactionManager {
     pub async fn supports_cancel(&self, tx_id: &str) -> bool {
         match self.entry(tx_id).await.as_deref() {
-            Ok(TransactionEntry::Pg(..)) => true,
+            Ok(TransactionEntry::Pg(..) | TransactionEntry::Oracle(..)) => true,
             Ok(TransactionEntry::Generic(g)) => g.kind == DatabaseKind::Sqlite,
             _ => false,
         }
@@ -598,7 +598,8 @@ impl TransactionManager {
             TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             TransactionEntry::Oracle(c) => {
                 let sql = sql.to_string();
-                return ora(c.clone(), move |c| oracle::tx_execute(c, &sql)).await;
+                let call = oracle::CallGuard::current("transaction");
+                return ora(c.clone(), move |c| call.run(c, |c| oracle::tx_execute(c, &sql))).await;
             }
             TransactionEntry::Generic(g) => return g.execute(sql).await,
             TransactionEntry::Dynamo(d) => return d.execute(sql).await,

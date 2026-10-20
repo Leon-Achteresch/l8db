@@ -115,6 +115,15 @@ export function parseCompileMessage(message: string): { code: string | null; tex
   return match ? { code: match[1], text: match[2] } : { code: null, text: message };
 }
 
+export function isFollowUpError(message: string): boolean {
+  return /(tem|ent) ignored\s*$/i.test(message);
+}
+
+function withoutFollowUps(errors: CompileErrorInfo[]): CompileErrorInfo[] {
+  const primary = errors.filter((error) => !isFollowUpError(error.message));
+  return primary.length > 0 ? primary : errors;
+}
+
 export interface InvalidProblem {
   item: InvalidObjectInfo;
   errors: CompileErrorInfo[];
@@ -141,7 +150,7 @@ export function buildInvalidProblems(
   let matched = 0;
   const problems = items.map((item) => {
     const key = invalidKey(item.schema, item.name, item.object_type);
-    const list = byKey.get(key) ?? [];
+    const list = withoutFollowUps(byKey.get(key) ?? []);
     if (!used.has(key)) {
       used.add(key);
       matched += list.length;
@@ -151,7 +160,7 @@ export function buildInvalidProblems(
   const others: CompileErrorInfo[] = [];
   for (const [key, list] of byKey) {
     if (used.has(key)) continue;
-    for (const error of list) others.push(error);
+    for (const error of withoutFollowUps(list)) others.push(error);
   }
   return { problems, others, matched };
 }

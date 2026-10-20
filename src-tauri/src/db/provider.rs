@@ -319,6 +319,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                query_cancel: true,
                 query_stats: true,
                 object_grants: true,
                 proxy_user: true,

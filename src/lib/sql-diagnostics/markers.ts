@@ -49,6 +49,16 @@ function offsetOf(text: string, anchor: number, line: number, column: number): n
   return Math.min(start + Math.max(column, 1) - 1, lineEnd(text, start));
 }
 
+const CREATE_HEAD =
+  /^create(?:\s+or\s+replace)?(?:\s+(?:editionable|noneditionable|editioning))?(?:\s+(?:no\s+)?force)?\s+/i;
+
+function sourceAnchor(text: string, anchor: number): number {
+  const head = CREATE_HEAD.exec(text.slice(anchor));
+  if (!head) return anchor;
+  const keyword = anchor + head[0].length;
+  return text.slice(anchor, keyword).includes("\n") ? lineStart(text, keyword) : anchor;
+}
+
 const LINE_COLUMN = /(?:line|zeile)\s+(\d+),\s*(?:column|spalte)\s+(\d+):?/gi;
 
 export function sqlErrorMarkers(
@@ -58,11 +68,12 @@ export function sqlErrorMarkers(
   kind?: DatabaseKind | null,
 ): SqlMarker[] {
   const anchor = kind === "oracle" ? skipTrivia(text) : 0;
+  const source = kind === "oracle" ? sourceAnchor(text, anchor) : 0;
   const summary = message.split("\n")[0];
   const markers: SqlMarker[] = [];
   const matches = [...message.matchAll(LINE_COLUMN)];
   matches.forEach((match, i) => {
-    const offset = offsetOf(text, anchor, Number(match[1]), Number(match[2]));
+    const offset = offsetOf(text, source, Number(match[1]), Number(match[2]));
     if (offset === null) return;
     const detail = message
       .slice((match.index ?? 0) + match[0].length, matches[i + 1]?.index ?? message.length)

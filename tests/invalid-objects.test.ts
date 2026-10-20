@@ -10,6 +10,7 @@ import {
   INVALID_GROUP_TYPES,
   invalidTypeLabel,
   invalidTypeLabels,
+  isFollowUpError,
   isFunctionInvalid,
   isPackageInvalid,
   isPackagePartInvalid,
@@ -102,6 +103,31 @@ test("buildInvalidProblems attaches compile errors to their object case-insensit
   expect(problems.find((p) => p.item.object_type === "PACKAGE BODY")?.errors).toEqual([errors[0]]);
   expect(problems.find((p) => p.item.object_type === "PACKAGE")?.errors).toEqual([errors[1]]);
   expect(problems.find((p) => p.item.name === "V_EMP")?.errors).toEqual([]);
+});
+
+test("buildInvalidProblems hides follow-up errors behind the primary error", () => {
+  const error = (line: number, message: string) => ({
+    schema: "HR",
+    name: "PKG",
+    object_type: "PACKAGE BODY",
+    line,
+    position: 1,
+    message,
+  });
+  const primary = error(3, "PLS-00201: identifier 'X' must be declared");
+  const followUp = error(3, "PL/SQL: Statement ignored");
+  const { problems, matched } = buildInvalidProblems(sample, [primary, followUp]);
+  expect(problems.find((p) => p.item.object_type === "PACKAGE BODY")?.errors).toEqual([primary]);
+  expect(matched).toBe(1);
+  const onlyFollowUp = buildInvalidProblems(sample, [followUp]);
+  expect(
+    onlyFollowUp.problems.find(
+      (p) => p.item.name === "PKG" && p.item.object_type === "PACKAGE BODY",
+    )?.errors,
+  ).toEqual([followUp]);
+  expect(isFollowUpError("PL/SQL: SQL Statement ignored")).toBe(true);
+  expect(isFollowUpError("PL/SQL: Item ignored")).toBe(true);
+  expect(isFollowUpError("PLS-00103: Encountered the symbol")).toBe(false);
 });
 
 test("filterInvalidProblems combines type label and schema-qualified search", () => {
