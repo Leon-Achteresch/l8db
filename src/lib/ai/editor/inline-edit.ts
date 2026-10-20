@@ -471,7 +471,8 @@ export class InlineEditSession {
     while (suffix > 0 && current[current.length - suffix - 1] !== "\n") suffix--;
     const insert = next.slice(prefix, next.length - suffix);
     const model = this.model();
-    const at = this.regionOffsets().start + prefix;
+    const start = this.regionOffsets().start;
+    const at = start + prefix;
     let shown = current.length - prefix - suffix;
     let typed = 0;
     const began = performance.now();
@@ -521,7 +522,7 @@ export class InlineEditSession {
     this.region.set([
       {
         range: monaco.Range.fromPositions(
-          model.getPositionAt(this.regionOffsets().start),
+          model.getPositionAt(start),
           model.getPositionAt(model.getValueLength()),
         ),
         options: {
