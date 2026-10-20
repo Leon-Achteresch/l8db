@@ -294,11 +294,15 @@ fn map_sql_err(e: oracle::Error, sql: &str) -> String {
     format!("{message}\nPosition: {}", sql[..offset].chars().count() + 1)
 }
 
-fn check_compile(c: &Connection, sql: &str) -> Result<(), String> {
-    if c.last_warning().and_then(|w| w.oci_code()) != Some(24344) {
-        return Ok(());
+fn check_compile(c: &Connection, sql: &str, warnings: bool) -> Result<Option<String>, String> {
+    let flagged = c.last_warning().and_then(|w| w.oci_code()) == Some(24344);
+    if !flagged && !warnings {
+        return Ok(None);
     }
     let Some((owner, name, kind)) = sql::created_object(sql) else {
+        if !flagged {
+            return Ok(None);
+        }
         return Err("Oracle: ORA-24344: Objekt wurde mit Kompilierfehlern erstellt".to_string());
     };
     let owner = owner.map_or_else(
@@ -323,7 +327,15 @@ fn check_compile(c: &Connection, sql: &str) -> Result<(), String> {
         })
         .collect();
     if !rows.iter().any(|m| m.error) {
-        return Ok(());
+        return Ok((!rows.is_empty()).then(|| {
+            format!(
+                "{kind} {name} wurde mit Warnungen kompiliert\n{}",
+                compile_details(&rows)
+            )
+        }));
+    }
+    if !flagged {
+        return Ok(None);
     }
     let details = compile_details(&rows);
     Err(format!(
@@ -1073,19 +1085,15 @@ pub fn parse_oracle_url(value: &str) -> Result<OracleUrl, String> {
             _ => {}
         }
     }
-    if [
-        Some(host.as_str()),
-        sid.as_deref(),
-        wallet.as_deref(),
-        Some(service.as_str()),
-    ]
-    .into_iter()
-    .flatten()
-    .any(|v| v.contains(['(', ')', '=']))
+    if [Some(host.as_str()), sid.as_deref(), Some(service.as_str())]
+        .into_iter()
+        .flatten()
+        .any(|v| v.contains(['(', ')', '=']))
     {
-        return Err(
-            "Host, Service, SID und Wallet-Pfad dürfen keine Klammern oder = enthalten".to_string(),
-        );
+        return Err("Host, Service und SID dürfen keine Klammern oder = enthalten".to_string());
+    }
+    if wallet.as_deref().is_some_and(|w| w.contains('"')) {
+        return Err("Der Wallet-Pfad darf keine Anführungszeichen enthalten".to_string());
     }
     if !from_override && (sid.is_some() || tcps) {
         let data = match &sid {
@@ -1098,7 +1106,7 @@ pub fn parse_oracle_url(value: &str) -> Result<OracleUrl, String> {
             if tcps { "TCPS" } else { "TCP" },
             url.port().unwrap_or(1521),
             wallet
-                .map(|w| format!("(SECURITY=(MY_WALLET_DIRECTORY={w}))"))
+                .map(|w| format!("(SECURITY=(MY_WALLET_DIRECTORY=\"{w}\"))"))
                 .unwrap_or_default()
         );
     }
@@ -1237,11 +1245,23 @@ impl OracleAdapter {
     }
 
     async fn info(&self) -> Result<Arc<info::ServerInfo>, String> {
-        self.pool_state
+        let cache = self
+            .pool_state
             .shared(&format!("{}#info", self.key), || async {
-                self.run_meta(|c| info::probe(c)).await
+                Ok(tokio::sync::Mutex::new(
+                    None::<(Instant, Arc<info::ServerInfo>)>,
+                ))
             })
-            .await
+            .await?;
+        let mut cached = cache.lock().await;
+        if let Some((at, info)) = cached.as_ref() {
+            if at.elapsed() < PROBE_TTL {
+                return Ok(info.clone());
+            }
+        }
+        let info = Arc::new(self.run_meta(|c| info::probe(c)).await?);
+        *cached = Some((Instant::now(), info.clone()));
+        Ok(info)
     }
 
     async fn active_users(&self, owner: &str, name: &str) -> Option<String> {
@@ -1297,9 +1317,12 @@ impl OracleAdapter {
         let init = self.session_init().await?;
         let login = self.login();
         let call = CallGuard::current("editor").killing(login.clone());
-        tokio::task::spawn_blocking(move || {
+        let limit = call
+            .deadline
+            .map(|deadline| deadline + call.grace * 2 + Duration::from_secs(5));
+        let task = tokio::task::spawn_blocking(move || {
             let mut guard = call.lock(&conn)?;
-            if guard.1.elapsed() > IDLE_CHECK_AFTER && guard.0.ping().is_err() {
+            if guard.1.elapsed() > IDLE_CHECK_AFTER && !alive(&guard.0) {
                 guard.0 = init.reopen(&login)?;
                 init.notice(RECONNECTED);
             }
@@ -1311,7 +1334,7 @@ impl OracleAdapter {
             }
             let result = call.run(&guard.0, f);
             let result = match result {
-                Err(error) if guard.0.ping().is_err() => match init.reopen(&login) {
+                Err(error) if !alive(&guard.0) => match init.reopen(&login) {
                     Ok(fresh) => {
                         guard.0 = fresh;
                         Err(format!("{error}\n{RECONNECTED}"))
@@ -1322,9 +1345,17 @@ impl OracleAdapter {
             };
             guard.1 = Instant::now();
             result
-        })
-        .await
-        .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
+        });
+        let joined = match limit {
+            Some(limit) => tokio::time::timeout(limit, task).await.map_err(|_| {
+                format!(
+                    "Oracle antwortet nach {} Sekunden nicht mehr; die Verbindung ist vermutlich unterbrochen.",
+                    limit.as_secs()
+                )
+            })?,
+            None => task.await,
+        };
+        joined.map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
     async fn run_pooled<T, F>(&self, suffix: &str, capacity: usize, f: F) -> Result<T, String>
@@ -1339,12 +1370,8 @@ impl OracleAdapter {
             })
             .await?;
         let call = CallGuard::current(suffix).killing(self.login());
-        pool.run(
-            || self.open_raw(),
-            |c| c.ping().is_ok(),
-            move |c| call.run(c, f),
-        )
-        .await
+        pool.run(|| self.open_raw(), alive, move |c| call.run(c, f))
+            .await
     }
 
     async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
@@ -1523,21 +1550,27 @@ impl OracleAdapter {
     }
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
-        self.run(move |c| {
-            let count = super::sql_log::logged(
-                "execute",
-                &sql,
-                |n: &u64| Some(*n),
-                || {
-                    c.execute(&sql, &[])
-                        .map_err(|e| map_sql_err(e, &sql))
-                        .and_then(|st| st.row_count().map_err(map_err))
-                },
-            )?;
-            check_compile(c, &sql)?;
-            Ok(count)
-        })
-        .await
+        let init = self.session_init().await?;
+        let warnings = PLSQL_WARNINGS.load(Ordering::Relaxed) || init.has("SET PLSQL_WARNINGS");
+        let (count, warning) = self
+            .run(move |c| {
+                let count = super::sql_log::logged(
+                    "execute",
+                    &sql,
+                    |n: &u64| Some(*n),
+                    || {
+                        c.execute(&sql, &[])
+                            .map_err(|e| map_sql_err(e, &sql))
+                            .and_then(|st| st.row_count().map_err(map_err))
+                    },
+                )?;
+                Ok((count, check_compile(c, &sql, warnings)?))
+            })
+            .await?;
+        if let Some(warning) = warning {
+            init.notice(&warning);
+        }
+        Ok(count)
     }
 
     fn objects_source(&self, schema: Option<&str>) -> String {
@@ -1555,6 +1588,26 @@ impl OracleAdapter {
             _ => "(SELECT USER AS owner, object_name, object_type, status FROM user_objects WHERE object_name NOT LIKE 'BIN$%')"
                 .to_string(),
         }
+    }
+
+    async fn object_states(&self, sql: String) -> Result<Vec<InvalidObjectInfo>, String> {
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| {
+                let owner = s(r, 0);
+                let name = s(r, 1);
+                let object_type = s(r, 2);
+                InvalidObjectInfo {
+                    oid: format!("{owner}\u{1f}{name}\u{1f}{object_type}"),
+                    schema: owner,
+                    name,
+                    object_type,
+                    status: s(r, 3),
+                }
+            })
+            .collect())
     }
 
     fn owner_filter(schema: Option<&str>, column: &str) -> String {
@@ -1713,8 +1766,10 @@ impl OracleAdapter {
         let deps = self
             .rows(format!(
                 "SELECT * FROM (SELECT d.owner, d.name, d.type FROM all_dependencies d \
+                 JOIN all_objects o ON o.owner = d.owner AND o.object_name = d.name AND o.object_type = d.type \
                  WHERE d.referenced_owner = {} AND d.referenced_name = {} \
                    AND d.type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY') \
+                   AND o.status <> 'VALID' \
                    AND NOT (d.owner = d.referenced_owner AND d.name = d.referenced_name AND d.type = d.referenced_type) \
                  ORDER BY d.owner, d.type, d.name) WHERE ROWNUM <= 30",
                 lit(owner),
@@ -1829,7 +1884,14 @@ fn implicit_results(
     stmt.execute(&[]).map_err(|e| map_sql_err(e, sql))?;
     let mut first = None;
     let mut extra = 0;
-    while let Some(mut cursor) = stmt.implicit_result().map_err(map_err)? {
+    while let Some(mut cursor) = stmt
+        .implicit_result()
+        .or_else(|e| match e.to_string().contains("DPI-1050") {
+            true => Ok(None),
+            false => Err(e),
+        })
+        .map_err(map_err)?
+    {
         if first.is_some() {
             extra += 1;
             continue;
@@ -2201,8 +2263,13 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
-        let lines = self.run(|c| read_output(c)).await?;
-        let notices = self.session_init().await?.take_notices();
+        let init = self.session_init().await?;
+        let lines = if init.has("DBMS_OUTPUT") {
+            self.run(|c| read_output(c)).await?
+        } else {
+            Vec::new()
+        };
+        let notices = init.take_notices();
         Ok(notices
             .into_iter()
             .map(|message| ServerMessage {
@@ -2543,12 +2610,13 @@ impl DatabaseAdapter for OracleAdapter {
                 "SELECT h.owner, h.name, h.type, NVL(o.status, 'UNKNOWN'), h.lvl, h.via \
                  FROM (SELECT owner, name, type, LEVEL lvl, PRIOR owner || '.' || PRIOR name via, ROWNUM ord \
                        FROM all_dependencies \
+                       WHERE ROWNUM <= {MAX_DEPENDENCY_ROWS} \
                        START WITH referenced_owner = {0} AND referenced_name = {1} \
                        CONNECT BY NOCYCLE PRIOR owner = referenced_owner AND PRIOR name = referenced_name \
                          AND PRIOR type = referenced_type AND (owner <> PRIOR owner OR name <> PRIOR name) \
                          AND LEVEL <= {MAX_DEPENDENCY_DEPTH}) h \
                  LEFT JOIN all_objects o ON o.owner = h.owner AND o.object_name = h.name AND o.object_type = h.type \
-                 WHERE h.ord <= {MAX_DEPENDENCY_ROWS} ORDER BY h.ord",
+                 ORDER BY h.ord",
                 lit(schema),
                 lit(name)
             ))
@@ -2556,11 +2624,22 @@ impl DatabaseAdapter for OracleAdapter {
             .map_err(|e| {
                 format!("ALL_DEPENDENCIES ist nicht lesbar (fehlende Leserechte?): {e}")
             })?;
+        let mut nearest = std::collections::HashMap::new();
+        for r in &deps {
+            let level = i(r, 4);
+            nearest
+                .entry((s(r, 0), s(r, 1), s(r, 2)))
+                .and_modify(|best: &mut i64| *best = (*best).min(level))
+                .or_insert(level);
+        }
         let mut seen = std::collections::HashSet::new();
         let mut out: Vec<DependencyInfo> = deps
             .iter()
             .filter(|r| !(s(r, 0) == schema && s(r, 1) == name))
-            .filter(|r| seen.insert((s(r, 0), s(r, 1), s(r, 2))))
+            .filter(|r| {
+                let key = (s(r, 0), s(r, 1), s(r, 2));
+                nearest.get(&key) == Some(&i(r, 4)) && seen.insert(key)
+            })
             .map(|r| {
                 let level = i(r, 4);
                 DependencyInfo {
@@ -2702,62 +2781,50 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
-        let result = self.compile_one(oid, object_type).await?;
+        let mut result = self.compile_one(oid, object_type).await?;
         if result.status != "VALID" {
             return Ok(result);
         }
         let parts: Vec<&str> = oid.split('\u{1f}').collect();
         let error_type = parts.get(2).map(|t| t.to_uppercase()).unwrap_or_default();
+        let mut messages: Vec<String> = result.message.take().into_iter().collect();
         if error_type == "PACKAGE" {
-            if let Some(body) = self.compile_body(parts[0], parts[1]).await? {
+            if let Some(mut body) = self.compile_body(parts[0], parts[1]).await? {
+                messages.extend(body.message.take());
                 if body.status != "VALID" {
+                    body.message = Some(messages.join("\n"));
                     return Ok(body);
                 }
             }
         }
-        if !matches!(error_type.as_str(), "FUNCTION" | "PROCEDURE" | "PACKAGE") {
-            return Ok(result);
+        if matches!(error_type.as_str(), "FUNCTION" | "PROCEDURE" | "PACKAGE") {
+            messages.extend(self.caller_impact(parts[0], parts[1]).await?);
         }
-        let messages = self.caller_impact(parts[0], parts[1]).await?;
-        if messages.is_empty() {
-            return Ok(result);
-        }
-        Ok(CompileResult {
-            status: "VALID".to_string(),
-            message: Some(messages.join("\n")),
-            line: None,
-            position: None,
-        })
+        result.message = (!messages.is_empty()).then(|| messages.join("\n"));
+        Ok(result)
     }
 
     async fn list_invalid_objects(
         &self,
         schema: Option<&str>,
     ) -> Result<Vec<InvalidObjectInfo>, String> {
-        let sql = format!(
-            "SELECT owner, object_name, object_type, status FROM (SELECT owner, object_name, object_type, status FROM {} WHERE status = 'INVALID' AND object_type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY','TRIGGER','VIEW','MATERIALIZED VIEW','TYPE','TYPE BODY','SYNONYM') \
-             UNION ALL SELECT p.owner, p.name, p.type, 'DEBUG' FROM all_plsql_object_settings p JOIN all_objects o ON o.owner = p.owner AND o.object_name = p.name AND o.object_type = p.type \
-             WHERE {} AND o.status = 'VALID' AND p.name NOT LIKE 'BIN$%' AND (p.plsql_debug = 'TRUE' OR p.plsql_optimize_level < 2)) ORDER BY object_type, object_name",
-            self.objects_source(schema),
+        self.object_states(format!(
+            "SELECT owner, object_name, object_type, status FROM {} WHERE status = 'INVALID' AND object_type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY','TRIGGER','VIEW','MATERIALIZED VIEW','TYPE','TYPE BODY','SYNONYM') ORDER BY object_type, object_name",
+            self.objects_source(schema)
+        ))
+        .await
+    }
+
+    async fn list_debug_compiled(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        self.object_states(format!(
+            "SELECT p.owner, p.name, p.type, 'DEBUG' FROM all_plsql_object_settings p JOIN all_objects o ON o.owner = p.owner AND o.object_name = p.name AND o.object_type = p.type \
+             WHERE {} AND o.status = 'VALID' AND p.name NOT LIKE 'BIN$%' AND (p.plsql_debug = 'TRUE' OR p.plsql_optimize_level < 2) ORDER BY p.type, p.name",
             Self::owner_filter(schema, "p.owner")
-        );
-        Ok(self
-            .rows(sql)
-            .await?
-            .iter()
-            .map(|r| {
-                let owner = s(r, 0);
-                let name = s(r, 1);
-                let object_type = s(r, 2);
-                InvalidObjectInfo {
-                    oid: format!("{owner}\u{1f}{name}\u{1f}{object_type}"),
-                    schema: owner,
-                    name,
-                    object_type: object_type.clone(),
-                    status: s(r, 3),
-                }
-            })
-            .collect())
+        ))
+        .await
     }
 
     async fn list_compile_errors(
@@ -3225,7 +3292,12 @@ impl DatabaseAdapter for OracleAdapter {
             return Err("Kein SQL für EXPLAIN angegeben.".to_string());
         }
         if !analyze {
-            return self.run(move |c| plan::explain(c, &statement)).await;
+            let cursor_cache = self.info().await.is_ok_and(|info| {
+                info.at_least(12, 1) && info.reads("V$SQL") && info.reads("V$SQL_PLAN")
+            });
+            return self
+                .run(move |c| plan::explain(c, &statement, cursor_cache))
+                .await;
         }
         let mut conn = self.open_raw().await?;
         tokio::task::spawn_blocking(move || {
@@ -3249,6 +3321,7 @@ impl DatabaseAdapter for OracleAdapter {
             let mut stmt = c
                 .statement(&sql)
                 .fetch_array_size(MAX_FETCH_ARRAY as u32)
+                .lob_locator()
                 .build()
                 .map_err(|e| map_sql_err(e, &sql))?;
             let rows = stmt.query(&[]).map_err(|e| map_sql_err(e, &sql))?;
@@ -3605,11 +3678,20 @@ impl CallGuard {
             return;
         }
         if let Some(login) = &self.kill {
-            if kill_session(login, &self.action).unwrap_or(false) {
+            let done = || finished.try_recv() != Err(std::sync::mpsc::TryRecvError::Empty);
+            if kill_session(login, &self.action, done).unwrap_or(false) {
                 stop.store(KILLED, Ordering::Release);
             }
         }
     }
+}
+
+fn alive(conn: &Connection) -> bool {
+    let prior = conn.call_timeout().ok().flatten();
+    let _ = conn.set_call_timeout(Some(super::execution::connection_duration()));
+    let ok = conn.ping().is_ok();
+    let _ = conn.set_call_timeout(prior);
+    ok
 }
 
 const SQLPLUS_ONLY: &str = "Nur SQL*Plus-Befehle gefunden (z. B. @datei, DESC, SET). Der Editor führt sie im Skript aus; an Oracle wurde nichts gesendet.";
@@ -3634,6 +3716,8 @@ fn compile_rank(object_type: &str) -> u8 {
 const RECONNECTED: &str = "Die Oracle-Sitzung wurde neu aufgebaut. Paketvariablen, temporäre Tabellen und offene Cursor der alten Sitzung sind verloren; Sitzungseinstellungen wurden wiederhergestellt.";
 
 const MAX_SESSION_SETTINGS: usize = 64;
+
+const PROBE_TTL: Duration = Duration::from_secs(300);
 
 #[derive(Default)]
 pub(crate) struct SessionInit {
@@ -3675,6 +3759,12 @@ impl SessionInit {
         Ok(conn)
     }
 
+    fn has(&self, key: &str) -> bool {
+        self.settings
+            .lock()
+            .is_ok_and(|settings| settings.iter().any(|(k, _)| k == key))
+    }
+
     fn notice(&self, message: &str) {
         if let Ok(mut notices) = self.notices.lock() {
             if notices.last().map(String::as_str) != Some(message) {
@@ -3711,11 +3801,14 @@ const CANCELLED_BY_USER: u8 = 1;
 const TIMED_OUT: u8 = 2;
 const KILLED: u8 = 3;
 
-fn kill_session(login: &Login, action: &str) -> Result<bool, String> {
+fn kill_session(login: &Login, action: &str, done: impl Fn() -> bool) -> Result<bool, String> {
     let conn = connect_sync(&login.user, &login.password, &login.connect_string)?;
+    if done() {
+        return Ok(false);
+    }
     let mut stmt = conn
         .statement(
-            "DECLARE n PLS_INTEGER := 0; BEGIN FOR s IN (SELECT sid, serial#, inst_id FROM gv$session WHERE module = :1 AND action = :2) LOOP EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || s.sid || ',' || s.serial# || ',@' || s.inst_id || ''' IMMEDIATE'; n := n + 1; END LOOP; :3 := n; END;",
+            "DECLARE n PLS_INTEGER := 0; BEGIN FOR s IN (SELECT sid, serial#, inst_id FROM gv$session WHERE module = :1 AND action = :2 AND status = 'ACTIVE' AND username = SYS_CONTEXT('USERENV', 'SESSION_USER') AND machine = SYS_CONTEXT('USERENV', 'HOST')) LOOP EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || s.sid || ',' || s.serial# || ',@' || s.inst_id || ''' IMMEDIATE'; n := n + 1; END LOOP; :3 := n; END;",
         )
         .build()
         .map_err(map_err)?;
@@ -5453,6 +5546,12 @@ pub struct TxTableChanges {
 }
 
 pub fn tx_table_changes(c: &Connection) -> Result<Vec<TxTableChanges>, String> {
+    let open = fetch(c, "SELECT DBMS_TRANSACTION.LOCAL_TRANSACTION_ID FROM dual")
+        .ok()
+        .map(|rows| rows.first().is_some_and(|row| !s(row, 0).is_empty()));
+    if open == Some(false) {
+        return Ok(vec![]);
+    }
     let tables = fetch(
         c,
         "SELECT DISTINCT o.owner, o.object_name FROM v$locked_object l \
@@ -5461,7 +5560,14 @@ pub fn tx_table_changes(c: &Connection) -> Result<Vec<TxTableChanges>, String> {
          ORDER BY 1, 2",
     )
     .map_err(|e| {
-        format!("Geänderte Tabellen nicht ermittelbar (Leserecht auf V$LOCKED_OBJECT nötig): {e}")
+        let state = if open == Some(true) {
+            "Die Transaktion hat offene Änderungen, aber die geänderten"
+        } else {
+            "Geänderte"
+        };
+        format!(
+            "{state} Tabellen sind nicht ermittelbar (Leserecht auf V$LOCKED_OBJECT nötig): {e}"
+        )
     })?;
     let as_of = fetch(c, "SELECT TO_CHAR(current_scn) FROM v$database")
         .or_else(|_| {
@@ -5626,7 +5732,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 .and_then(|st| st.row_count().map_err(map_err))
         },
     )?;
-    check_compile(c, statement)?;
+    check_compile(c, statement, false)?;
     Ok(QueryResult {
         columns: vec![],
         rows: vec![],
@@ -5870,8 +5976,16 @@ mod batch_tests {
             "oracle://app:pw@db.local:2484/SALES?protocol=tcps&wallet=/etc/wallet",
         )
         .unwrap();
-        assert_eq!(tcps.connect_string, "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=db.local)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=SALES))(SECURITY=(MY_WALLET_DIRECTORY=/etc/wallet)))");
+        assert_eq!(tcps.connect_string, "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=db.local)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=SALES))(SECURITY=(MY_WALLET_DIRECTORY=\"/etc/wallet\")))");
         assert_eq!(tcps.tcp, Some(("db.local".to_string(), 2484)));
+        let windows = parse_oracle_url(
+            "oracle://app:pw@db.local:2484/SALES?protocol=tcps&wallet=C%3A%5CProgram%20Files%20(x86)%5Cwallet",
+        )
+        .unwrap();
+        assert!(windows
+            .connect_string
+            .ends_with(r#"(MY_WALLET_DIRECTORY="C:\Program Files (x86)\wallet")))"#));
+        assert!(parse_oracle_url("oracle://a:b@h/S?protocol=tcps&wallet=a%22)(HOST=evil").is_err());
         assert!(parse_oracle_url("oracle://a:b@h/S?privilege=root").is_err());
         assert!(parse_oracle_url("oracle://a:b@h/S?sid=X)(HOST=evil").is_err());
         assert_eq!(

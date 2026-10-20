@@ -100,18 +100,19 @@ export function useFunctionDefinitionQuery(oid: string) {
   });
 }
 
-export function useInvalidObjectsQuery() {
+export function useInvalidObjectsQuery(includeDebug = false) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
   return useQuery({
-    queryKey: ["invalid-objects", connection?.id, database, schema],
+    queryKey: ["invalid-objects", connection?.id, database, schema, includeDebug],
     queryFn: () =>
       listInvalidObjects(
         connection!.kind,
         effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
+        includeDebug,
       ),
     enabled: supports(connection, "compile_objects"),
     staleTime: 15_000,

@@ -17,11 +17,11 @@ use super::{
     AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
     CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest,
     CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
-    CreateTableRequest, DatabaseKind, DependencyInfo, DetailedColumnInfo,
-    ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
-    InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo, PrivilegeChange, ProxyUserInfo,
-    QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo,
-    SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
+    CreateTableRequest, DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
+    ObjectGrantInfo, PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo,
+    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
+    SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -1039,16 +1039,20 @@ pub async fn list_invalid_objects(
     connection_string: String,
     database: Option<String>,
     schema: Option<String>,
+    include_debug: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<InvalidObjectInfo>, String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .list_invalid_objects(schema.as_deref())
-    .await
+    )?;
+    let mut objects = adapter.list_invalid_objects(schema.as_deref()).await?;
+    if include_debug == Some(true) {
+        objects.extend(adapter.list_debug_compiled(schema.as_deref()).await?);
+    }
+    Ok(objects)
 }
 
 #[tauri::command]

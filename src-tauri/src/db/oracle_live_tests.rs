@@ -595,6 +595,21 @@ async fn live_compile_pairs_spec_and_body_and_honours_warnings() {
         .await
         .unwrap();
     db.execute_query("CREATE OR REPLACE PACKAGE BODY l8db_pair AS PROCEDURE run IS x NUMBER; BEGIN IF 1 = 2 THEN x := 1; END IF; END; END;").await.unwrap();
+    db.execute_query("ALTER SESSION SET PLSQL_WARNINGS = 'ENABLE:ALL'")
+        .await
+        .unwrap();
+    db.take_server_output().await.unwrap();
+    db.execute_query("CREATE OR REPLACE PROCEDURE l8db_warned IS x NUMBER; BEGIN IF 1 = 2 THEN x := 1; END IF; END;").await.unwrap();
+    let notes = db.take_server_output().await.unwrap();
+    assert!(
+        notes.iter().any(|n| n.level == "WARNING"
+            && n.message.contains("mit Warnungen")
+            && n.message.contains("PLW-")),
+        "{notes:?}"
+    );
+    db.execute_query("DROP PROCEDURE l8db_warned")
+        .await
+        .unwrap();
     db.execute_query("ALTER SESSION SET PLSQL_WARNINGS = 'DISABLE:ALL'")
         .await
         .unwrap();
@@ -603,7 +618,12 @@ async fn live_compile_pairs_spec_and_body_and_honours_warnings() {
     let warned = db.compile_object(&spec, "package_spec").await;
     let body_warnings = db.list_compile_errors(None).await.unwrap();
     super::oracle::PLSQL_WARNINGS.store(false, std::sync::atomic::Ordering::Relaxed);
-    assert_eq!(warned.unwrap().status, "VALID");
+    let warned = warned.unwrap();
+    assert_eq!(warned.status, "VALID");
+    assert!(
+        warned.message.as_deref().unwrap_or("").contains("PLW-"),
+        "{warned:?}"
+    );
     assert!(
         body_warnings.iter().any(|e| e.name == "L8DB_PAIR"
             && e.object_type == "PACKAGE BODY"
@@ -702,15 +722,18 @@ async fn live_dependencies_debug_check_and_implicit_results() {
     db.execute_query("ALTER PROCEDURE l8db_dbg_proc COMPILE DEBUG")
         .await
         .unwrap();
-    let listed = db.list_invalid_objects(None).await.unwrap();
+    let invalid = db.list_invalid_objects(None).await.unwrap();
     assert!(
-        listed
-            .iter()
-            .any(|o| o.name == "L8DB_DBG_PROC" && o.status == "DEBUG"),
-        "{listed:?}"
+        !invalid.iter().any(|o| o.name == "L8DB_DBG_PROC"),
+        "{invalid:?}"
     );
-    db.compile_invalid_objects(None).await.unwrap();
-    let after = db.list_invalid_objects(None).await.unwrap();
+    let listed = db.list_debug_compiled(None).await.unwrap();
+    let debug = listed
+        .iter()
+        .find(|o| o.name == "L8DB_DBG_PROC" && o.status == "DEBUG")
+        .unwrap_or_else(|| panic!("{listed:?}"));
+    db.compile_object(&debug.oid, "procedure").await.unwrap();
+    let after = db.list_debug_compiled(None).await.unwrap();
     assert!(
         !after.iter().any(|o| o.name == "L8DB_DBG_PROC"),
         "{after:?}"
@@ -821,7 +844,7 @@ async fn live_data_compare_xplan_and_bulk_compile() {
         "U",
     );
     let _ = db.execute_query("DROP TABLE l8db_cmp_t").await;
-    db.execute_query("CREATE TABLE l8db_cmp_t AS SELECT level AS id, 'row ' || level AS name, SYSDATE AS at FROM dual CONNECT BY level <= 50000")
+    db.execute_query("CREATE TABLE l8db_cmp_t AS SELECT level AS id, 'row ' || level AS name, SYSDATE AS at, CASE WHEN level <= 3 THEN TO_CLOB(RPAD('x', 4000, 'x')) || 'yz' END AS doc, CASE WHEN level = 1 THEN TO_BLOB(HEXTORAW('00FF')) END AS bin FROM dual CONNECT BY level <= 50000")
         .await
         .unwrap();
     let request = |max_rows| super::snapshot::SnapshotRequest {
@@ -839,10 +862,19 @@ async fn live_data_compare_xplan_and_bulk_compile() {
     let elapsed = started.elapsed();
     assert_eq!(
         snapshot.columns,
-        vec!["ID".to_string(), "NAME".into(), "AT".into()]
+        vec![
+            "ID".to_string(),
+            "NAME".into(),
+            "AT".into(),
+            "DOC".into(),
+            "BIN".into()
+        ]
     );
     assert_eq!(snapshot.rows.len(), 50_000);
     assert_eq!(snapshot.rows[0]["NAME"], "row 1");
+    assert_eq!(snapshot.rows[2]["DOC"].as_str().map(str::len), Some(4002));
+    assert_eq!(snapshot.rows[0]["BIN"], "\\x00ff");
+    assert!(snapshot.rows[3]["DOC"].is_null());
     let limited = db.snapshot_rows(&request(10)).await.unwrap_err();
     assert!(limited.contains("Zeilenlimit"), "{limited}");
     eprintln!("oracle snapshot: 50k rows in {elapsed:?}");
@@ -909,4 +941,127 @@ async fn live_data_compare_xplan_and_bulk_compile() {
         .await
         .unwrap();
     db.execute_query("DROP TABLE l8db_cmp_t").await.unwrap();
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_caller_check_transaction_state_and_cursor_plan() {
+    let Some(db) = adapter("live-batch4") else {
+        return;
+    };
+    let owner = text(
+        &db.execute_query("SELECT USER AS u FROM dual")
+            .await
+            .unwrap(),
+        "U",
+    );
+    for sql in [
+        "CREATE OR REPLACE PROCEDURE l8db_callee(n NUMBER) AS BEGIN NULL; END;",
+        "CREATE OR REPLACE PROCEDURE l8db_caller_1 AS BEGIN l8db_callee(1); END;",
+        "CREATE OR REPLACE PROCEDURE l8db_caller_2 AS BEGIN l8db_callee(2); END;",
+    ] {
+        db.execute_query(sql).await.unwrap();
+    }
+    let oid = format!("{owner}\u{1f}L8DB_CALLEE\u{1f}PROCEDURE");
+    super::sql_log::sql_log_clear();
+    super::sql_log::sql_log_configure(true);
+    let unchanged = db.compile_object(&oid, "procedure").await.unwrap();
+    let unchanged_calls = super::sql_log::sql_log_entries(0).entries.len();
+    super::sql_log::sql_log_clear();
+    db.execute_query(
+        "CREATE OR REPLACE PROCEDURE l8db_callee(n NUMBER, m NUMBER) AS BEGIN NULL; END;",
+    )
+    .await
+    .unwrap();
+    let before = super::sql_log::sql_log_entries(0).entries.len();
+    let broken = db.compile_object(&oid, "procedure").await.unwrap();
+    let broken_calls = super::sql_log::sql_log_entries(0).entries.len() - before;
+    super::sql_log::sql_log_configure(false);
+    super::sql_log::sql_log_clear();
+    assert_eq!(unchanged.status, "VALID");
+    assert!(unchanged.message.is_none(), "{:?}", unchanged.message);
+    let message = broken.message.unwrap_or_default();
+    assert!(
+        message.contains("L8DB_CALLER_1") && message.contains("L8DB_CALLER_2"),
+        "{message}"
+    );
+    assert!(
+        unchanged_calls <= 4,
+        "valid callers are not recompiled: {unchanged_calls}"
+    );
+    eprintln!(
+        "caller check: unchanged {unchanged_calls} calls, 2 broken callers {broken_calls} calls"
+    );
+    for name in ["l8db_caller_1", "l8db_caller_2", "l8db_callee"] {
+        db.execute_query(&format!("DROP PROCEDURE {name}"))
+            .await
+            .unwrap();
+    }
+
+    let _ = db.execute_query("DROP TABLE l8db_txs").await;
+    db.execute_query("CREATE TABLE l8db_txs (id NUMBER PRIMARY KEY)")
+        .await
+        .unwrap();
+    let mut conn = db.open_connection().await.unwrap().into_inner().unwrap();
+    let (idle, changed, idle_ms) = tokio::task::spawn_blocking(move || {
+        super::oracle::tx_begin(&mut conn);
+        let mut samples = vec![];
+        let mut idle = None;
+        for _ in 0..20 {
+            let started = Instant::now();
+            idle = Some(super::oracle::tx_table_changes(&conn).map(|t| t.len()));
+            samples.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        super::oracle::tx_execute(&conn, "INSERT INTO l8db_txs VALUES (1)").unwrap();
+        let changed = super::oracle::tx_table_changes(&conn)
+            .map(|tables| tables.iter().any(|t| t.table == "L8DB_TXS"));
+        super::oracle::tx_finish(&mut conn, false).unwrap();
+        (idle.unwrap(), changed, percentile(&mut samples, 0.5))
+    })
+    .await
+    .unwrap();
+    assert_eq!(idle, Ok(0));
+    match &changed {
+        Ok(found) => assert!(found),
+        Err(error) => assert!(error.contains("offene Änderungen"), "{error}"),
+    }
+    eprintln!("transaction state: idle check median {idle_ms:.2} ms, open transaction {changed:?}");
+    db.execute_query("DROP TABLE l8db_txs").await.unwrap();
+
+    let plain = db
+        .explain_query("SELECT COUNT(*) FROM dual", false)
+        .await
+        .unwrap();
+    assert!(!plan_text(&plain).contains("Cursor-Cache"));
+    let Some(sys) = admin("live-batch4-admin") else {
+        return;
+    };
+    let sql = "SELECT /* l8db cursor plan */ COUNT(*) AS n FROM dual";
+    sys.execute_query(sql).await.unwrap();
+    let mut samples = vec![];
+    let mut cached = String::new();
+    for _ in 0..5 {
+        let started = Instant::now();
+        cached = plan_text(&sys.explain_query(sql, false).await.unwrap());
+        samples.push(started.elapsed().as_secs_f64() * 1000.0);
+    }
+    let fresh = plan_text(
+        &sys.explain_query("SELECT /* l8db never ran */ COUNT(*) AS n FROM dual", false)
+            .await
+            .unwrap(),
+    );
+    assert!(cached.contains("Cursor-Cache"), "{cached}");
+    assert_eq!(cached.matches("Plan hash value").count(), 2, "{cached}");
+    assert!(!fresh.contains("Cursor-Cache"), "{fresh}");
+    eprintln!(
+        "explain with cursor cache: median {:.1} ms",
+        percentile(&mut samples, 0.5)
+    );
+}
+
+fn plan_text(plan: &serde_json::Value) -> String {
+    plan.pointer("/0/Plan/Plan Text")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }

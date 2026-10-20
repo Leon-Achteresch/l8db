@@ -599,7 +599,10 @@ impl TransactionManager {
             TransactionEntry::Oracle(c) => {
                 let sql = sql.to_string();
                 let call = oracle::CallGuard::current("transaction");
-                return ora(c.clone(), move |c| call.run(c, |c| oracle::tx_execute(c, &sql))).await;
+                return ora(c.clone(), move |c| {
+                    call.run(c, |c| oracle::tx_execute(c, &sql))
+                })
+                .await;
             }
             TransactionEntry::Generic(g) => return g.execute(sql).await,
             TransactionEntry::Dynamo(d) => return d.execute(sql).await,

@@ -31,7 +31,7 @@ export function InvalidObjectsView() {
   const database = useActiveDatabase();
   const schema = useActiveSchema();
   const caps = useActiveCapabilities();
-  const invalidQuery = useInvalidObjectsQuery();
+  const invalidQuery = useInvalidObjectsQuery(true);
   const errorsQuery = useCompileErrorsQuery();
   const compileAll = useCompileInvalidObjectsMutation();
   const { compile } = useCompileObject();
@@ -205,7 +205,11 @@ export function InvalidObjectsView() {
           variant="outline"
           size="xs"
           onClick={() => void handleCompileAll()}
-          disabled={compileAll.isPending || compilingOid !== null || invalid.length === 0}
+          disabled={
+            compileAll.isPending ||
+            compilingOid !== null ||
+            invalid.every((item) => item.status === "DEBUG")
+          }
           title="Alle invaliden Objekte kompilieren"
         >
           <MorphIcon

@@ -187,8 +187,15 @@ export async function listInvalidObjects(
   connectionString: string,
   database?: string,
   schema?: string,
+  includeDebug?: boolean,
 ): Promise<InvalidObjectInfo[]> {
-  return invoke("list_invalid_objects", { kind, connectionString, database, schema });
+  return invoke("list_invalid_objects", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    includeDebug,
+  });
 }
 
 export async function listCompileErrors(
@@ -208,7 +215,6 @@ export async function compileInvalidObjects(
 ): Promise<InvalidCompileOutcome[]> {
   return invoke("compile_invalid_objects", { kind, connectionString, database, schema });
 }
-
 
 export async function listExtensions(
   kind: DatabaseKind,

@@ -6,9 +6,11 @@ import {
   XCircleIcon,
   XIcon,
 } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QueryResult } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped" | "ignored";
 
@@ -66,11 +68,15 @@ export function ScriptResultList({
 }: ScriptResultListProps) {
   const failed = entries.filter((entry) => entry.status === "error").length;
   const done = entries.filter((entry) => entry.status === "success").length;
+  const { ref, isNew } = useNewFeatureVisibility<HTMLSpanElement>("query.sqlplus-scripts");
 
   return (
     <div className="flex max-h-64 shrink-0 flex-col border-t bg-card/40">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs">
-        <span className="font-medium">Skriptausführung</span>
+        <span ref={ref} className="flex items-center gap-1 font-medium">
+          Skriptausführung
+          {isNew && <NewBadge />}
+        </span>
         <span className="text-muted-foreground">
           {done}/{entries.length} erfolgreich
           {failed > 0 ? ` · ${failed} fehlgeschlagen` : ""}

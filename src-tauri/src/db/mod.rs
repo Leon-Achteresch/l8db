@@ -52,8 +52,8 @@ pub mod schema_catalog;
 pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
-pub mod sql_log;
 mod snowflake;
+pub mod sql_log;
 pub(crate) mod sql_script;
 mod sqlite;
 mod sqlite_http;
@@ -626,6 +626,13 @@ pub trait DatabaseAdapter: Send + Sync {
     ) -> Result<Vec<InvalidObjectInfo>, String> {
         let _ = schema;
         Err(unsupported("Invalide Objekte"))
+    }
+    async fn list_debug_compiled(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        let _ = schema;
+        Ok(vec![])
     }
     async fn list_compile_errors(
         &self,

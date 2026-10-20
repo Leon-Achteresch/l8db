@@ -35,13 +35,15 @@ export interface DebugSnapshot {
   source: string;
   selectedFrame: number;
   watches: { name: string; value: string | null; error: string | null }[];
+  executableLines: number[];
 }
 
 export type DebugAction =
   | { type: "continue" | "step_into" | "step_over" | "step_out" }
   | { type: "select_frame"; frame: number }
   | { type: "watches"; names: string[] }
-  | { type: "breakpoints"; breakpoints: DebugBreakpoint[] };
+  | { type: "breakpoints"; breakpoints: DebugBreakpoint[] }
+  | { type: "set_value"; name: string; value: string };
 
 export function debugAvailability(context: DebugContext): Promise<DebugAvailability> {
   return invoke("debug_availability", { ...context });
