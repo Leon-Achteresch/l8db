@@ -10,6 +10,7 @@ import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
+import { type AskVariables, substitutionSession } from "@/lib/sql-statements/sqlplus";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
 import { getQueryTransaction } from "@/lib/transactions";
 
@@ -21,6 +22,8 @@ import type { QueryExecutionState } from "./use-query-execution-state";
 interface UseScriptRunParams {
   sql: string;
   filePath: string | null;
+  tabId: string;
+  askVariables: AskVariables;
   connection: QueryViewConnection;
   database: string | null;
   caps: QueryViewCapabilities;
@@ -33,6 +36,8 @@ interface UseScriptRunParams {
 export function useScriptRun({
   sql,
   filePath,
+  tabId,
+  askVariables,
   connection,
   database,
   caps,
@@ -115,6 +120,8 @@ export function useScriptRun({
           mode,
           stopOnError,
           filePath,
+          variables: substitutionSession(tabId),
+          askVariables,
           selectRowLimit: DEFAULT_SELECT_ROW_LIMIT,
           onJob: setActiveJobId,
           onProgress: (items) => setScriptEntries(shift(items)),
@@ -154,6 +161,8 @@ export function useScriptRun({
       database,
       sql,
       filePath,
+      tabId,
+      askVariables,
       collectOutput,
       runningRef,
       setIsRunning,

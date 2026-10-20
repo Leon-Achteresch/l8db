@@ -17,7 +17,16 @@ import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/
 import { readSqlText } from "@/lib/sql-file";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
-import { expandIncludes, scriptItems } from "@/lib/sql-statements/includes";
+import { expandIncludes, type ScriptItem, scriptItems } from "@/lib/sql-statements/includes";
+import {
+  type AskVariables,
+  applySqlPlusSetting,
+  askMissingVariables,
+  createSubstitutionState,
+  parseSqlPlusCommand,
+  type SubstitutionSession,
+  substitute,
+} from "@/lib/sql-statements/sqlplus";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
 import {
@@ -34,6 +43,8 @@ export interface ScriptRequest {
   stopOnError?: boolean;
   selectRowLimit?: number;
   filePath?: string | null;
+  variables?: SubstitutionSession;
+  askVariables?: AskVariables;
   title?: string;
   onJob?: (id: string) => void;
   onProgress?: (entries: ScriptRunEntry[]) => void;
@@ -54,20 +65,28 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     throw new Error(
       "Nicht abgeschlossenes SQL-Literal oder Kommentar. Das Skript wurde nicht gestartet.",
     );
-  const items = (
-    split.commands.length
-      ? await expandIncludes(scriptItems(split), {
-          file: request.filePath ?? null,
-          searchPath: await sqlSearchPath().catch(() => []),
-          read: readSqlText,
-        })
-      : scriptItems(split)
-  ).filter((item) => item.kind !== "command");
-  if (!items.length) throw new Error("Das Skript enthält keine ausführbaren Statements.");
+  const oracle = connection.kind === "oracle";
+  const items = split.commands.length
+    ? await expandIncludes(scriptItems(split), {
+        file: request.filePath ?? null,
+        searchPath: await sqlSearchPath().catch(() => []),
+        read: readSqlText,
+      })
+    : scriptItems(split);
+  const shown = items.filter((item) => item.kind !== "command");
+  if (!shown.length) throw new Error("Das Skript enthält keine ausführbaren Statements.");
+  const session = request.variables ?? { state: createSubstitutionState(), answers: {} };
+  const answers = oracle ? await askMissingVariables(items, session, request.askVariables) : {};
+  if (!answers) throw new Error("Ausführung vom Benutzer abgebrochen.");
+  const preview = { ...session.state, defines: { ...session.state.defines } };
   const executable = items
-    .filter((item) => item.kind === "sql")
-    .map((item) => item.text)
-    .join(connection.kind === "oracle" ? "\n/\n" : "\n");
+    .flatMap((item) => {
+      if (item.kind === "command" && oracle)
+        applySqlPlusSetting(parseSqlPlusCommand(item.text), preview);
+      if (item.kind !== "sql") return [];
+      return [oracle ? substitute(item.text, preview, answers).text : item.text];
+    })
+    .join(oracle ? "\n/\n" : "\n");
   const policyIssue = scriptPolicyIssue(executable, connection.kind, mode !== "autocommit");
   if (policyIssue) throw new Error(policyIssue);
   await confirmSqlExecution(connection.kind, url, executable, database ?? undefined);
@@ -81,18 +100,23 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
   if (mode !== "autocommit" && !supports(connection, "transactions"))
     throw new Error("Dieser Provider unterstützt keine Skript-Transaktionen.");
 
-  const entries: ScriptRunEntry[] = items.map((item, index) => ({
-    index,
-    sql: item.text,
-    start: item.start,
-    end: item.end,
-    status: "pending",
-    durationMs: null,
-    rowCount: null,
-    rowsAffected: null,
-    error: null,
-    ...(item.source ? { source: item.source } : {}),
-  }));
+  const entryOf = new Map<ScriptItem, ScriptRunEntry>();
+  const entries: ScriptRunEntry[] = shown.map((item, index) => {
+    const entry: ScriptRunEntry = {
+      index,
+      sql: item.text,
+      start: item.start,
+      end: item.end,
+      status: "pending",
+      durationMs: null,
+      rowCount: null,
+      rowsAffected: null,
+      error: null,
+      ...(item.source ? { source: item.source } : {}),
+    };
+    entryOf.set(item, entry);
+    return entry;
+  });
   let stopped = false;
   let currentJob: string | null = null;
   const jobId = startTask(
@@ -122,13 +146,20 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       useTransactionStore.getState().setPanelOpen(true);
     }
     const publish = () => request.onProgress?.(entries.map((entry) => ({ ...entry })));
-    for (const entry of entries) {
+    for (const item of items) {
+      const entry = entryOf.get(item);
+      if (!entry) {
+        if (oracle) applySqlPlusSetting(parseSqlPlusCommand(item.text), session.state);
+        continue;
+      }
       if (stopped || (error && (request.stopOnError !== false || txId))) {
         entry.status = "skipped";
         publish();
         continue;
       }
-      const failure = items[entry.index].error;
+      if (oracle && item.kind === "sql")
+        entry.sql = substitute(item.text, session.state, answers).text;
+      const failure = item.error;
       if (failure) {
         entry.status = "error";
         entry.error = failure;

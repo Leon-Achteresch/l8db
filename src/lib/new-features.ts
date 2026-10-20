@@ -103,6 +103,7 @@ export const NEW_FEATURES = {
   "query.dml-preview": "0.14.0",
   "query.multi-target": "0.14.0",
   "query.tools.package-members": "0.15.0",
+  "query.sqlplus-variables": NEXT_FEATURE_VERSION,
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",
