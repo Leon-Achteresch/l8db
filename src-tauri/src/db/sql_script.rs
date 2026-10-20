@@ -36,6 +36,18 @@ pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
     )
 }
 
+#[tauri::command]
+pub fn sql_search_path() -> Vec<String> {
+    std::env::var_os("SQLPATH")
+        .map(|value| {
+            std::env::split_paths(&value)
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 const ROUTINE_OBJECTS: &[&str] = &["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
 const MSSQL_BATCH_OBJECTS: &[&str] = &["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
 const END_SUFFIXES: &[&str] = &["IF", "LOOP", "WHILE", "REPEAT"];

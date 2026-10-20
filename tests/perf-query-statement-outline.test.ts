@@ -136,3 +136,41 @@ test("5000-statement Oracle scripts with SQL*Plus commands split within the larg
   expect(result.commands).toHaveLength(100);
   expect(split.p95Ms).toBeLessThan(250);
 });
+
+test("200 @-files with 5000 statements expand with one read per file", async () => {
+  const { splitSqlStatements } = await import("../src/lib/sql-statements");
+  const { expandIncludes, scriptItems } = await import("../src/lib/sql-statements/includes");
+  const files = new Map<string, string>();
+  for (let file = 0; file < 200; file++)
+    files.set(
+      `/s/f${file}.sql`,
+      Array.from({ length: 25 }, (_, row) => `INSERT INTO t VALUES (${file}, ${row});`).join("\n"),
+    );
+  const top = `${Array.from({ length: 200 }, (_, file) => `@f${file}`).join("\n")}\n@f0`;
+  let reads = 0;
+  const run = () =>
+    expandIncludes(scriptItems(splitSqlStatements(top, "oracle")), {
+      file: "/s/main.sql",
+      searchPath: [],
+      read: async (path) => {
+        reads++;
+        const text = files.get(path);
+        if (text === undefined) throw new Error("missing");
+        return text;
+      },
+    });
+  const expand = await measureScenario(async () => {
+    await run();
+  });
+  reads = 0;
+  const items = await run();
+  await reportScenario("query-oracle-script-includes", {
+    files: files.size,
+    statements: items.length,
+    readsPerRun: reads,
+    expand,
+  });
+  expect(items).toHaveLength(5025);
+  expect(reads).toBe(200);
+  expect(expand.p95Ms).toBeLessThan(250);
+});

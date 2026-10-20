@@ -8,13 +8,16 @@ import {
   executeQuery,
   type QueryResult,
 } from "@/lib/db";
+import { sqlSearchPath } from "@/lib/db/sql-include";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
 import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/lib/session-views";
+import { readSqlText } from "@/lib/sql-file";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
+import { expandIncludes, scriptItems } from "@/lib/sql-statements/includes";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
 import {
@@ -30,6 +33,7 @@ export interface ScriptRequest {
   mode: ScriptRunMode;
   stopOnError?: boolean;
   selectRowLimit?: number;
+  filePath?: string | null;
   title?: string;
   onJob?: (id: string) => void;
   onProgress?: (entries: ScriptRunEntry[]) => void;
@@ -50,11 +54,23 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     throw new Error(
       "Nicht abgeschlossenes SQL-Literal oder Kommentar. Das Skript wurde nicht gestartet.",
     );
-  if (!split.statements.length)
-    throw new Error("Das Skript enthält keine ausführbaren Statements.");
-  const policyIssue = scriptPolicyIssue(request.sql, connection.kind, mode !== "autocommit");
+  const items = (
+    split.commands.length
+      ? await expandIncludes(scriptItems(split), {
+          file: request.filePath ?? null,
+          searchPath: await sqlSearchPath().catch(() => []),
+          read: readSqlText,
+        })
+      : scriptItems(split)
+  ).filter((item) => item.kind !== "command");
+  if (!items.length) throw new Error("Das Skript enthält keine ausführbaren Statements.");
+  const executable = items
+    .filter((item) => item.kind === "sql")
+    .map((item) => item.text)
+    .join(connection.kind === "oracle" ? "\n/\n" : "\n");
+  const policyIssue = scriptPolicyIssue(executable, connection.kind, mode !== "autocommit");
   if (policyIssue) throw new Error(policyIssue);
-  await confirmSqlExecution(connection.kind, url, request.sql, database ?? undefined);
+  await confirmSqlExecution(connection.kind, url, executable, database ?? undefined);
   const existing = getQueryTransaction(connection.id, database);
   if (existing && mode !== "existing-transaction")
     throw new Error(
@@ -65,16 +81,17 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
   if (mode !== "autocommit" && !supports(connection, "transactions"))
     throw new Error("Dieser Provider unterstützt keine Skript-Transaktionen.");
 
-  const entries: ScriptRunEntry[] = split.statements.map((statement, index) => ({
+  const entries: ScriptRunEntry[] = items.map((item, index) => ({
     index,
-    sql: statement.text,
-    start: statement.start,
-    end: statement.end,
+    sql: item.text,
+    start: item.start,
+    end: item.end,
     status: "pending",
     durationMs: null,
     rowCount: null,
     rowsAffected: null,
     error: null,
+    ...(item.source ? { source: item.source } : {}),
   }));
   let stopped = false;
   let currentJob: string | null = null;
@@ -108,6 +125,14 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     for (const entry of entries) {
       if (stopped || (error && (request.stopOnError !== false || txId))) {
         entry.status = "skipped";
+        publish();
+        continue;
+      }
+      const failure = items[entry.index].error;
+      if (failure) {
+        entry.status = "error";
+        entry.error = failure;
+        error = failure;
         publish();
         continue;
       }

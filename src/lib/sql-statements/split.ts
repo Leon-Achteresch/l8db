@@ -53,6 +53,8 @@ const SQLPLUS_COMMANDS = new Set([
   "BREAK",
   "CLEAR",
   "TIMING",
+  "START",
+  "STA",
 ]);
 const SQL_SET_TARGETS = ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"];
 const SLASH_LINE = /^[ \t]*\/[ \t\r]*$/gm;
@@ -213,6 +215,10 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
           index = end;
           continue;
         }
+      }
+      if (ch === "@" && !hasCode && blankBefore(index)) {
+        pushCommand(index);
+        continue;
       }
       const quoteStart = ch === "n" || ch === "N" ? index + 1 : index;
       if (
@@ -502,8 +508,11 @@ export function statementAtOffset(
   offset: number,
   dialect?: string,
 ): SqlStatement | null {
-  const { statements, unterminated } = splitSqlStatements(sql, dialect);
-  if (unterminated) return null;
+  const split = splitSqlStatements(sql, dialect);
+  if (split.unterminated) return null;
+  const statements = split.commands.length
+    ? [...split.statements, ...split.commands].sort((a, b) => a.start - b.start)
+    : split.statements;
   const position = Math.max(0, Math.min(offset, sql.length));
   for (const statement of statements) {
     if (position >= statement.start && position <= statement.end) return statement;

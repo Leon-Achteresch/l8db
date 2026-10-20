@@ -78,11 +78,11 @@ export function useRunSql({
     async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
-      if (
-        !bound &&
-        runsOneStatementPerCall(connection.kind) &&
-        splitSqlStatements(sql, connection.kind).statements.length > 1
-      ) {
+      const split =
+        !bound && runsOneStatementPerCall(connection.kind)
+          ? splitSqlStatements(sql, connection.kind)
+          : null;
+      if (split && (split.statements.length > 1 || split.commands.length > 0)) {
         if (!previewed && !(await confirmPreview(sql))) return;
         await runMultiStatement(sql);
         return;

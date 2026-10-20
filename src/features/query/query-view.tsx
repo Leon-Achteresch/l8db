@@ -110,6 +110,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const script = useScriptRun({
     sql,
+    filePath,
     connection,
     database,
     caps,
