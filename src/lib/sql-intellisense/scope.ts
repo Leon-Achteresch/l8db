@@ -6,6 +6,7 @@ export interface TableRef {
   schema: string | null;
   name: string;
   alias: string | null;
+  qualifier: string;
   start: number;
   columns?: string[];
 }
@@ -15,14 +16,23 @@ export interface CteDef {
   columns: string[];
 }
 
+export interface JoinTarget {
+  ref: TableRef;
+  others: TableRef[];
+  using: boolean;
+  condition: string;
+}
+
 export interface QueryScope {
   tables: TableRef[];
   ctes: CteDef[];
+  join: JoinTarget | null;
 }
 
 interface Tok {
   upper: string;
   text: string;
+  source: string;
   start: number;
   end: number;
   ident: boolean;
@@ -47,6 +57,11 @@ const NOT_ALIAS = new Set(
   ),
 );
 const SELECT_END = new Set(["FROM", "INTO", "WHERE", "UNION", "INTERSECT", "EXCEPT", "MINUS"]);
+const JOIN_END = new Set(
+  "WHERE JOIN INNER LEFT RIGHT FULL CROSS NATURAL GROUP ORDER HAVING LIMIT UNION INTERSECT EXCEPT MINUS WINDOW QUALIFY USING SET".split(
+    " ",
+  ),
+);
 
 const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
@@ -68,18 +83,20 @@ function lex(sql: string, dialect?: DatabaseKind): Tok[] {
       while (j < raw.length && raw[j].upper !== close) j++;
       if (j < raw.length) {
         const text = sql.slice(start + 1, raw[j].start);
-        out.push({ upper: "`", text, start, end: raw[j].end, ident: true });
+        const source = sql.slice(start, raw[j].end);
+        out.push({ upper: "`", text, source, start, end: raw[j].end, ident: true });
         i = j;
         continue;
       }
     }
     if (upper === '"') {
       const text = sql.slice(start + 1, end - 1).replaceAll('""', '"');
-      out.push({ upper, text, start, end, ident: true });
+      out.push({ upper, text, source: sql.slice(start, end), start, end, ident: true });
       continue;
     }
     const word = /^[A-Z_]/.test(upper);
-    out.push({ upper, text: word ? sql.slice(start, end) : upper, start, end, ident: word });
+    const source = sql.slice(start, end);
+    out.push({ upper, text: word ? source : upper, source, start, end, ident: word });
   }
   return out;
 }
@@ -149,22 +166,25 @@ function parseRefs(owner: Block, from: number, list: boolean): number {
         schema: null,
         name: "",
         alias: null,
+        qualifier: "",
         start: item.start,
         columns: selectColumns(item),
       };
       j++;
     } else if (isName(item)) {
-      const parts = [item.text];
+      const parts = [item];
       j++;
       while (isTok(items[j], ".") && isIdent(items[j + 1])) {
-        parts.push((items[j + 1] as Tok).text);
+        parts.push(items[j + 1] as Tok);
         j += 2;
       }
       if (isTok(items[j], ".")) return j;
+      const last = parts[parts.length - 1];
       ref = {
-        schema: parts.at(-2) ?? null,
-        name: parts[parts.length - 1],
+        schema: parts.at(-2)?.text ?? null,
+        name: last.text,
         alias: null,
+        qualifier: last.source,
         start: item.start,
       };
       if (isBlock(items[j])) j++;
@@ -173,6 +193,7 @@ function parseRefs(owner: Block, from: number, list: boolean): number {
     const alias = items[j];
     if (isName(alias)) {
       ref.alias = alias.text;
+      ref.qualifier = alias.source;
       ref.name ||= alias.text;
       j++;
       const columns = items[j];
@@ -259,6 +280,42 @@ function build(sql: string, offset: number, dialect?: DatabaseKind): Block {
   return root;
 }
 
+function joinTarget(query: Block, inner: Block, offset: number, sql: string): JoinTarget | null {
+  const items = query.items;
+  const using = inner !== query;
+  let end = using ? items.indexOf(inner) : items.findIndex((item) => item.start >= offset);
+  if (using) {
+    if (end < 1 || !isTok(items[end - 1], "USING")) return null;
+    end--;
+  } else {
+    if (end < 0) end = items.length;
+    const last = items[end - 1];
+    if (isIdent(last) && last.end === offset) end--;
+    if (!isTok(items[end - 1], "ON") && !isTok(items[end - 1], "AND")) return null;
+  }
+  let on = -1;
+  let join = end - 1;
+  for (; join >= 0; join--) {
+    const item = items[join];
+    if (!isTok(item)) continue;
+    if (item.upper === "JOIN") break;
+    if (item.upper === "ON") on = join;
+    else if (JOIN_END.has(item.upper)) return null;
+  }
+  if (join < 0 || (using ? on >= 0 : on < 0)) return null;
+  const limit = items[using ? end : on].start;
+  const start = items[join].start;
+  const index = query.refs.findIndex((ref) => ref.start > start && ref.start < limit);
+  if (index < 0) return null;
+  const from = using ? inner.start + 1 : (items[on] as Tok).end;
+  return {
+    ref: query.refs[index],
+    others: query.refs.slice(0, index),
+    using,
+    condition: sql.slice(from, offset),
+  };
+}
+
 export function findRef(scope: QueryScope, qualifier: string): TableRef | undefined {
   return (
     scope.tables.find((ref) => ref.alias !== null && eq(ref.alias, qualifier)) ??
@@ -291,7 +348,12 @@ export function scopeAt(sql: string, offset: number, dialect?: DatabaseKind): Qu
     const cte = ctes.find((def) => eq(def.name, ref.name));
     return cte ? { ...ref, columns: cte.columns } : ref;
   };
-  return { tables: tables.map(withCte), ctes };
+  const join = joinTarget(query, inner, offset, sql);
+  return {
+    tables: tables.map(withCte),
+    ctes,
+    join: join && { ...join, ref: withCte(join.ref), others: join.others.map(withCte) },
+  };
 }
 
 export function statementBounds(

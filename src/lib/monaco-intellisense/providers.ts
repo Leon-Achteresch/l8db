@@ -4,6 +4,7 @@ import { selectForResults } from "@/lib/select-extract";
 import { useSnippetsStore } from "@/lib/snippets";
 import {
   hoverMarkdown,
+  joinSuggestions,
   limitMatches,
   memberSuggestions,
   packageForQualifier,
@@ -17,7 +18,13 @@ import {
 } from "@/lib/sql-intellisense";
 import { callAt, signatureHelp } from "@/lib/sql-intellisense/signature";
 import { attached, ctx, gotoUri } from "./context";
-import { hoverExtras, openSymbolTarget, packageMembers, routineSignatures } from "./symbols";
+import {
+  hoverExtras,
+  joinForeignKeys,
+  openSymbolTarget,
+  packageMembers,
+  routineSignatures,
+} from "./symbols";
 
 const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionItemKind> = {
   schema: monaco.languages.CompletionItemKind.Module,
@@ -29,9 +36,11 @@ const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionIte
   package: monaco.languages.CompletionItemKind.Module,
   keyword: monaco.languages.CompletionItemKind.Keyword,
   snippet: monaco.languages.CompletionItemKind.Snippet,
+  join: monaco.languages.CompletionItemKind.Reference,
 };
 
 const MAX_SUGGESTIONS = 300;
+const JOIN_TRIGGER = /\b(?:ON|AND)\s$|\bUSING\s*\($/i;
 
 function statementAt(model: monaco.editor.ITextModel, position: monaco.Position) {
   const source = model.getValue();
@@ -64,10 +73,14 @@ export function symbolAt(model: monaco.editor.ITextModel, position: monaco.Posit
 
 for (const language of ["sql", "plsql"]) {
   monaco.languages.registerCompletionItemProvider(language, {
-    triggerCharacters: ["."],
-    async provideCompletionItems(model, position) {
+    triggerCharacters: [".", " ", "("],
+    async provideCompletionItems(model, position, context, token) {
       if (!attached.has(model)) return { suggestions: [] };
       const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+      const joinOnly =
+        context.triggerKind === monaco.languages.CompletionTriggerKind.TriggerCharacter &&
+        context.triggerCharacter !== ".";
+      if (joinOnly && !JOIN_TRIGGER.test(line)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
       const wordRange: monaco.IRange = {
         startLineNumber: position.lineNumber,
@@ -86,12 +99,20 @@ for (const language of ["sql", "plsql"]) {
       else {
         const { text, scope } = statementAt(model, position);
         const snippets = useSnippetsStore.getState().snippets;
-        items = suggestCompletions(ctx.registry, text, line, snippets, scope);
+        items = joinOnly ? [] : suggestCompletions(ctx.registry, text, line, snippets, scope);
+        if (scope.join) {
+          const controller = new AbortController();
+          const cancel = token.onCancellationRequested(() => controller.abort());
+          if (token.isCancellationRequested) controller.abort();
+          const keys = await joinForeignKeys(scope.join, controller.signal);
+          cancel.dispose();
+          items = joinSuggestions(ctx.registry, scope.join, keys).concat(items);
+        }
       }
       const typed = pkg ? "" : word.word;
       const matches = limitMatches(items, typed, MAX_SUGGESTIONS);
       return {
-        incomplete: typed !== "" || matches.truncated,
+        incomplete: joinOnly || typed !== "" || matches.truncated,
         suggestions: matches.items.map((item) => ({
           label: item.label,
           kind: COMPLETION_KIND[item.kind],
