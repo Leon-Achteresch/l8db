@@ -152,6 +152,7 @@ test("200 @-files with 5000 statements expand with one read per file", async () 
     expandIncludes(scriptItems(splitSqlStatements(top, "oracle")), {
       file: "/s/main.sql",
       searchPath: [],
+      stat: async (path) => (files.has(path) ? { size: files.get(path)?.length ?? 0 } : null),
       read: async (path) => {
         reads++;
         const text = files.get(path);

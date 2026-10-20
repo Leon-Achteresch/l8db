@@ -476,24 +476,25 @@ fn is_sql(kind: DatabaseKind) -> bool {
     )
 }
 
-pub(super) fn statements(kind: DatabaseKind, sql: &str) -> Vec<String> {
+pub(super) fn statements(kind: DatabaseKind, sql: &str) -> Result<Vec<String>, String> {
     let parts: Vec<String> = match kind {
-        DatabaseKind::Oracle => db::oracle::script_items(sql)
-            .into_iter()
-            .filter_map(|(sqlplus, text)| {
-                if sqlplus {
-                    eprintln!("Hinweis: SQL*Plus-Befehl übersprungen: {}", text.trim());
-                    None
+        DatabaseKind::Oracle => {
+            let mut parts = Vec::new();
+            for (sqlplus, text) in db::oracle::script_items(sql) {
+                if !sqlplus {
+                    parts.push(text);
+                } else if db::sql_script::is_connect_command(&text) {
+                    return Err(db::sql_script::CONNECT_UNSUPPORTED.into());
                 } else {
-                    Some(text)
+                    eprintln!("Hinweis: SQL*Plus-Befehl übersprungen: {}", text.trim());
                 }
-            })
-            .collect(),
-        DatabaseKind::Postgres => db::sql_script::split_postgres(sql),
-        kind if is_sql(kind) => db::sql_script::split(sql),
+            }
+            parts
+        }
+        kind if is_sql(kind) => db::sql_script::split_for(kind, sql),
         _ => vec![sql.to_string()],
     };
-    parts.into_iter().filter(|s| !s.trim().is_empty()).collect()
+    Ok(parts.into_iter().filter(|s| !s.trim().is_empty()).collect())
 }
 
 const MONGO_READ: &[&str] = &[
@@ -563,7 +564,7 @@ async fn query(
     let sql = blocking(move || read_sql(sql, file)).await?;
     let source = resolve(global, None).await?;
     let target = source.target();
-    let parts = statements(target.kind, &sql);
+    let parts = statements(target.kind, &sql)?;
     if parts.is_empty() {
         return Err("Das SQL enthält keine Anweisung.".into());
     }

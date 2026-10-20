@@ -36,6 +36,16 @@ pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
     )
 }
 
+pub const CONNECT_UNSUPPORTED: &str = "CONNECT/DISCONNECT wird nicht unterstützt. Das Skript wurde angehalten, damit die folgenden Statements nicht im falschen Schema laufen.";
+
+pub fn is_connect_command(line: &str) -> bool {
+    line.split_whitespace().next().is_some_and(|word| {
+        ["CONNECT", "CONN", "DISCONNECT", "DISC"]
+            .iter()
+            .any(|command| word.eq_ignore_ascii_case(command))
+    })
+}
+
 #[tauri::command]
 pub fn sql_search_path() -> Vec<String> {
     std::env::var_os("SQLPATH")
@@ -123,7 +133,7 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
             }
             s.start = Some(i);
         }
-        if delimiter != ";" && sql[i..].starts_with(delimiter.as_str()) {
+        if delimiter != ";" && bytes[i..].starts_with(delimiter.as_bytes()) {
             s.flush(i);
             i += delimiter.len();
             continue;
@@ -349,6 +359,22 @@ pub(crate) mod tests {
             checked += 1;
         }
         assert!(checked >= 6);
+    }
+
+    #[test]
+    fn custom_delimiters_survive_non_ascii_text() {
+        let sql = "DELIMITER //\nCREATE PROCEDURE p() BEGIN DECLARE größe INT; SELECT 'ä//ö'; END//\nSELECT 'é'//";
+        for dialect in [Dialect::Mysql, Dialect::Lenient] {
+            assert_eq!(
+                split_dialect(sql, dialect),
+                vec![
+                    "CREATE PROCEDURE p() BEGIN DECLARE größe INT; SELECT 'ä//ö'; END",
+                    "SELECT 'é'"
+                ]
+            );
+        }
+        assert!(super::is_connect_command("conn scott/tiger"));
+        assert!(!super::is_connect_command("CONNECTION"));
     }
 
     #[test]

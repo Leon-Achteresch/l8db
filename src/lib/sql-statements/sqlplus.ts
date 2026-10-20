@@ -114,6 +114,7 @@ export type SqlPlusCommand =
   | { type: "exit" }
   | { type: "prompt" }
   | { type: "describe"; name: string }
+  | { type: "connect" }
   | { type: "remark" }
   | { type: "other" };
 
@@ -155,6 +156,7 @@ export function parseSqlPlusCommand(text: string): SqlPlusCommand {
     return { type: "whenever", exit: action === "EXIT" };
   if (first === "EXIT" || first === "QUIT") return { type: "exit" };
   if (first === "PRO" || first === "PROMPT") return { type: "prompt" };
+  if (["CONNECT", "CONN", "DISCONNECT", "DISC"].includes(first)) return { type: "connect" };
   if ((first === "DESC" || first === "DESCRIBE") && words[1])
     return {
       type: "describe",

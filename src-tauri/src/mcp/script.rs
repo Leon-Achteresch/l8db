@@ -214,6 +214,9 @@ fn sqlplus(
     if line.starts_with('@') || matches!(arg(0), "START" | "STA") {
         return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
     }
+    if db::sql_script::is_connect_command(line) {
+        return Err(db::sql_script::CONNECT_UNSUPPORTED.into());
+    }
     match arg(0) {
         "DEFINE" | "DEF" => define(&rest(1), defines),
         "UNDEFINE" | "UNDEF" => {
@@ -589,6 +592,9 @@ mod tests {
         assert!(plan(DatabaseKind::Oracle, "@install.sql").is_err());
         assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\n  @@sub.sql").is_err());
         assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\nSTART x.sql").is_err());
+        assert!(plan(DatabaseKind::Oracle, "CONN hr/hr@db\nDROP TABLE t;")
+            .unwrap_err()
+            .contains("CONNECT"));
         assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\nROLLBACK;").is_err());
         for sql in [
             "BEGIN; DELETE FROM t;",

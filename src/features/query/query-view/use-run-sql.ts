@@ -82,6 +82,18 @@ export function useRunSql({
   } = exec;
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
+  const prepareSql = useCallback(
+    async (text: string): Promise<string | null> => {
+      if (connection?.kind !== "oracle") return text;
+      const split = splitSqlStatements(text, connection.kind);
+      if (split.statements.length !== 1 || split.commands.length > 0) return text;
+      const session = substitutionSession(tabId);
+      const answers = await askMissingVariables([{ kind: "sql", text }], session, askVariables);
+      return answers ? substitute(text, session.state, answers).text : null;
+    },
+    [connection?.kind, tabId, askVariables],
+  );
+
   const runSql = useCallback(
     async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
       let sql = text;
@@ -95,15 +107,10 @@ export function useRunSql({
         await runMultiStatement(sql);
         return;
       }
-      if (!bound && !skipBind && connection.kind === "oracle") {
-        const session = substitutionSession(tabId);
-        const answers = await askMissingVariables(
-          [{ kind: "sql", text: sql }],
-          session,
-          askVariables,
-        );
-        if (!answers) return;
-        sql = substitute(sql, session.state, answers).text;
+      if (!bound && !skipBind && !previewed) {
+        const prepared = await prepareSql(sql);
+        if (prepared === null) return;
+        sql = prepared;
       }
       if (
         !bound &&
@@ -215,7 +222,7 @@ export function useRunSql({
       cursorOffsetRef,
       setEditorFocus,
       runMultiStatement,
-      askVariables,
+      prepareSql,
       confirmPreview,
     ],
   );
@@ -257,6 +264,7 @@ export function useRunSql({
 
   return {
     runSql,
+    prepareSql,
     bind: {
       open: bindDialogOpen,
       onOpenChange: (open: boolean) => {

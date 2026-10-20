@@ -45,6 +45,7 @@ export function useExplainPlan({
         cursorOffset,
         workspace.runTarget,
         connection?.kind,
+        { blankLines: useSettingsStore.getState().editorBlankLineTerminator, sqlOnly: true },
       );
       if (!connection || !supports(connection, "explain") || !target.trim() || planLoading) return;
       if (
