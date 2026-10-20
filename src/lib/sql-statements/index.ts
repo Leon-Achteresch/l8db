@@ -5,5 +5,5 @@ export {
   opensManagedTransaction,
   summarizeStatement,
 } from "./classify";
-export type { SqlSplitResult, SqlStatement } from "./split";
+export type { SqlSplitOptions, SqlSplitResult, SqlStatement } from "./split";
 export { runsOneStatementPerCall, splitSqlStatements, sqlToRun, statementAtOffset } from "./split";

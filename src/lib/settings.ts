@@ -80,6 +80,7 @@ export interface SettingsState {
   editorFormatDenseOperators: boolean;
   editorFormatNewlineBeforeSemicolon: boolean;
   editorFormatLinesBetweenQueries: number;
+  editorBlankLineTerminator: boolean;
   editorKeymap: EditorKeymap;
   confirmDestructiveQueries: boolean;
   productionReadOnly: boolean;
@@ -150,6 +151,7 @@ export interface SettingsState {
   setEditorFormatDenseOperators: (v: boolean) => void;
   setEditorFormatNewlineBeforeSemicolon: (v: boolean) => void;
   setEditorFormatLinesBetweenQueries: (v: number) => void;
+  setEditorBlankLineTerminator: (v: boolean) => void;
   setEditorKeymap: (v: EditorKeymap) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
   setProductionReadOnly: (v: boolean) => void;
@@ -247,6 +249,7 @@ export const DEFAULT_SETTINGS = {
   editorFormatDenseOperators: false,
   editorFormatNewlineBeforeSemicolon: false,
   editorFormatLinesBetweenQueries: 2,
+  editorBlankLineTerminator: false,
   editorKeymap: "default" as EditorKeymap,
   confirmDestructiveQueries: true,
   productionReadOnly: true,
@@ -345,6 +348,8 @@ export const useSettingsStore = create<SettingsState>()(
         set({ editorFormatNewlineBeforeSemicolon }),
       setEditorFormatLinesBetweenQueries: (editorFormatLinesBetweenQueries) =>
         set({ editorFormatLinesBetweenQueries }),
+      setEditorBlankLineTerminator: (editorBlankLineTerminator) =>
+        set({ editorBlankLineTerminator }),
       setEditorKeymap: (editorKeymap) => set({ editorKeymap }),
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),

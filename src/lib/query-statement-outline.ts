@@ -40,6 +40,7 @@ export class QueryStatementOutlineCache {
   private current: {
     sql: string;
     kind: string;
+    blankLines: boolean;
     entries: StatementOutlineItem[];
   } | null = null;
 
@@ -51,18 +52,23 @@ export class QueryStatementOutlineCache {
     return this.current?.entries.reduce((count, entry) => count + Number(entry.summarized), 0) ?? 0;
   }
 
-  invalidate(sql: string, kind: string) {
-    if (this.current && (this.current.sql !== sql || this.current.kind !== kind))
+  invalidate(sql: string, kind: string, blankLines = false) {
+    if (
+      this.current &&
+      (this.current.sql !== sql ||
+        this.current.kind !== kind ||
+        this.current.blankLines !== blankLines)
+    )
       this.current = null;
   }
 
-  read(sql: string, kind: string): StatementOutlineEntry[] {
-    this.invalidate(sql, kind);
+  read(sql: string, kind: string, blankLines = false): StatementOutlineEntry[] {
+    this.invalidate(sql, kind, blankLines);
     if (this.current) return this.current.entries;
     let line = 1;
     let lastNewline = -1;
     let nextNewline = sql.indexOf("\n");
-    const entries = splitSqlStatements(sql, kind).statements.map((statement) => {
+    const entries = splitSqlStatements(sql, kind, { blankLines }).statements.map((statement) => {
       while (nextNewline >= 0 && nextNewline < statement.start) {
         line++;
         lastNewline = nextNewline;
@@ -79,7 +85,7 @@ export class QueryStatementOutlineCache {
       sql.length <= OUTLINE_CACHE_LIMITS.sqlCharacters &&
       entries.length <= OUTLINE_CACHE_LIMITS.entries
     )
-      this.current = { sql, kind, entries };
+      this.current = { sql, kind, blankLines, entries };
     return entries;
   }
 }

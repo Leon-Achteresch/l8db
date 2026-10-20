@@ -869,6 +869,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "editorFormatOnType",
   },
   {
+    id: "editor-blank-line-terminator",
+    tabId: "editor",
+    title: "Leerzeile beendet Statement",
+    description:
+      "Ausführen am Cursor und die Statement-Übersicht trennen Statements auch an Leerzeilen, nie innerhalb von PL/SQL-Blöcken.",
+    keywords: ["leerzeile", "statement", "cursor", "ausführen", "sql*plus", "toad"],
+    key: "editorBlankLineTerminator",
+  },
+  {
     id: "transactions-per-table",
     tabId: "data",
     title: "Transaktionen pro Tabelle",

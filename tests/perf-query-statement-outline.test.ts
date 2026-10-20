@@ -203,3 +203,34 @@ test("substituting 5000 statements stays within budget without retained state", 
   expect(timing.p95Ms).toBeLessThan(150);
   expect(retainedBytes).toBeLessThan(4 * 1024 * 1024);
 });
+
+test("the blank-line option keeps statement-at-cursor latency on a 5000-statement script", async () => {
+  const { statementAtOffset } = await import("../src/lib/sql-statements");
+  const sql = oracleScript(5000);
+  const offset = Math.floor(sql.length / 2);
+  const plain = await measureScenario(() => {
+    statementAtOffset(sql, offset, "oracle");
+  });
+  const blank = await measureScenario(() => {
+    statementAtOffset(sql, offset, "oracle", { blankLines: true });
+  });
+  const outline = await measureScenario(() => {
+    new QueryStatementOutlineCache().read(sql, "oracle", true);
+  });
+  const cache = new QueryStatementOutlineCache();
+  const entries = cache.read(sql, "oracle", true);
+  await reportScenario("query-statement-at-cursor-blank-lines", {
+    statements: entries.length,
+    sqlCharacters: sql.length,
+    plain,
+    blank,
+    outline,
+    retainedEntries: cache.retainedEntries,
+  });
+  expect(statementAtOffset(sql, offset, "oracle", { blankLines: true })).not.toBeNull();
+  expect(entries).toHaveLength(5000);
+  expect(cache.retainedEntries).toBe(0);
+  expect(blank.p95Ms).toBeLessThan(250);
+  expect(blank.medianMs).toBeLessThan(plain.medianMs * 2 + 10);
+  expect(outline.p95Ms).toBeLessThan(250);
+});
