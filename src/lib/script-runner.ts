@@ -13,6 +13,7 @@ import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-tra
 import { supports } from "@/lib/providers";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
+import { toggleServerOutput } from "@/lib/server-output";
 import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/lib/session-views";
 import { readSqlText } from "@/lib/sql-file";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
@@ -146,10 +147,25 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       useTransactionStore.getState().setPanelOpen(true);
     }
     const publish = () => request.onProgress?.(entries.map((entry) => ({ ...entry })));
+    const switchServerOutput = async (enabled: boolean) => {
+      if (!supports(connection, "server_output")) return;
+      await toggleServerOutput(connection.kind, url, connection.id, enabled, database ?? undefined);
+      const active = txId;
+      if (active)
+        await runManagedOperation(active, () =>
+          executeInTransaction(
+            active,
+            enabled ? "BEGIN DBMS_OUTPUT.ENABLE(NULL); END;" : "BEGIN DBMS_OUTPUT.DISABLE; END;",
+            { confirmed: true, track: false, session: jobId },
+          ),
+        );
+    };
     for (const item of items) {
       const entry = entryOf.get(item);
       if (!entry) {
-        if (oracle) applySqlPlusSetting(parseSqlPlusCommand(item.text), session.state);
+        const command = oracle ? parseSqlPlusCommand(item.text) : null;
+        if (command?.type === "serveroutput") await switchServerOutput(command.enabled);
+        else if (command) applySqlPlusSetting(command, session.state);
         continue;
       }
       if (stopped || (error && (request.stopOnError !== false || txId))) {

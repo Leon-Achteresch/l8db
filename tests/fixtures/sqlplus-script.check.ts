@@ -138,3 +138,32 @@ test("substitution variables are asked once per run and && values stay defined f
   await expect(cancelled).rejects.toThrow("abgebrochen");
   expect(executed()).toEqual([]);
 });
+
+test("SET SERVEROUTPUT in a script switches the server output setting", async () => {
+  const { useProvidersStore, FALLBACK_PROVIDERS } = await import("../../src/lib/providers");
+  const { useServerOutputStore } = await import("../../src/lib/server-output");
+  const base = FALLBACK_PROVIDERS[0];
+  useProvidersStore.setState({
+    providers: [
+      {
+        ...base,
+        id: "oracle",
+        kind: "oracle",
+        capabilities: { ...base.capabilities, server_output: true },
+      },
+    ],
+    loaded: true,
+  });
+  await runSqlScript({
+    connection,
+    database: null,
+    sql: "SET SERVEROUTPUT ON SIZE UNLIMITED\nBEGIN dbms_output.put_line('x'); END;\n/\nset serverout off",
+    mode: "autocommit",
+  });
+  expect(
+    calls.filter((call) => call.command === "set_server_output").map((call) => call.args.enabled),
+  ).toEqual([true, false]);
+  expect(executed()).toEqual(["BEGIN dbms_output.put_line('x'); END;"]);
+  expect(useServerOutputStore.getState().enabled[connection.id]).toBe(false);
+  useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: false });
+});
