@@ -27,7 +27,11 @@ fn tokens_from(sql: &str, from: usize) -> Vec<Range<usize>> {
         if matches!(bytes.get(quote_start), Some(b'q' | b'Q'))
             && bytes.get(quote_start + 1) == Some(&b'\'')
         {
-            if let Some(open) = sql[quote_start + 2..].chars().next() {
+            if let Some(open) = sql[quote_start + 2..]
+                .chars()
+                .next()
+                .filter(|c| !c.is_whitespace())
+            {
                 let close = match open {
                     '[' => ']',
                     '(' => ')',
@@ -117,24 +121,64 @@ pub(super) fn prepare(sql: &str) -> String {
     statement
 }
 
-fn is_plsql_unit(sql: &str, tokens: &[Range<usize>]) -> bool {
-    if !is_plsql(sql, tokens) {
-        return false;
-    }
-    let mut words = tokens
-        .iter()
-        .map(|r| sql[r.clone()].to_ascii_uppercase())
-        .skip(1)
-        .skip_while(|w| {
-            matches!(
-                w.as_str(),
-                "OR" | "REPLACE" | "EDITIONABLE" | "NONEDITIONABLE"
-            )
-        });
+#[derive(PartialEq)]
+enum UnitKind {
+    Block,
+    Inline,
+    Java,
+}
+
+fn unit_kind(sql: &str, tokens: &[Range<usize>]) -> Option<UnitKind> {
+    let mut words = tokens.iter().map(|r| sql[r.clone()].to_ascii_uppercase());
     match words.next().as_deref() {
-        Some("TYPE") => words.next().as_deref() == Some("BODY"),
-        _ => true,
+        Some("BEGIN" | "DECLARE") => Some(UnitKind::Block),
+        Some("WITH") => matches!(words.next().as_deref(), Some("FUNCTION" | "PROCEDURE"))
+            .then_some(UnitKind::Inline),
+        Some("CREATE") => {
+            let mut words = words.skip_while(|w| {
+                matches!(
+                    w.as_str(),
+                    "OR" | "REPLACE"
+                        | "EDITIONABLE"
+                        | "NONEDITIONABLE"
+                        | "AND"
+                        | "RESOLVE"
+                        | "COMPILE"
+                        | "NOFORCE"
+                )
+            });
+            match words.next().as_deref() {
+                Some("FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER") => Some(UnitKind::Block),
+                Some("TYPE") => {
+                    (words.next().as_deref() == Some("BODY")).then_some(UnitKind::Block)
+                }
+                Some("JAVA") => Some(UnitKind::Java),
+                _ => None,
+            }
+        }
+        _ => None,
     }
+}
+
+fn slash_after(sql: &str, from: usize) -> Option<usize> {
+    let mut pos = sql[from..].find('\n').map(|n| from + n + 1)?;
+    loop {
+        let end = sql[pos..].find('\n').map_or(sql.len(), |n| pos + n);
+        if sql[pos..end].trim() == "/" {
+            return sql[pos..end].find('/').map(|n| pos + n);
+        }
+        if end >= sql.len() {
+            return None;
+        }
+        pos = end + 1;
+    }
+}
+
+fn trimmed(sql: &str, range: Range<usize>) -> Range<usize> {
+    let text = &sql[range.clone()];
+    let start = range.start + (text.len() - text.trim_start().len());
+    let end = range.end - (text.len() - text.trim_end().len());
+    start..end.max(start)
 }
 
 #[derive(Default)]
@@ -155,6 +199,9 @@ impl PlsqlUnit {
             return;
         }
         match word.to_ascii_uppercase().as_str() {
+            "COMPOUND" if next.is_some_and(|n| n.eq_ignore_ascii_case("TRIGGER")) => {
+                self.body = true
+            }
             "PROCEDURE" | "FUNCTION" if self.depth == 1 => self.header = true,
             "IS" | "AS" if self.header => {
                 self.header = false;
@@ -240,6 +287,33 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
 }
 
 pub(super) fn split_items(sql: &str) -> Vec<(bool, String)> {
+    split_ranges(sql)
+        .into_iter()
+        .map(|(item, range)| match item {
+            Item::SqlPlus => (true, sql[range].to_string()),
+            Item::Sql => (false, sql[range].to_string()),
+            Item::Exec => {
+                let text = &sql[range];
+                let call = text[text.find(char::is_whitespace).unwrap_or(text.len())..]
+                    .lines()
+                    .map(|line| line.trim_end().trim_end_matches('-'))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let call = call.trim().trim_end_matches(';').trim();
+                (false, format!("BEGIN {call}; END;"))
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Item {
+    Sql,
+    SqlPlus,
+    Exec,
+}
+
+pub(super) fn split_ranges(sql: &str) -> Vec<(Item, Range<usize>)> {
     let mut tokens = tokens(sql);
     let mut out = Vec::new();
     let mut start = 0;
@@ -262,41 +336,60 @@ pub(super) fn split_items(sql: &str) -> Vec<(bool, String)> {
         let next = tokens.get(index + 1).map(|r| &sql[r.clone()]);
         if index == start && !unit.active {
             if let Some(end) = exec_line_end(sql, &token) {
-                let call = sql[token.end..end]
-                    .lines()
-                    .map(|line| line.trim_end().trim_end_matches('-'))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let call = call.trim().trim_end_matches(';').trim();
-                out.push((false, format!("BEGIN {call}; END;")));
+                out.push((Item::Exec, trimmed(sql, token.start..end)));
                 skip_to = end;
                 start = index + 1;
                 index += 1;
                 continue;
             }
             if let Some(end) = sqlplus_line_end(sql, &token, next) {
-                out.push((true, sql[token.start..end].trim().to_string()));
+                out.push((Item::SqlPlus, trimmed(sql, token.start..end)));
                 skip_to = end;
                 start = index + 1;
                 index += 1;
                 continue;
             }
         }
+        let mut opaque = false;
         if unit.active {
-            if !sql[..token.start].ends_with('$') {
+            opaque = text.eq_ignore_ascii_case("WRAPPED")
+                && unit.depth == 1
+                && !unit.body
+                && !unit.header
+                && unit.pending == 0
+                && index > start
+                && sql[tokens[index - 1].clone()]
+                    .ends_with(|c: char| c.is_alphanumeric() || matches!(c, '_' | '"' | '$' | '#'));
+            if !opaque && !sql[..token.start].ends_with('$') {
                 unit.word(text, next);
             }
-        } else if is_plsql_unit(sql, &tokens[start..=index]) {
+        } else if let Some(kind) = unit_kind(sql, &tokens[start..=index]) {
             unit.active = true;
             unit.depth = 1;
             unit.body = text.eq_ignore_ascii_case("BEGIN");
+            unit.header = kind == UnitKind::Inline;
+            opaque = kind == UnitKind::Java;
+        }
+        if opaque {
+            let slash = slash_after(sql, token.end);
+            out.push((
+                Item::Sql,
+                trimmed(sql, tokens[start].start..slash.unwrap_or(sql.len())),
+            ));
+            skip_to = slash.map_or(sql.len(), |at| {
+                sql[at..].find('\n').map_or(sql.len(), |n| at + n)
+            });
+            start = index + 1;
+            unit = PlsqlUnit::default();
+            index += 1;
+            continue;
         }
         let slash = is_slash(sql, &token);
         if slash || (text == ";" && (!unit.active || unit.closed)) {
             let end = if slash { token.start } else { token.end };
-            let statement = sql[tokens[start].start..end].trim();
-            if !prepare(statement).is_empty() {
-                out.push((false, statement.to_string()));
+            let range = trimmed(sql, tokens[start].start..end);
+            if !prepare(&sql[range.clone()]).is_empty() {
+                out.push((Item::Sql, range));
             }
             start = index + 1;
             unit = PlsqlUnit::default();
@@ -304,9 +397,9 @@ pub(super) fn split_items(sql: &str) -> Vec<(bool, String)> {
         index += 1;
     }
     if let Some(first) = tokens.get(start) {
-        let statement = sql[first.start..].trim();
-        if !prepare(statement).is_empty() {
-            out.push((false, statement.to_string()));
+        let range = trimmed(sql, first.start..sql.len());
+        if !prepare(&sql[range.clone()]).is_empty() {
+            out.push((Item::Sql, range));
         }
     }
     out
@@ -617,6 +710,50 @@ pub(super) fn bind_statement(sql: &str, count: usize) -> Result<(String, Vec<usi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::sql_script::tests::normalize;
+
+    #[test]
+    fn shared_corpus_matches_frontend_splitter() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/sql-splitter-corpus.json"
+        ))
+        .unwrap();
+        let texts = |value: &serde_json::Value| -> Vec<String> {
+            value
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let mut checked = 0;
+        for case in corpus["cases"].as_array().unwrap() {
+            if case["dialect"] != "oracle" {
+                continue;
+            }
+            let sql = case["sql"].as_str().unwrap();
+            let items = split_ranges(sql);
+            let pick = |sqlplus: bool| -> Vec<String> {
+                items
+                    .iter()
+                    .filter(|(item, _)| (*item == Item::SqlPlus) == sqlplus)
+                    .map(|(_, range)| sql[range.clone()].to_string())
+                    .collect()
+            };
+            let statements: Vec<String> = pick(false).iter().map(|s| normalize(s)).collect();
+            let expected: Vec<String> = texts(&case["statements"])
+                .iter()
+                .map(|s| normalize(s))
+                .collect();
+            assert_eq!(statements, expected, "{}", case["name"]);
+            assert_eq!(pick(true), texts(&case["commands"]), "{}", case["name"]);
+            checked += 1;
+        }
+        assert!(checked >= 10);
+    }
 
     #[test]
     fn binds_numbered_parameters_without_touching_literals_or_comments() {
@@ -833,5 +970,48 @@ mod tests {
             format!("CREATE OR REPLACE PACKAGE BODY big_package AS\n{procedures}END big_package;");
         assert_eq!(prepare(&sql), sql);
         assert_eq!(split_statements(&sql), vec![sql]);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_oracle_accepts_split_sqlplus_scripts() {
+        use crate::db::DatabaseAdapter;
+        let url = std::env::var("L8DB_SMOKE_ORACLE_URL").expect("Oracle-Testverbindung fehlt");
+        let adapter = super::super::OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "split-test".into(),
+        )
+        .unwrap();
+        let _ = adapter.execute_query("DROP TABLE L8_SPLIT_T PURGE").await;
+        let script = "CREATE TABLE L8_SPLIT_T (id NUMBER NOT NULL, note VARCHAR2(20))\n/\nCREATE OR REPLACE TRIGGER L8_SPLIT_TRG\nFOR INSERT ON L8_SPLIT_T\nCOMPOUND TRIGGER\n  BEFORE STATEMENT IS\n  BEGIN\n    NULL;\n  END BEFORE STATEMENT;\nEND L8_SPLIT_TRG;\nINSERT INTO L8_SPLIT_T VALUES (1, q'[a;'b]');\nEXEC dbms_output.put_line(q'[a;b]' || -\n  'c')\nPROMPT not sent\nWITH\n  FUNCTION twice(n NUMBER) RETURN NUMBER IS\n  BEGIN\n    RETURN n * 2;\n  END;\nSELECT twice(21) AS answer FROM dual;\n/";
+        let results = adapter.execute_script(script).await.unwrap();
+        let errors: Vec<_> = results.iter().filter_map(|r| r.error.clone()).collect();
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(results.len(), 5);
+        let answer = adapter
+            .execute_query(&split_statements(script)[4])
+            .await
+            .unwrap();
+        assert_eq!(answer.rows[0]["ANSWER"].to_string().trim_matches('"'), "42");
+        let owner = adapter
+            .execute_query("SELECT USER AS U FROM dual")
+            .await
+            .unwrap();
+        let columns = adapter
+            .list_table_columns_detailed(owner.rows[0]["U"].as_str().unwrap(), "L8_SPLIT_T")
+            .await
+            .unwrap();
+        assert_eq!(
+            columns
+                .iter()
+                .map(|c| (c.name.as_str(), c.is_nullable))
+                .collect::<Vec<_>>(),
+            vec![("ID", false), ("NOTE", true)]
+        );
+        adapter
+            .execute_query("DROP TABLE L8_SPLIT_T PURGE")
+            .await
+            .unwrap();
     }
 }

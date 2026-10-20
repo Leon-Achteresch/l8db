@@ -194,11 +194,7 @@ fn plan(kind: DatabaseKind, sql: &str) -> Result<Plan, String> {
     let mut plan = Plan::default();
     let items: Vec<(bool, String)> = match kind {
         DatabaseKind::Oracle => db::oracle::script_items(sql),
-        DatabaseKind::Postgres => db::sql_script::split_postgres(sql)
-            .into_iter()
-            .map(|statement| (false, statement))
-            .collect(),
-        _ => db::sql_script::split(sql)
+        _ => db::sql_script::split_for(kind, sql)
             .into_iter()
             .map(|statement| (false, statement))
             .collect(),

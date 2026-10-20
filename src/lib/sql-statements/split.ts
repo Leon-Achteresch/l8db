@@ -6,6 +6,7 @@ export interface SqlStatement {
 
 export interface SqlSplitResult {
   statements: SqlStatement[];
+  commands: SqlStatement[];
   unterminated: boolean;
 }
 
@@ -21,7 +22,16 @@ function isWordChar(ch: string | undefined): boolean {
 const ROUTINE_OBJECTS = ["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
 const MSSQL_BATCH_OBJECTS = ["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
 const END_SUFFIXES = ["IF", "LOOP", "WHILE", "REPEAT"];
-const ORACLE_CREATE_MODIFIERS = ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
+const ORACLE_CREATE_MODIFIERS = [
+  "OR",
+  "REPLACE",
+  "EDITIONABLE",
+  "NONEDITIONABLE",
+  "AND",
+  "RESOLVE",
+  "COMPILE",
+  "NOFORCE",
+];
 const ORACLE_PLSQL_OBJECTS = ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER"];
 const SQLPLUS_COMMANDS = new Set([
   "SET",
@@ -45,6 +55,7 @@ const SQLPLUS_COMMANDS = new Set([
   "TIMING",
 ]);
 const SQL_SET_TARGETS = ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"];
+const SLASH_LINE = /^[ \t]*\/[ \t\r]*$/gm;
 
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
@@ -62,17 +73,19 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       }
       offset += line.length + 1;
     }
-    return { statements, unterminated: false };
+    return { statements, commands: [], unterminated: false };
   }
   if (dialect === "mongodb") {
     const text = sql.trim();
     const start = sql.indexOf(text);
     return {
       statements: text ? [{ text, start, end: start + text.length }] : [],
+      commands: [],
       unterminated: false,
     };
   }
   const statements: SqlStatement[] = [];
+  const commands: SqlStatement[] = [];
   const length = sql.length;
   let index = 0;
   let segmentStart = -1;
@@ -122,6 +135,28 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
     let end = from;
     while (end < length && isWordChar(sql[end])) end += 1;
     return end;
+  };
+
+  const blankBefore = (at: number) => !sql.slice(sql.lastIndexOf("\n", at - 1) + 1, at).trim();
+
+  const pushCommand = (from: number) => {
+    const next = lineEndFrom(from);
+    let end = next;
+    while (end > from && isSpace(sql[end - 1])) end -= 1;
+    commands.push({ text: sql.slice(from, end), start: from, end });
+    segmentStart = -1;
+    index = next;
+  };
+
+  const skipToSlash = () => {
+    SLASH_LINE.lastIndex = index;
+    const match = SLASH_LINE.exec(sql);
+    if (!match) {
+      index = length;
+      return;
+    }
+    flush(match.index + match[0].indexOf("/"));
+    index = lineEndFrom(match.index);
   };
 
   while (index < length) {
@@ -213,41 +248,65 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         }
         const word = sql.slice(start, index).toUpperCase();
         if (!hasCode && SQLPLUS_COMMANDS.has(word)) {
-          const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
           let next = index;
           while (next < length && isSpace(sql[next])) next += 1;
           const target = sql.slice(next, readWord(next)).toUpperCase();
-          if (
-            !sql.slice(lineStart, start).trim() &&
-            !(word === "SET" && SQL_SET_TARGETS.includes(target))
-          ) {
-            segmentStart = -1;
-            index = lineEndFrom(index);
+          if (blankBefore(start) && !(word === "SET" && SQL_SET_TARGETS.includes(target))) {
+            pushCommand(start);
             continue;
           }
         }
+        if (!hasCode && (word === "EXEC" || word === "EXECUTE") && blankBefore(start)) {
+          let end = lineEndFrom(index);
+          while (end < length && sql.slice(start, end).trimEnd().endsWith("-"))
+            end = lineEndFrom(end + 1);
+          hasCode = true;
+          flush(end);
+          index = end;
+          continue;
+        }
         hasCode = true;
         if (!plsql) {
-          if (leadingWords.length < 6) leadingWords.push(word);
+          if (leadingWords.length < 8) leadingWords.push(word);
           const first = leadingWords[0];
           const objectIndex = leadingWords.findIndex(
             (w, i) => i > 0 && !ORACLE_CREATE_MODIFIERS.includes(w),
           );
           const object = objectIndex > 0 ? leadingWords[objectIndex] : undefined;
+          const inline =
+            first === "WITH" && (leadingWords[1] === "FUNCTION" || leadingWords[1] === "PROCEDURE");
           plsql =
             first === "BEGIN" ||
             first === "DECLARE" ||
+            inline ||
             (first === "CREATE" &&
               object !== undefined &&
               (ORACLE_PLSQL_OBJECTS.includes(object) ||
+                object === "JAVA" ||
                 (object === "TYPE" && leadingWords[objectIndex + 1] === "BODY")));
           if (plsql) {
             plsqlDepth = 1;
             plsqlBody = first === "BEGIN";
+            plsqlHeader = inline;
+            if (object === "JAVA") skipToSlash();
           }
           continue;
         }
-        if ((word === "PROCEDURE" || word === "FUNCTION") && plsqlDepth === 1) plsqlHeader = true;
+        if (
+          word === "WRAPPED" &&
+          plsqlDepth === 1 &&
+          !plsqlBody &&
+          !plsqlHeader &&
+          plsqlPending === 0 &&
+          /[\w"$#]/.test(sql.slice(0, start).trimEnd().at(-1) ?? "")
+        ) {
+          skipToSlash();
+          continue;
+        }
+        if (word === "COMPOUND" && /^\s+TRIGGER\b/i.test(sql.slice(index, index + 20)))
+          plsqlBody = true;
+        else if ((word === "PROCEDURE" || word === "FUNCTION") && plsqlDepth === 1)
+          plsqlHeader = true;
         else if ((word === "IS" || word === "AS") && plsqlHeader) {
           plsqlHeader = false;
           plsqlPending += 1;
@@ -431,11 +490,11 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
   }
 
   if (unterminated) {
-    return { statements, unterminated: true };
+    return { statements, commands, unterminated: true };
   }
 
   flush(length);
-  return { statements, unterminated: false };
+  return { statements, commands, unterminated: false };
 }
 
 export function statementAtOffset(
