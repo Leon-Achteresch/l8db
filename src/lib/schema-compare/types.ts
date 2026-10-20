@@ -60,6 +60,7 @@ export interface DiffItem {
   target: CatalogObject | null;
   differsBy: string[];
   children: CatalogObject[];
+  blocked?: string;
 }
 
 export interface CompareContext {
