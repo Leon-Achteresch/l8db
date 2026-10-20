@@ -69,10 +69,7 @@ impl ServerInfo {
 }
 
 pub fn probe(conn: &Connection) -> Result<ServerInfo, String> {
-    let mut stmt = conn
-        .statement(PROBE)
-        .build()
-        .map_err(super::map_err)?;
+    let mut stmt = conn.statement(PROBE).build().map_err(super::map_err)?;
     stmt.execute(&[&OracleType::Varchar2(8000)])
         .map_err(super::map_err)?;
     let text: Option<String> = stmt.bind_value(1).map_err(super::map_err)?;

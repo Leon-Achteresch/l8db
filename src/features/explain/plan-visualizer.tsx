@@ -19,7 +19,9 @@ interface PlanVisualizerProps {
 }
 
 export function PlanVisualizer({ plan }: PlanVisualizerProps) {
-  const view = useExplainViewPrefs((state) => state.view);
+  const text = typeof plan["Plan Text"] === "string" ? plan["Plan Text"] : null;
+  const preferred = useExplainViewPrefs((state) => state.view);
+  const view = preferred === "text" && !text ? "tree" : preferred;
   const analysis = useMemo(() => analyzePlan(plan), [plan]);
   const [selection, setSelection] = useState<{ plan: ExplainNode; id: string } | null>(null);
   const selectedId = selection?.plan === plan ? selection.id : null;
@@ -30,13 +32,17 @@ export function PlanVisualizer({ plan }: PlanVisualizerProps) {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-2" data-plan-view={view}>
       <div className="flex flex-wrap items-center gap-2">
-        <PlanViewSwitcher />
+        <PlanViewSwitcher hasText={text !== null} />
         <span className="text-[11px] text-muted-foreground">
           {analysis.ops.length} Knoten · Gewichtung {METRIC_LABEL[analysis.metric]}
           {warnings > 0 && ` · ${warnings} Hinweis${warnings === 1 ? "" : "e"}`}
         </span>
       </div>
-      {view === "graph" ? (
+      {view === "text" ? (
+        <pre className="max-h-80 min-w-0 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] leading-snug">
+          {text}
+        </pre>
+      ) : view === "graph" ? (
         <div className="h-80 min-w-0 rounded-md border bg-background">
           <Suspense fallback={null}>
             <PlanGraphView analysis={analysis} selectedId={selectedId} onSelect={select} />
