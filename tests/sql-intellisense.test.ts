@@ -1,6 +1,8 @@
 import { describe, expect, it, test } from "bun:test";
 import {
   hoverMarkdown,
+  joinSuggestions,
+  joinTables,
   limitMatches,
   mayMatchWord,
   packageForQualifier,
@@ -346,5 +348,120 @@ describe("query scope", () => {
       name: "EMPLOYEES",
       column: "NAME",
     });
+  });
+});
+
+const shop: SqlObjectRegistry = {
+  ...registry,
+  dialect: "postgres",
+  tables: [
+    { schema: "public", name: "customers" },
+    { schema: "public", name: "orders" },
+    { schema: "public", name: "order_items" },
+    { schema: "public", name: "order_heads" },
+    { schema: "public", name: "shipments" },
+    { schema: "HR", name: "EMPLOYEES" },
+  ],
+};
+
+const fk = (name: string, from: string, fromColumn: string, to: string, toColumn: string) => {
+  const [fromSchema, fromTable] = from.split(".");
+  const [toSchema, toTable] = to.split(".");
+  return {
+    constraint_name: name,
+    from_schema: fromSchema,
+    from_table: fromTable,
+    from_column: fromColumn,
+    to_schema: toSchema,
+    to_table: toTable,
+    to_column: toColumn,
+  };
+};
+
+const shopKeys = [
+  fk("fk_orders_customer", "public.orders", "customer_id", "public.customers", "id"),
+  fk("fk_items_order", "public.order_items", "order_id", "public.orders", "id"),
+  fk("fk_items_order", "public.order_items", "order_no", "public.orders", "no"),
+  fk("fk_ship_order", "public.shipments", "order_id", "public.order_heads", "order_id"),
+  fk("emp_mgr", "HR.EMPLOYEES", "MANAGER_ID", "HR.EMPLOYEES", "EMP_ID"),
+];
+
+function joins(marked: string, target: SqlObjectRegistry = shop, keys = shopKeys) {
+  const offset = marked.indexOf("|");
+  const scope = scopeAt(marked.replace("|", ""), offset, target.dialect);
+  return scope.join ? labels(joinSuggestions(target, scope.join, keys)) : null;
+}
+
+describe("join suggestions", () => {
+  it("suggests foreign key conditions in both directions", () => {
+    expect(joins("SELECT * FROM customers c JOIN orders o ON |")).toEqual(["o.customer_id = c.id"]);
+    expect(joins("SELECT * FROM orders o LEFT JOIN customers AS c ON |")).toEqual([
+      "c.id = o.customer_id",
+    ]);
+    expect(joins("SELECT * FROM public.customers JOIN public.orders ON |")).toEqual([
+      "orders.customer_id = customers.id",
+    ]);
+  });
+  it("joins multi-column keys with AND and deduplicates repeated metadata", () => {
+    expect(
+      joins("SELECT * FROM orders o JOIN order_items i ON |", shop, [...shopKeys, ...shopKeys]),
+    ).toEqual(["i.order_id = o.id AND i.order_no = o.no"]);
+  });
+  it("offers keys to every table already in scope and skips present conditions", () => {
+    expect(
+      joins(
+        "SELECT * FROM customers c JOIN orders o ON o.customer_id = c.id JOIN order_items i ON i|",
+      ),
+    ).toEqual(["i.order_id = o.id AND i.order_no = o.no"]);
+    expect(joins("SELECT * FROM customers c JOIN orders o ON o.customer_id = c.id AND |")).toEqual(
+      [],
+    );
+    expect(joins("SELECT * FROM customers c JOIN orders o ON c.id = o.customer_id AND |")).toEqual(
+      [],
+    );
+  });
+  it("suggests USING column lists only for equally named keys", () => {
+    expect(joins("SELECT * FROM order_heads h JOIN shipments s USING (|")).toEqual(["order_id"]);
+    expect(joins("SELECT * FROM customers c JOIN orders o USING (|")).toEqual([]);
+  });
+  it("handles self joins and dialect quoting", () => {
+    expect(
+      joins("SELECT * FROM hr.employees e JOIN hr.employees m ON |", {
+        ...shop,
+        dialect: "oracle",
+      }),
+    ).toEqual(["m.MANAGER_ID = e.EMP_ID", "m.EMP_ID = e.MANAGER_ID"]);
+    expect(joins("SELECT * FROM hr.employees e JOIN hr.employees m ON |")).toEqual([
+      'm."MANAGER_ID" = e."EMP_ID"',
+      'm."EMP_ID" = e."MANAGER_ID"',
+    ]);
+  });
+  it("detects joins inside CTEs and subqueries only", () => {
+    expect(
+      joins("WITH x AS (SELECT * FROM customers c JOIN orders o ON |) SELECT * FROM order_items"),
+    ).toEqual(["o.customer_id = c.id"]);
+    expect(
+      joins("SELECT * FROM customers c JOIN orders o ON o.customer_id = c.id WHERE c.id = 1 AND |"),
+    ).toBeNull();
+    expect(joins("SELECT * FROM customers c JOIN orders o ON o.customer_id = c.id |")).toBeNull();
+    expect(joins("SELECT * FROM customers c, orders o WHERE |")).toBeNull();
+  });
+  it("loads keys only for resolvable tables", () => {
+    const sql =
+      "WITH x AS (SELECT 1 AS id) SELECT * FROM x JOIN customers c ON 1 = 1 JOIN orders o JOIN orders p ON ";
+    const join = scopeAt(sql, sql.length).join;
+    expect(join && joinTables(shop, join).map((table) => table.name)).toEqual([
+      "orders",
+      "customers",
+    ]);
+  });
+  it("ranks join conditions before every other suggestion", () => {
+    const sql = "SELECT * FROM customers c JOIN orders o ON ";
+    const join = scopeAt(sql, sql.length).join;
+    const [first] = join ? joinSuggestions(shop, join, shopKeys) : [];
+    expect(first).toMatchObject({ kind: "join", detail: "fk_orders_customer" });
+    const others = complete(`${sql}|`, shop);
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((item) => item.sortText > first.sortText)).toBe(true);
   });
 });

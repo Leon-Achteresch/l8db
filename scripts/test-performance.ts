@@ -32,6 +32,7 @@ const SUITES = {
     "tests/perf-app-requests.test.ts",
     "tests/perf-query-statement-outline.test.ts",
     "tests/perf-plsql-members.test.ts",
+    "tests/perf-sql-intellisense.test.ts",
     "tests/perf-tab-state.test.ts",
     "tests/perf-dml-preview.test.ts",
     "tests/perf-dml-preview-cancel.test.ts",

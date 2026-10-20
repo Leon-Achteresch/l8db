@@ -49,7 +49,8 @@ export type SuggestionKind =
   | "procedure"
   | "package"
   | "keyword"
-  | "snippet";
+  | "snippet"
+  | "join";
 
 export interface Suggestion {
   label: string;
