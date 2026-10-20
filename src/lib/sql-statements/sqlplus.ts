@@ -110,6 +110,8 @@ export type SqlPlusCommand =
   | { type: "set-define"; marker: string | null }
   | { type: "set-escape"; escape: string | null }
   | { type: "serveroutput"; enabled: boolean }
+  | { type: "whenever"; exit: boolean }
+  | { type: "exit" }
   | { type: "remark" }
   | { type: "other" };
 
@@ -146,6 +148,10 @@ export function parseSqlPlusCommand(text: string): SqlPlusCommand {
     return { type: "set-escape", escape: switchValue(words[2], "\\") };
   if (first === "SET" && /^SERVEROUT(PUT)?$/.test(second) && /^(ON|OFF)$/i.test(words[2] ?? ""))
     return { type: "serveroutput", enabled: words[2].toUpperCase() === "ON" };
+  const action = (words[2] ?? "").toUpperCase();
+  if (first === "WHENEVER" && second === "SQLERROR" && /^(EXIT|CONTINUE)$/.test(action))
+    return { type: "whenever", exit: action === "EXIT" };
+  if (first === "EXIT" || first === "QUIT") return { type: "exit" };
   return { type: "other" };
 }
 

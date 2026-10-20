@@ -167,3 +167,31 @@ test("SET SERVEROUTPUT in a script switches the server output setting", async ()
   expect(useServerOutputStore.getState().enabled[connection.id]).toBe(false);
   useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: false });
 });
+
+test("WHENEVER SQLERROR switches stop-on-error for the run and EXIT ends it", async () => {
+  failing.add("SELECT 1 FROM gone;");
+  failing.add("SELECT 2 FROM gone;");
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "WHENEVER SQLERROR CONTINUE\nSELECT 1 FROM gone;\nSELECT 1 FROM dual;\nWHENEVER SQLERROR EXIT ROLLBACK\nSELECT 2 FROM gone;\nSELECT 2 FROM dual;",
+    mode: "autocommit",
+    stopOnError: false,
+  });
+  expect(outcome.entries.map((entry) => entry.status)).toEqual([
+    "error",
+    "success",
+    "error",
+    "skipped",
+  ]);
+  calls.length = 0;
+  const exited = await runSqlScript({
+    connection,
+    database: null,
+    sql: "SELECT 1 FROM dual;\nEXIT\nSELECT 2 FROM dual;",
+    mode: "autocommit",
+  });
+  expect(executed()).toEqual(["SELECT 1 FROM dual;"]);
+  expect(exited.entries.map((entry) => entry.status)).toEqual(["success", "skipped"]);
+  expect(exited.error).toBeNull();
+});

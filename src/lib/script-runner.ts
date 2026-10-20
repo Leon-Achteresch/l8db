@@ -147,6 +147,12 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       useTransactionStore.getState().setPanelOpen(true);
     }
     const publish = () => request.onProgress?.(entries.map((entry) => ({ ...entry })));
+    let stopOnError = request.stopOnError !== false;
+    let halted = false;
+    const fail = (message: string) => {
+      error = message;
+      if (stopOnError || (txId && !oracle)) halted = true;
+    };
     const switchServerOutput = async (enabled: boolean) => {
       if (!supports(connection, "server_output")) return;
       await toggleServerOutput(connection.kind, url, connection.id, enabled, database ?? undefined);
@@ -163,12 +169,14 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     for (const item of items) {
       const entry = entryOf.get(item);
       if (!entry) {
-        const command = oracle ? parseSqlPlusCommand(item.text) : null;
-        if (command?.type === "serveroutput") await switchServerOutput(command.enabled);
+        const command = oracle && !stopped && !halted ? parseSqlPlusCommand(item.text) : null;
+        if (command?.type === "whenever") stopOnError = command.exit;
+        else if (command?.type === "exit") halted = true;
+        else if (command?.type === "serveroutput") await switchServerOutput(command.enabled);
         else if (command) applySqlPlusSetting(command, session.state);
         continue;
       }
-      if (stopped || (error && (request.stopOnError !== false || txId))) {
+      if (stopped || halted) {
         entry.status = "skipped";
         publish();
         continue;
@@ -179,7 +187,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       if (failure) {
         entry.status = "error";
         entry.error = failure;
-        error = failure;
+        fail(failure);
         publish();
         continue;
       }
@@ -250,7 +258,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       } catch (failure) {
         entry.status = "error";
         entry.error = failure instanceof Error ? failure.message : String(failure);
-        error = entry.error;
+        fail(entry.error);
       } finally {
         currentJob = null;
         entry.durationMs = Math.round(performance.now() - started);
