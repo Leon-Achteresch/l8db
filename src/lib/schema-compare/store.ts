@@ -17,7 +17,12 @@ import {
   parseCatalogSnapshot,
 } from "@/lib/schema-snapshot";
 import { effectiveConnectionString, ensureSshTunnel } from "@/lib/ssh";
-import { compareCatalogs, defaultSelection, markMissingTablespaces } from "./diff";
+import {
+  compareCatalogs,
+  defaultSelection,
+  limitDifferences,
+  markMissingTablespaces,
+} from "./diff";
 import {
   type CompareResult,
   type CompareSide,
@@ -304,6 +309,7 @@ export async function runSchemaCompare(sides?: {
       const available = await targetTablespaces(right.connection, target).catch(() => null);
       if (available) markMissingTablespaces(items, available);
     }
+    const limited = limitDifferences(items, state.options.diffLimit);
     set({
       source,
       target,
@@ -314,10 +320,11 @@ export async function runSchemaCompare(sides?: {
         sourceLabel: sideLabel(source),
         targetLabel: sideLabel(target),
         types,
-        items,
+        items: limited.items,
         comparedAt: new Date().toISOString(),
+        omitted: limited.omitted,
       },
-      selection: defaultSelection(items),
+      selection: defaultSelection(limited.items),
       activeKey: null,
       loading: null,
     });

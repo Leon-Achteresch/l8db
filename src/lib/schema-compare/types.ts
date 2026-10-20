@@ -17,7 +17,13 @@ export interface SchemaCompareOptions {
   ignoreConstraintNames: boolean;
   ignoreColumnOrder: boolean;
   ignoreTablespace: boolean;
+  diffLimit: number;
+  excludePatterns: string;
 }
+
+export type CompareFlag = {
+  [K in keyof SchemaCompareOptions]: SchemaCompareOptions[K] extends boolean ? K : never;
+}[keyof SchemaCompareOptions];
 
 export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
   ignoreWhitespace: true,
@@ -32,6 +38,8 @@ export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
   ignoreConstraintNames: false,
   ignoreColumnOrder: true,
   ignoreTablespace: true,
+  diffLimit: 0,
+  excludePatterns: "",
 };
 
 export interface SnapshotRef {
@@ -78,6 +86,7 @@ export interface CompareResult extends CompareContext {
   types: SelectableType[];
   items: DiffItem[];
   comparedAt: string;
+  omitted?: number;
 }
 
 export const OBJECT_TYPE_META: Record<CatalogObjectType, { label: string; plural: string }> = {
