@@ -42,6 +42,7 @@ interface SchemaCompareState {
   result: CompareResult | null;
   selection: Record<string, boolean>;
   renames: Record<string, string>;
+  renamePrior: Record<string, boolean>;
   activeKey: string | null;
   loading: string | null;
   error: string | null;
@@ -57,6 +58,7 @@ export const useSchemaCompareStore = create<SchemaCompareState>()(
       result: null,
       selection: {},
       renames: {},
+      renamePrior: {},
       activeKey: null,
       loading: null,
       error: null,
@@ -227,14 +229,24 @@ export async function captureCatalogSnapshot(side: CompareSide): Promise<Catalog
 }
 
 async function targetTablespaces(connection: SavedConnection, side: CompareSide) {
-  const result = await executeQuery(
-    connection.kind,
-    effectiveConnectionString(connection),
-    "SELECT tablespace_name FROM user_tablespaces",
-    side.database ?? undefined,
-    { confirmed: true, track: false },
+  const values = async (sql: string) =>
+    (
+      await executeQuery(
+        connection.kind,
+        effectiveConnectionString(connection),
+        sql,
+        side.database ?? undefined,
+        { confirmed: true, track: false },
+      )
+    ).rows.map((row) => String(Object.values(row)[0] ?? ""));
+  const [user] = await values("SELECT USER FROM dual");
+  return new Set(
+    await values(
+      user === side.schema
+        ? "SELECT tablespace_name FROM user_tablespaces"
+        : "SELECT tablespace_name FROM dba_tablespaces",
+    ),
   );
-  return new Set(result.rows.map((row) => String(Object.values(row)[0] ?? "")));
 }
 
 export async function runSchemaCompare(sides?: {
@@ -285,10 +297,16 @@ export async function runSchemaCompare(sides?: {
             types,
             side.database ?? undefined,
           );
-    const [sourceObjects, targetObjects] = await Promise.all([
-      load(source, left),
-      load(target, right),
-    ]);
+    const scopes = [left.snapshot?.tables, right.snapshot?.tables]
+      .filter((list): list is string[] => Array.isArray(list))
+      .map((list) => new Set(list));
+    const scoped = (objects: CatalogObject[]) =>
+      scopes.length === 0
+        ? objects
+        : objects.filter((object) => scopes.every((set) => set.has(object.parent ?? object.name)));
+    const [sourceObjects, targetObjects] = (
+      await Promise.all([load(source, left), load(target, right)])
+    ).map(scoped);
     const targetTables = new Set(
       targetObjects.filter((object) => object.object_type === "table").map((object) => object.name),
     );
@@ -328,6 +346,7 @@ export async function runSchemaCompare(sides?: {
       },
       selection: defaultSelection(limited.items),
       renames: {},
+      renamePrior: {},
       activeKey: null,
       loading: null,
     });
@@ -338,14 +357,25 @@ export async function runSchemaCompare(sides?: {
 
 export function toggleRename(sourceKey: string, targetKey: string, enabled: boolean): void {
   useSchemaCompareStore.setState((state) => {
-    const renames = Object.fromEntries(
-      Object.entries(state.renames).filter(([from, to]) => from !== sourceKey && to !== targetKey),
-    );
-    if (!enabled) return { renames };
-    return {
-      renames: { ...renames, [sourceKey]: targetKey },
-      selection: { ...state.selection, [sourceKey]: true, [targetKey]: true },
-    };
+    const selection = { ...state.selection };
+    const renamePrior = { ...state.renamePrior };
+    const renames: Record<string, string> = {};
+    for (const [from, to] of Object.entries(state.renames)) {
+      if (from !== sourceKey && to !== targetKey) {
+        renames[from] = to;
+        continue;
+      }
+      if (renamePrior[to]) selection[to] = true;
+      else delete selection[to];
+      delete renamePrior[to];
+    }
+    if (enabled) {
+      renamePrior[targetKey] = Boolean(selection[targetKey]);
+      renames[sourceKey] = targetKey;
+      selection[sourceKey] = true;
+      selection[targetKey] = true;
+    }
+    return { renames, renamePrior, selection };
   });
 }
 

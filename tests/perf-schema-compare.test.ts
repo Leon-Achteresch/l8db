@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 import type { CatalogObject } from "../src/lib/db";
-import { compareCatalogs, defaultSelection } from "../src/lib/schema-compare/diff";
+import {
+  compareCatalogs,
+  defaultSelection,
+  limitDifferences,
+} from "../src/lib/schema-compare/diff";
 import { buildSyncScript } from "../src/lib/schema-compare/script";
 import { type CompareResult, DEFAULT_COMPARE_OPTIONS } from "../src/lib/schema-compare/types";
 import {
@@ -44,18 +48,25 @@ function catalog(schema: string, withDependencies: boolean, drift: number): Cata
       parent: null,
       ddl: `CREATE OR REPLACE VIEW "${schema}"."V_${index}" AS SELECT * FROM "${schema}"."${base}"`,
       attributes: {},
-      ...(withDependencies ? { depends_on: [base] } : {}),
+      ...(withDependencies
+        ? { depends_on: [`${base.startsWith("T_") ? "table" : "view"}:${base}`] }
+        : {}),
     });
   }
   return objects;
 }
 
-function result(source: CatalogObject[], target: CatalogObject[]): CompareResult {
+function result(
+  source: CatalogObject[],
+  target: CatalogObject[],
+  kind: "oracle" | "sqlite" = "oracle",
+  options = DEFAULT_COMPARE_OPTIONS,
+): CompareResult {
   const context = {
-    kind: "oracle" as const,
+    kind,
     sourceSchema: "DEV",
     targetSchema: "PROD",
-    options: DEFAULT_COMPARE_OPTIONS,
+    options,
   };
   return {
     ...context,
@@ -136,4 +147,85 @@ test("5k-object catalogs compare, order and round-trip within budget", async () 
   expect(regex.p95Ms).toBeLessThan(1_500);
   expect(roundTrip.p95Ms).toBeLessThan(400);
   expect(retainedBytes).toBeLessThan(64 * 1024 * 1024);
+});
+
+test("5k-object sync script rebuild per checkbox click stays bounded for every path", async () => {
+  const source = catalog("DEV", true, 7);
+  const target = catalog("PROD", true, 11);
+  const all = (compare: CompareResult) =>
+    Object.fromEntries(compare.items.map((item) => [item.key, item.status !== "identical"]));
+  const dropped = result([], target);
+  const dropSelection = all(dropped);
+  const drop = await measureScenario(() => {
+    buildSyncScript(dropped, dropSelection);
+  });
+  const altered = result(source, target);
+  const alterSelection = defaultSelection(altered.items);
+  const alter = await measureScenario(() => {
+    buildSyncScript(altered, alterSelection);
+  });
+  const renameColumn = (list: CatalogObject[], name: string) =>
+    list.map((object) =>
+      object.object_type === "column" && object.name === "NAME" ? { ...object, name } : object,
+    );
+  const renaming = result(renameColumn(source, "FULL_NAME"), renameColumn(target, "OLD_NAME"));
+  const renameSelection = all(renaming);
+  const renames = Object.fromEntries(
+    renaming.items
+      .filter((item) => item.name === "FULL_NAME")
+      .map((item) => [item.key, item.key.replace("FULL_NAME", "OLD_NAME")]),
+  );
+  const rename = await measureScenario(() => {
+    buildSyncScript(renaming, renameSelection, renames);
+  });
+  const tables = (list: CatalogObject[], type: string) =>
+    list
+      .filter((object) => object.object_type === "table" || object.object_type === "column")
+      .map((object) =>
+        object.object_type === "column" && object.name === "ID"
+          ? { ...object, attributes: { ...object.attributes, type } }
+          : object,
+      );
+  const rebuilt = result(tables(source, "INTEGER"), tables(target, "TEXT"), "sqlite");
+  const rebuildSelection = defaultSelection(rebuilt.items);
+  const rebuild = await measureScenario(() => {
+    buildSyncScript(rebuilt, rebuildSelection);
+  });
+  const limited = limitDifferences(altered.items, 100);
+  const capped = { ...altered, items: limited.items, omitted: limited.omitted };
+  const limit = await measureScenario(() => {
+    buildSyncScript(capped, alterSelection);
+  });
+  const exclude = await measureScenario(() => {
+    result(source, target, "oracle", {
+      ...DEFAULT_COMPARE_OPTIONS,
+      excludePatterns: "T\\_1%, V\\_2%",
+    });
+  });
+  const sizes = {
+    drop: buildSyncScript(dropped, dropSelection).statements.length,
+    alter: buildSyncScript(altered, alterSelection).statements.length,
+    rename: buildSyncScript(renaming, renameSelection, renames).statements.filter((statement) =>
+      statement.sql.includes("RENAME COLUMN"),
+    ).length,
+    rebuild: buildSyncScript(rebuilt, rebuildSelection).statements.length,
+    limit: buildSyncScript(capped, alterSelection).statements.length,
+  };
+  await reportScenario("schema-compare-script-paths", {
+    objectsPerSide: source.length,
+    note: "buildSyncScript runs again on every selection click",
+    drop,
+    alter,
+    rename,
+    sqliteRebuild: rebuild,
+    limit,
+    excludeCompare: exclude,
+    statements: sizes,
+  });
+  expect(sizes.rename).toBe(TABLES);
+  expect(sizes.limit).toBe(0);
+  expect(sizes.rebuild).toBeGreaterThan(TABLES * 4);
+  for (const scenario of [drop, alter, rename, rebuild, limit])
+    expect(scenario.p95Ms).toBeLessThan(150);
+  expect(exclude.p95Ms).toBeLessThan(400);
 });

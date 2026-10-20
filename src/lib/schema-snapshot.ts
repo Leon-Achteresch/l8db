@@ -124,6 +124,7 @@ export interface CatalogSnapshot {
   schema: string;
   created_at: string;
   types: CatalogObjectType[];
+  tables?: string[];
   objects: CatalogObject[];
 }
 
@@ -213,7 +214,8 @@ function legacyCatalog(snapshot: SchemaSnapshot): CatalogSnapshot {
   const kind = snapshot.scope.kind as DatabaseKind;
   const style = identifierStyleForKind(kind);
   const objects: CatalogObject[] = [];
-  for (const table of snapshot.tables) {
+  const tables = snapshot.tables.filter((table) => table.incomplete_reason === null);
+  for (const table of tables) {
     const columns: CatalogObject[] = table.columns.map((column) => ({
       object_type: "column",
       name: column.name,
@@ -225,13 +227,18 @@ function legacyCatalog(snapshot: SchemaSnapshot): CatalogSnapshot {
         ...(column.column_default === null ? {} : { default: column.column_default }),
       },
     }));
+    const lines = columns.map((column) => column.ddl);
+    if (table.primary_key.length > 0)
+      lines.push(
+        `PRIMARY KEY (${table.primary_key.map((column) => quoteIdentifier(column, style)).join(", ")})`,
+      );
     const name = `${quoteIdentifier(snapshot.scope.schema, style)}.${quoteIdentifier(table.name, style)}`;
     objects.push(
       {
         object_type: "table",
         name: table.name,
         parent: null,
-        ddl: `CREATE TABLE ${name} (\n  ${columns.map((column) => column.ddl).join(",\n  ")}\n)`,
+        ddl: `CREATE TABLE ${name} (\n  ${lines.join(",\n  ")}\n)`,
         attributes: {},
       },
       ...columns,
@@ -245,6 +252,7 @@ function legacyCatalog(snapshot: SchemaSnapshot): CatalogSnapshot {
     schema: snapshot.scope.schema,
     created_at: snapshot.captured_at,
     types: ["table"],
+    tables: tables.map((table) => table.name),
     objects,
   };
 }
@@ -259,8 +267,10 @@ export function parseCatalogSnapshot(text: string): CatalogSnapshot {
   const candidate = (raw ?? {}) as Partial<CatalogSnapshot> & Partial<SchemaSnapshot>;
   if (candidate.version === SCHEMA_SNAPSHOT_VERSION) {
     const legacy = parseSnapshot(text);
-    if (!CATALOG_KINDS.has(legacy.scope.kind))
-      throw new Error(`Snapshots für ${legacy.scope.kind} werden nicht unterstützt.`);
+    if (legacy.scope.kind !== "postgres")
+      throw new Error(
+        `Alte Snapshots (Version 1) werden nur für PostgreSQL gelesen, nicht für ${legacy.scope.kind}.`,
+      );
     return legacyCatalog(legacy);
   }
   if (candidate.version !== CATALOG_SNAPSHOT_VERSION)
@@ -280,6 +290,11 @@ export function parseCatalogSnapshot(text: string): CatalogSnapshot {
     !candidate.types.every((type) => Object.hasOwn(OBJECT_TYPE_META, type))
   )
     throw new Error("Snapshot-Datei enthält eine ungültige Liste der Objekttypen.");
+  if (
+    candidate.tables !== undefined &&
+    !(Array.isArray(candidate.tables) && candidate.tables.every((name) => typeof name === "string"))
+  )
+    throw new Error("Snapshot-Datei enthält eine ungültige Tabellenliste.");
   if (!Array.isArray(candidate.objects) || !candidate.objects.every(isCatalogObject))
     throw new Error("Snapshot-Datei enthält ein ungültiges Objekt.");
   return {
@@ -290,6 +305,7 @@ export function parseCatalogSnapshot(text: string): CatalogSnapshot {
     schema: candidate.schema,
     created_at: candidate.created_at,
     types: candidate.types,
+    ...(candidate.tables ? { tables: candidate.tables } : {}),
     objects: candidate.objects,
   };
 }

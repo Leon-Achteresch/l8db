@@ -117,4 +117,18 @@ describe("zusätzliche Normalisierung", () => {
     expect(same("oracle", "DEFAULT '(20 BYTE)'", "DEFAULT '(20 CHAR)'", all)).toBe(false);
     expect(same("oracle", "TIMESTAMP(6)", "TIMESTAMP(9)", DEFAULT_COMPARE_OPTIONS)).toBe(false);
   });
+
+  test("lässt Anführungszeichen um Schlüsselwörter und Dollar-Literale stehen", () => {
+    expect(same("postgres", `SELECT "current_user"`, "SELECT current_user", all)).toBe(false);
+    expect(same("oracle", `SELECT "DATE" FROM t`, "SELECT DATE FROM t", all)).toBe(false);
+    expect(same("postgres", "SELECT $q$a   -- b$q$", "SELECT $q$a -- b$q$", all)).toBe(false);
+    expect(
+      same(
+        "postgres",
+        "AS $function$\nBEGIN  -- x\n  RETURN 1;\nEND $function$",
+        "AS $function$ BEGIN RETURN 1; END $function$",
+        all,
+      ),
+    ).toBe(true);
+  });
 });

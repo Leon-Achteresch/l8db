@@ -6,6 +6,7 @@ import type { CatalogObject } from "../src/lib/db";
 const calls: { command: string; args: Record<string, unknown> }[] = [];
 const files = new Map<string, string>();
 let catalog: (schema: string) => CatalogObject[] = () => [];
+let queryRows: (sql: string) => Record<string, unknown>[] = () => [];
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
@@ -16,6 +17,7 @@ mock.module("@tauri-apps/api/core", () => ({
           (args.types as string[]).includes(object.object_type) || object.object_type === "column",
       );
     if (command === "schema_partition_ddl") return { ORDERS: "PARTITION BY RANGE (ID)" };
+    if (command === "execute_query") return { columns: [], rows: queryRows(String(args.sql)) };
     return undefined;
   },
 }));
@@ -32,6 +34,7 @@ const { useConnectionsStore } = await import("../src/lib/connections");
 const { useProvidersStore } = await import("../src/lib/providers");
 const { captureCatalogSnapshot, runSchemaCompare, setupProblem, useSchemaCompareStore } =
   await import("../src/lib/schema-compare/store");
+const { DEFAULT_COMPARE_OPTIONS } = await import("../src/lib/schema-compare/types");
 const {
   buildCatalogSnapshot,
   buildSnapshot,
@@ -209,6 +212,11 @@ describe("Katalog-Snapshot", () => {
       default: "'x'::character varying",
     });
     expect(parsed.objects[0].ddl).toContain(`CREATE TABLE "public"."users"`);
+    expect(parsed.objects[0].ddl).toContain(`PRIMARY KEY ("id")`);
+    expect(parsed.tables).toEqual(["users"]);
+    const foreign = JSON.parse(serializeSnapshot(legacy));
+    foreign.scope.kind = "mssql";
+    expect(() => parseCatalogSnapshot(JSON.stringify(foreign))).toThrow("nur für PostgreSQL");
   });
 });
 
@@ -292,5 +300,100 @@ describe("Snapshot als Vergleichsseite", () => {
     expect(snapshot.types).toContain("grant");
     expect(snapshot.objects[0].ddl).toContain("PARTITION BY RANGE (ID)");
     expect(calls.map((call) => call.command)).toEqual(["schema_catalog", "schema_partition_ddl"]);
+  });
+});
+
+describe("Grenzen alter Snapshots und Tablespaces", () => {
+  test("vergleicht nur die Tabellen, die ein alter Snapshot enthält", async () => {
+    const legacy = buildSnapshot(
+      {
+        connection_name: "Alt",
+        kind: "postgres",
+        database: "app",
+        schema: "public",
+        requested_tables: ["users", "gone"],
+      },
+      [
+        buildSnapshotTable("public", "users", [
+          {
+            name: "id",
+            data_type: "integer",
+            is_nullable: false,
+            column_default: null,
+            is_primary_key: true,
+            ordinal_position: 1,
+            character_maximum_length: null,
+          },
+        ] as never),
+        buildSnapshotTable("public", "gone", [], "keine Rechte"),
+      ],
+    );
+    files.set("/tmp/v1.json", serializeSnapshot(legacy));
+    useConnectionsStore.setState({
+      connections: [
+        ORA,
+        {
+          ...ORA,
+          id: "pg",
+          name: "PG",
+          kind: "postgres",
+          connectionString: "postgresql://u:p@127.0.0.1:5432/app",
+        },
+      ],
+    });
+    catalog = (schema) => [
+      ...table(schema, "users", [["id", "integer"]]),
+      ...table(schema, "orders", [["id", "integer"]]),
+      ...table(schema, "gone", [["id", "integer"]]),
+    ];
+    useSchemaCompareStore.setState({ types: ["table"] });
+    await runSchemaCompare({
+      source: { connectionId: "pg", database: "app", schema: "public" },
+      target: {
+        connectionId: null,
+        database: "app",
+        schema: "public",
+        snapshot: { path: "/tmp/v1.json", kind: "postgres", createdAt: "", connectionName: "Alt" },
+      },
+    });
+    const state = useSchemaCompareStore.getState();
+    expect(state.error).toBeNull();
+    expect([...new Set(state.result?.items.map((item) => item.parent ?? item.name))]).toEqual([
+      "users",
+    ]);
+  });
+
+  test("prüft Tablespaces des Zielschemas nur über passende Sichten", async () => {
+    const source = snapshotFile("/tmp/src.json", "DEV", [
+      { ...table("DEV", "NEU", [["ID", "NUMBER"]])[0], attributes: { tablespace: "DATA" } },
+    ]);
+    catalog = () => [];
+    const queries: string[] = [];
+    let user = "L8DB";
+    queryRows = (sql) => {
+      queries.push(sql);
+      if (sql === "SELECT USER FROM dual") return [{ USER: user }];
+      return [{ TABLESPACE_NAME: "USERS" }];
+    };
+    useSchemaCompareStore.setState({
+      types: ["table"],
+      options: { ...DEFAULT_COMPARE_OPTIONS, ignoreTablespace: false },
+    });
+    const target = { connectionId: "ora", database: null, schema: "PROD" };
+    await runSchemaCompare({ source, target });
+    expect(useSchemaCompareStore.getState().result?.items[0].blocked).toContain("DATA");
+    expect(queries).toEqual([
+      "SELECT USER FROM dual",
+      "SELECT tablespace_name FROM dba_tablespaces",
+    ]);
+    queries.length = 0;
+    user = "PROD";
+    await runSchemaCompare({ source, target });
+    expect(queries).toEqual([
+      "SELECT USER FROM dual",
+      "SELECT tablespace_name FROM user_tablespaces",
+    ]);
+    queryRows = () => [];
+    useSchemaCompareStore.setState({ options: DEFAULT_COMPARE_OPTIONS });
   });
 });

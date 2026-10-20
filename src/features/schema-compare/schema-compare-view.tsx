@@ -124,10 +124,7 @@ export function SchemaCompareView() {
     return out;
   }, [result]);
 
-  const renamed = useMemo(
-    () => activeRenames(result?.items ?? [], selection, renames),
-    [result, selection, renames],
-  );
+  const renamed = useMemo(() => activeRenames(result?.items ?? [], renames), [result, renames]);
   const notes = useMemo(() => {
     const out: Record<string, string> = {};
     for (const [from, dropped] of renamed) {

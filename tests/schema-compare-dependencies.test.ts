@@ -16,7 +16,7 @@ function view(name: string, sql: string, deps?: string[]): CatalogObject {
     parent: null,
     ddl: `CREATE OR REPLACE VIEW "APP"."${name}" AS ${sql}`,
     attributes: {},
-    ...(deps ? { depends_on: deps } : {}),
+    ...(deps ? { depends_on: deps.map((dep) => `view:${dep}`) } : {}),
   };
 }
 
@@ -161,8 +161,8 @@ describe("Abhängigkeitsgraph aus dem Katalog", () => {
     });
     const compare = result(
       "postgres",
-      [...table("bigint"), v(["t"])],
-      [...table("integer"), v(["t"])],
+      [...table("bigint"), v(["table:t"])],
+      [...table("integer"), v(["table:t"])],
     );
     compare.types = ["table", "view"];
     const sql = script(compare).statements.map((statement) => statement.sql);
@@ -180,7 +180,7 @@ describe("Abhängigkeitsgraph aus dem Katalog", () => {
           parent: null,
           ddl: `CREATE OR REPLACE FUNCTION "APP".f()\n RETURNS SETOF t\nAS $$ SELECT * FROM t $$`,
           attributes: { routine: "f", arguments: "" },
-          depends_on: ["t"],
+          depends_on: ["table:t"],
         },
         {
           object_type: "table",
@@ -197,5 +197,33 @@ describe("Abhängigkeitsgraph aus dem Katalog", () => {
     const routine = statements.findIndex((statement) => statement.sql.includes("FUNCTION"));
     expect(table).toBeGreaterThanOrEqual(0);
     expect(routine).toBeGreaterThan(table);
+  });
+
+  test("unterscheidet Package-Spezifikation und Body gleichen Namens", () => {
+    const code = (
+      type: "package" | "package_body",
+      name: string,
+      deps: string[],
+    ): CatalogObject => ({
+      object_type: type,
+      name,
+      parent: null,
+      ddl: `CREATE OR REPLACE ${type === "package" ? "PACKAGE" : "PACKAGE BODY"} "APP"."${name}" AS END;`,
+      attributes: {},
+      depends_on: deps,
+    });
+    const compare = result(
+      "oracle",
+      [
+        code("package", "A", []),
+        code("package", "B", []),
+        code("package_body", "A", ["package:A", "package:B"]),
+        code("package_body", "B", ["package:A", "package:B"]),
+      ],
+      [],
+    );
+    const { statements, warnings } = script(compare);
+    expect(statements).toHaveLength(4);
+    expect(warnings).toEqual([]);
   });
 });

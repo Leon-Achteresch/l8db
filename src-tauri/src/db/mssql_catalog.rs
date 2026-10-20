@@ -567,7 +567,7 @@ impl MssqlAdapter {
         }
         let edges = self
             .rows(&format!(
-                "SELECT DISTINCT RTRIM(o.type), o.name, r.name \
+                "SELECT DISTINCT RTRIM(o.type), o.name, RTRIM(r.type), r.name \
                  FROM sys.sql_expression_dependencies d \
                  JOIN sys.objects o ON o.object_id = d.referencing_id \
                  JOIN sys.objects r ON r.object_id = d.referenced_id \
@@ -581,10 +581,26 @@ impl MssqlAdapter {
             edges.iter().filter_map(|row| {
                 let code = text(row, 0);
                 let (_, kind) = modules.iter().find(|(item, _)| *item == code)?;
-                Some((kind.to_string(), text(row, 1), text(row, 2)))
+                Some((
+                    kind.to_string(),
+                    text(row, 1),
+                    object_kind(&text(row, 2)).to_string(),
+                    text(row, 3),
+                ))
             }),
         );
         Ok(())
+    }
+}
+
+fn object_kind(code: &str) -> &str {
+    match code {
+        "U" => "table",
+        "V" => "view",
+        "P" => "procedure",
+        "FN" | "IF" | "TF" => "function",
+        "TR" => "trigger",
+        _ => code,
     }
 }
 

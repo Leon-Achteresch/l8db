@@ -52,6 +52,9 @@ describe("Ausschlussmuster", () => {
     expect(pattern.test("A.TMP")).toBe(false);
     expect(excludePattern(" , ")).toBeNull();
     expect((excludePattern("A(B)$") as RegExp).test("A(B)$")).toBe(true);
+    const escaped = excludePattern("TMP\\_%") as RegExp;
+    expect(escaped.test("TMP_X")).toBe(true);
+    expect(escaped.test("TMPAX")).toBe(false);
   });
 
   test("schließt Objekte samt Kindobjekten aus", () => {
@@ -60,6 +63,8 @@ describe("Ausschlussmuster", () => {
     });
     expect(items.map((item) => item.name)).toEqual(["ORDERS"]);
     expect(items[0].children.map((child) => child.name)).toEqual(["ID", "ORDERS_I"]);
+    const own = compare(table("ORDERS"), { excludePatterns: "%_I, ID" });
+    expect(own[0].children.map((child) => child.name)).toEqual(["ID", "ORDERS_I"]);
   });
 });
 
@@ -72,7 +77,7 @@ describe("Unterschiedslimit", () => {
     expect(limited.omitted).toBe(1);
   });
 
-  test("vermerkt das erreichte Limit im Skript", () => {
+  test("erzeugt bei erreichtem Limit kein Skript", () => {
     const limited = limitDifferences(compare(["A", "B"].flatMap(table)), 1);
     const result: CompareResult = {
       kind: "oracle",
@@ -89,9 +94,57 @@ describe("Unterschiedslimit", () => {
       omitted: limited.omitted,
     };
     const script = buildSyncScript(result, defaultSelection(result.items));
+    expect(script.statements).toEqual([]);
     expect(script.warnings[0]).toContain("Limit erreicht: 1 weitere Unterschiede");
     expect(
       renderSyncScript(script, { kind: "oracle", sourceLabel: "Q", targetLabel: "Z" }),
     ).toContain("-- Hinweis: Limit erreicht");
+  });
+});
+
+describe("SQLite-Neuaufbau mit Filter", () => {
+  test("kopiert auch Spalten zurück, deren Name einem Ausschlussmuster entspricht", () => {
+    const sqliteTable = (type: string): CatalogObject[] => [
+      {
+        object_type: "table",
+        name: "T",
+        parent: null,
+        ddl: `CREATE TABLE "main"."T" ("id" ${type}, "x_bak" TEXT)`,
+        attributes: {},
+      },
+      ...[
+        ["id", type],
+        ["x_bak", "TEXT"],
+      ].map(([name, columnType]) => ({
+        object_type: "column" as const,
+        name,
+        parent: "T",
+        ddl: `"${name}" ${columnType}`,
+        attributes: { type: columnType, nullable: "YES" },
+      })),
+    ];
+    const context = {
+      kind: "sqlite" as const,
+      sourceSchema: "main",
+      targetSchema: "main",
+      options: { ...DEFAULT_COMPARE_OPTIONS, excludePatterns: "%_BAK" },
+    };
+    const items = compareCatalogs(sqliteTable("INTEGER"), sqliteTable("TEXT"), context);
+    const result: CompareResult = {
+      ...context,
+      source: { connectionId: null, database: null, schema: "main" },
+      target: { connectionId: null, database: null, schema: "main" },
+      sourceLabel: "Quelle",
+      targetLabel: "Ziel",
+      types: ["table"],
+      items,
+      comparedAt: "",
+    };
+    const sql = buildSyncScript(result, defaultSelection(items)).statements.map(
+      (statement) => statement.sql,
+    );
+    expect(sql).toContain(
+      `CREATE TABLE "main"."_l8db_copy_T" AS SELECT "id", "x_bak" FROM "main"."T"`,
+    );
   });
 });
