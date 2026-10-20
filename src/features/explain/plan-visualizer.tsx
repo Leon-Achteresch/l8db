@@ -32,7 +32,7 @@ export function PlanVisualizer({ plan }: PlanVisualizerProps) {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-2" data-plan-view={view}>
       <div className="flex flex-wrap items-center gap-2">
-        <PlanViewSwitcher hasText={text !== null} />
+        <PlanViewSwitcher hasText={text !== null} view={view} />
         <span className="text-[11px] text-muted-foreground">
           {analysis.ops.length} Knoten · Gewichtung {METRIC_LABEL[analysis.metric]}
           {warnings > 0 && ` · ${warnings} Hinweis${warnings === 1 ? "" : "e"}`}

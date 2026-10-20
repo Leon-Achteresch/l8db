@@ -16,8 +16,7 @@ import {
 } from "@/lib/explain-view-prefs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
-export function PlanViewSwitcher({ hasText }: { hasText: boolean }) {
-  const view = useExplainViewPrefs((state) => state.view);
+export function PlanViewSwitcher({ hasText, view }: { hasText: boolean; view: ExplainViewMode }) {
   const direction = useExplainViewPrefs((state) => state.direction);
   const setView = useExplainViewPrefs((state) => state.setView);
   const setDirection = useExplainViewPrefs((state) => state.setDirection);

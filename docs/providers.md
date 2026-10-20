@@ -217,10 +217,20 @@ Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowf
 
 - `?sid=ORCL` connects by SID instead of the service name.
 - `?privilege=sysdba` (also `sysoper`, `sysbackup`, `sysdg`, `syskm`, `sysasm`) logs in with an administrative role; user `sys` defaults to SYSDBA.
-- `?protocol=tcps` (or `?ssl=true`) uses TCPS; `&wallet=/path/to/wallet` sets `MY_WALLET_DIRECTORY`.
+- `?protocol=tcps` (or `?ssl=true`) uses TCPS; `&wallet=/path/to/wallet` sets `MY_WALLET_DIRECTORY` (quoted, so paths such as `C:\Program Files (x86)\…` work; `"` is rejected).
+- In the connection editor (field mode), SID, role, TCPS and wallet are set in the Oracle section instead of typing the parameters.
 - `?tns=ALIAS` or `?connect_string=…` passes a TNS alias or descriptor unchanged; the other parameters are then ignored.
 
-Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `meta …` or `transaction …` in V$SESSION. On connect, one PL/SQL probe reads version, container, identifier length, privileges and the readable V$ views; the result is cached per connection and shown under Sitzungen & Locks → Verbindung. Without rights on V$SESSION or V$LOCK, the session and lock views explain the missing grant instead of failing with ORA-00942. Input that contains only SQL*Plus commands (`DESC`, `SET`, `@file`) is rejected before it reaches the server. With V$SESSION_LONGOPS, the session list shows progress and remaining time next to the wait event. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
+Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `meta …` or `transaction …` in V$SESSION. On connect, one PL/SQL probe reads version, container, identifier length, privileges and the readable V$ views; the result is cached per connection for 5 minutes and shown under Sitzungen & Locks → Verbindung (the SID shown there belongs to the metadata session, not the editor). Without rights on V$SESSION or V$LOCK, the session and lock views explain the missing grant instead of failing with ORA-00942. Input that contains only SQL*Plus commands (`DESC`, `SET`, `@file`) is rejected before it reaches the server. With V$SESSION_LONGOPS, the session list shows progress and remaining time next to the wait event.
+
+- **Debugger:** DBMS_DEBUG reads each frame's line map (`GET_LINE_MAP`). Breakpoints on lines without an executable statement are skipped with a message instead of ending the session. Values in the inspector can be changed while the session is paused (`SET_VALUE`, PL/SQL literal syntax such as `42` or `'text'`); rejected values leave the variable unchanged and report the reason. PostgreSQL uses `pldbg_deposit_value` (not live-tested).
+- **Explain:** with Oracle 12.1+ and read access to V$SQL and V$SQL_PLAN, the DBMS_XPLAN text also contains the cached cursor plan (`DISPLAY_CURSOR` via `DBMS_SQL_TRANSLATOR.SQL_ID`), when the statement already ran.
+- **Transactions:** `DBMS_TRANSACTION.LOCAL_TRANSACTION_ID` tells whether the session has an open transaction before V$LOCKED_OBJECT is read. Without an open transaction there is nothing to list; with one but no V$ rights, the error says so.
+- **Compiling:** warnings from `CREATE OR REPLACE` in the editor and from package spec, body and callers are shown together. Objects compiled with debug info (`PLSQL_DEBUG` or optimize level below 2) appear only in the invalid-objects view, not in the sidebar markers, the compile-all count or deployment checks.
+- **Notices:** reconnects and extra result sets from `DBMS_SQL.RETURN_RESULT` are shown as a warning even when server output is off. Server output is read only when it is enabled.
+- **Cancellation:** the editor call has an outer safety timeout (query timeout + 2 × connect timeout + 5 s); idle pings run under the connect timeout. The fallback kill only matches ACTIVE sessions of the same user and machine and is skipped when the call ends in the meantime.
+- **Data compare:** LOB columns are read through locators, so a fetch batch does not buffer 500 full LOBs. Sync scripts split CLOBs into `TO_CLOB` pieces of 1000 characters and refuse XMLTYPE, SDO_GEOMETRY, BFILE, LONG and binary values above 2000 bytes.
+- **SQL log:** passwords after `IDENTIFIED BY`, `REPLACE` and `PASSWORD '…'` are masked. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
 
 ## Default and optional builds
 

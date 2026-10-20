@@ -1,10 +1,11 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use regex::{Captures, Regex};
 use serde::Serialize;
 
 const CAPACITY: usize = 5000;
@@ -13,6 +14,27 @@ const MAX_SQL: usize = 4000;
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static NEXT: AtomicU64 = AtomicU64::new(1);
 static ENTRIES: Mutex<VecDeque<SqlLogEntry>> = Mutex::new(VecDeque::new());
+
+static SECRET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)(\bIDENTIFIED\s+(?:WITH\s+[\w$]+\s+)?BY\s+(?:PASSWORD\s+)?)(?:'(?:[^']|'')*'|"[^"]*"|[^\s;'"]+)(\s+REPLACE\s+(?:'(?:[^']|'')*'|"[^"]*"|[^\s;'"]+))?|(\bPASSWORD\s+)'(?:[^']|'')*'"#,
+    )
+    .expect("secret pattern")
+});
+
+fn mask_secrets(sql: &str) -> std::borrow::Cow<'_, str> {
+    SECRET.replace_all(sql, |c: &Captures| {
+        let Some(head) = c.get(1) else {
+            return format!("{}***", &c[3]);
+        };
+        let replaced = if c.get(2).is_some() {
+            " REPLACE ***"
+        } else {
+            ""
+        };
+        format!("{}***{replaced}", head.as_str())
+    })
+}
 
 thread_local! {
     static SOURCE: RefCell<String> = const { RefCell::new(String::new()) };
@@ -60,9 +82,10 @@ pub fn record(
     if !enabled() {
         return;
     }
+    let sql = mask_secrets(sql);
     let sql = match sql.char_indices().nth(MAX_SQL) {
         Some((cut, _)) => format!("{}…", &sql[..cut]),
-        None => sql.to_string(),
+        None => sql.into_owned(),
     };
     let entry = SqlLogEntry {
         id: NEXT.fetch_add(1, Ordering::Relaxed),
@@ -158,6 +181,28 @@ mod tests {
     }
 
     #[test]
+    fn secrets_are_masked() {
+        assert_eq!(
+            mask_secrets("ALTER USER app IDENTIFIED BY \"N3u!\" REPLACE alt;"),
+            "ALTER USER app IDENTIFIED BY *** REPLACE ***;"
+        );
+        assert_eq!(
+            mask_secrets("CREATE USER 'a'@'%' IDENTIFIED WITH caching_sha2_password BY 'x''y'"),
+            "CREATE USER 'a'@'%' IDENTIFIED WITH caching_sha2_password BY ***"
+        );
+        assert_eq!(
+            mask_secrets("ALTER ROLE app WITH PASSWORD 'geheim' VALID UNTIL 'infinity'"),
+            "ALTER ROLE app WITH PASSWORD *** VALID UNTIL 'infinity'"
+        );
+        for plain in [
+            "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;",
+            "SELECT password FROM users",
+        ] {
+            assert_eq!(mask_secrets(plain), plain);
+        }
+    }
+
+    #[test]
     fn log_stays_bounded_and_costs_little() {
         sql_log_clear();
         sql_log_configure(false);
@@ -181,11 +226,17 @@ mod tests {
         let page = sql_log_entries(0);
         sql_log_configure(false);
         assert_eq!(page.entries.len(), CAPACITY);
-        assert!(page.entries.iter().all(|e| e.source == "meta" && e.sql.chars().count() <= MAX_SQL + 1));
+        assert!(page
+            .entries
+            .iter()
+            .all(|e| e.source == "meta" && e.sql.chars().count() <= MAX_SQL + 1));
         assert_eq!(page.entries.last().unwrap().rows, Some(19_999));
         let after = page.entries[CAPACITY - 10].id;
         assert_eq!(sql_log_entries(after).entries.len(), 9);
-        let (median, p95) = (percentile(&mut samples.clone(), 0.5), percentile(&mut samples, 0.95));
+        let (median, p95) = (
+            percentile(&mut samples.clone(), 0.5),
+            percentile(&mut samples, 0.95),
+        );
         eprintln!(
             "sql_log: disabled 100k records in {:?}; enabled median {median:.2} µs, p95 {p95:.2} µs, retained {} entries",
             disabled,

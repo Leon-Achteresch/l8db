@@ -136,7 +136,11 @@ fn is_privilege_error(message: &str) -> bool {
         .any(|code| message.contains(code))
 }
 
-pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> {
+pub(super) fn explain(
+    c: &Connection,
+    statement: &str,
+    cursor_cache: bool,
+) -> Result<Value, String> {
     let id = statement_id();
     let sql = format!("EXPLAIN PLAN SET STATEMENT_ID = '{id}' FOR {statement}");
     c.execute(&sql, &[]).map_err(|e| map_sql_err(e, &sql))?;
@@ -148,6 +152,13 @@ pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> 
         c,
         &format!("SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY('PLAN_TABLE', '{id}', 'TYPICAL'))"),
     );
+    let text = match (
+        text,
+        cursor_cache.then(|| cached_plan(c, statement)).flatten(),
+    ) {
+        (Some(text), Some(cached)) => Some(format!("{text}\n\n{CACHED_PLAN}\n\n{cached}")),
+        (text, cached) => text.or(cached),
+    };
     let cleanup = c
         .execute(
             &format!("DELETE FROM plan_table WHERE statement_id = '{id}'"),
@@ -249,6 +260,28 @@ fn run_measured(c: &Connection, statement: &str) -> Result<Value, String> {
         ),
     );
     Ok(with_text(plan_tree(rows, Some(execution_ms))?, text))
+}
+
+pub(super) const CACHED_PLAN: &str =
+    "Zuletzt tatsächlich verwendeter Plan aus dem Cursor-Cache (V$SQL_PLAN):";
+
+fn cached_plan(c: &Connection, statement: &str) -> Option<String> {
+    if statement.len() > 4000 {
+        return None;
+    }
+    let lines: Vec<String> = c
+        .query(
+            "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(DBMS_SQL_TRANSLATOR.SQL_ID(:1), NULL, 'TYPICAL'))",
+            &[&statement],
+        )
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|row| s(&row, 0))
+        .collect();
+    lines
+        .iter()
+        .any(|line| line.contains("Plan hash value"))
+        .then(|| lines.join("\n"))
 }
 
 fn xplan(c: &Connection, sql: &str) -> Option<String> {

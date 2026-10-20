@@ -36,6 +36,8 @@ export interface SyncScriptResult {
 const BINARY_TYPE = /binary|blob|bytea|image|raw/i;
 const TEMPORAL_TYPE = /date|time/i;
 const INEXACT_TYPE = /float|real|double/i;
+const ORACLE_NO_LITERAL = /xmltype|sdo_geometry|bfile|^long/i;
+const ORACLE_CLOB_CHUNK = 1000;
 const UNCOMPARABLE_TYPE: Partial<Record<DatabaseKind, RegExp>> = {
   mssql: /^(n?text|image|xml|geography|geometry|sql_variant)$/i,
   mysql: /json|geometry|point|linestring|polygon/i,
@@ -67,6 +69,17 @@ function quoteText(text: string, kind: DatabaseKind | null | undefined): string 
   if (kind === "mysql") return `'${escaped.split("\\").join("\\\\")}'`;
   if (kind === "mssql") return `N'${escaped}'`;
   return `'${escaped}'`;
+}
+
+function oracleClob(text: string): string {
+  const parts: string[] = [];
+  for (let start = 0; start < text.length; ) {
+    let end = Math.min(start + ORACLE_CLOB_CHUNK, text.length);
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
+    parts.push(`TO_CLOB(${quoteText(text.slice(start, end), "oracle")})`);
+    start = end;
+  }
+  return parts.join(" || ");
 }
 
 function hstoreText(value: Record<string, unknown>): string {
@@ -108,17 +121,29 @@ export function dialectLiteral(
 ): string {
   if (!kind || kind === "postgres") return postgresLiteral(value, column, type, rowType);
   if (value === null || value === undefined) return "NULL";
+  if (kind === "oracle" && ORACLE_NO_LITERAL.test(type))
+    throw new UnsupportedValueError(
+      column,
+      `Oracle-Typ ${type} lässt sich nicht als SQL-Literal schreiben.`,
+    );
   if (/json/i.test(type)) return quoteText(JSON.stringify(value), kind);
   if (typeof value === "boolean") return value ? "1" : "0";
   if (typeof value === "string" && BINARY_TYPE.test(type) && /^\\x([0-9a-f]{2})*$/i.test(value)) {
     const hex = value.slice(2).toUpperCase();
     if (kind === "mssql") return hex ? `0x${hex}` : "0x";
+    if (kind === "oracle" && hex.length > 4000)
+      throw new UnsupportedValueError(
+        column,
+        "Binärwerte über 2000 Byte passen nicht in ein Oracle-Literal.",
+      );
     if (kind === "oracle") return `HEXTORAW('${hex}')`;
     return `X'${hex}'`;
   }
   if (typeof value === "string") {
     if (value.includes("\u0000"))
       throw new UnsupportedValueError(column, "Text enthält ein Nullbyte.");
+    if (kind === "oracle" && /clob/i.test(type) && value.length > ORACLE_CLOB_CHUNK)
+      return oracleClob(value);
     if (kind === "mssql" && TEMPORAL_TYPE.test(type)) {
       return quoteText(
         value.replace(/^(\d{4}-\d{2}-\d{2}) (?=\d)/, "$1T").replace(/(\.\d{7})\d+/, "$1"),

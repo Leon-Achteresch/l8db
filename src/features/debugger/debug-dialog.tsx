@@ -1,5 +1,6 @@
 import { Bug, CircleDot, Code2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
@@ -286,7 +287,13 @@ function DebugDialogContent(
               }
               onToggle={(line) => {
                 if (!frame) return;
-                const next = breakpoints.some((b) => b.oid === frame.oid && b.line === line)
+                const exists = breakpoints.some((b) => b.oid === frame.oid && b.line === line);
+                const executable = snapshot?.executableLines ?? [];
+                if (!exists && executable.length && !executable.includes(line)) {
+                  toast.info(`Zeile ${line} enthält keine ausführbare Anweisung.`);
+                  return;
+                }
+                const next = exists
                   ? breakpoints.filter((b) => b.oid !== frame.oid || b.line !== line)
                   : [...breakpoints, { oid: frame.oid, line }];
                 void run(async () => {
@@ -315,6 +322,11 @@ function DebugDialogContent(
             <DebugInspector
               snapshot={snapshot}
               paused={paused}
+              valueHint={
+                context.kind === "oracle"
+                  ? "PL/SQL-Ausdruck, z. B. 42, 'Text' oder NULL"
+                  : "Wert, z. B. 42 oder Text"
+              }
               onAction={(action) => void act(action)}
             />
           )}

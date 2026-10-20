@@ -1,15 +1,20 @@
 import { ChevronDown, CornerDownRight, Eye, Layers, Plus, Search, Variable, X } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import type { DebugAction, DebugSnapshot } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { DebugVariableValue } from "./debug-variable-value";
 
 interface DebugInspectorProps {
   snapshot?: DebugSnapshot;
   paused: boolean;
+  valueHint: string;
   onAction: (action: DebugAction) => void;
 }
 
-export function DebugInspector({ snapshot, paused, onAction }: DebugInspectorProps) {
+export function DebugInspector({ snapshot, paused, valueHint, onAction }: DebugInspectorProps) {
+  const { ref, isNew } = useNewFeatureVisibility<HTMLTableCellElement>("debugger.set-value");
   const [filter, setFilter] = useState("");
   const [watchName, setWatchName] = useState("");
   const variables =
@@ -74,7 +79,7 @@ export function DebugInspector({ snapshot, paused, onAction }: DebugInspectorPro
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Wert</th>
+                <th ref={ref}>Wert {isNew ? <NewBadge /> : null}</th>
               </tr>
             </thead>
             <tbody>
@@ -85,7 +90,15 @@ export function DebugInspector({ snapshot, paused, onAction }: DebugInspectorPro
                     {variable.name}
                   </td>
                   <td className={variable.value === null ? "debug-null" : ""}>
-                    {variable.value ?? "NULL"}
+                    <DebugVariableValue
+                      name={variable.name}
+                      value={variable.value}
+                      editable={paused}
+                      hint={valueHint}
+                      onSubmit={(value) =>
+                        onAction({ type: "set_value", name: variable.name, value })
+                      }
+                    />
                   </td>
                 </tr>
               ))}

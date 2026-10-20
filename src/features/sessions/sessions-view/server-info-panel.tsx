@@ -39,7 +39,7 @@ export function ServerInfoPanel() {
       ["Datenbank", data.database ?? ""],
       ["Service", data.service ?? ""],
       ["Instanz", data.instance ?? ""],
-      ["Sitzung (SID)", data.sid ?? ""],
+      ["SID der Metadaten-Sitzung (nicht des Editors)", data.sid ?? ""],
       ["Edition", data.edition ?? ""],
       ["Max. Namenslänge", `${data.max_identifier} Byte`],
     ] as [string, string][]
