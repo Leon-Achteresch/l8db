@@ -122,6 +122,9 @@ function requalifyObject(
     name: routine ? requalify(object.name, from, to, kind) : object.name,
     ddl: requalify(object.ddl, from, to, kind),
     attributes,
+    ...(object.depends_on
+      ? { depends_on: object.depends_on.map((name) => requalify(name, from, to, kind)) }
+      : {}),
   };
 }
 

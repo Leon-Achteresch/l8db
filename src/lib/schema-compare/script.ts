@@ -106,6 +106,7 @@ function label(object: CatalogObject): string {
 interface Dependency {
   name: string;
   body: string;
+  deps?: string[] | null;
 }
 
 function mentions(sql: string, name: string, kind?: DatabaseKind): boolean {
@@ -116,24 +117,80 @@ function mentions(sql: string, name: string, kind?: DatabaseKind): boolean {
   ).test(sql);
 }
 
-function sortByDependencies(
-  statements: SyncStatement[],
-  dependencies: Map<SyncStatement, Dependency>,
-  kind: DatabaseKind,
-) {
-  const pending = [...statements];
-  const ordered: SyncStatement[] = [];
-  while (pending.length > 0) {
-    const index = pending.findIndex((statement) =>
-      pending.every((other) => {
-        const name = dependencies.get(other)?.name;
-        const body = dependencies.get(statement)?.body ?? statement.sql;
-        return other === statement || !name || !mentions(body, name, kind);
-      }),
-    );
-    ordered.push(...pending.splice(index < 0 ? 0 : index, 1));
+function dependsOn(object: CatalogObject, name: string, text: string, kind: DatabaseKind) {
+  return object.depends_on ? object.depends_on.includes(name) : mentions(text, name, kind);
+}
+
+const QUALIFIED_NAME =
+  /\.\s*(?:"((?:[^"]|"")*)"|`((?:[^`]|``)*)`|\[((?:[^\]]|\]\])*)\]|([\w$#]+))/g;
+
+function qualifiedNames(sql: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of sql.matchAll(QUALIFIED_NAME)) {
+    const name =
+      match[1]?.replace(/""/g, '"') ??
+      match[2]?.replace(/``/g, "`") ??
+      match[3]?.replace(/]]/g, "]") ??
+      match[4];
+    names.add(name.toLowerCase());
   }
-  return ordered;
+  return names;
+}
+
+function sortByDependencies(
+  group: SyncStatement[],
+  dependencies: Map<SyncStatement, Dependency>,
+  reverse: boolean,
+  warnings: string[],
+): SyncStatement[] {
+  const exact = new Map<string, number[]>();
+  const loose = new Map<string, number[]>();
+  const add = (map: Map<string, number[]>, name: string, index: number) =>
+    map.set(name, [...(map.get(name) ?? []), index]);
+  group.forEach((statement, index) => {
+    const name = dependencies.get(statement)?.name;
+    if (!name) return;
+    add(exact, name, index);
+    add(loose, name.toLowerCase(), index);
+  });
+  if (exact.size === 0) return group;
+  const next: number[][] = group.map(() => []);
+  const blockers = group.map(() => 0);
+  group.forEach((statement, index) => {
+    const dependency = dependencies.get(statement);
+    const required = dependency?.deps
+      ? dependency.deps.flatMap((name) => exact.get(name) ?? [])
+      : [...qualifiedNames(dependency?.body ?? statement.sql)].flatMap(
+          (name) => loose.get(name) ?? [],
+        );
+    for (const other of new Set(required)) {
+      if (other === index) continue;
+      const [first, then] = reverse ? [index, other] : [other, index];
+      next[first].push(then);
+      blockers[then]++;
+    }
+  });
+  const ready = group.map((_, index) => index).filter((index) => blockers[index] === 0);
+  ready.reverse();
+  const order: number[] = [];
+  while (ready.length > 0) {
+    const index = ready.pop() as number;
+    order.push(index);
+    for (const then of next[index]) {
+      if (--blockers[then] > 0) continue;
+      let at = ready.length;
+      while (at > 0 && ready[at - 1] < then) at--;
+      ready.splice(at, 0, then);
+    }
+  }
+  if (order.length < group.length) {
+    const cycle = group.map((_, index) => index).filter((index) => blockers[index] > 0);
+    warnings.push(
+      `Zyklische Abhängigkeit zwischen ${cycle.map((index) => dependencies.get(group[index])?.name ?? group[index].sql.slice(0, 60)).join(", ")}: Diese Anweisungen stehen in der ursprünglichen Reihenfolge und können fehlschlagen.`,
+    );
+    order.push(...cycle);
+  }
+  return order.map((index) => group[index]);
 }
 
 function unicodeText(value: string): string {
@@ -200,6 +257,7 @@ export function buildSyncScript(
       dangerous?: boolean;
       name?: string;
       body?: string;
+      deps?: string[] | null;
       checks?: (DataCheck | null)[];
       repeat?: boolean;
       backup?: SyncStatement["backup"];
@@ -222,7 +280,11 @@ export function buildSyncScript(
     };
     statements.push(statement);
     if (options.name)
-      dependencies.set(statement, { name: options.name, body: options.body ?? text });
+      dependencies.set(statement, {
+        name: options.name,
+        body: options.body ?? text,
+        deps: options.deps,
+      });
   };
 
   const compound = (type: CatalogObjectType) =>
@@ -282,7 +344,7 @@ export function buildSyncScript(
       phase = Math.max(
         POSTGRES_ROUTINE_PHASE,
         ...createdRelations
-          .filter((item) => mentions(header, item.name, kind))
+          .filter((item) => dependsOn(object, item.name, header, kind))
           .map((item) => (CREATE_PHASE[item.type] ?? 12) + 0.5),
       );
     }
@@ -315,7 +377,8 @@ export function buildSyncScript(
       (type === "constraint" || type === "index") && existingTables.has(object.parent ?? "");
     emit(phase, object.ddl, {
       plsql,
-      name: SORTED_TYPES.has(type) ? object.name : undefined,
+      name: SORTED_TYPES.has(type) || object.depends_on ? object.name : undefined,
+      deps: object.depends_on,
       checks: keyed
         ? [
             keyCheck(
@@ -357,7 +420,7 @@ export function buildSyncScript(
       phase = Math.min(
         POSTGRES_ROUTINE_DROP_PHASE,
         ...droppedRelations
-          .filter((item) => mentions(header, item.name, kind))
+          .filter((item) => dependsOn(object, item.name, header, kind))
           .map((item) => (DROP_PHASE[item.type] ?? 6) - 0.1),
       );
     }
@@ -424,7 +487,7 @@ export function buildSyncScript(
         emit(
           phase,
           `DROP ${postgres && object.attributes.kind === "domain" ? "DOMAIN" : "TYPE"} ${target}`,
-          { dangerous: true, name: object.name, body: object.ddl },
+          { dangerous: true, name: object.name, body: object.ddl, deps: object.depends_on },
         );
         return;
       case "comment":
@@ -444,8 +507,9 @@ export function buildSyncScript(
         const ifExists = postgres && type === "sequence" && object.parent ? "IF EXISTS " : "";
         emit(phase, `DROP ${keyword} ${ifExists}${target}`, {
           dangerous: true,
-          name: VIEW_TYPES.has(type) ? object.name : undefined,
+          name: VIEW_TYPES.has(type) || object.depends_on ? object.name : undefined,
           body: object.ddl,
+          deps: object.depends_on,
         });
       }
     }
@@ -755,8 +819,8 @@ export function buildSyncScript(
       for (const view of views)
         if (
           !rebuild.has(view.name) &&
-          [...altered, ...rebuild.keys()].some((name) =>
-            mentions(view.target?.ddl ?? "", name, kind),
+          [...altered, ...rebuild.keys()].some(
+            (name) => view.target && dependsOn(view.target, name, view.target.ddl, kind),
           )
         ) {
           rebuild.set(view.name, view);
@@ -866,11 +930,12 @@ export function buildSyncScript(
   const final: SyncStatement[] = [];
   for (const [phase, group] of phases)
     final.push(
-      ...(phase === CREATE_PHASE.view || phase === CREATE_PHASE.type
-        ? sortByDependencies(group, dependencies, kind)
-        : phase === DROP_PHASE.view || phase === DROP_PHASE.type
-          ? sortByDependencies(group, dependencies, kind).reverse()
-          : group),
+      ...sortByDependencies(
+        group,
+        dependencies,
+        phase >= 0 && phase < (CREATE_PHASE.type ?? 10),
+        warnings,
+      ),
     );
   return { statements: final, warnings: [...new Set(warnings)] };
 }

@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use tiberius::Row;
 
 use super::{int, lit, quote, text, text_opt, MssqlAdapter};
-use crate::db::schema_catalog::CatalogObject;
+use crate::db::schema_catalog::{attach_dependencies, CatalogObject};
 
 type KeyGroups = BTreeMap<(String, String), (String, String, bool, Vec<String>)>;
 
@@ -565,6 +565,25 @@ impl MssqlAdapter {
             };
             out.push(object);
         }
+        let edges = self
+            .rows(&format!(
+                "SELECT DISTINCT RTRIM(o.type), o.name, r.name \
+                 FROM sys.sql_expression_dependencies d \
+                 JOIN sys.objects o ON o.object_id = d.referencing_id \
+                 JOIN sys.objects r ON r.object_id = d.referenced_id \
+                 WHERE o.schema_id = SCHEMA_ID({s}) AND r.schema_id = o.schema_id"
+            ))
+            .await?;
+        let covered: Vec<&str> = modules.iter().map(|(_, kind)| *kind).collect();
+        attach_dependencies(
+            out,
+            &covered,
+            edges.iter().filter_map(|row| {
+                let code = text(row, 0);
+                let (_, kind) = modules.iter().find(|(item, _)| *item == code)?;
+                Some((kind.to_string(), text(row, 1), text(row, 2)))
+            }),
+        );
         Ok(())
     }
 }
