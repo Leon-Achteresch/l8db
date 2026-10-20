@@ -364,8 +364,24 @@ export function compareCatalogs(
 export function defaultSelection(items: DiffItem[]): Record<string, boolean> {
   const selection: Record<string, boolean> = {};
   for (const item of items)
-    if (item.status === "only_source" || item.status === "different") selection[item.key] = true;
+    if ((item.status === "only_source" || item.status === "different") && !item.blocked)
+      selection[item.key] = true;
   return selection;
+}
+
+export function markMissingTablespaces(items: DiffItem[], available: ReadonlySet<string>): void {
+  for (const item of items) {
+    if (!item.source) continue;
+    const creates =
+      (item.status === "only_source" && (item.type === "table" || item.type === "index")) ||
+      (item.status === "different" && item.type === "index");
+    if (!creates) continue;
+    const missing = [item.source, ...item.children]
+      .map((object) => object.attributes.tablespace)
+      .filter((name): name is string => Boolean(name) && !available.has(name as string));
+    if (missing.length > 0)
+      item.blocked = `Tablespace ${[...new Set(missing)].join(", ")} fehlt im Ziel oder ist dort nicht nutzbar`;
+  }
 }
 
 export function detailText(item: DiffItem, side: "source" | "target", items: DiffItem[]): string {

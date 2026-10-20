@@ -375,7 +375,14 @@ export function buildSyncScript(
       );
     const keyed =
       (type === "constraint" || type === "index") && existingTables.has(object.parent ?? "");
-    emit(phase, object.ddl, {
+    const tablespace =
+      oracle &&
+      !result.options.ignoreTablespace &&
+      (type === "table" || type === "index") &&
+      object.attributes.tablespace
+        ? ` TABLESPACE ${q(object.attributes.tablespace)}`
+        : "";
+    emit(phase, `${object.ddl}${tablespace}`, {
       plsql,
       name: SORTED_TYPES.has(type) || object.depends_on ? object.name : undefined,
       deps: object.depends_on,

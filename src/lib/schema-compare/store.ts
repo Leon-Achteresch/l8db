@@ -6,6 +6,7 @@ import {
   type CatalogObject,
   type CatalogObjectType,
   type DatabaseKind,
+  executeQuery,
   loadPartitionDdl,
   loadSchemaCatalog,
 } from "@/lib/db";
@@ -16,7 +17,7 @@ import {
   parseCatalogSnapshot,
 } from "@/lib/schema-snapshot";
 import { effectiveConnectionString, ensureSshTunnel } from "@/lib/ssh";
-import { compareCatalogs, defaultSelection } from "./diff";
+import { compareCatalogs, defaultSelection, markMissingTablespaces } from "./diff";
 import {
   type CompareResult,
   type CompareSide,
@@ -218,6 +219,17 @@ export async function captureCatalogSnapshot(side: CompareSide): Promise<Catalog
   );
 }
 
+async function targetTablespaces(connection: SavedConnection, side: CompareSide) {
+  const result = await executeQuery(
+    connection.kind,
+    effectiveConnectionString(connection),
+    "SELECT tablespace_name FROM user_tablespaces",
+    side.database ?? undefined,
+    { confirmed: true, track: false },
+  );
+  return new Set(result.rows.map((row) => String(Object.values(row)[0] ?? "")));
+}
+
 export async function runSchemaCompare(sides?: {
   source: CompareSide;
   target: CompareSide;
@@ -288,6 +300,10 @@ export async function runSchemaCompare(sides?: {
       options: state.options,
     };
     const items = compareCatalogs(sourceObjects, targetObjects, context);
+    if (kind === "oracle" && !state.options.ignoreTablespace && right.connection) {
+      const available = await targetTablespaces(right.connection, target).catch(() => null);
+      if (available) markMissingTablespaces(items, available);
+    }
     set({
       source,
       target,

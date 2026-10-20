@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, TriangleAlertIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { CatalogObjectType } from "@/lib/db";
@@ -223,6 +223,7 @@ export function SchemaCompareTree({
               title={[
                 `${OBJECT_TYPE_META[item.type].label} ${STATUS_ACTION[item.status]}`,
                 item.differsBy.length > 0 ? `Unterschied in: ${item.differsBy.join(", ")}` : "",
+                item.blocked ?? "",
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -265,6 +266,12 @@ export function SchemaCompareTree({
               {item.differsBy.length > 0 && (
                 <span className="min-w-0 truncate text-muted-foreground">
                   {item.differsBy.join(", ")}
+                </span>
+              )}
+              {item.blocked && (
+                <span className="flex min-w-0 items-center gap-1 text-amber-700 dark:text-amber-400">
+                  <TriangleAlertIcon className="size-3 shrink-0" />
+                  <span className="truncate">{item.blocked}</span>
                 </span>
               )}
               <span className="ml-auto pl-2">
