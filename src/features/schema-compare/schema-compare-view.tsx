@@ -25,7 +25,7 @@ import {
   useActiveSchema,
 } from "@/lib/db-selection";
 import { useSchemasQuery } from "@/lib/queries";
-import { buildSyncScript, renderSyncScript } from "@/lib/schema-compare/script";
+import { activeRenames, buildSyncScript, renderSyncScript } from "@/lib/schema-compare/script";
 import {
   activeTypes,
   reverseSchemaCompare,
@@ -62,7 +62,7 @@ function comparedAgo(iso: string, now: number): string {
 
 export function SchemaCompareView() {
   const state = useSchemaCompareStore();
-  const { result, selection, activeKey, loading, error, source, target } = state;
+  const { result, selection, renames, activeKey, loading, error, source, target } = state;
   const set = useSchemaCompareStore.setState;
   const [view, setView] = useTabState<"details" | "summary">(tabStateKey(SCOPE, "view"), "details");
   const [scriptOpen, setScriptOpen] = useTabState(tabStateKey(SCOPE, "scriptOpen"), false);
@@ -124,9 +124,22 @@ export function SchemaCompareView() {
     return out;
   }, [result]);
 
+  const renamed = useMemo(
+    () => activeRenames(result?.items ?? [], selection, renames),
+    [result, selection, renames],
+  );
+  const notes = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [from, dropped] of renamed) {
+      const added = result?.items.find((item) => item.key === from);
+      out[from] = `umbenannt aus ${dropped.name}`;
+      out[dropped.key] = `umbenannt in ${added?.name ?? ""}`;
+    }
+    return out;
+  }, [result, renamed]);
   const script = useMemo(
-    () => (result ? buildSyncScript(result, selection) : { statements: [], warnings: [] }),
-    [result, selection],
+    () => (result ? buildSyncScript(result, selection, renames) : { statements: [], warnings: [] }),
+    [result, selection, renames],
   );
   const text = useMemo(
     () =>
@@ -141,14 +154,15 @@ export function SchemaCompareView() {
   );
   const plan = useMemo(() => {
     const out = { create: 0, alter: 0, drop: 0 };
+    const droppedByRename = new Set([...renamed.values()].map((item) => item.key));
     for (const item of result?.items ?? []) {
-      if (!selection[item.key]) continue;
-      if (item.status === "only_source") out.create++;
-      else if (item.status === "different") out.alter++;
+      if (!selection[item.key] || droppedByRename.has(item.key)) continue;
+      if (renamed.has(item.key) || item.status === "different") out.alter++;
+      else if (item.status === "only_source") out.create++;
       else if (item.status === "only_target") out.drop++;
     }
     return out;
-  }, [result, selection]);
+  }, [result, selection, renamed]);
   const selectedCount = plan.create + plan.alter + plan.drop;
   const actionable = items.filter((item) => item.status !== "identical").map((item) => item.key);
   const actionableSelected = actionable.filter((key) => selection[key]).length;
@@ -359,6 +373,7 @@ export function SchemaCompareView() {
                   showIdentical={showIdentical || focus?.status === "identical"}
                   onShowIdenticalChange={setShowIdentical}
                   selection={selection}
+                  notes={notes}
                   activeKey={activeKey}
                   expandAll={Boolean(search) || Boolean(focus)}
                   onToggle={toggle}
