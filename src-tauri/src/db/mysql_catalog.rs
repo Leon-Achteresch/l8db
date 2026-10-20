@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use mysql_async::Row;
 
 use super::{cell, cell_opt, lit, quote, MysqlAdapter};
-use crate::db::schema_catalog::CatalogObject;
+use crate::db::schema_catalog::{attach_dependencies, CatalogObject};
 
 type ForeignKeyGroups = BTreeMap<(String, String), (String, String, Vec<String>, Vec<String>)>;
 
@@ -499,6 +499,22 @@ impl MysqlAdapter {
                 table_name(schema, &name)
             );
             out.push(CatalogObject::new("view", name, None, ddl));
+        }
+        if let Ok(edges) = self
+            .rows(&format!(
+                "SELECT VIEW_NAME, TABLE_NAME FROM information_schema.VIEW_TABLE_USAGE \
+                 WHERE VIEW_SCHEMA = {0} AND TABLE_SCHEMA = {0}",
+                lit(schema)
+            ))
+            .await
+        {
+            attach_dependencies(
+                out,
+                &["view"],
+                edges
+                    .iter()
+                    .map(|row| ("view".to_string(), cell(row, 0), cell(row, 1))),
+            );
         }
         Ok(())
     }

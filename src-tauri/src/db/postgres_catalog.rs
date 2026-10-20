@@ -3,7 +3,63 @@ use std::collections::BTreeMap;
 use tokio_postgres::Transaction;
 
 use super::{map_pg_err, quote_ident, quote_literal, PostgresAdapter};
-use crate::db::schema_catalog::CatalogObject;
+use crate::db::schema_catalog::{attach_dependencies, CatalogObject};
+
+const DEPENDENT_TYPES: [&str; 6] = [
+    "table",
+    "view",
+    "materialized_view",
+    "type",
+    "function",
+    "procedure",
+];
+
+const RELATION_KIND: &str =
+    "CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized_view' \
+                             WHEN 'c' THEN 'type' ELSE 'table' END";
+
+async fn catalog_dependencies(
+    tx: &Transaction<'_>,
+    schema: &str,
+) -> Result<Vec<(String, String, String)>, String> {
+    let found = rows(
+        tx,
+        &format!(
+            "WITH objects AS ( \
+               SELECT 'pg_class'::regclass::oid AS cls, c.oid, c.relname::text AS name, {RELATION_KIND} AS kind \
+               FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+               WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm', 'c') \
+               UNION ALL \
+               SELECT 'pg_type'::regclass::oid, c.reltype, c.relname::text, {RELATION_KIND} \
+               FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+               WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm', 'c') AND c.reltype <> 0 \
+               UNION ALL \
+               SELECT 'pg_type'::regclass::oid, t.oid, t.typname::text, 'type' \
+               FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace \
+               WHERE n.nspname = $1 AND t.typtype IN ('e', 'd') \
+               UNION ALL \
+               SELECT 'pg_proc'::regclass::oid, p.oid, \
+                      p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', \
+                      CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END \
+               FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+               WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
+             ) \
+             SELECT DISTINCT s.kind, s.name, r.name \
+             FROM pg_depend d \
+             LEFT JOIN pg_rewrite w ON d.classid = 'pg_rewrite'::regclass AND w.oid = d.objid \
+             JOIN objects s ON s.cls = CASE WHEN w.oid IS NULL THEN d.classid ELSE 'pg_class'::regclass::oid END \
+                           AND s.oid = COALESCE(w.ev_class, d.objid) \
+             JOIN objects r ON r.cls = d.refclassid AND r.oid = d.refobjid \
+             WHERE d.deptype = 'n'"
+        ),
+        schema,
+    )
+    .await?;
+    Ok(found
+        .iter()
+        .map(|r| (r.get(0), r.get(1), r.get(2)))
+        .collect())
+}
 
 fn not_extension(class: &str, oid: &str) -> String {
     format!(
@@ -90,6 +146,10 @@ impl PostgresAdapter {
             }
             if want("grant") {
                 catalog_grants(&tx, schema, &mut out).await?;
+            }
+            if DEPENDENT_TYPES.iter().any(|kind| want(kind)) {
+                let edges = catalog_dependencies(&tx, schema).await?;
+                attach_dependencies(&mut out, &DEPENDENT_TYPES, edges);
             }
             tx.rollback().await.map_err(map_pg_err)?;
             Ok(out)
