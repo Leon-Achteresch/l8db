@@ -40,7 +40,10 @@ export const ATTRIBUTE_LABELS: Record<string, string> = {
   status: "Status",
   owned_column: "Besitzer-Spalte",
   on_update: "ON UPDATE",
+  tablespace: "Tablespace",
 };
+
+export const COLUMN_ORDER = "Spaltenreihenfolge";
 
 const SETTING_CONTEXT = /\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)$/i;
 const TOKEN =
@@ -196,6 +199,7 @@ function comparableAttributes(object: CatalogObject, context: CompareContext) {
   const values: Record<string, string> = {};
   for (const [key, value] of Object.entries(object.attributes)) {
     if (key === "current" && context.options.ignoreSequenceValues) continue;
+    if (key === "tablespace" && context.options.ignoreTablespace) continue;
     if (key === "default" && context.options.ignoreDefaultNull && /^\(*\s*null\s*\)*$/i.test(value))
       continue;
     values[key] = canonical(value, context.targetSchema, context.kind, context.options);
@@ -235,6 +239,11 @@ export function differences(
   for (const key of STATUS_ATTRIBUTES)
     if ((source.attributes[key] ?? "") !== (target.attributes[key] ?? ""))
       out.push(ATTRIBUTE_LABELS[key] ?? key);
+  if (
+    !context.options.ignoreTablespace &&
+    (source.attributes.tablespace ?? "") !== (target.attributes.tablespace ?? "")
+  )
+    out.push(ATTRIBUTE_LABELS.tablespace);
   return out;
 }
 
@@ -293,6 +302,22 @@ export function compareCatalogs(
   };
   const left = index(src, "s", onlySource);
   const right = index(target, "t", onlyTarget);
+  const columns = (list: CatalogObject[]) => {
+    const map = new Map<string, string[]>();
+    if (context.options.ignoreColumnOrder) return map;
+    for (const object of list)
+      if (object.object_type === "column" && object.parent)
+        map.set(object.parent, [...(map.get(object.parent) ?? []), object.name]);
+    return map;
+  };
+  const sourceColumns = columns(src);
+  const targetColumns = columns(target);
+  const reordered = (table: string) => {
+    const a = sourceColumns.get(table) ?? [];
+    const b = targetColumns.get(table) ?? [];
+    const common = (list: string[], other: string[]) => list.filter((name) => other.includes(name));
+    return common(a, b).join("\u0000") !== common(b, a).join("\u0000");
+  };
   const items: DiffItem[] = [];
   for (const key of new Set([...left.keys(), ...right.keys()])) {
     const a = left.get(key) ?? null;
@@ -302,6 +327,12 @@ export function compareCatalogs(
     let differsBy: string[] = [];
     if (a && b) {
       differsBy = differences(a, b, context);
+      if (
+        base.object_type === "table" &&
+        !context.options.ignoreColumnOrder &&
+        reordered(base.name)
+      )
+        differsBy.push(COLUMN_ORDER);
       status = differsBy.length > 0 ? "different" : "identical";
     }
     let related: CatalogObject[] = [];

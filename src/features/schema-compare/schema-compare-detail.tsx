@@ -61,7 +61,7 @@ export function SchemaCompareDetail({
           {OBJECT_TYPE_META[item.type].label}
           {stats.changes > 0 &&
             ` · ${stats.changes} ${stats.changes === 1 ? "Änderung" : "Änderungen"}`}
-          {item.differsBy.length > 0 && ` · ${item.differsBy.join(", ")}`}
+          {item.differsBy.length > 0 && ` · Unterschied in: ${item.differsBy.join(", ")}`}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <ToggleGroup

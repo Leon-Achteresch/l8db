@@ -222,7 +222,7 @@ export function SchemaCompareTree({
               tabIndex={-1}
               title={[
                 `${OBJECT_TYPE_META[item.type].label} ${STATUS_ACTION[item.status]}`,
-                item.differsBy.length > 0 ? item.differsBy.join(", ") : "",
+                item.differsBy.length > 0 ? `Unterschied in: ${item.differsBy.join(", ")}` : "",
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -262,7 +262,7 @@ export function SchemaCompareTree({
               </span>
               {parent && <span className="truncate font-mono text-muted-foreground">{parent}</span>}
               {related > 0 && <span className="shrink-0 text-muted-foreground">+{related}</span>}
-              {grouping === "status" && item.differsBy.length > 0 && (
+              {item.differsBy.length > 0 && (
                 <span className="min-w-0 truncate text-muted-foreground">
                   {item.differsBy.join(", ")}
                 </span>
