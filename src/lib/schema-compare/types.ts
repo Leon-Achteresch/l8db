@@ -9,6 +9,12 @@ export interface SchemaCompareOptions {
   ignoreCase: boolean;
   ignoreSystemNames: boolean;
   ignoreSequenceValues: boolean;
+  ignoreComments: boolean;
+  ignoreQuotes: boolean;
+  ignoreDefaultNull: boolean;
+  ignoreTimestampPrecision: boolean;
+  ignoreLengthSemantics: boolean;
+  ignoreConstraintNames: boolean;
 }
 
 export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
@@ -16,6 +22,12 @@ export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
   ignoreCase: false,
   ignoreSystemNames: true,
   ignoreSequenceValues: true,
+  ignoreComments: false,
+  ignoreQuotes: false,
+  ignoreDefaultNull: false,
+  ignoreTimestampPrecision: false,
+  ignoreLengthSemantics: false,
+  ignoreConstraintNames: false,
 };
 
 export interface SnapshotRef {

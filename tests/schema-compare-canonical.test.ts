@@ -74,3 +74,47 @@ describe("canonical ignoriert weiterhin Formatierung außerhalb von Literalen", 
     expect(same("postgres", "SELECT  a", "SELECT a", options)).toBe(true);
   });
 });
+
+describe("zusätzliche Normalisierung", () => {
+  const all = {
+    ...DEFAULT_COMPARE_OPTIONS,
+    ignoreComments: true,
+    ignoreQuotes: true,
+    ignoreTimestampPrecision: true,
+    ignoreLengthSemantics: true,
+  };
+
+  test("entfernt Kommentare, aber keine Kommentarzeichen in Literalen", () => {
+    expect(same("oracle", "SELECT 1 -- alt\nFROM dual", "SELECT 1 /* neu */ FROM dual", all)).toBe(
+      true,
+    );
+    expect(same("oracle", "SELECT 1 FROM dual -- x", "SELECT 1 FROM dual", all)).toBe(true);
+    expect(same("oracle", "SELECT '-- a' FROM dual", "SELECT '-- b' FROM dual", all)).toBe(false);
+    expect(same("mysql", "SELECT 1 # x", "SELECT 1", all)).toBe(true);
+    expect(same("oracle", "SELECT 1 -- a", "SELECT 1 -- b", DEFAULT_COMPARE_OPTIONS)).toBe(false);
+  });
+
+  test("ignoriert Anführungszeichen nur um einfache Namen", () => {
+    expect(same("oracle", `SELECT "ID" FROM "KUNDE"`, "SELECT ID FROM KUNDE", all)).toBe(true);
+    expect(same("oracle", `SELECT "Id" FROM t`, "SELECT Id FROM t", all)).toBe(false);
+    expect(same("postgres", `SELECT "id" FROM t`, "SELECT id FROM t", all)).toBe(true);
+    expect(same("mssql", "SELECT [id] FROM t", "SELECT id FROM t", all)).toBe(true);
+    expect(same("mysql", "SELECT `id` FROM t", "SELECT id FROM t", all)).toBe(true);
+    expect(same("oracle", `SELECT 'ID' FROM t`, `SELECT "ID" FROM t`, all)).toBe(false);
+    expect(same("oracle", `SELECT "ID" FROM t`, "SELECT ID FROM t", DEFAULT_COMPARE_OPTIONS)).toBe(
+      false,
+    );
+  });
+
+  test("gleicht Zeitstempel-Genauigkeit und BYTE/CHAR außerhalb von Literalen an", () => {
+    expect(same("oracle", "TIMESTAMP(6) WITH TIME ZONE", "TIMESTAMP(9) WITH TIME ZONE", all)).toBe(
+      true,
+    );
+    expect(same("mssql", "datetime2(7)", "datetime2(3)", all)).toBe(true);
+    expect(same("oracle", "VARCHAR2(20 BYTE)", "VARCHAR2(20 CHAR)", all)).toBe(true);
+    expect(same("oracle", "VARCHAR2(20 BYTE)", "VARCHAR2(30 BYTE)", all)).toBe(false);
+    expect(same("oracle", "DEFAULT 'TIMESTAMP(6)'", "DEFAULT 'TIMESTAMP(9)'", all)).toBe(false);
+    expect(same("oracle", "DEFAULT '(20 BYTE)'", "DEFAULT '(20 CHAR)'", all)).toBe(false);
+    expect(same("oracle", "TIMESTAMP(6)", "TIMESTAMP(9)", DEFAULT_COMPARE_OPTIONS)).toBe(false);
+  });
+});

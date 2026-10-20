@@ -1,4 +1,5 @@
 import { ChevronDownIcon, LayersIcon, SlidersHorizontalIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +13,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { activeTypes, sideKind, useSchemaCompareStore } from "@/lib/schema-compare/store";
 import {
   compareTypesFor,
@@ -42,6 +45,36 @@ const OPTION_LABELS: { key: keyof SchemaCompareOptions; label: string; hint: str
     label: "Groß- und Kleinschreibung",
     hint: "Vergleicht Quelltext ohne Beachtung der Schreibweise.",
   },
+  {
+    key: "ignoreComments",
+    label: "Kommentare im Quelltext",
+    hint: "-- und /* */ Kommentare zählen nicht; Texte in Anführungszeichen bleiben unberührt.",
+  },
+  {
+    key: "ignoreQuotes",
+    label: "Anführungszeichen um einfache Namen",
+    hint: '"KUNDE" und KUNDE gelten als gleich, wenn der Name keine Sonderzeichen enthält.',
+  },
+  {
+    key: "ignoreDefaultNull",
+    label: "DEFAULT NULL",
+    hint: "Ein Default NULL gilt wie kein Default.",
+  },
+  {
+    key: "ignoreTimestampPrecision",
+    label: "Genauigkeit von Zeitstempeln",
+    hint: "TIMESTAMP(6) und TIMESTAMP(9) gelten als gleich.",
+  },
+  {
+    key: "ignoreLengthSemantics",
+    label: "BYTE- und CHAR-Länge",
+    hint: "VARCHAR2(20 BYTE) und VARCHAR2(20 CHAR) gelten als gleich.",
+  },
+  {
+    key: "ignoreConstraintNames",
+    label: "Constraint-Namen",
+    hint: "Constraints werden über ihre Definition zugeordnet; reine Namensunterschiede gelten als identisch.",
+  },
 ];
 
 const keep = (event: Event) => event.preventDefault();
@@ -52,6 +85,10 @@ export function SchemaCompareOptionsMenu() {
   const kind = sideKind(state.source) ?? sideKind(state.target);
   const supported = compareTypesFor(kind);
   const selected = activeTypes(state, kind);
+  const optionsNew = useHasNewFeatures("schema-compare.options");
+  const normalizeFeature = useNewFeatureVisibility<HTMLDivElement>(
+    "schema-compare.options.normalize",
+  );
 
   return (
     <DropdownMenu>
@@ -64,6 +101,7 @@ export function SchemaCompareOptionsMenu() {
               {selected.length} von {supported.length}
             </span>
           )}
+          {optionsNew && <NewBadge />}
           <ChevronDownIcon className="size-3 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
@@ -110,6 +148,7 @@ export function SchemaCompareOptionsMenu() {
         {OPTION_LABELS.map((option) => (
           <DropdownMenuCheckboxItem
             key={option.key}
+            ref={option.key === "ignoreComments" ? normalizeFeature.ref : undefined}
             title={option.hint}
             checked={state.options[option.key]}
             onSelect={keep}
@@ -118,6 +157,7 @@ export function SchemaCompareOptionsMenu() {
             }
           >
             {option.label}
+            {option.key === "ignoreComments" && normalizeFeature.isNew && <NewBadge />}
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />

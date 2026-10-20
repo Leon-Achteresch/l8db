@@ -141,32 +141,63 @@ export function canonical(
     .join("\n")
     .trim()
     .replace(/[;\s/]+$/, "");
-  if (!options.ignoreWhitespace && !options.ignoreCase) return out;
+  if (
+    !options.ignoreWhitespace &&
+    !options.ignoreCase &&
+    !options.ignoreComments &&
+    !options.ignoreQuotes &&
+    !options.ignoreTimestampPrecision &&
+    !options.ignoreLengthSemantics
+  )
+    return out;
   const normalize = (code: string, identifier = false) => {
     let value = code;
+    if (!identifier && options.ignoreTimestampPrecision)
+      value = value.replace(/\b(timestamp|datetime2|datetimeoffset|time)\s*\(\s*\d+\s*\)/gi, "$1");
+    if (!identifier && options.ignoreLengthSemantics)
+      value = value.replace(/\(\s*(\d+)\s+(?:byte|char)\s*\)/gi, "($1)");
     if (options.ignoreWhitespace && !identifier) value = value.replace(/\s+/g, " ");
     if (options.ignoreCase) value = value.toLowerCase();
     return value;
   };
   let result = "";
+  let pending = "";
   let code = 0;
   for (const match of out.matchAll(CANONICAL_TOKEN[kind] ?? TOKEN)) {
     const token = match[0];
     const start = match.index ?? 0;
-    result += normalize(out.slice(code, start));
-    if (/^(?:--|\/\*|#)/.test(token)) result += normalize(token);
-    else if (/^[`["]/.test(token) && !(kind === "mysql" && token.startsWith('"')))
-      result += normalize(token, true);
-    else result += token;
+    pending += out.slice(code, start);
     code = start + token.length;
+    if (/^(?:--|\/\*|#)/.test(token)) {
+      if (options.ignoreComments) pending += " ";
+      else {
+        result += normalize(pending) + normalize(token);
+        pending = "";
+      }
+      continue;
+    }
+    if (/^[`["]/.test(token) && !(kind === "mysql" && token.startsWith('"'))) {
+      const name = token.slice(1, -1).replace(/""|``|]]/g, (pair) => pair[0]);
+      if (options.ignoreQuotes && plainIdentifier(name, kind)) pending += name;
+      else {
+        result += normalize(pending) + normalize(token, true);
+        pending = "";
+      }
+      continue;
+    }
+    result += normalize(pending) + token;
+    pending = "";
   }
-  return result + normalize(out.slice(code));
+  result += normalize(pending + out.slice(code));
+  return options.ignoreComments ? result.trim() : result;
 }
 
 function comparableAttributes(object: CatalogObject, context: CompareContext) {
   const values: Record<string, string> = {};
   for (const [key, value] of Object.entries(object.attributes)) {
     if (key === "current" && context.options.ignoreSequenceValues) continue;
+    if (key === "default" && context.options.ignoreDefaultNull && /^\(*\s*null\s*\)*$/i.test(value))
+      continue;
     values[key] = canonical(value, context.targetSchema, context.kind, context.options);
   }
   return values;
@@ -210,9 +241,9 @@ export function differences(
 export function objectKey(object: CatalogObject, context: CompareContext): string {
   const base = `${object.object_type}|${object.parent ?? ""}|`;
   if (
-    context.options.ignoreSystemNames &&
-    object.attributes.generated === "YES" &&
-    object.attributes.definition
+    object.attributes.definition &&
+    ((context.options.ignoreSystemNames && object.attributes.generated === "YES") ||
+      (context.options.ignoreConstraintNames && object.object_type === "constraint"))
   )
     return `${base}#${canonical(object.attributes.definition, context.targetSchema, context.kind, context.options)}`;
   return `${base}${object.name}`;
