@@ -209,9 +209,41 @@ function sqliteAddable(column: CatalogObject): boolean {
   );
 }
 
+function sameAttributes(a: CatalogObject | null, b: CatalogObject | null): boolean {
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a.attributes), ...Object.keys(b.attributes)]);
+  return [...keys].every((key) => a.attributes[key] === b.attributes[key]);
+}
+
+export function activeRenames(
+  items: DiffItem[],
+  selected: Readonly<Record<string, boolean>>,
+  renames: Readonly<Record<string, string>>,
+): Map<string, DiffItem> {
+  const out = new Map<string, DiffItem>();
+  const entries = Object.entries(renames);
+  if (entries.length === 0) return out;
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  for (const [from, to] of entries) {
+    const added = byKey.get(from);
+    const dropped = byKey.get(to);
+    if (
+      selected[from] &&
+      added?.type === "column" &&
+      dropped?.type === "column" &&
+      added.status === "only_source" &&
+      dropped.status === "only_target" &&
+      added.parent === dropped.parent
+    )
+      out.set(from, dropped);
+  }
+  return out;
+}
+
 export function buildSyncScript(
   result: CompareResult,
   selected: Readonly<Record<string, boolean>>,
+  renames: Readonly<Record<string, string>> = {},
 ): SyncScript {
   const kind = result.kind;
   const oracle = kind === "oracle";
@@ -768,6 +800,18 @@ export function buildSyncScript(
     }
   };
 
+  const renamed = activeRenames(result.items, selected, renames);
+  const renamedTargets = new Set([...renamed.values()].map((item) => item.key));
+  const renameColumn = (source: CatalogObject, target: CatalogObject) => {
+    emit(
+      (CREATE_PHASE.column ?? 13) - 0.2,
+      mssql
+        ? `EXEC sp_rename ${unicodeText(`${qualified(source.parent ?? "")}.${q(target.name)}`)}, ${unicodeText(source.name)}, N'COLUMN'`
+        : `ALTER TABLE ${qualified(source.parent ?? "")} RENAME COLUMN ${q(target.name)} TO ${q(source.name)}`,
+    );
+    alterColumn(source, { ...target, name: source.name });
+  };
+
   const tableRebuild = new Map<string, DiffItem>();
   if (sqlite)
     for (const table of result.items) {
@@ -776,7 +820,8 @@ export function buildSyncScript(
         (item) =>
           item.parent === table.name &&
           (item.type === "column" || item.type === "constraint") &&
-          item.status !== "identical",
+          item.status !== "identical" &&
+          !renamedTargets.has(item.key),
       );
       const chosen = children.filter((item) => selected[item.key]);
       if (chosen.length === 0) continue;
@@ -784,10 +829,12 @@ export function buildSyncScript(
         chosen.length === children.length &&
         chosen.every(
           (item) =>
-            item.type === "column" &&
-            item.status === "only_source" &&
-            item.source &&
-            sqliteAddable(item.source),
+            (renamed.has(item.key) &&
+              sameAttributes(item.source, renamed.get(item.key)?.target ?? null)) ||
+            (item.type === "column" &&
+              item.status === "only_source" &&
+              item.source &&
+              sqliteAddable(item.source)),
         )
       )
         continue;
@@ -865,7 +912,7 @@ export function buildSyncScript(
     key = table.key;
     const source = table.source as CatalogObject;
     const copy = qualified(`_l8db_copy_${table.name}`);
-    const copied = result.items
+    const pairs = result.items
       .filter(
         (item) =>
           item.type === "column" &&
@@ -875,8 +922,12 @@ export function buildSyncScript(
           !item.source.attributes.generated &&
           !item.target.attributes.generated,
       )
-      .map((item) => q(item.name))
-      .join(", ");
+      .map((item) => [item.name, item.name]);
+    for (const [from, dropped] of renamed)
+      if (dropped.parent === table.name)
+        pairs.push([result.items.find((item) => item.key === from)?.name ?? "", dropped.name]);
+    const copied = pairs.map(([, old]) => q(old)).join(", ");
+    const restored = pairs.map(([name]) => q(name)).join(", ");
     warnings.push(
       `Tabelle ${table.name} wird neu aufgebaut: Daten sichern, Tabelle löschen und neu anlegen, Daten zurückkopieren. Indizes und Trigger werden neu angelegt.`,
     );
@@ -890,7 +941,7 @@ export function buildSyncScript(
     if (copied) {
       emit(
         phase,
-        `INSERT OR ROLLBACK INTO ${qualified(table.name)} (${copied}) SELECT ${copied} FROM ${copy}`,
+        `INSERT OR ROLLBACK INTO ${qualified(table.name)} (${restored}) SELECT ${copied} FROM ${copy}`,
         { repeat: true },
       );
       emit(phase, `DROP TABLE ${copy}`, {
@@ -915,8 +966,11 @@ export function buildSyncScript(
     if (rebuild.has(item.parent ?? "") || (VIEW_TYPES.has(item.type) && rebuild.has(item.name)))
       continue;
     if (tableRebuild.has(item.parent ?? "") && item.type !== "table") continue;
+    if (renamedTargets.has(item.key)) continue;
     key = item.key;
-    if (item.status === "only_source" && item.source)
+    const dropped = renamed.get(item.key);
+    if (dropped?.target && item.source) renameColumn(item.source, dropped.target);
+    else if (item.status === "only_source" && item.source)
       create(item.source, CONTAINER_TYPES.has(item.type) ? item.children : []);
     else if (item.status === "only_target" && item.target)
       drop(item.target, CONTAINER_TYPES.has(item.type) ? item.children : []);

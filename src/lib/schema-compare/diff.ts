@@ -404,6 +404,20 @@ export function defaultSelection(items: DiffItem[]): Record<string, boolean> {
   return selection;
 }
 
+export function renameCandidates(items: DiffItem[], item: DiffItem): DiffItem[] {
+  if (item.type !== "column" || (item.status !== "only_source" && item.status !== "only_target"))
+    return [];
+  const wanted = item.status === "only_source" ? "only_target" : "only_source";
+  const type = (entry: DiffItem) => (entry.source ?? entry.target)?.attributes.type ?? "";
+  return items.filter(
+    (other) =>
+      other.type === "column" &&
+      other.status === wanted &&
+      other.parent === item.parent &&
+      type(other) === type(item),
+  );
+}
+
 export function markMissingTablespaces(items: DiffItem[], available: ReadonlySet<string>): void {
   for (const item of items) {
     if (!item.source) continue;

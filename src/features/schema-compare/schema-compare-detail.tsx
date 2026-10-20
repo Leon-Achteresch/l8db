@@ -11,6 +11,7 @@ import {
 } from "@/features/compare/definition-diff-editor";
 import { detailText } from "@/lib/schema-compare/diff";
 import { type CompareResult, OBJECT_TYPE_META, STATUS_LABEL } from "@/lib/schema-compare/types";
+import { SchemaCompareRenameBar } from "./schema-compare-rename-bar";
 import { SchemaObjectIcon } from "./schema-object-icon";
 import { StatusMarker } from "./status-marker";
 
@@ -125,6 +126,7 @@ export function SchemaCompareDetail({
           </IconMenu>
         </div>
       </div>
+      <SchemaCompareRenameBar result={result} item={item} />
       <div className="relative min-h-0 flex-1">
         <DefinitionDiffEditor
           ref={diffRef}

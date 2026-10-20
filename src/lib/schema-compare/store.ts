@@ -41,6 +41,7 @@ interface SchemaCompareState {
   options: SchemaCompareOptions;
   result: CompareResult | null;
   selection: Record<string, boolean>;
+  renames: Record<string, string>;
   activeKey: string | null;
   loading: string | null;
   error: string | null;
@@ -55,6 +56,7 @@ export const useSchemaCompareStore = create<SchemaCompareState>()(
       options: DEFAULT_COMPARE_OPTIONS,
       result: null,
       selection: {},
+      renames: {},
       activeKey: null,
       loading: null,
       error: null,
@@ -325,12 +327,26 @@ export async function runSchemaCompare(sides?: {
         omitted: limited.omitted,
       },
       selection: defaultSelection(limited.items),
+      renames: {},
       activeKey: null,
       loading: null,
     });
   } catch (error) {
     set({ loading: null, error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+export function toggleRename(sourceKey: string, targetKey: string, enabled: boolean): void {
+  useSchemaCompareStore.setState((state) => {
+    const renames = Object.fromEntries(
+      Object.entries(state.renames).filter(([from, to]) => from !== sourceKey && to !== targetKey),
+    );
+    if (!enabled) return { renames };
+    return {
+      renames: { ...renames, [sourceKey]: targetKey },
+      selection: { ...state.selection, [sourceKey]: true, [targetKey]: true },
+    };
+  });
 }
 
 export function reverseSchemaCompare(): Promise<void> {

@@ -171,6 +171,7 @@ export const NEW_FEATURES = {
   "schema-compare.snapshot": NEXT_FEATURE_VERSION,
   "schema-compare.options.normalize": NEXT_FEATURE_VERSION,
   "schema-compare.options.filter": NEXT_FEATURE_VERSION,
+  "schema-compare.rename-column": NEXT_FEATURE_VERSION,
   "split.pane-tables": "0.8.0",
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",

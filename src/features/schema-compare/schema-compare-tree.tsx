@@ -36,6 +36,7 @@ interface SchemaCompareTreeProps {
   showIdentical: boolean;
   onShowIdenticalChange: (value: boolean) => void;
   selection: Record<string, boolean>;
+  notes?: Record<string, string>;
   activeKey: string | null;
   expandAll: boolean;
   onToggle: (keys: string[], checked: boolean) => void;
@@ -56,6 +57,7 @@ export function SchemaCompareTree({
   showIdentical,
   onShowIdenticalChange,
   selection,
+  notes = {},
   activeKey,
   expandAll,
   onToggle,
@@ -263,9 +265,9 @@ export function SchemaCompareTree({
               </span>
               {parent && <span className="truncate font-mono text-muted-foreground">{parent}</span>}
               {related > 0 && <span className="shrink-0 text-muted-foreground">+{related}</span>}
-              {item.differsBy.length > 0 && (
+              {(notes[item.key] || item.differsBy.length > 0) && (
                 <span className="min-w-0 truncate text-muted-foreground">
-                  {item.differsBy.join(", ")}
+                  {notes[item.key] ?? item.differsBy.join(", ")}
                 </span>
               )}
               {item.blocked && (
