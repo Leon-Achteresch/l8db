@@ -19,7 +19,9 @@ Es gibt zwei Wege:
 
 ### Was die IT tut (einmalig, etwa 15 Minuten)
 
-1. **l8db freigeben.** Eine Person mit der Rolle *Globale Administration* oder *Cloudanwendungsadministration* öffnet in l8db *Einstellungen → Allgemein → Team-Verbindungen → Für die IT → Für die Organisation freigeben*. Microsoft zeigt die angefragten Berechtigungen; *Akzeptieren* gilt für alle im Unternehmen. Alternativ im Entra Admin Center unter *Unternehmensanwendungen → l8db → Berechtigungen → Administratorzustimmung erteilen*.
+Der Einrichtungsassistent führt durch alle Schritte: *Einstellungen → Allgemein → Team-Verbindungen → Für die IT → Einrichtung starten*. Jeder Schritt zeigt ein kurzes Erklärvideo (schematische Darstellung der Microsoft-Oberflächen, ohne Netzwerkzugriff), einen Link zur offiziellen Microsoft-Anleitung und, wo nötig, die Aktion direkt in l8db: Freigabe, Beispiel-JSON zum Herunterladen, Richtlinien-Skript und `hub.json` mit der eingetragenen Website-Adresse und den erlaubten Hosts sowie die Test-Anmeldung.
+
+1. **l8db freigeben.** Eine Person mit der Rolle *Globale Administration* oder *Cloudanwendungsadministration* wählt im Assistenten *Für die Organisation freigeben*. Microsoft zeigt die angefragten Berechtigungen; *Akzeptieren* gilt für alle im Unternehmen. Alternativ im Entra Admin Center unter *Unternehmensanwendungen → l8db → Berechtigungen → Administratorzustimmung erteilen*.
 2. **SharePoint-Website `l8db` anlegen** als *Kommunikationswebsite* (nicht als Microsoft-Team: Team-Mitglieder dürfen Dateien bearbeiten). Besitzer: nur die IT. Am besten sofort anlegen, damit niemand anderes den Namen belegt, und die Adresse zusätzlich per Richtlinie festlegen (`siteUrl`, siehe unten). In der Dokumentbibliothek pro Zielgruppe einen Ordner anlegen, zum Beispiel `Alle`, `Vertrieb`, `Finanzen`.
 3. **Freigeben.** Jeden Ordner über *Zugriff verwalten* mit **Leserechten** für die passende Entra-Gruppe freigeben. Schreibrechte nur für die IT: Wer schreiben darf, bestimmt, wohin sich alle Leser verbinden.
 4. **Verbindungen teilen.** In l8db die Verbindung wie gewohnt anlegen und testen, dann im Menü der Verbindung *Für Team freigeben…* wählen und den Ordner aussuchen. l8db legt die Datei ohne Benutzer, Passwort, Tokens und lokale Schlüsselpfade ab; die eigene Verbindung wird dabei zur Team-Verbindung, Passwort, Verlauf und Tabs bleiben. Wird die Datei später in SharePoint gelöscht, verschwindet die Verbindung bei allen, auch bei der Person, die sie geteilt hat. *Zugriff in SharePoint verwalten* öffnet den Ordner. JSON von Hand ist nicht nötig, aber möglich (siehe unten).
@@ -196,7 +198,7 @@ Mit einer Richtlinie zeigt l8db beim Start automatisch *Mit Firmenkonto anmelden
 Eine ADMX-Vorlage für Gruppenrichtlinien und Intune (*Importierte administrative Vorlagen*) liegt unter `packaging/windows-policy/` (Deutsch und Englisch). `Microsoft` = `0` (Richtlinie *Deaktiviert*) blendet den Microsoft-Weg aus; ein eigener Team-Hub bleibt möglich. Eine ältere `C:\ProgramData\l8db\hub.json` liest l8db aus Sicherheitsgründen nicht mehr (Standardbenutzer dürfen dort schreiben); liegt sie noch dort, zeigt l8db einen Hinweis auf die Registry-Richtlinie, bis sie gelöscht ist. Ist eine Richtlinie ungültig (Registry oder Datei), gleicht l8db keine Team-Verbindungen ab und erlaubt keine Team-Anmeldung, bis sie korrigiert ist; der Fehler steht unter *Team-Verbindungen* und in *Diagnose kopieren*. Eine Richtlinie darf auch nur `AllowedHosts` setzen; dann wählen Nutzer die Quelle selbst, aber nur erlaubte Hosts werden übernommen.
 
 ```powershell
-New-Item -Force "HKLM:\SOFTWARE\Policies\l8db" | Out-Null
+if (-not (Test-Path "HKLM:\SOFTWARE\Policies\l8db")) { New-Item "HKLM:\SOFTWARE\Policies\l8db" -Force | Out-Null }
 Set-ItemProperty "HKLM:\SOFTWARE\Policies\l8db" Microsoft 1 -Type DWord
 Set-ItemProperty "HKLM:\SOFTWARE\Policies\l8db" MicrosoftSiteUrl "https://firma.sharepoint.com/sites/l8db"
 ```

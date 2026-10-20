@@ -43,6 +43,7 @@ import { Route as AppWorkspaceSchemaCompareRouteImport } from './routes/_app._wo
 import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._workspace.sequences'
 import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
 import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app._workspace.settings'
+import { Route as AppWorkspaceTeamSetupRouteImport } from './routes/_app._workspace.team-setup'
 import { Route as AppWorkspaceTransferRouteImport } from './routes/_app._workspace.transfer'
 import { Route as AppWorkspaceVersioningRouteImport } from './routes/_app._workspace.versioning'
 import { Route as AppWorkspaceWorkbenchRouteImport } from './routes/_app._workspace.workbench'
@@ -232,6 +233,11 @@ const AppWorkspaceSettingsRoute = AppWorkspaceSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
+const AppWorkspaceTeamSetupRoute = AppWorkspaceTeamSetupRouteImport.update({
+  id: '/team-setup',
+  path: '/team-setup',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
 const AppWorkspaceTransferRoute = AppWorkspaceTransferRouteImport.update({
   id: '/transfer',
   path: '/transfer',
@@ -361,6 +367,7 @@ export interface FileRoutesByFullPath {
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/settings': typeof AppWorkspaceSettingsRoute
+  '/team-setup': typeof AppWorkspaceTeamSetupRoute
   '/transfer': typeof AppWorkspaceTransferRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
   '/workbench': typeof AppWorkspaceWorkbenchRoute
@@ -410,6 +417,7 @@ export interface FileRoutesByTo {
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/settings': typeof AppWorkspaceSettingsRoute
+  '/team-setup': typeof AppWorkspaceTeamSetupRoute
   '/transfer': typeof AppWorkspaceTransferRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
   '/workbench': typeof AppWorkspaceWorkbenchRoute
@@ -463,6 +471,7 @@ export interface FileRoutesById {
   '/_app/_workspace/sequences': typeof AppWorkspaceSequencesRoute
   '/_app/_workspace/sessions': typeof AppWorkspaceSessionsRoute
   '/_app/_workspace/settings': typeof AppWorkspaceSettingsRoute
+  '/_app/_workspace/team-setup': typeof AppWorkspaceTeamSetupRoute
   '/_app/_workspace/transfer': typeof AppWorkspaceTransferRoute
   '/_app/_workspace/versioning': typeof AppWorkspaceVersioningRoute
   '/_app/_workspace/workbench': typeof AppWorkspaceWorkbenchRoute
@@ -516,6 +525,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/sessions'
     | '/settings'
+    | '/team-setup'
     | '/transfer'
     | '/versioning'
     | '/workbench'
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/sessions'
     | '/settings'
+    | '/team-setup'
     | '/transfer'
     | '/versioning'
     | '/workbench'
@@ -617,6 +628,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/sequences'
     | '/_app/_workspace/sessions'
     | '/_app/_workspace/settings'
+    | '/_app/_workspace/team-setup'
     | '/_app/_workspace/transfer'
     | '/_app/_workspace/versioning'
     | '/_app/_workspace/workbench'
@@ -890,6 +902,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSettingsRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/team-setup': {
+      id: '/_app/_workspace/team-setup'
+      path: '/team-setup'
+      fullPath: '/team-setup'
+      preLoaderRoute: typeof AppWorkspaceTeamSetupRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/transfer': {
       id: '/_app/_workspace/transfer'
       path: '/transfer'
@@ -1057,6 +1076,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceSequencesRoute: typeof AppWorkspaceSequencesRoute
   AppWorkspaceSessionsRoute: typeof AppWorkspaceSessionsRoute
   AppWorkspaceSettingsRoute: typeof AppWorkspaceSettingsRoute
+  AppWorkspaceTeamSetupRoute: typeof AppWorkspaceTeamSetupRoute
   AppWorkspaceTransferRoute: typeof AppWorkspaceTransferRoute
   AppWorkspaceVersioningRoute: typeof AppWorkspaceVersioningRoute
   AppWorkspaceWorkbenchRoute: typeof AppWorkspaceWorkbenchRoute
@@ -1095,6 +1115,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceSequencesRoute: AppWorkspaceSequencesRoute,
   AppWorkspaceSessionsRoute: AppWorkspaceSessionsRoute,
   AppWorkspaceSettingsRoute: AppWorkspaceSettingsRoute,
+  AppWorkspaceTeamSetupRoute: AppWorkspaceTeamSetupRoute,
   AppWorkspaceTransferRoute: AppWorkspaceTransferRoute,
   AppWorkspaceVersioningRoute: AppWorkspaceVersioningRoute,
   AppWorkspaceWorkbenchRoute: AppWorkspaceWorkbenchRoute,
