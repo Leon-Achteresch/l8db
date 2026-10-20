@@ -20,6 +20,7 @@ import type { QueryExecutionState } from "./use-query-execution-state";
 
 interface UseScriptRunParams {
   sql: string;
+  filePath: string | null;
   connection: QueryViewConnection;
   database: string | null;
   caps: QueryViewCapabilities;
@@ -31,6 +32,7 @@ interface UseScriptRunParams {
 
 export function useScriptRun({
   sql,
+  filePath,
   connection,
   database,
   caps,
@@ -104,6 +106,7 @@ export function useScriptRun({
       const shift = (items: ScriptRunEntry[]) =>
         base ? items.map((e) => ({ ...e, start: e.start + base, end: e.end + base })) : items;
       const startedAt = performance.now();
+      let executed = text;
       try {
         const outcome = await runSqlScript({
           connection,
@@ -111,6 +114,7 @@ export function useScriptRun({
           sql: text,
           mode,
           stopOnError,
+          filePath,
           selectRowLimit: DEFAULT_SELECT_ROW_LIMIT,
           onJob: setActiveJobId,
           onProgress: (items) => setScriptEntries(shift(items)),
@@ -122,9 +126,12 @@ export function useScriptRun({
           outcome.error ? null : withCreateNotice(outcome.lastResult, entries.at(-1)?.sql ?? text),
         );
         setError(outcome.error);
+        executed = entries.map((entry) => entry.sql).join("\n");
         const failed = entries.find((entry) => entry.status === "error");
         setErrorSource(
-          failed ? { text: sql.slice(failed.start, failed.end), base: failed.start } : null,
+          failed && !failed.source
+            ? { text: sql.slice(failed.start, failed.end), base: failed.start }
+            : null,
         );
         if (failed) {
           setStatementRange({ start: failed.start, end: failed.end });
@@ -135,7 +142,7 @@ export function useScriptRun({
         setError(String(failure));
         setErrorSource(null);
       } finally {
-        if (connection) await invalidateAfterSql(queryClient, connection.id, database, text);
+        if (connection) await invalidateAfterSql(queryClient, connection.id, database, executed);
         await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
@@ -146,6 +153,7 @@ export function useScriptRun({
       queryClient,
       database,
       sql,
+      filePath,
       collectOutput,
       runningRef,
       setIsRunning,
@@ -168,7 +176,9 @@ export function useScriptRun({
       if (!runningRef.current) {
         setResultState(withCreateNotice(entry.result ?? null, entry.sql));
         setError(entry.error);
-        setErrorSource({ text: sql.slice(entry.start, entry.end), base: entry.start });
+        setErrorSource(
+          entry.source ? null : { text: sql.slice(entry.start, entry.end), base: entry.start },
+        );
       }
       setStatementRange({ start: entry.start, end: entry.end });
       const before = sql.slice(0, entry.start).split("\n");

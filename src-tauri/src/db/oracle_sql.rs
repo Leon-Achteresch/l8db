@@ -235,15 +235,17 @@ impl PlsqlUnit {
     }
 }
 
-const SQLPLUS_COMMANDS: &[&str] = &[
-    "SET", "PROMPT", "SPOOL", "WHENEVER", "DEFINE", "UNDEFINE", "REM", "REMARK", "SHOW", "EXIT",
-    "QUIT", "PAUSE", "ACCEPT", "COLUMN", "TTITLE", "BTITLE", "BREAK", "CLEAR", "TIMING",
-];
+const SQLPLUS_COMMANDS: &str =
+    "SET PROMPT SPOOL WHENEVER DEFINE UNDEFINE REM REMARK SHOW EXIT QUIT PAUSE ACCEPT \
+    COLUMN TTITLE BTITLE BREAK CLEAR TIMING START STA @";
 
 fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Option<usize> {
     let word = sql[token.clone()].to_ascii_uppercase();
     let line_start = sql[..token.start].rfind('\n').map_or(0, |n| n + 1);
-    if !SQLPLUS_COMMANDS.contains(&word.as_str()) || !sql[line_start..token.start].trim().is_empty()
+    if !SQLPLUS_COMMANDS
+        .split_whitespace()
+        .any(|command| command == word)
+        || !sql[line_start..token.start].trim().is_empty()
     {
         return None;
     }
@@ -944,6 +946,19 @@ mod tests {
         assert_eq!(
             split_statements("UPDATE t\nSET x = 1;"),
             vec!["UPDATE t\nSET x = 1;"]
+        );
+    }
+
+    #[test]
+    fn script_file_calls_are_sqlplus_lines() {
+        assert_eq!(
+            split_items("@setup\n  @@ sub/next.sql\nSTART x.sql\nSELECT 1 FROM dual\n@y"),
+            vec![
+                (true, "@setup".to_string()),
+                (true, "@@ sub/next.sql".to_string()),
+                (true, "START x.sql".to_string()),
+                (false, "SELECT 1 FROM dual\n@y".to_string()),
+            ]
         );
     }
 

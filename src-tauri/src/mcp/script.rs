@@ -137,6 +137,9 @@ fn sqlplus(
             .join(" ")
     };
     let arg = |n: usize| words.get(n).map(String::as_str).unwrap_or("");
+    if line.starts_with('@') || matches!(arg(0), "START" | "STA") {
+        return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
+    }
     match arg(0) {
         "DEFINE" | "DEF" => define(&rest(1), defines),
         "UNDEFINE" | "UNDEF" => {
@@ -180,11 +183,6 @@ fn statement(kind: DatabaseKind, text: String, plan: &mut Plan) -> Result<(), St
             ))
         }
         None => {}
-    }
-    if kind == DatabaseKind::Oracle
-        && (text.starts_with('@') || words(&text).first().is_some_and(|word| word == "START"))
-    {
-        return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
     }
     plan.steps.push(Step::Sql(text));
     Ok(())
@@ -517,6 +515,8 @@ mod tests {
             .unwrap_err()
             .contains("&x"));
         assert!(plan(DatabaseKind::Oracle, "@install.sql").is_err());
+        assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\n  @@sub.sql").is_err());
+        assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\nSTART x.sql").is_err());
         assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\nROLLBACK;").is_err());
         for sql in [
             "BEGIN; DELETE FROM t;",

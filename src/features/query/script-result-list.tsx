@@ -15,6 +15,7 @@ export interface ScriptRunEntry {
   rowCount: number | null;
   rowsAffected: number | null;
   error: string | null;
+  source?: string;
   result?: QueryResult;
 }
 
@@ -93,6 +94,9 @@ export function ScriptResultList({
               <span className="mt-0.5 shrink-0">{statusIcon(entry.status)}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono">{firstLine(entry.sql)}</span>
+                {entry.source && (
+                  <span className="block truncate text-muted-foreground">aus {entry.source}</span>
+                )}
                 {entry.error && (
                   <span className="block truncate text-destructive">{entry.error}</span>
                 )}

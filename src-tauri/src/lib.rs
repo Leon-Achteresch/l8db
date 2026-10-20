@@ -474,6 +474,7 @@ pub fn run() {
             db::commands::uninstall_extension,
             db::commands::list_available_extensions,
             db::commands::execute_script,
+            db::sql_script::sql_search_path,
             db::commands::set_server_output,
             db::commands::take_server_output,
             db::commands::create_table,
