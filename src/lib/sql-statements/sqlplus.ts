@@ -109,6 +109,7 @@ export type SqlPlusCommand =
   | { type: "undefine"; names: string[] }
   | { type: "set-define"; marker: string | null }
   | { type: "set-escape"; escape: string | null }
+  | { type: "serveroutput"; enabled: boolean }
   | { type: "remark" }
   | { type: "other" };
 
@@ -143,6 +144,8 @@ export function parseSqlPlusCommand(text: string): SqlPlusCommand {
     return { type: "set-define", marker: switchValue(words[2], "&") };
   if (first === "SET" && /^ESC(APE?)?$/.test(second))
     return { type: "set-escape", escape: switchValue(words[2], "\\") };
+  if (first === "SET" && /^SERVEROUT(PUT)?$/.test(second) && /^(ON|OFF)$/i.test(words[2] ?? ""))
+    return { type: "serveroutput", enabled: words[2].toUpperCase() === "ON" };
   return { type: "other" };
 }
 
