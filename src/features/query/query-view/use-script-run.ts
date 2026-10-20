@@ -60,7 +60,7 @@ export function useScriptRun({
     () =>
       scriptDialogOpen
         ? splitSqlStatements(sql, connection?.kind)
-        : { statements: [], unterminated: false },
+        : { statements: [], commands: [], unterminated: false },
     [scriptDialogOpen, sql, connection?.kind],
   );
 

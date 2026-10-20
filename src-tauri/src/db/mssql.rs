@@ -1270,6 +1270,24 @@ impl DatabaseAdapter for MssqlAdapter {
         result
     }
 
+    async fn execute_script(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
+        let mut results = Vec::new();
+        for statement in super::sql_script::split_mssql(sql) {
+            let result = self.execute_query(&statement).await;
+            let failed = result.is_err();
+            results.push(super::ScriptStatementResult {
+                statement,
+                success: !failed,
+                rows_affected: result.as_ref().ok().and_then(|r| r.rows_affected),
+                error: result.err(),
+            });
+            if failed {
+                break;
+            }
+        }
+        Ok(results)
+    }
+
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let filter = schema
             .map(|s| format!(" WHERE s.name = {}", lit(s)))

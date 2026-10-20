@@ -105,3 +105,34 @@ test("one-line scripts build all statement positions within the same large-scrip
     { line: 3, column: 13 },
   ]);
 });
+
+function oracleScript(statements: number): string {
+  const parts: string[] = [];
+  for (let index = 0; index < statements; index++) {
+    if (index % 50 === 0) parts.push(`PROMPT step ${index}`);
+    parts.push(
+      index % 10 === 0
+        ? `BEGIN\n  x := q'[${index};]' || &&tag;\n\n  NULL;\nEND;\n/`
+        : `SELECT &col, '${index};' FROM t_${index} WHERE id = ${index};`,
+    );
+  }
+  return parts.join("\n\n");
+}
+
+test("5000-statement Oracle scripts with SQL*Plus commands split within the large-script budget", async () => {
+  const { splitSqlStatements } = await import("../src/lib/sql-statements");
+  const sql = oracleScript(5000);
+  const split = await measureScenario(() => {
+    splitSqlStatements(sql, "oracle");
+  });
+  const result = splitSqlStatements(sql, "oracle");
+  await reportScenario("query-oracle-script-split", {
+    statements: result.statements.length,
+    commands: result.commands.length,
+    sqlCharacters: sql.length,
+    split,
+  });
+  expect(result.statements).toHaveLength(5000);
+  expect(result.commands).toHaveLength(100);
+  expect(split.p95Ms).toBeLessThan(250);
+});

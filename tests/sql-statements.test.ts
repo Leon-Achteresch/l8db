@@ -250,6 +250,7 @@ test("Oracle alternative quotes preserve apostrophes and report missing delimite
     const sql = `SELECT q'${open}it's; /* text */${close}' FROM DUAL;`;
     expect(splitSqlStatements(sql, "oracle")).toEqual({
       statements: [{ text: sql, start: 0, end: sql.length }],
+      commands: [],
       unterminated: false,
     });
   }
@@ -295,6 +296,10 @@ test("Oracle scripts skip SQL*Plus commands and keep nested blocks together", ()
       const start = sql.indexOf(text);
       return { text, start, end: start + text.length };
     }),
+    commands: ["SET DEFINE OFF;", "PROMPT it's running", "EXIT"].map((text) => {
+      const start = sql.indexOf(text);
+      return { text, start, end: start + text.length };
+    }),
     unterminated: false,
   });
   expect(splitSqlStatements("UPDATE t\nSET x = 1;", "oracle").statements).toHaveLength(1);
@@ -309,6 +314,7 @@ test("MongoDB commands remain intact with escaped quotes, semicolons and SQL-lik
   const result = splitSqlStatements(input, "mongodb");
   expect(result).toEqual({
     statements: [{ text: command, start: 2, end: 2 + command.length }],
+    commands: [],
     unterminated: false,
   });
   expect(statementAtOffset(input, input.indexOf("SELECT"), "mongodb")?.text).toBe(command);
