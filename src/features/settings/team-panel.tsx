@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -6,7 +7,7 @@ import {
   LogInIcon,
   LogOutIcon,
   RefreshCwIcon,
-  ShieldCheckIcon,
+  RocketIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -27,8 +28,6 @@ import {
   teamErrorText,
 } from "@/lib/team/sync";
 
-const DOCS_URL = "https://github.com/Leon-Achteresch/l8db/blob/main/docs/team-hub.md";
-
 function summary(result: { added: number; updated: number; removed: string[] } | null): string {
   if (!result) return "Team-Verbindungen abgeglichen";
   return `Team-Verbindungen abgeglichen: ${result.added} neu, ${result.updated} geändert, ${result.removed.length} entfernt`;
@@ -47,6 +46,8 @@ export function TeamPanel() {
   const microsoftUser = hubUrl === MICROSOFT_HUB;
   const ownHubManaged = managedHub !== null && managedHub !== MICROSOFT_HUB;
   const address = ownHubManaged ? managedHub : typed;
+  const navigate = useNavigate();
+  const openSetup = () => void navigate({ to: "/team-setup" });
 
   useEffect(() => {
     void teamMicrosoftAvailable()
@@ -204,6 +205,12 @@ export function TeamPanel() {
                 <span>In SharePoint öffnen</span>
               </Button>
             )}
+            {microsoftUser && (
+              <Button size="sm" variant="ghost" onClick={openSetup}>
+                <RocketIcon className="size-3.5" />
+                <span>Einrichtung für die IT</span>
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => void diagnose()}>
               <ClipboardCopyIcon className="size-3.5" />
               <span>Diagnose kopieren</span>
@@ -241,31 +248,17 @@ export function TeamPanel() {
               <div className="mt-2">{loginForm}</div>
             </details>
           )}
-          {microsoft && (
-            <details>
-              <summary className="cursor-pointer text-muted-foreground">Für die IT</summary>
-              <div className="mt-2 space-y-2">
-                <p className="text-muted-foreground">
-                  Einmalig: l8db für die ganze Organisation in Microsoft freigeben. Dafür sind
-                  Administratorrechte in Microsoft Entra nötig.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => run("login", () => loginTeam(MICROSOFT_HUB, true))}
-                  >
-                    <ShieldCheckIcon className="size-3.5" />
-                    <span>Für die Organisation freigeben</span>
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void openUrl(DOCS_URL)}>
-                    <ExternalLinkIcon className="size-3.5" />
-                    <span>Anleitung für die IT</span>
-                  </Button>
-                </div>
-              </div>
-            </details>
-          )}
+          <div className="space-y-2 rounded-lg border p-3">
+            <p className="font-medium">Für die IT</p>
+            <p className="text-muted-foreground">
+              Microsoft 365 einmalig für das ganze Unternehmen einrichten: Schritt für Schritt, mit
+              Erklärvideos und Beispieldatei zum Verteilen.
+            </p>
+            <Button size="sm" variant="outline" onClick={openSetup}>
+              <RocketIcon className="size-3.5" />
+              <span>Einrichtung starten</span>
+            </Button>
+          </div>
         </div>
       )}
     </SettingsRow>

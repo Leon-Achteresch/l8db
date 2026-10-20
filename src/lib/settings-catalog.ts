@@ -943,6 +943,9 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "sharepoint",
       "unternehmen",
       "verbindungen",
+      "einrichtung",
+      "assistent",
+      "intune",
     ],
   },
   {
