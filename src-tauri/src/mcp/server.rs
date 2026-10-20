@@ -373,7 +373,11 @@ impl Server {
             .map(|value| value as usize)
             .unwrap_or(config.max_rows)
             .clamp(1, db::commands::MAX_RESULT_ROWS);
-        let adapter = adapter(connection, &self.pool)?;
+        let guarded = McpConnection {
+            read_only: connection.read_only || connection.is_production(),
+            ..connection.clone()
+        };
+        let adapter = adapter(&guarded, &self.pool)?;
         let result = run(config, connection.kind, async {
             adapter.execute_query(sql).await
         })

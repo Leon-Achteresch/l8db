@@ -39,7 +39,9 @@ impl Catalog {
                             .any(|entry| !entry.writes_blocked() && entry.allow_ddl)
                 }
                 "sandbox" => config.connections.iter().any(|entry| {
-                    crate::mcp::sandbox::supported(entry.kind) && !entry.writes_blocked()
+                    crate::mcp::sandbox::supported(entry.kind)
+                        && !entry.writes_blocked()
+                        && !entry.is_production()
                 }),
                 "drilldown" => config
                     .connections

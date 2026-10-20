@@ -75,7 +75,9 @@ pub fn scoped_config(request: &RunRequest, mut config: McpConfig) -> Result<McpC
             } else {
                 selected.environment.clone()
             },
-            allow_production_writes: false,
+            allow_production_writes: selected.production_writes
+                && request.active_id.as_ref() == Some(&selected.id)
+                && policy.is_none_or(|entry| entry.allow_production_writes),
         });
     }
     if request
@@ -148,11 +150,16 @@ pub async fn call(
         if run.plan_only || policy.is_none_or(|connection| connection.writes_blocked()) {
             return json!({"content": [{"type": "text", "text": "Schreibzugriff für diese Verbindung gesperrt."}], "isError": true});
         }
-        let step = server
-            .lock()
-            .await
-            .prepare_dry_run(config, &json!({"arguments": args}))
-            .await;
+        let step = match policy {
+            Some(connection) if connection.is_production() => None,
+            _ => {
+                server
+                    .lock()
+                    .await
+                    .prepare_dry_run(config, &json!({"arguments": args}))
+                    .await
+            }
+        };
         let preview = match step {
             Some(step) => Some(step.finish().await),
             None => None,
@@ -328,7 +335,7 @@ async fn sandbox(
         Ok(connection) => connection,
         Err(error) => return text_result(Err(error)),
     };
-    if run.plan_only || connection.writes_blocked() {
+    if run.plan_only || connection.writes_blocked() || connection.is_production() {
         return text_result(Err(
             "Sandbox braucht Schreibzugriff auf diese Verbindung und ist im Plan-Modus, bei schreibgeschützten und Produktionsverbindungen gesperrt.".into(),
         ));

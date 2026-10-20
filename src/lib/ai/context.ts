@@ -10,6 +10,7 @@ export function aiConnections(
   mentionedIds: string[],
   databases: Record<string, string>,
   schemas: Record<string, string> = {},
+  productionWritesId: string | null = null,
 ): AiConnection[] {
   const ids = [...new Set([...(activeId ? [activeId] : []), ...mentionedIds])];
   return ids.map((id) => {
@@ -29,6 +30,7 @@ export function aiConnections(
       environment: connectionEnvironment(connection),
       maskRules: connection.maskRules ?? [],
       defaultSchema: schemas[id] ?? null,
+      productionWrites: id === productionWritesId,
     };
   });
 }
