@@ -47,6 +47,34 @@ const STAT_COLUMNS: &str = "starts, last_output_rows, last_elapsed_time, last_cr
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+fn plan_select(source: &str, filter: &str, stats: bool) -> String {
+    let columns = COLUMNS
+        .split(", ")
+        .map(|column| match column {
+            "id" => "NVL(m.dis, p.id)".to_string(),
+            "parent_id" => "NVL(m.par, p.parent_id)".to_string(),
+            other => format!("p.{other}"),
+        })
+        .chain(
+            stats
+                .then(|| STAT_COLUMNS.split(", ").map(|c| format!("p.{c}")))
+                .into_iter()
+                .flatten(),
+        )
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "WITH display_map AS (SELECT x.op, x.dis, x.par, x.skp FROM {source} q, \
+         XMLTABLE('/other_xml/display_map/row' PASSING XMLTYPE(q.other_xml) \
+         COLUMNS op NUMBER PATH '@op', dis NUMBER PATH '@dis', par NUMBER PATH '@par', skp NUMBER PATH '@skp') x \
+         WHERE {} AND q.other_xml IS NOT NULL) \
+         SELECT {columns} FROM {source} p LEFT JOIN display_map m ON m.op = p.id \
+         WHERE {} AND NVL(m.skp, 0) <> 1 ORDER BY NVL(m.dis, p.id)",
+        filter.replace("{t}", "q"),
+        filter.replace("{t}", "p")
+    )
+}
+
 fn statement_id() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -114,7 +142,7 @@ pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> 
     c.execute(&sql, &[]).map_err(|e| map_sql_err(e, &sql))?;
     let rows = fetch(
         c,
-        &format!("SELECT {COLUMNS} FROM plan_table WHERE statement_id = '{id}' ORDER BY id"),
+        &plan_select("plan_table", &format!("{{t}}.statement_id = '{id}'"), false),
     );
     let cleanup = c
         .execute(
@@ -128,7 +156,20 @@ pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> 
     Ok(plan)
 }
 
+pub(super) const ANALYZE_ONLY_DML: &str = "EXPLAIN ANALYZE ist bei Oracle nur für Abfragen und DML (INSERT, UPDATE, DELETE, MERGE) möglich. DDL und PL/SQL-Blöcke würden sofort festgeschrieben und wurden nicht ausgeführt.";
+
+pub(super) fn analyzable(statement: &str) -> bool {
+    is_query(statement)
+        || matches!(
+            super::sql::first_word(statement).as_str(),
+            "INSERT" | "UPDATE" | "DELETE" | "MERGE"
+        )
+}
+
 pub(super) fn analyze(c: &mut Connection, statement: &str) -> Result<Value, String> {
+    if !analyzable(statement) {
+        return Err(ANALYZE_ONLY_DML.to_string());
+    }
     for probe in [
         "SELECT prev_sql_id FROM v$session WHERE ROWNUM = 0",
         "SELECT sql_id FROM v$sql_plan_statistics_all WHERE ROWNUM = 0",
@@ -178,10 +219,14 @@ fn run_measured(c: &Connection, statement: &str) -> Result<Value, String> {
     }
     let rows = fetch(
         c,
-        &format!(
-            "SELECT {COLUMNS}, {STAT_COLUMNS} FROM v$sql_plan_statistics_all WHERE sql_id = '{}' AND child_number = {} ORDER BY id",
-            sql_id.replace('\'', ""),
-            child.trim().parse::<i64>().unwrap_or(0)
+        &plan_select(
+            "v$sql_plan_statistics_all",
+            &format!(
+                "{{t}}.sql_id = '{}' AND {{t}}.child_number = {}",
+                sql_id.replace('\'', ""),
+                child.trim().parse::<i64>().unwrap_or(0)
+            ),
+            true,
         ),
     )?;
     let rows: Vec<PlanRow> = rows
@@ -446,6 +491,27 @@ mod tests {
         assert_eq!(plan[0]["Plan"]["Node Type"], "PLAN");
         assert_eq!(plan[0]["Plan"]["Plans"].as_array().unwrap().len(), 2);
         assert!(plan_tree(Vec::new(), None).is_err());
+    }
+
+    #[test]
+    fn analyze_accepts_only_queries_and_dml() {
+        for ok in ["SELECT 1 FROM dual", "with x as (select 1 from dual) select * from x", "update t set a = 1", "MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a = 1", "delete from t"] {
+            assert!(analyzable(ok), "{ok}");
+        }
+        for rejected in ["CREATE TABLE t (a NUMBER)", "drop table t", "TRUNCATE TABLE t", "BEGIN NULL; END;", "ALTER TABLE t ADD b NUMBER", "GRANT SELECT ON t TO u"] {
+            assert!(!analyzable(rejected), "{rejected}");
+        }
+    }
+
+    #[test]
+    fn plan_select_hides_inactive_adaptive_rows() {
+        let sql = plan_select("plan_table", "{t}.statement_id = 'X'", false);
+        assert!(sql.contains("q.statement_id = 'X' AND q.other_xml IS NOT NULL"));
+        assert!(sql.contains("WHERE p.statement_id = 'X' AND NVL(m.skp, 0) <> 1"));
+        assert!(sql.contains("SELECT NVL(m.dis, p.id), NVL(m.par, p.parent_id), p.operation"));
+        assert!(!sql.contains("p.starts"));
+        assert!(plan_select("v$sql_plan_statistics_all", "{t}.sql_id = 'a'", true)
+            .contains("p.last_execution FROM v$sql_plan_statistics_all p"));
     }
 
     #[test]

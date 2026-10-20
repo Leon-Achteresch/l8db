@@ -45,6 +45,10 @@ export function useCompileObject() {
           toast.warning(`${label} bricht Aufrufer`, {
             description: result.message.split("\n")[0],
           });
+        } else if (result.status === "VALID" && result.message) {
+          toast.warning(`${label} mit Warnungen kompiliert`, {
+            description: result.message.split("\n")[0],
+          });
         } else if (result.status === "VALID") {
           toast.success(`${label} kompiliert`, { description: "Status: VALID" });
         } else {

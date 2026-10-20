@@ -148,6 +148,7 @@ export interface CompileErrorInfo {
   line: number | null;
   position: number | null;
   message: string;
+  severity?: string;
 }
 
 export interface InvalidCompileOutcome {

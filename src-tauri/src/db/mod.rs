@@ -371,6 +371,7 @@ pub struct CompileErrorInfo {
     pub line: Option<i32>,
     pub position: Option<i32>,
     pub message: String,
+    pub severity: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2810,6 +2811,9 @@ mod row_path_perf_tests;
 
 #[cfg(test)]
 mod live_plan_tests;
+
+#[cfg(test)]
+mod oracle_live_tests;
 
 #[cfg(test)]
 mod value_viewer_live_tests;
