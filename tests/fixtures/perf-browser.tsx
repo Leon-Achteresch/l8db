@@ -8,6 +8,7 @@ import { initAppearance } from "../../src/lib/appearance";
 import { useConnectionsStore } from "../../src/lib/connections";
 import { useQueryWorkspace } from "../../src/lib/query-workspace";
 import { useSettingsStore } from "../../src/lib/settings";
+import { normalizeTableStyle } from "../../src/lib/table-style";
 
 const params = new URLSearchParams(location.search);
 const ROWS = Number(params.get("rows") ?? 5000);
@@ -16,6 +17,7 @@ const step = Number(params.get("step") ?? 120);
 useSettingsStore.setState({
   uiScale: Number(params.get("scale") ?? 100),
   uiDensity: (params.get("density") ?? "normal") as "normal" | "compact" | "spacious",
+  tableStyle: normalizeTableStyle(params.get("tableStyle")),
 });
 initAppearance();
 
@@ -69,25 +71,52 @@ const COLUMNS = Array.from(
   (_, i) => `col_${i}`,
 );
 
+const SEMANTIC = params.get("tableStyle") === "semantic";
+const STATUSES = ["active", "pending", "failed", "archived"];
+
+function semanticValue(n: number, index: number) {
+  if (n % 10 === 0) return null;
+  switch (index % 8) {
+    case 0:
+      return STATUSES[n % STATUSES.length];
+    case 1:
+      return new Date(Date.now() - (n % 900) * 3_600_000).toISOString();
+    case 2:
+      return `user.${n}@example.com`;
+    case 3:
+      return `${n.toString(16).padStart(8, "0")}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+    case 4:
+      return n % 3 === 0;
+    case 5:
+      return { id: n, tags: ["a", "b"], meta: { n } };
+    case 6:
+      return n * 1.5;
+    default:
+      return `value ${n}`;
+  }
+}
+
 function makeRows(asResult = false) {
   return Array.from({ length: ROWS }, (_, row) => {
     const record: Record<string, unknown> = {
       __ctid__: `(0,${row})`,
       id: asResult ? String(row) : row,
     };
-    for (const column of COLUMNS) {
+    for (const [index, column] of COLUMNS.entries()) {
       const n = row * 31 + column.length;
       const value = longText
         ? longText
-        : n % 5 === 0
-          ? null
-          : n % 5 === 1
-            ? n
-            : n % 5 === 2
-              ? `2026-01-${String((n % 28) + 1).padStart(2, "0")}T10:00:00Z`
-              : n % 5 === 3
-                ? { nested: n }
-                : `value ${n}`;
+        : SEMANTIC
+          ? semanticValue(row * 31 + index, index)
+          : n % 5 === 0
+            ? null
+            : n % 5 === 1
+              ? n
+              : n % 5 === 2
+                ? `2026-01-${String((n % 28) + 1).padStart(2, "0")}T10:00:00Z`
+                : n % 5 === 3
+                  ? { nested: n }
+                  : `value ${n}`;
       record[column] =
         asResult && value !== null
           ? typeof value === "object"
