@@ -104,3 +104,37 @@ test("a missing include stops the script before later statements and never reach
   expect(outcome.error).toContain("Datei nicht gefunden: missing");
   expect(executed().some((sql) => sql.includes("@"))).toBe(false);
 });
+
+test("substitution variables are asked once per run and && values stay defined for the tab", async () => {
+  const { substitutionSession } = await import("../../src/lib/sql-statements/sqlplus");
+  const variables = substitutionSession("tab-script");
+  const asked: string[][] = [];
+  const askVariables = async (names: string[]) => {
+    asked.push(names);
+    return Object.fromEntries(names.map((name) => [name, name === "TAB" ? "emp" : "7"]));
+  };
+  const sql =
+    "DEFINE col = name\nSELECT &col, '&&tab' -- &ignored\nFROM &tab WHERE id = &id;\nSET DEFINE OFF\nSELECT 'R&D' FROM dual;";
+  const run = () =>
+    runSqlScript({ connection, database: null, sql, mode: "autocommit", variables, askVariables });
+  await run();
+  expect(asked).toEqual([["TAB", "ID"]]);
+  expect(executed()).toEqual([
+    "SELECT name, 'emp' -- &ignored\nFROM emp WHERE id = 7;",
+    "SELECT 'R&D' FROM dual;",
+  ]);
+  variables.state.marker = "&";
+  await run();
+  expect(asked).toEqual([["TAB", "ID"], ["ID"]]);
+  calls.length = 0;
+  const cancelled = runSqlScript({
+    connection,
+    database: null,
+    sql: "SELECT &other FROM dual;",
+    mode: "autocommit",
+    variables: substitutionSession("tab-cancel"),
+    askVariables: async () => null,
+  });
+  await expect(cancelled).rejects.toThrow("abgebrochen");
+  expect(executed()).toEqual([]);
+});

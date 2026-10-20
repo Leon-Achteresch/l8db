@@ -49,6 +49,7 @@ import { useRunActions } from "./query-view/use-run-actions";
 import { useRunSql } from "./query-view/use-run-sql";
 import { useScriptRun } from "./query-view/use-script-run";
 import { useServerOutput } from "./query-view/use-server-output";
+import { useSubstitutionPrompt } from "./query-view/use-substitution-prompt";
 import { useWorkspaceLayoutSync } from "./query-view/use-workspace-layout-sync";
 
 interface QueryViewProps {
@@ -107,10 +108,13 @@ export function QueryView({ tabId }: QueryViewProps) {
   );
   const sessionViews = useSessionViews(connection?.id, database);
   const output = useServerOutput(connection, database, caps);
+  const substitution = useSubstitutionPrompt();
 
   const script = useScriptRun({
     sql,
     filePath,
+    tabId,
+    askVariables: substitution.ask,
     connection,
     database,
     caps,
@@ -138,6 +142,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     collectOutput: output.collectOutput,
     runMultiStatement: script.runScriptFor,
     confirmPreview: dmlPreview.confirmBeforeRun,
+    askVariables: substitution.ask,
   });
 
   const actions = useRunActions({
@@ -385,6 +390,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           exportState={exportState}
           analysis={analysis}
           explain={explain}
+          substitution={substitution.dialog}
         />
 
         <DmlPreviewDialog

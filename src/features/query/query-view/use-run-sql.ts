@@ -15,6 +15,12 @@ import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
+import {
+  type AskVariables,
+  askMissingVariables,
+  substitute,
+  substitutionSession,
+} from "@/lib/sql-statements/sqlplus";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
@@ -37,6 +43,7 @@ interface UseRunSqlParams {
   setEditorFocus: (focus: boolean) => void;
   collectOutput: () => Promise<void>;
   runMultiStatement: (text: string) => Promise<void>;
+  askVariables: AskVariables;
   confirmPreview: (sql: string, bound?: boolean) => Promise<boolean>;
 }
 
@@ -52,6 +59,7 @@ export function useRunSql({
   setEditorFocus,
   collectOutput,
   runMultiStatement,
+  askVariables,
   confirmPreview,
 }: UseRunSqlParams) {
   const queryClient = useQueryClient();
@@ -76,7 +84,7 @@ export function useRunSql({
 
   const runSql = useCallback(
     async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
-      const sql = text;
+      let sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
       const split =
         !bound && runsOneStatementPerCall(connection.kind)
@@ -86,6 +94,16 @@ export function useRunSql({
         if (!previewed && !(await confirmPreview(sql))) return;
         await runMultiStatement(sql);
         return;
+      }
+      if (!bound && !skipBind && connection.kind === "oracle") {
+        const session = substitutionSession(tabId);
+        const answers = await askMissingVariables(
+          [{ kind: "sql", text: sql }],
+          session,
+          askVariables,
+        );
+        if (!answers) return;
+        sql = substitute(sql, session.state, answers).text;
       }
       if (
         !bound &&
@@ -114,7 +132,7 @@ export function useRunSql({
       const currentTab = useTableTabs
         .getState()
         .tabs.find((tab) => tab.kind === "query" && tab.id === tabId);
-      if (currentTab?.kind === "query" && currentTab.sql === sql) {
+      if (currentTab?.kind === "query" && currentTab.sql === text) {
         markQueryTabExecuted(tabId, sql);
       }
       runningRef.current = true;
@@ -197,6 +215,7 @@ export function useRunSql({
       cursorOffsetRef,
       setEditorFocus,
       runMultiStatement,
+      askVariables,
       confirmPreview,
     ],
   );

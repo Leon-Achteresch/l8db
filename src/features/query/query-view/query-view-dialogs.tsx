@@ -11,6 +11,7 @@ import { QueryPerfPanel } from "@/features/query/query-perf-panel";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
 import { ScriptRunDialog } from "@/features/query/script-run-dialog";
 import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
+import { SubstitutionDialog } from "@/features/query/substitution-dialog";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import type { QueryResult } from "@/lib/db";
 import { queueQuerySnippet } from "@/lib/pending-query-snippets";
@@ -22,6 +23,7 @@ import type { ExplainPlanState } from "./use-explain-plan";
 import type { ResultExportState } from "./use-result-export";
 import type { useRunSql } from "./use-run-sql";
 import type { ScriptRunState } from "./use-script-run";
+import type { SubstitutionPrompt } from "./use-substitution-prompt";
 
 interface DialogState {
   open: boolean;
@@ -49,6 +51,7 @@ interface QueryViewDialogsProps {
     onSectionChange: (section: AnalysisSection) => void;
   };
   explain: ExplainPlanState;
+  substitution: SubstitutionPrompt["dialog"];
 }
 
 export function QueryViewDialogs({
@@ -69,6 +72,7 @@ export function QueryViewDialogs({
   exportState,
   analysis,
   explain,
+  substitution,
 }: QueryViewDialogsProps) {
   const navigate = useNavigate();
   const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
@@ -113,6 +117,8 @@ export function QueryViewDialogs({
           void script.runScript(mode, stopOnError);
         }}
       />
+
+      <SubstitutionDialog {...substitution} />
 
       <TabSearchDialog
         open={tabSearch.open}

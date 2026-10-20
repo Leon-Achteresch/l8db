@@ -174,3 +174,32 @@ test("200 @-files with 5000 statements expand with one read per file", async () 
   expect(reads).toBe(200);
   expect(expand.p95Ms).toBeLessThan(250);
 });
+
+test("substituting 5000 statements stays within budget without retained state", async () => {
+  const { splitSqlStatements } = await import("../src/lib/sql-statements");
+  const { substitute } = await import("../src/lib/sql-statements/sqlplus");
+  const texts = splitSqlStatements(oracleScript(5000), "oracle").statements.map(
+    (statement) => statement.text,
+  );
+  const values = { COL: "name", TAG: "'x'" };
+  const runOnce = () => {
+    const state = { defines: {}, marker: "&", escape: null };
+    for (const text of texts) substitute(text, state, values);
+  };
+  const timing = await measureScenario(runOnce);
+  Bun.gc(true);
+  const before = process.memoryUsage().heapUsed;
+  for (let run = 0; run < 5; run++) runOnce();
+  Bun.gc(true);
+  const retainedBytes = process.memoryUsage().heapUsed - before;
+  await reportScenario("query-oracle-script-substitution", {
+    statements: texts.length,
+    timing,
+    retainedBytes,
+  });
+  expect(substitute(texts[1], { defines: {}, marker: "&", escape: null }, values).text).toBe(
+    "SELECT name, '1;' FROM t_1 WHERE id = 1;",
+  );
+  expect(timing.p95Ms).toBeLessThan(150);
+  expect(retainedBytes).toBeLessThan(4 * 1024 * 1024);
+});
