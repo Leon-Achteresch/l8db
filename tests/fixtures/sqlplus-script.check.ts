@@ -19,6 +19,10 @@ const files: Record<string, string> = {
   "/sqlpath/c.sql": "SELECT 3 FROM dual;",
 };
 mock.module("@tauri-apps/plugin-fs", () => ({
+  stat: async (path: string) => {
+    if (!(path in files)) throw new Error(`not found: ${path}`);
+    return { size: files[path].length };
+  },
   readFile: async (path: string) => {
     if (!(path in files)) throw new Error(`not found: ${path}`);
     return new TextEncoder().encode(files[path]);
@@ -248,4 +252,29 @@ test("DESC lists columns with nullability and type as a result grid", async () =
   });
   expect(outcome.entries[2].error).toBe("Tabelle oder View nicht gefunden: missing");
   expect(outcome.lastResult?.rows).toHaveLength(2);
+});
+
+test("CONNECT stops the script so later statements never run in another schema", async () => {
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "SELECT 1 FROM dual;\nCONN hr/hr@db\nSELECT 2 FROM dual;",
+    mode: "autocommit",
+    stopOnError: false,
+  });
+  expect(outcome.entries.map((entry) => entry.status)).toEqual(["success", "error", "skipped"]);
+  expect(outcome.entries[1].error).toContain("CONNECT/DISCONNECT wird nicht unterstützt");
+  expect(executed()).toEqual(["SELECT 1 FROM dual;"]);
+});
+
+test("other dialects keep the policy check on the original script with GO separators", async () => {
+  const mssql = { ...connection, id: "ms", kind: "mssql" as const };
+  const run = runSqlScript({
+    connection: mssql,
+    database: null,
+    sql: "CREATE PROCEDURE p AS SELECT 1\nGO\nCOMMIT",
+    mode: "new-transaction",
+  });
+  await expect(run).rejects.toThrow();
+  expect(executed()).toEqual([]);
 });

@@ -65,6 +65,8 @@ const SQLPLUS_COMMANDS = new Set([
 ]);
 const SQL_SET_TARGETS = ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"];
 const SLASH_LINE = /^[ \t]*\/[ \t\r]*$/gm;
+const WRAPPED_HEADER =
+  /^\s+(?:BODY\s+)?(?:"[^"]+"|[A-Za-z][\w$#]*)(?:\s*\.\s*(?:"[^"]+"|[A-Za-z][\w$#]*))?\s+$/i;
 
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
@@ -115,6 +117,7 @@ export function splitSqlStatements(
   let plsqlHeader = false;
   let plsqlClosed = false;
   let plsqlBody = false;
+  let plsqlHead = 0;
   let batch = false;
   let blockDepth = 0;
   let delimiter = ";";
@@ -310,6 +313,7 @@ export function splitSqlStatements(
             plsqlDepth = 1;
             plsqlBody = first === "BEGIN";
             plsqlHeader = inline;
+            plsqlHead = index;
             if (object === "JAVA") skipToSlash();
           }
           continue;
@@ -320,7 +324,7 @@ export function splitSqlStatements(
           !plsqlBody &&
           !plsqlHeader &&
           plsqlPending === 0 &&
-          /[\w"$#]/.test(sql.slice(0, start).trimEnd().at(-1) ?? "")
+          WRAPPED_HEADER.test(sql.slice(plsqlHead, start))
         ) {
           skipToSlash();
           continue;

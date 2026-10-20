@@ -36,7 +36,7 @@ pub async fn sql(ctx: &mut StepContext<'_>, config: &Action) -> Result<StepOutco
     for reference in connections {
         let (resolved, adapter) = open(ctx, reference, database.as_deref()).await?;
         let text = ctx.vars.render_sql(&source, resolved.kind)?;
-        let statements = crate::db::sql_script::split(&text);
+        let statements = crate::db::sql_script::split_for(resolved.kind, &text);
         let name = resolved.name.clone();
         if statements.len() == 1 {
             let result = adapter

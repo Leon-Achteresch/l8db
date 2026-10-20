@@ -160,6 +160,20 @@ fn unit_kind(sql: &str, tokens: &[Range<usize>]) -> Option<UnitKind> {
     }
 }
 
+fn names_object(sql: &str, tokens: &[Range<usize>]) -> bool {
+    let words: Vec<&str> = tokens.iter().map(|r| &sql[r.clone()]).collect();
+    let words = match words.split_first() {
+        Some((first, rest)) if first.eq_ignore_ascii_case("BODY") => rest,
+        _ => &words[..],
+    };
+    let name = |w: &&str| w.starts_with('"') || w.starts_with(|c: char| c.is_ascii_alphabetic());
+    match words {
+        [object] => name(object),
+        [owner, ".", object] => name(owner) && name(object),
+        _ => false,
+    }
+}
+
 fn slash_after(sql: &str, from: usize) -> Option<usize> {
     let mut pos = sql[from..].find('\n').map(|n| from + n + 1)?;
     loop {
@@ -190,6 +204,7 @@ struct PlsqlUnit {
     closed: bool,
     skip: bool,
     body: bool,
+    head: usize,
 }
 
 impl PlsqlUnit {
@@ -362,9 +377,7 @@ pub(super) fn split_ranges(sql: &str) -> Vec<(Item, Range<usize>)> {
                 && !unit.body
                 && !unit.header
                 && unit.pending == 0
-                && index > start
-                && sql[tokens[index - 1].clone()]
-                    .ends_with(|c: char| c.is_alphanumeric() || matches!(c, '_' | '"' | '$' | '#'));
+                && names_object(sql, &tokens[unit.head + 1..index]);
             if !opaque && !sql[..token.start].ends_with('$') {
                 unit.word(text, next);
             }
@@ -373,6 +386,7 @@ pub(super) fn split_ranges(sql: &str) -> Vec<(Item, Range<usize>)> {
             unit.depth = 1;
             unit.body = text.eq_ignore_ascii_case("BEGIN");
             unit.header = kind == UnitKind::Inline;
+            unit.head = index;
             opaque = kind == UnitKind::Java;
         }
         if opaque {

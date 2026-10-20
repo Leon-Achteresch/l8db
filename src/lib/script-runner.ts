@@ -1,3 +1,4 @@
+import { stat } from "@tauri-apps/plugin-fs";
 import type { ScriptRunEntry, ScriptRunStatus } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import type { SavedConnection } from "@/lib/connections";
@@ -38,6 +39,9 @@ import {
 } from "@/lib/transaction-sql-changes";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
+const CONNECT_UNSUPPORTED =
+  "CONNECT/DISCONNECT wird nicht unterstützt. Das Skript wurde angehalten, damit die folgenden Statements nicht im falschen Schema laufen.";
+
 export interface ScriptRequest {
   connection: SavedConnection;
   database: string | null;
@@ -73,6 +77,11 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     ? await expandIncludes(scriptItems(split), {
         file: request.filePath ?? null,
         searchPath: await sqlSearchPath().catch(() => []),
+        stat: (path) =>
+          stat(path).then(
+            (info) => ({ size: info.size }),
+            () => null,
+          ),
         read: readSqlText,
       })
     : scriptItems(split);
@@ -84,14 +93,14 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
   const answers = oracle ? await askMissingVariables(items, session, request.askVariables) : {};
   if (!answers) throw new Error("Ausführung vom Benutzer abgebrochen.");
   const preview = { ...session.state, defines: { ...session.state.defines } };
-  const executable = items
-    .flatMap((item) => {
-      if (item.kind === "command" && oracle)
-        applySqlPlusSetting(parseSqlPlusCommand(item.text), preview);
-      if (item.kind !== "sql") return [];
-      return [oracle ? substitute(item.text, preview, answers).text : item.text];
-    })
-    .join(oracle ? "\n/\n" : "\n");
+  const executable = oracle
+    ? items
+        .flatMap((item) => {
+          if (item.kind === "command") applySqlPlusSetting(parseSqlPlusCommand(item.text), preview);
+          return item.kind === "sql" ? [substitute(item.text, preview, answers).text] : [];
+        })
+        .join("\n/\n")
+    : request.sql;
   const policyIssue = scriptPolicyIssue(executable, connection.kind, mode !== "autocommit");
   if (policyIssue) throw new Error(policyIssue);
   await confirmSqlExecution(connection.kind, url, executable, database ?? undefined);
@@ -159,6 +168,10 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     };
     const runCommand = async (text: string, entry: ScriptRunEntry): Promise<ScriptRunStatus> => {
       const command = parseSqlPlusCommand(text);
+      if (command.type === "connect") {
+        halted = true;
+        throw new Error(CONNECT_UNSUPPORTED);
+      }
       if (command.type === "describe") {
         const result = await describe(command.name);
         entry.result = result;

@@ -128,8 +128,9 @@ export function QueryView({ tabId }: QueryViewProps) {
   const multiTargetRun = useMultiTargetRun();
   const [multiTargetOpen, setMultiTargetOpen] = useState(false);
   const dmlPreviewWarnThreshold = useSettingsStore((state) => state.dmlPreviewWarnThreshold);
+  const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
 
-  const { runSql, bind } = useRunSql({
+  const { runSql, prepareSql, bind } = useRunSql({
     tabId,
     sql,
     connection,
@@ -154,6 +155,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     cursor,
     runSql,
     previewSql: dmlPreview.preview,
+    prepareSql,
     setEditorFocus,
   });
 
@@ -416,6 +418,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                     cursor.cursorOffset,
                     workspace.runTarget,
                     connection?.kind,
+                    { blankLines, sqlOnly: true },
                   )
                 : ""
             }

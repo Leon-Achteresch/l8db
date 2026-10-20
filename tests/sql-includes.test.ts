@@ -10,11 +10,14 @@ import {
 } from "../src/lib/sql-statements/includes";
 
 function reader(files: Record<string, string>, reads: string[] = []) {
-  return async (path: string) => {
-    reads.push(path);
-    const text = files[path];
-    if (text === undefined) throw new Error("ENOENT");
-    return text;
+  return {
+    stat: async (path: string) => (path in files ? { size: files[path].length } : null),
+    read: async (path: string) => {
+      reads.push(path);
+      const text = files[path];
+      if (text === undefined) throw new Error("ENOENT");
+      return text;
+    },
   };
 }
 
@@ -51,7 +54,7 @@ test("includes resolve beside the script first, then SQLPATH, and @@ beside the 
   const items = await expandIncludes(plan(sql), {
     file: "/proj/main.sql",
     searchPath: ["/sqlpath"],
-    read: reader(files, reads),
+    ...reader(files, reads),
   });
   expect(items.map(({ kind, text, source }) => ({ kind, text, source }))).toEqual([
     { kind: "sql", text: "INSERT INTO t VALUES (1);", source: "/proj/a.sql" },
@@ -61,14 +64,14 @@ test("includes resolve beside the script first, then SQLPATH, and @@ beside the 
   ]);
   expect(items.slice(0, 2).every((item) => item.start === 0 && item.end === 6)).toBe(true);
   expect(sql.slice(items[2].start, items[2].end)).toBe("@c");
-  expect(reads).toEqual(["/proj/a.sql", "/proj/lib/b.sql", "/proj/c.sql", "/sqlpath/c.sql"]);
+  expect(reads).toEqual(["/proj/a.sql", "/proj/lib/b.sql", "/sqlpath/c.sql"]);
 });
 
 test("missing files, unsaved tabs, cycles and deep nesting become clear errors", async () => {
   const unsaved = await expandIncludes(plan("@x.sql"), {
     file: null,
     searchPath: [],
-    read: reader({}),
+    ...reader({}),
   });
   expect(unsaved[0].kind).toBe("error");
   expect(unsaved[0].error).toContain("Datei nicht gefunden: x.sql");
@@ -77,14 +80,14 @@ test("missing files, unsaved tabs, cycles and deep nesting become clear errors",
   const missing = await expandIncludes(plan("@x"), {
     file: "/p/m.sql",
     searchPath: ["/q"],
-    read: reader({}),
+    ...reader({}),
   });
   expect(missing[0].error).toBe("Datei nicht gefunden: x (gesucht: /p/x.sql, /q/x.sql)");
 
   const cycle = await expandIncludes(plan("@a"), {
     file: "/p/m.sql",
     searchPath: [],
-    read: reader({
+    ...reader({
       "/p/m.sql": "@a",
       "/p/a.sql": "@b",
       "/p/b.sql": "SELECT 1 FROM dual;\n@m",
@@ -97,6 +100,7 @@ test("missing files, unsaved tabs, cycles and deep nesting become clear errors",
   const deep = await expandIncludes(plan("@f0"), {
     file: null,
     searchPath: ["/p"],
+    stat: async () => ({ size: 10 }),
     read: async (path) => {
       reads.push(path);
       return `@@f${Number(/f(\d+)\.sql$/.exec(path)?.[1]) + 1}`;
@@ -105,4 +109,49 @@ test("missing files, unsaved tabs, cycles and deep nesting become clear errors",
   expect(deep).toHaveLength(1);
   expect(deep[0].error).toContain(`höchstens ${INCLUDE_LIMITS.depth} Ebenen`);
   expect(reads).toHaveLength(INCLUDE_LIMITS.depth);
+});
+
+test("oversized and unreadable includes report their own error, cycles compare normalized paths", async () => {
+  const reads: string[] = [];
+  const huge = await expandIncludes(plan("@big"), {
+    file: "/p/m.sql",
+    searchPath: [],
+    stat: async () => ({ size: 3 * 1024 * 1024 * 1024 }),
+    read: async (path) => {
+      reads.push(path);
+      return "";
+    },
+  });
+  expect(huge[0].error).toBe("Datei ist zu groß (3072 MB, maximal 10 MB): /p/big.sql");
+  expect(reads).toEqual([]);
+
+  const locked = await expandIncludes(plan("@locked"), {
+    file: "/p/m.sql",
+    searchPath: [],
+    stat: async () => ({ size: 10 }),
+    read: async () => {
+      throw new Error("permission denied");
+    },
+  });
+  expect(locked[0].error).toBe(
+    "Datei konnte nicht gelesen werden: /p/locked.sql (permission denied)",
+  );
+
+  const dotted = await expandIncludes(plan("@@./a.sql"), {
+    file: "/p/m.sql",
+    searchPath: [],
+    ...reader({ "/p/./a.sql": "@@../p/m.sql", "/p/../p/m.sql": "@@./a.sql" }),
+  });
+  expect(dotted.map((item) => item.kind)).toEqual(["error"]);
+  expect(dotted[0].error).toBe("Zyklischer @-Aufruf: /p/m.sql → /p/a.sql → /p/m.sql");
+
+  const windows = await expandIncludes(plan("@@.\\B.sql"), {
+    file: "C:\\proj\\main.sql",
+    searchPath: [],
+    ...reader({ "C:\\proj\\.\\B.sql": "@@..\\proj\\MAIN.sql", "C:/proj/..\\proj\\MAIN.sql": "" }),
+  });
+  expect(windows.map((item) => item.kind)).toEqual(["error"]);
+  expect(windows[0].error).toBe(
+    "Zyklischer @-Aufruf: C:/proj/main.sql → C:/proj/B.sql → C:/proj/MAIN.sql",
+  );
 });

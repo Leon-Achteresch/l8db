@@ -1,3 +1,4 @@
+import { sqlFileSizeError } from "@/lib/sql-file";
 import { type SqlSplitResult, splitSqlStatements } from "./split";
 
 export interface ScriptItem {
@@ -12,6 +13,7 @@ export interface ScriptItem {
 export interface IncludeContext {
   file: string | null;
   searchPath: string[];
+  stat: (path: string) => Promise<{ size: number | null } | null>;
   read: (path: string) => Promise<string>;
 }
 
@@ -52,6 +54,26 @@ export function includeCandidates(name: string, dirs: (string | null)[]): string
   );
 }
 
+export function cleanPath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.replace(/\\/g, "/").split("/")) {
+    if (part === "." || (part === "" && parts.length > 0)) continue;
+    const last = parts.at(-1);
+    if (part === ".." && last !== undefined && last !== "" && last !== "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/") || "/";
+}
+
+function pathKey(path: string): string {
+  const clean = cleanPath(path);
+  return /^[A-Za-z]:\//.test(clean) || path.includes("\\") ? clean.toLowerCase() : clean;
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function expandIncludes(
   items: ScriptItem[],
   context: IncludeContext,
@@ -59,10 +81,21 @@ export async function expandIncludes(
   const cache = new Map<string, string>();
   const out: ScriptItem[] = [];
   const top = context.file ? dirname(context.file) : null;
-  const read = async (path: string) => {
-    const cached = cache.get(path) ?? (await context.read(path));
-    cache.set(path, cached);
-    return cached;
+  const load = async (path: string): Promise<{ text: string } | { error: string } | null> => {
+    const key = pathKey(path);
+    const cached = cache.get(key);
+    if (cached !== undefined) return { text: cached };
+    const info = await context.stat(path);
+    if (!info) return null;
+    const tooLarge = sqlFileSizeError(info.size);
+    if (tooLarge) return { error: `${tooLarge}: ${cleanPath(path)}` };
+    try {
+      const text = await context.read(path);
+      cache.set(key, text);
+      return { text };
+    } catch (error) {
+      return { error: `Datei konnte nicht gelesen werden: ${cleanPath(path)} (${message(error)})` };
+    }
   };
   const visit = async (
     list: ScriptItem[],
@@ -100,31 +133,32 @@ export async function expandIncludes(
         continue;
       }
       let found: { path: string; text: string } | null = null;
-      for (const path of candidates) {
-        found = await read(path).then(
-          (text) => ({ path, text }),
-          () => null,
-        );
-        if (found) break;
+      let failure: string | null = null;
+      for (const candidate of candidates) {
+        const loaded = await load(candidate);
+        if (!loaded) continue;
+        if ("error" in loaded) failure = loaded.error;
+        else found = { path: cleanPath(candidate), text: loaded.text };
+        break;
       }
-      if (!found) {
-        fail(`Datei nicht gefunden: ${target.name} (gesucht: ${candidates.join(", ")})`);
+      if (failure || !found) {
+        fail(failure ?? `Datei nicht gefunden: ${target.name} (gesucht: ${candidates.join(", ")})`);
         continue;
       }
-      if (stack.includes(found.path)) {
-        fail(`Zyklischer @-Aufruf: ${[...stack, found.path].join(" → ")}`);
+      const source = found.path;
+      if (stack.some((entry) => pathKey(entry) === pathKey(source))) {
+        fail(`Zyklischer @-Aufruf: ${[...stack, source].join(" → ")}`);
         continue;
       }
       if (found.text.length > INCLUDE_LIMITS.characters) {
-        fail(`Datei ist zu groß: ${found.path}`);
+        fail(`Datei ist zu groß: ${source}`);
         continue;
       }
       const split = splitSqlStatements(found.text, "oracle");
       if (split.unterminated) {
-        fail(`Nicht abgeschlossenes Literal oder Kommentar in ${found.path}`);
+        fail(`Nicht abgeschlossenes Literal oder Kommentar in ${source}`);
         continue;
       }
-      const source = found.path;
       await visit(
         scriptItems(split).map((child) => ({ ...child, source })),
         dirname(source),
@@ -134,6 +168,6 @@ export async function expandIncludes(
       );
     }
   };
-  await visit(items, top, context.file ? [context.file] : [], null, 0);
+  await visit(items, top, context.file ? [cleanPath(context.file)] : [], null, 0);
   return out;
 }

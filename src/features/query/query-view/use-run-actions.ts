@@ -26,6 +26,7 @@ interface UseRunActionsParams {
     previewed?: boolean,
   ) => Promise<void>;
   previewSql: (text: string) => Promise<boolean>;
+  prepareSql: (text: string) => Promise<string | null>;
   setEditorFocus: (focus: boolean) => void;
 }
 
@@ -38,6 +39,7 @@ export function useRunActions({
   cursor,
   runSql,
   previewSql,
+  prepareSql,
   setEditorFocus,
 }: UseRunActionsParams) {
   const { selectedSql, cursorOffset, editorSqlRef, cursorOffsetRef } = cursor;
@@ -123,7 +125,7 @@ export function useRunActions({
       cursorOffset,
       workspace.runTarget,
       connection?.kind,
-      { blankLines },
+      { blankLines, sqlOnly: true },
     );
     if (!connection || !target.trim() || isChecking) return;
     setIsChecking(true);
@@ -174,7 +176,9 @@ export function useRunActions({
     );
     if (!connection || !target.trim() || exec.runningRef.current) return;
     setStatementError(null);
-    if (await previewSql(target)) await runSql(target, undefined, false, true);
+    const prepared = await prepareSql(target);
+    if (prepared === null) return;
+    if (await previewSql(prepared)) await runSql(prepared, undefined, false, true);
   }, [
     connection,
     sql,
@@ -184,6 +188,7 @@ export function useRunActions({
     blankLines,
     exec.runningRef,
     previewSql,
+    prepareSql,
     runSql,
     setStatementError,
   ]);

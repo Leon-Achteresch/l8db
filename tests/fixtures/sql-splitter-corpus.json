@@ -63,6 +63,16 @@
       ]
     },
     {
+      "name": "oracle identifiers named wrapped are no wrapped code",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE PACKAGE pkg AS\n  wrapped NUMBER;\nEND pkg;\nCREATE OR REPLACE TRIGGER trg BEFORE INSERT ON wrapped FOR EACH ROW BEGIN NULL; END;\nSELECT 1 FROM dual;",
+      "statements": [
+        "CREATE OR REPLACE PACKAGE pkg AS\n  wrapped NUMBER;\nEND pkg",
+        "CREATE OR REPLACE TRIGGER trg BEFORE INSERT ON wrapped FOR EACH ROW BEGIN NULL; END",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
       "name": "oracle slash alone ends a statement, mid-line it divides",
       "dialect": "oracle",
       "sql": "SELECT 10\n/ 2 AS half FROM dual;\nSELECT 4/2 FROM dual\n/\nBEGIN\n  x := 4 / 2;\nEND;\n  /  \nSELECT 1 FROM dual;",
