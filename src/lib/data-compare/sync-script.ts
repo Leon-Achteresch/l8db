@@ -39,6 +39,7 @@ const INEXACT_TYPE = /float|real|double/i;
 const UNCOMPARABLE_TYPE: Partial<Record<DatabaseKind, RegExp>> = {
   mssql: /^(n?text|image|xml|geography|geometry|sql_variant)$/i,
   mysql: /json|geometry|point|linestring|polygon/i,
+  oracle: /lob|^long|xmltype|bfile|sdo_geometry/i,
 };
 
 function sourceOf(row: DataDiffRow, direction: SyncDirection): Record<string, unknown> | null {

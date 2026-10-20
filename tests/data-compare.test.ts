@@ -335,6 +335,24 @@ describe("Sync-Skript je Datenbank", () => {
     expect(script.insertCount).toBe(1);
   });
 
+  test("Oracle nutzt HEXTORAW und vergleicht keine LOB-Spalten", () => {
+    const script = buildSyncScript({
+      rows: diff,
+      direction: "left_to_right",
+      target: { schema: "APP", table: "T" },
+      keyColumns: ["id"],
+      compareColumns: ["name", "data", "flag", "ratio"],
+      kind: "oracle",
+      columnTypes: { ...columnTypes, name: "CLOB", data: "BLOB", ratio: "NUMBER" },
+      includeDeletes: true,
+    });
+    expect(script.sql).toContain("HEXTORAW('00FF')");
+    const where = script.sql.slice(script.sql.indexOf(' WHERE "id" = 2'));
+    expect(where).not.toContain(`"name"`);
+    expect(where).not.toContain(`"data"`);
+    expect(where).toContain(`AND "ratio" = 2`);
+  });
+
   test("SQLite nutzt X-Literale und IS", () => {
     const script = build("sqlite", false);
     expect(script.sql).toContain("X'00FF'");

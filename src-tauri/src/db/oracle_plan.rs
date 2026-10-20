@@ -144,6 +144,10 @@ pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> 
         c,
         &plan_select("plan_table", &format!("{{t}}.statement_id = '{id}'"), false),
     );
+    let text = xplan(
+        c,
+        &format!("SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY('PLAN_TABLE', '{id}', 'TYPICAL'))"),
+    );
     let cleanup = c
         .execute(
             &format!("DELETE FROM plan_table WHERE statement_id = '{id}'"),
@@ -151,7 +155,7 @@ pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> 
         )
         .map(|_| ())
         .map_err(map_err);
-    let plan = plan_tree(rows?.iter().map(plan_row).collect(), None)?;
+    let plan = with_text(plan_tree(rows?.iter().map(plan_row).collect(), None)?, text);
     cleanup?;
     Ok(plan)
 }
@@ -236,7 +240,30 @@ fn run_measured(c: &Connection, statement: &str) -> Result<Value, String> {
             ..plan_row(r)
         })
         .collect();
-    plan_tree(rows, Some(execution_ms))
+    let text = xplan(
+        c,
+        &format!(
+            "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR('{}', {}, 'ALLSTATS LAST +PEEKED_BINDS'))",
+            sql_id.replace('\'', ""),
+            child.trim().parse::<i64>().unwrap_or(0)
+        ),
+    );
+    Ok(with_text(plan_tree(rows, Some(execution_ms))?, text))
+}
+
+fn xplan(c: &Connection, sql: &str) -> Option<String> {
+    let lines: Vec<String> = fetch(c, sql).ok()?.iter().map(|r| s(r, 0)).collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+fn with_text(mut plan: Value, text: Option<String>) -> Value {
+    if let (Some(text), Some(root)) = (
+        text,
+        plan.pointer_mut("/0/Plan").and_then(Value::as_object_mut),
+    ) {
+        root.insert("Plan Text".into(), Value::String(text));
+    }
+    plan
 }
 
 fn put(map: &mut Map<String, Value>, key: &str, value: Option<f64>) {
@@ -495,10 +522,23 @@ mod tests {
 
     #[test]
     fn analyze_accepts_only_queries_and_dml() {
-        for ok in ["SELECT 1 FROM dual", "with x as (select 1 from dual) select * from x", "update t set a = 1", "MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a = 1", "delete from t"] {
+        for ok in [
+            "SELECT 1 FROM dual",
+            "with x as (select 1 from dual) select * from x",
+            "update t set a = 1",
+            "MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a = 1",
+            "delete from t",
+        ] {
             assert!(analyzable(ok), "{ok}");
         }
-        for rejected in ["CREATE TABLE t (a NUMBER)", "drop table t", "TRUNCATE TABLE t", "BEGIN NULL; END;", "ALTER TABLE t ADD b NUMBER", "GRANT SELECT ON t TO u"] {
+        for rejected in [
+            "CREATE TABLE t (a NUMBER)",
+            "drop table t",
+            "TRUNCATE TABLE t",
+            "BEGIN NULL; END;",
+            "ALTER TABLE t ADD b NUMBER",
+            "GRANT SELECT ON t TO u",
+        ] {
             assert!(!analyzable(rejected), "{rejected}");
         }
     }
@@ -510,8 +550,10 @@ mod tests {
         assert!(sql.contains("WHERE p.statement_id = 'X' AND NVL(m.skp, 0) <> 1"));
         assert!(sql.contains("SELECT NVL(m.dis, p.id), NVL(m.par, p.parent_id), p.operation"));
         assert!(!sql.contains("p.starts"));
-        assert!(plan_select("v$sql_plan_statistics_all", "{t}.sql_id = 'a'", true)
-            .contains("p.last_execution FROM v$sql_plan_statistics_all p"));
+        assert!(
+            plan_select("v$sql_plan_statistics_all", "{t}.sql_id = 'a'", true)
+                .contains("p.last_execution FROM v$sql_plan_statistics_all p")
+        );
     }
 
     #[test]

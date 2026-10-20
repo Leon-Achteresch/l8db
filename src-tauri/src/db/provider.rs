@@ -324,6 +324,7 @@ impl DatabaseKind {
                 query_cancel: true,
                 server_info: true,
                 locks: true,
+                data_compare: true,
                 query_stats: true,
                 object_grants: true,
                 proxy_user: true,

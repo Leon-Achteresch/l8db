@@ -105,6 +105,7 @@ export const NEW_FEATURES = {
   "query.tools.package-members": "0.15.0",
   "query.sqlplus-variables": NEXT_FEATURE_VERSION,
   "query.analysis.index-advisor": "0.7.0",
+  "query.analysis.plan-text": NEXT_FEATURE_VERSION,
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",
   "settings.about.usage-metrics": "0.7.0",

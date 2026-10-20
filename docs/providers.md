@@ -136,7 +136,7 @@ All adapters implement connection testing, database/schema/table/column discover
 | Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, schema and data comparison |
 | Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation, schema and data comparison; no SSH/TLS or stored functions |
 | Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user, schema and data comparison |
-| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation (warnings via ATTRIBUTE, optional `PLSQL_WARNINGS`), server output, object grants and administration, explain (PLAN_TABLE, adaptive plans via `display_map`; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL), sessions and locks with blocking chain, cancellation (break, then kill via MODULE/ACTION), connection info (capability probe) |
+| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation (warnings via ATTRIBUTE, optional `PLSQL_WARNINGS`), server output, object grants and administration, explain (PLAN_TABLE, adaptive plans via `display_map`; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL), sessions and locks with blocking chain, cancellation (break, then kill via MODULE/ACTION), connection info (capability probe), DBMS_XPLAN text view, data compare (LOB/LONG/XMLTYPE columns are not compared), bulk compile in dependency order (skips objects in use) |
 | Duckdb | SQL catalog objects, DDL, explain; no row editing or transaction UI |
 | Clickhouse | Views, functions, DDL, column changes, explain and overview |
 | Mongodb | JSON queries and filters, collections, indexes and DDL |
@@ -220,7 +220,7 @@ Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowf
 - `?protocol=tcps` (or `?ssl=true`) uses TCPS; `&wallet=/path/to/wallet` sets `MY_WALLET_DIRECTORY`.
 - `?tns=ALIAS` or `?connect_string=…` passes a TNS alias or descriptor unchanged; the other parameters are then ignored.
 
-Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `meta …` or `transaction …` in V$SESSION. On connect, one PL/SQL probe reads version, container, identifier length, privileges and the readable V$ views; the result is cached per connection and shown under Sitzungen & Locks → Verbindung. Without rights on V$SESSION or V$LOCK, the session and lock views explain the missing grant instead of failing with ORA-00942. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
+Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `meta …` or `transaction …` in V$SESSION. On connect, one PL/SQL probe reads version, container, identifier length, privileges and the readable V$ views; the result is cached per connection and shown under Sitzungen & Locks → Verbindung. Without rights on V$SESSION or V$LOCK, the session and lock views explain the missing grant instead of failing with ORA-00942. Input that contains only SQL*Plus commands (`DESC`, `SET`, `@file`) is rejected before it reaches the server. With V$SESSION_LONGOPS, the session list shows progress and remaining time next to the wait event. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
 
 ## Default and optional builds
 
