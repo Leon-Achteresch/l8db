@@ -55,6 +55,14 @@ export const useSchemaCompareStore = create<SchemaCompareState>()(
     }),
     {
       name: "l8db.schema-compare",
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<SchemaCompareState>;
+        return {
+          ...current,
+          ...saved,
+          options: { ...DEFAULT_COMPARE_OPTIONS, ...saved.options },
+        };
+      },
       partialize: (state) => ({
         source: state.source,
         target: state.target,
