@@ -52,10 +52,13 @@ interface Block {
 type Item = Tok | Block;
 
 const NOT_ALIAS = new Set(
-  "WHERE ON USING JOIN INNER LEFT RIGHT FULL CROSS OUTER NATURAL GROUP ORDER HAVING LIMIT OFFSET FETCH UNION INTERSECT EXCEPT MINUS SET VALUES SELECT WINDOW FOR WITH PARTITION START CONNECT RETURNING LATERAL APPLY PIVOT UNPIVOT TABLESAMPLE SAMPLE QUALIFY PREWHERE FINAL ARRAY GLOBAL ANY ALL ASOF SEMI ANTI STRAIGHT_JOIN FROM INTO AS AND OR NOT IS IN WHEN THEN ELSE END LOOP BEGIN DO DEFAULT".split(
+  "WHERE ON USING JOIN INNER LEFT RIGHT FULL CROSS OUTER NATURAL GROUP ORDER HAVING LIMIT OFFSET FETCH UNION INTERSECT EXCEPT MINUS SET VALUES SELECT WINDOW FOR WITH PARTITION START CONNECT RETURNING LATERAL APPLY PIVOT UNPIVOT TABLESAMPLE SAMPLE QUALIFY PREWHERE FINAL ARRAY GLOBAL ANY ALL ASOF SEMI ANTI STRAIGHT_JOIN FROM INTO AS AND OR NOT IS IN WHEN THEN ELSE END LOOP BEGIN DO DEFAULT NULL TRUE FALSE USE FORCE IGNORE OF NOWAIT SKIP WAIT HASH MERGE REMOTE OPTION".split(
     " ",
   ),
 );
+const TABLE_STOP = new Set(["SET", "OF", "NOWAIT", "SKIP", "WAIT", "SELECT", "VALUES", "WHERE"]);
+const INDEX_HINT = new Set(["USE", "FORCE", "IGNORE"]);
+const FUNCTION_LIKE = new Set(["LEFT", "RIGHT"]);
 const SELECT_END = new Set(["FROM", "INTO", "WHERE", "UNION", "INTERSECT", "EXCEPT", "MINUS"]);
 const JOIN_END = new Set(
   "WHERE JOIN INNER LEFT RIGHT FULL CROSS NATURAL GROUP ORDER HAVING LIMIT UNION INTERSECT EXCEPT MINUS WINDOW QUALIFY USING SET".split(
@@ -72,7 +75,8 @@ const isIdent = (item: Item | undefined): item is Tok => isTok(item) && item.ide
 const isName = (item: Item | undefined): item is Tok => isIdent(item) && !NOT_ALIAS.has(item.upper);
 
 function lex(sql: string, dialect?: DatabaseKind): Tok[] {
-  const raw = tokenize(sql, []);
+  const backslash = dialect === "mysql" || dialect === "clickhouse" || dialect === "bigquery";
+  const raw = tokenize(backslash ? sql.replace(/\\[\s\S]/g, "  ") : sql, []);
   const out: Tok[] = [];
   const brackets = dialect === "mssql" || dialect === "sqlite" || dialect === "sqlite_http";
   for (let i = 0; i < raw.length; i++) {
@@ -115,20 +119,21 @@ function block(start: number, parent: Block | null): Block {
 }
 
 function nameList(list: Block): string[] {
-  return list.items.filter(isName).map((tok) => tok.text);
+  return list.items.filter(isIdent).map((tok) => tok.text);
 }
 
 function itemName(group: Item[]): string | null {
   const last = group.at(-1);
   if (!isIdent(last)) return null;
-  if (group.length === 1) return last.text;
   const prev = group.at(-2);
-  if (isBlock(prev)) return last.text;
-  if (!isTok(prev)) return null;
-  if (prev.upper === ".") {
+  if (isTok(prev) && prev.upper === ".") {
     const dotted = group.every((item, index) => (index % 2 ? isTok(item, ".") : isIdent(item)));
     return dotted ? last.text : null;
   }
+  if (isTok(prev) && prev.upper === "AS") return last.text;
+  if (NOT_ALIAS.has(last.upper)) return null;
+  if (group.length === 1 || isBlock(prev)) return last.text;
+  if (!isTok(prev)) return null;
   return prev.ident || prev.upper === "'" || /^\d/.test(prev.upper) ? last.text : null;
 }
 
@@ -171,7 +176,7 @@ function parseRefs(owner: Block, from: number, list: boolean): number {
         columns: selectColumns(item),
       };
       j++;
-    } else if (isName(item)) {
+    } else if (isIdent(item) && (isTok(items[j + 1], ".") || !TABLE_STOP.has(item.upper))) {
       const parts = [item];
       j++;
       while (isTok(items[j], ".") && isIdent(items[j + 1])) {
@@ -202,6 +207,12 @@ function parseRefs(owner: Block, from: number, list: boolean): number {
         j++;
       }
     }
+    while (isTok(items[j]) && INDEX_HINT.has((items[j] as Tok).upper)) {
+      j++;
+      if (isTok(items[j], "INDEX") || isTok(items[j], "KEY")) j++;
+      if (isTok(items[j], "FOR")) j += isTok(items[j + 1], "JOIN") ? 2 : 3;
+      if (isBlock(items[j])) j++;
+    }
     if (ref.name) owner.refs.push(ref);
     if (!list || !isTok(items[j], ",")) return j - 1;
     j++;
@@ -213,7 +224,7 @@ function parseCtes(owner: Block, from: number): void {
   let i = isTok(items[from], "RECURSIVE") ? from + 1 : from;
   for (;;) {
     const name = items[i];
-    if (!isName(name)) return;
+    if (!isIdent(name)) return;
     i++;
     const list = items[i];
     const declared = isBlock(list) ? nameList(list) : null;
@@ -300,7 +311,11 @@ function joinTarget(query: Block, inner: Block, offset: number, sql: string): Jo
     if (!isTok(item)) continue;
     if (item.upper === "JOIN") break;
     if (item.upper === "ON") on = join;
-    else if (JOIN_END.has(item.upper)) return null;
+    else if (
+      JOIN_END.has(item.upper) &&
+      !(FUNCTION_LIKE.has(item.upper) && isBlock(items[join + 1]))
+    )
+      return null;
   }
   if (join < 0 || (using ? on >= 0 : on < 0)) return null;
   const limit = items[using ? end : on].start;
@@ -338,9 +353,10 @@ export function scopeAt(sql: string, offset: number, dialect?: DatabaseKind): Qu
   const ctes: CteDef[] = [];
   let visible = true;
   for (let current: Block | null = query; current; current = current.parent) {
-    if (!current.query) continue;
-    if (visible) tables.push(...current.refs);
-    ctes.push(...current.ctes);
+    if (current.query) {
+      if (visible) tables.push(...current.refs);
+      ctes.push(...current.ctes);
+    }
     if (current.isolated) visible = false;
   }
   const withCte = (ref: TableRef): TableRef => {

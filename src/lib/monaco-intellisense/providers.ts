@@ -93,11 +93,11 @@ for (const language of ["sql", "plsql"]) {
         startColumn: line.lastIndexOf(".") + 2,
         endColumn: position.column,
       };
-      const pkg = packageForQualifier(ctx.registry, line);
+      const { text, scope } = statementAt(model, position);
+      const pkg = packageForQualifier(ctx.registry, line, scope);
       let items: Suggestion[];
       if (pkg) items = memberSuggestions(await packageMembers(pkg.schema, pkg.name));
       else {
-        const { text, scope } = statementAt(model, position);
         const snippets = useSnippetsStore.getState().snippets;
         items = joinOnly ? [] : suggestCompletions(ctx.registry, text, line, snippets, scope);
         if (scope.join) {

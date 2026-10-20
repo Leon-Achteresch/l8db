@@ -12,7 +12,8 @@ export async function loadForeignKeys(
   database: string | null,
   tables: TableInfo[],
   signal: AbortSignal,
-  fetch: (schema: string, table: string) => Promise<ForeignKeyInfo[]>,
+  fetch: (schema: string, table: string, jobId: string) => Promise<ForeignKeyInfo[]>,
+  cancel: (jobId: string) => unknown,
 ): Promise<ForeignKeyInfo[]> {
   const queries: Record<string, SharedMetadataQuery<ForeignKeyInfo[]>> = {};
   tables.forEach((table, index) => {
@@ -23,8 +24,8 @@ export async function loadForeignKeys(
           client,
           connectionId,
           signal,
-          () => fetch(table.schema, table.name),
-          () => undefined,
+          (jobId) => fetch(table.schema, table.name, jobId),
+          cancel,
         ),
     };
   });

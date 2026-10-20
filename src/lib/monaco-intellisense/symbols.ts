@@ -1,4 +1,5 @@
 import {
+  cancelExecution,
   type ForeignKeyInfo,
   fetchTableRows,
   getFunctionDefinition,
@@ -39,14 +40,17 @@ export async function joinForeignKeys(
       database,
       tables,
       signal,
-      (schema, table) =>
+      (schema, table, jobId) =>
         listForeignKeys(
           connection.kind,
           effectiveConnectionString(connection),
           schema,
           table,
           database ?? undefined,
+          { jobId },
         ),
+      (jobId) =>
+        supports(connection, "query_cancel") ? cancelExecution(jobId) : Promise.resolve(false),
     );
   } catch {
     return [];

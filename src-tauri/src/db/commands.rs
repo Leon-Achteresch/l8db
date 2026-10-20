@@ -1271,14 +1271,18 @@ pub async fn list_foreign_keys(
     schema: String,
     table: String,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .list_foreign_keys(&schema, &table)
+    run_schema_metadata(kind, options, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .list_foreign_keys(&schema, &table)
+        .await
+    })
     .await
 }
 

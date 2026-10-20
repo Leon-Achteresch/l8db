@@ -129,9 +129,10 @@ export function resolveSymbol(
 export function packageForQualifier(
   registry: SqlObjectRegistry,
   lineBeforeCursor: string,
+  scope?: QueryScope,
 ): FunctionInfo | null {
   const match = /"?([\w$#]+)"?\s*\.\s*[\w$#]*$/.exec(lineBeforeCursor);
-  if (!match) return null;
+  if (!match || (scope && findRef(scope, match[1]))) return null;
   return registry.functions.find((fn) => isPackage(fn) && eq(fn.name, match[1])) ?? null;
 }
 
