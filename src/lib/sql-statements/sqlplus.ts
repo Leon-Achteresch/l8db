@@ -112,6 +112,7 @@ export type SqlPlusCommand =
   | { type: "serveroutput"; enabled: boolean }
   | { type: "whenever"; exit: boolean }
   | { type: "exit" }
+  | { type: "prompt" }
   | { type: "remark" }
   | { type: "other" };
 
@@ -152,6 +153,7 @@ export function parseSqlPlusCommand(text: string): SqlPlusCommand {
   if (first === "WHENEVER" && second === "SQLERROR" && /^(EXIT|CONTINUE)$/.test(action))
     return { type: "whenever", exit: action === "EXIT" };
   if (first === "EXIT" || first === "QUIT") return { type: "exit" };
+  if (first === "PRO" || first === "PROMPT") return { type: "prompt" };
   return { type: "other" };
 }
 

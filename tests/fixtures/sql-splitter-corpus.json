@@ -134,6 +134,20 @@
       ]
     },
     {
+      "name": "oracle unsupported SQL*Plus commands and abbreviations are commands, not SQL",
+      "dialect": "oracle",
+      "sql": "VARIABLE n NUMBER\nPRINT n\nCOL x FORMAT a10\nSHO ERRORS\nCONN scott/tiger@db\nSELECT 1 FROM dual;\nHOST ls",
+      "statements": ["SELECT 1 FROM dual"],
+      "commands": [
+        "VARIABLE n NUMBER",
+        "PRINT n",
+        "COL x FORMAT a10",
+        "SHO ERRORS",
+        "CONN scott/tiger@db",
+        "HOST ls"
+      ]
+    },
+    {
       "name": "mssql GO separates batches and procedure bodies stay together",
       "dialect": "mssql",
       "sql": "CREATE OR ALTER PROCEDURE dbo.p AS\nBEGIN\n  SET NOCOUNT ON;\n  SELECT 'C:\\';\nEND;\nGO\nSELECT 1;\ngo\nSELECT [a;b], #tmp.x FROM #tmp;\nGO -- done\nSELECT 2",
