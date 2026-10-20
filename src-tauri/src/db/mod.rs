@@ -52,6 +52,7 @@ pub mod schema_catalog;
 pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
+pub mod sql_log;
 mod snowflake;
 pub(crate) mod sql_script;
 mod sqlite;
@@ -387,12 +388,6 @@ pub struct InvalidCompileOutcome {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct DebugSessionInfo {
-    pub available: bool,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct ExtensionInfo {
     pub name: String,
     pub version: Option<String>,
@@ -645,14 +640,6 @@ pub trait DatabaseAdapter: Send + Sync {
     ) -> Result<Vec<InvalidCompileOutcome>, String> {
         let _ = schema;
         Err(unsupported("Invalide Objekte kompilieren"))
-    }
-    async fn start_debug_session(
-        &self,
-        oid: &str,
-        object_type: &str,
-    ) -> Result<DebugSessionInfo, String> {
-        let _ = (oid, object_type);
-        Err(unsupported("PL/SQL-Debugger"))
     }
     async fn search_columns(
         &self,
@@ -1091,6 +1078,9 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn list_locks(&self) -> Result<Vec<LockInfo>, String> {
         Err(unsupported("Sperren"))
+    }
+    async fn server_info(&self) -> Result<oracle::info::ServerInfo, String> {
+        Err(unsupported("Verbindungsinfo"))
     }
     async fn live_metrics(&self, include_details: bool) -> Result<LiveMetrics, String> {
         let _ = include_details;

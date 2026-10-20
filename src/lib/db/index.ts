@@ -30,6 +30,8 @@ export * from "./roles";
 export * from "./rows";
 export * from "./schema-catalog";
 export * from "./schema-objects";
+export * from "./server-info";
+export * from "./sql-log";
 export * from "./storage";
 export * from "./supabase";
 export * from "./team";

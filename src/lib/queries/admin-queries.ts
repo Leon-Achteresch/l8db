@@ -4,6 +4,7 @@ import {
   executeQuery,
   getDatabaseOverview,
   getPartitionInfo,
+  getServerInfo,
   getTableRls,
   listEnums,
   listLocks,
@@ -110,6 +111,22 @@ export function useSessionsQuery(refetchInterval: number | false = 5000) {
       listSessions(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "sessions"),
     refetchInterval,
+  });
+}
+
+export function useServerInfoQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["server-info", connection?.id, database],
+    queryFn: () =>
+      getServerInfo(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: supports(connection, "server_info"),
+    staleTime: Number.POSITIVE_INFINITY,
   });
 }
 

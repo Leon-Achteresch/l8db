@@ -162,11 +162,6 @@ export interface InvalidCompileOutcome {
   position: number | null;
 }
 
-export interface DebugSessionInfo {
-  available: boolean;
-  message: string;
-}
-
 export async function listProcedures(
   kind: DatabaseKind,
   connectionString: string,
@@ -214,15 +209,6 @@ export async function compileInvalidObjects(
   return invoke("compile_invalid_objects", { kind, connectionString, database, schema });
 }
 
-export async function startDebugSession(
-  kind: DatabaseKind,
-  connectionString: string,
-  oid: string,
-  objectType: string,
-  database?: string,
-): Promise<DebugSessionInfo> {
-  return invoke("start_debug_session", { kind, connectionString, database, oid, objectType });
-}
 
 export async function listExtensions(
   kind: DatabaseKind,

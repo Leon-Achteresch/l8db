@@ -136,7 +136,7 @@ All adapters implement connection testing, database/schema/table/column discover
 | Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, schema and data comparison |
 | Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation, schema and data comparison; no SSH/TLS or stored functions |
 | Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user, schema and data comparison |
-| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation, server output, object grants and administration, explain (PLAN_TABLE; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL) |
+| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation (warnings via ATTRIBUTE, optional `PLSQL_WARNINGS`), server output, object grants and administration, explain (PLAN_TABLE, adaptive plans via `display_map`; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL), sessions and locks with blocking chain, cancellation (break, then kill via MODULE/ACTION), connection info (capability probe) |
 | Duckdb | SQL catalog objects, DDL, explain; no row editing or transaction UI |
 | Clickhouse | Views, functions, DDL, column changes, explain and overview |
 | Mongodb | JSON queries and filters, collections, indexes and DDL |
@@ -210,6 +210,17 @@ BigQuery and Snowflake talk HTTPS to the vendor APIs; SSH tunnels and the SSL se
 - Types: FIXED with scale 0 as numbers within ±2^53 (otherwise strings), DATE/TIME/TIMESTAMP_NTZ/LTZ/TZ converted from epoch values, VARIANT/OBJECT/ARRAY parsed as JSON, BINARY as `\x…` hex.
 
 Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with the `dataset1.table_a` fixture from `tests/lab/bigquery/data.yaml`: `docker run -d --platform linux/amd64 --name l8db-bq -p 127.0.0.1:9050:9050 -v "$PWD/tests/lab/bigquery/data.yaml:/data.yaml" ghcr.io/goccy/bigquery-emulator:latest --project=test --data-from-yaml=/data.yaml`. Snowflake has no emulator; only the mocked tests exist.
+
+## Oracle connections
+
+`oracle://user:pw@host:1521/service` connects through EZConnect. Query parameters:
+
+- `?sid=ORCL` connects by SID instead of the service name.
+- `?privilege=sysdba` (also `sysoper`, `sysbackup`, `sysdg`, `syskm`, `sysasm`) logs in with an administrative role; user `sys` defaults to SYSDBA.
+- `?protocol=tcps` (or `?ssl=true`) uses TCPS; `&wallet=/path/to/wallet` sets `MY_WALLET_DIRECTORY`.
+- `?tns=ALIAS` or `?connect_string=…` passes a TNS alias or descriptor unchanged; the other parameters are then ignored.
+
+Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `meta …` or `transaction …` in V$SESSION. On connect, one PL/SQL probe reads version, container, identifier length, privileges and the readable V$ views; the result is cached per connection and shown under Sitzungen & Locks → Verbindung. Without rights on V$SESSION or V$LOCK, the session and lock views explain the missing grant instead of failing with ORA-00942. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
 
 ## Default and optional builds
 
