@@ -258,6 +258,34 @@ export function objectKey(object: CatalogObject, context: CompareContext): strin
   return `${base}${object.name}`;
 }
 
+export function excludePattern(patterns: string): RegExp | null {
+  const parts = patterns
+    .split(/[,;\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => escapeRegExp(part).replace(/%/g, "[\\s\\S]*").replace(/_/g, "[\\s\\S]"));
+  return parts.length > 0 ? new RegExp(`^(?:${parts.join("|")})$`, "i") : null;
+}
+
+export function limitDifferences(
+  items: DiffItem[],
+  limit: number,
+): { items: DiffItem[]; omitted: number } {
+  if (!limit || limit <= 0) return { items, omitted: 0 };
+  let shown = 0;
+  let omitted = 0;
+  const kept = items.filter((item) => {
+    if (item.status === "identical") return true;
+    if (shown < limit) {
+      shown++;
+      return true;
+    }
+    omitted++;
+    return false;
+  });
+  return { items: kept, omitted };
+}
+
 function typeRank(type: CatalogObjectType): number {
   return TYPE_ORDER.indexOf(type);
 }
@@ -267,13 +295,20 @@ export function compareCatalogs(
   target: CatalogObject[],
   context: CompareContext,
 ): DiffItem[] {
-  const src = source.map((object) =>
-    requalifyObject(object, context.sourceSchema, context.targetSchema, context.kind),
-  );
+  const pattern = excludePattern(context.options.excludePatterns ?? "");
+  const kept = (object: CatalogObject) =>
+    !pattern ||
+    !(pattern.test(object.name) || (object.parent !== null && pattern.test(object.parent)));
+  const src = source
+    .filter(kept)
+    .map((object) =>
+      requalifyObject(object, context.sourceSchema, context.targetSchema, context.kind),
+    );
+  const tgt = target.filter(kept);
   const containers = (list: CatalogObject[]) =>
     new Set(list.filter((item) => CONTAINER_TYPES.has(item.object_type)).map((item) => item.name));
   const sourceContainers = containers(src);
-  const targetContainers = containers(target);
+  const targetContainers = containers(tgt);
   const onlySource = new Set([...sourceContainers].filter((name) => !targetContainers.has(name)));
   const onlyTarget = new Set([...targetContainers].filter((name) => !sourceContainers.has(name)));
   const children = new Map<string, CatalogObject[]>();
@@ -301,7 +336,7 @@ export function compareCatalogs(
     return map;
   };
   const left = index(src, "s", onlySource);
-  const right = index(target, "t", onlyTarget);
+  const right = index(tgt, "t", onlyTarget);
   const columns = (list: CatalogObject[]) => {
     const map = new Map<string, string[]>();
     if (context.options.ignoreColumnOrder) return map;
@@ -311,7 +346,7 @@ export function compareCatalogs(
     return map;
   };
   const sourceColumns = columns(src);
-  const targetColumns = columns(target);
+  const targetColumns = columns(tgt);
   const reordered = (table: string) => {
     const a = sourceColumns.get(table) ?? [];
     const b = targetColumns.get(table) ?? [];

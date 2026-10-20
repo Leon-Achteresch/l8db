@@ -7,6 +7,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   TableIcon,
+  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
@@ -327,6 +328,16 @@ export function SchemaCompareView() {
                     <span className="sr-only">Filter aufheben</span>
                   </button>
                 )}
+                {result.omitted ? (
+                  <p
+                    role="status"
+                    className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400"
+                  >
+                    <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
+                    Limit erreicht: {result.omitted} weitere Unterschiede werden nicht angezeigt und
+                    nicht synchronisiert.
+                  </p>
+                ) : null}
               </div>
               {result.items.every((item) => item.status === "identical") && !showIdentical ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-xs text-muted-foreground">

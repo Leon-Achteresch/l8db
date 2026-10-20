@@ -224,7 +224,11 @@ export function buildSyncScript(
   const qualified = (name: string) => `${q(schema)}.${q(name)}`;
   const statements: SyncStatement[] = [];
   const dependencies = new Map<SyncStatement, Dependency>();
-  const warnings: string[] = [];
+  const warnings: string[] = result.omitted
+    ? [
+        `Limit erreicht: ${result.omitted} weitere Unterschiede sind nicht im Vergleich und nicht in diesem Skript enthalten.`,
+      ]
+    : [];
   const seen = new Set<string>();
   let key = "";
   const relations = (status: DiffItem["status"]) =>
