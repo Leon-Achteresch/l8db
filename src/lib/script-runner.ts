@@ -1,4 +1,4 @@
-import type { ScriptRunEntry } from "@/features/query/script-result-list";
+import type { ScriptRunEntry, ScriptRunStatus } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import type { SavedConnection } from "@/lib/connections";
 import {
@@ -74,7 +74,9 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         read: readSqlText,
       })
     : scriptItems(split);
-  const shown = items.filter((item) => item.kind !== "command");
+  const shown = items.filter(
+    (item) => item.kind !== "command" || parseSqlPlusCommand(item.text).type !== "remark",
+  );
   if (!shown.length) throw new Error("Das Skript enthält keine ausführbaren Statements.");
   const session = request.variables ?? { state: createSubstitutionState(), answers: {} };
   const answers = oracle ? await askMissingVariables(items, session, request.askVariables) : {};
@@ -153,6 +155,15 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       error = message;
       if (stopOnError || (txId && !oracle)) halted = true;
     };
+    const runCommand = async (text: string): Promise<ScriptRunStatus> => {
+      const command = parseSqlPlusCommand(text);
+      if (command.type === "whenever") stopOnError = command.exit;
+      else if (command.type === "exit") halted = true;
+      else if (command.type === "serveroutput") await switchServerOutput(command.enabled);
+      else if (command.type !== "prompt" && !applySqlPlusSetting(command, session.state))
+        return "ignored";
+      return "success";
+    };
     const switchServerOutput = async (enabled: boolean) => {
       if (!supports(connection, "server_output")) return;
       await toggleServerOutput(connection.kind, url, connection.id, enabled, database ?? undefined);
@@ -168,16 +179,18 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     };
     for (const item of items) {
       const entry = entryOf.get(item);
-      if (!entry) {
-        const command = oracle && !stopped && !halted ? parseSqlPlusCommand(item.text) : null;
-        if (command?.type === "whenever") stopOnError = command.exit;
-        else if (command?.type === "exit") halted = true;
-        else if (command?.type === "serveroutput") await switchServerOutput(command.enabled);
-        else if (command) applySqlPlusSetting(command, session.state);
-        continue;
-      }
+      if (!entry) continue;
       if (stopped || halted) {
         entry.status = "skipped";
+        publish();
+        continue;
+      }
+      if (item.kind === "command") {
+        entry.status = await runCommand(item.text).catch((failure: unknown) => {
+          entry.error = failure instanceof Error ? failure.message : String(failure);
+          fail(entry.error);
+          return "error" as const;
+        });
         publish();
         continue;
       }
@@ -271,7 +284,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           error: entry.error,
         });
         updateTask(jobId, {
-          progress: entries.filter((item) => item.status === "success" || item.status === "error")
+          progress: entries.filter((item) => item.status !== "pending" && item.status !== "skipped")
             .length,
           detail: txId
             ? "Ausgeführt in einer verwalteten Transaktion. Commit oder Rollback erfolgt separat im Transaktionspanel."

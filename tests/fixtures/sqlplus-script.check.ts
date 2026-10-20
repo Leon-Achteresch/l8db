@@ -179,7 +179,9 @@ test("WHENEVER SQLERROR switches stop-on-error for the run and EXIT ends it", as
     stopOnError: false,
   });
   expect(outcome.entries.map((entry) => entry.status)).toEqual([
+    "success",
     "error",
+    "success",
     "success",
     "error",
     "skipped",
@@ -192,6 +194,23 @@ test("WHENEVER SQLERROR switches stop-on-error for the run and EXIT ends it", as
     mode: "autocommit",
   });
   expect(executed()).toEqual(["SELECT 1 FROM dual;"]);
-  expect(exited.entries.map((entry) => entry.status)).toEqual(["success", "skipped"]);
+  expect(exited.entries.map((entry) => entry.status)).toEqual(["success", "success", "skipped"]);
   expect(exited.error).toBeNull();
+});
+
+test("unsupported SQL*Plus commands are listed as ignored, remarks stay silent", async () => {
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "REM setup\nSET ECHO ON\nSPOOL out.log\nPROMPT loading\nCOLUMN x FORMAT a10\nSELECT 1 FROM dual;",
+    mode: "autocommit",
+  });
+  expect(outcome.entries.map((entry) => [entry.sql, entry.status])).toEqual([
+    ["SET ECHO ON", "ignored"],
+    ["SPOOL out.log", "ignored"],
+    ["PROMPT loading", "success"],
+    ["COLUMN x FORMAT a10", "ignored"],
+    ["SELECT 1 FROM dual;", "success"],
+  ]);
+  expect(executed()).toEqual(["SELECT 1 FROM dual;"]);
 });

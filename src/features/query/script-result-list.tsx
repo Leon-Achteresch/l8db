@@ -1,9 +1,16 @@
-import { CheckCircle2Icon, CircleDashedIcon, LoaderIcon, XCircleIcon, XIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  CircleDashedIcon,
+  CircleMinusIcon,
+  LoaderIcon,
+  XCircleIcon,
+  XIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QueryResult } from "@/lib/db";
 
-export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped";
+export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped" | "ignored";
 
 export interface ScriptRunEntry {
   index: number;
@@ -36,6 +43,7 @@ function statusIcon(status: ScriptRunStatus) {
   if (status === "success") return <CheckCircle2Icon className="size-3.5 text-emerald-500" />;
   if (status === "error") return <XCircleIcon className="size-3.5 text-destructive" />;
   if (status === "running") return <LoaderIcon className="size-3.5 animate-spin" />;
+  if (status === "ignored") return <CircleMinusIcon className="size-3.5 text-amber-500" />;
   return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
 }
 
@@ -45,6 +53,7 @@ function detailOf(entry: ScriptRunEntry): string {
   if (entry.rowsAffected !== null) parts.push(`${entry.rowsAffected} betroffen`);
   if (entry.durationMs !== null) parts.push(`${entry.durationMs} ms`);
   if (entry.status === "skipped") parts.push("nicht ausgeführt");
+  if (entry.status === "ignored") parts.push("ignoriert (SQL*Plus-Befehl)");
   return parts.join(" · ");
 }
 
