@@ -47,6 +47,7 @@ const SUITES = {
     "tests/perf-versioning-review.test.ts",
     "tests/perf-sync.test.ts",
     "tests/perf-invalid-objects.test.ts",
+    "tests/perf-schema-compare.test.ts",
     "tests/perf-nav-morph.test.ts",
     "tests/perf-transfer-cinematic.test.ts",
     "tests/perf-seasonal.test.ts",

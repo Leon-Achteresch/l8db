@@ -52,9 +52,25 @@ const CANONICAL_TOKEN: Partial<Record<DatabaseKind, RegExp>> = {
   mysql:
     /--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|`(?:[^`]|``)*`|"(?:[^"\\]|\\[\s\S]|"")*"|'(?:[^'\\]|\\[\s\S]|'')*'/g,
   mssql: /--[^\n]*|\/\*[\s\S]*?\*\/|\[(?:[^\]]|\]\])*\]|"(?:[^"]|"")*"|[nN]?'(?:[^']|'')*'/g,
+  postgres: new RegExp(
+    `${TOKEN.source}|\\$(?!function\\$)([A-Za-z_]\\w*)?\\$[\\s\\S]*?\\$\\2\\$`,
+    "g",
+  ),
 };
 const SQL_TEXT =
   /\b(?:select|from|join|into|update|delete|insert|table|view|truncate|call|execute|alter|drop|create|merge|references)\b/i;
+
+const KEYWORDS = new Set(
+  (
+    "access add all alter and any as asc between by case cast check column comment connect constraint " +
+    "create cross current current_date current_role current_schema current_time current_timestamp " +
+    "current_user date default delete desc distinct drop else end exists false fetch for foreign from " +
+    "full grant group having identity in index inner insert intersect interval into is join key left " +
+    "level like limit localtime localtimestamp minus natural not null offset on or order outer primary " +
+    "references right rowid rownum select session_user set some sysdate systimestamp table then time " +
+    "timestamp to trigger true uid union unique update user using values view when where with"
+  ).split(" "),
+);
 
 function plainIdentifier(name: string, kind: DatabaseKind): boolean {
   if (kind === "oracle") return /^[A-Z][A-Z0-9_$#]*$/.test(name);
@@ -181,7 +197,8 @@ export function canonical(
     }
     if (/^[`["]/.test(token) && !(kind === "mysql" && token.startsWith('"'))) {
       const name = token.slice(1, -1).replace(/""|``|]]/g, (pair) => pair[0]);
-      if (options.ignoreQuotes && plainIdentifier(name, kind)) pending += name;
+      if (options.ignoreQuotes && plainIdentifier(name, kind) && !KEYWORDS.has(name.toLowerCase()))
+        pending += name;
       else {
         result += normalize(pending) + normalize(token, true);
         pending = "";
@@ -195,15 +212,22 @@ export function canonical(
   return options.ignoreComments ? result.trim() : result;
 }
 
+const NULL_DEFAULT = /^\(*\s*null\s*(?:::\s*[\w\s."[\]]+)?\)*$/i;
+
+export function attributeValue(object: CatalogObject, key: string, context: CompareContext) {
+  const value = object.attributes[key];
+  if (value === undefined) return "";
+  const { options } = context;
+  if (key === "current" && options.ignoreSequenceValues) return "";
+  if (key === "tablespace" && options.ignoreTablespace) return "";
+  if (key === "default" && options.ignoreDefaultNull && NULL_DEFAULT.test(value)) return "";
+  return canonical(value, context.targetSchema, context.kind, options);
+}
+
 function comparableAttributes(object: CatalogObject, context: CompareContext) {
   const values: Record<string, string> = {};
-  for (const [key, value] of Object.entries(object.attributes)) {
-    if (key === "current" && context.options.ignoreSequenceValues) continue;
-    if (key === "tablespace" && context.options.ignoreTablespace) continue;
-    if (key === "default" && context.options.ignoreDefaultNull && /^\(*\s*null\s*\)*$/i.test(value))
-      continue;
-    values[key] = canonical(value, context.targetSchema, context.kind, context.options);
-  }
+  for (const key of Object.keys(object.attributes))
+    values[key] = attributeValue(object, key, context);
   return values;
 }
 
@@ -263,7 +287,11 @@ export function excludePattern(patterns: string): RegExp | null {
     .split(/[,;\n]/)
     .map((part) => part.trim())
     .filter(Boolean)
-    .map((part) => escapeRegExp(part).replace(/%/g, "[\\s\\S]*").replace(/_/g, "[\\s\\S]"));
+    .map((part) =>
+      part.replace(/\\([\s\S])|(%)|(_)|([\s\S])/g, (_, escaped, any, one, plain) =>
+        any ? "[\\s\\S]*" : one ? "[\\s\\S]" : escapeRegExp(escaped ?? plain),
+      ),
+    );
   return parts.length > 0 ? new RegExp(`^(?:${parts.join("|")})$`, "i") : null;
 }
 
@@ -296,9 +324,7 @@ export function compareCatalogs(
   context: CompareContext,
 ): DiffItem[] {
   const pattern = excludePattern(context.options.excludePatterns ?? "");
-  const kept = (object: CatalogObject) =>
-    !pattern ||
-    !(pattern.test(object.name) || (object.parent !== null && pattern.test(object.parent)));
+  const kept = (object: CatalogObject) => !pattern?.test(object.parent ?? object.name);
   const src = source
     .filter(kept)
     .map((object) =>

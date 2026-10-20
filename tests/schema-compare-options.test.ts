@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import type { CatalogObject } from "../src/lib/db";
-import { compareCatalogs } from "../src/lib/schema-compare/diff";
-import { DEFAULT_COMPARE_OPTIONS } from "../src/lib/schema-compare/types";
+import { compareCatalogs, defaultSelection } from "../src/lib/schema-compare/diff";
+import { buildSyncScript } from "../src/lib/schema-compare/script";
+import { type CompareResult, DEFAULT_COMPARE_OPTIONS } from "../src/lib/schema-compare/types";
 
 describe("Optionen für Default und Constraint-Namen", () => {
   const column = (fallback?: string): CatalogObject => ({
@@ -104,5 +105,66 @@ describe("benannte Unterschiede", () => {
       ["table", "T", ["Tablespace"]],
       ["index", "T_I", ["Tablespace"]],
     ]);
+  });
+});
+
+describe("Normalisierung im Synchronisationsskript", () => {
+  test("ändert keinen Datentyp, der nur durch eine ignorierte Genauigkeit abweicht", () => {
+    const column = (type: string, fallback: string): CatalogObject => ({
+      object_type: "column",
+      name: "ts",
+      parent: "t",
+      ddl: `"ts" ${type}`,
+      attributes: { type, nullable: "YES", default: fallback },
+    });
+    const table: CatalogObject = {
+      object_type: "table",
+      name: "t",
+      parent: null,
+      ddl: `CREATE TABLE "app"."t" ()`,
+      attributes: {},
+    };
+    const context = {
+      kind: "postgres" as const,
+      sourceSchema: "app",
+      targetSchema: "app",
+      options: { ...DEFAULT_COMPARE_OPTIONS, ignoreTimestampPrecision: true },
+    };
+    const items = compareCatalogs(
+      [table, column("timestamp(3) without time zone", "now()")],
+      [table, column("timestamp(6) without time zone", "'2020-01-01'::timestamp")],
+      context,
+    );
+    const result: CompareResult = {
+      ...context,
+      source: { connectionId: null, database: null, schema: "app" },
+      target: { connectionId: null, database: null, schema: "app" },
+      sourceLabel: "Quelle",
+      targetLabel: "Ziel",
+      types: ["table"],
+      items,
+      comparedAt: "",
+    };
+    expect(items.find((item) => item.type === "column")?.differsBy).toEqual(["Default"]);
+    expect(
+      buildSyncScript(result, defaultSelection(items)).statements.map((statement) => statement.sql),
+    ).toEqual([`ALTER TABLE "app"."t" ALTER COLUMN "ts" SET DEFAULT now()`]);
+  });
+
+  test("erkennt DEFAULT NULL auch mit Typumwandlung", () => {
+    const column = (fallback?: string): CatalogObject => ({
+      object_type: "column",
+      name: "A",
+      parent: "T",
+      ddl: `"A" text`,
+      attributes: { type: "text", nullable: "YES", ...(fallback ? { default: fallback } : {}) },
+    });
+    const items = compareCatalogs([column("NULL::character varying")], [column()], {
+      kind: "postgres",
+      sourceSchema: "app",
+      targetSchema: "app",
+      options: { ...DEFAULT_COMPARE_OPTIONS, ignoreDefaultNull: true },
+    });
+    expect(items[0].status).toBe("identical");
   });
 });

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use tokio_postgres::Transaction;
 
 use super::{map_pg_err, quote_ident, quote_literal, PostgresAdapter};
-use crate::db::schema_catalog::{attach_dependencies, CatalogObject};
+use crate::db::schema_catalog::{attach_dependencies, CatalogObject, DependencyEdge};
 
 const DEPENDENT_TYPES: [&str; 6] = [
     "table",
@@ -21,7 +21,7 @@ const RELATION_KIND: &str =
 async fn catalog_dependencies(
     tx: &Transaction<'_>,
     schema: &str,
-) -> Result<Vec<(String, String, String)>, String> {
+) -> Result<Vec<DependencyEdge>, String> {
     let found = rows(
         tx,
         &format!(
@@ -44,7 +44,7 @@ async fn catalog_dependencies(
                FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
                WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
              ) \
-             SELECT DISTINCT s.kind, s.name, r.name \
+             SELECT DISTINCT s.kind, s.name, r.kind, r.name \
              FROM pg_depend d \
              LEFT JOIN pg_rewrite w ON d.classid = 'pg_rewrite'::regclass AND w.oid = d.objid \
              JOIN objects s ON s.cls = CASE WHEN w.oid IS NULL THEN d.classid ELSE 'pg_class'::regclass::oid END \
@@ -57,7 +57,7 @@ async fn catalog_dependencies(
     .await?;
     Ok(found
         .iter()
-        .map(|r| (r.get(0), r.get(1), r.get(2)))
+        .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
         .collect())
 }
 

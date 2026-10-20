@@ -502,8 +502,9 @@ impl MysqlAdapter {
         }
         if let Ok(edges) = self
             .rows(&format!(
-                "SELECT VIEW_NAME, TABLE_NAME FROM information_schema.VIEW_TABLE_USAGE \
-                 WHERE VIEW_SCHEMA = {0} AND TABLE_SCHEMA = {0}",
+                "SELECT u.VIEW_NAME, t.TABLE_TYPE, u.TABLE_NAME FROM information_schema.VIEW_TABLE_USAGE u \
+                 JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = u.TABLE_SCHEMA AND t.TABLE_NAME = u.TABLE_NAME \
+                 WHERE u.VIEW_SCHEMA = {0} AND u.TABLE_SCHEMA = {0}",
                 lit(schema)
             ))
             .await
@@ -511,9 +512,15 @@ impl MysqlAdapter {
             attach_dependencies(
                 out,
                 &["view"],
-                edges
-                    .iter()
-                    .map(|row| ("view".to_string(), cell(row, 0), cell(row, 1))),
+                edges.iter().map(|row| {
+                    let kind = if cell(row, 1) == "VIEW" { "view" } else { "table" };
+                    (
+                        "view".to_string(),
+                        cell(row, 0),
+                        kind.to_string(),
+                        cell(row, 2),
+                    )
+                }),
             );
         }
         Ok(())

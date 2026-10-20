@@ -5,7 +5,7 @@ use futures_util::future::try_join_all;
 use oracle::Row;
 
 use super::{binds, create_script, fetch, lit, quote, s, view_create_script, OracleAdapter};
-use crate::db::schema_catalog::{attach_dependencies, CatalogObject};
+use crate::db::schema_catalog::{attach_dependencies, CatalogObject, DependencyEdge};
 
 const SYSTEM_TYPE_OWNERS: [&str; 6] = ["SYS", "PUBLIC", "MDSYS", "XDB", "CTXSYS", "ORDSYS"];
 
@@ -266,13 +266,13 @@ impl OracleAdapter {
         &self,
         schema: &str,
         enabled: bool,
-    ) -> Result<Vec<(String, String, String)>, String> {
+    ) -> Result<Vec<DependencyEdge>, String> {
         if !enabled {
             return Ok(Vec::new());
         }
         let rows = self
             .rows_bound(
-                "SELECT type, name, referenced_name FROM all_dependencies \
+                "SELECT type, name, referenced_type, referenced_name FROM all_dependencies \
                  WHERE owner = :owner AND referenced_owner = :owner"
                     .to_string(),
                 scope(schema, None),
@@ -280,7 +280,14 @@ impl OracleAdapter {
             .await?;
         Ok(rows
             .iter()
-            .map(|r| (dependency_type(&s(r, 0)), s(r, 1), s(r, 2)))
+            .map(|r| {
+                (
+                    dependency_type(&s(r, 0)),
+                    s(r, 1),
+                    dependency_type(&s(r, 2)),
+                    s(r, 3),
+                )
+            })
             .collect())
     }
 

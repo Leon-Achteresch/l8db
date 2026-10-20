@@ -57,7 +57,12 @@ export function SchemaCompareSidePicker({
   const [lists, setLists] = useState<Lists | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"live" | "file">(value.snapshot ? "file" : "live");
+  const [pendingFile, setPendingFile] = useState(false);
+  const mode = value.snapshot || (pendingFile && !value.connectionId) ? "file" : "live";
+  const switchMode = (next: "live" | "file") => {
+    setPendingFile(next === "file");
+    if (next !== mode) onChange({ connectionId: null, database: null, schema: null });
+  };
   const [saving, setSaving] = useState(false);
   const snapshotFeature = useNewFeatureVisibility<HTMLButtonElement>("schema-compare.snapshot");
   const connectionId = connection?.id ?? null;
@@ -139,7 +144,7 @@ export function SchemaCompareSidePicker({
           variant="outline"
           spacing={0}
           value={mode}
-          onValueChange={(next) => next && setMode(next as "live" | "file")}
+          onValueChange={(next) => next && switchMode(next as "live" | "file")}
           aria-label={`${title}: Herkunft`}
           className="ml-auto"
         >

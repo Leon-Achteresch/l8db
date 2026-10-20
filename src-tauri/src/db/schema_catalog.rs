@@ -16,18 +16,20 @@ pub struct CatalogObject {
     pub depends_on: Option<Vec<String>>,
 }
 
+pub type DependencyEdge = (String, String, String, String);
+
 pub fn attach_dependencies(
     objects: &mut [CatalogObject],
     covered: &[&str],
-    edges: impl IntoIterator<Item = (String, String, String)>,
+    edges: impl IntoIterator<Item = DependencyEdge>,
 ) {
     let mut graph: HashMap<(String, String), BTreeSet<String>> = HashMap::new();
-    for (object_type, name, referenced) in edges {
-        if name != referenced {
+    for (object_type, name, referenced_type, referenced) in edges {
+        if object_type != referenced_type || name != referenced {
             graph
                 .entry((object_type, name))
                 .or_default()
-                .insert(referenced);
+                .insert(format!("{referenced_type}:{referenced}"));
         }
     }
     for object in objects
@@ -125,28 +127,35 @@ mod tests {
             CatalogObject::new("package_body", "P", None, ""),
             CatalogObject::new("index", "I", Some("T".into()), ""),
         ];
-        let edge = |kind: &str, name: &str, referenced: &str| {
-            (kind.to_string(), name.to_string(), referenced.to_string())
+        let edge = |kind: &str, name: &str, referenced_kind: &str, referenced: &str| {
+            (
+                kind.to_string(),
+                name.to_string(),
+                referenced_kind.to_string(),
+                referenced.to_string(),
+            )
         };
         attach_dependencies(
             &mut objects,
             &["view", "package", "package_body"],
             [
-                edge("view", "V2", "V1"),
-                edge("view", "V2", "T"),
-                edge("view", "V2", "V1"),
-                edge("package_body", "P", "P"),
-                edge("package_body", "P", "T"),
+                edge("view", "V2", "view", "V1"),
+                edge("view", "V2", "table", "T"),
+                edge("view", "V2", "view", "V1"),
+                edge("view", "V1", "view", "V1"),
+                edge("package_body", "P", "package", "P"),
+                edge("package_body", "P", "table", "T"),
             ],
         );
         let deps: Vec<_> = objects.iter().map(|o| o.depends_on.clone()).collect();
+        let names = |list: &[&str]| Some(list.iter().map(|item| item.to_string()).collect());
         assert_eq!(
             deps,
             vec![
-                Some(vec!["T".to_string(), "V1".to_string()]),
-                Some(vec![]),
-                Some(vec![]),
-                Some(vec!["T".to_string()]),
+                names(&["table:T", "view:V1"]),
+                names(&[]),
+                names(&[]),
+                names(&["package:P", "table:T"]),
                 None,
             ]
         );

@@ -108,6 +108,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       url: "/schema-compare",
       icon: GitCompareArrows,
       activeIcon: GitCompare,
+      featureScope: "schema-compare",
       available: (caps) => caps.schema_object_copy,
     },
     {

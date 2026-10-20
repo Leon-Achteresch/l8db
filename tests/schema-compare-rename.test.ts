@@ -50,7 +50,7 @@ function result(
   };
 }
 
-function sql(kind: DatabaseKind, renamed: boolean, nullable = "YES") {
+function sql(kind: DatabaseKind, renamed: boolean, nullable = "YES", keepAdded = true) {
   const compare = result(
     kind,
     table(kind, [
@@ -66,7 +66,9 @@ function sql(kind: DatabaseKind, renamed: boolean, nullable = "YES") {
   const dropped = compare.items.find((item) => item.name === "name");
   const renames: Record<string, string> =
     renamed && added && dropped ? { [added.key]: dropped.key } : {};
-  const selected = Object.fromEntries(compare.items.map((item) => [item.key, true]));
+  const selected = Object.fromEntries(
+    compare.items.map((item) => [item.key, keepAdded || item.key !== added?.key]),
+  );
   return buildSyncScript(compare, selected, renames).statements.map((statement) => statement.sql);
 }
 
@@ -128,13 +130,30 @@ describe("Spalten umbenennen statt löschen und anlegen", () => {
     expect(statements.some((statement) => statement.includes("RENAME COLUMN"))).toBe(false);
   });
 
-  test("merkt sich pro Paar genau eine Umbenennung", () => {
-    useSchemaCompareStore.setState({ renames: {}, selection: {} });
+  test("löscht die alte Spalte nicht, wenn die umbenannte Spalte abgewählt ist", () => {
+    expect(sql("postgres", true, "YES", false)).toEqual([]);
+  });
+
+  test("stellt die Auswahl der alten Spalte wieder her, wenn die Umbenennung endet", () => {
+    const state = () => useSchemaCompareStore.getState();
+    useSchemaCompareStore.setState({ renames: {}, renamePrior: {}, selection: { a: true } });
     toggleRename("a", "x", true);
-    toggleRename("b", "x", true);
-    expect(useSchemaCompareStore.getState().renames).toEqual({ b: "x" });
-    expect(useSchemaCompareStore.getState().selection).toEqual({ a: true, x: true, b: true });
-    toggleRename("b", "x", false);
-    expect(useSchemaCompareStore.getState().renames).toEqual({});
+    expect(state().selection).toEqual({ a: true, x: true });
+    toggleRename("a", "y", true);
+    expect(state().renames).toEqual({ a: "y" });
+    expect(state().selection).toEqual({ a: true, y: true });
+    toggleRename("b", "y", true);
+    expect(state().renames).toEqual({ b: "y" });
+    toggleRename("b", "y", false);
+    expect(state().renames).toEqual({});
+    expect(state().selection).toEqual({ a: true, b: true });
+    useSchemaCompareStore.setState({
+      renames: {},
+      renamePrior: {},
+      selection: { a: true, x: true },
+    });
+    toggleRename("a", "x", true);
+    toggleRename("a", "x", false);
+    expect(state().selection).toEqual({ a: true, x: true });
   });
 });
