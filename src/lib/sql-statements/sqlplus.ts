@@ -113,6 +113,7 @@ export type SqlPlusCommand =
   | { type: "whenever"; exit: boolean }
   | { type: "exit" }
   | { type: "prompt" }
+  | { type: "describe"; name: string }
   | { type: "remark" }
   | { type: "other" };
 
@@ -154,6 +155,11 @@ export function parseSqlPlusCommand(text: string): SqlPlusCommand {
     return { type: "whenever", exit: action === "EXIT" };
   if (first === "EXIT" || first === "QUIT") return { type: "exit" };
   if (first === "PRO" || first === "PROMPT") return { type: "prompt" };
+  if ((first === "DESC" || first === "DESCRIBE") && words[1])
+    return {
+      type: "describe",
+      name: text.trim().slice(words[0].length).trim().replace(/;$/, ""),
+    };
   return { type: "other" };
 }
 
@@ -201,6 +207,17 @@ export async function askMissingVariables(
   const answers = await ask(missing, session.answers);
   if (answers) Object.assign(session.answers, answers);
   return answers;
+}
+
+export function oracleObjectName(name: string): { schema: string | null; object: string } | null {
+  const parts = name.match(/"(?:[^"]|"")*"|[^."]+/g) ?? [];
+  if (!parts.length || parts.length > 2 || name.includes("@")) return null;
+  const plain = parts.map((part) =>
+    part.startsWith('"') ? part.slice(1, -1).replace(/""/g, '"') : part.toUpperCase(),
+  );
+  return plain.length === 2
+    ? { schema: plain[0], object: plain[1] }
+    : { schema: null, object: plain[0] };
 }
 
 export function applySqlPlusSetting(command: SqlPlusCommand, state: SubstitutionState): boolean {

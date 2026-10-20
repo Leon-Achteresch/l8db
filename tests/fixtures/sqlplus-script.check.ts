@@ -31,6 +31,15 @@ mock.module("@tauri-apps/api/core", () => ({
     if (command === "list_providers") return [];
     if (command === "sql_search_path") return ["/sqlpath"];
     calls.push({ command, args });
+    if (command === "list_table_columns_detailed")
+      return args.schema === "SCOTT" && args.table === "EMP"
+        ? [
+            { name: "EMPNO", data_type: "NUMBER(4,0)", is_nullable: false },
+            { name: "ENAME", data_type: "VARCHAR2(10)", is_nullable: true },
+          ]
+        : [];
+    if (command === "execute_query" && String(args.sql).includes("CURRENT_SCHEMA"))
+      return { columns: ["S"], rows: [{ S: "SCOTT" }], rows_affected: null, execution_time_ms: 1 };
     if (command === "execute_query" && failing.has(String(args.sql)))
       throw new Error("ORA-00942: table or view does not exist");
     if (command === "execute_query")
@@ -213,4 +222,30 @@ test("unsupported SQL*Plus commands are listed as ignored, remarks stay silent",
     ["SELECT 1 FROM dual;", "success"],
   ]);
   expect(executed()).toEqual(["SELECT 1 FROM dual;"]);
+});
+
+test("DESC lists columns with nullability and type as a result grid", async () => {
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: 'DESC emp\nDESCRIBE "SCOTT".EMP\ndesc missing',
+    mode: "autocommit",
+    stopOnError: false,
+  });
+  const describe = calls.filter((call) => call.command === "list_table_columns_detailed");
+  expect(describe.map((call) => [call.args.schema, call.args.table])).toEqual([
+    ["SCOTT", "EMP"],
+    ["SCOTT", "EMP"],
+    ["SCOTT", "MISSING"],
+  ]);
+  expect(outcome.entries.map((entry) => entry.status)).toEqual(["success", "success", "error"]);
+  expect(outcome.entries[0].result).toMatchObject({
+    columns: ["Name", "Null?", "Typ"],
+    rows: [
+      { Name: "EMPNO", "Null?": "NOT NULL", Typ: "NUMBER(4,0)" },
+      { Name: "ENAME", "Null?": "", Typ: "VARCHAR2(10)" },
+    ],
+  });
+  expect(outcome.entries[2].error).toBe("Tabelle oder View nicht gefunden: missing");
+  expect(outcome.lastResult?.rows).toHaveLength(2);
 });
