@@ -33,11 +33,12 @@ pub async fn availability(url: &str) -> Result<Availability, String> {
     let conn = connect(url).await?;
     tokio::task::spawn_blocking(move || {
         let result = conn.execute("DECLARE major BINARY_INTEGER; minor BINARY_INTEGER; BEGIN DBMS_DEBUG.PROBE_VERSION(major, minor); END;", &[]).map_err(error);
-        let privilege = conn.query_row_as::<(i64,)>("SELECT COUNT(*) FROM session_privs WHERE privilege = 'DEBUG CONNECT SESSION'", &[]).map_err(error)?.0 > 0;
+        let (count, user) = conn.query_row_as::<(i64, String)>("SELECT COUNT(*), USER FROM session_privs WHERE privilege = 'DEBUG CONNECT SESSION'", &[]).map_err(error)?;
+        let privilege = count > 0;
         Ok(Availability {
             available: result.is_ok() && privilege,
             engine: Some("DBMS_DEBUG".into()),
-            message: if !privilege { "DEBUG CONNECT SESSION fehlt.".into() } else { result.err().unwrap_or_else(|| "Oracle DBMS_DEBUG (von Oracle als veraltet markiert). Start kompiliert das gewählte Objekt mit Debug-Informationen. Zwei SQL-Verbindungen, kein JDWP-Rückkanal erforderlich.".into()) },
+            message: if !privilege { format!("DEBUG CONNECT SESSION fehlt. Ein DBA kann es vergeben: GRANT DEBUG CONNECT SESSION TO {user}; für Objekte anderer Schemas zusätzlich GRANT DEBUG ON <schema>.<objekt> TO {user};") } else { result.err().unwrap_or_else(|| "Oracle DBMS_DEBUG (von Oracle als veraltet markiert). Start kompiliert das gewählte Objekt mit Debug-Informationen. Zwei SQL-Verbindungen, kein JDWP-Rückkanal erforderlich.".into()) },
             step_out: true,
         })
     }).await.map_err(|_| "Oracle-Debug-Prüfung fehlgeschlagen")?

@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide";
-import { ActivityIcon, CalendarClockIcon, LockIcon } from "lucide-react";
+import { ActivityIcon, CalendarClockIcon, LockIcon, ServerIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +12,7 @@ import { TableDataError } from "@/features/table/table-data-error";
 import { useActiveConnection } from "@/lib/connections";
 import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
 import {
   type BlockingInfo,
@@ -28,6 +30,7 @@ import { SchedulerJobsPanel } from "./scheduler-jobs-panel";
 import { SessionRow } from "./session-row";
 import { SessionsFilterBar } from "./sessions-filter-bar";
 import { LocksTable } from "./sessions-view/locks-table";
+import { ServerInfoPanel } from "./sessions-view/server-info-panel";
 
 export function SessionsView() {
   const connection = useActiveConnection();
@@ -45,6 +48,7 @@ export function SessionsView() {
   const { data: locks } = useLocksQuery();
   const capabilities = useActiveCapabilities();
   const showBlocking = Boolean(capabilities?.sessions && capabilities?.locks);
+  const serverInfoNew = useHasNewFeatures("sessions.server-info");
   const grouping = useSessionViewPrefs((s) => s.grouping);
   const collapsedGroups = useSessionViewPrefs((s) => s.collapsedGroups);
   const setGrouping = useSessionViewPrefs((s) => s.setGrouping);
@@ -184,7 +188,18 @@ export function SessionsView() {
               Jobs
             </TabsTrigger>
           )}
+          {capabilities?.server_info && (
+            <TabsTrigger value="server" className="gap-1.5 text-xs">
+              <ServerIcon className="size-3.5" />
+              Verbindung
+              {serverInfoNew && <NewBadge />}
+            </TabsTrigger>
+          )}
         </TabsList>
+
+        <TabsContent value="server" className="min-h-0 flex-1 overflow-auto rounded-lg border">
+          <ServerInfoPanel />
+        </TabsContent>
 
         <TabsContent value="jobs" className="flex min-h-0 flex-1 flex-col gap-2">
           <div className="min-h-0 flex-1 overflow-auto rounded-lg border">

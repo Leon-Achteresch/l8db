@@ -609,6 +609,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "editorParameterHints",
   },
   {
+    id: "editor-plsql-warnings",
+    tabId: "editor",
+    title: "PL/SQL-Warnungen (Oracle)",
+    description:
+      "Beim Kompilieren und bei CREATE OR REPLACE im Editor alle PL/SQL-Warnungen (PLW) melden. Setzt PLSQL_WARNINGS auf ENABLE:ALL.",
+    keywords: ["oracle", "plsql", "warnung", "plw", "kompilieren"],
+    key: "oraclePlsqlWarnings",
+  },
+  {
     id: "rulers",
     tabId: "editor",
     title: "Lineale",

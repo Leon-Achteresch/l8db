@@ -75,6 +75,7 @@ export interface SettingsState {
   editorAcceptSuggestionOnEnter: EditorAcceptSuggestionOnEnter;
   editorTabCompletion: EditorTabCompletion;
   editorParameterHints: boolean;
+  oraclePlsqlWarnings: boolean;
   editorFormatOnPaste: boolean;
   editorFormatOnType: boolean;
   editorFormatDenseOperators: boolean;
@@ -146,6 +147,7 @@ export interface SettingsState {
   setEditorAcceptSuggestionOnEnter: (v: EditorAcceptSuggestionOnEnter) => void;
   setEditorTabCompletion: (v: EditorTabCompletion) => void;
   setEditorParameterHints: (v: boolean) => void;
+  setOraclePlsqlWarnings: (v: boolean) => void;
   setEditorFormatOnPaste: (v: boolean) => void;
   setEditorFormatOnType: (v: boolean) => void;
   setEditorFormatDenseOperators: (v: boolean) => void;
@@ -244,6 +246,7 @@ export const DEFAULT_SETTINGS = {
   editorAcceptSuggestionOnEnter: "on" as EditorAcceptSuggestionOnEnter,
   editorTabCompletion: "off" as EditorTabCompletion,
   editorParameterHints: true,
+  oraclePlsqlWarnings: false,
   editorFormatOnPaste: false,
   editorFormatOnType: false,
   editorFormatDenseOperators: false,
@@ -340,6 +343,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ editorAcceptSuggestionOnEnter }),
       setEditorTabCompletion: (editorTabCompletion) => set({ editorTabCompletion }),
       setEditorParameterHints: (editorParameterHints) => set({ editorParameterHints }),
+      setOraclePlsqlWarnings: (oraclePlsqlWarnings) => set({ oraclePlsqlWarnings }),
       setEditorFormatOnPaste: (editorFormatOnPaste) => set({ editorFormatOnPaste }),
       setEditorFormatOnType: (editorFormatOnType) => set({ editorFormatOnType }),
       setEditorFormatDenseOperators: (editorFormatDenseOperators) =>

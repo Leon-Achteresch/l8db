@@ -380,3 +380,201 @@ async fn live_session_list_reports_module_and_blockers() {
     assert!(me.application.contains("l8db"), "{me:?}");
     assert!(me.backend_start.is_some());
 }
+
+fn sys_url() -> Option<String> {
+    let admin = std::env::var("L8DB_SMOKE_ORACLE_ADMIN_URL").ok()?;
+    let rest = admin.split_once('@')?.1;
+    Some(format!("oracle://sys:{}@{rest}?privilege=sysdba", admin.split_once("://")?.1.split_once('@')?.0.split_once(':')?.1))
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_probe_reports_version_rights_and_logins() {
+    let (Some(db), Some(sys)) = (adapter("live-probe"), admin("live-probe-admin")) else {
+        return;
+    };
+    let mut samples = Vec::new();
+    for round in 0..5 {
+        let fresh = adapter(&format!("live-probe-{round}")).unwrap();
+        let started = Instant::now();
+        fresh.server_info().await.unwrap();
+        samples.push(started.elapsed().as_secs_f64() * 1000.0);
+    }
+    let info = db.server_info().await.unwrap();
+    assert!(info.major >= 19, "{info:?}");
+    assert_eq!(info.user, "L8DB");
+    assert_eq!(info.max_identifier, 128);
+    assert!(info.container.is_some() && info.sid.is_some(), "{info:?}");
+    let cached = Instant::now();
+    assert_eq!(db.server_info().await.unwrap(), info);
+    let cached = cached.elapsed();
+    let admin_info = sys.server_info().await.unwrap();
+    assert!(admin_info.reads("V$SESSION") && admin_info.reads("V$LOCK"), "{admin_info:?}");
+    assert!(!admin_info.limits.iter().any(|l| l.contains("V$SESSION")), "{admin_info:?}");
+    let (median, p95) = (percentile(&mut samples.clone(), 0.5), percentile(&mut samples, 0.95));
+    eprintln!("probe: median {median:.1} ms, p95 {p95:.1} ms, cached {cached:?}; app limits {:?}", info.limits);
+    assert!(cached < Duration::from_millis(5));
+    assert!(p95 < 3000.0);
+    if let Some(url) = sys_url() {
+        let sysdba = OracleAdapter::new(&url, super::pool::create_pool_state(), "live-sysdba".into()).unwrap();
+        assert_eq!(sysdba.server_info().await.unwrap().user, "SYS");
+    }
+    let sid_url = std::env::var("L8DB_SMOKE_ORACLE_ADMIN_URL").unwrap();
+    let sid_url = format!("{}/?sid=FREE", sid_url.rsplit_once('/').unwrap().0);
+    let by_sid = OracleAdapter::new(&sid_url, super::pool::create_pool_state(), "live-sid".into()).unwrap();
+    assert_eq!(by_sid.server_info().await.unwrap().container.as_deref(), Some("CDB$ROOT"));
+    let wrong = OracleAdapter::new(
+        &format!("{}/NOPE_SERVICE", std::env::var("L8DB_SMOKE_ORACLE_URL").unwrap().rsplit_once('/').unwrap().0),
+        super::pool::create_pool_state(),
+        "live-wrong-service".into(),
+    )
+    .unwrap();
+    let error = wrong.test_connection().await.unwrap_err();
+    assert!(error.contains("ORA-12514") && error.contains("Hinweis:"), "{error}");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_locks_list_row_locks_with_their_table() {
+    let (Some(db), Some(sys)) = (adapter("live-locks"), admin("live-locks-admin")) else {
+        return;
+    };
+    let _ = db.execute_query("DROP TABLE l8db_lock_t").await;
+    db.execute_query("CREATE TABLE l8db_lock_t (id NUMBER PRIMARY KEY)").await.unwrap();
+    db.execute_query("INSERT INTO l8db_lock_t VALUES (1)").await.unwrap();
+    let url = std::env::var("L8DB_SMOKE_ORACLE_URL").unwrap();
+    let parsed = super::oracle::parse_oracle_url(&url).unwrap();
+    let holder = oracle::Connection::connect(&parsed.user, &parsed.password, &parsed.connect_string).unwrap();
+    holder.execute("UPDATE l8db_lock_t SET id = id WHERE id = 1", &[]).unwrap();
+    let sid: i64 = holder.query_row_as::<(i64,)>("SELECT SYS_CONTEXT('USERENV', 'SID') FROM dual", &[]).unwrap().0;
+    let locks = sys.list_locks().await.unwrap();
+    let mine: Vec<_> = locks.iter().filter(|l| l.pid as i64 == sid).collect();
+    assert!(mine.iter().any(|l| l.lock_type == "TM" && l.relation.as_deref() == Some("L8DB.L8DB_LOCK_T") && l.granted), "{mine:?}");
+    assert!(mine.iter().any(|l| l.lock_type == "TX" && l.mode.starts_with("Exclusive")), "{mine:?}");
+    holder.rollback().unwrap();
+    db.execute_query("DROP TABLE l8db_lock_t").await.unwrap();
+    let denied = db.list_locks().await;
+    if let Err(message) = denied {
+        assert!(message.contains("V$LOCK"), "{message}");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_compile_pairs_spec_and_body_and_honours_warnings() {
+    let (Some(db), Some(sys)) = (adapter("live-pair"), admin("live-pair-admin")) else {
+        return;
+    };
+    let owner = text(&db.execute_query("SELECT USER AS u FROM dual").await.unwrap(), "U");
+    db.execute_query("CREATE OR REPLACE PACKAGE l8db_pair AS PROCEDURE run; END;").await.unwrap();
+    db.execute_query("CREATE OR REPLACE PACKAGE BODY l8db_pair AS PROCEDURE run IS x NUMBER; BEGIN IF 1 = 2 THEN x := 1; END IF; END; END;").await.unwrap();
+    db.execute_query("ALTER SESSION SET PLSQL_WARNINGS = 'DISABLE:ALL'").await.unwrap();
+    let spec = format!("{owner}\u{1f}L8DB_PAIR\u{1f}PACKAGE");
+    super::oracle::PLSQL_WARNINGS.store(true, std::sync::atomic::Ordering::Relaxed);
+    let warned = db.compile_object(&spec, "package_spec").await;
+    let body_warnings = db.list_compile_errors(None).await.unwrap();
+    super::oracle::PLSQL_WARNINGS.store(false, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(warned.unwrap().status, "VALID");
+    assert!(body_warnings.iter().any(|e| e.name == "L8DB_PAIR" && e.object_type == "PACKAGE BODY" && e.severity == "WARNING"), "{body_warnings:?}");
+    let status = text(&db.execute_query("SELECT status AS s FROM user_objects WHERE object_name = 'L8DB_PAIR' AND object_type = 'PACKAGE BODY'").await.unwrap(), "S");
+    assert_eq!(status, "VALID");
+    db.execute_query("CREATE OR REPLACE PACKAGE BODY l8db_pair AS PROCEDURE run IS BEGIN l8db_missing_proc; END; END;").await.unwrap_err();
+    let broken = db.compile_object(&spec, "package_spec").await.unwrap();
+    assert_eq!(broken.status, "INVALID", "{broken:?}");
+    assert!(broken.message.as_deref().unwrap_or("").contains("Package Body"), "{broken:?}");
+    db.execute_query("CREATE OR REPLACE PROCEDURE l8db_sleepy IS BEGIN DBMS_SESSION.SLEEP(6); END;").await.unwrap();
+    let url = std::env::var("L8DB_SMOKE_ORACLE_URL").unwrap();
+    let parsed = super::oracle::parse_oracle_url(&url).unwrap();
+    let runner = std::thread::spawn(move || {
+        let conn = oracle::Connection::connect(&parsed.user, &parsed.password, &parsed.connect_string).unwrap();
+        conn.execute("BEGIN l8db_sleepy; END;", &[]).map(|_| ())
+    });
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let busy = sys
+        .compile_object(&format!("{owner}\u{1f}L8DB_SLEEPY\u{1f}PROCEDURE"), "procedure")
+        .await
+        .unwrap_err();
+    assert!(busy.contains("wird gerade ausgeführt") && busy.contains("Sitzung"), "{busy}");
+    runner.join().unwrap().unwrap();
+    db.execute_query("DROP PACKAGE l8db_pair").await.unwrap();
+    db.execute_query("DROP PROCEDURE l8db_sleepy").await.unwrap();
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_dependencies_debug_check_and_implicit_results() {
+    let Some(db) = adapter("live-deps") else {
+        return;
+    };
+    let owner = text(&db.execute_query("SELECT USER AS u FROM dual").await.unwrap(), "U");
+    for drop in ["DROP VIEW l8db_dep_v2", "DROP VIEW l8db_dep_v1", "DROP TABLE l8db_dep_t", "DROP PROCEDURE l8db_dbg_proc"] {
+        let _ = db.execute_query(drop).await;
+    }
+    db.execute_query("CREATE TABLE l8db_dep_t (id NUMBER)").await.unwrap();
+    db.execute_query("CREATE VIEW l8db_dep_v1 AS SELECT id FROM l8db_dep_t").await.unwrap();
+    db.execute_query("CREATE VIEW l8db_dep_v2 AS SELECT id FROM l8db_dep_v1").await.unwrap();
+    let deps = db.list_used_by(&owner, "L8DB_DEP_T").await.unwrap();
+    let v1 = deps.iter().find(|d| d.name == "L8DB_DEP_V1").expect("direct view");
+    let v2 = deps.iter().find(|d| d.name == "L8DB_DEP_V2").expect("indirect view");
+    assert_eq!(v1.relation, "Abhängigkeit");
+    assert_eq!(v2.relation, "indirekt (Ebene 2)");
+    assert_eq!(v2.detail, format!("über {owner}.L8DB_DEP_V1"));
+    db.execute_query("CREATE OR REPLACE PROCEDURE l8db_dbg_proc IS BEGIN NULL; END;").await.unwrap();
+    db.execute_query("ALTER PROCEDURE l8db_dbg_proc COMPILE DEBUG").await.unwrap();
+    let listed = db.list_invalid_objects(None).await.unwrap();
+    assert!(listed.iter().any(|o| o.name == "L8DB_DBG_PROC" && o.status == "DEBUG"), "{listed:?}");
+    db.compile_invalid_objects(None).await.unwrap();
+    let after = db.list_invalid_objects(None).await.unwrap();
+    assert!(!after.iter().any(|o| o.name == "L8DB_DBG_PROC"), "{after:?}");
+    db.take_server_output().await.unwrap();
+    let result = db
+        .execute_query("DECLARE c SYS_REFCURSOR; BEGIN OPEN c FOR SELECT 1 AS a FROM dual UNION ALL SELECT 2 FROM dual; DBMS_SQL.RETURN_RESULT(c); OPEN c FOR SELECT 3 AS b FROM dual; DBMS_SQL.RETURN_RESULT(c); END;")
+        .await
+        .unwrap();
+    assert_eq!(result.columns, vec!["A".to_string()]);
+    assert_eq!(result.rows.len(), 2);
+    let notes = db.take_server_output().await.unwrap();
+    assert!(notes.iter().any(|m| m.message.contains("1 weitere Ergebnismenge")), "{notes:?}");
+    let plain = db.execute_query("BEGIN NULL; END;").await.unwrap();
+    assert!(plain.columns.is_empty() && plain.rows_affected.is_none());
+    for drop in ["DROP VIEW l8db_dep_v2", "DROP VIEW l8db_dep_v1", "DROP TABLE l8db_dep_t", "DROP PROCEDURE l8db_dbg_proc"] {
+        db.execute_query(drop).await.unwrap();
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_sql_log_records_metadata_and_counts_roundtrips() {
+    let Some(db) = adapter("live-sql-log") else {
+        return;
+    };
+    let owner = text(&db.execute_query("SELECT USER AS u FROM dual").await.unwrap(), "U");
+    let _ = db.execute_query("DROP TABLE l8db_trg_t").await;
+    let _ = db.execute_query("DROP VIEW l8db_log_v").await;
+    db.execute_query("CREATE TABLE l8db_trg_t (id NUMBER)").await.unwrap();
+    for n in 1..=4 {
+        db.execute_query(&format!("CREATE OR REPLACE TRIGGER l8db_trg_{n} BEFORE INSERT ON l8db_trg_t FOR EACH ROW BEGIN :NEW.id := NVL(:NEW.id, {n}); END;")).await.unwrap();
+    }
+    db.execute_query("CREATE VIEW l8db_log_v AS SELECT id FROM l8db_trg_t").await.unwrap();
+    super::sql_log::sql_log_clear();
+    super::sql_log::sql_log_configure(true);
+    let before = super::sql_log::sql_log_entries(0).entries.last().map_or(0, |e| e.id);
+    let triggers = db.list_triggers(&owner, "L8DB_TRG_T").await.unwrap();
+    let mid = super::sql_log::sql_log_entries(before).entries;
+    let after_triggers = mid.last().map_or(before, |e| e.id);
+    let view = db.get_view_definition(&owner, "L8DB_LOG_V").await.unwrap();
+    let view_calls = super::sql_log::sql_log_entries(after_triggers).entries;
+    db.list_tables(None).await.unwrap();
+    let all = super::sql_log::sql_log_entries(0).entries;
+    super::sql_log::sql_log_configure(false);
+    assert_eq!(triggers.len(), 4);
+    assert!(triggers.iter().all(|t| t.definition.contains("CREATE OR REPLACE")), "{triggers:?}");
+    assert_eq!(mid.len(), 2, "trigger list roundtrips: {mid:?}");
+    assert!(view.contains("L8DB_LOG_V"), "{view}");
+    assert_eq!(view_calls.len(), 2, "view definition roundtrips: {view_calls:?}");
+    assert!(all.iter().any(|e| e.source == "meta" && e.kind == "query" && e.sql.contains("all_tables")), "{all:?}");
+    eprintln!("sql_log: triggers {} queries, view {} queries, {} entries total", mid.len(), view_calls.len(), all.len());
+    super::sql_log::sql_log_clear();
+    db.execute_query("DROP VIEW l8db_log_v").await.unwrap();
+    db.execute_query("DROP TABLE l8db_trg_t").await.unwrap();
+}

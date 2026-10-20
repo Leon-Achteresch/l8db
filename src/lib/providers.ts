@@ -64,6 +64,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   migration_script: true,
   server_output: true,
   query_cancel: true,
+  server_info: false,
   dashboard_parallelism: 0,
   ssl: true,
   ssh: true,

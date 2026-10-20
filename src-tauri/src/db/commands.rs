@@ -1,6 +1,13 @@
 #[tauri::command]
-pub fn configure_execution_defaults(query_timeout: u64, connection_timeout: u64) {
+pub fn configure_execution_defaults(
+    query_timeout: u64,
+    connection_timeout: u64,
+    plsql_warnings: Option<bool>,
+) {
     super::execution::configure_defaults(query_timeout, connection_timeout);
+    if let Some(enabled) = plsql_warnings {
+        super::oracle::PLSQL_WARNINGS.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 use super::pool::PoolState;
@@ -10,7 +17,7 @@ use super::{
     AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
     CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest,
     CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
-    CreateTableRequest, DatabaseKind, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
+    CreateTableRequest, DatabaseKind, DependencyInfo, DetailedColumnInfo,
     ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
     InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo, PrivilegeChange, ProxyUserInfo,
     QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo,
@@ -634,13 +641,22 @@ pub async fn execute_query(
             database.as_deref(),
             pool_state.inner().clone(),
         )?;
-        capped_query(super::execution::with_session(session, async {
+        let run = super::execution::with_session(session, async {
             if pooled == Some(true) {
                 adapter.execute_pooled_query(&sql).await
             } else {
                 adapter.execute_query(&sql).await
             }
-        }))
+        });
+        if kind == DatabaseKind::Oracle {
+            return capped_query(run).await;
+        }
+        capped_query(super::sql_log::logged_async(
+            "query",
+            &sql,
+            |r: &QueryResult| Some(r.rows_affected.unwrap_or(r.rows.len() as u64)),
+            run,
+        ))
         .await
     })
     .await
@@ -1072,21 +1088,19 @@ pub async fn compile_invalid_objects(
 }
 
 #[tauri::command]
-pub async fn start_debug_session(
+pub async fn server_info(
     kind: DatabaseKind,
     connection_string: String,
     database: Option<String>,
-    oid: String,
-    object_type: String,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<DebugSessionInfo, String> {
+) -> Result<super::oracle::info::ServerInfo, String> {
     create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .start_debug_session(&oid, &object_type)
+    .server_info()
     .await
 }
 
