@@ -75,6 +75,16 @@ const OPTION_LABELS: { key: keyof SchemaCompareOptions; label: string; hint: str
     label: "Constraint-Namen",
     hint: "Constraints werden über ihre Definition zugeordnet; reine Namensunterschiede gelten als identisch.",
   },
+  {
+    key: "ignoreColumnOrder",
+    label: "Spaltenreihenfolge",
+    hint: "Tabellen mit denselben Spalten in anderer Reihenfolge gelten als gleich.",
+  },
+  {
+    key: "ignoreTablespace",
+    label: "Tablespaces",
+    hint: "Tablespace-Unterschiede zählen nicht; neue Tabellen und Indizes entstehen im Standard-Tablespace des Ziels.",
+  },
 ];
 
 const keep = (event: Event) => event.preventDefault();

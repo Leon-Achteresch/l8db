@@ -15,6 +15,8 @@ export interface SchemaCompareOptions {
   ignoreTimestampPrecision: boolean;
   ignoreLengthSemantics: boolean;
   ignoreConstraintNames: boolean;
+  ignoreColumnOrder: boolean;
+  ignoreTablespace: boolean;
 }
 
 export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
@@ -28,6 +30,8 @@ export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
   ignoreTimestampPrecision: false,
   ignoreLengthSemantics: false,
   ignoreConstraintNames: false,
+  ignoreColumnOrder: true,
+  ignoreTablespace: true,
 };
 
 export interface SnapshotRef {

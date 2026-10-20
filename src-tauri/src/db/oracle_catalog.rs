@@ -215,6 +215,9 @@ fn table_objects(
             if s(r, 4) == "IOT" {
                 object = object.attr("organization", "INDEX");
             }
+            if !temporary && !s(r, 6).is_empty() {
+                object = object.attr("tablespace", s(r, 6));
+            }
             object
         })
         .collect()
@@ -382,13 +385,13 @@ impl OracleAdapter {
         let containers = only_table("container_name", table);
         let rows = self
             .rows_bound(format!(
-                "SELECT table_name, temporary, duration, partitioned, iot_type, 'T' FROM all_tables \
+                "SELECT table_name, temporary, duration, partitioned, iot_type, 'T', tablespace_name FROM all_tables \
                  WHERE owner = {owner}{tables} AND nested = 'NO' AND secondary = 'N' AND dropped = 'NO' \
                  AND (iot_type IS NULL OR iot_type = 'IOT') \
                  AND table_name NOT LIKE 'BIN$%' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' \
                  AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'AQ$%' \
-                 UNION ALL SELECT container_name, NULL, NULL, NULL, NULL, 'X' FROM all_mviews WHERE owner = {owner}{containers} \
-                 UNION ALL SELECT table_name, NULL, NULL, NULL, NULL, 'X' FROM all_external_tables WHERE owner = {owner}{tables}"
+                 UNION ALL SELECT container_name, NULL, NULL, NULL, NULL, 'X', NULL FROM all_mviews WHERE owner = {owner}{containers} \
+                 UNION ALL SELECT table_name, NULL, NULL, NULL, NULL, 'X', NULL FROM all_external_tables WHERE owner = {owner}{tables}"
             ), scope(schema, table))
             .await?;
         let excluded: HashSet<String> = rows
@@ -621,7 +624,7 @@ impl OracleAdapter {
             ), scope(schema, table)),
             self.rows_bound(format!(
                 "SELECT index_name, table_name, index_type, uniqueness, generated, ityp_owner, ityp_name, \
-                        parameters, partitioned \
+                        parameters, partitioned, tablespace_name \
                  FROM all_indexes \
                  WHERE owner = {owner} AND table_owner = {owner}{only} AND index_type NOT IN ('LOB', 'IOT - TOP', 'CLUSTER') \
                  AND table_name NOT LIKE 'BIN$%' AND index_name NOT LIKE 'BIN$%' AND table_type = 'TABLE' \
@@ -683,6 +686,9 @@ impl OracleAdapter {
                 .attr("definition", format!("{kind}{body}"));
             if s(r, 4) == "Y" {
                 object = object.attr("generated", "YES");
+            }
+            if !s(r, 9).is_empty() {
+                object = object.attr("tablespace", s(r, 9));
             }
             out.push(object);
         }
