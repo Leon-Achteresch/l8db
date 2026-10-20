@@ -1,4 +1,4 @@
-import type { ColumnInfo, FunctionInfo, TableInfo } from "@/lib/db";
+import type { ColumnInfo, DatabaseKind, FunctionInfo, TableInfo } from "@/lib/db";
 import type { PlsqlMember } from "@/lib/plsql";
 
 export interface SqlObjectRegistry {
@@ -8,6 +8,7 @@ export interface SqlObjectRegistry {
   columns: ColumnInfo[];
   functions: FunctionInfo[];
   procedures: FunctionInfo[];
+  dialect?: DatabaseKind;
 }
 
 export const EMPTY_REGISTRY: SqlObjectRegistry = {

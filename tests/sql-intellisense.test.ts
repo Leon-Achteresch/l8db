@@ -4,6 +4,7 @@ import {
   limitMatches,
   mayMatchWord,
   packageForQualifier,
+  quoteIdent,
   resolveSymbol,
   rowsMarkdownTable,
   type SqlObjectRegistry,
@@ -199,4 +200,48 @@ test("limitMatches preserves order within prefix and fuzzy matches", () => {
   });
   expect(limitMatches(items, "ab", 6)).toEqual({ items, truncated: false });
   expect(limitMatches(items, "", 2)).toEqual({ items: items.slice(0, 2), truncated: true });
+});
+
+describe("quoteIdent", () => {
+  it("quotes only when the dialect needs it", () => {
+    expect(quoteIdent("orders", "postgres")).toBe("orders");
+    expect(quoteIdent("Orders", "postgres")).toBe('"Orders"');
+    expect(quoteIdent("ORDERS", "postgres")).toBe('"ORDERS"');
+    expect(quoteIdent("EMPLOYEES", "oracle")).toBe("EMPLOYEES");
+    expect(quoteIdent("employees", "oracle")).toBe('"employees"');
+    expect(quoteIdent("_X", "oracle")).toBe('"_X"');
+    expect(quoteIdent("OrderItems", "mysql")).toBe("OrderItems");
+    expect(quoteIdent("order items", "mysql")).toBe("`order items`");
+    expect(quoteIdent("OrderItems", "mssql")).toBe("OrderItems");
+    expect(quoteIdent("order]items", "mssql")).toBe("[order]]items]");
+    expect(quoteIdent("Order Items", "sqlite")).toBe('"Order Items"');
+    expect(quoteIdent("OrderItems", "duckdb")).toBe("OrderItems");
+    expect(quoteIdent("my-table", "clickhouse")).toBe('"my-table"');
+    expect(quoteIdent("my table", "bigquery")).toBe("`my table`");
+    expect(quoteIdent("MixedCase")).toBe('"MixedCase"');
+  });
+  it("quotes reserved words", () => {
+    expect(quoteIdent("order", "postgres")).toBe('"order"');
+    expect(quoteIdent("ORDER", "oracle")).toBe('"ORDER"');
+    expect(quoteIdent("select", "mysql")).toBe("`select`");
+    expect(quoteIdent("group", "mssql")).toBe("[group]");
+  });
+  it("quotes completion inserts per dialect", () => {
+    const mysql: SqlObjectRegistry = {
+      ...registry,
+      dialect: "mysql",
+      tables: [{ schema: "shop", name: "Order Items" }],
+      columns: [{ schema: "shop", table: "Order Items", name: "order", data_type: "int" }],
+    };
+    const tables = suggestCompletions(mysql, "SELECT * FROM ", "SELECT * FROM ");
+    expect(tables.find((s) => s.label === "Order Items")?.insertText).toBe("`Order Items`");
+    expect(tables.find((s) => s.label === "shop.Order Items")?.insertText).toBe(
+      "shop.`Order Items`",
+    );
+    const columns = suggestCompletions(mysql, "SELECT ", "SELECT ");
+    expect(columns.find((s) => s.label === "order")?.insertText).toBe("`order`");
+    const oracle = suggestCompletions({ ...registry, dialect: "oracle" }, "SELECT ", "SELECT ");
+    expect(oracle.find((s) => s.label === "EMP_ID")?.insertText).toBe("EMP_ID");
+    expect(oracle.find((s) => s.label === "id")?.insertText).toBe('"id"');
+  });
 });

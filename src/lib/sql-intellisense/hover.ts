@@ -1,5 +1,7 @@
-import type { FunctionInfo } from "@/lib/db";
+import type { DatabaseKind, FunctionInfo } from "@/lib/db";
 import type { PlsqlMember } from "@/lib/plsql";
+import { quoteIdent as quoteFor } from "@/lib/sql-filter/quote";
+import { SQL_KEYWORDS } from "./keywords";
 import { eq } from "./resolve";
 import type { SqlObjectRegistry, SymbolTarget } from "./types";
 
@@ -44,7 +46,8 @@ export function hoverMarkdown(
   }
   if (target.kind !== "table") {
     const info = extras.routine;
-    const signature = `${target.schema}.${target.name}(${info?.identity_args ?? ""})`;
+    const name = `${quoteIdent(target.schema, registry.dialect)}.${quoteIdent(target.name, registry.dialect)}`;
+    const signature = `${name}(${info?.identity_args ?? ""})`;
     const returns =
       target.kind === "function" && info?.return_type ? ` RETURNS ${info.return_type}` : "";
     const head = `\`\`\`sql\n${target.kind.toUpperCase()} ${signature}${returns}\n\`\`\``;
@@ -68,7 +71,26 @@ export function hoverMarkdown(
   return lines.join("\n");
 }
 
-export function quoteIdent(name: string): string {
-  const plain = /^[a-z_][a-z0-9_$#]*$/.test(name) || /^[A-Z_][A-Z0-9_$#]*$/.test(name);
-  return plain ? name : `"${name.replace(/"/g, '""')}"`;
+const RESERVED = new Set(SQL_KEYWORDS.flatMap((keyword) => keyword.split(" ")));
+const FOLD_LOWER = /^[a-z_][a-z0-9_$]*$/;
+const PRESERVE_CASE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const UNQUOTED: Partial<Record<DatabaseKind, RegExp>> = {
+  postgres: FOLD_LOWER,
+  cassandra: FOLD_LOWER,
+  athena: FOLD_LOWER,
+  oracle: /^[A-Z][A-Z0-9_$#]*$/,
+  snowflake: /^[A-Z_][A-Z0-9_$]*$/,
+  mysql: PRESERVE_CASE,
+  mssql: PRESERVE_CASE,
+  sqlite: PRESERVE_CASE,
+  sqlite_http: PRESERVE_CASE,
+  duckdb: PRESERVE_CASE,
+  clickhouse: PRESERVE_CASE,
+  bigquery: PRESERVE_CASE,
+};
+const UNQUOTED_DEFAULT = /^(?:[a-z_][a-z0-9_$#]*|[A-Z_][A-Z0-9_$#]*)$/;
+
+export function quoteIdent(name: string, dialect?: DatabaseKind): string {
+  const pattern = (dialect && UNQUOTED[dialect]) || UNQUOTED_DEFAULT;
+  return pattern.test(name) && !RESERVED.has(name.toUpperCase()) ? name : quoteFor(name, dialect);
 }

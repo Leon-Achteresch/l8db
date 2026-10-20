@@ -1,4 +1,4 @@
-import type { ColumnInfo, FunctionInfo, TableInfo } from "@/lib/db";
+import type { ColumnInfo, DatabaseKind, FunctionInfo, TableInfo } from "@/lib/db";
 import { BUILTIN_FUNCTIONS } from "./builtin-functions";
 import { quoteIdent } from "./hover";
 import { SQL_KEYWORDS } from "./keywords";
@@ -51,7 +51,7 @@ function relationSuggestions(
       label: table.name,
       kind,
       detail: `${kind} · ${table.schema}`,
-      insertText: quoteIdent(table.name),
+      insertText: quoteIdent(table.name, registry.dialect),
       sortText: `${sortPrefix}_${table.name}`,
       afterDot,
     });
@@ -60,7 +60,7 @@ function relationSuggestions(
         label: `${table.schema}.${table.name}`,
         kind,
         detail: kind,
-        insertText: `${quoteIdent(table.schema)}.${quoteIdent(table.name)}`,
+        insertText: `${quoteIdent(table.schema, registry.dialect)}.${quoteIdent(table.name, registry.dialect)}`,
         sortText: `1_${table.schema}_${table.name}`,
       });
     }
@@ -82,18 +82,19 @@ function routineSuggestions(
         label: fn.name,
         kind: "package",
         detail: `package · ${fn.schema}`,
-        insertText: fn.name,
+        insertText: quoteIdent(fn.name, registry.dialect),
         sortText: `${afterDot ? 0 : 2}_${fn.name}`,
         afterDot,
       });
       return;
     }
     const returns = kind === "function" && fn.return_type ? ` → ${fn.return_type}` : "";
+    const name = quoteIdent(fn.name, registry.dialect);
     out.push({
       label: fn.name,
       kind,
       detail: `${fn.name}(${fn.identity_args})${returns} · ${fn.schema}`,
-      insertText: fn.identity_args ? `${fn.name}($0)` : fn.name,
+      insertText: fn.identity_args ? `${name.replace(/[$}\\]/g, "\\$&")}($0)` : name,
       snippet: Boolean(fn.identity_args),
       sortText: `${afterDot ? 0 : 2}_${fn.name}`,
       afterDot,
@@ -104,12 +105,17 @@ function routineSuggestions(
   return out;
 }
 
-function columnSuggestion(column: ColumnInfo, sortText: string, afterDot: boolean): Suggestion {
+function columnSuggestion(
+  column: ColumnInfo,
+  sortText: string,
+  afterDot: boolean,
+  dialect?: DatabaseKind,
+): Suggestion {
   return {
     label: column.name,
     kind: "column",
     detail: afterDot ? column.data_type : `${column.data_type} · ${column.schema}.${column.table}`,
-    insertText: quoteIdent(column.name),
+    insertText: quoteIdent(column.name, dialect),
     sortText,
     afterDot,
   };
@@ -119,13 +125,14 @@ function columnSuggestions(
   columns: ColumnInfo[],
   sortText: (column: ColumnInfo) => string,
   afterDot: boolean,
+  dialect?: DatabaseKind,
 ): Suggestion[] {
-  return columns.map((column) => columnSuggestion(column, sortText(column), afterDot));
+  return columns.map((column) => columnSuggestion(column, sortText(column), afterDot, dialect));
 }
 
-function sharedColumnSuggestion(columns: ColumnInfo[]): Suggestion {
+function sharedColumnSuggestion(columns: ColumnInfo[], dialect?: DatabaseKind): Suggestion {
   const [first] = columns;
-  if (columns.length === 1) return columnSuggestion(first, `3_${first.name}`, false);
+  if (columns.length === 1) return columnSuggestion(first, `3_${first.name}`, false, dialect);
   const types = new Set<string>();
   for (const column of columns) types.add(column.data_type);
   const tables = columns.slice(0, 40).map((column) => `${column.schema}.${column.table}`);
@@ -136,13 +143,14 @@ function sharedColumnSuggestion(columns: ColumnInfo[]): Suggestion {
     detail: `${[...types].join(" | ")} · ${columns.length} Tabellen`,
     documentation:
       remaining > 0 ? `${tables.join("\n")}\n… ${remaining} weitere` : tables.join("\n"),
-    insertText: quoteIdent(first.name),
+    insertText: quoteIdent(first.name, dialect),
     sortText: `3_${first.name}`,
     afterDot: false,
   };
 }
 
 interface RegistryIndex {
+  dialect?: DatabaseKind;
   columnsByTable: Map<string, ColumnInfo[]>;
   columnGroups: { name: string; columns: ColumnInfo[]; suggestion: Suggestion }[];
   tableContext: Suggestion[];
@@ -170,15 +178,16 @@ function registryIndex(registry: SqlObjectRegistry): RegistryIndex {
       label: schema,
       kind: "schema",
       detail: "schema",
-      insertText: quoteIdent(schema),
+      insertText: quoteIdent(schema, registry.dialect),
       sortText: `${sortPrefix}_${schema}`,
     }));
   const index: RegistryIndex = {
+    dialect: registry.dialect,
     columnsByTable,
     columnGroups: [...byName].map(([name, columns]) => ({
       name,
       columns,
-      suggestion: sharedColumnSuggestion(columns),
+      suggestion: sharedColumnSuggestion(columns, registry.dialect),
     })),
     tableContext: [
       ...schemaSuggestion("0"),
@@ -199,7 +208,7 @@ function generalColumnSuggestions(index: RegistryIndex, referenced: Set<string>)
   const touched = new Set<string>();
   for (const table of referenced) {
     for (const column of index.columnsByTable.get(table) ?? []) {
-      out.push(columnSuggestion(column, `0_${column.name}`, false));
+      out.push(columnSuggestion(column, `0_${column.name}`, false, index.dialect));
       touched.add(column.name);
     }
   }
@@ -209,7 +218,7 @@ function generalColumnSuggestions(index: RegistryIndex, referenced: Set<string>)
       continue;
     }
     const rest = group.columns.filter((column) => !referenced.has(column.table.toLowerCase()));
-    if (rest.length > 0) out.push(sharedColumnSuggestion(rest));
+    if (rest.length > 0) out.push(sharedColumnSuggestion(rest, index.dialect));
   }
   return out;
 }
@@ -255,7 +264,7 @@ export function suggestCompletions(
     const columns = table
       ? (candidates ?? []).filter((c) => eq(c.schema, table.info.schema))
       : (candidates ?? []);
-    return columnSuggestions(columns, (c) => `0_${c.name}`, true);
+    return columnSuggestions(columns, (c) => `0_${c.name}`, true, registry.dialect);
   }
 
   const context = analyzeContext(textBeforeCursor);
