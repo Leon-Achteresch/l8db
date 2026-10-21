@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
@@ -14,18 +15,24 @@ import {
 import { Input } from "@/components/ui/input";
 import { connectionError } from "@/lib/connection-url";
 import { useConnectionsStore } from "@/lib/connections";
-import { supabaseDatabaseEndpoint, testConnectionString } from "@/lib/db";
+import {
+  type SupabaseDatabaseEndpoint,
+  supabaseDatabaseEndpoint,
+  testConnectionString,
+} from "@/lib/db";
 import { storeSecret } from "@/lib/secrets";
 
 export function SupabaseDatabaseConnectDialog({
   reference,
   name,
+  apiUrl,
   open,
   onOpenChange,
   onConnected,
 }: {
   reference: string;
   name: string;
+  apiUrl?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnected?: (id: string) => void;
@@ -33,19 +40,45 @@ export function SupabaseDatabaseConnectDialog({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState<
+    Partial<Record<keyof SupabaseDatabaseEndpoint, string>>
+  >({});
+  const defaults = useQuery({
+    queryKey: ["supabase", reference, "database-endpoint"],
+    queryFn: () => supabaseDatabaseEndpoint(reference),
+    enabled: open && Boolean(apiUrl),
+  });
+  const field = (key: keyof SupabaseDatabaseEndpoint) =>
+    overrides[key] ?? String(defaults.data?.[key] ?? "");
 
   async function connect() {
     setBusy(true);
     setError(null);
     try {
-      const endpoint = await supabaseDatabaseEndpoint(reference);
-      const connectionString = `postgresql://${encodeURIComponent(endpoint.user)}:${encodeURIComponent(password)}@${endpoint.host}:${endpoint.port}/${encodeURIComponent(endpoint.database)}?sslmode=require`;
+      const endpoint = apiUrl
+        ? {
+            host: field("host").trim(),
+            port: Number(field("port")),
+            user: field("user").trim(),
+            database: field("database").trim(),
+          }
+        : await supabaseDatabaseEndpoint(reference);
+      if (!endpoint.host || !endpoint.user || !endpoint.database)
+        throw new Error("Host, Benutzer und Datenbank werden benötigt.");
+      if (!Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535)
+        throw new Error("Bitte einen gültigen Port eingeben.");
+      const sslMode = apiUrl ? "prefer" : "require";
+      const host =
+        endpoint.host.includes(":") && !endpoint.host.startsWith("[")
+          ? `[${endpoint.host}]`
+          : endpoint.host;
+      const connectionString = `postgresql://${encodeURIComponent(endpoint.user)}:${encodeURIComponent(password)}@${host}:${endpoint.port}/${encodeURIComponent(endpoint.database)}?sslmode=${sslMode}`;
       await testConnectionString("postgres", connectionString);
       const saved = useConnectionsStore.getState().addConnection({
         name,
         kind: "postgres",
         connectionString,
-        sslMode: "require",
+        sslMode,
         tunnelPort: null,
       });
       await storeSecret(saved.id, password).catch(() =>
@@ -70,8 +103,9 @@ export function SupabaseDatabaseConnectDialog({
         <DialogHeader>
           <DialogTitle>Datenbank von „{name}“ verbinden</DialogTitle>
           <DialogDescription>
-            Host und Benutzer kommen aus deinem Supabase-Projekt. Es fehlt nur das
-            Datenbankpasswort, das du beim Anlegen des Projekts gesetzt hast.
+            {apiUrl
+              ? "Die Datenbank wird über den Supavisor-Pooler deiner Instanz verbunden. Der Benutzer lautet postgres.<POOLER_TENANT_ID>, das Passwort ist POSTGRES_PASSWORD aus der .env."
+              : "Host und Benutzer kommen aus deinem Supabase-Projekt. Es fehlt nur das Datenbankpasswort, das du beim Anlegen des Projekts gesetzt hast."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -82,6 +116,32 @@ export function SupabaseDatabaseConnectDialog({
           }}
           className="flex flex-col gap-3"
         >
+          {apiUrl &&
+            (
+              [
+                ["host", "Host"],
+                ["port", "Port"],
+                ["user", "Benutzer"],
+                ["database", "Datenbank"],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key} className="flex flex-col gap-1.5">
+                <label htmlFor={`supabase-db-${key}-${reference}`} className="text-xs font-medium">
+                  {label}
+                </label>
+                <Input
+                  id={`supabase-db-${key}-${reference}`}
+                  value={field(key)}
+                  inputMode={key === "port" ? "numeric" : undefined}
+                  onChange={(event) =>
+                    setOverrides((current) => ({ ...current, [key]: event.target.value }))
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
+                />
+              </div>
+            ))}
           <label htmlFor={`supabase-db-password-${reference}`} className="text-xs font-medium">
             Datenbankpasswort
           </label>
@@ -91,19 +151,28 @@ export function SupabaseDatabaseConnectDialog({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="off"
-            autoFocus
+            autoFocus={!apiUrl}
             required
           />
-          <button
-            type="button"
-            onClick={() =>
-              void openUrl(`https://supabase.com/dashboard/project/${reference}/database/settings`)
-            }
-            className="inline-flex items-center gap-1 self-start text-xs text-primary underline"
-          >
-            Passwort vergessen? In den Datenbank-Einstellungen zurücksetzen
-            <ExternalLink className="size-3" />
-          </button>
+          {!apiUrl && (
+            <button
+              type="button"
+              onClick={() =>
+                void openUrl(
+                  `https://supabase.com/dashboard/project/${reference}/database/settings`,
+                )
+              }
+              className="inline-flex items-center gap-1 self-start text-xs text-primary underline"
+            >
+              Passwort vergessen? In den Datenbank-Einstellungen zurücksetzen
+              <ExternalLink className="size-3" />
+            </button>
+          )}
+          {defaults.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {String(defaults.error)}
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

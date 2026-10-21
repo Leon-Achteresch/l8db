@@ -14,8 +14,28 @@ export function supabaseReferenceOf(connection: SavedConnection): string | null 
   }
 }
 
-export function useSupabaseDatabase(reference: string): SavedConnection | undefined {
+export function isSelfHostedSupabaseDatabase(
+  connection: SavedConnection,
+  apiUrl: string,
+  name: string,
+): boolean {
+  if (connection.kind !== "postgres" || connection.name !== name) return false;
+  try {
+    return new URL(connection.connectionString).hostname === new URL(apiUrl).hostname;
+  } catch {
+    return false;
+  }
+}
+
+export function useSupabaseDatabase(
+  reference: string,
+  selfHosted?: { url: string; name: string },
+): SavedConnection | undefined {
   return useConnectionsStore((state) =>
-    state.connections.find((connection) => supabaseReferenceOf(connection) === reference),
+    state.connections.find((connection) =>
+      selfHosted
+        ? isSelfHostedSupabaseDatabase(connection, selfHosted.url, selfHosted.name)
+        : supabaseReferenceOf(connection) === reference,
+    ),
   );
 }
