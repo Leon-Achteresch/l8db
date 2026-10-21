@@ -199,20 +199,27 @@ async fn oracle_debugger_live_steps_variables_and_stop() {
         "{:?}",
         watched.executable_lines
     );
-    let started = std::time::Instant::now();
-    debug_action(
-        id.into(),
-        url.clone(),
-        None,
-        Action::SetValue {
-            name: "value".into(),
-            value: "41".into(),
-        },
-    )
-    .await
-    .unwrap();
-    let changed = paused(&url, id).await;
-    let set_ms = started.elapsed().as_millis();
+    let mut samples = vec![];
+    let mut changed = None;
+    for value in 37..=41 {
+        let started = std::time::Instant::now();
+        debug_action(
+            id.into(),
+            url.clone(),
+            None,
+            Action::SetValue {
+                name: "value".into(),
+                value: value.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        changed = Some(paused(&url, id).await);
+        samples.push(started.elapsed().as_millis());
+    }
+    let changed = changed.unwrap();
+    samples.sort_unstable();
+    let (set_median, set_max) = (samples[2], samples[4]);
     assert_eq!(
         changed.watches[0].value.as_deref(),
         Some("41"),
@@ -263,7 +270,8 @@ async fn oracle_debugger_live_steps_variables_and_stop() {
         "{:?}",
         skipped.message
     );
-    eprintln!("oracle debugger: set value and re-inspect in {set_ms} ms");
+    eprintln!("oracle debugger: set value and re-inspect median {set_median} ms, max {set_max} ms (5 runs)");
+    assert!(set_median < 1000 && set_max < 2000);
     debug_stop(id.into(), url.clone(), None).await.unwrap();
 }
 

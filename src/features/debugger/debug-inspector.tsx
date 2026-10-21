@@ -9,11 +9,11 @@ import { DebugVariableValue } from "./debug-variable-value";
 interface DebugInspectorProps {
   snapshot?: DebugSnapshot;
   paused: boolean;
-  valueHint: string;
+  oracle: boolean;
   onAction: (action: DebugAction) => void;
 }
 
-export function DebugInspector({ snapshot, paused, valueHint, onAction }: DebugInspectorProps) {
+export function DebugInspector({ snapshot, paused, oracle, onAction }: DebugInspectorProps) {
   const { ref, isNew } = useNewFeatureVisibility<HTMLTableCellElement>("debugger.set-value");
   const [filter, setFilter] = useState("");
   const [watchName, setWatchName] = useState("");
@@ -94,7 +94,7 @@ export function DebugInspector({ snapshot, paused, valueHint, onAction }: DebugI
                       name={variable.name}
                       value={variable.value}
                       editable={paused}
-                      hint={valueHint}
+                      oracle={oracle}
                       onSubmit={(value) =>
                         onAction({ type: "set_value", name: variable.name, value })
                       }

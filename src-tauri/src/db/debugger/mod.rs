@@ -210,7 +210,7 @@ fn validate_assignment(name: &str, value: &str) -> Result<(), String> {
     let identifier = name
         .chars()
         .next()
-        .is_some_and(|c| c.is_alphabetic() || c == '"')
+        .is_some_and(|c| c.is_alphabetic() || "_$\"".contains(c))
         && name
             .chars()
             .all(|c| c.is_alphanumeric() || "_$#.\"".contains(c));

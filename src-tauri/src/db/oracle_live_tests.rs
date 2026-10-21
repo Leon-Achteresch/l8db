@@ -1003,7 +1003,7 @@ async fn live_caller_check_transaction_state_and_cursor_plan() {
         .await
         .unwrap();
     let mut conn = db.open_connection().await.unwrap().into_inner().unwrap();
-    let (idle, changed, idle_ms) = tokio::task::spawn_blocking(move || {
+    let (idle, changed, idle_ms, idle_p95) = tokio::task::spawn_blocking(move || {
         super::oracle::tx_begin(&mut conn);
         let mut samples = vec![];
         let mut idle = None;
@@ -1016,7 +1016,12 @@ async fn live_caller_check_transaction_state_and_cursor_plan() {
         let changed = super::oracle::tx_table_changes(&conn)
             .map(|tables| tables.iter().any(|t| t.table == "L8DB_TXS"));
         super::oracle::tx_finish(&mut conn, false).unwrap();
-        (idle.unwrap(), changed, percentile(&mut samples, 0.5))
+        (
+            idle.unwrap(),
+            changed,
+            percentile(&mut samples, 0.5),
+            percentile(&mut samples, 0.95),
+        )
     })
     .await
     .unwrap();
@@ -1025,7 +1030,8 @@ async fn live_caller_check_transaction_state_and_cursor_plan() {
         Ok(found) => assert!(found),
         Err(error) => assert!(error.contains("offene Änderungen"), "{error}"),
     }
-    eprintln!("transaction state: idle check median {idle_ms:.2} ms, open transaction {changed:?}");
+    eprintln!("transaction state: idle check median {idle_ms:.2} ms, p95 {idle_p95:.2} ms (20 runs), open transaction {changed:?}");
+    assert!(idle_ms < 20.0 && idle_p95 < 50.0);
     db.execute_query("DROP TABLE l8db_txs").await.unwrap();
 
     let plain = db
@@ -1053,10 +1059,12 @@ async fn live_caller_check_transaction_state_and_cursor_plan() {
     assert!(cached.contains("Cursor-Cache"), "{cached}");
     assert_eq!(cached.matches("Plan hash value").count(), 2, "{cached}");
     assert!(!fresh.contains("Cursor-Cache"), "{fresh}");
-    eprintln!(
-        "explain with cursor cache: median {:.1} ms",
-        percentile(&mut samples, 0.5)
+    let (median, p95) = (
+        percentile(&mut samples, 0.5),
+        percentile(&mut samples, 0.95),
     );
+    eprintln!("explain with cursor cache: median {median:.1} ms, p95 {p95:.1} ms (5 runs)");
+    assert!(median < 500.0 && p95 < 1500.0);
 }
 
 fn plan_text(plan: &serde_json::Value) -> String {

@@ -322,11 +322,7 @@ function DebugDialogContent(
             <DebugInspector
               snapshot={snapshot}
               paused={paused}
-              valueHint={
-                context.kind === "oracle"
-                  ? "PL/SQL-Ausdruck, z. B. 42, 'Text' oder NULL"
-                  : "Wert, z. B. 42 oder Text"
-              }
+              oracle={context.kind === "oracle"}
               onAction={(action) => void act(action)}
             />
           )}

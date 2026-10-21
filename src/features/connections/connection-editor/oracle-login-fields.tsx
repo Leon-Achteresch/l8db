@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { NewBadge } from "@/components/new-badge";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,9 +24,16 @@ export function ConnectionOracleLoginFields({
   setExtraParams: (value: string) => void;
 }) {
   const feature = useNewFeatureVisibility<HTMLDivElement>("connections.oracle-login");
+  const [typed, setTyped] = useState<Record<string, string>>({});
   const param = (key: string) => searchParam(extraParams, key);
   const setParam = (key: string, value: string) =>
     setExtraParams(withSearchParam(extraParams, key, value));
+  const text = (key: string) =>
+    typed[key] !== undefined && typed[key].trim() === param(key) ? typed[key] : param(key);
+  const setText = (key: string, value: string) => {
+    setTyped((current) => ({ ...current, [key]: value }));
+    setParam(key, value);
+  };
   const tcps = param("protocol").toLowerCase() === "tcps" || ["1", "true"].includes(param("ssl"));
   const privilege = PRIVILEGES.includes(param("privilege").toLowerCase())
     ? param("privilege").toLowerCase()
@@ -36,8 +45,8 @@ export function ConnectionOracleLoginFields({
           id="connection-oracle-sid"
           label="SID (statt Service-Name)"
           placeholder="ORCL"
-          value={param("sid")}
-          onChange={(event) => setParam("sid", event.target.value)}
+          value={text("sid")}
+          onChange={(event) => setText("sid", event.target.value)}
           spellCheck={false}
         />
         <div className="grid gap-1">
@@ -90,8 +99,8 @@ export function ConnectionOracleLoginFields({
           id="connection-oracle-wallet"
           label="Wallet-Verzeichnis (optional)"
           placeholder="/pfad/zum/wallet"
-          value={param("wallet")}
-          onChange={(event) => setParam("wallet", event.target.value)}
+          value={text("wallet")}
+          onChange={(event) => setText("wallet", event.target.value)}
           spellCheck={false}
         />
       )}
