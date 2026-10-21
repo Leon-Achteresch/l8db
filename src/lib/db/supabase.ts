@@ -9,6 +9,8 @@ export interface SupabaseProject {
   status: string | null;
   organization_id: string | null;
   database: { host: string | null; version: string | null } | null;
+  self_hosted: boolean;
+  api_url: string | null;
 }
 
 export interface SupabaseBucket {
@@ -113,6 +115,10 @@ export const supabaseIsConnected = () => invoke<boolean>("supabase_is_connected"
 export const supabaseConnect = (accessToken: string) =>
   invoke<SupabaseProject[]>("supabase_connect", { accessToken });
 export const supabaseDisconnect = () => invoke<void>("supabase_disconnect");
+export const supabaseConnectSelfHosted = (url: string, apiKey: string, name: string) =>
+  invoke<SupabaseProject>("supabase_connect_self_hosted", { url, apiKey, name });
+export const supabaseDisconnectSelfHosted = (reference: string) =>
+  invoke<void>("supabase_disconnect_self_hosted", { reference });
 export interface SupabaseDatabaseEndpoint {
   host: string;
   port: number;

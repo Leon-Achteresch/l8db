@@ -1,7 +1,11 @@
 mod ai;
 mod appwrite;
 mod automation;
+#[cfg(test)]
+mod baas_browser_tests;
 mod baas_file;
+#[cfg(test)]
+mod baas_self_hosted_live_tests;
 mod branching;
 mod check_cli;
 mod cli;
@@ -188,6 +192,7 @@ pub fn run() {
             automation::automation_cli_command,
             automation::automation_ai_activity,
             convex::convex_connect,
+            convex::convex_connect_self_hosted,
             convex::convex_profiles,
             convex::convex_disconnect,
             convex::convex_projects,
@@ -236,6 +241,8 @@ pub fn run() {
             appwrite::appwrite_delete_function,
             appwrite::appwrite_sites,
             supabase::supabase_connect,
+            supabase::supabase_connect_self_hosted,
+            supabase::supabase_disconnect_self_hosted,
             supabase::supabase_disconnect,
             supabase::supabase_is_connected,
             supabase::supabase_projects,

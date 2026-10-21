@@ -75,7 +75,9 @@ export function SupabaseDatabaseView({ reference }: { reference: string }) {
         </Button>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Lesende Vorschau über die Supabase Management API. Das Zugangstoken benötigt Database: Read.
+        {reference.startsWith("self-")
+          ? "Lesende Vorschau über pg-meta der Instanz mit dem service_role Key."
+          : "Lesende Vorschau über die Supabase Management API. Das Zugangstoken benötigt Database: Read."}
       </p>
       {tables.isPending ? (
         <p className="mt-4 text-xs text-muted-foreground">Tabellen werden geladen…</p>

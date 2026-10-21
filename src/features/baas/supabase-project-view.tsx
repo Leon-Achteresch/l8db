@@ -17,7 +17,11 @@ import { useSupabaseDatabase } from "./use-supabase-database";
 
 export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
   const navigate = useNavigate();
-  const database = useSupabaseDatabase(project.reference);
+  const apiUrl = project.self_hosted ? project.api_url : null;
+  const database = useSupabaseDatabase(
+    project.reference,
+    apiUrl ? { url: apiUrl, name: project.name } : undefined,
+  );
   const [connecting, setConnecting] = useState(false);
 
   async function openDatabase() {
@@ -42,25 +46,28 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
             variant="outline"
             size="sm"
             onClick={() =>
-              void openUrl(`https://supabase.com/dashboard/project/${project.reference}`)
+              void openUrl(apiUrl ?? `https://supabase.com/dashboard/project/${project.reference}`)
             }
           >
-            Supabase-Dashboard <ExternalLink className="size-3.5" />
+            {apiUrl ? "Supabase Studio" : "Supabase-Dashboard"}{" "}
+            <ExternalLink className="size-3.5" />
           </Button>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border bg-background/50 p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Globe2 className="size-3.5" /> Region
+              <Globe2 className="size-3.5" /> {apiUrl ? "API-URL" : "Region"}
             </div>
-            <p className="mt-2 text-sm font-medium">{project.region ?? "Unbekannt"}</p>
+            <p className="mt-2 truncate text-sm font-medium" title={apiUrl ?? undefined}>
+              {apiUrl ?? project.region ?? "Unbekannt"}
+            </p>
           </div>
           <div className="rounded-xl border bg-background/50 p-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Database className="size-3.5" /> PostgreSQL
             </div>
             <p className="mt-2 truncate text-sm font-medium">
-              {project.database?.version ?? "Version unbekannt"}
+              {project.database?.version ?? (apiUrl ? "Selbst gehostet" : "Version unbekannt")}
             </p>
           </div>
           <div className="rounded-xl border bg-background/50 p-3">
@@ -91,24 +98,27 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
       <SupabaseDatabaseConnectDialog
         reference={project.reference}
         name={project.name}
+        apiUrl={apiUrl}
         open={connecting}
         onOpenChange={setConnecting}
       />
       <SupabaseServiceHealth reference={project.reference} />
-      <SupabaseProjectKey key={project.reference} reference={project.reference} />
+      {!apiUrl && <SupabaseProjectKey key={project.reference} reference={project.reference} />}
       <div data-baas-section="database" className="scroll-mt-6">
         <SupabaseDatabaseView key={project.reference} reference={project.reference} />
       </div>
-      <SupabaseBackupsView key={project.reference} reference={project.reference} />
+      {!apiUrl && <SupabaseBackupsView key={project.reference} reference={project.reference} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
         <div data-baas-section="storage" className="scroll-mt-6">
           <SupabaseStorageView key={project.reference} reference={project.reference} />
         </div>
         <div className="space-y-6">
-          <div data-baas-section="functions" className="scroll-mt-6">
-            <SupabaseFunctionsView key={project.reference} reference={project.reference} />
-          </div>
+          {!apiUrl && (
+            <div data-baas-section="functions" className="scroll-mt-6">
+              <SupabaseFunctionsView key={project.reference} reference={project.reference} />
+            </div>
+          )}
           <div data-baas-section="auth" className="scroll-mt-6">
             <SupabaseAuthView key={project.reference} reference={project.reference} />
           </div>

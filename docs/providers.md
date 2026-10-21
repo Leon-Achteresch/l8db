@@ -13,6 +13,8 @@ Relevant Supabase documentation: [Management API](https://supabase.com/docs/refe
 Supabase Storage buckets can be created, switched between public and private access, and deleted when empty. These actions require the project's Secret API Key and use the [Storage API](https://supabase.com/docs/reference/self-hosting-storage).
 Auth users can be created with an email and password, have their email changed, and be deleted with confirmation through the [Auth Admin API](https://supabase.com/docs/reference/javascript/auth-admin-createuser). Edge Functions can be deleted with confirmation through the [Management API](https://supabase.com/docs/reference/api/v1-delete-a-function).
 
+Self-hosted Supabase ([Docker setup](https://supabase.com/docs/guides/self-hosting/docker)) connects with the API gateway URL (`SUPABASE_PUBLIC_URL`, origin only) and the `SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`; l8db checks the key against `/storage/v1/bucket` before storing it in the OS keychain. Each instance gets a `self-<hash>` reference. Storage and Auth use the same project APIs as the cloud; the table preview uses pg-meta (`/pg/query`, service role only), and service health probes Auth, pg-meta, Realtime, PostgREST and Storage. Edge Functions, backups and key import need the Management API and are hidden. The database dialog prefills the Supavisor pooler (`postgres.your-tenant-id`, port 5432, `sslmode=prefer`) and lets host, port and user be changed. Removing a self-hosted instance leaves the cloud token alone and vice versa.
+
 ## Appwrite BaaS
 
 The **Appwrite** tab in BaaS connects one project at a time using its API endpoint (`https://<region>.cloud.appwrite.io/v1` for Appwrite Cloud), project ID and [project API key](https://appwrite.io/docs/partners/project/api-keys). Because keys are project-scoped, add each project separately. l8db verifies the key with `GET /project` before saving it in the OS keychain; the form clears the key after connection and never persists it in localStorage. HTTPS is required, except for localhost development endpoints. Redirects are not followed when sending the key.
@@ -26,6 +28,10 @@ Appwrite buckets can be created, renamed, and deleted with `buckets.write`. Auth
 ## Convex BaaS
 
 The **Convex** tab connects a team by its numeric team ID and a Team Access Token from Team Settings. l8db verifies the token through the [Management API](https://docs.convex.dev/management-api/list-projects), keeps it in the OS keychain, and shows paginated projects with their cloud and local deployments. Each project links to its Convex dashboard. Cloud deployments show environment variable names and support setting and deleting their values through the [Deployment API](https://docs.convex.dev/deployment-api/update-environment-variables); existing values never reach the frontend. The integration uses only official Convex APIs. Generic table and file writes are unavailable because Convex exposes those operations through functions defined by each project.
+
+Self-hosted Convex ([self-hosting guide](https://github.com/get-convex/convex-backend/tree/main/self-hosted)) connects with the backend URL (`CONVEX_CLOUD_ORIGIN`, e.g. `http://127.0.0.1:3210`) and an admin key from `./generate_admin_key.sh`. l8db verifies it with `/api/v1/list_environment_variables` and then manages environment variables like a cloud deployment; projects and deployments do not exist there.
+
+Live checks against real self-hosted instances: `cargo test --lib baas_self_hosted_live -- --ignored --test-threads=1` with `L8DB_E2E_SUPABASE_URL`, `L8DB_E2E_SUPABASE_KEY` (optional `L8DB_E2E_SUPABASE_DB_PASSWORD`, `L8DB_E2E_SUPABASE_DB_PORT`), `L8DB_E2E_CONVEX_URL` and `L8DB_E2E_CONVEX_KEY`. With the same variables, `bun run test:baas-browser` drives the UI through Playwright against the real commands.
 
 ## PocketBase BaaS
 
