@@ -31,6 +31,7 @@
     "pr:report": "bun scripts/pr-report.ts",
     "test:redis": "node scripts/test-redis-integration.mjs",
     "test:clickhouse": "node scripts/test-clickhouse-browser.mjs",
+    "test:oracle-browser": "node scripts/test-oracle-browser.mjs",
     "test:http-families": "bash scripts/test-http-families.sh",
     "test:pocketbase": "bash scripts/test-pocketbase-live.sh",
     "test:workload-live": "bash scripts/test-workload-live.sh",

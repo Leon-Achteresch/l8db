@@ -3459,11 +3459,15 @@ impl DatabaseAdapter for OracleAdapter {
             .first()
             .map(|r| i(r, 0))
             .ok_or("Sitzung nicht gefunden")?;
-        self.exec(format!(
-            "ALTER SYSTEM KILL SESSION '{pid},{serial}' IMMEDIATE"
-        ))
-        .await
-        .map(|_| true)
+        match self
+            .exec(format!(
+                "ALTER SYSTEM KILL SESSION '{pid},{serial}' IMMEDIATE"
+            ))
+            .await
+        {
+            Err(error) if !error.contains("ORA-00031") => Err(error),
+            _ => Ok(true),
+        }
     }
 
     async fn create_schema(&self, name: &str) -> Result<(), String> {
@@ -3808,7 +3812,7 @@ fn kill_session(login: &Login, action: &str, done: impl Fn() -> bool) -> Result<
     }
     let mut stmt = conn
         .statement(
-            "DECLARE n PLS_INTEGER := 0; BEGIN FOR s IN (SELECT sid, serial#, inst_id FROM gv$session WHERE module = :1 AND action = :2 AND status = 'ACTIVE' AND username = SYS_CONTEXT('USERENV', 'SESSION_USER') AND machine = SYS_CONTEXT('USERENV', 'HOST')) LOOP EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || s.sid || ',' || s.serial# || ',@' || s.inst_id || ''' IMMEDIATE'; n := n + 1; END LOOP; :3 := n; END;",
+            "DECLARE n PLS_INTEGER := 0; marked EXCEPTION; PRAGMA EXCEPTION_INIT(marked, -31); BEGIN FOR s IN (SELECT sid, serial#, inst_id FROM gv$session WHERE module = :1 AND action = :2 AND status = 'ACTIVE' AND username = SYS_CONTEXT('USERENV', 'SESSION_USER') AND machine = SYS_CONTEXT('USERENV', 'HOST')) LOOP BEGIN EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || s.sid || ',' || s.serial# || ',@' || s.inst_id || ''' IMMEDIATE'; EXCEPTION WHEN marked THEN NULL; END; n := n + 1; END LOOP; :3 := n; END;",
         )
         .build()
         .map_err(map_err)?;

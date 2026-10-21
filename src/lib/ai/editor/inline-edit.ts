@@ -93,8 +93,11 @@ export async function validateEdit(
   explain = explainQuery,
 ): Promise<string> {
   const objects = [...env.registry.tables, ...env.registry.views];
-  const known = new Set(lintUnknownTables(before, objects).map((item) => item.message));
-  const unknown = lintUnknownTables(after, objects).filter((item) => !known.has(item.message));
+  const oracle = env.connection?.kind === "oracle";
+  const known = new Set(lintUnknownTables(before, objects, oracle).map((item) => item.message));
+  const unknown = lintUnknownTables(after, objects, oracle).filter(
+    (item) => !known.has(item.message),
+  );
   if (unknown.length)
     return `Unknown tables: ${[...new Set(unknown.map((item) => item.message))].join("; ")}`;
   const connection = env.connection;

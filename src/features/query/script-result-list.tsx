@@ -52,7 +52,8 @@ function statusIcon(status: ScriptRunStatus) {
 
 function detailOf(entry: ScriptRunEntry): string {
   const parts: string[] = [];
-  if (entry.rowCount !== null) parts.push(`${entry.rowCount} Zeilen`);
+  if (entry.rowCount !== null)
+    parts.push(`${entry.rowCount} ${entry.rowCount === 1 ? "Zeile" : "Zeilen"}`);
   if (entry.rowsAffected !== null) parts.push(`${entry.rowsAffected} betroffen`);
   if (entry.durationMs !== null) parts.push(`${entry.durationMs} ms`);
   if (entry.status === "skipped") parts.push("nicht ausgeführt");

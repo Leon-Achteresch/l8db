@@ -231,6 +231,7 @@ Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `m
 - **Cancellation:** the editor call has an outer safety timeout (query timeout + 2 × connect timeout + 5 s); idle pings run under the connect timeout. The fallback kill only matches ACTIVE sessions of the same user and machine and is skipped when the call ends in the meantime.
 - **Data compare:** LOB columns are read through locators, so a fetch batch does not buffer 500 full LOBs. Sync scripts split CLOBs into `TO_CLOB` pieces of 1000 characters and refuse XMLTYPE, SDO_GEOMETRY, BFILE, LONG and binary values above 2000 bytes.
 - **SQL log:** passwords after `IDENTIFIED BY`, `REPLACE` and `PASSWORD '…'` are masked. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
+- **Browser lab:** `bun run test:oracle-browser` starts the ignored bridge `oracle_browser_bridge` on 127.0.0.1:27031 (it calls the real Tauri command functions), Vite on port 1431 and the Oracle browser tests (`tests/oracle-*-browser.test.ts`). It expects the lab at `127.0.0.1:15219/FREEPDB1` with users `l8db` and `l8db_debug` (password `l8dbtest`) and Instant Client in `LD_LIBRARY_PATH`.
 
 ## Default and optional builds
 
