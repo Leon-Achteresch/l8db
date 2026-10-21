@@ -157,7 +157,7 @@ pub(super) fn explain(
         cursor_cache.then(|| cached_plan(c, statement)).flatten(),
     ) {
         (Some(text), Some(cached)) => Some(format!("{text}\n\n{CACHED_PLAN}\n\n{cached}")),
-        (text, cached) => text.or(cached),
+        (text, cached) => text.or(cached.map(|cached| format!("{CACHED_PLAN}\n\n{cached}"))),
     };
     let cleanup = c
         .execute(
@@ -270,9 +270,11 @@ fn cached_plan(c: &Connection, statement: &str) -> Option<String> {
         return None;
     }
     let lines: Vec<String> = c
-        .query(
-            "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(DBMS_SQL_TRANSLATOR.SQL_ID(:1), NULL, 'TYPICAL'))",
-            &[&statement],
+        .query_named(
+            "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(DBMS_SQL_TRANSLATOR.SQL_ID(:stmt), \
+             (SELECT NVL(MAX(child_number) KEEP (DENSE_RANK LAST ORDER BY last_active_time), -1) FROM v$sql \
+              WHERE sql_id = DBMS_SQL_TRANSLATOR.SQL_ID(:stmt) AND parsing_schema_name = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')), 'TYPICAL'))",
+            &[("stmt", &statement)],
         )
         .ok()?
         .filter_map(Result::ok)

@@ -34,6 +34,7 @@ interface ScriptResultListProps {
   onSelect: (entry: ScriptRunEntry) => void;
   onClose: () => void;
   note: string;
+  featureId?: "query.sqlplus-scripts";
 }
 
 function firstLine(sql: string): string {
@@ -65,10 +66,11 @@ export function ScriptResultList({
   onSelect,
   onClose,
   note,
+  featureId,
 }: ScriptResultListProps) {
   const failed = entries.filter((entry) => entry.status === "error").length;
   const done = entries.filter((entry) => entry.status === "success").length;
-  const { ref, isNew } = useNewFeatureVisibility<HTMLSpanElement>("query.sqlplus-scripts");
+  const { ref, isNew } = useNewFeatureVisibility<HTMLSpanElement>(featureId);
 
   return (
     <div className="flex max-h-64 shrink-0 flex-col border-t bg-card/40">

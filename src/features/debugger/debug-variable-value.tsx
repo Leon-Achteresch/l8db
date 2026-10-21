@@ -4,18 +4,27 @@ interface DebugVariableValueProps {
   name: string;
   value: string | null;
   editable: boolean;
-  hint: string;
+  oracle: boolean;
   onSubmit: (value: string) => void;
+}
+
+const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i;
+
+function editText(value: string | null, oracle: boolean): string {
+  if (!oracle) return value ?? "";
+  if (value === null) return "NULL";
+  return NUMBER.test(value.trim()) ? value.trim() : `'${value.split("'").join("''")}'`;
 }
 
 export function DebugVariableValue({
   name,
   value,
   editable,
-  hint,
+  oracle,
   onSubmit,
 }: DebugVariableValueProps) {
   const [draft, setDraft] = useState<string>();
+  const hint = oracle ? "PL/SQL-Ausdruck, z. B. 42, 'Text' oder NULL" : "Wert, z. B. 42 oder Text";
   if (draft !== undefined)
     return (
       <form
@@ -45,7 +54,7 @@ export function DebugVariableValue({
       className="debug-value-button"
       disabled={!editable}
       title={editable ? `Wert ändern (${hint})` : undefined}
-      onClick={() => setDraft(value ?? "")}
+      onClick={() => setDraft(editText(value, oracle))}
     >
       {value ?? "NULL"}
     </button>
