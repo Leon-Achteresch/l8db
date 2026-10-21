@@ -168,7 +168,9 @@ export function SchemaCompareView() {
   const toggle = (keys: string[], checked: boolean) =>
     set((current) => {
       const next = { ...current.selection };
-      for (const key of keys) {
+      const pairs = Object.entries(current.renames);
+      const linked = keys.flatMap((key) => pairs.filter((pair) => pair.includes(key)).flat());
+      for (const key of [...keys, ...linked]) {
         if (checked) next[key] = true;
         else delete next[key];
       }

@@ -2813,6 +2813,9 @@ mod live_plan_tests;
 mod oracle_live_tests;
 
 #[cfg(test)]
+mod oracle_browser_tests;
+
+#[cfg(test)]
 mod value_viewer_live_tests;
 
 #[cfg(test)]

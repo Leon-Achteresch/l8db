@@ -64,7 +64,7 @@ export function SessionRow({
       <td className="px-3 py-2">
         {session.state ? (
           <Badge
-            variant={session.state === "active" ? "default" : "outline"}
+            variant={session.state.toLowerCase() === "active" ? "default" : "outline"}
             className="px-1.5 py-0 text-[10px]"
           >
             {session.state}

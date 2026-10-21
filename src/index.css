@@ -375,6 +375,7 @@
 
 .l8-toast-description {
   margin-top: 0.25rem;
+  white-space: pre-line;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
 }

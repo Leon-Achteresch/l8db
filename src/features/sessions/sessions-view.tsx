@@ -45,7 +45,8 @@ export function SessionsView() {
   );
   const [highlightedPid, setHighlightedPid] = useState<number | null>(null);
   const { data: sessions, isLoading, isError, error, refetch } = useSessionsQuery();
-  const { data: locks } = useLocksQuery();
+  const { data: locks, error: locksError, refetch: refetchLocks } = useLocksQuery();
+  const idLabel = connection?.kind === "oracle" ? "SID" : "PID";
   const capabilities = useActiveCapabilities();
   const showBlocking = Boolean(capabilities?.sessions && capabilities?.locks);
   const serverInfoNew = useHasNewFeatures("sessions.server-info");
@@ -112,7 +113,9 @@ export function SessionsView() {
         database ?? undefined,
       );
       toast.success(
-        cancelled ? `Abfrage auf PID ${pid} abgebrochen.` : `PID ${pid}: nichts abzubrechen.`,
+        cancelled
+          ? `Abfrage auf ${idLabel} ${pid} abgebrochen.`
+          : `${idLabel} ${pid}: nichts abzubrechen.`,
       );
       refresh();
     } catch (err) {
@@ -126,7 +129,7 @@ export function SessionsView() {
     if (!connection) return;
     if (
       !window.confirm(
-        `Sitzung mit PID ${pid} wirklich beenden? Offene Transaktionen gehen verloren.`,
+        `Sitzung mit ${idLabel} ${pid} wirklich beenden? Offene Transaktionen gehen verloren.`,
       )
     )
       return;
@@ -236,7 +239,7 @@ export function SessionsView() {
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/60 text-left text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 font-medium">PID</th>
+                    <th className="px-3 py-2 font-medium">{idLabel}</th>
                     <th className="px-3 py-2 font-medium">Benutzer</th>
                     <th className="px-3 py-2 font-medium">App</th>
                     <th className="px-3 py-2 font-medium">Status</th>
@@ -301,7 +304,15 @@ export function SessionsView() {
         </TabsContent>
 
         <TabsContent value="locks" className="min-h-0 flex-1 overflow-auto rounded-lg border">
-          <LocksTable locks={locks} />
+          {locksError ? (
+            <TableDataError
+              title="Locks konnten nicht geladen werden"
+              error={locksError}
+              onRetry={() => void refetchLocks()}
+            />
+          ) : (
+            <LocksTable locks={locks} idLabel={idLabel} />
+          )}
         </TabsContent>
       </Tabs>
     </main>

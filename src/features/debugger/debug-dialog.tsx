@@ -74,6 +74,7 @@ function DebugDialogContent(
   const [busy, setBusy] = useState(false);
   const session = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
+  const content = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -125,6 +126,7 @@ function DebugDialogContent(
       if (mounted.current) setError(String(e));
     } finally {
       if (mounted.current) setBusy(false);
+      if (document.activeElement === document.body) content.current?.focus({ preventScroll: true });
     }
   };
 
@@ -185,7 +187,9 @@ function DebugDialogContent(
       }}
     >
       <DialogContent
-        className="debug-workbench"
+        ref={content}
+        tabIndex={-1}
+        className="debug-workbench outline-none"
         showCloseButton={false}
         onKeyDown={(event) => {
           if (!["F5", "F10", "F11"].includes(event.key)) return;

@@ -110,7 +110,8 @@ export function useSessionsQuery(refetchInterval: number | false = 5000) {
     queryFn: () =>
       listSessions(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "sessions"),
-    refetchInterval,
+    refetchInterval: (query) =>
+      query.state.status === "error" && query.state.data === undefined ? false : refetchInterval,
   });
 }
 
@@ -138,7 +139,8 @@ export function useLocksQuery(refetchInterval: number | false = 5000) {
     queryFn: () =>
       listLocks(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "locks"),
-    refetchInterval,
+    refetchInterval: (query) =>
+      query.state.status === "error" && query.state.data === undefined ? false : refetchInterval,
   });
 }
 

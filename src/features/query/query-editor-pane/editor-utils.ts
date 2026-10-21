@@ -1,4 +1,5 @@
 import { monaco, overflowWidgetsDomNode } from "@/lib/monaco";
+import { activeConnectionKind } from "@/lib/monaco/format";
 import { lintUnknownTables } from "@/lib/sql-lint";
 
 import type { SchemaRegistry } from "./types";
@@ -14,7 +15,9 @@ export function refreshLintMarkers(
   const model = editor.getModel();
   if (!model) return;
   const findings =
-    model.getLanguageId() === "sql" ? lintUnknownTables(model.getValue(), registry.tables) : [];
+    model.getLanguageId() === "sql"
+      ? lintUnknownTables(model.getValue(), registry.tables, activeConnectionKind() === "oracle")
+      : [];
   monaco.editor.setModelMarkers(
     model,
     "l8db-sql-lint",

@@ -15,7 +15,7 @@ const time = (at: number) => new Date(at).toLocaleTimeString("de-DE", { hour12: 
 
 const asText = (entry: SqlLogEntry) =>
   `-- ${time(entry.at_ms)} ${entry.source || "–"} ${entry.kind} ${entry.duration_ms.toFixed(1)} ms${
-    entry.rows === null ? "" : ` ${entry.rows} Zeilen`
+    entry.rows === null ? "" : ` ${entry.rows} ${entry.rows === 1 ? "Zeile" : "Zeilen"}`
   }${entry.error ? ` FEHLER: ${entry.error.split("\n")[0]}` : ""}\n${entry.sql};`;
 
 export function SqlLogPanel() {
@@ -115,7 +115,11 @@ export function SqlLogPanel() {
                   <span className="font-medium text-foreground">{entry.source || "–"}</span>
                   <span>{entry.kind}</span>
                   <span>{entry.duration_ms.toFixed(1)} ms</span>
-                  {entry.rows !== null && <span>{entry.rows} Zeilen</span>}
+                  {entry.rows !== null && (
+                    <span>
+                      {entry.rows} {entry.rows === 1 ? "Zeile" : "Zeilen"}
+                    </span>
+                  )}
                 </div>
                 <pre className="whitespace-pre-wrap break-all font-mono">{entry.sql}</pre>
                 {entry.error && (
