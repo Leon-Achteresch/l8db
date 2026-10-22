@@ -811,6 +811,460 @@ async fn dispatch(command: &str, x: &Value) -> Result<Value, String> {
             )
             .await,
         ),
+        "convex_studio_data_tables" => ok(crate::convex_studio::data::convex_studio_data_tables(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+        )
+        .await),
+        "convex_studio_data_documents" => {
+            ok(crate::convex_studio::data::convex_studio_data_documents(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "table")?,
+                a(x, "filter")?,
+                a(x, "cursor")?,
+                a(x, "pageSize")?,
+            )
+            .await)
+        }
+        "convex_studio_data_resolve" => ok(crate::convex_studio::data::convex_studio_data_resolve(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "documentId")?,
+        )
+        .await),
+        "convex_studio_data_insert" => ok(crate::convex_studio::data::convex_studio_data_insert(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "table")?,
+            a(x, "documents")?,
+        )
+        .await),
+        "convex_studio_data_replace" => ok(crate::convex_studio::data::convex_studio_data_replace(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "documentId")?,
+            a(x, "document")?,
+        )
+        .await),
+        "convex_studio_data_patch" => ok(crate::convex_studio::data::convex_studio_data_patch(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "table")?,
+            a(x, "ids")?,
+            a(x, "fields")?,
+        )
+        .await),
+        "convex_studio_data_delete" => ok(crate::convex_studio::data::convex_studio_data_delete(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "table")?,
+            a(x, "ids")?,
+        )
+        .await),
+        "convex_studio_data_clear" => ok(crate::convex_studio::data::convex_studio_data_clear(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "table")?,
+        )
+        .await),
+        "convex_studio_data_create_table" => {
+            ok(crate::convex_studio::data::convex_studio_data_create_table(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "table")?,
+            )
+            .await)
+        }
+        "convex_studio_data_delete_table" => {
+            ok(crate::convex_studio::data::convex_studio_data_delete_table(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "table")?,
+            )
+            .await)
+        }
+        "convex_studio_data_schema" => ok(crate::convex_studio::data::convex_studio_data_schema(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+        )
+        .await),
+        "convex_studio_data_infer_schema" => {
+            ok(crate::convex_studio::data::convex_studio_data_infer_schema(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "table")?,
+            )
+            .await)
+        }
+        "convex_studio_data_import" => ok(crate::convex_studio::data::convex_studio_data_import(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "table")?,
+            a(x, "format")?,
+            a(x, "mode")?,
+            a(x, "content")?,
+        )
+        .await),
+        "convex_studio_files_list" => ok(crate::convex_studio::files::convex_studio_files_list(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "cursor")?,
+            a(x, "order")?,
+            a(x, "minCreationTime")?,
+            a(x, "maxCreationTime")?,
+        )
+        .await),
+        "convex_studio_files_count" => ok(crate::convex_studio::files::convex_studio_files_count(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+        )
+        .await),
+        "convex_studio_files_get" => ok(crate::convex_studio::files::convex_studio_files_get(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "storageId")?,
+        )
+        .await),
+        "convex_studio_files_preview" => {
+            ok(crate::convex_studio::files::convex_studio_files_preview(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "storageId")?,
+            )
+            .await)
+        }
+        "convex_studio_files_delete" => {
+            ok(crate::convex_studio::files::convex_studio_files_delete(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "storageIds")?,
+            )
+            .await)
+        }
+        "convex_studio_functions_list" => ok(
+            crate::convex_studio::functions::convex_studio_functions_list(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await,
+        ),
+        "convex_studio_functions_detail" => ok(
+            crate::convex_studio::functions::convex_studio_functions_detail(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "identifier")?,
+                a(x, "componentId")?,
+            )
+            .await,
+        ),
+        "convex_studio_functions_run" => ok(
+            crate::convex_studio::functions::convex_studio_functions_run(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "identifier")?,
+                a(x, "args")?,
+                a(x, "componentPath")?,
+            )
+            .await,
+        ),
+        "convex_studio_functions_http_request" => ok(
+            crate::convex_studio::functions::convex_studio_functions_http_request(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "method")?,
+                a(x, "path")?,
+                a(x, "headers")?,
+                a(x, "body")?,
+            )
+            .await,
+        ),
+        "convex_studio_functions_stats" => ok(
+            crate::convex_studio::functions::convex_studio_functions_stats(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "identifier")?,
+                a(x, "windowMinutes")?,
+            )
+            .await,
+        ),
+        "convex_studio_logs_fetch" => ok(crate::convex_studio::logs::convex_studio_logs_fetch(
+            a(x, "id")?,
+            a(x, "projectId")?,
+            a(x, "deploymentName")?,
+            a(x, "streamId")?,
+            a(x, "cursor")?,
+            a(x, "waitMs")?,
+        )
+        .await),
+        "convex_studio_logs_cancel" => {
+            ok(crate::convex_studio::logs::convex_studio_logs_cancel(a(x, "streamId")?).await)
+        }
+        "convex_studio_schedules_jobs" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_jobs(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "udfPath")?,
+                a(x, "cursor")?,
+                a(x, "limit")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_job_args" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_job_args(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "argsId")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_cancel_job" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_cancel_job(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "jobId")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_cancel_all" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_cancel_all(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "udfPath")?,
+                a(x, "fromMs")?,
+                a(x, "untilMs")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_functions" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_functions(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_crons" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_crons(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_cron_runs" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_cron_runs(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "name")?,
+                a(x, "limit")?,
+            )
+            .await,
+        ),
+        "convex_studio_schedules_run_cron" => ok(
+            crate::convex_studio::schedules::convex_studio_schedules_run_cron(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "name")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_info" => {
+            ok(crate::convex_studio::settings::convex_studio_settings_info(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await)
+        }
+        "convex_studio_settings_stats" => ok(
+            crate::convex_studio::settings::convex_studio_settings_stats(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_recent_errors" => ok(
+            crate::convex_studio::settings::convex_studio_settings_recent_errors(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_env_reveal" => ok(
+            crate::convex_studio::settings::convex_studio_settings_env_reveal(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "name")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_env_import" => ok(
+            crate::convex_studio::settings::convex_studio_settings_env_import(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "text")?,
+                a(x, "overwrite")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_set_paused" => ok(
+            crate::convex_studio::settings::convex_studio_settings_set_paused(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "paused")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_export_request" => ok(
+            crate::convex_studio::settings::convex_studio_settings_export_request(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "includeStorage")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_export_status" => ok(
+            crate::convex_studio::settings::convex_studio_settings_export_status(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_import_status" => ok(
+            crate::convex_studio::settings::convex_studio_settings_import_status(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "importId")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_import_confirm" => ok(
+            crate::convex_studio::settings::convex_studio_settings_import_confirm(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "importId")?,
+            )
+            .await,
+        ),
+        "convex_studio_settings_import_cancel" => ok(
+            crate::convex_studio::settings::convex_studio_settings_import_cancel(
+                a(x, "id")?,
+                a(x, "projectId")?,
+                a(x, "deploymentName")?,
+                a(x, "importId")?,
+            )
+            .await,
+        ),
+        "convex_studio_files_upload" => {
+            let folder = tempfile::tempdir().map_err(|e| e.to_string())?;
+            let path = folder.path().join("l8db-upload.txt");
+            std::fs::write(&path, "l8db browser upload").map_err(|e| e.to_string())?;
+            let access = crate::convex_studio::deployment(
+                &a::<String>(x, "id")?,
+                a(x, "projectId")?,
+                &a::<String>(x, "deploymentName")?,
+            )
+            .await?;
+            ok(crate::convex_studio::files::upload_paths(&access, vec![path]).await)
+        }
+        "convex_studio_files_download" => {
+            let access = crate::convex_studio::deployment(
+                &a::<String>(x, "id")?,
+                a(x, "projectId")?,
+                &a::<String>(x, "deploymentName")?,
+            )
+            .await?;
+            let storage_id: String = a(x, "storageId")?;
+            let (_, response) =
+                crate::convex_studio::files::file_response(&access, &storage_id).await?;
+            let folder = tempfile::tempdir().map_err(|e| e.to_string())?;
+            crate::baas_file::save_response(response, folder.path().join("download")).await?;
+            Ok(json!(true))
+        }
+        "convex_studio_settings_env_export" => {
+            let access = crate::convex_studio::deployment(
+                &a::<String>(x, "id")?,
+                a(x, "projectId")?,
+                &a::<String>(x, "deploymentName")?,
+            )
+            .await?;
+            let variables = crate::convex_studio::settings::environment(&access).await?;
+            Ok(json!(crate::convex_studio::settings::format_dotenv(
+                &variables
+            )))
+        }
+        "convex_studio_settings_export_download" => {
+            let access = crate::convex_studio::deployment(
+                &a::<String>(x, "id")?,
+                a(x, "projectId")?,
+                &a::<String>(x, "deploymentName")?,
+            )
+            .await?;
+            let folder = tempfile::tempdir().map_err(|e| e.to_string())?;
+            let path = folder.path().join("snapshot.zip");
+            crate::convex_studio::settings::download_export(&access, path.clone()).await?;
+            Ok(json!(path.to_string_lossy()))
+        }
+        "convex_studio_settings_import_start" => {
+            let access = crate::convex_studio::deployment(
+                &a::<String>(x, "id")?,
+                a(x, "projectId")?,
+                &a::<String>(x, "deploymentName")?,
+            )
+            .await?;
+            let folder = tempfile::tempdir().map_err(|e| e.to_string())?;
+            let path = folder.path().join("import.jsonl");
+            std::fs::write(&path, "{\"name\":\"l8db\"}\n").map_err(|e| e.to_string())?;
+            let mode: String = a(x, "mode")?;
+            let table: Option<String> = a(x, "tableName")?;
+            ok(crate::convex_studio::settings::start_import(
+                &access,
+                &path,
+                &mode,
+                table.as_deref(),
+            )
+            .await
+            .map(Some))
+        }
         _ => Err(format!("Unsupported browser lab command: {command}")),
     }
 }

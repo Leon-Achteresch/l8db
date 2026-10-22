@@ -1,11 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ExternalLink, Server } from "lucide-react";
+import { ExternalLink, PanelsTopLeft, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type ConvexProject, convexDeployments } from "@/lib/db";
-import { ConvexEnvironmentView } from "./convex-environment-view";
+
+const route = getRouteApi("/baas");
 
 export function ConvexProjectView({ id, project }: { id: string; project: ConvexProject }) {
+  const search = route.useSearch();
+  const navigate = useNavigate();
   const deployments = useQuery({
     queryKey: ["convex", id, "deployments", project.id],
     queryFn: () => convexDeployments(id, project.id),
@@ -60,11 +64,25 @@ export function ConvexProjectView({ id, project }: { id: string; project: Convex
                 </p>
               )}
               {deployment.kind === "cloud" && (
-                <ConvexEnvironmentView
-                  id={id}
-                  projectId={project.id}
-                  deploymentName={deployment.name}
-                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() =>
+                    void navigate({
+                      to: "/baas",
+                      search: {
+                        ...search,
+                        id,
+                        project: project.id,
+                        deployment: deployment.name,
+                        studio: undefined,
+                      },
+                    })
+                  }
+                >
+                  <PanelsTopLeft className="size-3.5" /> Studio öffnen
+                </Button>
               )}
             </div>
           ))}

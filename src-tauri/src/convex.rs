@@ -56,7 +56,7 @@ struct ConvexEnvironmentVariables {
     environment_variables: std::collections::BTreeMap<String, String>,
 }
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -75,7 +75,7 @@ fn profile_id(seed: &str) -> String {
         .collect()
 }
 
-fn self_hosted_url(raw: &str) -> Result<reqwest::Url, String> {
+pub(crate) fn self_hosted_url(raw: &str) -> Result<reqwest::Url, String> {
     crate::baas_file::origin_url(raw, "Convex", "http://127.0.0.1:3210")
 }
 
@@ -83,7 +83,7 @@ fn token_account(id: &str) -> String {
     format!("baas:convex:{id}:token")
 }
 
-fn validate_id(id: &str) -> Result<&str, String> {
+pub(crate) fn validate_id(id: &str) -> Result<&str, String> {
     if id.len() != 32 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("Ungültige Convex-Verbindungs-ID.".into());
     }
@@ -115,7 +115,7 @@ async fn cloud_profile_and_token(id: &str) -> Result<(ConvexProfile, String), St
     Ok((profile, token))
 }
 
-async fn profile_and_token(id: &str) -> Result<(ConvexProfile, String), String> {
+pub(crate) async fn profile_and_token(id: &str) -> Result<(ConvexProfile, String), String> {
     let id = validate_id(id)?;
     let profile = profiles()
         .await?
@@ -210,6 +210,7 @@ pub async fn convex_connect_self_hosted(
 async fn save_profile(profile: ConvexProfile, token: &str) -> Result<ConvexProfile, String> {
     let mut items = profiles().await?;
     crate::db::secrets::store_secret(token_account(&profile.id), token.to_string()).await?;
+    crate::convex_studio::forget_access(&profile.id);
     items.retain(|item| item.id != profile.id);
     items.push(profile.clone());
     save_profiles(&items).await?;
@@ -229,6 +230,7 @@ pub async fn convex_disconnect(id: String) -> Result<(), String> {
         return Err("Convex-Team nicht gefunden.".into());
     }
     crate::db::secrets::delete_secret(token_account(id)).await?;
+    crate::convex_studio::forget_access(id);
     items.retain(|item| item.id != id);
     save_profiles(&items).await
 }
@@ -280,7 +282,7 @@ pub async fn convex_deployments(
     deployments_for(&profile, &token, project_id).await
 }
 
-async fn deployment_endpoint(
+pub(crate) async fn deployment_endpoint(
     profile: &ConvexProfile,
     token: &str,
     project_id: u64,

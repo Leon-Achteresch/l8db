@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cloud, Plus, RefreshCw, Server, Unplug } from "lucide-react";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Cloud, Plus, RefreshCw, Unplug } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useConvexFunctionHistory } from "@/features/baas/convex-studio/functions/convex-function-history-store";
 import {
   convexConnect,
   convexConnectSelfHosted,
@@ -12,11 +14,15 @@ import {
   convexProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { ConvexEnvironmentView } from "./convex-environment-view";
 import { ConvexProjectView } from "./convex-project-view";
+import { ConvexStudio } from "./convex-studio/convex-studio";
+
+const route = getRouteApi("/baas");
 
 export function ConvexView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
+  const search = route.useSearch();
+  const navigate = useNavigate();
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.convex");
   const selfHostedFeature = useNewFeatureVisibility<HTMLDivElement>("baas.convex.self-hosted");
   const [selfHosted, setSelfHosted] = useState(false);
@@ -40,6 +46,14 @@ export function ConvexView({ initialId }: { initialId?: string }) {
     enabled: Boolean(selected) && !selected?.url,
   });
 
+  function closeStudio() {
+    if (search.project === undefined && search.deployment === undefined) return;
+    void navigate({
+      to: "/baas",
+      search: { ...search, project: undefined, deployment: undefined, studio: undefined },
+    });
+  }
+
   async function connect() {
     if (selfHosted) {
       setBusy(true);
@@ -48,6 +62,7 @@ export function ConvexView({ initialId }: { initialId?: string }) {
         const profile = await convexConnectSelfHosted(url, token);
         await queryClient.invalidateQueries({ queryKey: ["convex", "profiles"] });
         setSelectedId(profile.id);
+        closeStudio();
         setUrl("");
         setToken("");
         setAdding(false);
@@ -87,11 +102,13 @@ export function ConvexView({ initialId }: { initialId?: string }) {
     setError(null);
     try {
       await convexDisconnect(selected.id);
+      useConvexFunctionHistory.getState().clearProfile(selected.id);
       queryClient.removeQueries({ queryKey: ["convex", selected.id] });
       await queryClient.invalidateQueries({ queryKey: ["convex", "profiles"] });
       setSelectedId(null);
       setCursor(null);
       setHistory([]);
+      closeStudio();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -215,6 +232,7 @@ export function ConvexView({ initialId }: { initialId?: string }) {
                       role="tab"
                       aria-selected={selected.id === item.id}
                       onClick={() => {
+                        if (item.id !== selected.id) closeStudio();
                         setSelectedId(item.id);
                         setCursor(null);
                         setHistory([]);
@@ -248,22 +266,34 @@ export function ConvexView({ initialId }: { initialId?: string }) {
                 </div>
               </div>
               {selected.url ? (
-                <section
-                  data-baas-section="deployments"
-                  className="max-w-xl scroll-mt-6 rounded-2xl border bg-card p-5"
-                >
-                  <div className="flex items-center gap-2">
-                    <Server className="size-4 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold">Selbst gehostetes Deployment</h3>
-                  </div>
-                  <p
-                    className="mt-2 truncate font-mono text-xs text-muted-foreground"
-                    title={selected.url}
-                  >
-                    {selected.url}
-                  </p>
-                  <ConvexEnvironmentView id={selected.id} projectId={0} deploymentName="" />
-                </section>
+                <div data-baas-section="deployments" className="scroll-mt-6">
+                  <ConvexStudio
+                    deployment={{
+                      profileId: selected.id,
+                      projectId: 0,
+                      deploymentName: "",
+                      title: selected.url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+                      url: selected.url,
+                      selfHosted: true,
+                    }}
+                  />
+                </div>
+              ) : search.deployment && search.project !== undefined ? (
+                <div data-baas-section="deployments" className="scroll-mt-6 space-y-3">
+                  <Button variant="ghost" size="sm" onClick={closeStudio}>
+                    <ArrowLeft className="size-3.5" /> Projekte
+                  </Button>
+                  <ConvexStudio
+                    deployment={{
+                      profileId: selected.id,
+                      projectId: search.project,
+                      deploymentName: search.deployment,
+                      title: search.deployment,
+                      url: null,
+                      selfHosted: false,
+                    }}
+                  />
+                </div>
               ) : projects.isPending ? (
                 <p className="text-sm text-muted-foreground">Projekte werden geladen…</p>
               ) : projects.isError ? (
