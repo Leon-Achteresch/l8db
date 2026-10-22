@@ -31,6 +31,9 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
       queryClient.setQueryData(["supabase", reference, "has-project-key"], true);
       await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "objects"] });
       await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "auth-users"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "studio-capabilities"],
+      });
       setApiKey("");
     } catch (reason) {
       setError(String(reason));
@@ -47,6 +50,9 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
       queryClient.setQueryData(["supabase", reference, "has-project-key"], true);
       await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "objects"] });
       await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "auth-users"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "studio-capabilities"],
+      });
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -62,6 +68,9 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
       queryClient.setQueryData(["supabase", reference, "has-project-key"], false);
       queryClient.removeQueries({ queryKey: ["supabase", reference, "objects"] });
       queryClient.removeQueries({ queryKey: ["supabase", reference, "auth-users"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "studio-capabilities"],
+      });
     } catch (reason) {
       setError(String(reason));
     } finally {

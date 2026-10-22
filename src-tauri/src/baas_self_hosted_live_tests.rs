@@ -7,17 +7,17 @@ use crate::db::pool::create_pool_state;
 use crate::db::{create_adapter_from_string, DatabaseKind};
 use crate::supabase::*;
 
-fn env(name: &str) -> Option<String> {
+pub(crate) fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
 }
 
-fn isolate_secrets() -> tempfile::TempDir {
+pub(crate) fn isolate_secrets() -> tempfile::TempDir {
     let directory = tempfile::tempdir().unwrap();
     std::env::set_var("L8DB_DEV_SECRETS", directory.path().join("secrets.json"));
     directory
 }
 
-async fn latency<F, Fut>(label: &str, budget_ms: u128, mut run: F)
+pub(crate) async fn latency<F, Fut>(label: &str, budget_ms: u128, mut run: F)
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = ()>,
@@ -34,7 +34,7 @@ where
     assert!(p95 <= budget_ms, "{label}: p95 {p95} ms > {budget_ms} ms");
 }
 
-async fn pg_query(url: &str, key: &str, query: &str) -> serde_json::Value {
+pub(crate) async fn pg_query(url: &str, key: &str, query: &str) -> serde_json::Value {
     let response = reqwest::Client::new()
         .post(format!("{}/pg/query", url.trim_end_matches('/')))
         .header("apikey", key)

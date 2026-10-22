@@ -34,6 +34,7 @@ export * from "./server-info";
 export * from "./sql-log";
 export * from "./storage";
 export * from "./supabase";
+export * from "./supabase-studio";
 export * from "./team";
 export * from "./transactions";
 export * from "./transfer";
