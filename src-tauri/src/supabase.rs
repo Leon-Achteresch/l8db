@@ -19,7 +19,7 @@ const SELF_HOSTED_HEALTH: [(&str, &str); 5] = [
     ("storage", "storage/v1/status"),
 ];
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -30,7 +30,10 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
-fn project_api_auth(request: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+pub(crate) fn project_api_auth(
+    request: reqwest::RequestBuilder,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
     let request = request.header("apikey", api_key);
     if api_key.starts_with("eyJ") && api_key.split('.').count() == 3 {
         request.bearer_auth(api_key)
@@ -97,7 +100,7 @@ fn env_value(raw: &str) -> &str {
         .unwrap_or(value)
 }
 
-fn validate_ref(reference: &str) -> Result<&str, String> {
+pub(crate) fn validate_ref(reference: &str) -> Result<&str, String> {
     if reference.is_empty()
         || reference.len() > 80
         || !reference
@@ -109,7 +112,7 @@ fn validate_ref(reference: &str) -> Result<&str, String> {
     Ok(reference)
 }
 
-fn is_self_hosted(reference: &str) -> bool {
+pub(crate) fn is_self_hosted(reference: &str) -> bool {
     reference.starts_with(SELF_HOSTED_PREFIX)
 }
 
@@ -117,7 +120,7 @@ fn self_hosted_base_url(raw: &str) -> Result<reqwest::Url, String> {
     crate::baas_file::origin_url(raw, "Supabase", "https://supabase.example.com")
 }
 
-fn cloud_ref(reference: &str) -> Result<&str, String> {
+pub(crate) fn cloud_ref(reference: &str) -> Result<&str, String> {
     let reference = validate_ref(reference)?;
     if is_self_hosted(reference) {
         return Err("Bei selbst gehosteten Supabase-Instanzen nicht verfügbar.".into());
@@ -135,12 +138,12 @@ fn self_hosted_reference(url: &reqwest::Url) -> String {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct SelfHostedProject {
-    reference: String,
-    name: String,
-    url: String,
+pub(crate) struct SelfHostedProject {
+    pub(crate) reference: String,
+    pub(crate) name: String,
+    pub(crate) url: String,
     #[serde(default = "secret_key_default")]
-    secret_key: bool,
+    pub(crate) secret_key: bool,
 }
 
 fn secret_key_default() -> bool {
@@ -188,7 +191,7 @@ async fn save_self_hosted_projects(projects: &[SelfHostedProject]) -> Result<(),
     .await
 }
 
-async fn self_hosted_project(reference: &str) -> Result<SelfHostedProject, String> {
+pub(crate) async fn self_hosted_project(reference: &str) -> Result<SelfHostedProject, String> {
     self_hosted_projects()
         .await?
         .into_iter()
@@ -197,7 +200,7 @@ async fn self_hosted_project(reference: &str) -> Result<SelfHostedProject, Strin
 }
 
 impl SelfHostedProject {
-    fn pg_meta(&self) -> bool {
+    pub(crate) fn pg_meta(&self) -> bool {
         self.secret_key
             && self_hosted_base_url(&self.url)
                 .map(|base| cloud_reference_of(&base).is_none())
@@ -205,7 +208,7 @@ impl SelfHostedProject {
     }
 }
 
-async fn uses_pg_meta(reference: &str) -> Result<bool, String> {
+pub(crate) async fn uses_pg_meta(reference: &str) -> Result<bool, String> {
     Ok(!is_self_hosted(reference) || self_hosted_project(reference).await?.pg_meta())
 }
 
@@ -225,7 +228,7 @@ fn cloud_project_url(reference: &str) -> Result<reqwest::Url, String> {
         .map_err(|_| "Ungültige Supabase-URL.".to_string())
 }
 
-async fn project_url(reference: &str, path: &str) -> Result<reqwest::Url, String> {
+pub(crate) async fn project_url(reference: &str, path: &str) -> Result<reqwest::Url, String> {
     let reference = validate_ref(reference)?;
     let base = if is_self_hosted(reference) {
         self_hosted_base_url(&self_hosted_project(reference).await?.url)?
@@ -240,7 +243,7 @@ fn project_key_account(reference: &str) -> String {
     format!("baas:supabase:{reference}:project-key")
 }
 
-fn validate_object_key(key: &str) -> Result<&str, String> {
+pub(crate) fn validate_object_key(key: &str) -> Result<&str, String> {
     if key.is_empty()
         || key.len() > 1024
         || key.contains('\\')
@@ -253,7 +256,7 @@ fn validate_object_key(key: &str) -> Result<&str, String> {
     Ok(key)
 }
 
-fn validate_bucket(bucket: &str) -> Result<&str, String> {
+pub(crate) fn validate_bucket(bucket: &str) -> Result<&str, String> {
     if bucket.is_empty()
         || bucket.len() > 256
         || bucket.contains('/')
@@ -285,14 +288,14 @@ async fn save_project_key_index(references: &[String]) -> Result<(), String> {
     .await
 }
 
-async fn token() -> Result<String, String> {
+pub(crate) async fn token() -> Result<String, String> {
     crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
         .await?
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "Supabase ist noch nicht verbunden.".to_string())
 }
 
-async fn response_json<T: serde::de::DeserializeOwned>(
+pub(crate) async fn response_json<T: serde::de::DeserializeOwned>(
     response: reqwest::Response,
 ) -> Result<T, String> {
     let status = response.status();
@@ -312,7 +315,7 @@ async fn response_json<T: serde::de::DeserializeOwned>(
         .map_err(|_| "Supabase hat unerwartete Daten geliefert.".into())
 }
 
-async fn management_get<T: serde::de::DeserializeOwned>(
+pub(crate) async fn management_get<T: serde::de::DeserializeOwned>(
     access_token: &str,
     path: &str,
 ) -> Result<T, String> {
@@ -326,7 +329,7 @@ async fn management_get<T: serde::de::DeserializeOwned>(
     response_json(response).await
 }
 
-async fn database_query<T: serde::de::DeserializeOwned>(
+pub(crate) async fn database_query<T: serde::de::DeserializeOwned>(
     reference: &str,
     query: &str,
     parameters: &[serde_json::Value],
@@ -359,7 +362,34 @@ async fn database_query<T: serde::de::DeserializeOwned>(
     response_json(response).await
 }
 
-fn quote_identifier(value: &str) -> Result<String, String> {
+pub(crate) async fn database_execute(
+    reference: &str,
+    query: &str,
+    parameters: &[serde_json::Value],
+) -> Result<Vec<serde_json::Value>, String> {
+    let reference = validate_ref(reference)?;
+    if !uses_pg_meta(reference).await? {
+        return Err(
+            "SQL ist nur mit Secret Key (selbst gehostet) oder Supabase-Zugangstoken möglich."
+                .into(),
+        );
+    }
+    if is_self_hosted(reference) {
+        return database_query(reference, query, parameters).await;
+    }
+    let response = client()
+        .post(format!(
+            "https://api.supabase.com/v1/projects/{reference}/database/query"
+        ))
+        .bearer_auth(token().await?)
+        .json(&serde_json::json!({"query": query, "parameters": parameters}))
+        .send()
+        .await
+        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+pub(crate) fn quote_identifier(value: &str) -> Result<String, String> {
     if value.is_empty() || value.len() > 128 || value.contains('\0') {
         return Err("Ungültiger Datenbankname.".into());
     }
@@ -807,7 +837,7 @@ pub async fn supabase_bucket_details(
     Ok(details)
 }
 
-async fn project_secret_key(reference: &str) -> Result<String, String> {
+pub(crate) async fn project_secret_key(reference: &str) -> Result<String, String> {
     crate::db::secrets::load_secret(project_key_account(reference))
         .await?
         .ok_or_else(|| "Für diese Aktion wird ein Supabase Secret API Key benötigt.".into())

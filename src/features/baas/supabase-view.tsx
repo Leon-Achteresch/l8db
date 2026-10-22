@@ -14,7 +14,7 @@ import {
   supabaseProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { SupabaseProjectView } from "./supabase-project-view";
+import { SupabaseStudio } from "./supabase-studio/supabase-studio";
 
 export function SupabaseView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
@@ -242,7 +242,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
           ) : projects.isPending ? (
             <p className="text-sm text-muted-foreground">Projekte werden geladen…</p>
           ) : selected ? (
-            <SupabaseProjectView key={selected.reference} project={selected} />
+            <SupabaseStudio key={selected.reference} project={selected} />
           ) : (
             <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
               Für diesen Zugangstoken sind keine Projekte sichtbar.

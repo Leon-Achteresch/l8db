@@ -6,7 +6,7 @@ import { BaasView } from "@/features/baas/baas-view";
 export const Route = createFileRoute("/baas")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { provider: BaasProvider; id?: string; section?: BaasSection } => ({
+  ): { provider: BaasProvider; id?: string; section?: BaasSection; studio?: string } => ({
     provider: BAAS_PROVIDERS.some((item) => item.id === search.provider)
       ? (search.provider as BaasProvider)
       : "supabase",
@@ -15,6 +15,7 @@ export const Route = createFileRoute("/baas")({
       typeof search.section === "string" && search.section in SECTION_INFO
         ? (search.section as BaasSection)
         : undefined,
+    studio: typeof search.studio === "string" ? search.studio : undefined,
   }),
   component: BaasView,
 });
