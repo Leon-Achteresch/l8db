@@ -1,25 +1,34 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Columns2, Rows2 } from "lucide";
-import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
+import {
+  BookmarkPlusIcon,
+  FolderOpenIcon,
+  PlusIcon,
+  SquareIcon,
+  SquareSplitHorizontalIcon,
+} from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
+import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
+import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
 import { useSettingsStore } from "@/lib/settings";
-import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
+import { MAX_SPLIT_PANES, type SplitGroup, useSplitGroups, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
@@ -40,6 +49,12 @@ export function TableTabs() {
   const addPane = useSplitView((state) => state.addPane);
   const collapse = useSplitView((state) => state.collapse);
   const reveal = useSplitView((state) => state.reveal);
+  const activeGroup = useSplitView((state) => state.activeGroup);
+  const groups = useSplitGroups();
+  const saveGroup = useSplitView((state) => state.saveGroup);
+  const renameGroup = useSplitView((state) => state.renameGroup);
+  const deleteGroup = useSplitView((state) => state.deleteGroup);
+  const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
   const router = useRouter();
@@ -94,6 +109,11 @@ export function TableTabs() {
     navigateToTab(navigate, tab);
   };
 
+  const handleOpenGroup = (group: SplitGroup) => {
+    const tab = useSplitView.getState().openGroup(group.id);
+    if (tab) navigateToTab(navigate, tab);
+  };
+
   const handleNewQueryTab = () => {
     const id = openQueryTab();
     void navigate({ to: "/query/$id", params: { id } });
@@ -130,6 +150,17 @@ export function TableTabs() {
           className="no-scrollbar min-w-0 overflow-x-auto py-1"
         >
           <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
+            {!easyMode &&
+              groups.map((group) => (
+                <SplitGroupTab
+                  key={group.id}
+                  group={group}
+                  isActive={split && activeGroup === group.id}
+                  onOpen={() => handleOpenGroup(group)}
+                  onRename={(name) => renameGroup(group.id, name)}
+                  onDelete={() => deleteGroup(group.id)}
+                />
+              ))}
             {tabs.map((tab, index) => (
               <TableTabsSortableTab
                 key={tabKey(tab)}
@@ -192,6 +223,24 @@ export function TableTabs() {
               icon={orientation === "horizontal" ? Rows2 : Columns2}
               className="size-3.5"
             />
+          </button>
+        </Tooltip>
+      )}
+      {split && !activeGroup && (
+        <Tooltip
+          content="Ansicht als Tab-Gruppe speichern"
+          side="bottom"
+          wrapperClassName="shrink-0"
+        >
+          <button
+            ref={groupFeature.ref}
+            type="button"
+            onClick={saveGroup}
+            aria-label="Ansicht als Tab-Gruppe speichern"
+            className={`${iconButton} relative`}
+          >
+            <BookmarkPlusIcon className="size-3.5" />
+            {groupFeature.isNew && <NewBadge className="absolute -top-1.5 left-4" />}
           </button>
         </Tooltip>
       )}
