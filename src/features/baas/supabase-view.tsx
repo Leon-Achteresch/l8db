@@ -119,7 +119,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
                   }}
                   className={`rounded-md px-3 py-1 text-xs transition-colors ${selfHosted === option ? "bg-primary/10 font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  {option ? "Selbst gehostet" : "Cloud"}
+                  {option ? "Projekt-URL & Key" : "Cloud"}
                 </button>
               ))}
             </fieldset>
@@ -127,7 +127,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
           </div>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
             {selfHosted
-              ? "Gib die URL des API-Gateways deiner Instanz (SUPABASE_PUBLIC_URL) und den SERVICE_ROLE_KEY oder SUPABASE_SECRET_KEY aus der .env ein. Der Schlüssel wird im OS-Schlüsselbund gespeichert."
+              ? "Gib NEXT_PUBLIC_SUPABASE_URL und einen Publishable/anon Key oder Secret/service_role Key ein, Cloud oder selbst gehostet. Mit Publishable/anon Key liest l8db wie deine App (RLS), ein Secret Key schaltet Tabellenliste, Auth-Benutzer und Bucket-Verwaltung frei. Der Schlüssel wird im OS-Schlüsselbund gespeichert."
               : "Erstelle in Supabase einen persönlichen Zugangstoken mit Leserechten für Projekte, Storage und Edge Functions. Für die Datenbankvorschau wird Database: Read benötigt; für die Übernahme eines vorhandenen Secret API Keys zusätzlich API Keys: Read und API Key Secrets: Read. Der Token wird im OS-Schlüsselbund gespeichert."}
           </p>
           <form
@@ -142,8 +142,8 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
                 <Input
                   value={apiUrl}
                   onChange={(event) => setApiUrl(event.target.value)}
-                  placeholder="API-URL, z. B. http://127.0.0.1:8000"
-                  aria-label="Supabase API-URL"
+                  placeholder="Projekt-URL (NEXT_PUBLIC_SUPABASE_URL)"
+                  aria-label="Supabase Projekt-URL"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -162,12 +162,10 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
               onChange={(event) => setToken(event.target.value)}
               placeholder={
                 selfHosted
-                  ? "service_role Key oder Secret API Key"
+                  ? "Publishable/anon Key oder Secret/service_role Key"
                   : "Supabase Personal Access Token"
               }
-              aria-label={
-                selfHosted ? "Supabase service_role Key" : "Supabase Personal Access Token"
-              }
+              aria-label={selfHosted ? "Supabase API Key" : "Supabase Personal Access Token"}
               autoComplete="off"
               spellCheck={false}
             />
@@ -176,7 +174,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
               disabled={busy || !token.trim() || (selfHosted && !apiUrl.trim())}
               className="self-start"
             >
-              {busy ? "Verbinde…" : selfHosted ? "Instanz verbinden" : "Projekte laden"}
+              {busy ? "Verbinde…" : selfHosted ? "Projekt verbinden" : "Projekte laden"}
             </Button>
           </form>
           {error && (

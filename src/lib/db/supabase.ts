@@ -11,6 +11,7 @@ export interface SupabaseProject {
   database: { host: string | null; version: string | null } | null;
   self_hosted: boolean;
   api_url: string | null;
+  secret_key: boolean;
 }
 
 export interface SupabaseBucket {
