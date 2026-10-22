@@ -185,7 +185,11 @@ async function withPage(
 }
 
 async function shot(page: Page, name: string) {
-  await page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true });
+  await page.screenshot({
+    path: `${artifacts}/${name}.png`,
+    fullPage: true,
+    animations: "disabled",
+  });
 }
 
 async function startBaasConnection(page: Page, provider: string, mode: string) {
@@ -255,6 +259,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!enabled) return;
   await pgQuery(cleanupSql).catch(() => {});
+  if (convexUrl) await convexCleanup().catch(() => {});
   await deleteUiUsers().catch(() => {});
   await deleteUiBuckets().catch(() => {});
   await browser?.close();
@@ -351,7 +356,7 @@ test.skipIf(!enabled)(
       await inserted.getByRole("button", { name: "Zeile bearbeiten" }).click();
       const edit = page.getByRole("dialog");
       await edit.getByLabel("title", { exact: true }).fill("Geänderte Zeile");
-      await edit.getByRole("button", { name: "Speichern" }).click();
+      await edit.getByRole("button", { name: "Speichern", exact: true }).click();
       await edit.waitFor({ state: "detached" });
       const edited = await rowWith(main, "Geänderte Zeile");
       await shot(page, "03-table-grid");
@@ -893,31 +898,482 @@ test.skipIf(!enabled || !supabasePublicKey)(
   120_000,
 );
 
-test.skipIf(!enabled)(
-  "Convex self-hosted: verbinden, Umgebungsvariablen, trennen",
+const convexTable = "l8db_ui_scratch";
+let convexId = "";
+
+async function convexApi(path: string, body?: unknown) {
+  const response = await fetch(`${convexUrl.replace(/\/$/, "")}/${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { authorization: `Convex ${convexKey}`, "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) throw Error(`${path} ${response.status}: ${await response.text()}`);
+  return response.headers.get("content-type")?.includes("json") ? response.json() : null;
+}
+
+async function convexCleanup() {
+  await convexApi("api/v1/unpause_deployment", {}).catch(() => {});
+  await convexApi("api/cancel_all_jobs", {
+    componentId: null,
+    udfPath: "messages.js:insertInternal",
+  }).catch(() => {});
+  await convexApi("api/delete_tables", { tableNames: [convexTable], componentId: null }).catch(
+    () => {},
+  );
+  const { environmentVariables } = (await convexApi("api/v1/list_environment_variables")) as {
+    environmentVariables: Record<string, string>;
+  };
+  const changes = Object.keys(environmentVariables)
+    .filter((name) => name.startsWith("L8DB_UI"))
+    .map((name) => ({ name, value: null }));
+  if (changes.length) await convexApi("api/v1/update_environment_variables", { changes });
+}
+
+async function runLogAction(note: string) {
+  const response = await fetch(`${convexUrl.replace(/\/$/, "")}/api/action`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: "actions:logSomething", args: { note }, format: "json" }),
+  });
+  expect(response.ok).toBe(true);
+}
+
+async function openConvex(page: Page, section: string, label: string) {
+  await page.goto(`${appUrl}/baas?provider=convex&id=${convexId}&studio=${section}`);
+  await page.getByRole("navigation", { name: "Convex Studio" }).waitFor();
+  return page.locator(`section[aria-label="${label}"]`);
+}
+
+async function selectFunction(main: Locator, module: string, name: string) {
+  await main.getByLabel("Funktionen durchsuchen").fill(name);
+  await main
+    .locator("details")
+    .filter({ hasText: `${module}.js` })
+    .getByRole("button", { name: new RegExp(`^\\w\\s*${name}(\\s|$)`) })
+    .click();
+}
+
+async function fillJson(page: Page, scope: Locator, text: string) {
+  await scope.getByRole("tab", { name: "Code" }).first().click();
+  await scope.locator(".monaco-editor .view-lines").first().click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("Delete");
+  await page.keyboard.insertText(text);
+}
+
+async function runFunction(page: Page, main: Locator, args: string) {
+  await fillJson(page, main, args);
+  const started = performance.now();
+  await main.getByRole("button", { name: "Ausführen", exact: true }).click();
+  return started;
+}
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: verbinden und Übersicht",
   async () => {
-    await withPage("convex", async (page) => {
+    await convexCleanup();
+    await withPage("convex-connect", async (page) => {
       await startBaasConnection(page, "Convex", "Selbst gehostet");
       await page.getByLabel("Backend-URL, z. B. http://127.0.0.1:3210").fill(convexUrl);
       await page.getByLabel("Admin-Key").fill(convexKey);
       await page.getByRole("button", { name: "Verbindung speichern" }).click();
-
       const card = page.locator("article").filter({ hasText: "Convex (selbst gehostet)" });
       await card.waitFor();
       await card.getByRole("button", { name: "Projekt öffnen" }).last().click();
-      await page.getByText("Selbst gehostetes Deployment").waitFor();
-      await page.getByLabel("Variablenname").fill("L8DB_UI_LAB");
-      await page.getByLabel("Variablenwert").fill("1");
-      await page.getByLabel("Variablenwert").press("Enter");
-      await page.getByText("L8DB_UI_LAB gespeichert.").waitFor();
-      await page.getByText("L8DB_UI_LAB", { exact: true }).waitFor();
-      await page.getByRole("button", { name: "L8DB_UI_LAB löschen" }).click();
-      await page.getByRole("alertdialog").getByRole("button", { name: "Löschen" }).click();
-      await page.getByText("L8DB_UI_LAB", { exact: true }).waitFor({ state: "detached" });
-
-      await page.getByRole("button", { name: "Trennen" }).click();
-      await page.getByRole("heading", { name: "Convex verbinden" }).waitFor();
+      const nav = page.getByRole("navigation", { name: "Convex Studio" });
+      await nav.waitFor();
+      convexId = new URL(page.url()).searchParams.get("id") ?? "";
+      expect(convexId).not.toBe("");
+      for (const label of [
+        "Übersicht",
+        "Daten",
+        "Funktionen",
+        "Dateien",
+        "Logs",
+        "Zeitpläne",
+        "Umgebung",
+        "Einstellungen",
+      ])
+        expect(await nav.getByRole("button", { name: label }).isEnabled()).toBe(true);
+      const main = page.locator("section[aria-label='Übersicht']");
+      await main.getByText("Selbst gehostet").first().waitFor();
+      await main.getByText("Läuft", { exact: true }).waitFor();
+      await main.getByText("Kennzahlen").waitFor();
+      const stat = (label: string) =>
+        main.getByText(label, { exact: true }).first().locator("xpath=..").innerText();
+      await poll(
+        () => stat("Tabellen"),
+        (text) => /\d/.test(text),
+      );
+      expect(await stat("Tabellen")).toMatch(/[1-9]/);
+      expect(await stat("Funktionen")).toMatch(/[1-9]/);
+      expect(await stat("Cronjobs")).toMatch(/2/);
+      await main.getByText("Letzte Fehler").waitFor();
+      await shot(page, "convex-01-overview");
     });
   },
-  120_000,
+  180_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: Daten durchsuchen, filtern, Dokumente und Tabellen bearbeiten",
+  async () => {
+    await withPage("convex-data", async (page) => {
+      const main = await openConvex(page, "data", "Daten");
+      const messages = main.getByRole("button", { name: /^messages\b/ });
+      await messages.waitFor();
+      const started = performance.now();
+      await messages.click();
+      await main
+        .getByText(/^Message \d+:/)
+        .first()
+        .waitFor();
+      timings.convexDataFirstData = Math.round(performance.now() - started);
+      expect(timings.convexDataFirstData).toBeLessThan(2000);
+      await main.getByText("Seite 1 · 50 Dokumente").waitFor();
+      await main.getByRole("button", { name: "Weiter" }).click();
+      await main.getByText(/^Seite 2 · \d+ Dokumente$/).waitFor();
+      await main.getByRole("button", { name: "Zurück" }).click();
+      await main.getByText("Seite 1 · 50 Dokumente").waitFor();
+      await shot(page, "convex-02-data-messages");
+
+      await main.getByRole("button", { name: "Filter", exact: true }).click();
+      await main.getByRole("button", { name: "Bedingung" }).click();
+      await main.getByLabel("Feld", { exact: true }).fill("author");
+      await main.getByLabel("Wert", { exact: true }).fill('"Grace"');
+      await main.getByRole("button", { name: "Anwenden" }).click();
+      await main.getByText("Seite 1 · 20 Dokumente").waitFor();
+      expect(await main.locator("tbody").getByText("Ada", { exact: true }).count()).toBe(0);
+      await shot(page, "convex-03-data-filter");
+      await main.getByRole("button", { name: "Zurücksetzen" }).click();
+      await main.getByText("Seite 1 · 50 Dokumente").waitFor();
+
+      await main.getByRole("tab", { name: "Schema & Indizes" }).click();
+      await main.getByText("by_author", { exact: true }).waitFor();
+      await main.getByText("search_body", { exact: true }).waitFor();
+      await shot(page, "convex-04-data-schema");
+
+      await main.getByLabel("Tabelle erstellen").click();
+      const create = page.getByRole("dialog");
+      await create.getByLabel("Tabellenname").fill(convexTable);
+      await create.getByRole("button", { name: "Erstellen" }).click();
+      await create.waitFor({ state: "detached" });
+      await main.getByRole("heading", { name: convexTable }).waitFor();
+      await main.getByText("Die Tabelle ist leer.").waitFor();
+
+      await main.getByRole("button", { name: "Dokument", exact: true }).click();
+      const insert = page.getByRole("dialog");
+      await fillJson(page, insert, '[{"label": "eins", "n": 1}, {"label": "zwei", "n": 2}]');
+      await insert.getByRole("button", { name: "Einfügen" }).click();
+      await insert.waitFor({ state: "detached" });
+      await main.getByText("2 Dokumente eingefügt.").waitFor();
+      await main.getByText(/^"?eins"?$/).waitFor();
+
+      await main.getByText(/^"?zwei"?$/).click();
+      const sheet = page.getByRole("dialog");
+      await sheet.getByRole("button", { name: "Bearbeiten" }).click();
+      const edit = page.getByRole("dialog", { name: /Dokument bearbeiten/ });
+      await fillJson(page, edit, '{"label": "zwei geändert", "n": 22}');
+      await edit.getByRole("button", { name: "Speichern", exact: true }).click();
+      await edit.waitFor({ state: "detached" });
+      await page.getByRole("dialog").getByText("zwei geändert").first().waitFor();
+      await shot(page, "convex-05-data-document");
+      await page.getByRole("dialog").getByRole("button", { name: "Löschen" }).click();
+      await confirmAlert(page, "Löschen");
+      await page.keyboard.press("Escape");
+      await main.getByText("zwei geändert").waitFor({ state: "detached" });
+      await main.getByText(/^"?eins"?$/).waitFor();
+
+      await main.getByLabel("Tabellenaktionen").click();
+      await page.getByRole("menuitem", { name: "Tabelle leeren…" }).click();
+      let alert = page.getByRole("alertdialog");
+      await alert.getByRole("textbox").fill(convexTable);
+      await alert.getByRole("button", { name: "Leeren" }).click();
+      await alert.waitFor({ state: "detached" });
+      await main.getByText("1 Dokumente gelöscht.").waitFor();
+      await main.getByText("Die Tabelle ist leer.").waitFor();
+
+      await main.getByLabel("Tabellenaktionen").click();
+      await page.getByRole("menuitem", { name: "Tabelle löschen…" }).click();
+      alert = page.getByRole("alertdialog");
+      await alert.getByRole("textbox").fill(convexTable);
+      await alert.getByRole("button", { name: "Tabelle löschen" }).click();
+      await alert.waitFor({ state: "detached" });
+      await main.getByRole("button", { name: new RegExp(`^${convexTable}\\b`) }).waitFor({
+        state: "detached",
+      });
+    });
+  },
+  240_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: Funktionen ausführen und HTTP-Aktionen testen",
+  async () => {
+    await withPage("convex-functions", async (page) => {
+      const main = await openConvex(page, "functions", "Funktionen");
+      await main.getByText("messages.js").first().waitFor();
+
+      await selectFunction(main, "messages", "list");
+      const started = await runFunction(page, main, '{"author": "Ada"}');
+      await main.getByText("Erfolgreich").waitFor();
+      timings.convexFunctionRun = Math.round(performance.now() - started);
+      expect(timings.convexFunctionRun).toBeLessThan(2000);
+      await main.getByText('"author": "Ada"').first().waitFor();
+      await main.getByText("Erfolgreich").scrollIntoViewIfNeeded();
+      await shot(page, "convex-06-function-query");
+
+      await selectFunction(main, "messages", "sendLater");
+      await runFunction(
+        page,
+        main,
+        '{"author": "l8db-ui", "body": "geplant von l8db", "delayMs": 3600000}',
+      );
+      await main.getByText("Erfolgreich").waitFor();
+
+      await selectFunction(main, "actions", "logSomething");
+      await runFunction(page, main, '{"note": "l8db-ui"}');
+      await main.getByText("Erfolgreich").waitFor();
+      await main.getByText(/logSomething called.*l8db-ui/).waitFor();
+      await main.getByText(/this is a warning/).waitFor();
+      await main.getByText(/this is a warning/).scrollIntoViewIfNeeded();
+      await shot(page, "convex-07-function-action");
+
+      await selectFunction(main, "actions", "fail");
+      await runFunction(page, main, "{}");
+      await main.getByText("Fehler", { exact: true }).first().waitFor();
+      await main
+        .getByText(/intentional failure from actions:fail/)
+        .first()
+        .waitFor();
+      await main
+        .getByText(/intentional failure from actions:fail/)
+        .first()
+        .scrollIntoViewIfNeeded();
+      await shot(page, "convex-08-function-error");
+
+      await main.getByRole("tab", { name: /HTTP-Aktionen/ }).click();
+      await main.getByRole("button", { name: /GET\s*\/messages/ }).click();
+      await main.getByRole("button", { name: "Senden" }).click();
+      await main.getByText("HTTP 200").waitFor();
+      await main
+        .getByText(/geplant|Message \d+/)
+        .first()
+        .waitFor();
+      await main.getByText("HTTP 200").scrollIntoViewIfNeeded();
+      await shot(page, "convex-09-http");
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: Logs live verfolgen, filtern, pausieren",
+  async () => {
+    await withPage("convex-logs", async (page) => {
+      const main = await openConvex(page, "logs", "Logs");
+      await main.getByLabel("Logs durchsuchen").waitFor();
+      await main.getByRole("switch").first().click();
+      expect(await main.getByRole("switch").first().getAttribute("aria-checked")).toBe("true");
+      await runLogAction("live");
+      await main.getByText("actions:logSomething").first().waitFor({ timeout: 30_000 });
+      await shot(page, "convex-10-logs-live");
+
+      await main.getByLabel("Logs durchsuchen").fill("live");
+      await poll(
+        () => main.getByText("messages:cronTick").count(),
+        (count) => count === 0,
+      );
+      expect(await main.getByText("messages:cronTick").count()).toBe(0);
+      await main.getByText("actions:logSomething").first().click();
+      const detail = page.getByRole("dialog");
+      await detail.getByText(/logSomething called.*live/).waitFor();
+      await shot(page, "convex-11-logs-detail");
+      await page.keyboard.press("Escape");
+      await detail.waitFor({ state: "detached" });
+
+      await main.getByRole("switch").first().click();
+      expect(await main.getByRole("switch").first().getAttribute("aria-checked")).toBe("false");
+      const rows = main.getByText("actions:logSomething");
+      const paused = await rows.count();
+      await runLogAction("live-paused");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      expect(await rows.count()).toBe(paused);
+      expect(await main.getByRole("button", { name: "Aktualisieren" }).isEnabled()).toBe(true);
+      await main.getByRole("button", { name: "Aktualisieren" }).click();
+      await poll(
+        () => rows.count(),
+        (count) => count > paused,
+      );
+      expect(await rows.count()).toBeGreaterThan(paused);
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: Dateien hochladen, ansehen, herunterladen, löschen",
+  async () => {
+    await withPage("convex-files", async (page) => {
+      const main = await openConvex(page, "files", "Dateien");
+      await main.locator("tbody tr").first().waitFor();
+      const before = await main.locator("tbody tr").count();
+      await main.getByRole("button", { name: "Hochladen" }).click();
+      await page.getByText("1 Datei(en) hochgeladen.").waitFor();
+      await poll(
+        () => main.locator("tbody tr").count(),
+        (count) => count === before + 1,
+      );
+      const row = main.locator("tbody tr").filter({ hasText: "19 B" }).first();
+      const id = (await row.locator("button[title]").first().getAttribute("title")) ?? "";
+      expect(id).not.toBe("");
+      await row.locator("button[title]").first().click();
+      await page.getByText("l8db browser upload").waitFor();
+      await shot(page, "convex-12-files-preview");
+      await page.getByLabel("Dateivorschau schließen").click();
+
+      await main.getByLabel(`Aktionen für ${id}`).click();
+      await page.getByRole("menuitem", { name: "Herunterladen" }).click();
+      await page.getByText("Datei gespeichert.").waitFor();
+
+      await main.getByLabel(`Aktionen für ${id}`).click();
+      await page.getByRole("menuitem", { name: "Löschen" }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Löschen" }).click();
+      await page.getByText("1 Datei(en) gelöscht.").waitFor();
+      await main.getByLabel(`Aktionen für ${id}`).waitFor({ state: "detached" });
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: geplante Funktion abbrechen, Cron-Jobs ansehen",
+  async () => {
+    await withPage("convex-schedules", async (page) => {
+      const main = await openConvex(page, "schedules", "Zeitpläne");
+      const row = main.locator("tr").filter({ hasText: "messages:insertInternal" });
+      await row.first().waitFor();
+      const before = await row.count();
+      await shot(page, "convex-13-schedules-jobs");
+      await row.first().click();
+      const sheet = page.getByRole("dialog");
+      await sheet.getByText("l8db-ui").waitFor();
+      await page.keyboard.press("Escape");
+      const target = main.locator("tr").filter({ hasText: "messages:insertInternal" }).first();
+      await target.getByRole("button", { name: "Abbrechen" }).click();
+      await page.getByRole("alertdialog").getByRole("button").last().click();
+      await page.getByRole("alertdialog").waitFor({ state: "detached" });
+      await poll(
+        () => row.count(),
+        (count) => count === before - 1,
+      );
+      expect(await row.count()).toBe(before - 1);
+
+      await main.getByRole("tab", { name: "Cron-Jobs" }).click();
+      await main.getByText("tick every minute").waitFor();
+      await main.getByText("daily cleanup").waitFor();
+      await main.getByText("tick every minute").click();
+      await main.getByText("Letzte Läufe").waitFor();
+      await shot(page, "convex-14-schedules-crons");
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: Umgebungsvariablen anlegen, anzeigen, ändern, importieren, löschen",
+  async () => {
+    await withPage("convex-environment", async (page) => {
+      const main = await openConvex(page, "environment", "Umgebung");
+      await main.getByLabel("Variablenname").fill("L8DB_UI_LAB");
+      await main.getByLabel("Variablenwert").fill("eins");
+      await main.getByLabel("Variablenwert").press("Enter");
+      const row = main.locator("tr").filter({ hasText: "L8DB_UI_LAB" });
+      await row.waitFor();
+      await main.getByLabel("L8DB_UI_LAB anzeigen").click();
+      await row.getByText("eins", { exact: true }).waitFor();
+      await main.getByLabel("L8DB_UI_LAB bearbeiten").click();
+      await main.getByLabel("Neuer Wert für L8DB_UI_LAB").fill("zwei");
+      await main.getByLabel("Neuer Wert für L8DB_UI_LAB").press("Enter");
+      await poll(
+        async () => {
+          if (await main.getByLabel("L8DB_UI_LAB anzeigen").isVisible())
+            await main.getByLabel("L8DB_UI_LAB anzeigen").click();
+          return row.innerText();
+        },
+        (text) => text.includes("zwei"),
+      );
+      await row.getByText("zwei", { exact: true }).waitFor();
+      await main.getByLabel("L8DB_UI_LAB verbergen").click();
+      await main.getByLabel("L8DB_UI_LAB bearbeiten").click();
+      await poll(
+        () => main.getByLabel("Neuer Wert für L8DB_UI_LAB").inputValue(),
+        (value) => value === "zwei",
+      );
+      await row.getByLabel("Abbrechen").click();
+
+      await main.getByRole("button", { name: ".env importieren" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog
+        .getByLabel(".env-Inhalt")
+        .fill('L8DB_UI_A=1\nexport L8DB_UI_B="mit leerzeichen"\n');
+      await dialog.getByRole("button", { name: "Importieren" }).click();
+      await dialog.waitFor({ state: "detached" });
+      await main.getByText("L8DB_UI_A", { exact: true }).waitFor();
+      await main.getByText("L8DB_UI_B", { exact: true }).waitFor();
+      await main.getByLabel("L8DB_UI_B anzeigen").click();
+      await main.getByText("mit leerzeichen", { exact: true }).waitFor();
+      await shot(page, "convex-15-environment");
+
+      for (const name of ["L8DB_UI_LAB", "L8DB_UI_A", "L8DB_UI_B"]) {
+        await main.getByLabel(`${name} löschen`).click();
+        await confirmAlert(page, "Löschen");
+        await main.getByText(name, { exact: true }).waitFor({ state: "detached" });
+      }
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled || !convexUrl)(
+  "Convex Studio: Einstellungen, Pause, Export, trennen",
+  async () => {
+    await withPage("convex-settings", async (page) => {
+      const main = await openConvex(page, "settings", "Einstellungen");
+      await main.getByText("Snapshot-Export").waitFor();
+      await main.getByText("Gefahrenzone").waitFor();
+      await shot(page, "convex-16-settings");
+
+      await main.getByRole("button", { name: "Pausieren" }).click();
+      let dialog = page.getByRole("dialog");
+      await dialog.getByRole("textbox").fill("127.0.0.1:3210");
+      await dialog.getByRole("button", { name: "Pausieren" }).click();
+      await page.getByText("Deployment pausiert.").waitFor();
+      await main.getByRole("button", { name: "Fortsetzen" }).click();
+      dialog = page.getByRole("dialog");
+      await dialog.getByRole("button", { name: "Fortsetzen" }).click();
+      await page.getByText("Deployment läuft wieder.").waitFor();
+      await main.getByRole("button", { name: "Pausieren" }).waitFor();
+
+      const started = main.getByText(/^Gestartet /);
+      const previous = (await started.count()) ? await started.innerText() : "";
+      await main.getByRole("button", { name: "Export anfordern" }).click();
+      await poll(
+        async () => ((await started.count()) ? await started.innerText() : ""),
+        (text) => text !== "" && text !== previous,
+      );
+      await main.getByText("Letzter Export: Bereit").waitFor({ timeout: 60_000 });
+      await main.getByRole("button", { name: "Herunterladen" }).click();
+      await page.getByText(/Snapshot gespeichert unter/).waitFor();
+      await shot(page, "convex-17-settings-export");
+
+      await main.getByRole("button", { name: "Trennen" }).click();
+      dialog = page.getByRole("dialog");
+      await dialog.getByRole("textbox").fill("127.0.0.1:3210");
+      await dialog.getByRole("button", { name: "Trennen" }).click();
+      await page.getByRole("heading", { name: "Convex verbinden" }).waitFor();
+      await shot(page, "convex-18-disconnected");
+    });
+  },
+  240_000,
 );

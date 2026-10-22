@@ -5,6 +5,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import type { BaasFilePreview as BaasFilePreviewData } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { cn } from "@/lib/utils";
 import { base64ToBytes } from "@/lib/value-viewers/binary";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -15,12 +16,14 @@ export function BaasFilePreview({
   load,
   download,
   onClose,
+  className,
 }: {
   name: string;
   queryKey: readonly (string | number)[];
   load: () => Promise<BaasFilePreviewData>;
   download: () => Promise<boolean>;
   onClose: () => void;
+  className?: string;
 }) {
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.file-preview");
   const [saving, setSaving] = useState(false);
@@ -51,7 +54,7 @@ export function BaasFilePreview({
   }
 
   return (
-    <div ref={feature.ref} className="mt-4 rounded-xl border bg-background/70 p-4">
+    <div ref={feature.ref} className={cn("mt-4 rounded-xl border bg-background/70 p-4", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-2 truncate text-xs font-semibold" title={name}>

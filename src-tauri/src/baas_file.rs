@@ -163,6 +163,34 @@ pub async fn preview_response(mut response: reqwest::Response) -> Result<BaasFil
     })
 }
 
+pub fn origin_url(raw: &str, product: &str, example: &str) -> Result<reqwest::Url, String> {
+    let url = reqwest::Url::parse(raw.trim())
+        .map_err(|_| format!("Ungültige {product}-URL, z. B. {example}."))?;
+    let loopback = match url.host() {
+        Some(url::Host::Domain("localhost")) => true,
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        _ => false,
+    };
+    if !(url.scheme() == "https" || url.scheme() == "http" && loopback) {
+        return Err(format!(
+            "Die {product}-URL muss HTTPS verwenden (HTTP nur für localhost)."
+        ));
+    }
+    if url.host_str().unwrap_or_default().is_empty()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return Err(format!(
+            "Die {product}-URL darf nur aus Schema, Host und Port bestehen."
+        ));
+    }
+    Ok(url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{preview_response, save_response};
@@ -251,32 +279,4 @@ mod tests {
         assert_eq!(std::fs::read(path).unwrap(), b"original");
         server.await.unwrap();
     }
-}
-
-pub fn origin_url(raw: &str, product: &str, example: &str) -> Result<reqwest::Url, String> {
-    let url = reqwest::Url::parse(raw.trim())
-        .map_err(|_| format!("Ungültige {product}-URL, z. B. {example}."))?;
-    let loopback = match url.host() {
-        Some(url::Host::Domain("localhost")) => true,
-        Some(url::Host::Ipv4(address)) => address.is_loopback(),
-        Some(url::Host::Ipv6(address)) => address.is_loopback(),
-        _ => false,
-    };
-    if !(url.scheme() == "https" || url.scheme() == "http" && loopback) {
-        return Err(format!(
-            "Die {product}-URL muss HTTPS verwenden (HTTP nur für localhost)."
-        ));
-    }
-    if url.host_str().unwrap_or_default().is_empty()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || url.path() != "/"
-    {
-        return Err(format!(
-            "Die {product}-URL darf nur aus Schema, Host und Port bestehen."
-        ));
-    }
-    Ok(url)
 }
