@@ -21,7 +21,9 @@ export function isSelfHostedSupabaseDatabase(
 ): boolean {
   if (connection.kind !== "postgres" || connection.name !== name) return false;
   try {
-    return new URL(connection.connectionString).hostname === new URL(apiUrl).hostname;
+    const host = new URL(connection.connectionString).hostname;
+    const apiHost = new URL(apiUrl).hostname;
+    return host === apiHost || host === `db.${apiHost}`;
   } catch {
     return false;
   }

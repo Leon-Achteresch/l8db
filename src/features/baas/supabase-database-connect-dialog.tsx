@@ -67,7 +67,7 @@ export function SupabaseDatabaseConnectDialog({
         throw new Error("Host, Benutzer und Datenbank werden benötigt.");
       if (!Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535)
         throw new Error("Bitte einen gültigen Port eingeben.");
-      const sslMode = apiUrl ? "prefer" : "require";
+      const sslMode = apiUrl && !/\.supabase\.(co|com)$/.test(endpoint.host) ? "prefer" : "require";
       const host =
         endpoint.host.includes(":") && !endpoint.host.startsWith("[")
           ? `[${endpoint.host}]`
@@ -104,7 +104,7 @@ export function SupabaseDatabaseConnectDialog({
           <DialogTitle>Datenbank von „{name}“ verbinden</DialogTitle>
           <DialogDescription>
             {apiUrl
-              ? "Die Datenbank wird über den Supavisor-Pooler deiner Instanz verbunden. Der Benutzer lautet postgres.<POOLER_TENANT_ID>, das Passwort ist POSTGRES_PASSWORD aus der .env."
+              ? "Host und Benutzer sind vorbelegt und änderbar. Selbst gehostet läuft die Verbindung über den Supavisor-Pooler (Benutzer postgres.<POOLER_TENANT_ID>, Passwort POSTGRES_PASSWORD aus der .env)."
               : "Host und Benutzer kommen aus deinem Supabase-Projekt. Es fehlt nur das Datenbankpasswort, das du beim Anlegen des Projekts gesetzt hast."}
           </DialogDescription>
         </DialogHeader>

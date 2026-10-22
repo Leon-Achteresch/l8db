@@ -6,6 +6,7 @@ const bridge = process.env.L8DB_BAAS_BRIDGE ?? "http://127.0.0.1:27032";
 const appUrl = process.env.L8DB_BAAS_BROWSER_URL ?? "http://127.0.0.1:1432";
 const supabaseUrl = process.env.L8DB_E2E_SUPABASE_URL ?? "";
 const supabaseKey = process.env.L8DB_E2E_SUPABASE_KEY ?? "";
+const supabasePublicKey = process.env.L8DB_E2E_SUPABASE_PUBLIC_KEY ?? "";
 const convexUrl = process.env.L8DB_E2E_CONVEX_URL ?? "";
 const convexKey = process.env.L8DB_E2E_CONVEX_KEY ?? "";
 let browser: Browser;
@@ -97,10 +98,10 @@ async function withPage(name: string, body: (page: Page) => Promise<void>) {
   }
 }
 
-async function startBaasConnection(page: Page, provider: string) {
+async function startBaasConnection(page: Page, provider: string, mode: string) {
   await page.getByRole("button", { name: "Neue Verbindung" }).first().click();
   await page.getByRole("button", { name: provider, exact: true }).click();
-  await page.getByRole("button", { name: "Selbst gehostet" }).click();
+  await page.getByRole("button", { name: mode }).click();
 }
 
 beforeAll(async () => {
@@ -108,7 +109,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
   await deleteUiUser();
   await pgQuery(
-    "DROP TABLE IF EXISTS public.l8db_ui; CREATE TABLE public.l8db_ui (id int PRIMARY KEY, label text); INSERT INTO public.l8db_ui VALUES (1, 'erste Zeile'), (2, 'zweite Zeile')",
+    "DROP TABLE IF EXISTS public.l8db_ui; CREATE TABLE public.l8db_ui (id int PRIMARY KEY, label text); INSERT INTO public.l8db_ui VALUES (1, 'erste Zeile'), (2, 'zweite Zeile'); GRANT SELECT ON public.l8db_ui TO anon",
   );
 });
 
@@ -123,15 +124,15 @@ test.skipIf(!enabled)(
   "Supabase self-hosted: verbinden, Dienste, Tabellen, Storage, Auth, Datenbank, trennen",
   async () => {
     await withPage("supabase", async (page) => {
-      await startBaasConnection(page, "Supabase");
-      await page.getByLabel("API-URL, z. B. http://127.0.0.1:8000").fill("http://127.0.0.1:9");
-      await page.getByLabel("service_role Key oder Secret API Key").fill(supabaseKey);
+      await startBaasConnection(page, "Supabase", "Projekt-URL & Key");
+      await page.getByLabel("Projekt-URL (NEXT_PUBLIC_SUPABASE_URL)").fill("http://127.0.0.1:9");
+      await page.getByLabel("Publishable/anon Key oder Secret/service_role Key").fill(supabaseKey);
       await page.getByRole("button", { name: "Verbindung speichern" }).click();
       await page.getByRole("alert").filter({ hasText: "nicht erreichbar" }).waitFor();
       await page.evaluate(() => {
         (window as unknown as { baasFailures: unknown[] }).baasFailures.length = 0;
       });
-      await page.getByLabel("API-URL, z. B. http://127.0.0.1:8000").fill(supabaseUrl);
+      await page.getByLabel("Projekt-URL (NEXT_PUBLIC_SUPABASE_URL)").fill(supabaseUrl);
       await page.getByLabel("Name (optional)").fill("Supabase Lab");
       await page.getByRole("button", { name: "Verbindung speichern" }).click();
 
@@ -156,7 +157,7 @@ test.skipIf(!enabled)(
       expect(await page.getByText("ACTIVE_HEALTHY").count()).toBe(5);
       expect(await page.getByRole("heading", { name: "Projekt API Key" }).count()).toBe(0);
       expect(await page.getByRole("heading", { name: "Edge Functions" }).count()).toBe(0);
-      expect(await page.getByText("pg-meta der Instanz").count()).toBe(1);
+      expect(await page.getByText("pg-meta mit dem Secret").count()).toBe(1);
       expect(await page.getByRole("button", { name: "Supabase Studio" }).count()).toBe(1);
 
       const table = page.getByRole("button", { name: /^l8db_ui public/ });
@@ -189,7 +190,7 @@ test.skipIf(!enabled)(
   "Convex self-hosted: verbinden, Umgebungsvariablen, trennen",
   async () => {
     await withPage("convex", async (page) => {
-      await startBaasConnection(page, "Convex");
+      await startBaasConnection(page, "Convex", "Selbst gehostet");
       await page.getByLabel("Backend-URL, z. B. http://127.0.0.1:3210").fill(convexUrl);
       await page.getByLabel("Admin-Key").fill(convexKey);
       await page.getByRole("button", { name: "Verbindung speichern" }).click();
@@ -209,6 +210,40 @@ test.skipIf(!enabled)(
 
       await page.getByRole("button", { name: "Trennen" }).click();
       await page.getByRole("heading", { name: "Convex verbinden" }).waitFor();
+    });
+  },
+  120_000,
+);
+
+test.skipIf(!enabled || !supabasePublicKey)(
+  "Supabase mit Publishable Key: lesen wie die App, Tabelle per Namen öffnen",
+  async () => {
+    await withPage("supabase-public", async (page) => {
+      await startBaasConnection(page, "Supabase", "Projekt-URL & Key");
+      await page
+        .getByLabel("Projekt-URL (NEXT_PUBLIC_SUPABASE_URL)")
+        .fill(`NEXT_PUBLIC_SUPABASE_URL=${supabaseUrl}`);
+      await page
+        .getByLabel("Publishable/anon Key oder Secret/service_role Key")
+        .fill(supabasePublicKey);
+      await page.getByLabel("Name (optional)").fill("Supabase App");
+      await page.getByRole("button", { name: "Verbindung speichern" }).click();
+
+      const card = page.locator("article").filter({ hasText: "Supabase App" });
+      await card.waitFor();
+      await card.getByRole("button", { name: "Projekt öffnen" }).last().click();
+      await page.getByRole("heading", { level: 2, name: "Supabase App" }).waitFor();
+      await page.getByText("Publishable Key", { exact: true }).waitFor();
+      await page.getByText("ACTIVE_HEALTHY").nth(3).waitFor();
+      expect(await page.getByText("ACTIVE_HEALTHY").count()).toBe(4);
+      expect(await page.getByRole("heading", { name: "Auth-Benutzer" }).count()).toBe(0);
+      await page.getByLabel("Tabellenname").fill("l8db_ui");
+      await page.getByRole("button", { name: "Öffnen", exact: true }).click();
+      await page.getByText("zweite Zeile").waitFor();
+      await page.getByRole("columnheader", { name: "label" }).waitFor();
+
+      await page.getByRole("button", { name: "Trennen" }).click();
+      await page.getByRole("heading", { name: "Supabase verbinden" }).waitFor();
     });
   },
   120_000,

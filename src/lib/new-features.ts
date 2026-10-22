@@ -134,6 +134,7 @@ export const NEW_FEATURES = {
   "baas.supabase.auth-manage": "0.7.0",
   "baas.supabase.backups": "0.7.0",
   "baas.supabase.self-hosted": "0.16.0",
+  "baas.supabase.database.open-by-name": "0.16.0",
   "baas.firebase": "0.7.0",
   "baas.firebase.storage": "0.7.0",
   "baas.firebase.storage-upload": "0.7.0",

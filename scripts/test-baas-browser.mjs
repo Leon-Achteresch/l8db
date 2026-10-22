@@ -72,6 +72,7 @@ try {
     "test",
     "--manifest-path",
     "src-tauri/Cargo.toml",
+    "--no-default-features",
     "--lib",
     "baas_browser_bridge",
     "--",

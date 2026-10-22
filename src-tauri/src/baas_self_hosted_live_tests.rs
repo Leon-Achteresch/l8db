@@ -282,6 +282,107 @@ async fn supabase_self_hosted_live() {
 
 #[tokio::test]
 #[ignore]
+async fn supabase_public_key_live() {
+    let (Some(url), Some(key), Some(public_keys)) = (
+        env("L8DB_E2E_SUPABASE_URL"),
+        env("L8DB_E2E_SUPABASE_KEY"),
+        env("L8DB_E2E_SUPABASE_PUBLIC_KEYS"),
+    ) else {
+        return;
+    };
+    let _secrets = isolate_secrets();
+    pg_query(
+        &url,
+        &key,
+        "DROP TABLE IF EXISTS public.l8db_public; CREATE TABLE public.l8db_public (id int PRIMARY KEY, label text); INSERT INTO public.l8db_public SELECT n, 'row ' || n FROM generate_series(1, 60) n; GRANT SELECT ON public.l8db_public TO anon; NOTIFY pgrst, 'reload schema'",
+    )
+    .await;
+    for public_key in public_keys.split(',') {
+        let project = supabase_connect_self_hosted(
+            format!("NEXT_PUBLIC_SUPABASE_URL=\"{url}\""),
+            format!("NEXT_PUBLIC_SUPABASE_ANON_KEY={public_key}"),
+            String::new(),
+        )
+        .await
+        .unwrap();
+        let reference = project.reference.clone();
+        assert!(project.self_hosted);
+        assert!(!project.secret_key);
+        assert!(project.name.starts_with("Supabase "));
+
+        let health = supabase_health(reference.clone()).await.unwrap();
+        assert_eq!(health.len(), 4);
+        assert!(health.iter().all(|service| service.healthy), "{health:?}");
+        assert!(supabase_tables(reference.clone(), 0)
+            .await
+            .err()
+            .unwrap()
+            .contains("Tabellenliste"));
+        assert!(
+            supabase_table_columns(reference.clone(), "public".into(), "l8db_public".into())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let mut first =
+            supabase_table_rows(reference.clone(), "public".into(), "l8db_public".into(), 0).await;
+        for _ in 0..50 {
+            if first.is_ok() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            first =
+                supabase_table_rows(reference.clone(), "public".into(), "l8db_public".into(), 0)
+                    .await;
+        }
+        let first = first.unwrap();
+        assert_eq!(first.rows.len(), 50);
+        assert!(first.has_more);
+        assert_eq!(first.rows[0].values["label"], "row 1");
+        let second =
+            supabase_table_rows(reference.clone(), "public".into(), "l8db_public".into(), 50)
+                .await
+                .unwrap();
+        assert_eq!(second.rows.len(), 10);
+        assert!(!second.has_more);
+        assert!(supabase_table_rows(
+            reference.clone(),
+            "public".into(),
+            "missing_table".into(),
+            0
+        )
+        .await
+        .err()
+        .unwrap()
+        .contains("nicht gefunden"));
+        supabase_buckets(reference.clone()).await.unwrap();
+        assert!(supabase_auth_users(reference.clone(), 1).await.is_err());
+        latency("supabase public rows page", 500, || async {
+            supabase_table_rows(reference.clone(), "public".into(), "l8db_public".into(), 0)
+                .await
+                .unwrap();
+        })
+        .await;
+        supabase_disconnect_self_hosted(reference).await.unwrap();
+    }
+    assert!(supabase_connect_self_hosted(
+        url.clone(),
+        "sb_publishable_wrong".into(),
+        String::new()
+    )
+    .await
+    .is_err());
+    assert!(
+        supabase_connect_self_hosted(url.clone(), "not-a-key".into(), String::new())
+            .await
+            .is_err()
+    );
+    assert!(supabase_projects().await.unwrap().is_empty());
+    pg_query(&url, &key, "DROP TABLE public.l8db_public").await;
+}
+
+#[tokio::test]
+#[ignore]
 async fn convex_self_hosted_live() {
     let (Some(url), Some(key)) = (env("L8DB_E2E_CONVEX_URL"), env("L8DB_E2E_CONVEX_KEY")) else {
         return;

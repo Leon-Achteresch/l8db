@@ -20,42 +20,49 @@ import type { BaasProvider } from "./baas-providers";
 type Field = { key: string; label: string; secret?: boolean; optional?: boolean };
 type Guide = { steps: string[]; link: { label: string; url: string } };
 
-const SELF_HOSTED: Partial<Record<BaasProvider, { fields: Field[]; guide: Guide }>> = {
-  supabase: {
-    fields: [
-      { key: "endpoint", label: "API-URL, z. B. http://127.0.0.1:8000" },
-      { key: "token", label: "service_role Key oder Secret API Key", secret: true },
-      { key: "name", label: "Name (optional)", optional: true },
-    ],
-    guide: {
-      steps: [
-        "Die API-URL ist die Adresse des API-Gateways deiner Instanz (SUPABASE_PUBLIC_URL, im Docker-Setup Port 8000).",
-        "Den SERVICE_ROLE_KEY oder SUPABASE_SECRET_KEY aus der .env der Instanz kopieren.",
-        "Die Postgres-Datenbank verbindest du danach über den Pooler mit dem Benutzer postgres.<POOLER_TENANT_ID>.",
+const SELF_HOSTED: Partial<Record<BaasProvider, { label: string; fields: Field[]; guide: Guide }>> =
+  {
+    supabase: {
+      label: "Projekt-URL & Key",
+      fields: [
+        { key: "endpoint", label: "Projekt-URL (NEXT_PUBLIC_SUPABASE_URL)" },
+        {
+          key: "token",
+          label: "Publishable/anon Key oder Secret/service_role Key",
+          secret: true,
+        },
+        { key: "name", label: "Name (optional)", optional: true },
       ],
-      link: {
-        label: "Supabase-Doku zum Self-Hosting",
-        url: "https://supabase.com/docs/guides/self-hosting/docker",
+      guide: {
+        steps: [
+          "Die Projekt-URL ist NEXT_PUBLIC_SUPABASE_URL, also https://<ref>.supabase.co oder die Adresse deiner selbst gehosteten Instanz.",
+          "Publishable oder anon Key (NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY bzw. NEXT_PUBLIC_SUPABASE_ANON_KEY): Lesen wie deine App, mit RLS. Tabellen öffnest du über ihren Namen.",
+          "Secret oder service_role Key: voller Zugriff mit Tabellenliste, Auth-Benutzern und Bucket-Verwaltung. Ganze .env-Zeilen kannst du direkt einfügen.",
+        ],
+        link: {
+          label: "Supabase-Doku zum Self-Hosting",
+          url: "https://supabase.com/docs/guides/self-hosting/docker",
+        },
       },
     },
-  },
-  convex: {
-    fields: [
-      { key: "endpoint", label: "Backend-URL, z. B. http://127.0.0.1:3210" },
-      { key: "token", label: "Admin-Key", secret: true },
-    ],
-    guide: {
-      steps: [
-        "Die Backend-URL ist CONVEX_CLOUD_ORIGIN deiner Instanz, im Docker-Setup http://127.0.0.1:3210.",
-        "Einen Admin-Key erzeugst du im Backend-Container mit ./generate_admin_key.sh.",
+    convex: {
+      label: "Selbst gehostet",
+      fields: [
+        { key: "endpoint", label: "Backend-URL, z. B. http://127.0.0.1:3210" },
+        { key: "token", label: "Admin-Key", secret: true },
       ],
-      link: {
-        label: "Convex-Doku zum Self-Hosting",
-        url: "https://github.com/get-convex/convex-backend/tree/main/self-hosted",
+      guide: {
+        steps: [
+          "Die Backend-URL ist CONVEX_CLOUD_ORIGIN deiner Instanz, im Docker-Setup http://127.0.0.1:3210.",
+          "Einen Admin-Key erzeugst du im Backend-Container mit ./generate_admin_key.sh.",
+        ],
+        link: {
+          label: "Convex-Doku zum Self-Hosting",
+          url: "https://github.com/get-convex/convex-backend/tree/main/self-hosted",
+        },
       },
     },
-  },
-};
+  };
 
 const FIELDS: Record<BaasProvider, Field[]> = {
   supabase: [{ key: "token", label: "Personal Access Token", secret: true }],
@@ -200,7 +207,7 @@ export function BaasConnectForm({
                   }}
                   className={`rounded-md px-3 py-1 text-xs transition-colors ${selfHosted === option ? "bg-primary/10 font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  {option ? "Selbst gehostet" : "Cloud"}
+                  {option ? SELF_HOSTED[provider]?.label : "Cloud"}
                 </button>
               ))}
             </fieldset>

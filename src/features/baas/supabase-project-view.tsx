@@ -18,6 +18,7 @@ import { useSupabaseDatabase } from "./use-supabase-database";
 export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
   const navigate = useNavigate();
   const apiUrl = project.self_hosted ? project.api_url : null;
+  const cloudRef = apiUrl?.match(/^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/)?.[1];
   const database = useSupabaseDatabase(
     project.reference,
     apiUrl ? { url: apiUrl, name: project.name } : undefined,
@@ -46,10 +47,14 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
             variant="outline"
             size="sm"
             onClick={() =>
-              void openUrl(apiUrl ?? `https://supabase.com/dashboard/project/${project.reference}`)
+              void openUrl(
+                apiUrl && !cloudRef
+                  ? apiUrl
+                  : `https://supabase.com/dashboard/project/${cloudRef ?? project.reference}`,
+              )
             }
           >
-            {apiUrl ? "Supabase Studio" : "Supabase-Dashboard"}{" "}
+            {apiUrl && !cloudRef ? "Supabase Studio" : "Supabase-Dashboard"}{" "}
             <ExternalLink className="size-3.5" />
           </Button>
         </div>
@@ -105,7 +110,11 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
       <SupabaseServiceHealth reference={project.reference} />
       {!apiUrl && <SupabaseProjectKey key={project.reference} reference={project.reference} />}
       <div data-baas-section="database" className="scroll-mt-6">
-        <SupabaseDatabaseView key={project.reference} reference={project.reference} />
+        <SupabaseDatabaseView
+          key={project.reference}
+          reference={project.reference}
+          publicKey={Boolean(apiUrl) && (!project.secret_key || Boolean(cloudRef))}
+        />
       </div>
       {!apiUrl && <SupabaseBackupsView key={project.reference} reference={project.reference} />}
 
@@ -119,9 +128,11 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
               <SupabaseFunctionsView key={project.reference} reference={project.reference} />
             </div>
           )}
-          <div data-baas-section="auth" className="scroll-mt-6">
-            <SupabaseAuthView key={project.reference} reference={project.reference} />
-          </div>
+          {(!apiUrl || project.secret_key) && (
+            <div data-baas-section="auth" className="scroll-mt-6">
+              <SupabaseAuthView key={project.reference} reference={project.reference} />
+            </div>
+          )}
         </div>
       </div>
     </div>
