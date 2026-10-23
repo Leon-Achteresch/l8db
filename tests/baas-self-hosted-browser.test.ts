@@ -290,6 +290,9 @@ test.skipIf(!enabled)(
         await nav.waitFor();
         reference = new URL(page.url()).searchParams.get("id") ?? "";
         expect(reference).toStartWith("self-");
+
+        const main = page.locator("section[aria-label='Übersicht']");
+        await main.getByText("ACTIVE_HEALTHY").nth(4).waitFor();
         for (const label of [
           "Übersicht",
           "Tabellen",
@@ -303,10 +306,7 @@ test.skipIf(!enabled)(
           "Logs & Leistung",
           "Einstellungen",
         ])
-          expect(await nav.getByRole("button", { name: label }).isEnabled()).toBe(true);
-
-        const main = page.locator("section[aria-label='Übersicht']");
-        await main.getByText("ACTIVE_HEALTHY").nth(4).waitFor();
+          expect(await nav.getByRole("tab", { name: label }).isEnabled()).toBe(true);
         expect(await main.getByText("ACTIVE_HEALTHY").count()).toBe(5);
         await main.getByText("Secret Key", { exact: true }).waitFor();
         await main.getByText("Datenbankgröße").waitFor();
@@ -858,9 +858,9 @@ test.skipIf(!enabled || !supabasePublicKey)(
       await nav.waitFor();
       const overview = page.locator("section[aria-label='Übersicht']");
       await overview.getByText("Publishable Key", { exact: true }).waitFor();
-      await nav.getByRole("button", { name: "Tabellen" }).waitFor({ state: "visible" });
+      await nav.getByRole("tab", { name: "Tabellen" }).waitFor({ state: "visible" });
       for (const label of ["SQL", "Datenbank", "Richtlinien", "Auth", "Logs & Leistung"]) {
-        const item = nav.getByRole("button", { name: label });
+        const item = nav.getByRole("tab", { name: label });
         expect(await item.isDisabled()).toBe(true);
         expect(await item.getAttribute("title")).toMatch(/^Benötigt /);
       }
@@ -872,10 +872,10 @@ test.skipIf(!enabled || !supabasePublicKey)(
         "Realtime",
         "Einstellungen",
       ])
-        expect(await nav.getByRole("button", { name: label }).isEnabled()).toBe(true);
+        expect(await nav.getByRole("tab", { name: label }).isEnabled()).toBe(true);
       await shot(page, "24-public-overview");
 
-      await nav.getByRole("button", { name: "Tabellen" }).click();
+      await nav.getByRole("tab", { name: "Tabellen" }).click();
       const tables = page.locator("section[aria-label='Tabellen']");
       await tables.getByLabel("Tabellenname").fill("l8db_ui");
       await tables.getByRole("button", { name: "Öffnen", exact: true }).click();
@@ -884,7 +884,7 @@ test.skipIf(!enabled || !supabasePublicKey)(
       await tables.getByText("Row Level Security gilt", { exact: false }).waitFor();
       await shot(page, "25-public-table");
 
-      await nav.getByRole("button", { name: "Storage" }).click();
+      await nav.getByRole("tab", { name: "Storage" }).click();
       const storage = page.locator("section[aria-label='Storage']");
       await storage.getByLabel("Bucket-Name zum Öffnen").fill(publicBucket);
       await storage.getByRole("button", { name: "Öffnen", exact: true }).click();
@@ -994,7 +994,7 @@ test.skipIf(!enabled || !convexUrl)(
         "Umgebung",
         "Einstellungen",
       ])
-        expect(await nav.getByRole("button", { name: label }).isEnabled()).toBe(true);
+        expect(await nav.getByRole("tab", { name: label }).isEnabled()).toBe(true);
       const main = page.locator("section[aria-label='Übersicht']");
       await main.getByText("Selbst gehostet").first().waitFor();
       await main.getByText("Läuft", { exact: true }).waitFor();
