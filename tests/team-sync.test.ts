@@ -320,7 +320,7 @@ describe("team file sync", () => {
     expect(calls).toHaveLength(0);
     useTeamStore.setState({ lastSyncAt: Date.now() - 61_000 });
     window.dispatchEvent(new Event("focus"));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    for (let i = 0; i < 100 && calls.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
     expect(calls.map((call) => call.command)).toEqual(["team_connections"]);
   });
 
