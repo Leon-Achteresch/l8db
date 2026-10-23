@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
   type ConvexDocument,
   convexDataClear,
@@ -18,6 +18,7 @@ import {
   convexDataSchema,
   convexDataTables,
 } from "@/lib/db/convex-studio-data";
+import { BaasTableTabs } from "../../baas-table-tabs";
 import type { ConvexStudioDeployment } from "../convex-studio-sections";
 import { ConvexDataConfirmDialog } from "./convex-data-confirm-dialog";
 import { ConvexDataDocuments } from "./convex-data-documents";
@@ -41,6 +42,7 @@ export function ConvexDataTableView({
   const queryClient = useQueryClient();
   const [action, setAction] = useState<"import" | "clear" | "drop" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [tab, setTab] = useState("data");
   const tables = useQuery({
     queryKey: [...dataKey(deployment), "tables"],
     queryFn: () => convexDataTables(deployment),
@@ -55,50 +57,42 @@ export function ConvexDataTableView({
   const refresh = () => queryClient.invalidateQueries({ queryKey: dataKey(deployment) });
 
   return (
-    <div className="grid min-w-0 content-start gap-3">
-      <div className="flex items-center gap-2">
-        <h3 className="truncate font-mono text-sm font-semibold">{table}</h3>
-        {typeof count === "number" && (
-          <span className="text-xs text-muted-foreground">
-            {count.toLocaleString("de-DE")} Dokumente
-          </span>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
+        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-3">
+          <BaasTableTabs />
+          <h3 className="truncate font-mono text-xs font-medium">{table}</h3>
+          {typeof count === "number" && (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {count.toLocaleString("de-DE")} Dokumente
+            </span>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Tabellenaktionen">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setAction("import")}>
+                <Upload className="size-3.5" /> Importieren…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setAction("clear")}>
+                <Eraser className="size-3.5" /> Tabelle leeren…
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onSelect={() => setAction("drop")}>
+                <Trash2 className="size-3.5" /> Tabelle löschen…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        {message && (
+          <p role="status" className="shrink-0 border-b px-3 py-1.5 text-xs text-muted-foreground">
+            {message}
+          </p>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="ml-auto"
-              aria-label="Tabellenaktionen"
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setAction("import")}>
-              <Upload className="size-3.5" /> Importieren…
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={() => setAction("clear")}>
-              <Eraser className="size-3.5" /> Tabelle leeren…
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onSelect={() => setAction("drop")}>
-              <Trash2 className="size-3.5" /> Tabelle löschen…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      {message && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {message}
-        </p>
-      )}
-      <Tabs defaultValue="documents" className="min-w-0">
-        <TabsList>
-          <TabsTrigger value="documents">Dokumente</TabsTrigger>
-          <TabsTrigger value="schema">Schema & Indizes</TabsTrigger>
-        </TabsList>
-        <TabsContent value="documents" className="pt-2">
+        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
           <ConvexDataDocuments
             deployment={deployment}
             table={table}
@@ -107,7 +101,7 @@ export function ConvexDataTableView({
             onOpenReference={onOpenReference}
           />
         </TabsContent>
-        <TabsContent value="schema" className="pt-2">
+        <TabsContent value="columns" className="min-h-0 flex-1 overflow-auto p-4">
           <ConvexDataSchemaView
             deployment={deployment}
             table={table}

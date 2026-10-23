@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { convexDataCreateTable, convexDataTables } from "@/lib/db/convex-studio-data";
+import { BaasSidebarItem } from "../../baas-sidebar-item";
 import type { ConvexStudioDeployment } from "../convex-studio-sections";
 import { ConvexDataCreateTableDialog } from "./convex-data-create-table-dialog";
 import { dataKey } from "./convex-data-utils";
@@ -63,34 +64,28 @@ export function ConvexDataTableList({
         </Button>
       </div>
       {tables.isPending ? (
-        <p className="text-xs text-muted-foreground">Tabellen werden geladen…</p>
+        <p className="px-2 text-xs text-muted-foreground">Tabellen werden geladen…</p>
       ) : tables.isError ? (
         <p role="alert" className="text-xs text-destructive">
           {String(tables.error)}
         </p>
       ) : visible.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="px-2 text-xs text-muted-foreground">
           {needle ? "Keine passende Tabelle." : "Noch keine Tabellen."}
         </p>
       ) : (
-        <div className="max-h-[60vh] overflow-auto rounded-lg border">
-          {visible.map((table) => {
-            const active = selected === table.name;
-            return (
-              <button
-                key={table.name}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSelect(table.name)}
-                className={`flex w-full items-center justify-between gap-2 border-b px-3 py-1.5 text-left text-xs last:border-b-0 ${active ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
-              >
-                <span className="truncate font-mono">{table.name}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                  {table.documents === null ? "–" : table.documents.toLocaleString("de-DE")}
-                </span>
-              </button>
-            );
-          })}
+        <div className="grid gap-0.5">
+          {visible.map((table) => (
+            <BaasSidebarItem
+              key={table.name}
+              icon={Table2}
+              active={selected === table.name}
+              onClick={() => onSelect(table.name)}
+              hint={table.documents === null ? "–" : table.documents.toLocaleString("de-DE")}
+            >
+              {table.name}
+            </BaasSidebarItem>
+          ))}
         </div>
       )}
       {tables.data?.has_more && (

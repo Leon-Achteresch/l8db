@@ -71,6 +71,7 @@ export function ConvexDataDocuments({
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [showFilters, setShowFilters] = useState(false);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [offsets, setOffsets] = useState([0]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<"insert" | "patch" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -100,6 +101,7 @@ export function ConvexDataDocuments({
 
   function reset() {
     setCursors([null]);
+    setOffsets([0]);
     setSelected(new Set());
   }
 
@@ -138,8 +140,8 @@ export function ConvexDataDocuments({
   }
 
   return (
-    <div className="grid min-w-0 gap-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3 py-1.5">
         <Button
           variant={activeFilterCount(filter) ? "secondary" : "outline"}
           size="sm"
@@ -196,41 +198,53 @@ export function ConvexDataDocuments({
         </div>
       </div>
       {showFilters && (
-        <ConvexDataFilterPanel
-          table={table}
-          columns={columns}
-          indexes={indexes}
-          initial={filter}
-          error={filterError}
-          onApply={(next) => {
-            setFilter(next);
-            reset();
-          }}
-        />
+        <div className="shrink-0 border-b px-3 py-2">
+          <ConvexDataFilterPanel
+            table={table}
+            columns={columns}
+            indexes={indexes}
+            initial={filter}
+            error={filterError}
+            onApply={(next) => {
+              setFilter(next);
+              reset();
+            }}
+          />
+        </div>
       )}
-      {!showFilters && filterError && (
-        <p role="alert" className="text-xs text-destructive">
-          {filterError}
-        </p>
-      )}
-      {message && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {message}
-        </p>
+      {((!showFilters && filterError) || message) && (
+        <div className="shrink-0 space-y-0.5 border-b bg-muted/20 px-3 py-1.5 text-xs">
+          {!showFilters && filterError && (
+            <p role="alert" className="text-destructive">
+              {filterError}
+            </p>
+          )}
+          {message && (
+            <p role="status" className="text-muted-foreground">
+              {message}
+            </p>
+          )}
+        </div>
       )}
       {documents.isError ? (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="p-4 text-xs text-destructive">
           {String(documents.error)}
         </p>
       ) : documents.isPending && filterError === null ? (
-        <p className="text-xs text-muted-foreground">Dokumente werden geladen…</p>
+        <p className="p-4 text-xs text-muted-foreground">Dokumente werden geladen…</p>
       ) : (
         <>
-          <div className="max-h-[65vh] overflow-auto rounded-lg border">
-            <table className="min-w-full text-left text-xs">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-left text-xs">
               <caption className="sr-only">Dokumente der Tabelle {table}</caption>
-              <thead className="sticky top-0 bg-muted">
-                <tr>
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr className="[&>th]:border-b [&>th]:border-r [&>th]:border-border/70">
+                  <th
+                    scope="col"
+                    className="w-10 px-2 py-2 text-right font-normal text-muted-foreground"
+                  >
+                    #
+                  </th>
                   <th scope="col" className="w-8 px-2 py-2">
                     <Checkbox
                       aria-label="Alle Dokumente der Seite auswählen"
@@ -275,8 +289,14 @@ export function ConvexDataDocuments({
                 </tr>
               </thead>
               <tbody>
-                {page.map((document) => (
-                  <tr key={document._id} className="border-t hover:bg-muted/40">
+                {page.map((document, index) => (
+                  <tr
+                    key={document._id}
+                    className="hover:bg-muted/40 [&>td]:border-b [&>td]:border-r [&>td]:border-border/60"
+                  >
+                    <td className="px-2 py-1.5 text-right align-top text-muted-foreground tabular-nums">
+                      {(offsets.at(-1) ?? 0) + index + 1}
+                    </td>
                     <td className="px-2 py-1.5 align-top">
                       <Checkbox
                         aria-label="Dokument auswählen"
@@ -319,39 +339,47 @@ export function ConvexDataDocuments({
                 ))}
               </tbody>
             </table>
+            {page.length === 0 && filterError === null && (
+              <p className="p-4 text-xs text-muted-foreground">
+                {activeFilterCount(filter) ? "Keine passenden Dokumente." : "Die Tabelle ist leer."}
+              </p>
+            )}
           </div>
-          {page.length === 0 && filterError === null && (
-            <p className="text-xs text-muted-foreground">
-              {activeFilterCount(filter) ? "Keine passenden Dokumente." : "Die Tabelle ist leer."}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={cursors.length === 1 || documents.isFetching}
-              onClick={() => {
-                setCursors((value) => value.slice(0, -1));
-                setSelected(new Set());
-              }}
-            >
-              <ChevronLeft className="size-3.5" /> Zurück
-            </Button>
-            <span className="text-[11px] text-muted-foreground">
+          <div className="flex h-9 shrink-0 items-center gap-2 border-t px-3 text-xs text-muted-foreground">
+            <span className="tabular-nums">
               Seite {cursors.length}
               {page.length ? ` · ${page.length} Dokumente` : ""}
             </span>
+            {selectedIds.length > 0 && <span>{selectedIds.length} ausgewählt</span>}
+            <span className="ml-auto" />
             <Button
-              variant="outline"
-              size="sm"
-              disabled={!documents.data?.has_more || documents.isFetching}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Zurück"
+              disabled={cursors.length === 1 || documents.isFetching}
               onClick={() => {
-                const next = documents.data?.cursor ?? null;
-                if (next) setCursors((value) => [...value, next]);
+                setCursors((value) => value.slice(0, -1));
+                setOffsets((value) => value.slice(0, -1));
                 setSelected(new Set());
               }}
             >
-              Weiter <ChevronRight className="size-3.5" />
+              <ChevronLeft className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Weiter"
+              disabled={!documents.data?.has_more || documents.isFetching}
+              onClick={() => {
+                const next = documents.data?.cursor ?? null;
+                if (next) {
+                  setCursors((value) => [...value, next]);
+                  setOffsets((value) => [...value, (value.at(-1) ?? 0) + page.length]);
+                }
+                setSelected(new Set());
+              }}
+            >
+              <ChevronRight className="size-3.5" />
             </Button>
           </div>
         </>

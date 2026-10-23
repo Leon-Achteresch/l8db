@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Plus, RefreshCw, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { studioTablesList, studioTablesSchemas } from "@/lib/db/supabase-studio-tables";
+import { BaasSidebarItem } from "../../baas-sidebar-item";
 import { SupabaseTableCreateDialog } from "./supabase-table-create-dialog";
 import { KIND_LABELS, type StudioTableRef } from "./supabase-tables-utils";
 
@@ -112,35 +113,34 @@ export function SupabaseTablesBrowser({
         />
       </form>
       {tables.isPending ? (
-        <p className="text-xs text-muted-foreground">Tabellen werden geladen…</p>
+        <p className="px-2 text-xs text-muted-foreground">Tabellen werden geladen…</p>
       ) : tables.isError ? (
         <p role="alert" className="text-xs text-destructive">
           {String(tables.error)}
         </p>
       ) : tables.data.tables.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Keine Tabellen gefunden.</p>
+        <p className="px-2 text-xs text-muted-foreground">Keine Tabellen gefunden.</p>
       ) : (
-        <div className="max-h-[60vh] overflow-auto rounded-lg border">
-          {tables.data.tables.map((entry) => {
-            const active = selected?.schema === entry.schema && selected.name === entry.name;
-            return (
-              <button
-                key={`${entry.schema}.${entry.name}`}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSelect({ schema: entry.schema, name: entry.name })}
-                className={`block w-full border-b px-3 py-1.5 text-left text-xs last:border-b-0 ${active ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
-              >
-                <span className="block truncate font-mono">{entry.name}</span>
-                <span className="block truncate text-[10px] text-muted-foreground">
-                  {schema === ALL_SCHEMAS ? `${entry.schema} · ` : ""}
-                  {KIND_LABELS[entry.kind]}
-                  {entry.estimated_rows !== null ? ` · ~${entry.estimated_rows} Zeilen` : ""}
-                  {entry.kind === "table" && !entry.rls_enabled ? " · RLS aus" : ""}
-                </span>
-              </button>
-            );
-          })}
+        <div className="grid gap-0.5">
+          {tables.data.tables.map((entry) => (
+            <BaasSidebarItem
+              key={`${entry.schema}.${entry.name}`}
+              icon={entry.kind === "table" ? Table2 : Eye}
+              active={selected?.schema === entry.schema && selected.name === entry.name}
+              onClick={() => onSelect({ schema: entry.schema, name: entry.name })}
+              title={[
+                schema === ALL_SCHEMAS ? entry.schema : null,
+                KIND_LABELS[entry.kind],
+                entry.estimated_rows !== null ? `~${entry.estimated_rows} Zeilen` : null,
+                entry.kind === "table" && !entry.rls_enabled ? "RLS aus" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              hint={entry.kind === "table" && !entry.rls_enabled ? "RLS aus" : undefined}
+            >
+              {schema === ALL_SCHEMAS ? `${entry.schema}.${entry.name}` : entry.name}
+            </BaasSidebarItem>
+          ))}
         </div>
       )}
       {tables.data && (offset > 0 || tables.data.has_more) && (

@@ -30,16 +30,7 @@ export function ConvexStudio({
       isNew={feature.isNew}
       header={header}
       footer={footer}
-      details={
-        <dl className="space-y-1 px-2 text-xs">
-          <dt className="text-muted-foreground">Deployment</dt>
-          <dd className="truncate font-mono" title={deployment.title}>
-            {deployment.title}
-          </dd>
-          <dt className="pt-1 text-muted-foreground">Betrieb</dt>
-          <dd>{deployment.selfHosted ? "Selbst gehostet" : "Convex Cloud"}</dd>
-        </dl>
-      }
+      details={`${deployment.title} · ${deployment.selfHosted ? "Selbst gehostet" : "Convex Cloud"}`}
       tabs={CONVEX_STUDIO_SECTIONS.map((section) => ({
         value: section.id,
         label: section.label,
@@ -51,10 +42,16 @@ export function ConvexStudio({
         await navigate({ to: "/baas", search: { ...search, studio: id } });
       }}
     >
-      <Section
-        key={`${deployment.profileId}:${deployment.deploymentName}:${active.id}`}
-        deployment={deployment}
-      />
+      <div
+        className={
+          active.fullBleed ? "flex min-h-0 flex-1 flex-col" : "min-h-0 flex-1 overflow-auto p-5"
+        }
+      >
+        <Section
+          key={`${deployment.profileId}:${deployment.deploymentName}:${active.id}`}
+          deployment={deployment}
+        />
+      </div>
     </BaasStudioFrame>
   );
 }

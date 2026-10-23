@@ -4,12 +4,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { sidebarMenuButtonVariants } from "@/components/ui/sidebar/shared";
 import type { SupabaseBucket } from "@/lib/db";
 import {
   type SupabaseStorageBucketSettings,
   supabaseStudioStorageBucketCreate,
   supabaseStudioStorageBuckets,
 } from "@/lib/db/supabase-studio-storage";
+import { cn } from "@/lib/utils";
 import { storageQueryKey } from "./storage-format";
 import { SupabaseStorageBucketDialog } from "./supabase-storage-bucket-dialog";
 
@@ -122,7 +124,8 @@ export function SupabaseStorageBucketList({
                 type="button"
                 aria-current={bucket.id === selectedId ? "true" : undefined}
                 onClick={() => onSelect(bucket)}
-                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${bucket.id === selectedId ? "bg-primary/10 font-medium" : "hover:bg-muted"}`}
+                data-active={bucket.id === selectedId || undefined}
+                className={cn(sidebarMenuButtonVariants(), "text-xs")}
               >
                 {bucket.public ? (
                   <Globe2 className="size-3.5 shrink-0 text-primary" aria-label="Öffentlich" />

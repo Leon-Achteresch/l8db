@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus, RefreshCw, X } from "lucide-react";
+import { Code2, Plus, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { sidebarMenuButtonVariants } from "@/components/ui/sidebar/shared";
 import { supabaseFunctions } from "@/lib/db";
+import { cn } from "@/lib/utils";
 import { FUNCTION_SLUG, useSupabaseFunctionSlugs } from "./supabase-functions-store";
 
 const EMPTY: string[] = [];
@@ -94,15 +96,17 @@ export function SupabaseFunctionsList({
             : "Selbst gehostet gibt es keine Liste. Füge bekannte Slugs hinzu (z. B. hello)."}
         </p>
       )}
-      <ul className="space-y-1">
+      <ul className="grid gap-0.5">
         {items.map((item) => (
           <li key={item.slug} className="group flex items-center gap-1">
             <button
               type="button"
               aria-current={selected === item.slug ? "true" : undefined}
               onClick={() => onSelect(item.slug)}
-              className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${selected === item.slug ? "bg-primary/10 font-medium" : "hover:bg-muted"}`}
+              data-active={selected === item.slug || undefined}
+              className={cn(sidebarMenuButtonVariants(), "h-auto min-h-7 min-w-0 flex-1 text-xs")}
             >
+              <Code2 className="text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">
                 {item.slug}
                 {item.label && (

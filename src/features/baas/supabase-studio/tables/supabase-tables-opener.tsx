@@ -1,7 +1,8 @@
-import { History } from "lucide-react";
+import { History, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BaasSidebarItem } from "../../baas-sidebar-item";
 import { parseTableName, type StudioTableRef } from "./supabase-tables-utils";
 
 export function SupabaseTablesOpener({
@@ -18,7 +19,7 @@ export function SupabaseTablesOpener({
 
   return (
     <div className="grid min-w-0 content-start gap-2">
-      <p className="text-xs text-muted-foreground">
+      <p className="px-1 text-xs text-muted-foreground">
         Mit diesem Key gibt Supabase keine Tabellenliste heraus. Öffne Tabellen über ihren Namen.
       </p>
       <form
@@ -46,21 +47,17 @@ export function SupabaseTablesOpener({
           <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
             <History className="size-3" /> Zuletzt geöffnet
           </p>
-          <div className="overflow-hidden rounded-lg border">
-            {recent.map((entry) => {
-              const active = selected?.schema === entry.schema && selected.name === entry.name;
-              return (
-                <button
-                  key={`${entry.schema}.${entry.name}`}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onSelect(entry)}
-                  className={`block w-full truncate border-b px-3 py-1.5 text-left font-mono text-xs last:border-b-0 ${active ? "bg-primary/10" : "hover:bg-muted"}`}
-                >
-                  {entry.schema === "public" ? entry.name : `${entry.schema}.${entry.name}`}
-                </button>
-              );
-            })}
+          <div className="grid gap-0.5">
+            {recent.map((entry) => (
+              <BaasSidebarItem
+                key={`${entry.schema}.${entry.name}`}
+                icon={Table2}
+                active={selected?.schema === entry.schema && selected.name === entry.name}
+                onClick={() => onSelect(entry)}
+              >
+                {entry.schema === "public" ? entry.name : `${entry.schema}.${entry.name}`}
+              </BaasSidebarItem>
+            ))}
           </div>
         </div>
       )}

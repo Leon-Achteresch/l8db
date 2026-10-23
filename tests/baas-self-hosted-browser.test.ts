@@ -325,7 +325,7 @@ test.skipIf(!enabled)(
   async () => {
     await withPage("supabase-tables", async (page) => {
       const main = await openStudio(page, "tables", "Tabellen");
-      const table = main.getByRole("button", { name: /^l8db_ui\b/ });
+      const table = page.locator("aside").getByRole("button", { name: /^l8db_ui\b/ });
       await table.waitFor();
       const started = performance.now();
       await table.click();
@@ -335,7 +335,7 @@ test.skipIf(!enabled)(
       expect(await calls(page, "supabase_studio_tables_describe")).toBe(1);
       expect(await calls(page, "supabase_studio_tables_rows")).toBe(1);
 
-      await main.getByRole("button", { name: "Tabelle erstellen" }).click();
+      await page.locator("aside").getByRole("button", { name: "Tabelle erstellen" }).click();
       const create = page.getByRole("dialog");
       await create.getByLabel("Name", { exact: true }).fill("l8db_ui_created");
       expect(await create.getByLabel("Spaltenname").first().inputValue()).toBe("id");
@@ -367,7 +367,7 @@ test.skipIf(!enabled)(
       await main.getByText("1 Zeilen gelöscht.").waitFor();
       await main.getByText("Keine Zeilen auf dieser Seite.").waitFor();
 
-      await main.getByRole("tab", { name: "Struktur" }).click();
+      await main.getByRole("tab", { name: "Spalten" }).click();
       await main.getByRole("button", { name: "Spalte title ändern" }).click();
       const alter = page.getByRole("dialog");
       await alter.getByLabel("Name").fill("headline");
@@ -607,12 +607,12 @@ test.skipIf(!enabled)(
     await withPage("supabase-storage", async (page) => {
       await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
       const main = await openStudio(page, "storage", "Storage");
-      await main.getByRole("button", { name: "Neuer Bucket" }).click();
+      await page.locator("aside").getByRole("button", { name: "Neuer Bucket" }).click();
       const create = page.getByRole("dialog");
       await create.getByLabel("Name", { exact: true }).fill(bucket);
       await create.getByRole("button", { name: "Erstellen" }).click();
       await create.waitFor({ state: "detached" });
-      await main.getByRole("button", { name: bucket }).click();
+      await page.locator("aside").getByRole("button", { name: bucket }).click();
 
       await main.getByRole("button", { name: "Bearbeiten" }).click();
       const settings = page.getByRole("dialog");
@@ -689,7 +689,10 @@ test.skipIf(!enabled)(
 
       await main.getByRole("button", { name: "Löschen", exact: true }).click();
       await confirmAlert(page, "Bucket löschen");
-      await main.getByRole("button", { name: bucket }).waitFor({ state: "detached" });
+      await page
+        .locator("aside")
+        .getByRole("button", { name: bucket })
+        .waitFor({ state: "detached" });
       const response = await supabaseApi(`/storage/v1/bucket/${bucket}`);
       expect(response.status).toBeGreaterThanOrEqual(400);
     });
@@ -702,9 +705,10 @@ test.skipIf(!enabled)(
   async () => {
     await withPage("supabase-functions", async (page) => {
       const main = await openStudio(page, "functions", "Edge Functions");
-      await main.getByLabel("Function-Slug hinzufügen").fill("hello");
-      await main.getByRole("button", { name: "Slug hinzufügen" }).click();
-      await main.getByRole("button", { name: "hello", exact: true }).click();
+      const side = page.locator("aside");
+      await side.getByLabel("Function-Slug hinzufügen").fill("hello");
+      await side.getByRole("button", { name: "Slug hinzufügen" }).click();
+      await side.getByRole("button", { name: "hello", exact: true }).click();
       await main.getByRole("combobox", { name: "Authentifizierung" }).click();
       await page.getByRole("option", { name: "Ohne Authentifizierung" }).click();
       await main.getByPlaceholder("x-region: eu").fill(`apikey: ${supabasePublicKey}`);
@@ -714,8 +718,8 @@ test.skipIf(!enabled)(
       timings.edgeInvoke = Math.round(performance.now() - started);
       await main.getByText("HTTP 200").waitFor();
       await shot(page, "18-functions-invoke");
-      await main.getByRole("button", { name: "hello entfernen" }).click();
-      await main.getByRole("button", { name: "hello", exact: true }).waitFor({ state: "detached" });
+      await side.getByRole("button", { name: "hello entfernen" }).click();
+      await side.getByRole("button", { name: "hello", exact: true }).waitFor({ state: "detached" });
     });
   },
   120_000,
@@ -877,8 +881,8 @@ test.skipIf(!enabled || !supabasePublicKey)(
 
       await nav.getByRole("tab", { name: "Tabellen" }).click();
       const tables = page.locator("section[aria-label='Tabellen']");
-      await tables.getByLabel("Tabellenname").fill("l8db_ui");
-      await tables.getByRole("button", { name: "Öffnen", exact: true }).click();
+      await page.locator("aside").getByLabel("Tabellenname").fill("l8db_ui");
+      await page.locator("aside").getByRole("button", { name: "Öffnen", exact: true }).click();
       await tables.getByText("erste Zeile").waitFor();
       expect(await tables.getByText("zweite Zeile").count()).toBe(0);
       await tables.getByText("Row Level Security gilt", { exact: false }).waitFor();
@@ -886,8 +890,8 @@ test.skipIf(!enabled || !supabasePublicKey)(
 
       await nav.getByRole("tab", { name: "Storage" }).click();
       const storage = page.locator("section[aria-label='Storage']");
-      await storage.getByLabel("Bucket-Name zum Öffnen").fill(publicBucket);
-      await storage.getByRole("button", { name: "Öffnen", exact: true }).click();
+      await page.locator("aside").getByLabel("Bucket-Name zum Öffnen").fill(publicBucket);
+      await page.locator("aside").getByRole("button", { name: "Öffnen", exact: true }).click();
       await rowWith(storage, "hallo.txt");
       await shot(page, "26-public-storage");
 
@@ -945,8 +949,9 @@ async function openConvex(page: Page, section: string, label: string) {
 }
 
 async function selectFunction(main: Locator, module: string, name: string) {
-  await main.getByLabel("Funktionen durchsuchen").fill(name);
-  await main
+  const side = main.page().locator("aside");
+  await side.getByLabel("Funktionen durchsuchen").fill(name);
+  await side
     .locator("details")
     .filter({ hasText: `${module}.js` })
     .getByRole("button", { name: new RegExp(`^\\w\\s*${name}(\\s|$)`) })
@@ -1020,7 +1025,7 @@ test.skipIf(!enabled || !convexUrl)(
   async () => {
     await withPage("convex-data", async (page) => {
       const main = await openConvex(page, "data", "Daten");
-      const messages = main.getByRole("button", { name: /^messages\b/ });
+      const messages = page.locator("aside").getByRole("button", { name: /^messages\b/ });
       await messages.waitFor();
       const started = performance.now();
       await messages.click();
@@ -1048,12 +1053,12 @@ test.skipIf(!enabled || !convexUrl)(
       await main.getByRole("button", { name: "Zurücksetzen" }).click();
       await main.getByText("Seite 1 · 50 Dokumente").waitFor();
 
-      await main.getByRole("tab", { name: "Schema & Indizes" }).click();
+      await main.getByRole("tab", { name: "Spalten" }).click();
       await main.getByText("by_author", { exact: true }).waitFor();
       await main.getByText("search_body", { exact: true }).waitFor();
       await shot(page, "convex-04-data-schema");
 
-      await main.getByLabel("Tabelle erstellen").click();
+      await page.locator("aside").getByLabel("Tabelle erstellen").click();
       const create = page.getByRole("dialog");
       await create.getByLabel("Tabellenname").fill(convexTable);
       await create.getByRole("button", { name: "Erstellen" }).click();
@@ -1099,9 +1104,12 @@ test.skipIf(!enabled || !convexUrl)(
       await alert.getByRole("textbox").fill(convexTable);
       await alert.getByRole("button", { name: "Tabelle löschen" }).click();
       await alert.waitFor({ state: "detached" });
-      await main.getByRole("button", { name: new RegExp(`^${convexTable}\\b`) }).waitFor({
-        state: "detached",
-      });
+      await page
+        .locator("aside")
+        .getByRole("button", { name: new RegExp(`^${convexTable}\\b`) })
+        .waitFor({
+          state: "detached",
+        });
     });
   },
   240_000,
@@ -1112,7 +1120,7 @@ test.skipIf(!enabled || !convexUrl)(
   async () => {
     await withPage("convex-functions", async (page) => {
       const main = await openConvex(page, "functions", "Funktionen");
-      await main.getByText("messages.js").first().waitFor();
+      await page.locator("aside").getByText("messages.js").first().waitFor();
 
       await selectFunction(main, "messages", "list");
       const started = await runFunction(page, main, '{"author": "Ada"}');

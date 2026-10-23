@@ -9,6 +9,7 @@ import {
   convexDataResolve,
 } from "@/lib/db/convex-studio-data";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexDataConfirmDialog } from "./convex-data-confirm-dialog";
 import { ConvexDataDocumentDialog } from "./convex-data-document-dialog";
@@ -41,27 +42,29 @@ export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-        Daten {feature.isNew && <NewBadge />}
-      </h2>
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <BaasSidebarPortal>
         <ConvexDataTableList deployment={deployment} selected={table} onSelect={setTable} />
-        {table ? (
-          <ConvexDataTableView
-            key={table}
-            deployment={deployment}
-            table={table}
-            onOpenDocument={(document) => setDetail({ table, document })}
-            onOpenReference={(id) => void openReference(id)}
-            onDeleted={() => setTable(null)}
-          />
-        ) : (
+      </BaasSidebarPortal>
+      {table ? (
+        <ConvexDataTableView
+          key={table}
+          deployment={deployment}
+          table={table}
+          onOpenDocument={(document) => setDetail({ table, document })}
+          onOpenReference={(id) => void openReference(id)}
+          onDeleted={() => setTable(null)}
+        />
+      ) : (
+        <div className="space-y-2 p-5">
+          <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
+            Daten {feature.isNew && <NewBadge />}
+          </h2>
           <p className="text-xs text-muted-foreground">
             Wähle links eine Tabelle oder erstelle eine neue.
           </p>
-        )}
-      </div>
+        </div>
+      )}
       <ConvexDataDocumentSheet
         entry={detail}
         resolving={resolving}

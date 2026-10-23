@@ -47,6 +47,7 @@ export interface ConvexStudioSection {
   label: string;
   icon: LucideIcon;
   component: ComponentType<ConvexStudioSectionProps>;
+  fullBleed?: boolean;
 }
 
 export const CONVEX_STUDIO_SECTIONS: ConvexStudioSection[] = [
@@ -58,6 +59,7 @@ export const CONVEX_STUDIO_SECTIONS: ConvexStudioSection[] = [
   },
   {
     id: "data",
+    fullBleed: true,
     label: "Daten",
     icon: Table2,
     component: ConvexDataSection,

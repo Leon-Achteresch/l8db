@@ -2,7 +2,9 @@ import { ChevronRight, Search } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { sidebarMenuButtonVariants } from "@/components/ui/sidebar/shared";
 import type { ConvexStudioModule, ConvexUdfType } from "@/lib/db/convex-studio-functions";
+import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<ConvexUdfType, string> = {
   query: "Q",
@@ -64,11 +66,11 @@ export function ConvexFunctionTree({
           {total === 0 ? "Dieses Deployment hat noch keine Funktionen." : "Keine Treffer."}
         </p>
       )}
-      <ul className="max-h-[70vh] space-y-1 overflow-auto">
+      <ul className="grid gap-0.5">
         {visible.map(({ module, functions }) => (
           <li key={`${module.componentPath}|${module.path}`}>
             <details open={Boolean(needle) || functions.length <= 12} className="group">
-              <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1 py-1 font-mono text-xs text-muted-foreground hover:bg-muted">
+              <summary className="flex h-7 cursor-pointer list-none items-center gap-1 rounded-md px-2 font-mono text-xs text-muted-foreground hover:bg-sidebar-accent">
                 <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
                 <span className="truncate" title={module.path}>
                   {module.componentPath ? `${module.componentPath}/` : ""}
@@ -84,7 +86,8 @@ export function ConvexFunctionTree({
                         type="button"
                         aria-current={selected === key ? "true" : undefined}
                         onClick={() => onSelect(key)}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors ${selected === key ? "bg-primary/10 font-medium" : "hover:bg-muted"}`}
+                        data-active={selected === key || undefined}
+                        className={cn(sidebarMenuButtonVariants(), "text-xs")}
                       >
                         <span
                           title={TYPE_TITLE[fn.udfType]}

@@ -5,6 +5,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import type { SupabaseBucket } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseStorageBrowser } from "./supabase-storage-browser";
 import { SupabaseStorageBucketHeader } from "./supabase-storage-bucket-header";
@@ -42,13 +43,15 @@ export function SupabaseStorageSection({ project, capabilities }: SupabaseStudio
           <ShieldCheck className="size-3.5" /> Storage-Richtlinien
         </Button>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <BaasSidebarPortal>
         <SupabaseStorageBucketList
           reference={project.reference}
           selectedId={bucket?.id ?? null}
           canManage={canManage}
           onSelect={setBucket}
         />
+      </BaasSidebarPortal>
+      <div>
         <div className="min-w-0 space-y-4">
           {bucket ? (
             <>

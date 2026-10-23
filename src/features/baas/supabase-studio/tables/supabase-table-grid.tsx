@@ -158,8 +158,8 @@ export function SupabaseTableGrid({
   }
 
   return (
-    <div className="grid min-w-0 gap-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3 py-1.5">
         <Button
           variant={filters.length ? "secondary" : "outline"}
           size="sm"
@@ -226,42 +226,50 @@ export function SupabaseTableGrid({
         </div>
       </div>
       {showFilters && (
-        <SupabaseTableFilters
-          columns={columnNames}
-          filters={filters}
-          onApply={(next) => {
-            setFilters(next);
-            setOffset(0);
-            setSelected(new Set());
-          }}
-        />
+        <div className="shrink-0 border-b px-3 py-2">
+          <SupabaseTableFilters
+            columns={columnNames}
+            filters={filters}
+            onApply={(next) => {
+              setFilters(next);
+              setOffset(0);
+              setSelected(new Set());
+            }}
+          />
+        </div>
       )}
-      {readOnlyReason && <p className="text-xs text-muted-foreground">{readOnlyReason}</p>}
-      {!sql && (
-        <p className="text-xs text-muted-foreground">
-          Zugriff über die Data API: Row Level Security gilt für alle Lese- und Schreibzugriffe.
-        </p>
-      )}
-      {message && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {message}
-        </p>
+      {(readOnlyReason || !sql || message) && (
+        <div className="shrink-0 space-y-0.5 border-b bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
+          {readOnlyReason && <p>{readOnlyReason}</p>}
+          {!sql && (
+            <p>
+              Zugriff über die Data API: Row Level Security gilt für alle Lese- und Schreibzugriffe.
+            </p>
+          )}
+          {message && <p role="status">{message}</p>}
+        </div>
       )}
       {rows.isPending ? (
-        <p className="text-xs text-muted-foreground">Zeilen werden geladen…</p>
+        <p className="p-4 text-xs text-muted-foreground">Zeilen werden geladen…</p>
       ) : rows.isError ? (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="p-4 text-xs text-destructive">
           {String(rows.error)}
         </p>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="min-w-full text-left text-xs">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-left text-xs">
               <caption className="sr-only">
                 Zeilen der Tabelle {info.schema}.{info.name}
               </caption>
-              <thead className="bg-muted/50">
-                <tr>
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr className="[&>th]:border-b [&>th]:border-r [&>th]:border-border/70">
+                  <th
+                    scope="col"
+                    className="w-10 px-2 py-2 text-right font-normal text-muted-foreground"
+                  >
+                    #
+                  </th>
                   {canEdit && (
                     <th scope="col" className="w-8 px-2 py-2">
                       <Checkbox
@@ -304,7 +312,13 @@ export function SupabaseTableGrid({
                 {pageRows.map((row, index) => {
                   const id = canEdit ? identify(row) : String(index);
                   return (
-                    <tr key={id} className="border-t">
+                    <tr
+                      key={id}
+                      className="hover:bg-muted/40 [&>td]:border-b [&>td]:border-r [&>td]:border-border/60"
+                    >
+                      <td className="px-2 py-1.5 text-right align-top text-muted-foreground tabular-nums">
+                        {offset + index + 1}
+                      </td>
                       {canEdit && (
                         <td className="px-2 py-1.5 align-top">
                           <Checkbox
@@ -362,35 +376,39 @@ export function SupabaseTableGrid({
                 })}
               </tbody>
             </table>
+            {pageRows.length === 0 && (
+              <p className="p-4 text-xs text-muted-foreground">Keine Zeilen auf dieser Seite.</p>
+            )}
           </div>
-          {pageRows.length === 0 && (
-            <p className="text-xs text-muted-foreground">Keine Zeilen auf dieser Seite.</p>
-          )}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex h-9 shrink-0 items-center gap-2 border-t px-3 text-xs text-muted-foreground">
+            <span className="tabular-nums">
+              {pageRows.length ? `${offset + 1}–${offset + pageRows.length}` : "–"}
+              {canEdit && selectedRows.length > 0 ? ` · ${selectedRows.length} ausgewählt` : ""}
+            </span>
+            <span className="ml-auto">Seite {Math.floor(offset / PAGE_SIZE) + 1}</span>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Zurück"
               disabled={offset === 0}
               onClick={() => {
                 setOffset((value) => Math.max(0, value - PAGE_SIZE));
                 setSelected(new Set());
               }}
             >
-              <ChevronLeft className="size-3.5" /> Zurück
+              <ChevronLeft className="size-3.5" />
             </Button>
-            <span className="text-[11px] text-muted-foreground">
-              {pageRows.length ? `${offset + 1}–${offset + pageRows.length}` : "–"}
-            </span>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Weiter"
               disabled={!rows.data.has_more}
               onClick={() => {
                 setOffset((value) => value + PAGE_SIZE);
                 setSelected(new Set());
               }}
             >
-              Weiter <ChevronRight className="size-3.5" />
+              <ChevronRight className="size-3.5" />
             </Button>
           </div>
         </>

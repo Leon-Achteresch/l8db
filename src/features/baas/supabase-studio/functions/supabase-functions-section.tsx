@@ -4,6 +4,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import {
   SupabaseFunctionDeployDialog,
@@ -20,6 +21,7 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.supabase.studio.functions");
   const cloud = capabilities.management;
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState("functions");
   const [deploy, setDeploy] = useState<SupabaseFunctionDeployTarget | null>(null);
 
   return (
@@ -44,7 +46,18 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
           <Plus className="size-3.5" /> Neue Funktion
         </Button>
       </div>
-      <Tabs defaultValue="functions">
+      <BaasSidebarPortal>
+        <SupabaseFunctionsList
+          reference={project.reference}
+          cloud={cloud}
+          selected={selected}
+          onSelect={(id) => {
+            setSelected(id);
+            setTab("functions");
+          }}
+        />
+      </BaasSidebarPortal>
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="functions">Funktionen</TabsTrigger>
           <TabsTrigger
@@ -56,13 +69,7 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
           </TabsTrigger>
         </TabsList>
         <TabsContent value="functions">
-          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-            <SupabaseFunctionsList
-              reference={project.reference}
-              cloud={cloud}
-              selected={selected}
-              onSelect={setSelected}
-            />
+          <div>
             {selected ? (
               <SupabaseFunctionDetail
                 key={selected}
