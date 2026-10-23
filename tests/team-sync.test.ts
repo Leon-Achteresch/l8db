@@ -308,11 +308,13 @@ describe("team file sync", () => {
   });
 
   test("focus within a minute of the last read stays idle", async () => {
-    const target = new EventTarget();
-    Object.assign(window, {
-      addEventListener: target.addEventListener.bind(target),
-      dispatchEvent: target.dispatchEvent.bind(target),
-    });
+    if (typeof window.addEventListener !== "function") {
+      const target = new EventTarget();
+      Object.assign(window, {
+        addEventListener: target.addEventListener.bind(target),
+        dispatchEvent: target.dispatchEvent.bind(target),
+      });
+    }
     await initTeam();
     calls.length = 0;
     window.dispatchEvent(new Event("focus"));
