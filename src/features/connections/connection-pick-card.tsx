@@ -7,7 +7,6 @@ import {
   Pencil,
   Play,
   Save,
-  Share2,
   Star,
   Trash2,
   Unplug,
@@ -17,7 +16,6 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ComponentProps, ReactNode } from "react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
-import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,9 +29,6 @@ import {
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
-import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { useTeamStore } from "@/lib/team/store";
-import { MICROSOFT_HUB } from "@/lib/team/sync";
 import { cn } from "@/lib/utils";
 import { OpenInWindowMenuItem } from "./open-in-window-menu-item";
 
@@ -64,16 +59,6 @@ export function ConnectionPickCard({
 }: Props) {
   const favorite = Boolean(connection.favorite);
   const saveTemporary = useConnectionsStore((state) => state.saveTemporaryConnection);
-  const shareable =
-    useTeamStore(
-      (state) => state.hubUrl === MICROSOFT_HUB && state.user !== null && !state.policyError,
-    ) &&
-    !connection.team &&
-    !connection.temporary;
-  const share = () => useTeamStore.setState({ sharing: connection.id });
-  const shareFeature = useNewFeatureVisibility<HTMLDivElement>(
-    shareable ? "connections.team-share" : undefined,
-  );
 
   return (
     <ContextMenu>
@@ -136,16 +121,6 @@ export function ConnectionPickCard({
                     label="Ähnliche erstellen"
                     onSelect={onCreateSimilar}
                   />
-                  {shareable && (
-                    <IconMenuItem
-                      ref={shareFeature.ref}
-                      icon={<Share2 />}
-                      label="Für Team freigeben…"
-                      onSelect={share}
-                    >
-                      {shareFeature.isNew && <NewBadge />}
-                    </IconMenuItem>
-                  )}
                   <IconMenuSeparator />
                   <IconMenuItem
                     icon={<Trash2 />}
@@ -213,12 +188,6 @@ export function ConnectionPickCard({
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onDuplicate}>Duplizieren</ContextMenuItem>
         <ContextMenuItem onSelect={onCreateSimilar}>Ähnliche erstellen…</ContextMenuItem>
-        {shareable && (
-          <ContextMenuItem onSelect={share}>
-            Für Team freigeben…
-            {shareFeature.isNew && <NewBadge />}
-          </ContextMenuItem>
-        )}
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={onDelete}>
           Löschen…

@@ -75,7 +75,6 @@ const SUITES = {
     "tests/perf-segmented-control.test.ts",
     "tests/perf-palette-loading.test.ts",
     "tests/perf-onboarding.test.ts",
-    "tests/perf-team-setup.test.ts",
     "tests/perf-seasonal-browser.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],

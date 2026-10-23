@@ -3,10 +3,8 @@ import type { SavedConnection } from "@/lib/connections";
 import { measureScenario, reportScenario } from "./fixtures/usage-performance";
 
 const calls: { command: string; args: unknown }[] = [];
-let payload: unknown = { connections: [] };
+let payload: unknown = { path: "/home/max/.l8db/connections.json", exists: true, connections: [] };
 let gate: Promise<void> | null = null;
-let managed: unknown = null;
-const keychain = new Map<string, string>();
 
 mock.module("@tauri-apps/api/core", () => ({
   transformCallback: () => 1,
@@ -17,28 +15,6 @@ mock.module("@tauri-apps/api/core", () => ({
       if (payload instanceof Error) throw payload;
       return payload;
     }
-    if (command === "team_login")
-      return {
-        hub: (args as { hubUrl: string }).hubUrl.replace(/\/+$/, ""),
-        user: { email: "max@firma.de", name: "Max" },
-      };
-    if (command === "team_share")
-      return { entryId: "abc12345-shared", webUrl: "https://firma.sharepoint.com/x.json" };
-    if (command === "store_secret") {
-      const { account, secret } = args as { account: string; secret: string };
-      keychain.set(account, secret);
-      return null;
-    }
-    if (command === "load_secret")
-      return keychain.get((args as { account: string }).account) ?? null;
-    if (command === "delete_secret") {
-      keychain.delete((args as { account: string }).account);
-      return null;
-    }
-    if (command === "team_managed_hub") {
-      if (managed instanceof Error) throw managed;
-      return managed;
-    }
     return null;
   },
 }));
@@ -48,15 +24,13 @@ const { carryCredentials, mergeTeamConnections, teamConnectionId, withoutPasswor
 );
 const { useConnectionsStore } = await import("@/lib/connections");
 const { useTeamStore } = await import("@/lib/team/store");
-const { MICROSOFT_HUB, initTeam, loginTeam, logoutTeam, needsConsent, syncTeam } = await import(
-  "@/lib/team/sync"
-);
+const { TEAM_HUB, initTeam, syncTeam } = await import("@/lib/team/sync");
 const { needsPassword, needsUser } = await import("@/lib/password-prompt");
 const { replaceUrlUser } = await import("@/lib/secrets");
 const { collectLocal } = await import("@/lib/sync/local");
-const { shareProblem, shareTeamConnection, teamEntry, withoutUser } = await import(
-  "@/lib/team/share"
-);
+
+const PATH = "/home/max/.l8db/connections.json";
+const file = (connections: unknown[], exists = true) => ({ path: PATH, exists, connections });
 
 const HUB = "https://hub.firma.de";
 const erp = {
@@ -81,19 +55,14 @@ function local(overrides: Partial<SavedConnection> = {}): SavedConnection {
 beforeEach(() => {
   calls.length = 0;
   gate = null;
-  managed = null;
-  payload = { connections: [] };
+  payload = file([]);
   useConnectionsStore.setState({ connections: [], activeId: null });
   useTeamStore.setState({
-    hubUrl: "",
-    user: null,
-    name: null,
+    path: null,
+    exists: false,
     lastSyncAt: null,
     lastError: null,
-    managedHub: null,
-    promptOpen: false,
-    policyError: null,
-    allowedHosts: [],
+    warnings: [],
   });
 });
 
@@ -200,138 +169,17 @@ describe("team connection merge", () => {
     ]);
     expect(risky.connections).toHaveLength(0);
     expect(risky.warnings).toHaveLength(4);
-    const allowed = ["*.firma.intern", "db01"];
-    const hosts = mergeTeamConnections(
-      [],
-      HUB,
-      [
-        {
-          id: "a",
-          name: "A",
-          kind: "postgres",
-          connectionString: "postgres://erp.firma.intern:5432/x",
-        },
-        { id: "b", name: "B", kind: "mssql", connectionString: "Server=tcp:DB01,1433;Database=x" },
-        { id: "c", name: "C", kind: "postgres", connectionString: "postgres://evil.example/x" },
-        {
-          id: "d",
-          name: "D",
-          kind: "postgres",
-          connectionString: "postgres://erp.firma.intern/x",
-          ssh: {
-            host: "evil",
-            port: 22,
-            user: "",
-            auth: "agent",
-            keyFile: "",
-            remoteHost: "x",
-            remotePort: 5432,
-          },
-        },
-        {
-          id: "e",
-          name: "E",
-          kind: "postgres",
-          connectionString: "postgres://firma.intern.evil.example/x",
-        },
-      ],
-      allowed,
-    );
-    expect(hosts.connections.map((connection) => connection.name)).toEqual(["A", "B"]);
-    const ssh = (remoteHost: string, host = "bastion.firma.intern") => ({
-      host,
-      port: 22,
-      user: "",
-      auth: "agent",
-      keyFile: "",
-      remoteHost,
-      remotePort: 5432,
-    });
-    const bypasses = mergeTeamConnections(
-      [],
-      HUB,
-      [
-        {
-          id: "h1",
-          name: "Hostaddr",
-          kind: "postgres",
-          connectionString: "postgres://db.firma.intern/x?hostaddr=203.0.113.5",
-        },
-        {
-          id: "h2",
-          name: "Multi",
-          kind: "mongodb",
-          connectionString: "mongodb://db.firma.intern,evil.com/x",
-        },
-        {
-          id: "h3",
-          name: "Remote",
-          kind: "postgres",
-          connectionString: "postgres://db.firma.intern/x",
-          ssh: ssh("evil.com"),
-        },
-        {
-          id: "h4",
-          name: "V6",
-          kind: "postgres",
-          connectionString: "postgres://[fd00::1:1]:5432/x",
-        },
-        {
-          id: "h5",
-          name: "Failover",
-          kind: "mssql",
-          connectionString: "Server=db01;Failover Partner=evil.com",
-        },
-        {
-          id: "h6",
-          name: "Endpoint",
-          kind: "snowflake",
-          connectionString: "snowflake://acc.firma.intern/db?endpoint=evil.com",
-        },
-        {
-          id: "h7",
-          name: "Nodes",
-          kind: "cassandra",
-          connectionString: "cassandra://db.firma.intern/?nodes=evil.com:9042",
-        },
-        {
-          id: "h8",
-          name: "Backslash",
-          kind: "clickhouse",
-          connectionString: "https://evil.example\\@ch.firma.intern:8443/",
-        },
-        {
-          id: "h9",
-          name: "Tab",
-          kind: "postgres",
-          connectionString: "postgres://ev\til.com@db.firma.intern/x",
-        },
-        {
-          id: "h10",
-          name: "Socket",
-          kind: "mysql",
-          connectionString: "mysql://db.firma.intern/x?socket=/tmp/s",
-        },
-        {
-          id: "ok1",
-          name: "QueryHost",
-          kind: "postgres",
-          connectionString: "postgres://db.firma.intern/x?host=db01",
-        },
-        {
-          id: "ok2",
-          name: "Tunnel",
-          kind: "postgres",
-          connectionString: "postgres://db.firma.intern/x",
-          ssh: ssh("db01"),
-        },
-      ],
-      ["*.firma.intern", "db01", "fd00::1"],
-    );
-    expect(bypasses.connections.map((connection) => connection.name)).toEqual([
-      "QueryHost",
-      "Tunnel",
+    const unsafe = mergeTeamConnections([], HUB, [
+      {
+        id: "h8",
+        name: "Backslash",
+        kind: "clickhouse",
+        connectionString: "https://evil.example\\@ch.firma.intern:8443/",
+      },
+      { id: "h9", name: "Tab", kind: "postgres", connectionString: "postgres://ev\til.com@db/x" },
+      { id: "h10", name: "Socket", kind: "mysql", connectionString: "mysql://db/x?socket=/tmp/s" },
     ]);
+    expect(unsafe.connections).toHaveLength(0);
     const aliases = mergeTeamConnections([], HUB, [
       { id: "a1", name: "MySQL", kind: "mysql", connectionString: "mysql://h/x?ssl-cert=/c.pem" },
       { id: "a2", name: "Mongo", kind: "mongodb", connectionString: "mongodb://h/x?tlsCAFile=/ca" },
@@ -349,37 +197,6 @@ describe("team connection merge", () => {
       },
     ]);
     expect(aliases.connections).toHaveLength(0);
-    const cluster = mergeTeamConnections(
-      [],
-      HUB,
-      [
-        {
-          id: "rs",
-          name: "Replica",
-          kind: "mongodb",
-          connectionString: "mongodb://m1.firma.intern:27017,m2.firma.intern:27017/app",
-        },
-        {
-          id: "cs",
-          name: "Cassandra",
-          kind: "cassandra",
-          connectionString:
-            "cassandra://c1.firma.intern/?nodes=c2.firma.intern:9042,c3.firma.intern:9042",
-        },
-        {
-          id: "bad",
-          name: "Mixed",
-          kind: "mongodb",
-          connectionString: "mongodb://m1.firma.intern:27017,evil.com:27017/app",
-        },
-      ],
-      ["*.firma.intern"],
-    );
-    expect(cluster.connections.map((connection) => connection.name)).toEqual([
-      "Replica",
-      "Cassandra",
-    ]);
-    expect(hosts.warnings.join(" ")).toContain("evil.example");
     expect(merge.warnings[0]).toContain("sqlite");
     expect(withoutPassword("postgres://u:p@h/db")).toBe("postgres://u@h/db");
     expect(withoutPassword("Server=h;Password=x;User Id=u")).toBe("Server=h;User Id=u");
@@ -476,148 +293,47 @@ test("malformed nested fields from the hub are dropped", () => {
   expect(moved.connections[0].ssh).toMatchObject({ port: 2222, keyFile: "/home/max/.ssh/id" });
 });
 
-describe("managed hub file", () => {
-  test("without a file startup only checks for it", async () => {
-    await initTeam();
-    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
-    expect(useTeamStore.getState().promptOpen).toBe(false);
-  });
-
-  test("an unreadable file behaves like no file", async () => {
-    managed = new Error("/etc/l8db/hub.json: kaputt");
-    await initTeam();
-    expect(useTeamStore.getState()).toMatchObject({ managedHub: null, promptOpen: false });
-  });
-
-  test("a file opens the login prompt without contacting the hub", async () => {
-    managed = { url: HUB };
-    await initTeam();
-    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
-    expect(useTeamStore.getState()).toMatchObject({
-      managedHub: HUB,
-      hubUrl: HUB,
-      promptOpen: true,
-    });
-    payload = { connections: [erp] };
-    await loginTeam(useTeamStore.getState().managedHub ?? "");
-    expect(useConnectionsStore.getState().connections).toHaveLength(1);
-  });
-
-  test("a signed-in user is synced once instead of prompted", async () => {
-    managed = { url: HUB };
-    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-    payload = { connections: [erp] };
-    await initTeam();
-    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub", "team_connections"]);
-    expect(useTeamStore.getState().promptOpen).toBe(false);
-  });
-
-  test("an expired hub token prompts again instead of failing silently", async () => {
-    managed = { url: HUB };
-    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-    payload = new Error("Team-Anmeldung abgelaufen. Bitte erneut anmelden.");
-    await initTeam();
-    expect(useTeamStore.getState().promptOpen).toBe(true);
-  });
-
-  test("the policy host allowlist reaches the sync", async () => {
-    managed = { url: HUB, source: "HKLM", allowedHosts: ["*.firma.intern"] };
-    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-    payload = { connections: [erp] };
-    await initTeam();
-    expect(useConnectionsStore.getState().connections).toHaveLength(0);
-    expect(useTeamStore.getState().warnings.join(" ")).toContain("erp.intern");
-  });
-
-  test("a broken policy blocks team sync and login instead of failing open", async () => {
-    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-    managed = new Error("HKLM: allowedHosts enthält ungültigen Eintrag");
-    await initTeam();
-    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
-    expect(useTeamStore.getState().policyError).toContain("allowedHosts");
-    await expect(syncTeam()).rejects.toThrow("Richtlinie");
-    await expect(loginTeam(HUB)).rejects.toThrow("Richtlinie");
-    managed = { url: "", source: "HKLM", allowedHosts: ["*.firma.intern"] };
-    payload = {
-      connections: [erp, { ...erp, id: "ok", connectionString: "postgres://a.firma.intern/x" }],
-    };
-    await initTeam();
-    expect(useTeamStore.getState()).toMatchObject({
-      policyError: null,
-      managedHub: null,
-      promptOpen: false,
-    });
-    expect(
-      useConnectionsStore.getState().connections.map((connection) => connection.team?.id),
-    ).toEqual(["ok"]);
-  });
-
-  test("secondary windows only learn the managed hub", async () => {
-    managed = { url: HUB };
-    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-    await initTeam(false);
-    expect(calls.map((call) => call.command)).toEqual(["team_managed_hub"]);
-    expect(useTeamStore.getState()).toMatchObject({ managedHub: HUB, promptOpen: false });
-  });
-
-  test("startup with a managed hub stays fast and makes at most one hub request", async () => {
-    managed = { url: HUB };
-    payload = {
-      connections: Array.from({ length: 500 }, (_, index) => ({ ...erp, id: `db${index}` })),
-    };
-    useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-    await initTeam();
-    calls.length = 0;
-    const signedIn = await measureScenario(() => initTeam(), 15);
-    const starts = 15 + 2;
-    expect(calls.filter((call) => call.command === "team_managed_hub")).toHaveLength(starts);
-    expect(calls.filter((call) => call.command === "team_connections")).toHaveLength(starts);
-    reportScenario("team-startup-managed-signed-in", { connections: 500, ...signedIn });
-    expect(signedIn.p95Ms).toBeLessThan(30);
-
-    useTeamStore.setState({ user: null });
-    calls.length = 0;
-    const prompt = await measureScenario(() => initTeam(), 15);
-    expect(calls.every((call) => call.command === "team_managed_hub")).toBe(true);
-    reportScenario("team-startup-managed-prompt", prompt);
-    expect(prompt.p95Ms).toBeLessThan(5);
-  });
-
-  test("a hub switched by the admin signs out of the old one and prompts", async () => {
-    payload = { connections: [erp] };
-    await loginTeam("https://alt.firma.de");
-    managed = { url: HUB };
-    calls.length = 0;
-    await initTeam();
-    expect(
-      calls.map((call) => call.command).filter((command) => command.startsWith("team_")),
-    ).toEqual(["team_managed_hub", "team_logout"]);
-    expect(useConnectionsStore.getState().connections).toHaveLength(0);
-    expect(useTeamStore.getState()).toMatchObject({ user: null, hubUrl: HUB, promptOpen: true });
-  });
-});
-
-describe("team sync", () => {
-  test("login stores the user, pulls connections and the prompt asks for the database user", async () => {
-    payload = { name: "Firma", connections: [erp] };
+describe("team file sync", () => {
+  test("startup reads the file once and the prompt asks for the database user", async () => {
+    payload = file([erp]);
     useConnectionsStore.setState({ connections: [local()] });
-    const merge = await loginTeam(`${HUB}/`);
-    expect(calls.map((call) => call.command)).toEqual(["team_login", "team_connections"]);
-    expect(calls[0].args).toEqual({ hubUrl: `${HUB}/`, admin: false });
-    expect(merge?.added).toBe(1);
-    expect(useTeamStore.getState()).toMatchObject({ hubUrl: HUB, name: "Firma", lastError: null });
+    await initTeam();
+    expect(calls.map((call) => call.command)).toEqual(["team_connections"]);
+    expect(useTeamStore.getState()).toMatchObject({ path: PATH, exists: true, lastError: null });
     const team = useConnectionsStore.getState().connections.find((entry) => entry.team);
+    expect(team?.team?.hub).toBe(TEAM_HUB);
     expect(team && needsUser(team)).toBe(true);
     expect(team && needsPassword(team)).toBe(true);
     expect(needsUser(local())).toBe(false);
   });
 
+  test("focus within a minute of the last read stays idle", async () => {
+    const target = new EventTarget();
+    Object.assign(window, {
+      addEventListener: target.addEventListener.bind(target),
+      dispatchEvent: target.dispatchEvent.bind(target),
+    });
+    await initTeam();
+    calls.length = 0;
+    window.dispatchEvent(new Event("focus"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls).toHaveLength(0);
+    useTeamStore.setState({ lastSyncAt: Date.now() - 61_000 });
+    window.dispatchEvent(new Event("focus"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls.map((call) => call.command)).toEqual(["team_connections"]);
+  });
+
+  test("secondary windows never read the file", async () => {
+    await initTeam(false);
+    expect(calls).toHaveLength(0);
+  });
+
   test("team connections stay out of personal sync and survive editing", async () => {
-    payload = { connections: [erp] };
+    payload = file([erp]);
     useConnectionsStore.setState({ connections: [local()] });
-    await loginTeam(HUB);
-    const ids = collectLocal(false).connections.map((entry) => entry.id);
-    expect(ids).toEqual(["own"]);
+    await syncTeam();
+    expect(collectLocal(false).connections.map((entry) => entry.id)).toEqual(["own"]);
     const team = useConnectionsStore.getState().connections.find((entry) => entry.team);
     if (!team) throw new Error("missing");
     const { id: _id, team: _team, ...input } = team;
@@ -625,130 +341,65 @@ describe("team sync", () => {
     expect(
       useConnectionsStore.getState().connections.find((entry) => entry.id === team.id)?.team,
     ).toEqual(team.team);
-    const copy = useConnectionsStore.getState().duplicateConnection(team.id);
-    expect(copy?.team).toBeNull();
+    expect(useConnectionsStore.getState().duplicateConnection(team.id)?.team).toBeNull();
   });
 
-  test("logout removes team connections but keeps private ones", async () => {
-    payload = { connections: [erp] };
+  test("a deleted file removes team connections but keeps private ones", async () => {
+    payload = file([erp]);
     useConnectionsStore.setState({ connections: [local()] });
-    await loginTeam(HUB);
-    await logoutTeam();
+    await syncTeam();
+    payload = file([], false);
+    calls.length = 0;
+    const merge = await syncTeam();
+    expect(calls.filter((call) => call.command === "team_connections")).toHaveLength(2);
+    expect(merge.removed).toHaveLength(1);
     expect(useConnectionsStore.getState().connections.map((entry) => entry.id)).toEqual(["own"]);
-    expect(useTeamStore.getState().user).toBeNull();
-    expect(calls.some((call) => call.command === "team_logout")).toBe(true);
+    expect(useTeamStore.getState().exists).toBe(false);
   });
 
-  test("only database kinds with users ask for one", async () => {
-    payload = {
-      connections: [
-        erp,
-        { id: "file", name: "F", kind: "mongodb", connectionString: "mongodb://mongo:27017/app" },
-        { id: "cache", name: "C", kind: "redis", connectionString: "redis://cache:6379" },
-      ],
-    };
-    await loginTeam(HUB);
-    const asks = useConnectionsStore
-      .getState()
-      .connections.map((entry) => [entry.team?.id, needsUser(entry)]);
-    expect(asks).toEqual([
-      ["erp", true],
-      ["file", false],
-      ["cache", false],
+  test("connections from the old hub or Microsoft 365 are removed", async () => {
+    const old = (hub: string, id: string) => local({ id, name: id, team: { hub, id, base: {} } });
+    useConnectionsStore.setState({
+      connections: [local(), old("m365", "sp"), old("https://hub.firma.de", "hub")],
+    });
+    payload = file([erp]);
+    const merge = await syncTeam();
+    expect(merge.removed.sort()).toEqual(["hub", "sp"]);
+    expect(useTeamStore.getState().warnings[0]).toContain(
+      "2 Verbindungen aus dem früheren Team-Hub",
+    );
+    expect(useConnectionsStore.getState().connections.map((entry) => entry.id)).toEqual([
+      "own",
+      teamConnectionId(TEAM_HUB, "erp"),
     ]);
   });
 
-  test("an incomplete listing never removes connections", async () => {
-    payload = { connections: [erp, { ...erp, id: "zwei", name: "Zwei" }] };
-    await loginTeam(HUB);
-    payload = { connections: [erp], complete: false, warnings: ["riesig.json: größer als 256 KB"] };
-    const merge = await syncTeam();
-    expect(merge?.removed).toEqual([]);
-    expect(useConnectionsStore.getState().connections).toHaveLength(2);
-    expect(useTeamStore.getState().warnings).toContain("riesig.json: größer als 256 KB");
+  test("an unreadable file keeps every team connection and shows the error", async () => {
+    payload = file([erp]);
+    await syncTeam();
+    payload = new Error(`${PATH}: kein gültiges JSON`);
+    await expect(syncTeam()).rejects.toThrow("JSON");
+    expect(useConnectionsStore.getState().connections).toHaveLength(1);
+    expect(useTeamStore.getState().lastError).toContain("kein gültiges JSON");
   });
 
   test("a retargeted connection loses its stored secrets", async () => {
-    payload = { connections: [erp] };
-    await loginTeam(HUB);
-    payload = { connections: [{ ...erp, connectionString: "postgres://neu.intern/erp" }] };
+    payload = file([erp]);
+    await syncTeam();
+    payload = file([{ ...erp, connectionString: "postgres://neu.intern/erp" }]);
     calls.length = 0;
     await syncTeam();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    const id = teamConnectionId(HUB, "erp");
     expect(
       calls
         .filter((call) => call.command === "delete_secret")
         .map((call) => (call.args as { account: string }).account),
-    ).toContain(id);
+    ).toContain(teamConnectionId(TEAM_HUB, "erp"));
     expect(useTeamStore.getState().warnings.join(" ")).toContain("anderes Ziel");
-  });
-
-  test("an expired session removes team connections after the offboarding period", async () => {
-    payload = { connections: [erp] };
-    await loginTeam(HUB);
-    payload = new Error("Team-Anmeldung abgelaufen. Bitte erneut anmelden.");
-    await expect(syncTeam()).rejects.toThrow();
-    expect(useConnectionsStore.getState().connections).toHaveLength(1);
-    useTeamStore.setState({ expiredSince: Date.now() - 1000 });
-    payload = { connections: [erp] };
-    await loginTeam(HUB);
-    expect(useTeamStore.getState().expiredSince).toBeNull();
-    payload = new Error("Team-Anmeldung abgelaufen. Bitte erneut anmelden.");
-    await expect(syncTeam()).rejects.toThrow();
-    useTeamStore.setState({ expiredSince: Date.now() - 15 * 86_400_000 });
-    await expect(syncTeam()).rejects.toThrow();
-    expect(useConnectionsStore.getState().connections).toHaveLength(0);
-    expect(useTeamStore.getState().user).toBeNull();
-  });
-
-  test("an invalid hub answer keeps every team connection", async () => {
-    payload = { connections: [erp] };
-    await loginTeam(HUB);
-    payload = {};
-    await expect(syncTeam()).rejects.toThrow("Ungültige Antwort");
-    expect(useConnectionsStore.getState().connections).toHaveLength(1);
-    expect(useTeamStore.getState().lastError).toBe("Ungültige Antwort vom Team-Hub.");
-  });
-
-  test("a sync still in flight during logout does not bring connections back", async () => {
-    payload = { connections: [erp] };
-    await loginTeam(HUB);
-    let open = () => {};
-    gate = new Promise<void>((resolve) => {
-      open = resolve;
-    });
-    const pending = syncTeam();
-    await logoutTeam();
-    open();
-    expect(await pending).toBeNull();
-    expect(useConnectionsStore.getState().connections).toHaveLength(0);
-    expect(useTeamStore.getState().user).toBeNull();
-  });
-
-  test("microsoft login keeps sharepoint warnings and recognises missing consent", async () => {
-    payload = { name: "l8db", connections: [erp], warnings: ["kaputt.json: kein gültiges JSON"] };
-    await loginTeam(MICROSOFT_HUB, true);
-    expect(calls[0]).toEqual({ command: "team_login", args: { hubUrl: "m365", admin: true } });
-    expect(useTeamStore.getState()).toMatchObject({
-      hubUrl: "m365",
-      name: "l8db",
-      warnings: ["kaputt.json: kein gültiges JSON"],
-    });
-    expect(useConnectionsStore.getState().connections[0].team?.hub).toBe("m365");
-    expect(
-      needsConsent(new Error("Deine IT muss l8db einmal für eure Organisation freigeben. x")),
-    ).toBe(true);
-    expect(needsConsent(new Error("anderer Fehler"))).toBe(false);
-  });
-
-  test("nothing is fetched while logged out", async () => {
-    expect(await syncTeam()).toBeNull();
-    expect(calls).toHaveLength(0);
   });
 });
 
-test("team sync of 2,000 hub connections next to 2,000 private ones stays within budget", async () => {
+test("team sync of 2,000 file connections next to 2,000 private ones stays within budget", async () => {
   const privateConnections = Array.from({ length: 2000 }, (_, index) =>
     local({ id: `own-${index}`, name: `Eigene ${index}` }),
   );
@@ -788,8 +439,7 @@ test("team sync of 2,000 hub connections next to 2,000 private ones stays within
   reportScenario("team-sync-merge-update", { local: 2000, team: 2000, ...updating });
   expect(updating.p95Ms).toBeLessThan(60);
 
-  useTeamStore.setState({ hubUrl: HUB, user: { email: "max@firma.de", name: "Max" } });
-  payload = { connections: entries };
+  payload = file(entries);
   calls.length = 0;
   let open = () => {};
   gate = new Promise<void>((resolve) => {
@@ -803,109 +453,4 @@ test("team sync of 2,000 hub connections next to 2,000 private ones stays within
   calls.length = 0;
   await syncTeam();
   expect(calls).toHaveLength(1);
-});
-
-describe("sharing with the team", () => {
-  const own = (overrides: Partial<SavedConnection> = {}): SavedConnection => ({
-    id: "own-erp",
-    name: "ERP Produktion",
-    kind: "postgres",
-    connectionString: "postgres://max:geheim@erp.firma.intern:5432/erp?sslmode=require&token=t",
-    sslMode: "require",
-    environment: "production",
-    ssh: {
-      host: "bastion.firma.intern",
-      port: 22,
-      user: "tunnel",
-      auth: "key",
-      keyFile: "/home/max/.ssh/id",
-      agentSocket: "/run/agent",
-      remoteHost: "erp.firma.intern",
-      remotePort: 5432,
-    },
-    ...overrides,
-  });
-
-  test("the shared file carries no personal credentials or local paths", () => {
-    const entry = teamEntry(own(), "x1");
-    expect(entry).toMatchObject({
-      id: "erp-produktion-x1",
-      name: "ERP Produktion",
-      kind: "postgres",
-      environment: "production",
-      sslMode: "require",
-    });
-    expect(entry.connectionString).toBe("postgres://erp.firma.intern:5432/erp?sslmode=require");
-    expect(entry.ssh).toMatchObject({ user: "tunnel", keyFile: "" });
-    expect(entry.ssh).not.toHaveProperty("agentSocket");
-    expect(withoutUser("Server=h;User Id=max;Password=x;Database=d")).toBe("Server=h;Database=d");
-    expect(withoutUser("clickhouse://h:8123/db?user=max&secure=1&Username=m")).toBe(
-      "clickhouse://h:8123/db?secure=1",
-    );
-    expect(teamEntry(own({ name: "Müller Größe" }), "x").id).toBe("mueller-groesse-x");
-  });
-
-  test("connections that cannot work for the team are explained before uploading", () => {
-    useConnectionsStore.setState({ connections: [], activeId: "own-erp" });
-    expect(shareProblem(own())).toBeNull();
-    expect(shareProblem(own({ team: { hub: MICROSOFT_HUB, id: "x", base: {} } }))).toContain(
-      "bereits",
-    );
-    expect(shareProblem(own({ kind: "sqlite", connectionString: "sqlite:///tmp/x.db" }))).toContain(
-      "nicht erlaubt",
-    );
-    expect(shareProblem(own({ temporary: true }))).toContain("speichern");
-    useTeamStore.setState({ allowedHosts: ["*.example.com"] });
-    expect(shareProblem(own())).toContain("nicht freigegeben");
-    useTeamStore.setState({ allowedHosts: [] });
-  });
-
-  test("sharing links the existing connection to the team copy without moving anything", async () => {
-    keychain.clear();
-    keychain.set("own-erp", "geheim");
-    useConnectionsStore.setState({
-      connections: [own()],
-      activeId: "own-erp",
-      recentIds: ["own-erp"],
-    });
-    useTeamStore.setState({ hubUrl: MICROSOFT_HUB, user: { email: "max@firma.de", name: "Max" } });
-    calls.length = 0;
-    const shared = await shareTeamConnection("own-erp", "folder-1");
-    expect(shared.id).toBe("own-erp");
-    expect(shared.team?.id).toBe("abc12345-shared");
-    expect(useConnectionsStore.getState()).toMatchObject({
-      activeId: "own-erp",
-      recentIds: ["own-erp"],
-    });
-    expect(calls.some((call) => /secret/.test(call.command))).toBe(false);
-    expect(keychain.get("own-erp")).toBe("geheim");
-    const upload = calls.find((call) => call.command === "team_share")?.args as {
-      folder: string;
-      content: Record<string, unknown>;
-    };
-    expect(upload.folder).toBe("folder-1");
-    payload = { connections: [{ ...upload.content, id: "abc12345-shared" }] };
-    const merge = await syncTeam();
-    expect(merge).toMatchObject({ retargeted: [], removed: [], added: 0, updated: 0 });
-    const [kept] = useConnectionsStore.getState().connections;
-    expect(useConnectionsStore.getState().connections).toHaveLength(1);
-    expect(kept.connectionString).toContain("max:geheim@");
-    expect(kept.ssh?.keyFile).toBe("/home/max/.ssh/id");
-    payload = { connections: [] };
-    expect((await syncTeam())?.removed).toEqual(["own-erp"]);
-  });
-
-  test("checking 2,000 connections for sharing stays fast", async () => {
-    useConnectionsStore.setState({ activeId: null });
-    const many = Array.from({ length: 2000 }, (_, index) =>
-      own({ id: `c${index}`, name: `DB ${index}` }),
-    );
-    let problems = 0;
-    const timing = await measureScenario(() => {
-      problems = many.filter((connection) => shareProblem(connection) !== null).length;
-    }, 9);
-    reportScenario("team-share-check", { connections: 2000, ...timing });
-    expect(problems).toBe(0);
-    expect(timing.p95Ms).toBeLessThan(100);
-  });
 });

@@ -1,54 +1,27 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { TeamUser } from "@/lib/db/team";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export const TEAM_STORE_KEY = "l8db.team";
 
 export interface TeamState {
-  hubUrl: string;
-  user: TeamUser | null;
-  name: string | null;
+  path: string | null;
+  exists: boolean;
   lastSyncAt: number | null;
   lastError: string | null;
   warnings: string[];
-  url: string | null;
-  expiredSince: number | null;
-  managedHub: string | null;
-  allowedHosts: string[];
-  policyError: string | null;
-  sharing: string | null;
-  promptOpen: boolean;
 }
 
 export const useTeamStore = create<TeamState>()(
   persist(
     (): TeamState => ({
-      hubUrl: "",
-      user: null,
-      name: null,
+      path: null,
+      exists: false,
       lastSyncAt: null,
       lastError: null,
       warnings: [],
-      url: null,
-      expiredSince: null,
-      managedHub: null,
-      allowedHosts: [],
-      policyError: null,
-      sharing: null,
-      promptOpen: false,
     }),
-    {
-      name: TEAM_STORE_KEY,
-      partialize: ({
-        managedHub: _managed,
-        promptOpen: _prompt,
-        allowedHosts: _allowed,
-        policyError: _policy,
-        sharing: _sharing,
-        ...persisted
-      }) => persisted,
-    },
+    { name: TEAM_STORE_KEY, version: 1, migrate: () => ({}) as TeamState },
   ),
 );
 

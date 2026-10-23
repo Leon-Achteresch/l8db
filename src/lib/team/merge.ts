@@ -76,22 +76,8 @@ const FORBIDDEN_PARAMS = new Set([
   "socketpath",
   "enablecleartextplugin",
 ]);
-const HOST_KEY =
-  /^(server|host|hostaddr|endpoint|data source|address|addr|network address|failover partner|nodes|hosts|contact points)$/i;
-
 function forbiddenParam(key: string): boolean {
   return FORBIDDEN_PARAMS.has(key.toLowerCase().replace(/[\s_-]/g, ""));
-}
-
-function hostOnly(server: string): string | null {
-  const value = decodeURIComponentSafe(server).trim().replace(/^tcp:/i, "");
-  const bracketed = value.match(/^\[([^\]]+)\](?::\d+)?$/);
-  if (bracketed) return bracketed[1].toLowerCase();
-  const [base, port, ...rest] = value.split(",");
-  if (rest.length || (port !== undefined && !/^\s*\d+\s*$/.test(port))) return null;
-  const parts = base.split(":");
-  if (parts.length > 2 || (parts.length === 2 && !/^\d+$/.test(parts[1]))) return null;
-  return parts[0].toLowerCase() || null;
 }
 
 function parameters(value: string): [string, string][] {
@@ -110,34 +96,6 @@ function decodeURIComponentSafe(value: string): string {
   } catch {
     return value;
   }
-}
-
-function hostsOf(fields: Record<string, unknown>): (string | null)[] {
-  const value = fields.connectionString as string;
-  const match = value.match(AUTHORITY);
-  const listed = parameters(value)
-    .filter(([key]) => HOST_KEY.test(key))
-    .map(([, server]) => server);
-  if (match) listed.push(match[2].slice(match[2].lastIndexOf("@") + 1));
-  const servers = match ? listed.flatMap((server) => server.split(",")) : listed;
-  const ssh = fields.ssh as
-    | { host: string; remoteHost: string; jumpHosts?: { host: string }[] }
-    | undefined;
-  const proxy = fields.proxy as { host: string } | undefined;
-  return [
-    ...(servers.length ? servers.map(hostOnly) : [null]),
-    ...(ssh
-      ? [ssh.host, ssh.remoteHost, ...(ssh.jumpHosts ?? []).map((hop) => hop.host)].map(hostOnly)
-      : []),
-    ...(proxy ? [hostOnly(proxy.host)] : []),
-  ];
-}
-
-export function hostAllowed(host: string | null, patterns: string[]): boolean {
-  if (!host) return false;
-  return patterns.some((pattern) =>
-    pattern.startsWith("*.") ? host.endsWith(pattern.slice(1)) : host === pattern,
-  );
 }
 
 export const TEAM_KINDS = [
@@ -171,7 +129,7 @@ export function teamConnectionId(hub: string, id: string): string {
   return `team-${(hash >>> 0).toString(16)}-${id}`;
 }
 
-function pick(entry: unknown, allowedHosts: string[]): Record<string, unknown> | string {
+function pick(entry: unknown): Record<string, unknown> | string {
   if (!entry || typeof entry !== "object") return "Ungültiger Eintrag übersprungen";
   const source = entry as Record<string, unknown>;
   const label = `„${typeof source.name === "string" ? source.name : String(source.id)}“`;
@@ -211,11 +169,6 @@ function pick(entry: unknown, allowedHosts: string[]): Record<string, unknown> |
       ...local(ssh),
       ...(ssh.jumpHosts ? { jumpHosts: ssh.jumpHosts.map(local) } : {}),
     };
-  }
-  if (allowedHosts.length) {
-    const blocked = hostsOf(picked).find((host) => !hostAllowed(host, allowedHosts));
-    if (blocked !== undefined)
-      return `${label}: Host „${blocked ?? "unbekannt"}“ ist von der IT nicht freigegeben, übersprungen`;
   }
   return picked;
 }
@@ -298,12 +251,11 @@ export function mergeTeamConnections(
   local: SavedConnection[],
   hub: string,
   entries: unknown[],
-  allowedHosts: string[] = [],
 ): TeamMerge {
   const remote = new Map<string, Record<string, unknown>>();
   const warnings: string[] = [];
   for (const entry of entries) {
-    const picked = pick(entry, allowedHosts);
+    const picked = pick(entry);
     if (typeof picked === "string") warnings.push(picked);
     else remote.set(teamConnectionId(hub, picked.id as string), picked);
   }

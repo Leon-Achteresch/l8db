@@ -26,7 +26,6 @@ mod supabase;
 mod supabase_studio;
 mod sync;
 mod team;
-mod team_m365;
 mod updates;
 mod versioning;
 mod windows;
@@ -639,15 +638,7 @@ pub fn run() {
             db::secrets::store_secret,
             db::secrets::load_secret,
             db::secrets::delete_secret,
-            team::team_login,
-            team::team_cancel_login,
             team::team_connections,
-            team::team_logout,
-            team::team_managed_hub,
-            team_m365::team_microsoft_available,
-            team_m365::team_share_folders,
-            team_m365::team_share,
-            team_m365::team_share_consent,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,
