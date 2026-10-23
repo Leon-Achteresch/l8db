@@ -25,7 +25,7 @@ export function BaasView() {
   }, [section]);
 
   return (
-    <main className="group/baas h-full min-h-0 flex-1 overflow-auto bg-background has-[[data-baas-studio]]:overflow-hidden">
+    <main className="group/baas h-full min-h-0 flex-1 overflow-auto bg-background has-[[data-baas-studio]]:overflow-hidden has-[[data-baas-studio]]:bg-transparent">
       <div className="mx-auto max-w-[1400px] px-6 pt-8 pb-6 group-has-[[data-baas-studio]]/baas:hidden lg:px-9">
         <Button variant="ghost" size="sm" asChild>
           <Link to="/connections">

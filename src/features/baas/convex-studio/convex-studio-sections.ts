@@ -45,7 +45,6 @@ export type ConvexStudioSectionId =
 export interface ConvexStudioSection {
   id: ConvexStudioSectionId;
   label: string;
-  group: string;
   icon: LucideIcon;
   component: ComponentType<ConvexStudioSectionProps>;
 }
@@ -54,56 +53,48 @@ export const CONVEX_STUDIO_SECTIONS: ConvexStudioSection[] = [
   {
     id: "overview",
     label: "Übersicht",
-    group: "Deployment",
     icon: LayoutDashboard,
     component: ConvexOverviewSection,
   },
   {
     id: "data",
     label: "Daten",
-    group: "Daten",
     icon: Table2,
     component: ConvexDataSection,
   },
   {
     id: "functions",
     label: "Funktionen",
-    group: "Daten",
     icon: Code2,
     component: ConvexFunctionsSection,
   },
   {
     id: "logs",
     label: "Logs",
-    group: "Betrieb",
     icon: ScrollText,
     component: ConvexLogsSection,
   },
   {
     id: "files",
     label: "Dateien",
-    group: "Daten",
     icon: FolderOpen,
     component: ConvexFilesSection,
   },
   {
     id: "schedules",
     label: "Zeitpläne",
-    group: "Betrieb",
     icon: CalendarClock,
     component: ConvexSchedulesSection,
   },
   {
     id: "environment",
     label: "Umgebung",
-    group: "Betrieb",
     icon: KeyRound,
     component: ConvexEnvironmentSection,
   },
   {
     id: "settings",
     label: "Einstellungen",
-    group: "Betrieb",
     icon: Settings,
     component: ConvexSettingsSection,
   },

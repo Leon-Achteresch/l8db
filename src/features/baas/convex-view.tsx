@@ -4,6 +4,7 @@ import { ArrowLeft, Cloud, Plus, RefreshCw, Unplug } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useConvexFunctionHistory } from "@/features/baas/convex-studio/functions/convex-function-history-store";
 import {
@@ -15,6 +16,7 @@ import {
   convexProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasStudioFooter } from "./baas-studio-footer";
 import { BaasStudioHeader } from "./baas-studio-header";
 import { ConvexProjectView } from "./convex-project-view";
 import { ConvexStudio } from "./convex-studio/convex-studio";
@@ -155,36 +157,37 @@ export function ConvexView({ initialId }: { initialId?: string }) {
         deployment={studio}
         header={
           <BaasStudioHeader
+            provider="convex"
             label="Convex-Verbindung"
             items={profiles.data.map((item) => ({ id: item.id, label: profileLabel(item) }))}
             value={selected.id}
             onSelect={selectProfile}
+            error={error}
+          >
+            {!studio.selfHosted && (
+              <DropdownMenuItem className="text-xs" onSelect={closeStudio}>
+                <ArrowLeft className="size-3.5" /> Projekte
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              className="text-xs"
+              onSelect={() => {
+                setError(null);
+                setAdding(true);
+              }}
+            >
+              <Plus className="size-3.5" /> Verbindung hinzufügen
+            </DropdownMenuItem>
+          </BaasStudioHeader>
+        }
+        footer={
+          <BaasStudioFooter
             onRefresh={() =>
               void queryClient.invalidateQueries({ queryKey: ["convex", selected.id] })
             }
             onDisconnect={() => void disconnect()}
             busy={busy}
-            error={error}
-          >
-            <div className="flex gap-1">
-              {!studio.selfHosted && (
-                <Button variant="ghost" size="sm" className="flex-1" onClick={closeStudio}>
-                  <ArrowLeft className="size-3.5" /> Projekte
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="flex-1"
-                onClick={() => {
-                  setError(null);
-                  setAdding(true);
-                }}
-              >
-                <Plus className="size-3.5" /> Hinzufügen
-              </Button>
-            </div>
-          </BaasStudioHeader>
+          />
         }
       />
     );

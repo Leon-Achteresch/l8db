@@ -47,7 +47,6 @@ export type SupabaseStudioSectionId =
 export interface SupabaseStudioSection {
   id: SupabaseStudioSectionId;
   label: string;
-  group: string;
   icon: LucideIcon;
   component: ComponentType<SupabaseStudioSectionProps>;
   unavailable: (capabilities: SupabaseStudioCapabilities) => string | null;
@@ -65,7 +64,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "overview",
     label: "Übersicht",
-    group: "Projekt",
     icon: LayoutDashboard,
     component: SupabaseOverviewSection,
     unavailable: () => null,
@@ -73,7 +71,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "tables",
     label: "Tabellen",
-    group: "Daten",
     icon: Table2,
     component: SupabaseTablesSection,
     unavailable: (capabilities) =>
@@ -84,7 +81,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "sql",
     label: "SQL",
-    group: "Daten",
     icon: SquareTerminal,
     component: SupabaseSqlSection,
     unavailable: needsSql,
@@ -92,7 +88,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "database",
     label: "Datenbank",
-    group: "Daten",
     icon: Database,
     component: SupabaseDatabaseSection,
     unavailable: needsSql,
@@ -100,7 +95,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "policies",
     label: "Richtlinien",
-    group: "Daten",
     icon: ShieldCheck,
     component: SupabasePoliciesSection,
     unavailable: needsSql,
@@ -108,7 +102,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "auth",
     label: "Auth",
-    group: "Dienste",
     icon: Users,
     component: SupabaseAuthSection,
     unavailable: (capabilities) =>
@@ -117,7 +110,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "storage",
     label: "Storage",
-    group: "Dienste",
     icon: FolderOpen,
     component: SupabaseStorageSection,
     unavailable: needsKey,
@@ -125,7 +117,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "functions",
     label: "Edge Functions",
-    group: "Dienste",
     icon: Code2,
     component: SupabaseFunctionsSection,
     unavailable: (capabilities) =>
@@ -134,7 +125,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "realtime",
     label: "Realtime",
-    group: "Dienste",
     icon: Radio,
     component: SupabaseRealtimeSection,
     unavailable: needsKey,
@@ -142,7 +132,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "logs",
     label: "Logs & Leistung",
-    group: "Betrieb",
     icon: Activity,
     component: SupabaseLogsSection,
     unavailable: (capabilities) =>
@@ -153,7 +142,6 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   {
     id: "settings",
     label: "Einstellungen",
-    group: "Betrieb",
     icon: Settings,
     component: SupabaseSettingsSection,
     unavailable: () => null,

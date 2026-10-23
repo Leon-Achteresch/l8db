@@ -14,6 +14,7 @@ import {
   supabaseProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasStudioFooter } from "./baas-studio-footer";
 import { BaasStudioHeader } from "./baas-studio-header";
 import { SupabaseStudio } from "./supabase-studio/supabase-studio";
 
@@ -86,15 +87,20 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
         project={selected}
         header={
           <BaasStudioHeader
+            provider="supabase"
             label="Supabase-Projekt"
             items={projects.data.map((project) => ({ id: project.reference, label: project.name }))}
             value={selected.reference}
             onSelect={setSelectedRef}
+            error={error ?? (projects.isError ? String(projects.error) : null)}
+          />
+        }
+        footer={
+          <BaasStudioFooter
             onRefresh={() => void projects.refetch()}
             refreshing={projects.isFetching}
             onDisconnect={() => void disconnect()}
             busy={busy}
-            error={error ?? (projects.isError ? String(projects.error) : null)}
           />
         }
       />
