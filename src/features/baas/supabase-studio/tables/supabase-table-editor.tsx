@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
   studioTablesDescribe,
   studioTablesDropTable,
@@ -18,6 +18,7 @@ import {
   studioTablesSetRls,
   studioTablesTruncate,
 } from "@/lib/db/supabase-studio-tables";
+import { BaasTableTabs } from "../../baas-table-tabs";
 import { SupabaseTableConfirmDialog } from "./supabase-table-confirm-dialog";
 import { SupabaseTableGrid } from "./supabase-table-grid";
 import { SupabaseTableRenameDialog } from "./supabase-table-rename-dialog";
@@ -70,10 +71,11 @@ export function SupabaseTableEditor({
     }
   }
 
-  if (info.isPending) return <p className="text-xs text-muted-foreground">Tabelle wird geladen…</p>;
+  if (info.isPending)
+    return <p className="p-4 text-xs text-muted-foreground">Tabelle wird geladen…</p>;
   if (info.isError)
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <p role="alert" className="p-4 text-xs text-destructive">
         {String(info.error)}
       </p>
     );
@@ -83,75 +85,60 @@ export function SupabaseTableEditor({
   const hasDefinition = data.view_definition !== null;
 
   return (
-    <div className="grid min-w-0 gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="truncate font-mono text-sm font-semibold">
-          {data.schema}.{data.name}
-        </h3>
-        <Badge variant="secondary">{KIND_LABELS[data.kind]}</Badge>
-        {data.rls_enabled !== null && isTable && (
-          <Badge variant={data.rls_enabled ? "outline" : "destructive"}>
-            {data.rls_enabled ? "RLS aktiv" : "RLS aus"}
-          </Badge>
-        )}
-        {sql && data.introspected && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Tabellenaktionen"
-                className="ml-auto"
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setDialog("rename")}>Umbenennen…</DropdownMenuItem>
-              {isTable && (
-                <DropdownMenuItem onSelect={() => void toggleRls(!data.rls_enabled)}>
-                  {data.rls_enabled ? "RLS deaktivieren" : "RLS aktivieren"}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              {isTable && (
-                <DropdownMenuItem variant="destructive" onSelect={() => setDialog("truncate")}>
-                  Alle Zeilen löschen…
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem variant="destructive" onSelect={() => setDialog("drop")}>
-                {KIND_LABELS[data.kind]} löschen…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-      {!sql && (
-        <p className="text-xs text-muted-foreground">
-          Schemaänderungen benötigen SQL-Zugriff: Secret Key einer selbst gehosteten Instanz oder
-          Supabase-Zugangstoken.
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="data" className="text-xs">
-            Daten
-          </TabsTrigger>
-          <TabsTrigger value="structure" className="text-xs">
-            Struktur
-          </TabsTrigger>
-          {hasDefinition && (
-            <TabsTrigger value="definition" className="text-xs">
-              Definition
-            </TabsTrigger>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
+        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-3">
+          <BaasTableTabs definition={hasDefinition} />
+          <h3 className="truncate font-mono text-xs font-medium">
+            {data.schema}.{data.name}
+          </h3>
+          <Badge variant="secondary">{KIND_LABELS[data.kind]}</Badge>
+          {data.rls_enabled !== null && isTable && (
+            <Badge variant={data.rls_enabled ? "outline" : "destructive"}>
+              {data.rls_enabled ? "RLS aktiv" : "RLS aus"}
+            </Badge>
           )}
-        </TabsList>
-        <TabsContent value="data" className="pt-3">
+          {sql && data.introspected && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Tabellenaktionen">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setDialog("rename")}>
+                  Umbenennen…
+                </DropdownMenuItem>
+                {isTable && (
+                  <DropdownMenuItem onSelect={() => void toggleRls(!data.rls_enabled)}>
+                    {data.rls_enabled ? "RLS deaktivieren" : "RLS aktivieren"}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                {isTable && (
+                  <DropdownMenuItem variant="destructive" onSelect={() => setDialog("truncate")}>
+                    Alle Zeilen löschen…
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem variant="destructive" onSelect={() => setDialog("drop")}>
+                  {KIND_LABELS[data.kind]} löschen…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+        {!sql && (
+          <p className="shrink-0 border-b px-3 py-1.5 text-xs text-muted-foreground">
+            Schemaänderungen benötigen SQL-Zugriff: Secret Key einer selbst gehosteten Instanz oder
+            Supabase-Zugangstoken.
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="shrink-0 border-b px-3 py-1.5 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
           {tab === "data" && (
             <SupabaseTableGrid
               key={data.columns.map((column) => column.name).join(",")}
@@ -161,8 +148,8 @@ export function SupabaseTableEditor({
             />
           )}
         </TabsContent>
-        <TabsContent value="structure" className="pt-3">
-          {tab === "structure" && (
+        <TabsContent value="columns" className="min-h-0 flex-1 overflow-auto p-4">
+          {tab === "columns" && (
             <SupabaseTableStructure
               reference={reference}
               info={data}
@@ -172,8 +159,8 @@ export function SupabaseTableEditor({
           )}
         </TabsContent>
         {hasDefinition && (
-          <TabsContent value="definition" className="pt-3">
-            <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
+          <TabsContent value="definition" className="min-h-0 flex-1 overflow-auto p-4">
+            <pre className="rounded-lg border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
               {data.view_definition}
             </pre>
           </TabsContent>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { convexStudioFunctionsList } from "@/lib/db/convex-studio-functions";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexComponentsList } from "./convex-components-list";
 import { ConvexFunctionDetail } from "./convex-function-detail";
@@ -30,6 +31,7 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
     refetchOnWindowFocus: false,
   });
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState("functions");
   const modules = catalog.data?.modules ?? [];
   const current = modules
     .flatMap((module) => module.functions.map((fn) => ({ module, fn })))
@@ -67,7 +69,18 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
       {catalog.data?.truncated && (
         <p className="text-xs text-amber-600">Liste auf 5000 Funktionen begrenzt.</p>
       )}
-      <Tabs defaultValue="functions">
+      <BaasSidebarPortal>
+        <ConvexFunctionTree
+          modules={modules}
+          loading={catalog.isLoading}
+          selected={selected}
+          onSelect={(id) => {
+            setSelected(id);
+            setTab("functions");
+          }}
+        />
+      </BaasSidebarPortal>
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="functions">Funktionen</TabsTrigger>
           <TabsTrigger value="http">
@@ -77,13 +90,7 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
           {hasComponents && <TabsTrigger value="components">Komponenten</TabsTrigger>}
         </TabsList>
         <TabsContent value="functions">
-          <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-            <ConvexFunctionTree
-              modules={modules}
-              loading={catalog.isLoading}
-              selected={selected}
-              onSelect={setSelected}
-            />
+          <div>
             {current ? (
               <ConvexFunctionDetail
                 key={selected}

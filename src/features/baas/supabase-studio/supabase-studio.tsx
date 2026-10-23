@@ -40,27 +40,7 @@ export function SupabaseStudio({
       isNew={feature.isNew}
       header={header}
       footer={footer}
-      details={
-        <dl className="space-y-1 px-2 text-xs">
-          <dt className="text-muted-foreground">
-            {project.self_hosted ? "Projekt-URL" : "Region"}
-          </dt>
-          <dd
-            className="truncate font-mono"
-            title={(project.self_hosted ? project.api_url : project.region) ?? undefined}
-          >
-            {(project.self_hosted ? project.api_url : project.region) ?? "–"}
-          </dd>
-          <dt className="pt-1 text-muted-foreground">Schlüssel</dt>
-          <dd>
-            {!project.self_hosted
-              ? "Zugangstoken"
-              : project.secret_key
-                ? "Secret Key"
-                : "Publishable Key"}
-          </dd>
-        </dl>
-      }
+      details={`${project.self_hosted ? (project.api_url ?? "Selbst gehostet") : (project.region ?? "Cloud")} · ${!project.self_hosted ? "Zugangstoken" : project.secret_key ? "Secret Key" : "Publishable Key"}`}
       tabs={SUPABASE_STUDIO_SECTIONS.map((section) => ({
         value: section.id,
         label: section.label,
@@ -77,19 +57,25 @@ export function SupabaseStudio({
         await navigate({ to: "/baas", search: { ...search, studio: id } });
       }}
     >
-      {capabilities.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {String(capabilities.error)}
-        </p>
-      ) : capabilities.data ? (
-        <Section
-          key={`${project.reference}:${active.id}`}
-          project={project}
-          capabilities={capabilities.data}
-        />
-      ) : (
-        <p className="text-sm text-muted-foreground">Studio wird geladen…</p>
-      )}
+      <div
+        className={
+          active.fullBleed ? "flex min-h-0 flex-1 flex-col" : "min-h-0 flex-1 overflow-auto p-5"
+        }
+      >
+        {capabilities.isError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {String(capabilities.error)}
+          </p>
+        ) : capabilities.data ? (
+          <Section
+            key={`${project.reference}:${active.id}`}
+            project={project}
+            capabilities={capabilities.data}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">Studio wird geladen…</p>
+        )}
+      </div>
     </BaasStudioFrame>
   );
 }

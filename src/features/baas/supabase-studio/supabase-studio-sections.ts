@@ -50,6 +50,7 @@ export interface SupabaseStudioSection {
   icon: LucideIcon;
   component: ComponentType<SupabaseStudioSectionProps>;
   unavailable: (capabilities: SupabaseStudioCapabilities) => string | null;
+  fullBleed?: boolean;
 }
 
 const needsSql = (capabilities: SupabaseStudioCapabilities) =>
@@ -70,6 +71,7 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
   },
   {
     id: "tables",
+    fullBleed: true,
     label: "Tabellen",
     icon: Table2,
     component: SupabaseTablesSection,
