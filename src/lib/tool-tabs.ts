@@ -3,7 +3,6 @@ import {
   ArchiveIcon,
   ArrowRightLeftIcon,
   BlocksIcon,
-  Building2Icon,
   DiffIcon,
   DownloadIcon,
   FilePlusIcon,
@@ -46,8 +45,7 @@ export type ToolId =
   | "notebook"
   | "create-table"
   | "saved-plan"
-  | "automation"
-  | "team-setup";
+  | "automation";
 
 type ToolEntry = {
   path: string;
@@ -257,15 +255,6 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
       import("@/features/automation/automation-view").then((m) => ({
         default: m.AutomationView,
       })),
-    ),
-  },
-  "team-setup": {
-    path: "/team-setup",
-    label: "Team-Einrichtung",
-    Icon: Building2Icon,
-    iconColor: "text-sky-500",
-    Component: lazy(() =>
-      import("@/features/team-setup/team-setup-view").then((m) => ({ default: m.TeamSetupView })),
     ),
   },
 };

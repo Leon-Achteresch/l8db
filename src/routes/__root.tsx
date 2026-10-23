@@ -10,8 +10,6 @@ import { DbThemeRoot } from "@/components/db-theme-root";
 import { SpiderLayer } from "@/components/seasonal/spider-layer";
 import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
-import { TeamLoginDialog } from "@/features/connections/team-login-dialog";
-import { TeamShareDialog } from "@/features/connections/team-share-dialog";
 import { OnboardingHost } from "@/features/onboarding/onboarding-host";
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
 import { AppFrame } from "@/features/shell/app-frame";
@@ -59,8 +57,6 @@ function RootComponent() {
         </DbThemeRoot>
         <UpdateAvailableGate />
         <PasswordPromptDialog />
-        <TeamLoginDialog />
-        <TeamShareDialog />
         <SqlConfirmationDialog />
         <TasksDialog />
         <WindowCloseGuard />
