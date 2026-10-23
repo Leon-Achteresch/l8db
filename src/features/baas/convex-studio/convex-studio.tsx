@@ -1,4 +1,5 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
@@ -6,7 +7,13 @@ import { CONVEX_STUDIO_SECTIONS, type ConvexStudioDeployment } from "./convex-st
 
 const route = getRouteApi("/baas");
 
-export function ConvexStudio({ deployment }: { deployment: ConvexStudioDeployment }) {
+export function ConvexStudio({
+  deployment,
+  header,
+}: {
+  deployment: ConvexStudioDeployment;
+  header: ReactNode;
+}) {
   const search = route.useSearch();
   const navigate = useNavigate();
   const feature = useNewFeatureVisibility<HTMLElement>("baas.convex.studio");
@@ -18,12 +25,13 @@ export function ConvexStudio({ deployment }: { deployment: ConvexStudioDeploymen
   const Section = active.component;
 
   return (
-    <div className="grid min-h-[70vh] overflow-hidden rounded-2xl border bg-card md:grid-cols-[220px_minmax(0,1fr)]">
+    <div data-baas-studio className="flex h-full min-h-0">
       <nav
         ref={feature.ref}
         aria-label="Convex Studio"
-        className="border-b bg-muted/30 p-3 md:border-r md:border-b-0"
+        className="w-60 shrink-0 overflow-y-auto border-r bg-sidebar p-3"
       >
+        {header}
         <div className="mb-3 flex items-center gap-2 px-2">
           <p className="truncate text-sm font-semibold" title={deployment.title}>
             {deployment.title}
@@ -56,7 +64,7 @@ export function ConvexStudio({ deployment }: { deployment: ConvexStudioDeploymen
           </div>
         ))}
       </nav>
-      <section aria-label={active.label} className="min-w-0 p-5">
+      <section aria-label={active.label} className="min-h-0 min-w-0 flex-1 overflow-auto p-5">
         <Section
           key={`${deployment.profileId}:${deployment.deploymentName}:${active.id}`}
           deployment={deployment}

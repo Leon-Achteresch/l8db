@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConvexFunctionHistory } from "@/features/baas/convex-studio/functions/convex-function-history-store";
 import {
+  type ConvexProfile,
   convexConnect,
   convexConnectSelfHosted,
   convexDisconnect,
@@ -14,6 +15,7 @@ import {
   convexProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasStudioHeader } from "./baas-studio-header";
 import { ConvexProjectView } from "./convex-project-view";
 import { ConvexStudio } from "./convex-studio/convex-studio";
 
@@ -54,6 +56,13 @@ export function ConvexView({ initialId }: { initialId?: string }) {
     });
   }
 
+  function selectProfile(id: string) {
+    if (id !== selected?.id) closeStudio();
+    setSelectedId(id);
+    setCursor(null);
+    setHistory([]);
+  }
+
   async function connect() {
     if (selfHosted) {
       setBusy(true);
@@ -84,6 +93,7 @@ export function ConvexView({ initialId }: { initialId?: string }) {
       const profile = await convexConnect(id, token);
       await queryClient.invalidateQueries({ queryKey: ["convex", "profiles"] });
       setSelectedId(profile.id);
+      closeStudio();
       setTeamId("");
       setToken("");
       setAdding(false);
@@ -116,6 +126,69 @@ export function ConvexView({ initialId }: { initialId?: string }) {
     }
   }
 
+  const studio =
+    selected && !adding
+      ? selected.url
+        ? {
+            profileId: selected.id,
+            projectId: 0,
+            deploymentName: "",
+            title: profileLabel(selected),
+            url: selected.url,
+            selfHosted: true,
+          }
+        : search.deployment && search.project !== undefined
+          ? {
+              profileId: selected.id,
+              projectId: search.project,
+              deploymentName: search.deployment,
+              title: search.deployment,
+              url: null,
+              selfHosted: false,
+            }
+          : null
+      : null;
+
+  if (profiles.data && selected && studio)
+    return (
+      <ConvexStudio
+        deployment={studio}
+        header={
+          <BaasStudioHeader
+            label="Convex-Verbindung"
+            items={profiles.data.map((item) => ({ id: item.id, label: profileLabel(item) }))}
+            value={selected.id}
+            onSelect={selectProfile}
+            onRefresh={() =>
+              void queryClient.invalidateQueries({ queryKey: ["convex", selected.id] })
+            }
+            onDisconnect={() => void disconnect()}
+            busy={busy}
+            error={error}
+          >
+            <div className="flex gap-1">
+              {!studio.selfHosted && (
+                <Button variant="ghost" size="sm" className="flex-1" onClick={closeStudio}>
+                  <ArrowLeft className="size-3.5" /> Projekte
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  setError(null);
+                  setAdding(true);
+                }}
+              >
+                <Plus className="size-3.5" /> Hinzufügen
+              </Button>
+            </div>
+          </BaasStudioHeader>
+        }
+      />
+    );
+
   return (
     <div className="mx-auto max-w-[1400px] px-6 pb-8 lg:px-9">
       <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
@@ -128,7 +201,14 @@ export function ConvexView({ initialId }: { initialId?: string }) {
           <p className="mt-2 text-sm text-muted-foreground">Teams, Projekte und Deployments.</p>
         </div>
         {selected && (
-          <Button variant="outline" size="sm" onClick={() => setAdding((value) => !value)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setError(null);
+              setAdding((value) => !value);
+            }}
+          >
             <Plus className="size-3.5" /> Hinzufügen
           </Button>
         )}
@@ -231,17 +311,10 @@ export function ConvexView({ initialId }: { initialId?: string }) {
                       type="button"
                       role="tab"
                       aria-selected={selected.id === item.id}
-                      onClick={() => {
-                        if (item.id !== selected.id) closeStudio();
-                        setSelectedId(item.id);
-                        setCursor(null);
-                        setHistory([]);
-                      }}
+                      onClick={() => selectProfile(item.id)}
                       className={`rounded-xl border px-3 py-2 text-sm transition-colors ${selected.id === item.id ? "border-primary/50 bg-primary/10 text-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
                     >
-                      {item.url
-                        ? item.url.replace(/^https?:\/\//, "").replace(/\/$/, "")
-                        : `Team ${item.team_id}`}
+                      {profileLabel(item)}
                     </button>
                   ))}
                 </div>
@@ -265,36 +338,7 @@ export function ConvexView({ initialId }: { initialId?: string }) {
                   </Button>
                 </div>
               </div>
-              {selected.url ? (
-                <div data-baas-section="deployments" className="scroll-mt-6">
-                  <ConvexStudio
-                    deployment={{
-                      profileId: selected.id,
-                      projectId: 0,
-                      deploymentName: "",
-                      title: selected.url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
-                      url: selected.url,
-                      selfHosted: true,
-                    }}
-                  />
-                </div>
-              ) : search.deployment && search.project !== undefined ? (
-                <div data-baas-section="deployments" className="scroll-mt-6 space-y-3">
-                  <Button variant="ghost" size="sm" onClick={closeStudio}>
-                    <ArrowLeft className="size-3.5" /> Projekte
-                  </Button>
-                  <ConvexStudio
-                    deployment={{
-                      profileId: selected.id,
-                      projectId: search.project,
-                      deploymentName: search.deployment,
-                      title: search.deployment,
-                      url: null,
-                      selfHosted: false,
-                    }}
-                  />
-                </div>
-              ) : projects.isPending ? (
+              {selected.url ? null : projects.isPending ? (
                 <p className="text-sm text-muted-foreground">Projekte werden geladen…</p>
               ) : projects.isError ? (
                 <p role="alert" className="text-sm text-destructive">
@@ -312,35 +356,33 @@ export function ConvexView({ initialId }: { initialId?: string }) {
                   ))}
                 </div>
               )}
-              {!selected.url &&
-                projects.data &&
-                (history.length > 0 || projects.data.pagination.hasMore) && (
-                  <div className="mt-5 flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={history.length === 0}
-                      onClick={() => {
-                        const previous = history.at(-1) ?? null;
-                        setHistory((items) => items.slice(0, -1));
-                        setCursor(previous || null);
-                      }}
-                    >
-                      Zurück
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!projects.data.pagination.nextCursor}
-                      onClick={() => {
-                        setHistory((items) => [...items, cursor ?? ""]);
-                        setCursor(projects.data.pagination.nextCursor);
-                      }}
-                    >
-                      Weiter
-                    </Button>
-                  </div>
-                )}
+              {projects.data && (history.length > 0 || projects.data.pagination.hasMore) && (
+                <div className="mt-5 flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={history.length === 0}
+                    onClick={() => {
+                      const previous = history.at(-1) ?? null;
+                      setHistory((items) => items.slice(0, -1));
+                      setCursor(previous || null);
+                    }}
+                  >
+                    Zurück
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!projects.data.pagination.nextCursor}
+                    onClick={() => {
+                      setHistory((items) => [...items, cursor ?? ""]);
+                      setCursor(projects.data.pagination.nextCursor);
+                    }}
+                  >
+                    Weiter
+                  </Button>
+                </div>
+              )}
             </>
           )}
           {error && (
@@ -352,4 +394,10 @@ export function ConvexView({ initialId }: { initialId?: string }) {
       )}
     </div>
   );
+}
+
+function profileLabel(profile: ConvexProfile) {
+  return profile.url
+    ? profile.url.replace(/^https?:\/\//, "").replace(/\/$/, "")
+    : `Team ${profile.team_id}`;
 }

@@ -14,6 +14,7 @@ import {
   supabaseProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasStudioHeader } from "./baas-studio-header";
 import { SupabaseStudio } from "./supabase-studio/supabase-studio";
 
 export function SupabaseView({ initialId }: { initialId?: string }) {
@@ -77,6 +78,27 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
       setBusy(false);
     }
   }
+
+  if (connected.data && projects.data && selected)
+    return (
+      <SupabaseStudio
+        key={selected.reference}
+        project={selected}
+        header={
+          <BaasStudioHeader
+            label="Supabase-Projekt"
+            items={projects.data.map((project) => ({ id: project.reference, label: project.name }))}
+            value={selected.reference}
+            onSelect={setSelectedRef}
+            onRefresh={() => void projects.refetch()}
+            refreshing={projects.isFetching}
+            onDisconnect={() => void disconnect()}
+            busy={busy}
+            error={error ?? (projects.isError ? String(projects.error) : null)}
+          />
+        }
+      />
+    );
 
   return (
     <div className="mx-auto max-w-[1400px] px-6 pb-8 lg:px-9">
@@ -241,8 +263,6 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
             </p>
           ) : projects.isPending ? (
             <p className="text-sm text-muted-foreground">Projekte werden geladen…</p>
-          ) : selected ? (
-            <SupabaseStudio key={selected.reference} project={selected} />
           ) : (
             <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
               Für diesen Zugangstoken sind keine Projekte sichtbar.
