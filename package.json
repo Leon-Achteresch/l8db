@@ -150,7 +150,8 @@
   "overrides": {
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
+    "ip-address": "^10.7.4",
     "proxy-addr": "^2.0.8",
     "source-map-js": "^1.2.2",
     "@modelcontextprotocol/sdk": "^1.31.0",

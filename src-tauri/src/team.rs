@@ -43,7 +43,11 @@ fn read_team_file(path: &Path) -> Result<Value, String> {
             Some(Value::Array(list)) => list,
             _ => return Err(format!("{shown}: \"connections\" muss eine Liste sein")),
         },
-        _ => return Err(format!("{shown}: erwartet eine Liste oder {{ \"connections\": [...] }}")),
+        _ => {
+            return Err(format!(
+                "{shown}: erwartet eine Liste oder {{ \"connections\": [...] }}"
+            ))
+        }
     };
     Ok(json!({ "path": shown, "exists": true, "connections": connections }))
 }
