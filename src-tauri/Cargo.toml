@@ -41,7 +41,7 @@ url = "2"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 postgres-native-tls = "0.5"
 native-tls = "0.2"
-russh = "0.63"
+russh = "0.64"
 base64 = "0.22"
 bb8 = "0.9"
 bb8-postgres = "0.9"
