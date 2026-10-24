@@ -61,6 +61,7 @@ fn acp_plan_read(tool: &Value) -> bool {
     }
     let reads = [
         "connections",
+        "overview",
         "search",
         "describe",
         "relations",

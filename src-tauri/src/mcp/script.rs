@@ -516,8 +516,7 @@ impl Server {
             return Err(e);
         }
         if writes {
-            self.columns.remove(&super::server::cache_key(connection));
-            super::insight::forget(connection);
+            self.forget_catalog(connection);
         }
         let state = match (transactional, commit, stopped) {
             (false, _, Some(n)) => {

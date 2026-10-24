@@ -234,7 +234,7 @@ pub async fn call(
         let run_action = args["action"] == "run";
         let result = workflow(run, args).await;
         if run_action {
-            server.lock().await.columns.clear();
+            server.lock().await.forget_all();
         }
         return result;
     }

@@ -153,3 +153,164 @@ Messung auf der Maschine oben (Debug-Build, drei Läufe, parallel lief ein ander
 Zum Vergleich vor Phase 1: eine Suche auf diesem Katalog 6 bis 18 s (Baseline-Tabelle, ms-Spalte), weil jede Suche die Spaltenliste zweimal kopierte. Vor dem Cache der Maskierungsregeln kostete jede Vorprüfung 136 ms Median, fast nur Regex-Kompilierung. Nicht gemessen: Release-Build, Linux/Windows, echte PostgreSQL-Kataloge dieser Größe, gedrosselte CPU.
 
 Cache-Verhalten: Für `search`, `describe`, `relations`, `open` und Dashboard-Joins gilt ein Katalog 10 min. Sicherheitsprüfungen (`check_read_sql`/`check_write_sql` in query, execute, script, benchmark, sandbox, drilldown, dashboard, explain) laden ihn wie vor Phase 1 neu, sobald er älter als 60 s ist. Neue Tabellen, Spalten und Schemas außerhalb des MCP sind für die Prüfungen also nicht länger unbekannt als vorher. Jedes `execute`, jeder Workflow-Lauf und jeder CSV-Import im KI-Arbeitsbereich verwirft den Katalog der Verbindung. `search` mit `refresh=true` lädt neu.
+
+## Phase 2
+
+Änderungen:
+
+- **Katalog um Objekte erweitert** (`mcp/objects.rs`). Tabellen erscheinen mit Art, Zeilenschätzung, Größe und Kommentar. Dazu kommen Views, materialisierte Views, Funktionen und Prozeduren (Signatur, Rückgabetyp, Sprache) sowie Trigger, wo das billig ist (PostgreSQL, SQLite).
+- **Stufenweises Laden mit Sammelabfragen:**
+  1. Objekte und Statistiken
+  2. Spalten
+  3. Schlüssel
+  4. Quelltext nur bei Bedarf, in einem LRU mit 32 Einträgen und 8 MiB, nie auf Platte
+- **Persistenter Katalog** (`mcp/persist.rs`). Er nimmt nur Metadaten aus freigegebenen Schemas auf, mit Rechten 0600/0700.
+  - Der Dateischlüssel hasht Format-Version, Verbindung, Datenbank, Schema-Freigabe und Maskierungsregeln.
+  - Er wird nur geschrieben, wenn die globale `mcp.json` die Verbindung mit demselben Schlüssel freigibt.
+  - Verwaiste Dateien werden beim Speichern der MCP-Konfiguration gelöscht.
+  - Ein Prozess erkennt an der mtime, dass ein anderer die Datei verworfen hat.
+- **TTL:** Die Entdeckungswerkzeuge nutzen eine adaptive TTL (Ladezeit × 600, zwischen 10 min und 6 h). Sicherheitsprüfungen laden weiter nach höchstens 60 s live und lesen nie die Datei.
+- **Neues Tool `overview`** (`mcp/overview.rs`).
+- **`search`** deckt alle Objektarten ab (`kind`, `in=source`) und durchsucht das KI-Wissen.
+- **`describe`** zeigt Tabellen kompakt, mit `columns`-Filter für breite Tabellen. Für Routinen und Views kommen Abhängigkeiten und Quelltext-Ausschnitte (`lines`) hinzu.
+- **KI-Wissen per Pull:** Im Systemprompt stehen nur Notizen, ein kurzes Glossar und die Datenregeln.
+- **Schema-Freigabe:** Die Katalogabfragen filtern freigegebene Schemas schon in SQL (bis 1.000 Schemas, darüber nur nachträglich).
+  - Quelltextzeilen und Treffer, die ein nicht freigegebenes Schema nennen (auch in `"…"`, `` `…` `` oder `[…]`), werden ausgeblendet. Dafür wird die Schemaliste einmal pro Katalog abgefragt. Scheitert diese Abfrage, gilt jeder nicht freigegebene Qualifier als verborgen.
+  - Triggerfunktionen und Typen in Signaturen aus solchen Schemas erscheinen als `[hidden]`, auch in der Datei.
+
+Neue Aufgaben auf dem `Huge`-Katalog. Er ist jetzt um 1.000 Views, 150 materialisierte Views, 20.000 Routinen, 50 Trigger und 6.201 Fremdschlüssel ergänzt, also 51.157 Relationen. 20 Routinen haben 5.211 Zeilen Quelltext, zusätzlich gibt es 301 Tabellenbeschreibungen und ein Glossar.
+
+| Aufgabe | Schritte |
+|---|---|
+| huge.map | overview |
+| huge.zoom_schema | overview schema=public |
+| huge.understand_routine | describe einer Routine mit 5.211 Zeilen (Signatur, Abhängigkeiten, erste 120 Zeilen, Hinweis auf den nächsten Ausschnitt) |
+| huge.writers_of_table | search `in=source` mit `INSERT INTO public.payments\|UPDATE public.payments` (15 Routinen) |
+| huge.knowledge_column | search nach einem Fachbegriff, der nur in einer Spaltenbeschreibung steht (`Mahnstufe`) |
+
+Für die neuen Aufgaben gibt es keine Messung vor Phase 1, weil es die Werkzeuge nicht gab. Ihre Baseline ist **modelliert** und wird im Test aus den synthetischen Daten berechnet (`modeled()`). Ausgegangen wird jeweils von einem Modell, das ohne die neuen Werkzeuge über `query` auf die Systemkataloge geht:
+
+| Aufgabe | modellierte Baseline |
+|---|---|
+| huge.map | 3 Abfragen auf `pg_class`/`pg_proc`: alle 304 Schemas mit Tabellen, Zeilen und Größe, die 10 größten Tabellen, Objektzahlen |
+| huge.zoom_schema | 2 Abfragen: Namenspräfixe in `public` mit Zeilen, die 10 größten Tabellen in `public` |
+| huge.understand_routine | die ganze Definition über `pg_get_functiondef` in 7 Stücken zu `max_chars` |
+| huge.writers_of_table | Regex über `prosrc`, dann die 15 Treffer lesen, um sie zu bestätigen (eine davon hat 5.200 Zeilen). Ein Experte, der nur die Namen abfragt und den Treffern glaubt, käme mit etwa 0,6 KB aus. Diese untere Grenze liegt unter Phase 2, liefert aber weder Zeile noch Ausschnitt. |
+| huge.knowledge_column | Phase 1 schickte im KI-Arbeitsbereich alle Tabellenbeschreibungen in jedem Systemprompt mit (24.056 B). Der externe MCP kannte das Wissen gar nicht. |
+
+Oberfläche:
+
+| Messung | Baseline B | Phase 1 B | Phase 2 B | ≈Tokens | Budget B |
+|---|---:|---:|---:|---:|---:|
+| tools/list (15 Tools) | 28.737 | 10.207 | 10.215 | 2.554 | 10.240 |
+| instructions | 1.324 | 871 | 857 | 215 | 950 |
+| BYOK-Startkatalog | 12.201 | 8.696 | 8.896 | 2.224 | 9.000 |
+| davon overview | – | – | 393 | 99 | |
+| davon search | – | – | 611 | 153 | |
+| davon describe | – | – | 615 | 154 | |
+
+`overview` passt ohne Budgeterhöhung in `tools/list`. Andere Beschreibungen wurden dafür gekürzt. Für schreibgeschützte Tools stehen in den Annotationen nur noch `readOnlyHint` und `openWorldHint`, weil die übrigen Hinweise laut MCP-Spezifikation nur für schreibende Tools gelten.
+
+Aufgaben (≈Tokens = Bytes/4):
+
+| Aufgabe | Baseline B | Phase 1 B | Phase 2 B | ≈Tokens Phase 2 | Budget B | Info vollständig |
+|---|---:|---:|---:|---:|---:|---|
+| shop.revenue_per_customer | 1.657 | 1.360 | 1.355 | 339 | 1.450 | ja |
+| shop.overview | 939 | 947 | 957 | 240 | 1.000 | ja |
+| huge.overview | 2.073 | 807 | 900 | 225 | 900 | ja |
+| huge.tenant_id_tables | 20.030 | 2.020 | 2.077 | 520 | 2.200 | ja |
+| huge.wide_table_column | 12.223 | 123 | 155 | 39 | 160 | ja |
+| huge.revenue_per_customer | 21.960 | 4.170 | 4.358 | 1.090 | 4.400 | ja |
+| huge.map | 11.345 (modelliert) | – | 1.739 | 435 | 1.900 | ja |
+| huge.zoom_schema | 2.557 (modelliert) | – | 1.378 | 345 | 1.500 | ja |
+| huge.understand_routine | 136.626 (modelliert) | – | 3.960 | 990 | 4.400 | ja |
+| huge.writers_of_table | 144.448 (modelliert) | – | 2.346 | 587 | 2.600 | ja |
+| huge.knowledge_column | 24.056 (modelliert) | – | 240 | 60 | 300 | ja |
+
+Die Phase-1-Aufgaben wurden um 8 bis 190 B größer. Dafür gibt es drei Gründe:
+
+- Jede Entdeckungsantwort nennt jetzt die Katalogzeit (`· catalog HH:MM`).
+- Treffer tragen Kennung und Zeilenschätzung.
+- `describe` zeigt Spaltenbeschreibungen.
+
+Alle bestehenden Budgets halten. `huge.overview` liegt genau am Budget, weil die leere Suche nur noch Schemas mit Zeilen und Größe zeigt, damit sie zu `overview` passt.
+
+KI-Wissen im Systemprompt pro Anfrage: 24.056 B in Phase 1, 465 B in Phase 2 (synthetisches Wissen mit 301 Tabellenbeschreibungen).
+
+## Performance (Phase 2)
+
+Test: `catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached` in `token_benchmark.rs`, Aufruf aus `src-tauri/`:
+
+```sh
+cargo test --lib token_benchmark -- --nocapture --test-threads=1
+```
+
+Workload: der erweiterte `Huge`-Katalog oben, Verbindung auf `127.0.0.1:1`.
+
+- 15 `overview`-Aufrufe
+- 15 Zooms über `public`, `analytics` und `tenant_042`
+- 15 Suchen mit Objektarten
+- 8 Quelltextsuchen, darunter eine ohne Treffer
+- 1 `describe` einer Routine mit 5.211 Zeilen
+- Speichern und Laden der Katalogdatei
+
+Geprüft wird:
+
+- Gecachte Stufen fragen die Datenbank 0-mal ab, `describe` einer Routine höchstens einmal (für die von der Datenbank gemeldeten Abhängigkeiten).
+- Jede Antwort bleibt unter `max_chars`.
+- Der geladene Katalog stimmt mit dem gespeicherten überein (Spalten, Routinen, Fremdschlüssel). Quelltext wird nicht gespeichert.
+- Budgets:
+  - `overview` Median < 400 ms, p95 < 800 ms
+  - Zoom Median < 300 ms
+  - Suche mit Objektarten Median < 600 ms, p95 < 1,2 s
+  - Quelltextsuche Median < 800 ms
+  - `describe` < 800 ms
+  - Speichern < 8 s, Laden < 10 s
+  - Datei < 40 MB
+  - Objekte im Speicher < 32 MB
+
+Das Objektbudget ist neu. Es wurde nach der ersten Messung (20,95 MB) auf 32 MB gesetzt, also nicht nachträglich gelockert.
+
+Messung auf der Maschine oben (Debug-Build, ein Lauf, `--test-threads=1`):
+
+| Messung | Phase 2 |
+|---|---:|
+| `overview` Median / p95 | 143 / 176 ms |
+| Zoom Median / p95 | 80 / 81 ms |
+| Suche mit Objektarten Median / p95 | 199 / 218 ms |
+| Quelltextsuche Median / p95 | 203 / 320 ms |
+| `describe` Routine (5.211 Zeilen) | 302 ms |
+| Katalogdatei | 19,6 MB |
+| Speichern / Laden | 1,30 / 1,00 s |
+| Objekte im Speicher (51.157 Relationen, 20.000 Routinen) | ≈20 MB |
+| Quelltext-Cache im Test (alle 20.000 vorgeladen) | ≈14 MB |
+| rohe Spaltenliste / abgeleitete Indizes | ≈275 / ≈18 MB |
+| Phase-1-Test: kalte Suche, Suche Median / p95 | 310 ms, 217 / 255 ms |
+| Phase-1-Test: Vorprüfung Median / p95 | 0,16 / 0,22 ms |
+
+Im Betrieb begrenzt der LRU den Quelltext-Cache auf 8 MiB. Der Test lädt alle Quelltexte vor, um die Quelltextsuche ohne Datenbank zu messen.
+
+Datenbankabfragen beim Katalogaufbau:
+
+- SQLite: höchstens 3 Abfragen, Wiederholungen 0 (`sqlite_objects_load_in_few_queries_and_describe_views_and_triggers`).
+- PostgreSQL: 4 gezählte Katalogabfragen beim ersten `search`. Wiederholte Suchen fragen 0-mal ab, das erste `overview` braucht 1 Abfrage für die Schlüssel.
+
+Nicht gemessen: Release-Build, Linux und Windows, gedrosselte CPU, echte Kataloge dieser Größe.
+
+### Echte Datenbanken
+
+- **PostgreSQL 17.11** (Homebrew, lokal auf derselben Maschine) über den ignorierten Test `live_postgres_catalog_stages_use_bulk_queries_and_respect_the_allowlist` in `mcp/objects.rs` (`L8DB_E2E_PG_URL`). Abgedeckt sind:
+  - Tabelle mit Kommentar und Fremdschlüssel, partitionierte Tabelle
+  - View, materialisierte View
+  - SQL- und plpgsql-Funktion, Prozedur, Trigger
+  - eine View auf ein nicht freigegebenes Schema
+  - ein Trigger, der eine Funktion aus dem verborgenen Schema aufruft, und eine Funktion mit einem Typ aus dem verborgenen Schema
+  - Geprüft wird, dass Kennungen, Zeilenschätzungen, Kommentare, gemeldete und lexikalische Abhängigkeiten, die Quelltextsuche über `search_source`, die Maskierung verborgener Schemas (auch bei einem Katalog, der wie von Platte nur freigegebene Schemas enthält) und die Anzahl der Abfragen stimmen.
+- **SQLite und DuckDB:** lokale Tests (`sqlite_objects_load_in_few_queries_and_describe_views_and_triggers`, `duckdb_views_carry_estimates_comments_and_sources`).
+- **Nicht gegen echte Server getestet:** die Katalog-SQL für MySQL/MariaDB, SQL Server, Oracle und ClickHouse. Sie ist nach Dokumentation geschrieben. Schlägt eine Abfrage fehl, fällt der Katalog ohne Fehlermeldung auf leere Objekte zurück (nur im Speicher, nicht persistiert), und `search`/`describe` arbeiten wie in Phase 1 auf Tabellen und Spalten. Andere Familien liefern Routinen nur, soweit der Adapter `list_functions`/`list_procedures` kennt.
+
+Grenzen:
+
+- Unqualifizierte Verweise auf verborgene Schemas (über `search_path`) erkennt die Maskierung nicht.
+- DDL außerhalb von MCP und KI-Arbeitsbereich (SQL-Editor, andere Clients) sehen die Entdeckungswerkzeuge erst nach Ablauf der TTL oder mit `refresh=true`. Sicherheitsprüfungen sind davon nicht betroffen.
+- Der Katalog wird nur persistiert, wenn die globale MCP-Konfiguration die Verbindung mit identischer Schema-Freigabe und Maskierung freigibt. Sonst bleibt er im Speicher.
