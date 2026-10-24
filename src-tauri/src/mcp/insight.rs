@@ -145,12 +145,12 @@ fn not_transactional(error: &str) -> bool {
 pub fn explain_definition() -> Value {
     json!({
         "name": "explain",
-        "description": "Show the execution plan of one statement as a compact tree: scans, joins, estimated rows and cost, filters and index use, with warnings for full scans of large tables and bad row estimates. PostgreSQL adds index suggestions. Use it to check a query before running it on large tables, to answer performance questions and to verify that a rewrite helps. analyze=true runs read-only statements for real timings; never for writes.",
+        "description": "Compact execution plan with warnings for full scans and bad estimates; PostgreSQL adds index suggestions. Use before heavy queries; analyze=true times read-only statements.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
             "sql": {"type": "string"},
-            "analyze": {"type": "boolean", "description": "Execute the read-only statement to measure actual rows and time. Default false"}
+            "analyze": {"type": "boolean"}
         }, "required": ["connection", "sql"]}
     })
 }
@@ -158,12 +158,12 @@ pub fn explain_definition() -> Value {
 pub fn relations_definition() -> Value {
     json!({
         "name": "relations",
-        "description": "Foreign key relationships. With from and to: the shortest join path between two tables as ready JOIN conditions, so you do not need to describe every table in between. With only from: tables it references and tables referencing it. Composite keys are joined with AND.",
+        "description": "JOIN conditions along foreign keys: from and to gives the shortest path, only from lists referenced and referencing tables.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
-            "from": {"type": "string", "description": "Table, schema.table when ambiguous"},
-            "to": {"type": "string", "description": "Target table for a join path"}
+            "from": {"type": "string"},
+            "to": {"type": "string"}
         }, "required": ["connection", "from"]}
     })
 }
@@ -732,12 +732,18 @@ impl Server {
         if let Some(graph) = cached(connection) {
             return Ok(graph);
         }
-        let all = self.columns_for(config, connection).await?;
-        let nodes: Vec<(String, String)> = Self::visible_columns(&all, connection)
-            .into_iter()
-            .map(|column| (column.schema, column.table))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
+        let catalog = self.catalog(config, connection).await?;
+        let tables = catalog.tables();
+        let nodes: Vec<(String, String)> = tables
+            .list
+            .iter()
+            .filter(|table| tables.visible(table, connection.allowed_schemas()))
+            .map(|table| {
+                (
+                    tables.schema(table).to_string(),
+                    tables.name(table).to_string(),
+                )
+            })
             .collect();
         let adapter = adapter(connection, &self.pool)?;
         let mut unread = 0;
@@ -834,8 +840,7 @@ impl Server {
             return Err("explain unterstützt nur SQL-Datenbanken.".into());
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let analyze = args
             .get("analyze")
             .and_then(Value::as_bool)
@@ -899,25 +904,19 @@ impl Server {
         if names.len() > MAX_DESCRIBE {
             return Err(format!("Höchstens {MAX_DESCRIBE} Tabellen pro describe."));
         }
-        let all = self.columns_for(config, connection).await?;
-        let columns = Self::visible_columns(&all, connection);
+        let catalog = self.catalog(config, connection).await?;
         let mut found = Vec::new();
         let mut sections = Vec::new();
         for name in &names {
-            match super::discovery::describe(&columns, name, config.max_chars) {
-                Ok(line) => {
-                    let key = line
-                        .split_once('(')
-                        .map(|(key, _)| key.to_string())
-                        .unwrap_or_default();
-                    let table = columns
-                        .iter()
-                        .find(|column| qualified(&column.schema, &column.table) == key)
-                        .map(|column| (column.schema.clone(), column.table.clone()));
+            match super::discovery::describe(
+                &catalog,
+                connection.allowed_schemas(),
+                name,
+                config.max_chars,
+            ) {
+                Ok((line, table)) => {
                     sections.push(line);
-                    if let Some(table) = table {
-                        found.push((sections.len() - 1, table));
-                    }
+                    found.push((sections.len() - 1, table));
                 }
                 Err(error) => sections.push(error),
             }
@@ -1076,8 +1075,10 @@ impl Server {
             return None;
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, &connection).await.ok()?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self
+            .schema_index(config, &connection, &redactor)
+            .await
+            .ok()?;
         if let Err(error) = check_write_sql(&sql, &connection, &index) {
             return Some(DryRunStep::Done(DryRun {
                 summary: error,

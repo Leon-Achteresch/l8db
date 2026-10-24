@@ -1,15 +1,19 @@
+use super::catalog::Catalog;
 use super::config::{McpConfig, McpConnection};
 use super::server::{self, cache_key, Server};
 use crate::db::{self, ColumnInfo, DatabaseKind};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::time::Instant;
+use std::sync::{Arc, LazyLock};
+use std::time::{Duration, Instant};
+
+static HUGE: LazyLock<Arc<Vec<ColumnInfo>>> = LazyLock::new(|| Arc::new(huge_catalog()));
 
 pub(super) const BASELINE: &[(&str, usize)] = &[
     ("tools/list", 28_737),
     ("instructions", 1_324),
     ("byok start catalog", 12_201),
-    ("shop.revenue_per_customer", 1_392),
+    ("shop.revenue_per_customer", 1_657),
     ("shop.overview", 939),
     ("huge.overview", 2_073),
     ("huge.tenant_id_tables", 20_030),
@@ -17,11 +21,30 @@ pub(super) const BASELINE: &[(&str, usize)] = &[
     ("huge.revenue_per_customer", 21_960),
 ];
 
+pub(super) const BUDGET: &[(&str, usize)] = &[
+    ("tools/list", 10_240),
+    ("instructions", 950),
+    ("byok start catalog", 9_000),
+    ("shop.revenue_per_customer", 1_450),
+    ("shop.overview", 1_000),
+    ("huge.overview", 900),
+    ("huge.tenant_id_tables", 2_200),
+    ("huge.wide_table_column", 160),
+    ("huge.revenue_per_customer", 4_400),
+];
+
 fn baseline(id: &str) -> String {
     BASELINE
         .iter()
         .find(|(name, _)| *name == id)
         .map_or("–".into(), |(_, bytes)| bytes.to_string())
+}
+
+fn over_budget(id: &str, bytes: usize) -> Option<String> {
+    BUDGET
+        .iter()
+        .find(|(name, budget)| *name == id && bytes > *budget)
+        .map(|(_, budget)| format!("{id}: {bytes} > {budget}"))
 }
 
 pub(super) const TENANTS: usize = 300;
@@ -479,7 +502,12 @@ pub(super) fn tasks() -> Vec<Task> {
                 step(
                     "search",
                     json!({"connection": "Shop", "term": "order"}),
-                    &["order_items", "unit_price"],
+                    &["order_items"],
+                ),
+                step(
+                    "describe",
+                    json!({"connection": "Shop", "tables": ["order_items"]}),
+                    &["quantity", "unit_price"],
                 ),
                 step(
                     "relations",
@@ -556,6 +584,7 @@ pub(super) struct Measured {
     pub args: usize,
     pub response: usize,
     pub missing: Vec<String>,
+    pub steps: Vec<String>,
 }
 
 impl Measured {
@@ -598,7 +627,7 @@ impl Drop for Lab {
     }
 }
 
-pub(super) fn lab(huge: Vec<ColumnInfo>) -> Lab {
+pub(super) fn lab(huge: Arc<Vec<ColumnInfo>>) -> Lab {
     let guard = crate::mcp::TEST_ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -627,7 +656,7 @@ pub(super) fn lab(huge: Vec<ColumnInfo>) -> Lab {
     };
     server
         .columns
-        .insert(cache_key(&huge_connection), (Instant::now(), huge));
+        .insert(cache_key(&huge_connection), Arc::new(Catalog::new(huge)));
     let config = McpConfig {
         enabled: true,
         workflows: true,
@@ -653,6 +682,7 @@ pub(super) fn run_task(lab: &mut Lab, task: &Task) -> Measured {
         args: 0,
         response: 0,
         missing: Vec::new(),
+        steps: Vec::new(),
     };
     for step in &task.steps {
         let reply = lab.runtime.block_on(lab.server.call_with_config(
@@ -674,9 +704,13 @@ pub(super) fn run_task(lab: &mut Lab, task: &Task) -> Measured {
                 .filter(|expected| !text.contains(*expected))
                 .map(|expected| format!("{} lacks {expected:?}", step.tool)),
         );
+        let args = serde_json::to_string(&step.args).unwrap().len();
         measured.calls += 1;
-        measured.args += serde_json::to_string(&step.args).unwrap().len();
+        measured.args += args;
         measured.response += text.len();
+        measured
+            .steps
+            .push(format!("{} {args}+{}", step.tool, text.len()));
     }
     measured
 }
@@ -693,9 +727,17 @@ pub(super) fn surface(config: &McpConfig) -> Vec<(String, usize)> {
         ("instructions".to_string(), server::INSTRUCTIONS.len()),
         (
             "byok start catalog".to_string(),
-            serde_json::to_string(crate::ai::tools::Catalog::new(config, false, &[]).tools())
-                .unwrap()
-                .len(),
+            crate::ai::tools::Catalog::new(config, false, &[])
+                .tools()
+                .iter()
+                .map(|tool| {
+                    serde_json::to_string(&json!({"name": tool["name"], "description": tool["description"], "inputSchema": tool["inputSchema"]}))
+                        .unwrap()
+                        .len()
+                        + 1
+                })
+                .sum::<usize>()
+                + 1,
         ),
     ];
     for tool in &listed {
@@ -714,7 +756,7 @@ fn tokens(bytes: usize) -> usize {
 #[test]
 fn token_benchmark_reports_surface_and_task_bytes() {
     let started = Instant::now();
-    let catalog = huge_catalog();
+    let catalog = HUGE.clone();
     let tables: std::collections::HashSet<(&str, &str)> = catalog
         .iter()
         .map(|column| (column.schema.as_str(), column.table.as_str()))
@@ -733,8 +775,10 @@ fn token_benchmark_reports_surface_and_task_bytes() {
     );
     drop(tables);
     let mut lab = lab(catalog);
+    let mut over = Vec::new();
     println!("| measure | baseline B | bytes | ≈tokens (bytes/4) |\n|---|---:|---:|---:|");
     for (name, bytes) in surface(&lab.config) {
+        over.extend(over_budget(&name, bytes));
         println!(
             "| {name} | {} | {bytes} | {} |",
             baseline(&name),
@@ -746,6 +790,7 @@ fn token_benchmark_reports_surface_and_task_bytes() {
     for task in tasks() {
         let started = Instant::now();
         let measured = run_task(&mut lab, &task);
+        over.extend(over_budget(measured.id, measured.total()));
         println!(
             "| {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             measured.id,
@@ -762,9 +807,122 @@ fn token_benchmark_reports_surface_and_task_bytes() {
             },
             started.elapsed().as_millis()
         );
+        println!("|  steps: {} |", measured.steps.join(", "));
         if !measured.missing.is_empty() {
             incomplete.push(measured.id);
         }
     }
-    println!("incomplete: {incomplete:?}");
+    assert!(incomplete.is_empty(), "incomplete: {incomplete:?}");
+    assert!(over.is_empty(), "over budget: {over:?}");
+}
+
+fn spread(mut times: Vec<Duration>) -> (Duration, Duration) {
+    times.sort();
+    let p95 = (times.len() * 95).div_ceil(100).max(1) - 1;
+    (times[times.len() / 2], times[p95])
+}
+
+#[test]
+fn huge_catalog_search_and_query_checks_stay_fast_shared_and_cached() {
+    let columns = HUGE.clone();
+    let raw: usize = columns
+        .iter()
+        .map(|column| {
+            std::mem::size_of::<ColumnInfo>()
+                + column.schema.capacity()
+                + column.table.capacity()
+                + column.name.capacity()
+                + column.data_type.capacity()
+        })
+        .sum();
+    let mut lab = lab(columns.clone());
+    let huge = lab.config.connections[1].clone();
+    let key = cache_key(&huge);
+    let cached = lab.server.columns[&key].clone();
+    assert!(Arc::ptr_eq(&cached.columns, &columns));
+    let search = |lab: &mut Lab, args: Value| -> (Duration, String) {
+        let started = Instant::now();
+        let reply = lab.runtime.block_on(
+            lab.server
+                .call_with_config(&json!({"name": "search", "arguments": args}), &lab.config),
+        );
+        let elapsed = started.elapsed();
+        let text = reply["content"][0]["text"].as_str().unwrap().to_string();
+        assert_eq!(reply["isError"], false, "{text}");
+        assert!(text.chars().count() <= lab.config.max_chars + 100);
+        (elapsed, text)
+    };
+    let (cold_search, text) = search(&mut lab, json!({"connection": "Huge", "term": "invoice"}));
+    assert!(text.contains("public.invoices"), "{text}");
+    let redactor = super::redact::Redactor::new(&lab.config.redaction, &huge.sensitive_columns());
+    let started = Instant::now();
+    lab.runtime
+        .block_on(lab.server.schema_index(&lab.config, &huge, &redactor))
+        .unwrap();
+    let cold_index = started.elapsed();
+    let terms = [
+        "invoice",
+        "tenant_id",
+        "loyalty tier",
+        "customer revenue",
+        "orders 2019",
+        "public.customers",
+        "stg",
+        "amount gross",
+        "id",
+        "nothing_matches_this",
+    ];
+    let mut searches = Vec::new();
+    for term in terms.iter().chain(terms.iter()) {
+        searches.push(search(&mut lab, json!({"connection": "Huge", "term": term})).0);
+    }
+    searches.push(search(&mut lab, json!({"connection": "Huge"})).0);
+    let statements = [
+        "SELECT customer_id, SUM(amount_gross) FROM public.invoices WHERE invoice_date >= '2026-01-01' GROUP BY customer_id",
+        "SELECT o.order_number, c.company_name FROM tenant_042.orders o JOIN tenant_042.customers c ON c.id = o.customer_id",
+        "SELECT loyalty_tier, count(*) FROM public.customer_360 GROUP BY loyalty_tier",
+        "SELECT * FROM analytics.fact_orders_daily_r01 LIMIT 10",
+        "WITH t AS (SELECT tenant_id, amount FROM tenant_001.payments) SELECT tenant_id, sum(amount) FROM t GROUP BY tenant_id",
+    ];
+    let mut checks = Vec::new();
+    let mut redactors = Vec::new();
+    for sql in statements.iter().cycle().take(20) {
+        let started = Instant::now();
+        let redactor =
+            super::redact::Redactor::new(&lab.config.redaction, &huge.sensitive_columns());
+        redactors.push(started.elapsed());
+        let index = lab
+            .runtime
+            .block_on(lab.server.schema_index(&lab.config, &huge, &redactor))
+            .unwrap();
+        server::check_read_sql(sql, &huge, &index).unwrap();
+        checks.push(started.elapsed());
+    }
+    let catalog = lab.server.columns[&key].clone();
+    assert!(Arc::ptr_eq(&catalog, &cached), "catalog was reloaded");
+    assert!(Arc::ptr_eq(&catalog.columns, &columns));
+    let derived = catalog.retained_bytes();
+    for schema in 0..6 {
+        catalog.index(&redactor, &[format!("tenant_{schema:03}")]);
+    }
+    assert!(catalog.index_slots() <= 4);
+    let (search_median, search_p95) = spread(searches);
+    let (check_median, check_p95) = spread(checks);
+    let (redactor_median, _) = spread(redactors);
+    println!(
+        "huge catalog {} columns: raw ≈{} MB, derived index ≈{} MB; cold search {cold_search:?}, cold schema index {cold_index:?}; search median {search_median:?} p95 {search_p95:?}; query check median {check_median:?} p95 {check_p95:?} (Redactor::new median {redactor_median:?})",
+        columns.len(),
+        raw / 1_000_000,
+        derived / 1_000_000
+    );
+    assert!(derived * 8 < raw, "{derived} vs {raw}");
+    assert!(cold_search < Duration::from_secs(15), "{cold_search:?}");
+    assert!(cold_index < Duration::from_secs(5), "{cold_index:?}");
+    assert!(
+        search_median < Duration::from_millis(500),
+        "{search_median:?}"
+    );
+    assert!(search_p95 < Duration::from_secs(1), "{search_p95:?}");
+    assert!(check_median < Duration::from_millis(10), "{check_median:?}");
+    assert!(check_p95 < Duration::from_millis(25), "{check_p95:?}");
 }

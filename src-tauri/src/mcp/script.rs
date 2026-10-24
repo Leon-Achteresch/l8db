@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use super::config::{McpConfig, McpConnection};
-use super::redact::{self, Redactor};
+use super::redact::Redactor;
 use super::server::{
     adapter, arg_str, cap, check_read_sql, check_write_sql, connection_url, format_result, run,
     Server, SQL_KINDS,
@@ -12,15 +12,15 @@ use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult, TxSession};
 pub fn tool_definition() -> Value {
     json!({
         "name": "script",
-        "description": "Run many statements in one call (only on connections with scripts enabled). Every statement is checked like query/execute before anything runs; writes need confirm=true and a writable connection, DDL needs DDL enabled. Runs on one dedicated session inside a transaction: commits at the end, rolls back on the first error; commit=false always rolls back (dry run). Do not write BEGIN/ROLLBACK/SAVEPOINT; COMMIT lines are skipped. Oracle takes SQL*Plus scripts: / terminators, DEFINE x = v with &x/&&x (not in comments), SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON (DBMS_OUTPUT shown as |), WHENEVER SQLERROR EXIT|CONTINUE, EXIT [ROLLBACK]; other SQL*Plus settings are ignored, @file is rejected. Oracle DDL commits implicitly. Output: one line per statement, result rows as TSV.",
+        "description": "Multi-statement script where scripts are enabled; each statement is checked like query/execute. One transaction: commit at the end, rollback on the first error, commit=false is a dry run; writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
             "sql": {"type": "string"},
-            "confirm": {"type": "boolean", "description": "Required when the script writes"},
-            "commit": {"type": "boolean", "description": "false = roll back at the end (dry run). Default true"},
-            "onError": {"type": "string", "enum": ["stop", "continue"], "description": "Default stop (rolls back)"},
-            "limit": {"type": "integer", "minimum": 1, "description": "Rows shown per result, default 20"}
+            "confirm": {"type": "boolean"},
+            "commit": {"type": "boolean"},
+            "onError": {"type": "string", "enum": ["stop", "continue"]},
+            "limit": {"type": "integer", "minimum": 1, "description": "Rows per result, default 20"}
         }, "required": ["connection", "sql"]}
     })
 }
@@ -372,8 +372,7 @@ impl Server {
         }
         let plan = plan(connection.kind, sql)?;
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let mut writes = false;
         for (number, step) in plan.steps.iter().enumerate() {
             let Step::Sql(statement) = step else { continue };
