@@ -16,6 +16,10 @@ import { syncAcrossWindows } from "@/lib/window-sync";
 
 export const MAX_SPLIT_PANES = 4;
 
+export const MAX_SPLIT_GROUPS = 50;
+
+const DEFAULT_GROUP_NAME = /^Ansicht \d+$/;
+
 const NONE_KEY = "__none__";
 
 function keyForConnection(id: string | null | undefined): string {
@@ -50,7 +54,6 @@ interface SplitState {
   focusedPane: number;
   activeGroup: string | null;
   groups: Record<string, SplitGroup[]>;
-  saveGroup: () => void;
   openGroup: (id: string) => Tab | null;
   renameGroup: (id: string, name: string) => void;
   deleteGroup: (id: string) => void;
@@ -102,31 +105,82 @@ function syncedGroups(
   };
 }
 
+function ensureGroup(
+  state: Pick<SplitState, "groups" | "activeGroup" | "orientation">,
+  scope: string,
+  panes: (string | null)[],
+  masters: PaneMasters,
+  focusedPane: number,
+): Pick<SplitState, "groups" | "activeGroup"> & { adopted: SplitGroup | null } {
+  const existing = state.groups[scope] ?? [];
+  if (state.activeGroup && existing.some((group) => group.id === state.activeGroup))
+    return { groups: state.groups, activeGroup: state.activeGroup, adopted: null };
+  const keys = panes.join("\0");
+  const same = existing.find(
+    (group) => group.tabs.map((tab) => (tab ? tabKey(tab) : "")).join("\0") === keys,
+  );
+  if (same) return { groups: state.groups, activeGroup: same.id, adopted: same };
+  const stale =
+    existing.length >= MAX_SPLIT_GROUPS
+      ? existing.find((group) => DEFAULT_GROUP_NAME.test(group.name))
+      : undefined;
+  const list = stale ? existing.filter((group) => group !== stale) : existing;
+  let number = 1;
+  while (list.some((group) => group.name === `Ansicht ${number}`)) number++;
+  const group: SplitGroup = {
+    id: crypto.randomUUID(),
+    name: `Ansicht ${number}`,
+    tabs: panes.map((key) => paneTab(key, [])),
+    masters,
+    orientation: state.orientation,
+    focusedPane,
+  };
+  return {
+    groups: { ...state.groups, [scope]: [...list, group] },
+    activeGroup: group.id,
+    adopted: null,
+  };
+}
+
 function snapshot(
   panes: (string | null)[],
   focusedPane: number,
   state: Pick<SplitState, "byConnection" | "orientation" | "masters" | "groups" | "activeGroup">,
-  masters = state.masters,
+  liveMasters = state.masters,
 ): Pick<
   SplitState,
-  "panes" | "focusedPane" | "byConnection" | "masters" | "groups" | "activeGroup"
+  "panes" | "focusedPane" | "byConnection" | "masters" | "groups" | "activeGroup" | "orientation"
 > {
   const scope = keyForConnection(useConnectionsStore.getState().activeId);
   const split = panes.length > 1;
-  const activeGroup = split ? state.activeGroup : null;
+  const grouped = split
+    ? ensureGroup(state, scope, panes, liveMasters, focusedPane)
+    : { groups: state.groups, activeGroup: null, adopted: null };
+  const { activeGroup, adopted } = grouped;
+  const masters = adopted ? normalizeMasters(adopted.masters, panes.length) : liveMasters;
+  const orientation = adopted?.orientation ?? state.orientation;
   return {
     panes,
     masters,
     focusedPane,
     activeGroup,
-    groups: split ? syncedGroups(state, scope, panes, masters, focusedPane) : state.groups,
+    orientation,
+    groups: split
+      ? syncedGroups(
+          { groups: grouped.groups, activeGroup, orientation },
+          scope,
+          panes,
+          masters,
+          focusedPane,
+        )
+      : state.groups,
     byConnection: {
       ...state.byConnection,
       [scope]: {
         panes,
         masters,
         focusedPane,
-        orientation: state.orientation,
+        orientation,
         group: activeGroup,
       },
     },
@@ -161,25 +215,6 @@ export const useSplitView = create<SplitState>()(
       orientation: "horizontal",
       activeGroup: null,
       groups: {},
-      saveGroup: () =>
-        set((state) => {
-          if (state.panes.length < 2) return state;
-          const scope = keyForConnection(useConnectionsStore.getState().activeId);
-          const list = state.groups[scope] ?? [];
-          const group: SplitGroup = {
-            id: crypto.randomUUID(),
-            name: `Ansicht ${list.length + 1}`,
-            tabs: state.panes.map((key) => paneTab(key, [])),
-            masters: state.masters,
-            orientation: state.orientation,
-            focusedPane: state.focusedPane,
-          };
-          return snapshot(state.panes, state.focusedPane, {
-            ...state,
-            activeGroup: group.id,
-            groups: { ...state.groups, [scope]: [...list, group] },
-          });
-        }),
       openGroup: (id) => {
         const state = get();
         const scope = keyForConnection(useConnectionsStore.getState().activeId);
@@ -228,7 +263,7 @@ export const useSplitView = create<SplitState>()(
             [scope]: (state.groups[scope] ?? []).filter((group) => group.id !== id),
           };
           if (state.activeGroup !== id) return { groups };
-          return snapshot(state.panes, state.focusedPane, { ...state, groups, activeGroup: null });
+          return snapshot([], 0, { ...state, groups, activeGroup: null }, []);
         }),
       setMaster: (detail, master) =>
         set((state) => {
@@ -315,13 +350,7 @@ export const useSplitView = create<SplitState>()(
           if (index !== -1) {
             return index === state.focusedPane ? state : snapshot(state.panes, index, state);
           }
-          if (state.activeGroup) return snapshot([], 0, state, []);
-          const local = state.panes.findIndex((pane) => !remoteTab(pane));
-          const target =
-            local !== -1 && remoteTab(state.panes[state.focusedPane]) ? local : state.focusedPane;
-          const panes = [...state.panes];
-          panes[target] = key;
-          return snapshot(panes, target, state);
+          return snapshot([], 0, state, []);
         }),
 
       setPane: (index, key) =>
@@ -374,9 +403,7 @@ export const useSplitView = create<SplitState>()(
             key && (validKeys.has(key) || remoteTab(key)) ? key : null,
           );
           if (panes.every((key, i) => key === state.panes[i])) return state;
-          if (state.activeGroup || panes.every((key) => key == null))
-            return { ...snapshot([], 0, state, []), groups: state.groups };
-          return { ...snapshot(panes, state.focusedPane, state), groups: state.groups };
+          return snapshot([], 0, state, []);
         }),
 
       clearForConnection: (connectionId) =>
@@ -472,8 +499,15 @@ export function useFocusedPaneScope(): { index: number; connectionId: string } |
 
 syncAcrossWindows("l8db.split-view", (value) => {
   try {
-    const groups = value ? JSON.parse(value)?.state?.groups : null;
-    if (groups) useSplitView.setState({ groups });
+    const groups: Record<string, SplitGroup[]> | null = value
+      ? JSON.parse(value)?.state?.groups
+      : null;
+    if (!groups) return;
+    const { activeGroup } = useSplitView.getState();
+    const scope = keyForConnection(useConnectionsStore.getState().activeId);
+    useSplitView.setState({ groups });
+    if (activeGroup && !groups[scope]?.some((group) => group.id === activeGroup))
+      useSplitView.setState((state) => snapshot([], 0, state, []));
   } catch {}
 });
 
