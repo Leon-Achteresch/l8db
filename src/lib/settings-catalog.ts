@@ -538,6 +538,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "autoFeatureVideos",
   },
   {
+    id: "blog-suggestions",
+    tabId: "about",
+    title: "Blog-Vorschläge",
+    description:
+      "Ab und zu unten rechts einen Artikel aus dem l8db-Blog vorschlagen, wenn gerade nichts los ist.",
+    keywords: ["blog", "artikel", "tipps", "vorschläge", "lesen"],
+    key: "blogSuggestions",
+  },
+  {
     id: "release-notes",
     tabId: "about",
     title: "Release Notes",

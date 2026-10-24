@@ -41,6 +41,8 @@ export interface SettingsState {
   transactionsPerTable: boolean;
   autoFeatureVideos: boolean;
   setAutoFeatureVideos: (value: boolean) => void;
+  blogSuggestions: boolean;
+  setBlogSuggestions: (value: boolean) => void;
   autoUpdateCheck: boolean;
   crashReports: boolean;
   setCrashReports: (value: boolean) => void;
@@ -215,6 +217,7 @@ export const DEFAULT_SETTINGS = {
   transactionsEnabled: true,
   transactionsPerTable: true,
   autoFeatureVideos: true,
+  blogSuggestions: true,
   autoUpdateCheck: true,
   crashReports: false,
   usageMetrics: false,
@@ -305,6 +308,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTransactionsEnabled: (transactionsEnabled) => set({ transactionsEnabled }),
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
       setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
+      setBlogSuggestions: (blogSuggestions) => set({ blogSuggestions }),
       setAutoUpdateCheck: (autoUpdateCheck) =>
         set((state) => ({
           autoUpdateCheck,
@@ -426,6 +430,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...saved,
           easyMode: saved?.easyMode === true,
           autoFeatureVideos: saved?.autoFeatureVideos !== false,
+          blogSuggestions: saved?.blogSuggestions !== false,
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,
           usageMetrics: saved?.usageMetrics === true,
