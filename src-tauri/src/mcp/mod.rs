@@ -15,6 +15,9 @@ mod script;
 pub mod server;
 pub mod workflow;
 
+#[cfg(test)]
+mod token_benchmark;
+
 pub fn serve() {
     server::serve();
 }

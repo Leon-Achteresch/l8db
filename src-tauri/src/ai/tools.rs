@@ -16,7 +16,7 @@ const CORE: &[&str] = &[
     "editor",
 ];
 
-pub(super) struct Catalog {
+pub(crate) struct Catalog {
     available: Vec<Value>,
     loaded: Vec<Value>,
 }
