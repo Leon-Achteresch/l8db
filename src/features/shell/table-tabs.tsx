@@ -1,22 +1,16 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Columns2, Rows2 } from "lucide";
-import {
-  BookmarkPlusIcon,
-  FolderOpenIcon,
-  PlusIcon,
-  SquareIcon,
-  SquareSplitHorizontalIcon,
-} from "lucide-react";
+import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
-import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
+import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
 import {
   type TableTabActions,
@@ -51,9 +45,9 @@ export function TableTabs() {
   const reveal = useSplitView((state) => state.reveal);
   const activeGroup = useSplitView((state) => state.activeGroup);
   const groups = useSplitGroups();
-  const saveGroup = useSplitView((state) => state.saveGroup);
   const renameGroup = useSplitView((state) => state.renameGroup);
   const deleteGroup = useSplitView((state) => state.deleteGroup);
+  const openGroup = groups.find((group) => group.id === activeGroup);
   const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
@@ -150,17 +144,15 @@ export function TableTabs() {
           className="no-scrollbar min-w-0 overflow-x-auto py-1"
         >
           <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
-            {!easyMode &&
-              groups.map((group) => (
-                <SplitGroupTab
-                  key={group.id}
-                  group={group}
-                  isActive={split && activeGroup === group.id}
-                  onOpen={() => handleOpenGroup(group)}
-                  onRename={(name) => renameGroup(group.id, name)}
-                  onDelete={() => deleteGroup(group.id)}
-                />
-              ))}
+            {split && openGroup && (
+              <SplitGroupTab
+                group={openGroup}
+                onOpen={() => handleOpenGroup(openGroup)}
+                onRename={(name) => renameGroup(openGroup.id, name)}
+                onClose={collapse}
+                onDelete={() => deleteGroup(openGroup.id)}
+              />
+            )}
             {tabs.map((tab, index) => (
               <TableTabsSortableTab
                 key={tabKey(tab)}
@@ -226,23 +218,15 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {split && !activeGroup && (
-        <Tooltip
-          content="Ansicht als Tab-Gruppe speichern"
-          side="bottom"
-          wrapperClassName="shrink-0"
-        >
-          <button
-            ref={groupFeature.ref}
-            type="button"
-            onClick={saveGroup}
-            aria-label="Ansicht als Tab-Gruppe speichern"
-            className={`${iconButton} relative`}
-          >
-            <BookmarkPlusIcon className="size-3.5" />
-            {groupFeature.isNew && <NewBadge className="absolute -top-1.5 left-4" />}
-          </button>
-        </Tooltip>
+      {!easyMode && groups.length > 0 && (
+        <SplitGroupsMenu
+          groups={groups}
+          activeGroup={split ? activeGroup : null}
+          isNew={groupFeature.isNew}
+          triggerRef={groupFeature.ref}
+          onOpen={handleOpenGroup}
+          onDelete={(group) => deleteGroup(group.id)}
+        />
       )}
       {split && (
         <Tooltip content="Einzelansicht" side="bottom" wrapperClassName="shrink-0">

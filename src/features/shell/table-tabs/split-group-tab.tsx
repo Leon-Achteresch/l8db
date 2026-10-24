@@ -8,17 +8,16 @@ import {
 } from "@/components/ui/context-menu";
 import type { SplitGroup } from "@/lib/split-view";
 import { tabLabel } from "@/lib/tab-navigation";
-import { cn } from "@/lib/utils";
 
 interface SplitGroupTabProps {
   group: SplitGroup;
-  isActive: boolean;
   onOpen: () => void;
   onRename: (name: string) => void;
+  onClose: () => void;
   onDelete: () => void;
 }
 
-export function SplitGroupTab({ group, isActive, onOpen, onRename, onDelete }: SplitGroupTabProps) {
+export function SplitGroupTab({ group, onOpen, onRename, onClose, onDelete }: SplitGroupTabProps) {
   const [editing, setEditing] = useState(false);
   const cancelled = useRef(false);
   const members = group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer"));
@@ -31,14 +30,7 @@ export function SplitGroupTab({ group, isActive, onOpen, onRename, onDelete }: S
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div
-          className={cn(
-            "group relative flex h-7 shrink-0 items-center rounded-full pl-1 pr-0.5 text-xs ring-1 ring-inset transition-[background-color,color] duration-200",
-            isActive
-              ? "bg-primary/12 text-foreground ring-primary/40"
-              : "text-muted-foreground ring-primary/20 hover:bg-primary/8 hover:text-foreground",
-          )}
-        >
+        <div className="group relative flex h-7 shrink-0 items-center rounded-full bg-primary/12 pl-1 pr-0.5 text-xs text-foreground ring-1 ring-primary/40 ring-inset transition-[background-color,color] duration-200">
           {editing ? (
             <input
               defaultValue={group.name}
@@ -59,7 +51,7 @@ export function SplitGroupTab({ group, isActive, onOpen, onRename, onDelete }: S
               onClick={onOpen}
               onDoubleClick={() => setEditing(true)}
               title={`${group.name}: ${members.join(" | ")}`}
-              aria-current={isActive ? "page" : undefined}
+              aria-current="page"
               className="flex h-full min-w-0 max-w-64 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span className="relative grid size-5 shrink-0 place-items-center rounded-full text-primary before:absolute before:inset-0 before:rounded-full before:bg-current before:opacity-10">
@@ -71,8 +63,8 @@ export function SplitGroupTab({ group, isActive, onOpen, onRename, onDelete }: S
           )}
           <button
             type="button"
-            onClick={onDelete}
-            aria-label={`Ansicht ${group.name} entfernen`}
+            onClick={onClose}
+            aria-label={`Tab-Gruppe ${group.name} schließen`}
             className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground/70 opacity-0 transition-[background-color,color,opacity] duration-200 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <XIcon className="size-3" />
@@ -82,7 +74,8 @@ export function SplitGroupTab({ group, isActive, onOpen, onRename, onDelete }: S
       <ContextMenuContent>
         <ContextMenuItem onSelect={onOpen}>Öffnen</ContextMenuItem>
         <ContextMenuItem onSelect={() => setEditing(true)}>Umbenennen</ContextMenuItem>
-        <ContextMenuItem onSelect={onDelete}>Ansicht entfernen</ContextMenuItem>
+        <ContextMenuItem onSelect={onClose}>Tab-Gruppe schließen</ContextMenuItem>
+        <ContextMenuItem onSelect={onDelete}>Tab-Gruppe löschen</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

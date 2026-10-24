@@ -15,7 +15,7 @@ Object.defineProperty(globalThis, "window", {
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { tabKey, useTableTabs } = await import("../src/lib/table-tabs");
-const { useSplitView } = await import("../src/lib/split-view");
+const { MAX_SPLIT_GROUPS, useSplitView } = await import("../src/lib/split-view");
 
 test("saved split views stay cheap with many tabs and groups", async () => {
   const connection = useConnectionsStore.getState().addConnection({
@@ -32,12 +32,11 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     sql: "SELECT 1",
   }));
   useTableTabs.setState({ tabs, tabsByConnection: {} });
-  for (let group = 0; group < 50; group++) {
+  for (let group = 0; group < 60; group++) {
     useSplitView.getState().collapse();
     useSplitView.getState().addPane(tabKey(tabs[group * 4]), tabKey(tabs[group * 4 + 1]));
     useSplitView.getState().addPane(null, tabKey(tabs[group * 4 + 2]));
     useSplitView.getState().addPane(null, tabKey(tabs[group * 4 + 3]));
-    useSplitView.getState().saveGroup();
   }
   const groups = useSplitView.getState().groups[connection.id];
 
@@ -66,7 +65,8 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     open,
     bytes,
   });
-  expect(groups).toHaveLength(50);
+  expect(groups).toHaveLength(MAX_SPLIT_GROUPS);
+  expect(groups[0].name).toBe("Ansicht 11");
   expect(focus.p95Ms / 100).toBeLessThan(1);
   expect(typing.p95Ms / 100).toBeLessThan(1);
   expect(open.p95Ms / 20).toBeLessThan(2);
