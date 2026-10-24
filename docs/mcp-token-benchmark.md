@@ -2,6 +2,56 @@
 
 Gemeinsame Messstelle für die Überarbeitung des MCP-Servers (Phasen 1–4). Jede Phase ergänzt hier ihre Zahlen. Die Baseline bleibt unverändert stehen.
 
+## Ergebnis
+
+Zahlen aus dem letzten Benchmark-Lauf in Phase 4, nach der Review-Fix-Runde (Debug-Build, Maschine unten). Bytes hängen nicht von der Maschine ab, Tokens sind geschätzt als Bytes/4. **Modelliert** heißt: Für die Aufgabe gab es vor Phase 2 kein Werkzeug. Die Baseline wird aus den synthetischen Daten berechnet (siehe Phase 2), sie ist also nicht gemessen.
+
+| Messung | vorher | nachher | Änderung |
+|---|---:|---:|---:|
+| `tools/list`, alle Tools (14 → 16 Tools) | 28.737 B | 11.910 B | −59 % |
+| `tools/list`, echte Konfiguration dieser Maschine | – | 9.890 B | |
+| instructions | 1.324 B | 932 B | −30 % |
+| BYOK-Startkatalog | 12.201 B | 10.518 B | −14 % |
+| huge.wide_table_column (1 Spalte aus 450) | 12.223 B | 155 B | −98,7 % |
+| huge.tenant_id_tables (300 Mandanten-Schemas) | 20.030 B | 2.077 B | −89,6 % |
+| huge.revenue_per_customer | 21.960 B, Info unvollständig | 4.358 B, vollständig | −80,2 % |
+| code.tenant_orphans (301 Aufrufe → 1) | 55.926 B | 1.049 B | −98,1 % |
+| huge.understand_routine (5.211 Zeilen) | 136.626 B **modelliert** | 3.960 B | −97,1 % |
+| huge.writers_of_table | 144.448 B **modelliert** | 2.346 B | −98,4 % |
+| Suche im `Huge`-Katalog (1,98 Mio. Spalten), Median | 6,2–18,3 s | 0,19 s (p95 0,22 s) | |
+| Suche mit Objektarten / Quelltextsuche, Median | – | 0,19 / 0,20 s | |
+| `overview` / Resource `l8db://…/overview`, Median | – | 0,14 / 0,13 s | |
+| Leseprüfung pro Anweisung, Median | 136 ms | 0,17 ms | |
+
+Sicherheit (Funde aus Reviews und Live-Tests, alle mit Regressionstest behoben, Details in den Phasen):
+
+- Phase 3: Backslash-Escapes in `"…"`/`` `…` `` und Kommentar-Mischformen versteckten geschwärzte Spalten und zweite Anweisungen. Das Zeilenbudget wurde erst nach dem Lesen geprüft.
+- Phase 4, live gefunden:
+  - MySQL führte `/*!80000DELETE …*/` als `DELETE` aus.
+  - Admin- und Schreibanweisungen wie `STOP REPLICA`, `XA`, `HANDLER`, `DENY`, `DISABLE TRIGGER`, `CHECKPOINT`, `WRITETEXT` und `AUDIT` galten als Lesezugriff.
+  - 40 ClickHouse-Tabellenfunktionen mit Außenzugriff oder String-Adressierung (`s3Cluster`, `iceberg*`, `executable`, `mongodb` …) waren erlaubt.
+  - Unter DuckDB konnte `query` lokale Dateien lesen (`read_text`, `FROM '<pfad>'`). `query()`/`query_table()` umgingen die Schema-Freigabe.
+- Phase 4, im Review gefunden:
+  - DuckDB `pragma_storage_info()` lieferte Min/Max geschwärzter Spalten und verborgener Tabellen.
+  - MariaDB-Kommentare `/*M! … */` wurden als Kommentar überlesen, obwohl MariaDB sie ausführt.
+  - T-SQL-Batches ohne Semikolon (`SELECT 1 DENY …`).
+  - `EXPORT DATABASE` unter DuckDB und die ClickHouse-Tabellenfunktionen `loop()`/`dictionary()`.
+  - Ein Live-Fix hatte innere ClickHouse-Tabellen aus dem Sicherheitsindex entfernt und damit die Freigabe gelockert. Das ist zurückgenommen.
+- Offen: keine Sandbox auf Betriebssystemebene für den `code`-Worker. Weitere offene Punkte stehen unter Phase 4.
+
+Getestet:
+
+- Live gegen echte Server: PostgreSQL 17, MySQL 8.4, ClickHouse 25.8, SQL Server (Azure SQL Edge), Oracle 23ai Free
+- lokal: SQLite und DuckDB
+- Plattform: macOS arm64, Linux x86_64 nur über `cargo test` in CI
+
+Nicht getestet:
+
+- MariaDB, SQL Server 2019/2022 mit TLS, Oracle vor 23ai, Snowflake, BigQuery und die Nicht-SQL-Familien
+- Windows
+- Release-Build
+- Smoke-Test gegen die echte ClickHouse-Verbindung (siehe Phase 4)
+
 Test: `src-tauri/src/mcp/token_benchmark.rs`, Aufruf aus `src-tauri/`:
 
 ```sh
@@ -460,3 +510,101 @@ Grenzen:
 - Adapter ohne `with_row_limit` (SQL Server, ClickHouse, Snowflake, BigQuery …) lesen eine Anweisung vollständig in den Host, bevor sie gekürzt wird, wie bei `query`.
 - Ein Lauf liest höchstens 250.000 Zeilen. Für große Auswertungen gehört die Aggregation ins SQL.
 - RegExp-Filter folgen der Rust-Syntax (ohne Lookaround), nicht der JS-Syntax.
+
+## Phase 4
+
+Änderungen:
+
+- **Cache-Hinweise nach MCP 2026-07-28:**
+  - `ttlMs: 60000` und `cacheScope: "private"` stehen an `server/discover`, `tools/list`, `resources/list`, `resources/templates/list`, `resources/read` und `prompts/list`.
+  - Sie erscheinen nur, wenn die Anfrage `_meta["io.modelcontextprotocol/protocolVersion"]` ≥ `2026-07-28` trägt oder `server/discover` ist. Solche Antworten tragen auch `resultType: "complete"` und `_meta["io.modelcontextprotocol/serverInfo"]`.
+  - Eine unbekannte Version ergibt `-32022` mit `supported`/`requested`.
+  - `initialize` bleibt der Weg für ältere Clients. Es antwortet mit der angefragten Version, wenn sie bekannt und älter als 2026-07-28 ist. Bei einer unbekannten oder neueren Version antwortet es mit der neuesten älteren Version `2025-11-25`, ohne Angabe wie bisher mit `2025-06-18`. Ältere Clients sehen keine neuen Felder.
+  - Die Reihenfolge der Tools ist fest. Ein Test prüft sie mit und ohne `workflow`/`script`.
+- **Resources:** `initialize` meldet `resources`.
+  - `resources/list` nennt pro exponierter Verbindung `l8db://<id>/overview`. Die Kennung ist prozentkodiert, nicht exponierte Verbindungen und SSH-Verbindungen fehlen.
+  - `resources/read` liefert genau den Text des Tools `overview` (gleicher Code, gleiche Limits, Entdeckungssicht ohne verborgene Schemas).
+  - Unbekannte URIs ergeben `-32002` (bis 2025-11-25) bzw. `-32602` (2026-07-28). Ist der MCP deaktiviert, ist die Liste leer und das Lesen schlägt fehl.
+  - Die d.ts des `code`-Tools bleibt in der Tool-Definition.
+- **Live-Fixes:** siehe unten.
+
+Resource-Messung im Benchmark (`catalog_stages_…`): 15 × `resources/read` auf dem `Huge`-Katalog. Der Text ist identisch mit dem `overview`-Tool, es gibt 0 zusätzliche Datenbankabfragen. Median 134 ms, p95 136 ms (Budget < 400 / < 800 ms). Oberfläche und Aufgaben sind gegenüber Phase 3 byte-gleich (`tools/list` 11.910 B, alle Budgets unverändert).
+
+### Live-Tests
+
+Docker auf der Maschine oben (arm64), kurzlebige Container, danach entfernt. Ignorierte Tests in `mcp/objects.rs`, je mit Katalog, Lese- und Angriffsfällen:
+
+| Familie | Image | Test | legitime Reads | Leaks, direkt ausführbar | weitere Angriffe | Ergebnis |
+|---|---|---|---:|---:|---:|---|
+| MySQL | `mysql:8.4` | `live_mysql_catalog_and_dialect_reading` | 19 | 8 | 27 | grün nach Fixes |
+| ClickHouse | `clickhouse/clickhouse-server:25.8` | `live_clickhouse_catalog_and_dialect_reading` | 22 | 6 | 18 | grün nach Fixes |
+| SQL Server | `mcr.microsoft.com/azure-sql-edge` | `live_mssql_catalog_and_reads` | 9 | 3 | 17 | grün nach Fixes, nur mit `encrypt=false` |
+| Oracle | `gvenzl/oracle-free:23-slim-faststart` | `live_oracle_catalog_and_reads` | 11 | 3 | 9 | grün nach Fixes |
+
+Bei jedem Leak-Fall wird zuerst geprüft, dass er direkt auf dem Server die geschwärzte Spalte liefert. Danach muss der MCP ihn ablehnen. Nach allen Fällen ist die Zeilenzahl unverändert. Aufruf aus `src-tauri/` (Variablen `L8DB_E2E_MYSQL_URL`, `L8DB_E2E_CLICKHOUSE_URL`, `L8DB_E2E_MSSQL_URL`, `L8DB_E2E_ORACLE_ADMIN_URL`):
+
+```sh
+cargo test --lib mcp::objects::tests::live_mysql -- --ignored --nocapture
+```
+
+Gefunden und behoben:
+
+- **MySQL, kritisch:** `/*!80000DELETE FROM t */` lief auf dem Server als `DELETE`. Der Tokenizer las die Versionsnummer als Teil des Wortes. Gleiches galt für `/*!50000INTO OUTFILE …*/`.
+- **Schreib- und Admin-Anweisungen als Lesezugriff:** `STOP`/`START REPLICA`, `CHANGE REPLICATION SOURCE`, `BINLOG`, `CLONE`, `XA`, `HANDLER`, `CACHE INDEX`, `UNLOCK`, `REPAIR`, `RESTART`, `UNINSTALL` (MySQL), `EXCHANGE`, `UNDROP` (ClickHouse), `DENY`, `DISABLE`/`ENABLE TRIGGER`, `CHECKPOINT`, `SETUSER`, `WRITETEXT`, `UPDATETEXT` (T-SQL), `AUDIT`, `NOAUDIT`, `ASSOCIATE`/`DISASSOCIATE STATISTICS`, `ADMINISTER KEY MANAGEMENT` (Oracle). Sie werden als erstes Wort abgelehnt (`WRITE_STATEMENTS`), als Spaltennamen bleiben sie erlaubt. Dazu kommen `GET_LOCK`, `RELEASE_LOCK` und die Replikations-Wartefunktionen.
+- **ClickHouse:** Ein Test gleicht `system.table_functions` mit einer Liste sicherer Funktionen ab. 42 Funktionen mit Datei-, Netz- oder Fremd-DB-Zugriff oder mit Tabellen im String sind jetzt gesperrt (`s3Cluster`, `iceberg*`, `deltaLake*`, `hudi`, `azureBlobStorage*`, `executable`, `mongodb`, `redis`, `sqlite`, `ytsaurus`, `mergeTreeIndex`, `loop`, `dictionary` …). Innere Tabellen materialisierter Views (`.inner…`) fehlen in der Relationsliste, bleiben aber im Spaltenkatalog. Der Sicherheitsindex braucht sie, sonst wäre `` SELECT * FROM `.inner…` `` in einer verborgenen Datenbank erlaubt. Die Übersicht zählt sie deshalb mit.
+- **DuckDB, hoch:** `query` las beliebige lokale Dateien (`read_text`, `read_csv`, `FROM '<pfad>'`, `glob`), und `query()`/`query_table()` lasen verborgene Schemas über SQL im String. Behoben in zwei Schichten:
+  - Der eigenständige MCP-Prozess (`l8db --mcp`) nutzt einen versiegelten Pool. DuckDB läuft dort mit `allowed_paths` (nur die eigene CSV/Parquet-Datei), `enable_external_access = false` und `lock_configuration = true`. Vorher werden die lokal installierten Erweiterungen `json` und `icu` geladen, ohne Nachinstallation aus dem Netz. Fehlt eine davon lokal, fehlen ihre Funktionen im MCP-Prozess (auf der Maschine oben: `icu`, also Zeitzonen-Umrechnung). Eine zweite DuckDB-Instanz derselben Datei im App-Prozess wäre unsicher, sie sieht fremde Schreibvorgänge nicht. Deshalb ist die Versiegelung an den Pool gebunden und nicht an einen eigenen Schlüssel.
+  - Die Leseprüfung lehnt für DuckDB Datei-Reader-Funktionen, `pragma_*()`, `query()`, `query_table()`, `json_execute_serialized_sql()` und `FROM`/`JOIN '…'` ab, gelesen mit beiden allgemeinen Lexern und dem PostgreSQL-Lexer. `IS DISTINCT FROM '…'` und `FROM` in `extract`, `trim`, `substring`, `overlay` und `position` bleiben erlaubt. Das gilt auch für den KI-Arbeitsbereich im App-Prozess.
+  - Regressionstest: `duckdb_queries_cannot_reach_local_files_or_hidden_schemas`.
+- **Katalog:**
+  - MySQL-Routinen zeigen ihre Parameter.
+  - SQL Server und Oracle laden Routinen per Sammelabfrage mit Signatur, Rückgabetyp und Zeilenzahl, statt über den Adapter ohne Argumente. Oracle-Packages erscheinen wie zuvor als Funktion mit Rückgabe `PACKAGE`. Die Kennungen bleiben im Adapterformat, damit `describe` den Quelltext findet.
+  - Schlägt eine Sammelabfrage fehl, kommen die Routinen wie vor Phase 4 über den Adapter.
+- **Falsch-positiv:** Dezimalzahlen wie `1.19` und `quantile(0.9)` galten als Schema-Verweis `1.19` und wurden abgelehnt.
+
+Bewusst nicht gelockert, bekannt falsch-positiv: `#`-Kommentare in MySQL und `SHOW CREATE …` werden weiter abgelehnt.
+
+Review mit einer Fix-Runde (Resources-Sichtbarkeit, Protokoll, Live-Fixes). Alle Funde sind mit Regressionstest behoben und die vier Live-Tests danach erneut grün:
+
+- **Hoch:**
+  - `pragma_storage_info('<verborgen>.t')` gab die Min/Max-Statistik jeder Spalte aus, auch geschwärzter und verborgener.
+  - MariaDB führt `/*M! … */` aus, die Prüfung las es als Kommentar.
+- **Mittel:**
+  - SQL Server führt Anweisungen ohne Semikolon als einen Batch aus. `SELECT 1 DENY …`, `… DISABLE TRIGGER …`, `… CHECKPOINT`, `SEND` und `RECEIVE` werden jetzt für SQL Server überall erkannt, als Spalte nur qualifiziert (`t.deny`).
+  - Der `.inner`-Filter im Spaltenkatalog lockerte die Schema-Freigabe und ist zurückgenommen (siehe oben).
+  - Die Versiegelung blockierte das automatische Laden von Erweiterungen (`json_extract`).
+  - `EXPORT DATABASE` unter DuckDB ist jetzt eine Schreibanweisung, ebenso `FORCE`.
+  - Ein `read_text` ließ sich in einer Mischung aus `E'…'` und `\` vor beiden allgemeinen Lexern verstecken.
+- **Niedrig:**
+  - `IS DISTINCT FROM '…'` war falsch-positiv.
+  - `query` war für alle Familien gesperrt, auch für die XML-Methode `x.query()` in T-SQL. Die Sperre gilt jetzt nur für DuckDB.
+  - Oracle-Packages fehlten in der Sammelabfrage.
+  - `initialize` antwortete auf unbekannte Versionen nicht mit der neuesten unterstützten.
+  - ClickHouse `loop()` adressiert Tabellen über einen String.
+
+### Smoke-Test mit der echten Konfiguration
+
+`target/debug/l8db --mcp` mit der `mcp.json` dieser Maschine. Exponiert ist eine schreibgeschützte ClickHouse-Verbindung. Geschrieben wurde nichts, ausgegeben wurden nur Bytes und Zeiten:
+
+| Schritt | Antwort B | ms | korrekt |
+|---|---:|---:|---|
+| initialize (2025-06-18) | 1.107 | 243 | ja, `resources` gemeldet |
+| tools/list (2025-06-18) | 9.890 | 2 | ja, ohne Cache-Felder |
+| tools/list (2026-07-28) | 10.032 | 2 | ja, gleiche Tools in gleicher Reihenfolge, `ttlMs`/`cacheScope` |
+| resources/list | 286 | 1 | ja, genau eine Resource |
+
+`overview`, `search`, `describe` und `code` gegen die Datenbank liefen nicht. Das Debug-Binary ist unsigniert und muss das Passwort aus dem macOS-Schlüsselbund lesen. macOS fragt dafür per Dialog nach, und ohne Bestätigung am Bildschirm wartet der Aufruf unbegrenzt (nach 600 s abgebrochen). `security find-generic-password` und ein unsignierter Release-Build fragen genauso. Der Test braucht deshalb einmal eine Freigabe am Gerät. Das Skript liegt nicht im Repo, die Schritte stehen oben.
+
+### Nicht gemessen
+
+- **Start des Release-Workers:** `--mcp-sandbox` startet über `current_exe`, also das App-Binary. Ein Release-Binary entsteht nur mit einem vollen Release-Build der App (`cargo build --release` beziehungsweise `tauri build`). Den Build hat die Aufgabe ausgeschlossen. Hinweise aus Phase 3: `l8db --version` braucht mit der installierten Release-Version 0,01 bis 0,03 s, mit dem Debug-Binary 0,24 s.
+- Gedrosselte CPU (nicht auf macOS), Linux und Windows live, MariaDB, SQL Server mit TLS, Oracle vor 23ai.
+
+### Offen
+
+- **In-App-KI mit DuckDB:** Der KI-Arbeitsbereich teilt den Pool der App und ist daher nicht versiegelt. Dort schützt nur die lexikalische Prüfung. `FROM t, '<pfad>'` (Datei als zweites Element einer FROM-Liste) und `FROM "datei.csv"` (Replacement Scan über einen Bezeichner) erkennt sie nicht.
+- **ClickHouse-Wörterbücher:** `dictGet('db.dict', …)` adressiert über einen String und umgeht so die Schema-Freigabe, soweit der Datenbankbenutzer das Recht `dictGet` hat. Die Tabellenfunktion `dictionary()` ist gesperrt.
+- **DuckDB-Metadaten:** `duckdb_tables()`, `duckdb_views()` und `duckdb_functions()` zeigen Namen und View-SQL verborgener Schemas (nur Metadaten, keine Zeilen).
+- **Oracle-Routinen:** Hat eine Routine Argumente mit zusammen mehr als 4.000 Byte, scheitert `LISTAGG`. Dann gilt der Rückfall auf den Adapter, der nur das eigene Schema kennt. Die Sammelabfrage mit korrelierten Unterabfragen auf `ALL_ARGUMENTS` ist nicht an großen Wörterbüchern gemessen.
+- **Informationsabfluss:** `SHOW PROCESSLIST`, `SHOW GRANTS` und ähnliche Anweisungen bleiben erlaubt (nur Lesen, zeigen aber Anweisungen anderer Sitzungen).
+- **Read-only:** Bei MySQL, ClickHouse und SQL Server erzwingt nur die lexikalische Prüfung Read-only. Ein Datenbankbenutzer ohne Schreibrechte bleibt die empfohlene zweite Schicht.

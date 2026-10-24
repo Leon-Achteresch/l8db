@@ -24,6 +24,7 @@ type SharedEntry = Arc<OnceCell<Arc<dyn Any + Send + Sync>>>;
 pub struct PoolManager {
     pools: Mutex<HashMap<(String, PoolUse, u64), PoolEntry>>,
     shared: Mutex<HashMap<String, SharedEntry>>,
+    seal_files: bool,
 }
 
 impl Default for PoolManager {
@@ -37,7 +38,12 @@ impl PoolManager {
         Self {
             pools: Mutex::new(HashMap::new()),
             shared: Mutex::new(HashMap::new()),
+            seal_files: false,
         }
+    }
+
+    pub fn seals_files(&self) -> bool {
+        self.seal_files
     }
 
     pub async fn get_pool(
@@ -198,6 +204,13 @@ pub type PoolState = Arc<PoolManager>;
 
 pub fn create_pool_state() -> PoolState {
     Arc::new(PoolManager::new())
+}
+
+pub fn create_sealed_pool_state() -> PoolState {
+    Arc::new(PoolManager {
+        seal_files: true,
+        ..PoolManager::new()
+    })
 }
 
 #[cfg(test)]

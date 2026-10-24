@@ -1614,6 +1614,29 @@ fn catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached()
         "describe of a routine queries at most its dependencies"
     );
     super::config::save(&lab.config).unwrap();
+    let expected = lab.runtime.block_on(lab.server.call_with_config(
+        &json!({"name": "overview", "arguments": {"connection": "Huge"}}),
+        &lab.config,
+    ))["content"][0]["text"]
+        .clone();
+    let before = calls();
+    let mut resource = Vec::new();
+    for _ in 0..15 {
+        let started = Instant::now();
+        let reply = lab
+            .runtime
+            .block_on(lab.server.handle_line(
+                r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"l8db://bench-huge/overview"}}"#,
+            ))
+            .unwrap();
+        resource.push(started.elapsed());
+        assert_eq!(reply["result"]["contents"][0]["text"], expected);
+    }
+    assert_eq!(
+        calls(),
+        before,
+        "overview resources reuse the cached catalog"
+    );
     let started = Instant::now();
     super::persist::save(&lab.config, &huge, &catalog);
     let save = started.elapsed();
@@ -1639,6 +1662,7 @@ fn catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached()
     let (zoom_median, zoom_p95) = spread(zoom);
     let (kinds_median, kinds_p95) = spread(kinds);
     let (code_median, code_p95) = spread(code);
+    let (resource_median, resource_p95) = spread(resource);
     println!(
         "catalog stages: {} relations, {} routines, {} triggers, {edges} FK edges, {source_count} sources ≈{} MB in memory; derived column index ≈{} MB, objects ≈{} MB",
         objects.relations.len(),
@@ -1649,7 +1673,7 @@ fn catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached()
         meta / 1_000_000
     );
     println!(
-        "overview median {overview_median:?} p95 {overview_p95:?}; zoom median {zoom_median:?} p95 {zoom_p95:?}; search with kinds median {kinds_median:?} p95 {kinds_p95:?}; source search median {code_median:?} p95 {code_p95:?}; describe routine {describe:?}"
+        "overview median {overview_median:?} p95 {overview_p95:?}; zoom median {zoom_median:?} p95 {zoom_p95:?}; search with kinds median {kinds_median:?} p95 {kinds_p95:?}; source search median {code_median:?} p95 {code_p95:?}; describe routine {describe:?}; overview resource median {resource_median:?} p95 {resource_p95:?}"
     );
     println!(
         "persisted catalog: {:.1} MB, save {save:?}, load {load:?}",
@@ -1664,6 +1688,14 @@ fn catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached()
         "{overview_p95:?}"
     );
     assert!(zoom_median < Duration::from_millis(300), "{zoom_median:?}");
+    assert!(
+        resource_median < Duration::from_millis(400),
+        "{resource_median:?}"
+    );
+    assert!(
+        resource_p95 < Duration::from_millis(800),
+        "{resource_p95:?}"
+    );
     assert!(
         kinds_median < Duration::from_millis(600),
         "{kinds_median:?}"

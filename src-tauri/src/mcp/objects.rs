@@ -72,6 +72,15 @@ fn within(column: &str, allowlist: &[String]) -> String {
     format!(" AND {column} IN ({})", names.join(", "))
 }
 
+fn oracle_owners(schemas: &[String]) -> Option<String> {
+    let owners: Vec<String> = schemas
+        .iter()
+        .take(1000)
+        .filter_map(|schema| literal(schema))
+        .collect();
+    (!owners.is_empty()).then(|| owners.join(", "))
+}
+
 fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -> Option<String> {
     Some(match kind {
         DatabaseKind::Postgres => format!(
@@ -102,11 +111,7 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
             within("s.name", allowlist)
         ),
         DatabaseKind::Oracle => {
-            let owners: Vec<String> = schemas.iter().take(1000).filter_map(|schema| literal(schema)).collect();
-            if owners.is_empty() {
-                return None;
-            }
-            let owners = owners.join(", ");
+            let owners = oracle_owners(schemas)?;
             format!(
                 "SELECT * FROM (SELECT owner AS a, table_name AS b, 'TABLE' AS c, num_rows AS d, blocks * 8192 AS e, \
                  (SELECT comments FROM all_tab_comments m WHERE m.owner = t.owner AND m.table_name = t.table_name) AS f \
@@ -118,7 +123,7 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
         }
         DatabaseKind::Clickhouse => format!(
             "SELECT database AS a, name AS b, engine AS c, total_rows AS d, total_bytes AS e, comment AS f FROM system.tables \
-             WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') AND NOT is_temporary{} ORDER BY 1, 2 LIMIT {MAX_RELATIONS}",
+             WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') AND NOT is_temporary AND name NOT LIKE '.inner%'{} ORDER BY 1, 2 LIMIT {MAX_RELATIONS}",
             within("database", allowlist)
         ),
         DatabaseKind::Sqlite => "SELECT 'main' AS a, name AS b, type AS c, NULL AS d, NULL AS e, NULL AS f FROM sqlite_master \
@@ -154,9 +159,29 @@ const POSTGRES_ROUTINES: &str = "SELECT n.nspname AS a, p.proname AS b, p.prokin
      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend e WHERE e.classid = 'pg_catalog.pg_proc'::regclass AND e.objid = p.oid AND e.deptype = 'e'){filter} \
      ORDER BY 1, 2 LIMIT 100000";
 
-const MYSQL_ROUTINES: &str = "SELECT ROUTINE_SCHEMA AS a, ROUTINE_NAME AS b, ROUTINE_TYPE AS c, '' AS d, COALESCE(DTD_IDENTIFIER, '') AS e, 'SQL' AS f, '' AS g, \
-     LENGTH(ROUTINE_DEFINITION) - LENGTH(REPLACE(ROUTINE_DEFINITION, CHAR(10), '')) + 1 AS h \
-     FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema'){filter} ORDER BY 1, 2 LIMIT 100000";
+const MYSQL_ROUTINES: &str = "SELECT r.ROUTINE_SCHEMA AS a, r.ROUTINE_NAME AS b, r.ROUTINE_TYPE AS c, COALESCE(p.args, '') AS d, COALESCE(r.DTD_IDENTIFIER, '') AS e, 'SQL' AS f, '' AS g, \
+     LENGTH(r.ROUTINE_DEFINITION) - LENGTH(REPLACE(r.ROUTINE_DEFINITION, CHAR(10), '')) + 1 AS h \
+     FROM information_schema.ROUTINES r LEFT JOIN (SELECT SPECIFIC_SCHEMA, SPECIFIC_NAME, ROUTINE_TYPE, \
+       GROUP_CONCAT(CONCAT_WS(' ', IF(ROUTINE_TYPE = 'PROCEDURE', PARAMETER_MODE, NULL), PARAMETER_NAME, DTD_IDENTIFIER) ORDER BY ORDINAL_POSITION SEPARATOR ', ') AS args \
+       FROM information_schema.PARAMETERS WHERE ORDINAL_POSITION > 0{pfilter} GROUP BY SPECIFIC_SCHEMA, SPECIFIC_NAME, ROUTINE_TYPE) p \
+     ON p.SPECIFIC_SCHEMA = r.ROUTINE_SCHEMA AND p.SPECIFIC_NAME = r.SPECIFIC_NAME AND p.ROUTINE_TYPE = r.ROUTINE_TYPE \
+     WHERE r.ROUTINE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema'){filter} ORDER BY 1, 2 LIMIT 100000";
+
+const MSSQL_ROUTINES: &str = "SELECT TOP 100000 s.name AS a, o.name AS b, RTRIM(o.type) AS c, \
+     COALESCE(STUFF((SELECT ', ' + p.name + ' ' + TYPE_NAME(p.user_type_id) + CASE WHEN p.is_output = 1 THEN ' OUTPUT' ELSE '' END \
+       FROM sys.parameters p WHERE p.object_id = o.object_id AND p.parameter_id > 0 ORDER BY p.parameter_id FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, ''), '') AS d, \
+     COALESCE((SELECT TYPE_NAME(p.user_type_id) FROM sys.parameters p WHERE p.object_id = o.object_id AND p.parameter_id = 0), CASE WHEN o.type IN ('IF', 'TF', 'FT') THEN 'TABLE' ELSE '' END) AS e, \
+     'T-SQL' AS f, CAST(o.object_id AS varchar(20)) AS g, LEN(m.definition) - LEN(REPLACE(m.definition, CHAR(10), '')) + 1 AS h \
+     FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id \
+     WHERE o.type IN ('FN', 'IF', 'TF', 'P', 'AF', 'FS', 'FT', 'PC') AND o.is_ms_shipped = 0{filter} ORDER BY 1, 2";
+
+const ORACLE_ROUTINES: &str = "SELECT * FROM (SELECT o.owner AS a, o.object_name AS b, o.object_type AS c, \
+     (SELECT LISTAGG(LOWER(g.argument_name) || DECODE(g.in_out, 'IN', '', 'OUT', ' OUT', ' IN OUT') || ' ' || g.data_type, ', ') WITHIN GROUP (ORDER BY g.position) \
+       FROM all_arguments g WHERE g.owner = o.owner AND g.object_name = o.object_name AND g.package_name IS NULL AND g.data_level = 0 AND g.position > 0 AND g.argument_name IS NOT NULL) AS d, \
+     COALESCE((SELECT MAX(g.data_type) FROM all_arguments g WHERE g.owner = o.owner AND g.object_name = o.object_name AND g.package_name IS NULL AND g.data_level = 0 AND g.position = 0), DECODE(o.object_type, 'PACKAGE', 'PACKAGE')) AS e, \
+     'PL/SQL' AS f, o.owner || CHR(31) || o.object_name || CHR(31) || o.object_type AS g, \
+     (SELECT COUNT(*) FROM all_source s WHERE s.owner = o.owner AND s.name = o.object_name AND s.type = o.object_type) AS h \
+     FROM all_objects o WHERE o.object_type IN ('FUNCTION', 'PROCEDURE', 'PACKAGE') AND o.owner IN ({owners}) ORDER BY 1, 2) WHERE ROWNUM <= 100000";
 
 const POSTGRES_TRIGGERS: &str = "SELECT n.nspname AS a, t.tgname AS b, c.relname AS c, pn.nspname AS d, p.proname AS e \
      FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
@@ -169,6 +194,7 @@ const SQLITE_TRIGGERS: &str =
 async fn routines(
     adapter: &dyn DatabaseAdapter,
     kind: DatabaseKind,
+    schemas: &[String],
     allowlist: &[String],
 ) -> Vec<Routine> {
     if matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Duckdb) {
@@ -178,18 +204,27 @@ async fn routines(
         DatabaseKind::Postgres => {
             Some(POSTGRES_ROUTINES.replace("{filter}", &within("n.nspname", allowlist)))
         }
-        DatabaseKind::Mysql => {
-            Some(MYSQL_ROUTINES.replace("{filter}", &within("ROUTINE_SCHEMA", allowlist)))
+        DatabaseKind::Mysql => Some(
+            MYSQL_ROUTINES
+                .replace("{filter}", &within("r.ROUTINE_SCHEMA", allowlist))
+                .replace("{pfilter}", &within("SPECIFIC_SCHEMA", allowlist)),
+        ),
+        DatabaseKind::Mssql => {
+            Some(MSSQL_ROUTINES.replace("{filter}", &within("s.name", allowlist)))
+        }
+        DatabaseKind::Oracle => {
+            oracle_owners(schemas).map(|owners| ORACLE_ROUTINES.replace("{owners}", &owners))
         }
         _ => None,
     };
-    if let Some(sql) = sql {
-        return fetch(adapter, &sql)
-            .await
-            .unwrap_or_default()
+    if let Some(Ok(rows)) = match sql {
+        Some(sql) => Some(fetch(adapter, &sql).await),
+        None => None,
+    } {
+        return rows
             .into_iter()
             .map(|row| {
-                let procedure = matches!(row[2].as_str(), "p" | "PROCEDURE");
+                let procedure = matches!(row[2].as_str(), "p" | "P" | "PC" | "PROCEDURE");
                 Routine {
                     id: if kind == DatabaseKind::Mysql {
                         format!("{}\u{1f}{}\u{1f}{}", row[0], row[1], row[2])
@@ -299,7 +334,7 @@ pub(super) async fn load(
             }
         }
     }
-    objects.routines = routines(adapter, kind, allowlist).await;
+    objects.routines = routines(adapter, kind, schemas, allowlist).await;
     for routine in &mut objects.routines {
         routine.args = mask_hidden(&routine.args, allowlist);
         routine.returns = mask_hidden(&routine.returns, allowlist);
@@ -1496,6 +1531,937 @@ mod tests {
         ] {
             runtime.block_on(admin.execute_query(&sql)).unwrap();
         }
+    }
+
+    fn ask(
+        runtime: &tokio::runtime::Runtime,
+        server: &mut Server,
+        config: &McpConfig,
+        name: &str,
+        args: Value,
+    ) -> (bool, String) {
+        let reply = runtime.block_on(server.call_with_config(
+            &serde_json::json!({"name": name, "arguments": args}),
+            config,
+        ));
+        (
+            reply["isError"].as_bool().unwrap(),
+            reply["content"][0]["text"].as_str().unwrap().to_string(),
+        )
+    }
+
+    fn live(
+        kind: DatabaseKind,
+        url: &str,
+        schema: &str,
+    ) -> (
+        tokio::runtime::Runtime,
+        Box<dyn DatabaseAdapter>,
+        McpConfig,
+        Server,
+    ) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let admin = crate::db::create_adapter_from_string(
+            kind,
+            url,
+            None,
+            crate::db::pool::create_pool_state(),
+        )
+        .unwrap();
+        let connection = McpConnection {
+            id: format!("live-{kind:?}"),
+            name: "live".into(),
+            kind,
+            connection_string: url.into(),
+            schemas: vec![schema.into()],
+            ssh: false,
+            exposed: true,
+            read_only: true,
+            allow_ddl: false,
+            allow_scripts: false,
+            redact_columns: vec!["email".into()],
+            mask_rules: Vec::new(),
+            environment: None,
+            allow_production_writes: false,
+            database: None,
+        };
+        let config = McpConfig {
+            enabled: true,
+            connections: vec![connection],
+            ..McpConfig::default()
+        };
+        let server = Server {
+            pool: crate::db::pool::create_pool_state(),
+            columns: Default::default(),
+        };
+        (runtime, admin, config, server)
+    }
+
+    fn setup(
+        runtime: &tokio::runtime::Runtime,
+        admin: &dyn DatabaseAdapter,
+        statements: &[String],
+    ) {
+        for sql in statements {
+            runtime
+                .block_on(admin.execute_query(sql))
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+    }
+
+    fn reads(
+        runtime: &tokio::runtime::Runtime,
+        admin: &dyn DatabaseAdapter,
+        server: &mut Server,
+        config: &McpConfig,
+        legit: &[String],
+        leaks: &[String],
+        blocked: &[String],
+    ) {
+        for sql in legit {
+            let (error, text) = ask(
+                runtime,
+                server,
+                config,
+                "query",
+                serde_json::json!({"sql": sql}),
+            );
+            assert!(!error, "legit read rejected: {sql}\n{text}");
+            assert!(!text.contains("@secret.example"), "{sql}\n{text}");
+        }
+        for sql in leaks {
+            let direct = runtime
+                .block_on(admin.execute_query(sql))
+                .unwrap_or_else(|e| panic!("attack does not run on the server: {sql}: {e}"));
+            assert!(
+                serde_json::to_string(&direct.rows)
+                    .unwrap()
+                    .to_lowercase()
+                    .contains("@secret.example"),
+                "attack does not leak on the server: {sql}"
+            );
+        }
+        for sql in leaks.iter().chain(blocked) {
+            let (error, text) = ask(
+                runtime,
+                server,
+                config,
+                "query",
+                serde_json::json!({"sql": sql}),
+            );
+            assert!(error, "attack passed: {sql}\n{text}");
+            assert!(!text.contains("@secret.example"), "{sql}\n{text}");
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn live_mysql_catalog_and_dialect_reading() {
+        let url = std::env::var("L8DB_E2E_MYSQL_URL")
+            .unwrap_or_else(|_| "mysql://root:testpw@127.0.0.1:13306/shop".into());
+        let db = format!("l8db_mcp_{}", std::process::id());
+        let hidden = format!("{db}_hidden");
+        let (runtime, admin, config, mut server) = live(DatabaseKind::Mysql, &url, &db);
+        setup(&runtime, admin.as_ref(), &[
+            format!("DROP DATABASE IF EXISTS {db}"),
+            format!("DROP DATABASE IF EXISTS {hidden}"),
+            format!("CREATE DATABASE {db}"),
+            format!("CREATE DATABASE {hidden}"),
+            format!("CREATE TABLE {hidden}.secret_table(x INT)"),
+            format!("CREATE TABLE {db}.customers(id BIGINT PRIMARY KEY, name VARCHAR(50), email VARCHAR(100) NOT NULL) COMMENT='Kundenstamm'"),
+            format!("CREATE TABLE {db}.orders(id BIGINT PRIMARY KEY, customer_id BIGINT, total DECIMAL(10,2), status VARCHAR(10), FOREIGN KEY (customer_id) REFERENCES {db}.customers(id))"),
+            format!("CREATE TABLE {db}.order_log(order_id BIGINT, at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"),
+            format!("CREATE VIEW {db}.open_orders AS SELECT o.id, c.name FROM {db}.orders o JOIN {db}.customers c ON c.id = o.customer_id WHERE o.status = 'open'"),
+            format!("CREATE VIEW {db}.leaky AS SELECT x FROM {hidden}.secret_table"),
+            format!("CREATE FUNCTION {db}.order_total(p_id BIGINT) RETURNS DECIMAL(10,2) READS SQL DATA RETURN (SELECT total FROM {db}.orders WHERE id = p_id)"),
+            format!("CREATE PROCEDURE {db}.log_order(IN p_id BIGINT)\nBEGIN\n  INSERT INTO {db}.order_log(order_id) VALUES (p_id);\n  SELECT {db}.order_total(p_id);\nEND"),
+            format!("CREATE TRIGGER {db}.orders_audit AFTER INSERT ON {db}.orders FOR EACH ROW INSERT INTO {db}.order_log(order_id) VALUES (NEW.id)"),
+            format!("INSERT INTO {db}.customers VALUES (1, 'Ann', 'ann@secret.example'), (2, 'Bob', 'bob@secret.example')"),
+            format!("INSERT INTO {db}.orders VALUES (1, 1, 10, 'open'), (2, 2, 5, 'paid')"),
+            format!("ANALYZE TABLE {db}.customers, {db}.orders"),
+        ]);
+        let before = calls();
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order"}),
+        );
+        let built = calls() - before;
+        println!("search order ({built} queries):\n{text}");
+        assert!(!error, "{text}");
+        assert!(built <= 4, "catalog build used {built} queries");
+        for expected in [
+            format!("T {db}.orders ≈2 rows"),
+            format!("V {db}.open_orders"),
+            format!("F {db}.order_total(p_id bigint) → decimal(10,2)"),
+            format!("P {db}.log_order(IN p_id bigint)"),
+        ] {
+            assert!(text.contains(&expected), "{expected}: {text}");
+        }
+        assert!(!text.contains("hidden"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "secret"}),
+        );
+        assert!(text.starts_with("No tables"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "customers"}),
+        );
+        assert!(text.contains("— Kundenstamm"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"kind": "F,P"}),
+        );
+        assert!(
+            text.contains(&format!("F {db}.order_total"))
+                && text.contains(&format!("P {db}.log_order")),
+            "{text}"
+        );
+        assert_eq!(
+            calls() - before,
+            built,
+            "repeated searches must not query the database"
+        );
+        let before = calls();
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "overview",
+            serde_json::json!({}),
+        );
+        println!("overview ({} queries):\n{text}", calls() - before);
+        assert!(
+            !error && text.contains(&db) && text.contains("1 functions, 1 procedures"),
+            "{text}"
+        );
+        assert!(!text.contains(&hidden), "{text}");
+        assert!(calls() - before <= 1);
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "describe",
+            serde_json::json!({"tables": [format!("{db}.log_order"), format!("{db}.order_total"), format!("{db}.open_orders"), format!("{db}.orders"), format!("{db}.leaky")]}),
+        );
+        println!("describe:\n{text}");
+        assert!(!error, "{text}");
+        for expected in [
+            format!("writes (from source): {db}.order_log"),
+            format!("calls (from source): {db}.order_total"),
+            format!("reads (from source): {db}.orders"),
+            format!(" customer_id bigint? → {db}.customers.id"),
+            "[line references a hidden schema]".to_string(),
+        ] {
+            assert!(text.contains(&expected), "{expected}: {text}");
+        }
+        assert!(
+            !text.contains(&format!("{hidden}.")) && !text.contains(&format!("`{hidden}`")),
+            "{text}"
+        );
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order_log", "in": "source"}),
+        );
+        println!("source search:\n{text}");
+        assert!(
+            !error && text.contains(&format!("P {db}.log_order")) && text.contains("INSERT INTO"),
+            "{text}"
+        );
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "status", "in": "source"}),
+        );
+        assert!(
+            !error && text.contains(&format!("V {db}.open_orders")),
+            "{text}"
+        );
+
+        let legit = [
+            format!("SELECT id, total FROM {db}.orders WHERE status = 'open' ORDER BY id LIMIT 5"),
+            format!("SELECT `status`, COUNT(*) AS n FROM `{db}`.`orders` GROUP BY `status`"),
+            format!("SELECT o.id, c.name FROM {db}.orders o JOIN {db}.customers c ON c.id = o.customer_id"),
+            format!("SELECT 'it\\'s' AS a, \"say \\\"hi\\\"\" AS b, 'C:\\\\temp' AS c, name FROM {db}.customers -- note"),
+            format!("SELECT name FROM {db}.customers # top names"),
+            format!("SELECT /*+ MAX_EXECUTION_TIME(1000) */ name FROM {db}.customers /* block */"),
+            format!("WITH t AS (SELECT customer_id, SUM(total) AS s FROM {db}.orders GROUP BY customer_id) SELECT c.name, t.s FROM t JOIN {db}.customers c ON c.id = t.customer_id"),
+            "SELECT JSON_EXTRACT('{\"a\": 1}', '$.a') AS j, DATE_FORMAT(NOW(), '%Y-%m') AS m".to_string(),
+            format!("SELECT * FROM {db}.customers"),
+            format!("SELECT COUNT(*) FROM {db}.customers WHERE id IN (SELECT customer_id FROM {db}.orders)"),
+            format!("SELECT id, total, RANK() OVER (ORDER BY total DESC) AS r FROM {db}.orders"),
+            format!("SELECT CONCAT(name, ' -- ', id) AS label FROM {db}.customers WHERE name REGEXP '^A' LIMIT 1 OFFSET 0"),
+            format!("SELECT name FROM {db}.customers WHERE name LIKE 'A\\_%'"),
+            format!("SHOW TABLES FROM {db}"),
+            format!("EXPLAIN SELECT id FROM {db}.orders"),
+            format!("CHECKSUM TABLE {db}.orders"),
+            format!("TABLE {db}.orders"),
+            "VALUES ROW(1, 2.5)".to_string(),
+            "SELECT @@version".to_string(),
+        ];
+        let leaks = [
+            format!("SELECT 1 --1, email AS p FROM {db}.customers"),
+            format!("SELECT 1 /* /* */ , email AS p FROM {db}.customers -- */"),
+            format!("SELECT 'x\\'', email FROM {db}.customers -- '"),
+            format!("SELECT 1 AS \"a\\\"\", email FROM {db}.customers -- \""),
+            format!("SELECT 1 /*!, email */ FROM {db}.customers"),
+            format!("SELECT 1 /*!80000 , email */ FROM {db}.customers"),
+            format!("SELECT email FROM {db}.customers"),
+            format!("SELECT UPPER(c.email) FROM {db}.customers c"),
+        ];
+        let blocked = [
+            format!("SELECT \"a\\\"\" ; DELETE FROM {db}.orders ; SELECT \"x\""),
+            format!("SELECT 1; DROP TABLE {db}.orders"),
+            format!("SELECT x FROM {hidden}.secret_table"),
+            format!("SELECT * FROM {db}.customers INTO OUTFILE '/tmp/l8db-leak'"),
+            "SELECT LOAD_FILE('/etc/passwd')".to_string(),
+            "SELECT SLEEP(3)".to_string(),
+            "SELECT BENCHMARK(100000000, MD5('x'))".to_string(),
+            format!("DELETE FROM {db}.orders"),
+            format!("UPDATE {db}.orders SET total = 0"),
+            format!("CALL {db}.log_order(1)"),
+            "STOP REPLICA".to_string(),
+            "START REPLICA".to_string(),
+            "CHANGE REPLICATION SOURCE TO SOURCE_HOST = '127.0.0.1'".to_string(),
+            "BINLOG 'AAAA'".to_string(),
+            "RESTART".to_string(),
+            "CLONE LOCAL DATA DIRECTORY = '/tmp/l8db-clone'".to_string(),
+            "UNINSTALL PLUGIN audit_log".to_string(),
+            "XA START 'l8db'".to_string(),
+            format!("HANDLER {db}.orders OPEN"),
+            format!("CACHE INDEX {db}.orders IN hot"),
+            "UNLOCK TABLES".to_string(),
+            format!("REPAIR TABLE {db}.orders"),
+            "/*!80000 STOP REPLICA */".to_string(),
+            format!("/*!80000DELETE FROM {db}.orders */"),
+            format!("SELECT 1 /*!80000INTO OUTFILE '/tmp/l8db-leak' */"),
+            "SELECT GET_LOCK('l8db', 10)".to_string(),
+            "SELECT RELEASE_ALL_LOCKS()".to_string(),
+        ];
+        reads(
+            &runtime,
+            admin.as_ref(),
+            &mut server,
+            &config,
+            &legit,
+            &leaks,
+            &blocked,
+        );
+        let count = runtime
+            .block_on(admin.execute_query(&format!("SELECT COUNT(*) AS n FROM {db}.orders")))
+            .unwrap();
+        assert_eq!(
+            serde_json::to_string(&count.rows).unwrap().replace('"', ""),
+            "[{n:2}]"
+        );
+        setup(
+            &runtime,
+            admin.as_ref(),
+            &[
+                format!("DROP DATABASE {db}"),
+                format!("DROP DATABASE {hidden}"),
+            ],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn live_clickhouse_catalog_and_dialect_reading() {
+        let url = std::env::var("L8DB_E2E_CLICKHOUSE_URL")
+            .unwrap_or_else(|_| "clickhouse://default:testpw@127.0.0.1:18123/default".into());
+        let db = format!("l8db_mcp_{}", std::process::id());
+        let hidden = format!("{db}_hidden");
+        let (runtime, admin, config, mut server) = live(DatabaseKind::Clickhouse, &url, &db);
+        setup(&runtime, admin.as_ref(), &[
+            format!("DROP DATABASE IF EXISTS {db}"),
+            format!("DROP DATABASE IF EXISTS {hidden}"),
+            format!("CREATE DATABASE {db}"),
+            format!("CREATE DATABASE {hidden}"),
+            format!("CREATE TABLE {hidden}.secret_table (x UInt32) ENGINE = MergeTree ORDER BY x"),
+            format!("CREATE TABLE {db}.customers (id UInt64, name String, email String) ENGINE = MergeTree ORDER BY id COMMENT 'Kundenstamm'"),
+            format!("CREATE TABLE {db}.orders (id UInt64, customer_id UInt64, total Decimal(10, 2), status String, ts DateTime) ENGINE = MergeTree ORDER BY id"),
+            format!("CREATE VIEW {db}.open_orders AS SELECT o.id, c.name FROM {db}.orders AS o INNER JOIN {db}.customers AS c ON c.id = o.customer_id WHERE o.status = 'open'"),
+            format!("CREATE MATERIALIZED VIEW {db}.order_totals ENGINE = SummingMergeTree ORDER BY customer_id AS SELECT customer_id, sum(total) AS total FROM {db}.orders GROUP BY customer_id"),
+            format!("CREATE VIEW {db}.leaky AS SELECT x FROM {hidden}.secret_table"),
+            format!("INSERT INTO {db}.customers VALUES (1, 'Ann', 'ann@secret.example'), (2, 'Bob', 'bob@secret.example')"),
+            format!("INSERT INTO {db}.orders VALUES (1, 1, 10, 'open', '2026-01-05 10:00:00'), (2, 2, 5, 'paid', '2026-02-07 11:00:00')"),
+        ]);
+        let before = calls();
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order"}),
+        );
+        let built = calls() - before;
+        println!("search order ({built} queries):\n{text}");
+        assert!(!error, "{text}");
+        assert!(built <= 4, "catalog build used {built} queries");
+        for expected in [
+            format!("T {db}.orders ≈2 rows"),
+            format!("V {db}.open_orders"),
+            format!("M {db}.order_totals"),
+        ] {
+            assert!(text.contains(&expected), "{expected}: {text}");
+        }
+        assert!(!text.contains("hidden"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "secret"}),
+        );
+        assert!(text.starts_with("No tables"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "customers"}),
+        );
+        assert!(text.contains("— Kundenstamm"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"kind": "V,M"}),
+        );
+        assert!(
+            text.contains(&format!("V {db}.open_orders"))
+                && text.contains(&format!("M {db}.order_totals")),
+            "{text}"
+        );
+        assert_eq!(
+            calls() - before,
+            built,
+            "repeated searches must not query the database"
+        );
+        let before = calls();
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "overview",
+            serde_json::json!({}),
+        );
+        println!("overview ({} queries):\n{text}", calls() - before);
+        assert!(
+            !error && text.contains(&db) && text.contains("3 tables in 1 schemas"),
+            "{text}"
+        );
+        assert!(
+            !text.contains(&hidden) && !text.contains(".inner"),
+            "{text}"
+        );
+        assert!(calls() - before <= 1);
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "describe",
+            serde_json::json!({"tables": [format!("{db}.open_orders"), format!("{db}.order_totals"), format!("{db}.orders"), format!("{db}.leaky")]}),
+        );
+        println!("describe:\n{text}");
+        assert!(!error, "{text}");
+        for expected in [
+            format!("reads (from source): {db}.customers, {db}.orders"),
+            " total Decimal(10, 2)".to_string(),
+            "[line references a hidden schema]".to_string(),
+        ] {
+            assert!(text.contains(&expected), "{expected}: {text}");
+        }
+        assert!(!text.contains(&format!("{hidden}.")), "{text}");
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "status", "in": "source"}),
+        );
+        println!("source search:\n{text}");
+        assert!(
+            !error && text.contains(&format!("V {db}.open_orders line 1")),
+            "{text}"
+        );
+
+        let legit = [
+            format!("SELECT id, total FROM {db}.orders WHERE status = 'open' ORDER BY id LIMIT 5"),
+            format!("SELECT status, count() AS n FROM {db}.orders GROUP BY status ORDER BY n DESC"),
+            format!("SELECT toStartOfMonth(ts) AS m, sum(total) AS s FROM {db}.orders GROUP BY m ORDER BY m"),
+            format!("SELECT customer_id, quantile(0.9)(total) AS p90, sumIf(total, status = 'open') AS open FROM {db}.orders GROUP BY customer_id"),
+            "SELECT arrayMap(x -> x * 2, [1, 2, 3]) AS doubled, arrayJoin([1, 2]) AS k".to_string(),
+            format!("SELECT 'it\\'s' AS a, `name` FROM {db}.customers -- note"),
+            format!("SELECT name FROM {db}.customers # top names"),
+            format!("SELECT name FROM {db}.customers /* block */ WHERE name ILIKE '%a%'"),
+            format!("SELECT customer_id, total FROM {db}.order_totals FINAL"),
+            format!("SELECT customer_id, total FROM {db}.orders ORDER BY total DESC LIMIT 1 BY customer_id"),
+            format!("SELECT id FROM {db}.orders SETTINGS max_threads = 1"),
+            format!("WITH 2 AS k SELECT id * k AS doubled FROM {db}.orders"),
+            "SELECT JSONExtractString('{\"a\": \"b\"}', 'a') AS j".to_string(),
+            format!("SELECT count() FROM {db}.orders WHERE customer_id IN (SELECT id FROM {db}.customers)"),
+            format!("SELECT * FROM {db}.customers"),
+            format!("SELECT o.id, c.name FROM {db}.orders AS o INNER JOIN {db}.customers AS c ON c.id = o.customer_id"),
+            format!("SHOW TABLES FROM {db}"),
+            format!("DESCRIBE TABLE {db}.orders"),
+            format!("EXPLAIN SELECT id FROM {db}.orders"),
+            format!("CHECK TABLE {db}.orders"),
+            format!("EXISTS TABLE {db}.orders"),
+            "SELECT n.number, g.generate_series FROM numbers(3) AS n, generate_series(1, 2) AS g".to_string(),
+        ];
+        let leaks = [
+            format!("SELECT 1 AS `a\\``, email AS p FROM {db}.customers -- `"),
+            format!("SELECT 1 AS \"a\\\"\", email AS p FROM {db}.customers -- \""),
+            format!("SELECT 'x\\'', email FROM {db}.customers -- '"),
+            format!("SELECT 1 /* /* */ ' */ , email FROM {db}.customers -- '"),
+            format!("SELECT email FROM {db}.customers"),
+            format!("SELECT upper(c.email) FROM {db}.customers AS c"),
+        ];
+        let blocked = [
+            format!("SELECT 1; DROP TABLE {db}.orders"),
+            format!("SELECT x FROM {hidden}.secret_table"),
+            "SELECT * FROM url('http://127.0.0.1:1/x', CSV, 'a String')".to_string(),
+            "SELECT * FROM file('/etc/passwd', 'LineAsString')".to_string(),
+            "SELECT * FROM remote('127.0.0.1:9000', system.one)".to_string(),
+            "SELECT sleep(3)".to_string(),
+            format!("SELECT * FROM {db}.customers INTO OUTFILE '/tmp/l8db-leak'"),
+            format!("INSERT INTO {db}.orders SELECT * FROM {db}.orders"),
+            format!("ALTER TABLE {db}.orders DELETE WHERE 1"),
+            format!("OPTIMIZE TABLE {db}.orders FINAL"),
+            "SYSTEM DROP DNS CACHE".to_string(),
+            format!("EXCHANGE TABLES {db}.orders AND {db}.customers"),
+            format!("UNDROP TABLE {db}.gone"),
+            "SELECT * FROM s3Cluster('default', 'http://127.0.0.1:1/x.csv', CSV, 'a String')"
+                .to_string(),
+            "SELECT * FROM gcs('http://127.0.0.1:1/x.csv', CSV, 'a String')".to_string(),
+            "SELECT * FROM fileCluster('default', '/etc/passwd', 'LineAsString')".to_string(),
+            format!("SELECT * FROM mergeTreeIndex('{hidden}', 'secret_table')"),
+            format!("SELECT * FROM clusterAllReplicas('default', '{hidden}', 'secret_table')"),
+        ];
+        reads(
+            &runtime,
+            admin.as_ref(),
+            &mut server,
+            &config,
+            &legit,
+            &leaks,
+            &blocked,
+        );
+        let count = runtime
+            .block_on(admin.execute_query(&format!("SELECT count() AS n FROM {db}.orders")))
+            .unwrap();
+        assert!(serde_json::to_string(&count.rows).unwrap().contains('2'));
+        let functions = runtime
+            .block_on(admin.execute_query("SELECT name FROM system.table_functions ORDER BY name"))
+            .unwrap();
+        let safe = [
+            "format",
+            "fuzzjson",
+            "fuzzquery",
+            "generaterandom",
+            "generateseries",
+            "generate_series",
+            "null",
+            "numbers",
+            "numbers_mt",
+            "values",
+            "view",
+            "viewexplain",
+            "viewifpermitted",
+            "zeros",
+            "zeros_mt",
+        ];
+        let mut open = Vec::new();
+        for row in &functions.rows {
+            let name = text_cell(row, &functions.columns[0], 0);
+            if safe.contains(&name.to_lowercase().as_str()) {
+                continue;
+            }
+            let (error, text) = ask(
+                &runtime,
+                &mut server,
+                &config,
+                "query",
+                serde_json::json!({"sql": format!("SELECT * FROM {name}('x')")}),
+            );
+            if !(error && (text.contains("gesperrt") || text.contains("read-only"))) {
+                open.push(format!("{name}: {}", text.lines().next().unwrap_or("")));
+            }
+        }
+        assert!(
+            functions.rows.len() > 40 && open.is_empty(),
+            "table functions not blocked by the read check: {open:#?}"
+        );
+        setup(
+            &runtime,
+            admin.as_ref(),
+            &[
+                format!("DROP DATABASE {db}"),
+                format!("DROP DATABASE {hidden}"),
+            ],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn live_mssql_catalog_and_reads() {
+        let url = std::env::var("L8DB_E2E_MSSQL_URL").unwrap_or_else(|_| {
+            "mssql://sa:Test_pw123!@127.0.0.1:11433/master?encrypt=true&trust_server_certificate=true".into()
+        });
+        let db = format!("l8db_mcp_{}", std::process::id());
+        let (outer, master, _, _) = live(DatabaseKind::Mssql, &url, "app");
+        setup(
+            &outer,
+            master.as_ref(),
+            &[
+                format!("IF DB_ID('{db}') IS NOT NULL DROP DATABASE {db}"),
+                format!("CREATE DATABASE {db}"),
+            ],
+        );
+        let url = url.replace("/master?", &format!("/{db}?"));
+        let (runtime, admin, config, mut server) = live(DatabaseKind::Mssql, &url, "app");
+        setup(&runtime, admin.as_ref(), &[
+            "CREATE SCHEMA app".into(),
+            "CREATE SCHEMA hidden".into(),
+            "CREATE TABLE hidden.secret_table(x int)".into(),
+            "CREATE TABLE app.customers(id bigint PRIMARY KEY, name nvarchar(50), email nvarchar(100) NOT NULL)".into(),
+            "EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Kundenstamm', @level0type = N'SCHEMA', @level0name = N'app', @level1type = N'TABLE', @level1name = N'customers'".into(),
+            "CREATE TABLE app.orders(id bigint PRIMARY KEY, customer_id bigint REFERENCES app.customers(id), total decimal(10, 2), status nvarchar(10))".into(),
+            "CREATE TABLE app.order_log(order_id bigint, at datetime2 DEFAULT sysdatetime())".into(),
+            "CREATE VIEW app.open_orders AS SELECT o.id, c.name FROM app.orders o JOIN app.customers c ON c.id = o.customer_id WHERE o.status = 'open'".into(),
+            "CREATE VIEW app.leaky AS SELECT x FROM hidden.secret_table".into(),
+            "CREATE FUNCTION app.order_total(@p_id bigint) RETURNS decimal(10, 2) AS\nBEGIN\n  RETURN (SELECT total FROM app.orders WHERE id = @p_id)\nEND".into(),
+            "CREATE PROCEDURE app.log_order @p_id bigint AS\nBEGIN\n  INSERT INTO app.order_log(order_id) VALUES (@p_id);\n  SELECT app.order_total(@p_id);\nEND".into(),
+            "INSERT INTO app.customers VALUES (1, 'Ann', 'ann@secret.example'), (2, 'Bob', 'bob@secret.example')".into(),
+            "INSERT INTO app.orders VALUES (1, 1, 10, 'open'), (2, 2, 5, 'paid')".into(),
+        ]);
+        let before = calls();
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order"}),
+        );
+        let built = calls() - before;
+        println!("search order ({built} queries):\n{text}");
+        assert!(!error, "{text}");
+        for expected in [
+            "T app.orders ≈2 rows",
+            "V app.open_orders",
+            "F app.order_total(@p_id bigint) → decimal",
+            "P app.log_order(@p_id bigint)",
+        ] {
+            assert!(text.contains(expected), "{expected}: {text}");
+        }
+        assert!(!text.contains("hidden"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "customers"}),
+        );
+        assert!(text.contains("— Kundenstamm"), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "secret"}),
+        );
+        assert!(text.starts_with("No tables"), "{text}");
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "overview",
+            serde_json::json!({}),
+        );
+        println!("overview:\n{text}");
+        assert!(
+            !error && text.contains("1 functions, 1 procedures") && !text.contains("hidden"),
+            "{text}"
+        );
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "describe",
+            serde_json::json!({"tables": ["app.log_order", "app.order_total", "app.open_orders", "app.orders", "app.leaky"]}),
+        );
+        println!("describe:\n{text}");
+        assert!(!error, "{text}");
+        for expected in [
+            "writes (from source): app.order_log",
+            "uses (reported by the database): app.orders",
+            " customer_id bigint? → app.customers.id",
+            "[line references a hidden schema]",
+        ] {
+            assert!(text.contains(expected), "{expected}: {text}");
+        }
+        assert!(!text.contains("hidden.secret_table"), "{text}");
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order_log", "in": "source"}),
+        );
+        println!("source search:\n{text}");
+        assert!(
+            !error && text.contains("P app.log_order line 3: INSERT INTO app.order_log"),
+            "{text}"
+        );
+        let legit = [
+            "SELECT TOP 5 id, total FROM app.orders WHERE status = 'open' ORDER BY id".to_string(),
+            "SELECT [status], COUNT(*) AS n FROM [app].[orders] GROUP BY [status]".to_string(),
+            "SELECT o.id, c.name FROM app.orders o JOIN app.customers c ON c.id = o.customer_id".to_string(),
+            "SELECT N'it''s' AS a, name FROM app.customers -- note".to_string(),
+            "WITH t AS (SELECT customer_id, SUM(total) AS s FROM app.orders GROUP BY customer_id) SELECT c.name, t.s FROM t JOIN app.customers c ON c.id = t.customer_id".to_string(),
+            "SELECT * FROM app.customers".to_string(),
+            "SELECT id, total * 1.19 AS gross, ROW_NUMBER() OVER (ORDER BY total DESC) AS r FROM app.orders".to_string(),
+            "SELECT name FROM app.customers /* outer /* nested */ still comment */ WHERE name LIKE 'A%'".to_string(),
+            "SELECT app.order_total(1) AS t".to_string(),
+        ];
+        let leaks = [
+            "SELECT email FROM app.customers".to_string(),
+            "SELECT UPPER(c.email) FROM app.customers c".to_string(),
+            "SELECT [email] FROM app.customers".to_string(),
+        ];
+        let blocked = [
+            "SELECT 1; DELETE FROM app.orders".to_string(),
+            "SELECT x FROM hidden.secret_table".to_string(),
+            "DELETE FROM app.orders".to_string(),
+            "EXEC app.log_order 1".to_string(),
+            "EXEC xp_cmdshell 'whoami'".to_string(),
+            "WAITFOR DELAY '00:00:05'".to_string(),
+            "SELECT * INTO app.copy FROM app.orders".to_string(),
+            "SELECT * FROM OPENROWSET('SQLNCLI', 'Server=x;Trusted_Connection=yes;', 'SELECT 1')"
+                .to_string(),
+            "DBCC CHECKDB".to_string(),
+            "SHUTDOWN WITH NOWAIT".to_string(),
+            "SELECT 1 AS a DENY SELECT ON SCHEMA::app TO public".to_string(),
+            "SELECT 1 AS a CHECKPOINT".to_string(),
+            "DENY SELECT ON app.orders TO public".to_string(),
+            "DISABLE TRIGGER ALL ON app.orders".to_string(),
+            "ENABLE TRIGGER ALL ON app.orders".to_string(),
+            "CHECKPOINT".to_string(),
+            "SETUSER".to_string(),
+            "WRITETEXT app.orders.status 0x0 'x'".to_string(),
+            "UPDATETEXT app.orders.status 0x0 0 0 'x'".to_string(),
+        ];
+        reads(
+            &runtime,
+            admin.as_ref(),
+            &mut server,
+            &config,
+            &legit,
+            &leaks,
+            &blocked,
+        );
+        let count = runtime
+            .block_on(admin.execute_query("SELECT COUNT(*) AS n FROM app.orders"))
+            .unwrap();
+        assert!(serde_json::to_string(&count.rows).unwrap().contains('2'));
+        drop(server);
+        drop(admin);
+        setup(
+            &outer,
+            master.as_ref(),
+            &[
+                format!("ALTER DATABASE {db} SET SINGLE_USER WITH ROLLBACK IMMEDIATE"),
+                format!("DROP DATABASE {db}"),
+            ],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn live_oracle_catalog_and_reads() {
+        let admin_url = std::env::var("L8DB_E2E_ORACLE_ADMIN_URL")
+            .unwrap_or_else(|_| "oracle://system:testpw@127.0.0.1:11521/FREEPDB1".into());
+        let app = format!("L8DB_MCP_{}", std::process::id());
+        let hidden = format!("{app}_HIDDEN");
+        let (outer, system, _, _) = live(DatabaseKind::Oracle, &admin_url, &app);
+        let drop_users = [
+            format!("BEGIN EXECUTE IMMEDIATE 'DROP USER {app} CASCADE'; EXCEPTION WHEN OTHERS THEN NULL; END;"),
+            format!("BEGIN EXECUTE IMMEDIATE 'DROP USER {hidden} CASCADE'; EXCEPTION WHEN OTHERS THEN NULL; END;"),
+        ];
+        setup(&outer, system.as_ref(), &drop_users);
+        setup(
+            &outer,
+            system.as_ref(),
+            &[
+                format!("CREATE USER {app} IDENTIFIED BY \"Pw_l8db1\" QUOTA UNLIMITED ON USERS"),
+                format!("CREATE USER {hidden} IDENTIFIED BY \"Pw_l8db1\" QUOTA UNLIMITED ON USERS"),
+                format!(
+                    "GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE PROCEDURE TO {app}"
+                ),
+                format!("CREATE TABLE {hidden}.secret_table(x NUMBER)"),
+                format!("GRANT SELECT ON {hidden}.secret_table TO {app}"),
+            ],
+        );
+        let url = admin_url.replace(
+            "system:testpw@",
+            &format!("{}:Pw_l8db1@", app.to_lowercase()),
+        );
+        let (runtime, admin, config, mut server) = live(DatabaseKind::Oracle, &url, &app);
+        setup(&runtime, admin.as_ref(), &[
+            "CREATE TABLE customers(id NUMBER PRIMARY KEY, name VARCHAR2(50), email VARCHAR2(100) NOT NULL)".into(),
+            "COMMENT ON TABLE customers IS 'Kundenstamm'".into(),
+            "CREATE TABLE orders(id NUMBER PRIMARY KEY, customer_id NUMBER REFERENCES customers(id), total NUMBER(10, 2), status VARCHAR2(10))".into(),
+            "CREATE TABLE order_log(order_id NUMBER, at TIMESTAMP DEFAULT SYSTIMESTAMP)".into(),
+            "CREATE VIEW open_orders AS SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'open'".into(),
+            format!("CREATE VIEW leaky AS SELECT x FROM {hidden}.secret_table"),
+            "CREATE FUNCTION order_total(p_id NUMBER) RETURN NUMBER AS\n  v NUMBER;\nBEGIN\n  SELECT total INTO v FROM orders WHERE id = p_id;\n  RETURN v;\nEND;".into(),
+            "CREATE PROCEDURE log_order(p_id NUMBER) AS\nBEGIN\n  INSERT INTO order_log(order_id) VALUES (p_id);\nEND;".into(),
+            "CREATE PACKAGE order_api AS\n  FUNCTION total(p_id NUMBER) RETURN NUMBER;\nEND;".into(),
+            "INSERT INTO customers VALUES (1, 'Ann', 'ann@secret.example')".into(),
+            "INSERT INTO customers VALUES (2, 'Bob', 'bob@secret.example')".into(),
+            "INSERT INTO orders VALUES (1, 1, 10, 'open')".into(),
+            "INSERT INTO orders VALUES (2, 2, 5, 'paid')".into(),
+            "COMMIT".into(),
+            "BEGIN DBMS_STATS.GATHER_SCHEMA_STATS(USER); END;".into(),
+        ]);
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order"}),
+        );
+        println!("search order:\n{text}");
+        assert!(!error, "{text}");
+        for expected in [
+            format!("T {app}.ORDERS ≈2 rows"),
+            format!("V {app}.OPEN_ORDERS"),
+            format!("F {app}.ORDER_TOTAL"),
+            format!("P {app}.LOG_ORDER"),
+            format!("F {app}.ORDER_API"),
+        ] {
+            assert!(text.contains(&expected), "{expected}: {text}");
+        }
+        assert!(!text.contains(&hidden), "{text}");
+        let (_, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "customers"}),
+        );
+        assert!(text.contains("— Kundenstamm"), "{text}");
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "overview",
+            serde_json::json!({}),
+        );
+        println!("overview:\n{text}");
+        assert!(
+            !error && text.contains("2 functions, 1 procedures") && !text.contains(&hidden),
+            "{text}"
+        );
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "describe",
+            serde_json::json!({"tables": [format!("{app}.LOG_ORDER"), format!("{app}.ORDER_TOTAL"), format!("{app}.OPEN_ORDERS"), format!("{app}.ORDERS"), format!("{app}.LEAKY")]}),
+        );
+        println!("describe:\n{text}");
+        assert!(!error, "{text}");
+        for expected in [
+            format!("writes (from source): {app}.ORDER_LOG"),
+            format!("uses (reported by the database): {app}.ORDERS"),
+            format!("F {app}.ORDER_TOTAL(p_id NUMBER) → NUMBER"),
+            format!("P {app}.LOG_ORDER(p_id NUMBER)"),
+            format!("{app}.CUSTOMERS.ID"),
+            "[line references a hidden schema]".to_string(),
+        ] {
+            assert!(text.contains(&expected), "{expected}: {text}");
+        }
+        assert!(!text.contains(&format!("{hidden}.")), "{text}");
+        let (error, text) = ask(
+            &runtime,
+            &mut server,
+            &config,
+            "search",
+            serde_json::json!({"term": "order_log", "in": "source"}),
+        );
+        println!("source search:\n{text}");
+        assert!(
+            !error && text.contains(&format!("P {app}.LOG_ORDER line 3")),
+            "{text}"
+        );
+        let legit = [
+            "SELECT id, total FROM orders WHERE status = 'open' ORDER BY id FETCH FIRST 5 ROWS ONLY".to_string(),
+            format!("SELECT status, COUNT(*) AS n FROM {app}.orders GROUP BY status"),
+            "SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id".to_string(),
+            "SELECT 'it''s' AS a, q'[say 'hi']' AS b, name FROM customers -- note".to_string(),
+            "WITH t AS (SELECT customer_id, SUM(total) AS s FROM orders GROUP BY customer_id) SELECT c.name, t.s FROM t JOIN customers c ON c.id = t.customer_id".to_string(),
+            "SELECT * FROM customers".to_string(),
+            "SELECT id, total * 1.19 AS gross, ROW_NUMBER() OVER (ORDER BY total DESC) AS r FROM orders".to_string(),
+            "SELECT order_total(1) AS t FROM dual".to_string(),
+            "SELECT SYSDATE, USER FROM dual".to_string(),
+            "SELECT q'[ ' ]' AS a, email AS x FROM customers -- ]'".to_string(),
+            "SELECT q'{ ' }' AS a, email AS x FROM customers -- }'".to_string(),
+        ];
+        let leaks = [
+            "SELECT email FROM customers".to_string(),
+            "SELECT UPPER(c.email) FROM customers c".to_string(),
+            "SELECT \"EMAIL\" FROM customers".to_string(),
+        ];
+        let blocked = [
+            "SELECT 1 FROM dual; DELETE FROM orders".to_string(),
+            format!("SELECT x FROM {hidden}.secret_table"),
+            "DELETE FROM orders".to_string(),
+            "BEGIN log_order(1); END;".to_string(),
+            "CALL log_order(1)".to_string(),
+            "SELECT DBMS_PIPE.RECEIVE_MESSAGE('x', 5) FROM dual".to_string(),
+            "SELECT UTL_HTTP.REQUEST('http://127.0.0.1:1') FROM dual".to_string(),
+            "SELECT * FROM orders FOR UPDATE".to_string(),
+            "LOCK TABLE orders IN EXCLUSIVE MODE".to_string(),
+        ];
+        reads(
+            &runtime,
+            admin.as_ref(),
+            &mut server,
+            &config,
+            &legit,
+            &leaks,
+            &blocked,
+        );
+        let count = runtime
+            .block_on(admin.execute_query("SELECT COUNT(*) AS n FROM orders"))
+            .unwrap();
+        assert!(serde_json::to_string(&count.rows).unwrap().contains('2'));
+        drop(server);
+        drop(admin);
+        setup(&outer, system.as_ref(), &drop_users);
     }
 
     #[test]
