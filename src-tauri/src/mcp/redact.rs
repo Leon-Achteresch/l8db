@@ -169,15 +169,120 @@ pub enum Token {
     Other(char),
 }
 
+#[derive(Clone, Copy)]
+struct Lexer {
+    escapes: bool,
+    escaped_quotes: bool,
+    escaped_ticks: bool,
+    e_strings: bool,
+    hash: bool,
+    spaced_dash: bool,
+    dollar: bool,
+    nested: bool,
+    brackets: bool,
+}
+
+const MYSQL: Lexer = Lexer {
+    escapes: true,
+    escaped_quotes: false,
+    escaped_ticks: false,
+    e_strings: false,
+    hash: true,
+    spaced_dash: false,
+    dollar: true,
+    nested: true,
+    brackets: true,
+};
+
+const STANDARD: Lexer = Lexer {
+    escapes: false,
+    hash: false,
+    ..MYSQL
+};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Dialect {
+    Mysql,
+    Postgres,
+    Sqlite,
+    Backslash,
+}
+
+impl Dialect {
+    fn lexer(self) -> Lexer {
+        match self {
+            Self::Mysql => Lexer {
+                escaped_quotes: true,
+                spaced_dash: true,
+                dollar: false,
+                nested: false,
+                brackets: false,
+                ..MYSQL
+            },
+            Self::Postgres => Lexer {
+                e_strings: true,
+                brackets: false,
+                ..STANDARD
+            },
+            Self::Sqlite => Lexer {
+                dollar: false,
+                nested: false,
+                ..STANDARD
+            },
+            Self::Backslash => Lexer {
+                escaped_quotes: true,
+                escaped_ticks: true,
+                nested: false,
+                brackets: false,
+                ..MYSQL
+            },
+        }
+    }
+}
+
 pub fn tokenize(sql: &str) -> Vec<Token> {
-    tokenize_as(sql, true)
+    tokenize_as(sql, MYSQL)
 }
 
 fn readings(sql: &str) -> [Vec<Token>; 2] {
-    [tokenize_as(sql, true), tokenize_as(sql, false)]
+    [tokenize_as(sql, MYSQL), tokenize_as(sql, STANDARD)]
 }
 
-fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
+pub fn check_dialect(
+    sql: &str,
+    dialect: Dialect,
+    index: &SchemaIndex,
+    row_values: bool,
+) -> Result<(), String> {
+    let tokens = tokenize_as(sql, dialect.lexer());
+    if statement_count_in(&tokens) > 1 {
+        return Err("Nur ein Statement pro Aufruf (Anführungszeichen und Kommentare im Dialekt der Verbindung gelesen).".into());
+    }
+    if let Some(word) = write_word_in(&tokens) {
+        return Err(format!("query ist read-only, '{word}' ist nicht erlaubt."));
+    }
+    if let Some(word) = dangerous_word_in(&tokens) {
+        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+    }
+    check_references_in(&tokens, index, row_values)
+}
+
+fn dollar_tag(chars: &std::iter::Peekable<std::str::Chars>) -> Option<usize> {
+    let mut ahead = chars.clone();
+    let mut length = 0;
+    loop {
+        let n = ahead.next()?;
+        length += 1;
+        if n == '$' {
+            return Some(length);
+        }
+        if !(n.is_alphabetic() || n == '_' || (length > 1 && n.is_alphanumeric())) {
+            return None;
+        }
+    }
+}
+
+fn tokenize_as(sql: &str, lexer: Lexer) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut chars = sql.chars().peekable();
@@ -190,6 +295,8 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
     while let Some(c) = chars.next() {
         match c {
             '\'' => {
+                let escapes =
+                    lexer.escapes || (lexer.e_strings && current.eq_ignore_ascii_case("e"));
                 flush(&mut current, &mut tokens);
                 loop {
                     match chars.next() {
@@ -197,7 +304,7 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                             chars.next();
                         }
                         Some('\'') | None => break,
-                        Some('\\') if mysql => {
+                        Some('\\') if escapes => {
                             chars.next();
                         }
                         Some(_) => {}
@@ -205,12 +312,17 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                 }
                 tokens.push(Token::Other('\''));
             }
-            '"' | '`' | '[' => {
+            '"' | '`' | '[' if c != '[' || lexer.brackets => {
                 flush(&mut current, &mut tokens);
                 let close = if c == '[' { ']' } else { c };
+                let escapes =
+                    (c == '"' && lexer.escaped_quotes) || (c == '`' && lexer.escaped_ticks);
                 let mut ident = String::new();
                 loop {
                     match chars.next() {
+                        Some('\\') if escapes => {
+                            chars.next();
+                        }
                         Some(ch) if ch == close && chars.peek() == Some(&close) => {
                             chars.next();
                             ident.push(ch);
@@ -222,33 +334,30 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                 }
                 tokens.push(Token::Word(ident.to_lowercase()));
             }
-            '$' if chars
-                .peek()
-                .is_some_and(|n| *n == '$' || n.is_alphabetic() || *n == '_') =>
-            {
+            '$' if lexer.dollar && dollar_tag(&chars).is_some() => {
                 flush(&mut current, &mut tokens);
                 let mut tag = String::from("$");
-                while let Some(&n) = chars.peek() {
-                    tag.push(n);
-                    chars.next();
-                    if n == '$' {
+                for _ in 0..dollar_tag(&chars).unwrap_or(0) {
+                    tag.extend(chars.next());
+                }
+                let mut body = String::new();
+                while let Some(n) = chars.next() {
+                    body.push(n);
+                    if body.ends_with(&tag) {
                         break;
                     }
                 }
-                if tag.ends_with('$') && tag.len() > 1 {
-                    let mut body = String::new();
-                    while let Some(n) = chars.next() {
-                        body.push(n);
-                        if body.ends_with(&tag) {
-                            break;
-                        }
-                    }
-                    tokens.push(Token::Other('\''));
-                } else {
-                    tokens.push(Token::Other('$'));
-                }
+                tokens.push(Token::Other('\''));
             }
-            '-' if chars.peek() == Some(&'-') => {
+            '-' if chars.peek() == Some(&'-')
+                && (!lexer.spaced_dash || {
+                    let mut ahead = chars.clone();
+                    ahead.next();
+                    ahead
+                        .next()
+                        .is_none_or(|n| n.is_whitespace() || n.is_control())
+                }) =>
+            {
                 flush(&mut current, &mut tokens);
                 for n in chars.by_ref() {
                     if n == '\n' {
@@ -256,7 +365,7 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                     }
                 }
             }
-            '#' if mysql => {
+            '#' if lexer.hash => {
                 flush(&mut current, &mut tokens);
                 for n in chars.by_ref() {
                     if n == '\n' {
@@ -273,7 +382,7 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                 }
                 let mut depth = 1;
                 while let Some(n) = chars.next() {
-                    if n == '/' && chars.peek() == Some(&'*') {
+                    if lexer.nested && n == '/' && chars.peek() == Some(&'*') {
                         chars.next();
                         depth += 1;
                     } else if n == '*' && chars.peek() == Some(&'/') {
@@ -1286,6 +1395,72 @@ mod tests {
         assert_eq!(statement_count("select ';' ;"), 1);
         assert_eq!(statement_count("select 1 -- don't\n; select 2"), 2);
         assert_eq!(statement_count(""), 0);
+    }
+
+    #[test]
+    fn dialect_readings_close_quote_and_comment_mixing() {
+        let idx = index(&[]);
+        for (dialect, sql) in [
+            (
+                Dialect::Mysql,
+                "SELECT \"a\\\"\" ; DELETE FROM users ; SELECT \"x\"",
+            ),
+            (Dialect::Mysql, "SELECT 1 --1, password AS p FROM users"),
+            (
+                Dialect::Mysql,
+                "SELECT 1 /* /* */ , password AS p FROM users -- */",
+            ),
+            (
+                Dialect::Mysql,
+                "SELECT 1 AS $$, password AS p FROM users -- $$",
+            ),
+            (
+                Dialect::Postgres,
+                "SELECT E'\\'' AS a, '\\' AS b, password AS p FROM users -- '",
+            ),
+            (
+                Dialect::Postgres,
+                "SELECT ARRAY['a]'], password AS p FROM users -- '",
+            ),
+            (
+                Dialect::Sqlite,
+                "SELECT 1 /* /* */ , password AS p FROM users -- */",
+            ),
+            (
+                Dialect::Backslash,
+                "SELECT `a\\`` , password AS p FROM users, `x`",
+            ),
+            (
+                Dialect::Backslash,
+                "SELECT \"a\\\"\" , password AS p FROM users -- \"",
+            ),
+        ] {
+            assert!(
+                check_dialect(sql, dialect, &idx, true).is_err(),
+                "{dialect:?}: {sql}"
+            );
+        }
+        assert!(check_references("SELECT $a, password AS p FROM users", &idx, true).is_err());
+        for (dialect, sql) in [
+            (
+                Dialect::Mysql,
+                "SELECT 'it\\'s', \"a\\\"b\" AS q, `id` FROM users -- note",
+            ),
+            (
+                Dialect::Postgres,
+                "SELECT E'it\\'s', $$x; delete$$, \"name\" FROM users /* a /* b */ c */",
+            ),
+            (Dialect::Sqlite, "SELECT [name], 'C:\\' FROM users /* c */"),
+            (
+                Dialect::Backslash,
+                "SELECT `na\\`me`, 'it\\'s' FROM users # c",
+            ),
+        ] {
+            assert!(
+                check_dialect(sql, dialect, &idx, true).is_ok(),
+                "{dialect:?}: {sql}"
+            );
+        }
     }
 
     #[test]

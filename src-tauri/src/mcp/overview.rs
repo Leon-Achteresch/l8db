@@ -13,12 +13,12 @@ const TOP_HUBS: usize = 8;
 const SAMPLE_NAMES: usize = 8;
 
 #[derive(Default, Clone)]
-struct Stat {
-    tables: usize,
-    rows: i64,
-    bytes: i64,
-    views: usize,
-    routines: usize,
+pub(super) struct Stat {
+    pub tables: usize,
+    pub rows: i64,
+    pub bytes: i64,
+    pub views: usize,
+    pub routines: usize,
 }
 
 impl Stat {
@@ -60,7 +60,7 @@ fn counted(kind: Kind) -> bool {
     matches!(kind, Kind::Table | Kind::Foreign)
 }
 
-fn stats(view: &View) -> Vec<Stat> {
+pub(super) fn stats(view: &View) -> Vec<Stat> {
     let tables = view.catalog.tables();
     let mut stats = vec![Stat::default(); tables.schemas.len()];
     for table in &tables.list {

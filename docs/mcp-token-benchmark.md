@@ -314,3 +314,149 @@ Grenzen:
 - Unqualifizierte Verweise auf verborgene Schemas (über `search_path`) erkennt die Maskierung nicht.
 - DDL außerhalb von MCP und KI-Arbeitsbereich (SQL-Editor, andere Clients) sehen die Entdeckungswerkzeuge erst nach Ablauf der TTL oder mit `refresh=true`. Sicherheitsprüfungen sind davon nicht betroffen.
 - Der Katalog wird nur persistiert, wenn die globale MCP-Konfiguration die Verbindung mit identischer Schema-Freigabe und Maskierung freigibt. Sonst bleibt er im Speicher.
+
+## Phase 3
+
+Änderungen:
+
+- **Neues Tool `code`** (`mcp/code.rs` Host, `mcp/code_worker.rs` Worker, `mcp/code_prelude.js` Bindings), nach dem Code-Mode-Muster: Das Modell schreibt eine JS-Funktion `async () => {…}` gegen typisierte Bindings. Zurück kommen nur der Rückgabewert (Array flacher Objekte als TSV, Text unverändert, sonst kompaktes JSON, auf `max_chars` gekürzt), gesammelte `console.log`-Zeilen und eine Fußzeile wie `(300 statements, 300 rows read, 0.9 s)`. `search`, `describe` und `query` bleiben unverändert, `code` kommt dazu.
+- **Engine:** QuickJS-ng 0.16.2 über `rquickjs` 0.14 (MIT, dazu `rquickjs-core`, `rquickjs-sys` und `relative-path`, MIT/Apache-2.0), ohne `std`/`os`-Module. Der JS-Kontext hat also weder Netzwerk noch Dateien noch Umgebung. Größe im Spike: +1,14 MB im Release-Profil (arm64, eigenes Scratch-Crate mit `opt-level = 3`, thin LTO, `strip`). Das ganze App-Bundle wurde nicht neu gemessen.
+- **Prozessgrenze:** Jeder Aufruf startet einen frischen Worker `l8db --mcp-sandbox` über `current_exe`. `lib.rs` erkennt das Flag als Erstes in `run()`, also vor CLI-Erkennung, ODBC, Logger, Tauri und Single-Instance.
+  - Umgebung: `env_clear`, nur unter Windows `SystemRoot`, unter Linux `LD_LIBRARY_PATH`.
+  - IPC: JSON-Zeilen über stdin/stdout. Der Host liest mit festen Grenzen (Nachricht 4 MB, Antwort an den Worker 8 MB, insgesamt 64 MB pro Lauf, 5.000 Aufrufe). stderr wird auf 2 KB begrenzt gelesen.
+  - Handles: Unter Unix schließt der Worker beim Start alle geerbten Deskriptoren > 2. `kill_on_drop` beendet ihn, wenn das Future fallen gelassen wird (BYOK-Abbruch, Zeitlimit des Clients).
+  - Der Worker sieht weder Schlüsselbund noch Verbindungen noch Konfiguration. Er bekommt nur Code und Limits und fragt jeden Wert beim Host an.
+- **Limits:**
+
+| Limit | Wert |
+|---|---|
+| JS-Speicher / Stack | 64 MB / 1 MB (QuickJS `set_memory_limit`, `set_max_stack_size`) |
+| Gesamtzeit | 4 × Abfrage-Zeitlimit, mindestens 120 s. Ein Interrupt-Handler stoppt das JS (nicht abfangbar), nach weiteren 2 s wird der Prozess hart beendet. |
+| Anweisungen | 500 pro Lauf, 4 gleichzeitig, jede mit dem Abfrage-Zeitlimit |
+| Zeilen | 10.000 pro Anweisung, schon beim Lesen begrenzt (`with_row_limit`, wirksam bei PostgreSQL, MySQL, SQLite, DuckDB und Oracle), 250.000 pro Lauf. Wartende Anweisungen laufen nicht mehr an, sobald das Budget verbraucht ist. |
+| Katalogaufrufe | 500 pro Lauf. Ergebnisse standardmäßig 1.000 Einträge, höchstens 10.000 (`grep` 200 / 2.000). |
+| Ergebnis | `max_chars`. Lange Arrays werden halbiert, bis sie passen, mit Hinweis auf die Gesamtzahl. |
+| `console.log` | 100 Zeilen, 8.000 Zeichen im Worker, 3.000 in der Antwort, gezählt verworfen |
+
+Gewünscht waren etwa 200 Anweisungen. 500 sind es geworden, damit eine Schleife über die 300 Mandanten-Schemas des Benchmarks in einen Lauf passt. Gleichzeitig laufen trotzdem nie mehr als 4.
+
+- **Sicherheit:** Jede Anweisung aus `sql`, `query` und `explain` läuft über denselben Weg wie `query`:
+  - `check_read_sql`, Schema-Freigabe, geschwärzte Spalten (über `schema_index`, also den Live-Katalog, höchstens 60 s alt)
+  - Read-only-Sitzung (`guarded` mit `read_only: true`)
+  - Abfrage-Zeitlimit und ein Audit-Eintrag pro Anweisung mit `tool=code`
+  - Der Redactor schwärzt Zellen, bevor sie den Worker erreichen. Rückgabetext, `console.log` und JS-Fehler laufen zusätzlich durch die globalen Wertregeln, Fehler durch `scrub_error`.
+  - `check_read_sql` liest jede Anweisung zusätzlich im genauen Dialekt der Verbindung (MySQL, PostgreSQL/DuckDB, SQLite, ClickHouse/BigQuery). Das schließt eine ältere Lücke, die auch `query` betraf. Details stehen in [ai-workspace.md](ai-workspace.md#prüfen-simulieren-erklären).
+  - Werte gehen als Literale im Dialekt der Verbindung in das SQL. Bezeichner sind nur über `id()` möglich, ein Objekt, das der Code nicht fälschen kann. `sql.with({connection, database})` erreicht nur exponierte SQL-Verbindungen, jeweils mit deren eigenen Prüfungen.
+  - Die Katalog-Bindings (`schemas`, `tables`, `columns`, `routines`, `source`, `grep`, `references`, `path`) nutzen die Entdeckungssicht mit `View::hides` und `mask_hidden`. Für die Sicherheitsprüfungen bleibt es beim Live-Katalog.
+- **Oberfläche:** `code` steht in `tools/list` (nur wenn eine exponierte Verbindung SQL spricht), in den Instructions (ein Satz) und im BYOK-Startkatalog (`CORE`). Im KI-Arbeitsbereich gilt es als Lese-Tool: im Plan-Modus erlaubt, Freigabe wie `query`.
+- **Fix nebenbei:** Der DuckDB-Katalog lud bisher nur Spalten aus `main`. Jetzt lädt eine Sammelabfrage auf `duckdb_columns()` alle Schemas.
+
+Beispiel (Aufgabe `code.tenant_orphans`):
+
+```js
+async () => {
+  const schemas = (await catalog.tables({ name: "orders" })).map((t) => t.schema);
+  const counts = await Promise.all(schemas.map((s) => sql`SELECT count(*) AS n FROM ${id(s, "orders")} o WHERE NOT EXISTS (SELECT 1 FROM ${id(s, "customers")} c WHERE c.id = o.customer_id)`));
+  return schemas.map((schema, i) => ({ schema, orphans: counts[i][0].n })).filter((r) => r.orphans > 0);
+}
+```
+
+Antwort: 42 Zeilen `schema	orphans` als TSV und `(300 statements, 300 rows read, 0.9 s)`.
+
+Neue Ziele im Test (`code_lab()`), echte Dateien in einem temporären Verzeichnis:
+
+- `Tenants`: DuckDB mit 300 gleich aufgebauten Schemas `tenant_001` bis `tenant_300`. Jedes enthält `customers` (5 Zeilen) und `orders` (so viele Zeilen wie die Mandantennummer, mit `updated_at`). Jedes siebte Schema hat 1 bis 5 verwaiste Bestellungen.
+- `Shop A` und `Shop B`: zwei SQLite-Dateien mit je 12 Tabellen. In B haben `t04`, `t08` und `t12` mehr Zeilen.
+
+Neue Aufgaben. Die Baseline ist die tatsächlich ausgeführte Folge einzelner Tool-Aufrufe ohne `code`. Sie läuft im selben Test und wird mitgemessen:
+
+| Aufgabe | Baseline | code |
+|---|---|---|
+| code.tenant_orphans | overview, dann 300 × query `count(*) … NOT EXISTS` (eine pro Schema) | 1 Aufruf: `catalog.tables`, 300 Anweisungen |
+| code.latest_updated | search `updated_at`, query auf `duckdb_tables()` (50 größte), dann 50 × query `max(updated_at)` | 1 Aufruf: `catalog.tables({column, limit: 50})`, 50 Anweisungen |
+| code.compare_counts | query `sqlite_master` auf A, je eine UNION-ALL-Zählabfrage auf A und B | 1 Aufruf mit `sql.with({connection: "Shop B"})`, 24 Anweisungen, nur abweichende Tabellen |
+| code.payment_writers | search `in=source` (15 schreibende Routinen), 2 × describe mit `lines=1-1` für die Zeilenzahlen | 1 Aufruf: `catalog.grep` + `catalog.routines` auf `Huge` |
+
+Die Baseline von `code.compare_counts` ist bewusst stark: Ein Modell, das pro Tabelle zählt, bräuchte 24 Aufrufe. Eine handgeschriebene UNION-ALL-Abfrage über 300 Schemas wäre ein einzelner Aufruf, aber allein die Argumente wären etwa 45 KB groß.
+
+Ergebnis (≈Tokens = Bytes/4, Zeiten im Prozess ohne Modell-Rundreisen):
+
+| Aufgabe | Aufrufe Baseline | Baseline B | ≈Tokens | Aufrufe code | code B | ≈Tokens | gespart | Budget B | Info vollständig | ms Baseline / code |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| code.tenant_orphans | 301 | 55.926 | 13.982 | 1 | 1.049 | 263 | 98 % | 1.200 | ja | 1.224 / 641 |
+| code.latest_updated | 52 | 7.487 | 1.872 | 1 | 2.473 | 619 | 67 % | 2.700 | ja | 166 / 332 |
+| code.compare_counts | 3 | 1.637 | 410 | 1 | 488 | 122 | 70 % | 600 | ja | 7 / 277 |
+| code.payment_writers | 3 | 7.691 | 1.923 | 1 | 1.274 | 319 | 83 % | 1.450 | ja | 3.646 / 706 |
+
+Der Test prüft die Budgets und zusätzlich, dass `code` bei jeder Aufgabe kleiner ist als die Baseline. Die Zeitspalte zählt nur die Arbeit im Prozess. Im echten Einsatz kostet jeder der 301 Baseline-Aufrufe zusätzlich eine Modellrunde.
+
+Oberfläche:
+
+| Messung | Phase 2 B | Phase 3 B | ≈Tokens | Budget Phase 2 B | Budget Phase 3 B |
+|---|---:|---:|---:|---:|---:|
+| tools/list (16 Tools) | 10.215 | 11.910 | 2.978 | 10.240 | 11.935 |
+| davon code | – | 1.694 | 424 | – | |
+| instructions | 857 | 932 | 233 | 950 | 950 |
+| BYOK-Startkatalog | 8.896 | 10.518 | 2.630 | 9.000 | 10.622 |
+
+Begründung der Budgeterhöhung:
+
+- `tools/list` wächst genau um die `code`-Definition: 1.694 B plus 1 B Trennzeichen, also 10.240 + 1.695 = 11.935.
+- Der BYOK-Startkatalog wächst genau um den `code`-Eintrag ohne Annotationen: 1.621 B plus 1 B, also 9.000 + 1.622 = 10.622.
+- Die übrigen Tools liegen unverändert bei 10.215 B, also unter dem alten Budget.
+- Die Instructions haben einen Satz zu `code` bekommen und liegen trotzdem unter dem alten Budget von 950 B, weil der Rest gekürzt wurde.
+- Die Definition enthält die Typen der Bindings als kompakte d.ts (etwa 1.000 B). Ohne sie müsste das Modell die API raten oder erst nachschlagen. Gekürzt wurde von 1.832 auf 1.694 B: ein gemeinsamer Filtertyp und ein einziges `declare`.
+- Die Ersparnis entsteht in den Aufgaben, nicht durch Streichen bei anderen Tools. Schon `code.tenant_orphans` spart in einem Lauf mehr als das 30-fache der Definition.
+
+## Performance (Phase 3)
+
+Tests in `mcp/code_tests.rs`, Aufruf aus `src-tauri/`:
+
+```sh
+cargo test --lib mcp::code -- --nocapture --test-threads=1
+```
+
+Im Test startet der Worker als dasselbe Testbinary (`worker_entry`, `L8DB_CODE_WORKER=1`). Mit `L8DB_TEST_SANDBOX_EXE=<pfad>/l8db` läuft er als echtes App-Binary.
+
+| Messung | Budget | Ergebnis |
+|---|---|---:|
+| Worker-Start Median / p95 (Testbinary) | < 400 / < 800 ms | 258 / 262 ms |
+| Worker-Start Median / p95 (Debug-App-Binary, 441 MB) | – | 248 / 431 ms |
+| Overhead pro `sql`-Aufruf (200 nacheinander, SQLite) | < 3 × `query`-Median und < 10 ms | 0,39 ms (`query`-Tool: 1,13 ms) |
+| 24 Anweisungen gegen einen Server mit 40 ms Latenz | höchstens 4 gleichzeitig, genau 24 Anfragen | 4 gleichzeitig (am Server und im Host gezählt), 24 Anfragen, 598 ms |
+| Endlosschleife (auch in `try/catch`) | Abbruch am Zeitlimit, kein Worker übrig | ja |
+| Speicher (wachsendes Array), tiefe Rekursion, 5-MB-String, Array mit 50.000 Einträgen, 5.000 Logzeilen | Fehler mit Hinweis bzw. gekürztes Ergebnis, Host-Speicher begrenzt | ja |
+| Abbruch nach 400 ms (Future fallen gelassen) | Worker-Prozess weg, < 3 s | ja |
+| Leerlauf | kein Worker zwischen Aufrufen (Prozess existiert nur während eines Aufrufs) | ja, per `kill(pid, 0)` geprüft |
+
+Der Start wird vom Laden des Binarys bestimmt, nicht von QuickJS. `l8db --version` braucht mit demselben Debug-Binary ebenfalls 0,24 s, eine installierte Release-Version 0,01 bis 0,03 s. Den Start des Release-Workers habe ich nicht gemessen.
+
+Missbrauchsfälle (`masked_columns_writes_and_injection_attempts_stay_blocked`, `catalog_bindings_return_structured_data_and_never_show_hidden_schemas`, `values_become_dialect_literals_and_names_only_come_from_id`):
+
+- geschwärzte Spalten: `SELECT *` liefert sie maskiert, `SELECT email`, `WHERE email` und `upper(c.email)` werden abgelehnt
+- sechs Schreibversuche werden abgelehnt (`DELETE` und `UPDATE` über `sql`, `DROP`, `INSERT` und `SELECT 1; DELETE …` über `query`, `explain('DELETE …')`), die Zeilenzahl bleibt gleich
+- `x' OR '1'='1` und ein Text `` ${sql`DELETE …`} `` werden zu Literalen. Ein verschachteltes `sql`-Template und ein gefälschtes `id()`-Objekt (`{i: [...]}`) werfen `TypeError`. Literale werden je Dialekt geprüft (`'`, `\`, `--`, `N'…'`, `E'…'`).
+- überschriebene `Object.prototype.toJSON`, `Array.prototype.map` und `JSON.parse` stören die Bindings nicht
+- über `eval`, `Function` und den Konstruktor von Async-Funktionen sind weder `require`, `process`, `std`, `os`, `fetch`, `setTimeout` noch interne Host-Funktionen erreichbar
+- verborgene Schemas erscheinen in keinem Katalog-Binding, auch nicht über eine View, die auf ein verborgenes Schema zeigt
+
+Plattformen:
+
+- **macOS arm64:** lokal getestet (Maschine oben).
+- **Linux x86_64:** `cargo test` in CI (ubuntu-22.04) beim Push auf `development`.
+- **Windows (MSVC):** Für x86_64 und aarch64 liefert `rquickjs-sys` vorgenerierte Bindings mit. Gebaut wird Windows aber nur in PRs und Releases. Ungetestet: Worker-Start, Handle-Vererbung (das Schließen geerbter Deskriptoren gibt es nur unter Unix) und `SystemRoot` als einzige Variable.
+
+Review: Ein unabhängiger Sicherheitsreview (Prozessgrenze, IPC, Limits, Maskierung, verborgene Schemas, Injection, Zombies, Single-Instance) mit einer Fix-Runde fand:
+
+- **Hoch, behoben:** Die Leseprüfung kannte Backslash-Escapes in `"…"` (MySQL) und `` `…` `` (ClickHouse, BigQuery) nicht. Damit ließen sich geschwärzte Spalten und, unter MySQL, zweite Anweisungen verstecken. Diese Lücke war älter und betraf auch `query`. Bei der Prüfung tauchten weitere Mischformen auf: `--x` und nicht verschachtelte Kommentare in MySQL/SQLite, `E'…'` und `[` in PostgreSQL sowie Dollar-Tags, die beliebigen Text verschluckten. Behoben ist das über die zusätzliche Dialekt-Lesart, Regressionstest `dialect_readings_close_quote_and_comment_mixing`.
+- **Mittel, behoben:** Das Zeilenbudget wurde nur beim Einreichen geprüft, und gelesen wurde ohne Grenze. Jetzt begrenzt `with_row_limit` das Lesen, und wartende Anweisungen prüfen das Budget erneut.
+- **Niedrig, behoben:** Katalogaufrufe sind auf 500 begrenzt. Wertregeln gelten auch für Text, Logs und Fehler.
+- **Mittel, offen:** keine Sandbox auf Betriebssystemebene (seccomp/Landlock, `sandbox_init`, AppContainer). Der Worker ist dasselbe Binary mit denselben Benutzerrechten. Eine Speicherlücke in QuickJS könnte daher auf Dateien und Schlüsselbund des Benutzers zugreifen. Env, Deskriptoren und Bindings schützen nur, solange QuickJS dicht ist.
+- **Niedrig, offen:** Unter Windows werden vererbbare Handles nicht eingeschränkt (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST` fehlt).
+
+Grenzen:
+
+- Der BYOK-Server hält die Server-Sperre für die Dauer eines `code`-Laufs, genauso wie bei `query`.
+- Adapter ohne `with_row_limit` (SQL Server, ClickHouse, Snowflake, BigQuery …) lesen eine Anweisung vollständig in den Host, bevor sie gekürzt wird, wie bei `query`.
+- Ein Lauf liest höchstens 250.000 Zeilen. Für große Auswertungen gehört die Aggregation ins SQL.
+- RegExp-Filter folgen der Rust-Syntax (ohne Lookaround), nicht der JS-Syntax.

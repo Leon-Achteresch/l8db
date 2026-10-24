@@ -1,6 +1,10 @@
 pub mod benchmark;
 mod catalog;
 pub mod clients;
+mod code;
+#[cfg(test)]
+mod code_tests;
+mod code_worker;
 pub mod config;
 pub mod dashboard;
 mod dashboard_builder;
@@ -24,6 +28,10 @@ mod token_benchmark;
 
 pub fn serve() {
     server::serve();
+}
+
+pub fn sandbox() -> i32 {
+    code_worker::serve()
 }
 
 #[cfg(test)]

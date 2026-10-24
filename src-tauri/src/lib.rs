@@ -57,6 +57,9 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().nth(1).as_deref() == Some("--mcp-sandbox") {
+        std::process::exit(mcp::sandbox());
+    }
     #[cfg(feature = "odbc")]
     db::configure_odbc();
     if std::env::args().any(|arg| arg == "--mcp") {
