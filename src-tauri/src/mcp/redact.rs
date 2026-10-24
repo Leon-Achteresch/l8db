@@ -376,8 +376,15 @@ fn tokenize_as(sql: &str, lexer: Lexer) -> Vec<Token> {
             '/' if chars.peek() == Some(&'*') => {
                 flush(&mut current, &mut tokens);
                 chars.next();
+                let mut ahead = chars.clone();
+                if matches!(ahead.next(), Some('M' | 'm')) && ahead.next() == Some('!') {
+                    chars.next();
+                }
                 if matches!(chars.peek(), Some('!') | Some('+')) {
                     tokens.push(Token::Other('/'));
+                    if chars.next_if_eq(&'!').is_some() {
+                        while chars.next_if(char::is_ascii_digit).is_some() {}
+                    }
                     continue;
                 }
                 let mut depth = 1;
@@ -397,6 +404,12 @@ fn tokenize_as(sql: &str, lexer: Lexer) -> Vec<Token> {
             '*' if chars.peek() == Some(&'/') => {
                 flush(&mut current, &mut tokens);
                 chars.next();
+            }
+            '.' if !current.is_empty()
+                && current.chars().all(|c| c.is_ascii_digit())
+                && chars.peek().is_some_and(char::is_ascii_digit) =>
+            {
+                current.push('.')
             }
             '.' => {
                 flush(&mut current, &mut tokens);
@@ -576,6 +589,132 @@ const DANGEROUS_FUNCTIONS: &[&str] = &[
     "pg_logical_emit_message",
     "txid_current",
     "pg_current_xact_id",
+    "get_lock",
+    "release_lock",
+    "release_all_locks",
+    "source_pos_wait",
+    "master_pos_wait",
+    "wait_for_executed_gtid_set",
+    "wait_until_sql_thread_after_gtids",
+    "arrowflight",
+    "azureblobstorage",
+    "azureblobstoragecluster",
+    "clusterallreplicas",
+    "cosn",
+    "deltalake",
+    "deltalakeazure",
+    "deltalakecluster",
+    "deltalakelocal",
+    "deltalakes3",
+    "executable",
+    "filecluster",
+    "gcs",
+    "hdfscluster",
+    "hive",
+    "hudi",
+    "hudicluster",
+    "iceberg",
+    "icebergazure",
+    "icebergazurecluster",
+    "iceberghdfs",
+    "iceberghdfscluster",
+    "iceberglocal",
+    "icebergs3",
+    "icebergs3cluster",
+    "mergetreeindex",
+    "mergetreeprojection",
+    "mongodb",
+    "oss",
+    "prometheusquery",
+    "prometheusqueryrange",
+    "redis",
+    "s3cluster",
+    "sqlite",
+    "timeseriesdata",
+    "timeseriesmetrics",
+    "timeseriesselector",
+    "timeseriestags",
+    "urlcluster",
+    "ytsaurus",
+    "loop",
+    "dictionary",
+];
+
+const DUCKDB_FILE_FUNCTIONS: &[&str] = &[
+    "delta_scan",
+    "glob",
+    "iceberg_metadata",
+    "iceberg_scan",
+    "iceberg_snapshots",
+    "json_execute_serialized_sql",
+    "parquet_bloom_probe",
+    "parquet_file_metadata",
+    "parquet_kv_metadata",
+    "parquet_metadata",
+    "parquet_scan",
+    "parquet_schema",
+    "query",
+    "query_table",
+    "read_avro",
+    "read_blob",
+    "read_csv",
+    "read_csv_auto",
+    "read_json",
+    "read_json_auto",
+    "read_json_objects",
+    "read_json_objects_auto",
+    "read_ndjson",
+    "read_ndjson_auto",
+    "read_ndjson_objects",
+    "read_parquet",
+    "read_text",
+    "read_xlsx",
+    "sniff_csv",
+    "sqlite_scan",
+    "st_read",
+    "st_read_meta",
+];
+
+const TSQL_BATCH_WORDS: &[&str] = &[
+    "checkpoint",
+    "deny",
+    "receive",
+    "send",
+    "setuser",
+    "updatetext",
+    "writetext",
+];
+
+const WRITE_STATEMENTS: &[&str] = &[
+    "administer",
+    "associate",
+    "audit",
+    "binlog",
+    "cache",
+    "change",
+    "checkpoint",
+    "clone",
+    "deny",
+    "disable",
+    "disassociate",
+    "enable",
+    "exchange",
+    "export",
+    "flashback",
+    "force",
+    "handler",
+    "noaudit",
+    "repair",
+    "restart",
+    "setuser",
+    "start",
+    "stop",
+    "undrop",
+    "uninstall",
+    "unlock",
+    "updatetext",
+    "writetext",
+    "xa",
 ];
 
 const DANGEROUS_PREFIXES: &[&str] = &[
@@ -698,6 +837,11 @@ fn write_word_in(tokens: &[Token]) -> Option<String> {
         Some(Token::Word(word)) => Some(word.as_str()),
         _ => None,
     };
+    if let Some(Token::Word(first)) = tokens.iter().find(|token| matches!(token, Token::Word(_))) {
+        if WRITE_STATEMENTS.contains(&first.as_str()) {
+            return Some(first.clone());
+        }
+    }
     tokens.iter().enumerate().find_map(|(i, token)| {
         let Token::Word(word) = token else {
             return None;
@@ -737,6 +881,63 @@ fn dangerous_word_in(tokens: &[Token]) -> Option<String> {
         }
     }
     None
+}
+
+pub fn duckdb_file_access(sql: &str) -> Option<String> {
+    let [mysql, standard] = readings(sql);
+    [mysql, standard, tokenize_as(sql, Dialect::Postgres.lexer())]
+        .iter()
+        .find_map(|tokens| duckdb_file_access_in(tokens))
+}
+
+fn duckdb_file_access_in(tokens: &[Token]) -> Option<String> {
+    let mut scopes = vec![false];
+    let mut previous: Option<&Token> = None;
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::Open => scopes.push(matches!(
+                previous,
+                Some(Token::Word(word)) if matches!(word.as_str(), "extract" | "trim" | "substring" | "overlay" | "position")
+            )),
+            Token::Close if scopes.len() > 1 => {
+                scopes.pop();
+            }
+            Token::Word(word) => match tokens.get(i + 1) {
+                Some(Token::Open)
+                    if DUCKDB_FILE_FUNCTIONS.contains(&word.as_str())
+                        || word.starts_with("pragma_") =>
+                {
+                    return Some(word.clone())
+                }
+                Some(Token::Other('\''))
+                    if (word == "from"
+                        && scopes.last() == Some(&false)
+                        && previous != Some(&Token::Word("distinct".into())))
+                        || word == "join" =>
+                {
+                    return Some(format!("{word} '…'"))
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        previous = Some(token);
+    }
+    None
+}
+
+pub fn tsql_batch_word(sql: &str) -> Option<String> {
+    readings(sql).iter().find_map(|tokens| {
+        tokens.iter().enumerate().find_map(|(i, token)| {
+            let Token::Word(word) = token else {
+                return None;
+            };
+            let statement = TSQL_BATCH_WORDS.contains(&word.as_str())
+                || (matches!(word.as_str(), "disable" | "enable")
+                    && tokens.get(i + 1) == Some(&Token::Word("trigger".into())));
+            (statement && !(i > 0 && tokens[i - 1] == Token::Dot)).then(|| word.clone())
+        })
+    })
 }
 
 pub fn is_ddl(sql: &str) -> bool {
@@ -1530,6 +1731,160 @@ mod tests {
         assert!(check_references("select * from users", &idx, true).is_ok());
         assert!(check_references("select * from public.users", &idx, true).is_ok());
         assert!(check_references("select u.name from users u where u.id = 1", &idx, true).is_ok());
+        for sql in [
+            "select quantile(0.9)(id) from users",
+            "select id * 1.19, 0.5e3 from public.users where id > 2.5",
+        ] {
+            assert!(check_references(sql, &idx, true).is_ok(), "{sql}");
+            assert!(
+                check_dialect(sql, Dialect::Backslash, &idx, true).is_ok(),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "select * from `2024`.vault",
+            "select * from \"0\".\"9\"",
+            "select * from secret.vault where id > 0.5",
+        ] {
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn duckdb_file_readers_and_string_tables_are_flagged() {
+        for sql in [
+            "SELECT * FROM read_text('/etc/hosts')",
+            "select * from READ_CSV_AUTO('x.csv')",
+            "SELECT * FROM '/etc/hosts'",
+            "SELECT * FROM (SELECT * FROM 'x.parquet')",
+            "SELECT * FROM t JOIN 'x.csv' USING (id)",
+            "SELECT extract(year FROM d) FROM 'x.csv'",
+            "SELECT column_name, stats FROM pragma_storage_info('secret.notes')",
+            "SELECT * FROM query('SELECT * FROM secret.notes')",
+            "SELECT * FROM query_table('secret.notes')",
+            "SELECT E'\\'' AS q, '\\' AS a, * FROM read_text('/etc/hosts') -- '",
+        ] {
+            assert!(duckdb_file_access(sql).is_some(), "{sql}");
+        }
+        for sql in [
+            "SELECT extract(year FROM '2024-01-01'::date) AS y FROM t",
+            "SELECT trim(both 'x' FROM 'xax'), substring('abc' FROM 2) FROM t",
+            "SELECT 'from' AS read_text, glob FROM t WHERE name GLOB 'a*'",
+            "SELECT * FROM read_text_log",
+            "SELECT * FROM t WHERE status IS DISTINCT FROM 'open' OR status IS NOT DISTINCT FROM 'x'",
+        ] {
+            assert!(duckdb_file_access(sql).is_none(), "{sql}");
+        }
+        assert!(dangerous_word("SELECT x.query('/a') AS q FROM t").is_none());
+    }
+
+    #[test]
+    fn mariadb_executable_comments_and_tsql_batches_are_read_as_statements() {
+        let idx = index(&["public"]);
+        for sql in [
+            "SELECT 1 /*M! UNION SELECT password FROM hidden.users */",
+            "SELECT 1 /*M!100100 UNION SELECT password FROM hidden.users */",
+        ] {
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
+        }
+        assert!(write_word("/*M!100100 DELETE FROM users */").is_some());
+        assert!(write_word("SELECT 1 /*M! deny */").is_none());
+        for sql in [
+            "SELECT 1 DENY SELECT ON SCHEMA::dbo TO public",
+            "SELECT 1 WHERE 1 = 1 DISABLE TRIGGER ALL ON dbo.orders",
+            "SELECT 1 CHECKPOINT",
+            "RECEIVE TOP (1) * FROM dbo.queue",
+        ] {
+            assert!(tsql_batch_word(sql).is_some(), "{sql}");
+        }
+        for sql in [
+            "SELECT t.deny, t.checkpoint, t.send FROM t",
+            "SELECT disabled, enable_flag FROM t",
+        ] {
+            assert!(tsql_batch_word(sql).is_none(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn admin_statements_and_external_table_functions_are_not_reads() {
+        for sql in [
+            "STOP REPLICA",
+            "start replica",
+            "START TRANSACTION",
+            "CHANGE REPLICATION SOURCE TO SOURCE_HOST = 'x'",
+            "BINLOG 'AAAA'",
+            "RESTART",
+            "CLONE LOCAL DATA DIRECTORY = '/tmp/x'",
+            "UNINSTALL PLUGIN audit_log",
+            "XA START 'x'",
+            "HANDLER users OPEN",
+            "CACHE INDEX users IN hot",
+            "UNLOCK TABLES",
+            "REPAIR TABLE users",
+            "EXCHANGE TABLES a AND b",
+            "UNDROP TABLE users",
+            "/*!80000 STOP REPLICA */",
+            "DENY SELECT ON users TO public",
+            "DISABLE TRIGGER ALL ON users",
+            "enable trigger all on users",
+            "CHECKPOINT",
+            "SETUSER",
+            "WRITETEXT users.name 0x0 'x'",
+            "/*!80000DELETE FROM users */",
+            "/*!800001UPDATE users SET name = 'x' */",
+            "SELECT 1 /*!50000INTO OUTFILE '/tmp/x' */",
+            "FLASHBACK TABLE users TO BEFORE DROP",
+            "AUDIT SELECT ON users",
+            "NOAUDIT ALL",
+            "ASSOCIATE STATISTICS WITH COLUMNS users.id USING NULL",
+            "DISASSOCIATE STATISTICS FROM COLUMNS users.id",
+            "ADMINISTER KEY MANAGEMENT CREATE KEYSTORE 'x' IDENTIFIED BY y",
+            "EXPORT DATABASE '/tmp/x'",
+            "FORCE CHECKPOINT",
+        ] {
+            assert!(write_word(sql).is_some(), "{sql}");
+        }
+        let idx = index(&[]);
+        assert!(check_dialect(
+            "SELECT id /*!80000, password */ FROM users",
+            Dialect::Mysql,
+            &idx,
+            true
+        )
+        .is_err());
+        assert!(check_dialect(
+            "SELECT 1 /*!80000DELETE FROM users */",
+            Dialect::Mysql,
+            &idx,
+            true
+        )
+        .is_err());
+        for sql in [
+            "select start, stop, change, cache, handler from users",
+            "select u.xa, u.repair from users u where exchange = 1",
+        ] {
+            assert!(write_word(sql).is_none(), "{sql}");
+        }
+        for sql in [
+            "select get_lock('x', 10)",
+            "select release_all_locks()",
+            "select source_pos_wait('f', 4)",
+            "SELECT * FROM s3Cluster('c', 'http://x/y.csv')",
+            "select * from urlCluster('c', 'http://x')",
+            "select * from gcs('http://x')",
+            "select * from azureBlobStorage('http://x', 'c', 'f')",
+            "select * from fileCluster('c', '/etc/passwd')",
+            "select * from sqlite('/x.db', 't')",
+            "select * from executable('x.sh', TSV, 'a String')",
+            "select * from mongodb('h', 'd', 'c', 'u', 'p', 'a String')",
+            "select * from icebergS3('http://x')",
+            "select * from mergeTreeIndex('secret', 'vault')",
+            "select * from timeSeriesData('secret', 'vault')",
+            "select * from clusterAllReplicas('default', 'secret', 'vault')",
+        ] {
+            assert!(dangerous_word(sql).is_some(), "{sql}");
+        }
+        assert!(dangerous_word("select sqlite, redis, gcs, hive, oss from users").is_none());
     }
 
     #[test]
