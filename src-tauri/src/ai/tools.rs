@@ -12,6 +12,7 @@ const CORE: &[&str] = &[
     "drilldown",
     "sandbox",
     "query",
+    "code",
     "execute",
     "visualize",
     "editor",
@@ -44,7 +45,7 @@ impl Catalog {
                         && !entry.writes_blocked()
                         && !entry.is_production()
                 }),
-                "drilldown" => config
+                "drilldown" | "code" => config
                     .connections
                     .iter()
                     .any(|entry| crate::mcp::server::SQL_KINDS.contains(&entry.kind)),

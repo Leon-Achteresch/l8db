@@ -29,9 +29,9 @@ const WRITERS: [&str; 3] = ["billing", "fin", "erp"];
 const BIG_LINES: usize = 5_200;
 
 pub(super) const BUDGET: &[(&str, usize)] = &[
-    ("tools/list", 10_240),
+    ("tools/list", 11_935),
     ("instructions", 950),
-    ("byok start catalog", 9_000),
+    ("byok start catalog", 10_622),
     ("shop.revenue_per_customer", 1_450),
     ("shop.overview", 1_000),
     ("huge.overview", 900),
@@ -43,6 +43,10 @@ pub(super) const BUDGET: &[(&str, usize)] = &[
     ("huge.understand_routine", 4_400),
     ("huge.writers_of_table", 2_600),
     ("huge.knowledge_column", 300),
+    ("code.tenant_orphans", 1_200),
+    ("code.latest_updated", 2_700),
+    ("code.compare_counts", 600),
+    ("code.payment_writers", 1_450),
 ];
 
 fn baseline(id: &str) -> String {
@@ -1344,6 +1348,50 @@ fn token_benchmark_reports_surface_and_task_bytes() {
             incomplete.push(measured.id);
         }
     }
+    code_lab(&mut lab);
+    println!("| code task | baseline calls | baseline B | ≈tokens | code calls | code B | ≈tokens | saved | info complete | ms baseline / code |\n|---|---:|---:|---:|---:|---:|---:|---:|---|---:|");
+    for (baseline, code) in code_tasks() {
+        let started = Instant::now();
+        let before = run_task(&mut lab, &baseline);
+        let middle = started.elapsed();
+        let after = run_task(&mut lab, &code);
+        over.extend(over_budget(after.id, after.total()));
+        let missing: Vec<String> = before
+            .missing
+            .iter()
+            .chain(&after.missing)
+            .cloned()
+            .collect();
+        println!(
+            "| {} | {} | {} | {} | {} | {} | {} | {:.0} % | {} | {} / {} |",
+            after.id,
+            before.calls,
+            before.total(),
+            tokens(before.total()),
+            after.calls,
+            after.total(),
+            tokens(after.total()),
+            100.0 * (1.0 - after.total() as f64 / before.total() as f64),
+            if missing.is_empty() {
+                "yes".to_string()
+            } else {
+                missing.join("; ")
+            },
+            middle.as_millis(),
+            (started.elapsed() - middle).as_millis()
+        );
+        if !missing.is_empty() {
+            incomplete.push(after.id);
+        }
+        if after.total() >= before.total() {
+            over.push(format!(
+                "{}: code {} B ≥ baseline {} B",
+                after.id,
+                after.total(),
+                before.total()
+            ));
+        }
+    }
     for (id, bytes, assumption) in &modeled {
         println!("modeled baseline {id}: {bytes} B — {assumption}");
     }
@@ -1627,4 +1675,260 @@ fn catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached()
     assert!(load < Duration::from_secs(10), "{load:?}");
     assert!(size < 40_000_000, "{size}");
     assert!(meta < 32_000_000, "{meta}");
+}
+
+fn tenants_sql() -> String {
+    let mut sql = String::new();
+    for tenant in 1..=TENANTS {
+        let schema = format!("tenant_{tenant:03}");
+        let orphans = if tenant % 7 == 0 { tenant % 5 + 1 } else { 0 };
+        sql.push_str(&format!(
+            "CREATE SCHEMA {schema};
+CREATE TABLE {schema}.customers AS SELECT i::INTEGER AS id, 'customer ' || i AS name FROM range(1, 6) t(i);
+CREATE TABLE {schema}.orders AS SELECT i::INTEGER AS id, (CASE WHEN i > {tenant} - {orphans} THEN 99 ELSE (i - 1) % 5 + 1 END)::INTEGER AS customer_id, TIMESTAMP '2026-01-01' + INTERVAL ({tenant}) HOUR + INTERVAL (i) MINUTE AS updated_at FROM range(1, {tenant} + 1) t(i);
+"
+        ));
+    }
+    sql
+}
+
+fn shop_copy(path: &std::path::Path, changed: bool) {
+    let mut sql = String::new();
+    for table in 1..=12 {
+        let rows = table * 3 + if changed && table % 4 == 0 { table } else { 0 };
+        sql.push_str(&format!(
+            "CREATE TABLE t{table:02} (id INTEGER PRIMARY KEY, label TEXT);
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {rows}) INSERT INTO t{table:02} SELECT i, 'row ' || i FROM n;
+"
+        ));
+    }
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .execute_batch(&sql)
+        .unwrap();
+}
+
+fn code_lab(lab: &mut Lab) {
+    let dir = lab._dir.path().to_path_buf();
+    let tenants = dir.join("tenants.duckdb");
+    duckdb::Connection::open(&tenants)
+        .unwrap()
+        .execute_batch(&tenants_sql())
+        .unwrap();
+    shop_copy(&dir.join("shop_a.db"), false);
+    shop_copy(&dir.join("shop_b.db"), true);
+    lab.config.connections.extend([
+        connection(
+            "bench-tenants",
+            "Tenants",
+            DatabaseKind::Duckdb,
+            &format!("duckdb:{}", tenants.display()),
+        ),
+        connection(
+            "bench-shop-a",
+            "Shop A",
+            DatabaseKind::Sqlite,
+            &format!("sqlite:{}", dir.join("shop_a.db").display()),
+        ),
+        connection(
+            "bench-shop-b",
+            "Shop B",
+            DatabaseKind::Sqlite,
+            &format!("sqlite:{}", dir.join("shop_b.db").display()),
+        ),
+    ]);
+}
+
+const ORPHANS: &str = "async () => {
+  const schemas = (await catalog.tables({ name: \"orders\" })).map((t) => t.schema);
+  const counts = await Promise.all(schemas.map((s) => sql`SELECT count(*) AS n FROM ${id(s, \"orders\")} o WHERE NOT EXISTS (SELECT 1 FROM ${id(s, \"customers\")} c WHERE c.id = o.customer_id)`));
+  return schemas.map((schema, i) => ({ schema, orphans: counts[i][0].n })).filter((r) => r.orphans > 0);
+}";
+
+const LATEST: &str = "async () => {
+  const tables = await catalog.tables({ column: \"updated_at\", limit: 50 });
+  return Promise.all(tables.map(async (t) => ({ table: `${t.schema}.${t.name}`, rows: t.rows, last: (await sql`SELECT max(updated_at) AS m FROM ${id(t.schema, t.name)}`)[0].m })));
+}";
+
+const COMPARE: &str = "async () => {
+  const b = sql.with({ connection: \"Shop B\" });
+  const tables = await catalog.tables({ kind: \"T\" });
+  const rows = await Promise.all(tables.map(async (t) => ({ table: t.name, a: (await sql`SELECT count(*) AS n FROM ${id(t.name)}`)[0].n, b: (await b`SELECT count(*) AS n FROM ${id(t.name)}`)[0].n })));
+  return rows.filter((r) => r.a !== r.b);
+}";
+
+const PAYMENTS: &str = "async () => {
+  const hits = new Set((await catalog.grep(\"INSERT INTO public.payments|UPDATE public.payments|DELETE FROM public.payments\")).map((h) => h.object));
+  const routines = await catalog.routines({ schema: \"public\", name: \"*_payment\" });
+  return routines.filter((r) => hits.has(`${r.schema}.${r.name}`)).map((r) => ({ routine: r.name, args: r.args, lines: r.lines }));
+}";
+
+const PAYMENT_WRITERS: [&str; 15] = [
+    "archive_billing_payment",
+    "archive_erp_payment",
+    "archive_fin_payment",
+    "import_billing_payment",
+    "import_erp_payment",
+    "import_fin_payment",
+    "merge_billing_payment",
+    "merge_erp_payment",
+    "merge_fin_payment",
+    "post_billing_payment",
+    "post_erp_payment",
+    "post_fin_payment",
+    "sync_billing_payment",
+    "sync_erp_payment",
+    "sync_fin_payment",
+];
+
+fn orphans_sql(schema: &str) -> String {
+    format!("SELECT count(*) AS orphans FROM {schema}.orders o WHERE NOT EXISTS (SELECT 1 FROM {schema}.customers c WHERE c.id = o.customer_id)")
+}
+
+fn counts_sql() -> String {
+    (1..=12)
+        .map(|table| format!("SELECT 't{table:02}' AS t, count(*) AS n FROM t{table:02}"))
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ")
+}
+
+pub(super) fn code_tasks() -> Vec<(Task, Task)> {
+    let mut orphans = vec![step(
+        "overview",
+        json!({"connection": "Tenants"}),
+        &["tenant_001..tenant_300 (300 identical schemas)"],
+    )];
+    orphans.extend((1..=TENANTS).map(|tenant| {
+        step(
+            "query",
+            json!({"connection": "Tenants", "sql": orphans_sql(&format!("tenant_{tenant:03}"))}),
+            &["orphans"],
+        )
+    }));
+    let mut latest = vec![
+        step(
+            "search",
+            json!({"connection": "Tenants", "term": "updated_at"}),
+            &["same in 300 schemas"],
+        ),
+        step(
+            "query",
+            json!({"connection": "Tenants", "sql": "SELECT schema_name, table_name, estimated_size FROM duckdb_tables() WHERE table_name = 'orders' ORDER BY estimated_size DESC LIMIT 50"}),
+            &["tenant_251\torders"],
+        ),
+    ];
+    latest.extend((251..=TENANTS).rev().map(|tenant| {
+        step(
+            "query",
+            json!({"connection": "Tenants", "sql": format!("SELECT max(updated_at) AS last FROM tenant_{tenant:03}.orders")}),
+            &["2026-01-1"],
+        )
+    }));
+    let writers: Vec<String> = PAYMENT_WRITERS
+        .iter()
+        .map(|name| format!("public.{name}"))
+        .collect();
+    vec![
+        (
+            Task {
+                id: "code.tenant_orphans",
+                steps: orphans,
+            },
+            Task {
+                id: "code.tenant_orphans",
+                steps: vec![step(
+                    "code",
+                    json!({"connection": "Tenants", "code": ORPHANS}),
+                    &[
+                        "tenant_294\t5",
+                        "tenant_007\t3",
+                        "(42 rows)",
+                        "(300 statements",
+                    ],
+                )],
+            },
+        ),
+        (
+            Task {
+                id: "code.latest_updated",
+                steps: latest,
+            },
+            Task {
+                id: "code.latest_updated",
+                steps: vec![step(
+                    "code",
+                    json!({"connection": "Tenants", "code": LATEST}),
+                    &[
+                        "tenant_300.orders\t300\t2026-01-13 17:00:00",
+                        "tenant_251.orders\t251\t2026-01-11 15:11:00",
+                        "(50 rows)",
+                    ],
+                )],
+            },
+        ),
+        (
+            Task {
+                id: "code.compare_counts",
+                steps: vec![
+                    step(
+                        "query",
+                        json!({"connection": "Shop A", "sql": "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"}),
+                        &["t12"],
+                    ),
+                    step(
+                        "query",
+                        json!({"connection": "Shop A", "sql": counts_sql()}),
+                        &["t04\t12", "t12\t36"],
+                    ),
+                    step(
+                        "query",
+                        json!({"connection": "Shop B", "sql": counts_sql()}),
+                        &["t04\t16", "t12\t48"],
+                    ),
+                ],
+            },
+            Task {
+                id: "code.compare_counts",
+                steps: vec![step(
+                    "code",
+                    json!({"connection": "Shop A", "code": COMPARE}),
+                    &["t04\t12\t16", "t08\t24\t32", "t12\t36\t48", "(3 rows)"],
+                )],
+            },
+        ),
+        (
+            Task {
+                id: "code.payment_writers",
+                steps: vec![
+                    step(
+                        "search",
+                        json!({"connection": "Huge", "in": "source", "term": "INSERT INTO public.payments|UPDATE public.payments|DELETE FROM public.payments"}),
+                        &["15 source hits"],
+                    ),
+                    step(
+                        "describe",
+                        json!({"connection": "Huge", "tables": writers[..10], "lines": "1-1"}),
+                        &["of 5211"],
+                    ),
+                    step(
+                        "describe",
+                        json!({"connection": "Huge", "tables": writers[10..], "lines": "1-1"}),
+                        &["sync_fin_payment"],
+                    ),
+                ],
+            },
+            Task {
+                id: "code.payment_writers",
+                steps: vec![step(
+                    "code",
+                    json!({"connection": "Huge", "code": PAYMENTS}),
+                    &[
+                        "post_billing_payment\tp_id bigint, p_tenant integer\t5211",
+                        "sync_fin_payment",
+                        "(15 rows)",
+                    ],
+                )],
+            },
+        ),
+    ]
 }

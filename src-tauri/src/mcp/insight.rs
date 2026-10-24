@@ -718,6 +718,32 @@ fn estimate_query(kind: DatabaseKind, tables: &[(String, String)]) -> Option<Str
     }
 }
 
+pub(super) async fn cached_source(
+    config: &McpConfig,
+    kind: DatabaseKind,
+    catalog: &super::catalog::Catalog,
+    adapter: &dyn db::DatabaseAdapter,
+    target: &super::objects::Target<'_>,
+) -> Result<Arc<str>, String> {
+    use super::objects::{source, source_key, Target};
+    let (object, schema, name) = match target {
+        Target::Routine(routine) => (
+            routine.kind,
+            routine.schema.as_str(),
+            format!("{}({})", routine.name, routine.args),
+        ),
+        Target::Relation(schema, name, kind) => (*kind, *schema, name.to_string()),
+        Target::Trigger(trigger) => (Kind::Trigger, trigger.schema.as_str(), trigger.name.clone()),
+    };
+    let key = source_key(object, schema, &name);
+    if let Some(text) = catalog.source(&key) {
+        return Ok(text);
+    }
+    let text: Arc<str> = Arc::from(run(config, kind, source(adapter, kind, target)).await?);
+    catalog.remember_source(&key, text.clone());
+    Ok(text)
+}
+
 pub(super) struct Excerpt {
     from: usize,
     to: Option<usize>,
@@ -753,7 +779,7 @@ impl Excerpt {
             .clamp(1, Self::MAX)
     }
 
-    fn range(&self, total: usize) -> (usize, usize) {
+    pub(super) fn range(&self, total: usize) -> (usize, usize) {
         let from = self.from.min(total.max(1));
         let to = (from + self.span() - 1).min(total);
         (from, to.max(from.min(total)))
@@ -1281,34 +1307,14 @@ impl Server {
         target: &super::objects::Target<'_>,
         excerpt: &Excerpt,
     ) -> String {
-        use super::objects::{lexical, reported, source, source_key, Names, Target};
-        let (kind, schema, name) = match target {
-            Target::Routine(routine) => (
-                routine.kind,
-                routine.schema.as_str(),
-                format!("{}({})", routine.name, routine.args),
-            ),
-            Target::Relation(schema, name, kind) => (*kind, *schema, name.to_string()),
-            Target::Trigger(trigger) => {
-                (Kind::Trigger, trigger.schema.as_str(), trigger.name.clone())
-            }
+        use super::objects::{lexical, reported, Names, Target};
+        let schema = match target {
+            Target::Routine(routine) => routine.schema.as_str(),
+            Target::Relation(schema, ..) => schema,
+            Target::Trigger(trigger) => trigger.schema.as_str(),
         };
-        let key = source_key(kind, schema, &name);
-        let text = match view.catalog.source(&key) {
-            Some(text) => Ok(text),
-            None => run(
-                config,
-                connection.kind,
-                source(adapter, connection.kind, target),
-            )
-            .await
-            .map(|text| {
-                let text: Arc<str> = Arc::from(text);
-                view.catalog.remember_source(&key, text.clone());
-                text
-            }),
-        };
-        let text = match text {
+        let text = match cached_source(config, connection.kind, view.catalog, adapter, target).await
+        {
             Ok(text) if !text.trim().is_empty() => text,
             Ok(_) => return "\n [source is empty or not visible to this database user]".into(),
             Err(error) => {

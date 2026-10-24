@@ -921,7 +921,29 @@ impl Server {
         view: &View<'_>,
         args: &Value,
     ) -> Result<String, String> {
-        let terms = arg_str(args, "term")
+        let (hits, term, note) = self
+            .source_matches(config, connection, view, arg_str(args, "term"))
+            .await?;
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+        Ok(super::discovery::source_hits(
+            view,
+            &redactor,
+            hits,
+            &term,
+            args,
+            config.max_chars,
+            note,
+        ))
+    }
+
+    pub(super) async fn source_matches(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        view: &View<'_>,
+        term: &str,
+    ) -> Result<(Vec<Hit>, String, Option<&'static str>), String> {
+        let terms = term
             .split('|')
             .map(safe_term)
             .collect::<Result<Vec<_>, _>>()?;
@@ -931,7 +953,6 @@ impl Server {
             ));
         }
         let term = terms.join("|");
-        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let (loaded, complete) = view.catalog.sources();
         let schemas: Vec<String> = view
             .catalog
@@ -990,15 +1011,7 @@ impl Server {
             }
             same
         });
-        Ok(super::discovery::source_hits(
-            view,
-            &redactor,
-            hits,
-            &term,
-            args,
-            config.max_chars,
-            note,
-        ))
+        Ok((hits, term, note))
     }
 }
 
