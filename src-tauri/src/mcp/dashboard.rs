@@ -743,6 +743,7 @@ pub fn tool_definition() -> Value {
         |description: &str| json!({"type": ["string", "null"], "description": description});
     let spec = json!({
         "type": "object",
+        "description": "Chart spec, see chart_types",
         "properties": {
             "type": {"type": "string", "enum": kinds, "description": "Chart type, or a content block without data: text (Markdown), image, link (button), divider (section header)"},
             "page": nullable("Page id or name the chart or block sits on (default: first page)"),
@@ -787,15 +788,15 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Build dashboards that appear live in the l8db app (Dashboard view of the connection). Each chart gets either its own read-only SQL plus a mapping of result columns (dimension, dimension2, metrics, dateColumn; omitted ones are inferred from the result) or a visual builder dataset (tables, joins, calculated fields, filters) that stays editable in the app's chart studio. Dashboards can have variables: filters shown above the charts, referenced as {{name}} in SQL, builder filters and builder fields. Dashboards can have pages (tabs or sidebar; every chart has a page), a theme for company branding (brand, logo, colors, palette, font, card style) and content blocks without data (type text with Markdown, image, link button to a page or URL, divider as section header). Charts support BI interactions: cross filtering and drill-through on click (options crossFilter, drill), target lines (options target, targetLabel) and pivot cross-tabs (type pivot). Use table names exactly as search shows them. Charts are validated by running the SQL, so fix reported errors and retry. Actions: list, get, create (connection, name, variables, pages, theme, charts), update (name, refreshSec, variables, design, pages replaces the list, theme merges key by key), delete, add_charts (charts), update_chart (chart + spec with changed fields only, page moves it; for builder charts spec.builder is merged key by key into the current builder, and dimension/dimension2/metrics/dateColumn edit the builder directly), remove_chart, preview (dashboard+chart or connection+spec, shows rows; values sets variables), run (dashboard, optional chart and values: runs every chart and returns rows or errors, use it to check plausibility), arrange (dashboard: re-lays out each page into a clean grid, kpi/gauge tiles on top, order kept), joins (connection + table, optional tables: suggests how other tables join to it, with measured match rate and row multiplication; every builder join is measured the same way when a chart is saved), chart_types (chart types, blocks, pages, theme, builder and variable format, options). Layout is a 12-column grid; omit x/y for automatic placement. Design: 2-4 kpi tiles on top (a kpi always shows sparkline and trend, never a bare number: give it a time dimension for the latest value, or no dimension plus dateColumn for the period total), then a wide trend (area/line) next to a donut or bars, then details; alias metrics readably, give every chart a title and subtitle, set options.unit/decimals, dateColumn + period for comparisons; after adding charts call arrange, then run. chart_types has the full design guide",
+        "description": "Dashboards in the l8db app: charts from read-only SQL or a builder, filters, pages, theme, content blocks. Call action=chart_types first for spec and design guide. Saving runs the SQL; fix errors and retry. Design: 2-4 kpi tiles on top, never a bare number (time dimension or dateColumn), then trend and breakdowns; then arrange and run.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["list", "get", "create", "update", "delete", "add_charts", "update_chart", "remove_chart", "preview", "run", "arrange", "joins", "chart_types"]},
-                "connection": {"type": "string", "description": "Connection name or id (create, list filter, preview without dashboard)"},
-                "dashboard": {"type": "string", "description": "Dashboard id or name"},
+                "connection": {"type": "string"},
+                "dashboard": {"type": "string"},
                 "name": {"type": "string"},
-                "refreshSec": {"type": "integer", "description": "Auto refresh in seconds, 0 = off"},
+                "refreshSec": {"type": "integer", "description": "0 = off"},
                 "design": {"type": ["object", "null"], "description": "create/update: free dashboard CSS (max 256 KiB). null resets. Scoped to this dashboard, all CSS properties supported. Stable selectors: .dashboard-surface (:root/:scope), .dashboard-toolbar, .dashboard-filters, .dashboard-canvas, .dashboard-grid, .dashboard-widget, .dashboard-widget-header, .dashboard-widget-title, .dashboard-widget-subtitle, .dashboard-widget-summary, .dashboard-widget-content, [data-widget-id=\"chart-id\"], [data-chart-type=\"kpi\"]. Theme variables: --background, --foreground, --card, --border, --muted-foreground. Chart colors: --dash-accent, --dash-color-1 through --dash-color-8, --dash-compare. Use unique @keyframes/font names. @import is not loaded; external URLs follow app CSP. CSS-only updates do not execute database queries.", "properties": {"css": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["css", "enabled"], "additionalProperties": false},
                 "pages": {"type": ["array", "null"], "items": {"type": "object", "properties": {"id": {"type": "string", "description": "1-40 chars A-Z a-z 0-9 _ -; generated from the name when missing"}, "name": {"type": "string", "description": "Tab label, 1-60 chars"}, "hidden": {"type": "boolean"}}, "required": ["name"]}, "description": "create/update: dashboard pages (max 30), replaces the list. Charts on removed pages move to the first page. [] or null = one implicit page."},
                 "theme": {"type": ["object", "null"], "description": "create/update: branding. update merges key by key (a key set to null removes it), theme null resets. Colors: #hex or rgb()/rgba()/hsl()/hsla()/oklch()/oklab() only. logo: data:image/... URL (png, jpeg, gif, webp, svg+xml; max 512 KiB), remote images are blocked.", "properties": {
@@ -816,13 +817,13 @@ pub fn tool_definition() -> Value {
                     "header": {"type": ["boolean", "null"], "description": "Show the branded header (logo, brand, tagline)"},
                     "nav": {"type": ["string", "null"], "enum": choices("nav"), "description": "Page navigation style"}
                 }},
-                "chart": {"type": "string", "description": "Chart or block id or title"},
-                "limit": {"type": "integer", "minimum": 1, "description": "Rows per chart for preview (default 20) and run (default 5)"},
+                "chart": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
                 "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Dashboard filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
-                "table": {"type": "string", "description": "joins: table to find join partners for (schema.table)"},
-                "tables": {"type": "array", "items": {"type": "string"}, "description": "joins: only consider these tables"},
-                "values": {"type": "object", "description": "Variable values for preview and run, e.g. {\"mandant\": \"Nordfrost\"}"},
-                "charts": {"type": "array", "items": spec},
+                "table": {"type": "string", "description": "joins: schema.table"},
+                "tables": {"type": "array", "items": {"type": "string"}},
+                "values": {"type": "object"},
+                "charts": {"type": "array", "items": spec, "description": "Chart specs, see chart_types"},
                 "spec": spec
             },
             "required": ["action"]
@@ -2461,10 +2462,9 @@ impl Server {
         if sql.chars().count() > MAX_SQL_CHARS {
             return Err(format!("sql ist länger als {MAX_SQL_CHARS} Zeichen."));
         }
-        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
         let run = builder::substitute(&sql, variables, &Map::new(), connection.kind);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+        let index = self.schema_index(config, connection, &redactor).await?;
         server::check_read_sql(&run, connection, &index)?;
         let result = self.run_sql(config, connection, &run).await?;
         mapping.resolve(&result.columns, notes)?;
@@ -2793,8 +2793,7 @@ impl Server {
                 continue;
             };
             let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-            let columns = self.columns_for(config, connection).await?;
-            let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+            let index = self.schema_index(config, connection, &redactor).await?;
             let label = variable["name"].as_str().unwrap_or("");
             server::check_read_sql(sql, connection, &index)
                 .map_err(|e| format!("variable '{label}' optionsSql: {e}"))?;
@@ -2812,8 +2811,7 @@ impl Server {
         sql: &str,
     ) -> Result<builder::JoinStats, String> {
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         server::check_read_sql(sql, connection, &index)?;
         let result = self.run_sql(config, connection, sql).await?;
         result
@@ -2851,22 +2849,28 @@ impl Server {
             .and_then(Value::as_u64)
             .map_or(6, |n| n as usize)
             .clamp(1, 15);
-        let all = self.columns_for(config, connection).await?;
-        let visible = Server::visible_columns(&all, connection);
-        let mut tables: Vec<(String, String, Vec<String>)> = Vec::new();
-        for column in &visible {
-            match tables
-                .iter_mut()
-                .find(|(schema, table, _)| *schema == column.schema && *table == column.table)
-            {
-                Some((_, _, list)) => list.push(column.name.clone()),
-                None => tables.push((
-                    column.schema.clone(),
-                    column.table.clone(),
-                    vec![column.name.clone()],
-                )),
-            }
-        }
+        let catalog = self.catalog(config, connection).await?;
+        let index = catalog.tables();
+        let mut visible: Vec<_> = index
+            .list
+            .iter()
+            .filter(|table| index.visible(table, connection.allowed_schemas()))
+            .collect();
+        visible.sort_by_key(|table| table.columns[0]);
+        let tables: Vec<(String, String, Vec<String>)> = visible
+            .into_iter()
+            .map(|table| {
+                (
+                    index.schema(table).to_string(),
+                    index.name(table).to_string(),
+                    table
+                        .columns
+                        .iter()
+                        .map(|&column| catalog.columns[column as usize].name.clone())
+                        .collect(),
+                )
+            })
+            .collect();
         let matches = |schema: &str, table: &str, name: &str| {
             name.eq_ignore_ascii_case(table)
                 || name.eq_ignore_ascii_case(&format!("{schema}.{table}"))
@@ -2943,8 +2947,7 @@ impl Server {
         let variables = variables_of(&dashboard);
         let values = values_of(args);
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let widgets = dashboard["widgets"].as_array().cloned().unwrap_or_default();
         let mut out = Vec::new();
         if !variables.is_empty() {
@@ -3040,8 +3043,7 @@ impl Server {
         limit: usize,
     ) -> Result<String, String> {
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let sql = sql
             .trim()
             .trim_end_matches(|c: char| c == ';' || c.is_whitespace());
@@ -3438,7 +3440,61 @@ fn describe(dashboard: &Value, connection: &McpConnection) -> String {
     serde_json::to_string_pretty(&out).unwrap_or_default()
 }
 
+fn field_lines(properties: &Value) -> Vec<String> {
+    properties
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(key, schema)| {
+            let kind = match &schema["type"] {
+                Value::Array(list) => list
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join("|"),
+                other => other.as_str().unwrap_or("").to_string(),
+            };
+            let mut line = format!("- {key} ({kind})");
+            if let Some(values) = schema["enum"]
+                .as_array()
+                .filter(|values| values.len() <= 12)
+            {
+                let values: Vec<&str> = values.iter().filter_map(Value::as_str).collect();
+                line.push_str(&format!(" {}", values.join("|")));
+            }
+            let nested = schema
+                .get("properties")
+                .or_else(|| schema["items"].get("properties"));
+            if let Some(fields) = nested.and_then(Value::as_object) {
+                let required = schema
+                    .get("required")
+                    .or_else(|| schema["items"].get("required"))
+                    .and_then(Value::as_array);
+                let fields: Vec<String> = fields
+                    .keys()
+                    .map(|field| {
+                        let needed = required
+                            .is_some_and(|list| list.iter().any(|item| item == field.as_str()));
+                        if needed {
+                            format!("{field} required")
+                        } else {
+                            field.clone()
+                        }
+                    })
+                    .collect();
+                line.push_str(&format!(" {{{}}}", fields.join(", ")));
+            }
+            if let Some(text) = schema["description"].as_str() {
+                line.push_str(&format!(": {text}"));
+            }
+            line
+        })
+        .collect()
+}
+
 fn chart_types() -> String {
+    let definition = tool_definition();
+    let properties = &definition["inputSchema"]["properties"];
     let mut lines = vec![
         "Mapping names columns of the chart's SQL result. dimension = category or x-axis (ORDER BY it for time series), dimension2 = second category, metrics = numeric columns, dateColumn = date column that the period filter (7d, 30d, 90d, quarter, year, 12m) applies to. subtitle = line under the title.".to_string(),
         "Options (booleans unless noted): showValue headline number, showDelta trend badge, showPeriod period picker, colorOffset 0-7 start color, compare none|previous|year comparison period (default previous, needs dateColumn and period != all), headline auto|total|last|average|max|min value of the big number, unit text of 1-8 chars after values, decimals 0-4 (default auto), invertDelta lower is better (a falling value shows green), showLegend, stacked, curve monotone|linear, showGrid, labels values on chart, showPercent, sortBy none|asc|desc (by first metric), horizontal bars to the right (column), metricKeys subset of metrics to show.".to_string(),
@@ -3481,6 +3537,15 @@ fn chart_types() -> String {
             size.0, size.1, min.0, min.1
         ));
     }
+    lines.push("Chart spec fields (charts items and spec):".into());
+    lines.extend(field_lines(&properties["spec"]["properties"]));
+    lines.push("Dashboard fields:".into());
+    lines.extend(field_lines(&json!({
+        "design": properties["design"],
+        "pages": properties["pages"],
+        "variables": properties["variables"],
+        "theme": properties["theme"],
+    })));
     lines.join("\n")
 }
 

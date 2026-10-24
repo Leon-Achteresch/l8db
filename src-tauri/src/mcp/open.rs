@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::config::{self, McpConfig};
-use super::server::{arg_str, find_connection, qualified, with_database, Server};
+use super::server::{arg_str, find_connection, with_database, Server};
 use crate::db::validate_table_filter;
 
 const MAX_AGE_MS: u128 = 60_000;
@@ -13,14 +13,14 @@ const MAX_AGE_MS: u128 = 60_000;
 pub fn tool_definition() -> Value {
     json!({
         "name": "open",
-        "description": "Show something live in the l8db window the user is working in: open a table or view, set or clear its filter, save the filter as a named view, or open SQL in a new editor tab (not executed). The app highlights the change so the user sees the AI did it. Only call this when the user asks to open, show or filter something in l8db, or to save a filter, or the request clearly implies seeing it in the app. Never call it just to answer a question; use query for that. Call search first to get exact table names.",
+        "description": "Show in the user's l8db window: open a table, set or clear its filter, save it as a named view, or open SQL in a new editor tab (not run). Only when the user asks to see something in l8db; use query to answer questions.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
-            "table": {"type": "string", "description": "schema.table to open"},
-            "filter": {"type": "string", "description": "SQL WHERE condition without the WHERE keyword, e.g. status = 'open' AND total > 100. Empty string clears the filter."},
-            "saveAs": {"type": "string", "description": "Save the filter as a named view on the table. Only when the user asks to save it."},
-            "sql": {"type": "string", "description": "Opens this SQL in a new editor tab instead of a table"}
+            "table": {"type": "string"},
+            "filter": {"type": "string", "description": "WHERE condition; empty clears"},
+            "saveAs": {"type": "string", "description": "View name, only when asked"},
+            "sql": {"type": "string"}
         }, "required": ["connection"]}
     })
 }
@@ -92,19 +92,23 @@ impl Server {
             return Err("table oder sql angeben.".into());
         }
         let scoped = with_database(connection, args)?;
-        let columns = self.columns_for(config, &scoped).await?;
-        let found = Self::visible_columns(&columns, &scoped)
-            .into_iter()
-            .find(|column| {
-                column.table.to_lowercase() == wanted
-                    || qualified(&column.schema, &column.table).to_lowercase() == wanted
+        let catalog = self.catalog(config, &scoped).await?;
+        let tables = catalog.tables();
+        let found = tables
+            .list
+            .iter()
+            .filter(|table| {
+                tables.visible(table, scoped.allowed_schemas())
+                    && (tables.name(table).to_lowercase() == wanted
+                        || tables.qualified(table).to_lowercase() == wanted)
             })
+            .min_by_key(|table| table.columns[0])
             .ok_or_else(|| format!("Tabelle '{wanted}' nicht gefunden. search nutzen."))?;
-        request["schema"] = json!(found.schema);
-        request["table"] = json!(found.table);
+        request["schema"] = json!(tables.schema(found));
+        request["table"] = json!(tables.name(found));
         let mut done = format!(
             "{} wird in l8db ({}) geöffnet",
-            qualified(&found.schema, &found.table),
+            tables.qualified(found),
             connection.name
         );
         if let Some(filter) = args.get("filter").and_then(Value::as_str) {

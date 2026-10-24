@@ -231,7 +231,12 @@ pub async fn call(
         return super::files::call(server, config, run, args).await;
     }
     if name == "workflow" {
-        return workflow(run, args).await;
+        let run_action = args["action"] == "run";
+        let result = workflow(run, args).await;
+        if run_action {
+            server.lock().await.columns.clear();
+        }
+        return result;
     }
     if name == "knowledge" {
         if run.plan_only {
@@ -459,6 +464,10 @@ fn text_result(result: Result<String, String>) -> Value {
         Err(text) => (text, true),
     };
     json!({"content": [{"type": "text", "text": text}], "isError": error})
+}
+
+pub fn published_tools() -> Vec<Value> {
+    crate::mcp::server::published(tool_definitions())
 }
 
 pub fn tool_definitions() -> Vec<Value> {

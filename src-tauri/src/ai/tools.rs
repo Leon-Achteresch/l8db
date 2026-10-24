@@ -23,7 +23,7 @@ pub(crate) struct Catalog {
 
 impl Catalog {
     pub fn new(config: &McpConfig, attachments: bool, external: &[Value]) -> Self {
-        let mut available: Vec<Value> = super::context::tool_definitions()
+        let mut available: Vec<Value> = super::context::published_tools()
             .into_iter()
             .filter(|tool| match tool["name"].as_str().unwrap_or("") {
                 "script" => false,

@@ -78,21 +78,21 @@ Variable: {"name","kind":"text|number|boolean|date|choice|secret","defaultValue"
 pub fn tool_definition() -> Value {
     json!({
         "name": "workflow",
-        "description": "Manage and run l8db automation workflows (tasks built from steps, schedules, variables and notifications). Changes appear live in the l8db app and the touched elements flash. Actions: list, get (task), connections (connections usable in steps), step_types (format reference, call before building steps), validate (task or spec), runs (task?, limit), run_detail (run), create (spec = workflow fields, name required), update (task + spec with changed top-level fields, arrays replace), add_step (task + spec = step, after = step to insert behind or \"start\", parent = loop step), update_step (task + step + spec with changed fields, action fields merge while the type stays), remove_step (task + step), duplicate, delete, enable, disable, run (task, vars, environment, fromStep, wait default true), cancel (run). Workflows are referenced by id or name, steps by id, name or 1-based number. Invalid changes are rejected with the problems to fix.",
+        "description": "l8db automation workflows; changes appear live. Call step_types before building steps. Edits take spec with changed fields (arrays replace); add_step takes after (step or \"start\") and parent (loop step); run takes vars, environment, fromStep, wait. Workflows by id or name, steps by id, name or number.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ACTIONS},
-                "task": {"type": "string", "description": "Workflow id or name"},
-                "step": {"type": "string", "description": "Step id, name or 1-based number"},
-                "after": {"type": "string", "description": "add_step: insert behind this step, \"start\" inserts first, default appends"},
-                "parent": {"type": "string", "description": "add_step: loop step that receives the step"},
+                "task": {"type": "string"},
+                "step": {"type": "string"},
+                "after": {"type": "string"},
+                "parent": {"type": "string"},
                 "spec": {"type": "object", "description": "Workflow or step fields, see step_types"},
-                "run": {"type": "string", "description": "Run id"},
+                "run": {"type": "string"},
                 "vars": {"type": "object", "additionalProperties": {"type": "string"}},
                 "environment": {"type": "string"},
-                "fromStep": {"type": "string", "description": "run: start at this top-level step"},
-                "wait": {"type": "boolean", "description": "run: wait for the result, default true"},
+                "fromStep": {"type": "string"},
+                "wait": {"type": "boolean"},
                 "limit": {"type": "integer", "minimum": 1}
             },
             "required": ["action"]

@@ -37,17 +37,17 @@ const BLOCKED_LEAD: &[&str] = &[
 pub fn tool_definition() -> Value {
     json!({
         "name": "sandbox",
-        "description": "Try changes on the real data without keeping them. Runs the statements in one transaction, measures probes before and after, re-checks every saved data rule and always rolls back; nothing is ever committed. Use it to test migrations, backfills and fixes before proposing them, and for what-if questions (e.g. raise prices 10 %, cancel a supplier's open orders, then measure margin and open orders). Needs write access; DDL only where DDL is allowed. CALL/EXEC, DO blocks, COPY, sequences and transaction control are rejected because they can act outside the transaction. Supported: PostgreSQL, SQLite, DuckDB, SQL Server.",
+        "description": "Try changes on real data and always roll back: runs the statements in one transaction, measures probes before and after and re-checks saved data rules; nothing is committed. Use it to test migrations, backfills and fixes and for what-if questions (raise prices 10 %, then measure margin). Needs write access; DDL only where allowed. CALL/EXEC, DO, COPY, sequences and transaction control are rejected. PostgreSQL, SQLite, DuckDB, SQL Server.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
-            "title": {"type": "string", "description": "Short scenario name in the user's language"},
-            "statements": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": MAX_STATEMENTS, "description": "Changes in order, one statement each"},
-            "probes": {"type": "array", "maxItems": MAX_PROBES, "description": "Read-only queries measured before and after, e.g. KPIs or affected rows. Aggregate to a few rows", "items": {"type": "object", "properties": {
+            "title": {"type": "string", "description": "Scenario name in the user's language"},
+            "statements": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": MAX_STATEMENTS, "description": "One statement each, in order"},
+            "probes": {"type": "array", "maxItems": MAX_PROBES, "description": "Read-only queries measured before and after; aggregate to a few rows", "items": {"type": "object", "properties": {
                 "name": {"type": "string"},
                 "sql": {"type": "string"}
             }, "required": ["name", "sql"]}},
-            "rules": {"type": "boolean", "description": "Re-check saved data rules before and after. Default true"}
+            "rules": {"type": "boolean", "description": "Re-check saved data rules; default true"}
         }, "required": ["connection", "statements"]}
     })
 }
@@ -239,8 +239,7 @@ impl Server {
         samples: bool,
     ) -> Result<Vec<RuleStatus>, String> {
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let adapter = adapter(connection, &self.pool)?;
         let mut out = Vec::new();
         for rule in rules {
@@ -313,8 +312,7 @@ impl Server {
             return Err(format!("Höchstens {MAX_PROBES} probes."));
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         for (position, sql) in statements.iter().enumerate() {
             if let Some(word) = transaction_control(sql) {
                 return Err(format!(

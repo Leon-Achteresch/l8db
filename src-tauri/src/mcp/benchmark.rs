@@ -18,12 +18,12 @@ const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
 pub fn tool_definition() -> Value {
     json!({
         "name": "benchmark",
-        "description": "Measure read-only statements. Runs sql, or every statement of a saved l8db file (.l8perf.json or .l8workload.json), repeats times with up to concurrency parallel executions. Returns JSON per statement: runs, errors, min/median/p95/max/avg ms and throughput per second. No row data is returned. Same read-only rules as query.",
+        "description": "Time read-only statements (sql or a saved .l8perf.json/.l8workload.json file) with repeats and concurrency; returns min/median/p95/max ms and throughput per statement, no rows.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": server::database_arg(),
             "sql": {"type": "string"},
-            "file": {"type": "string", "description": "Absolute path to a .l8perf.json or .l8workload.json file saved by l8db"},
+            "file": {"type": "string", "description": "Absolute path"},
             "repeats": {"type": "integer", "minimum": 1, "maximum": MAX_REPEATS},
             "concurrency": {"type": "integer", "minimum": 1, "maximum": MAX_CONCURRENCY}
         }, "required": ["connection"]}
@@ -323,8 +323,7 @@ impl Server {
             MAX_CONCURRENCY,
         );
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let adapter = server::adapter(connection, &self.pool)?;
         let mut reports = Vec::new();
         let mut skipped = Vec::new();

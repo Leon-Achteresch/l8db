@@ -1,9 +1,15 @@
 use regex::{Regex, RegexBuilder};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
 use super::config::Redaction;
 
+const COMPILED_SLOTS: usize = 8;
+static COMPILED: LazyLock<Mutex<Vec<(String, Redactor)>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+#[derive(Clone)]
 pub struct Redactor {
     columns: Vec<Regex>,
     values: Vec<Regex>,
@@ -27,6 +33,22 @@ fn invalid_pattern_error(pattern: &str) -> String {
 
 impl Redactor {
     pub fn new(redaction: &Redaction, extra_columns: &[String]) -> Self {
+        let Ok(key) = serde_json::to_string(&(redaction, extra_columns)) else {
+            return Self::compile(redaction, extra_columns);
+        };
+        let mut compiled = COMPILED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, redactor)) = compiled.iter().find(|(slot, _)| *slot == key) {
+            return redactor.clone();
+        }
+        let redactor = Self::compile(redaction, extra_columns);
+        if compiled.len() >= COMPILED_SLOTS {
+            compiled.remove(0);
+        }
+        compiled.push((key, redactor.clone()));
+        redactor
+    }
+
+    fn compile(redaction: &Redaction, extra_columns: &[String]) -> Self {
         let mut columns = Vec::new();
         let mut invalid = None;
         for pattern in redaction
@@ -63,6 +85,12 @@ impl Redactor {
             Some(pattern) => Err(invalid_pattern_error(pattern)),
             None => Ok(()),
         }
+    }
+
+    pub fn column_key(&self) -> String {
+        let mut key: Vec<&str> = self.columns.iter().map(Regex::as_str).collect();
+        key.extend(self.invalid.as_deref());
+        key.join("\u{1}")
     }
 
     pub fn column_is_sensitive(&self, name: &str) -> bool {
@@ -637,6 +665,7 @@ pub struct SchemaIndex {
     pub sensitive_columns: HashSet<String>,
     pub tables: HashMap<String, HashSet<String>>,
     pub allowed_schemas: HashSet<String>,
+    schemas: HashSet<String>,
     column_rules: Vec<Regex>,
     invalid_pattern: Option<String>,
 }
@@ -647,21 +676,41 @@ impl SchemaIndex {
         redactor: &Redactor,
         allowed_schemas: &[String],
     ) -> Self {
-        let mut sensitive_columns = HashSet::new();
-        let mut tables: HashMap<String, HashSet<String>> = HashMap::new();
-        for column in columns {
-            if redactor.column_is_sensitive(&column.name) {
-                sensitive_columns.insert(column.name.to_lowercase());
-            }
-            tables
-                .entry(column.table.to_lowercase())
+        Self::from_parts(
+            columns.iter().map(|column| column.name.as_str()),
+            columns
+                .iter()
+                .map(|column| (column.schema.as_str(), column.table.as_str())),
+            redactor,
+            allowed_schemas,
+        )
+    }
+
+    pub fn from_parts<'a>(
+        column_names: impl Iterator<Item = &'a str>,
+        tables: impl Iterator<Item = (&'a str, &'a str)>,
+        redactor: &Redactor,
+        allowed_schemas: &[String],
+    ) -> Self {
+        let sensitive_columns = column_names
+            .filter(|name| redactor.column_is_sensitive(name))
+            .map(str::to_lowercase)
+            .collect();
+        let mut by_table: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut schemas = HashSet::new();
+        for (schema, table) in tables {
+            let schema = schema.to_lowercase();
+            by_table
+                .entry(table.to_lowercase())
                 .or_default()
-                .insert(column.schema.to_lowercase());
+                .insert(schema.clone());
+            schemas.insert(schema);
         }
         Self {
             sensitive_columns,
-            tables,
+            tables: by_table,
             allowed_schemas: allowed_schemas.iter().map(|s| s.to_lowercase()).collect(),
+            schemas,
             column_rules: redactor.columns.clone(),
             invalid_pattern: redactor.invalid.clone(),
         }
@@ -882,7 +931,7 @@ fn check_references_in(
             if !named
                 && !index.allowed_schemas.is_empty()
                 && !index.allowed_schemas.contains(word)
-                && index.tables.values().any(|schemas| schemas.contains(word))
+                && index.schemas.contains(word)
             {
                 return Err(format!(
                     "Schema '{word}' ist für diese Verbindung nicht freigegeben."
@@ -1433,6 +1482,29 @@ mod tests {
         let ok = Redactor::new(&config.redaction, &["kunden_.*".into(), " ".into()]);
         assert!(ok.check_valid().is_ok());
         assert!(!ok.column_is_sensitive("id"));
+    }
+
+    #[test]
+    fn compiled_redactors_are_reused_bounded_and_keyed_by_rules() {
+        let config = McpConfig::default();
+        for n in 0..COMPILED_SLOTS * 2 {
+            let r = Redactor::new(&config.redaction, &[format!("extra_{n}")]);
+            assert!(r.column_is_sensitive(&format!("extra_{n}")));
+            assert!(!r.column_is_sensitive(&format!("other_{n}")));
+        }
+        assert!(COMPILED.lock().unwrap().len() <= COMPILED_SLOTS);
+        let split = Redactor::new(&config.redaction, &["a".into(), "b".into()]);
+        let joined = Redactor::new(&config.redaction, &["a\u{0}b".into()]);
+        assert!(split.column_is_sensitive("b"));
+        assert!(!joined.column_is_sensitive("b"));
+        let mut off = config.clone();
+        off.redaction
+            .columns
+            .iter_mut()
+            .for_each(|rule| rule.enabled = false);
+        assert!(Redactor::new(&config.redaction, &[]).column_is_sensitive("password"));
+        assert!(!Redactor::new(&off.redaction, &[]).column_is_sensitive("password"));
+        assert!(Redactor::new(&config.redaction, &[]).column_is_sensitive("password"));
     }
 
     #[test]

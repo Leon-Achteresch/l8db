@@ -37,7 +37,7 @@ Ziele:
 
 | Aufgabe | Ziel | Schritte |
 |---|---|---|
-| shop.revenue_per_customer | Shop | search `customer`, search `order`, relations customers → order_items, query Umsatz pro Kunde |
+| shop.revenue_per_customer | Shop | search `customer`, search `order`, describe order_items, relations customers → order_items, query Umsatz pro Kunde |
 | shop.overview | Shop | search ohne Begriff, describe customers/orders/order_items |
 | huge.overview | Huge | search ohne Begriff |
 | huge.tenant_id_tables | Huge | search `tenant_id` |
@@ -84,8 +84,72 @@ Aufgaben:
 | huge.wide_table_column | 1 | 43 | 12.180 | 12.223 | 3.056 | ja, aber alle 450 Spalten | 6.230 |
 | huge.revenue_per_customer | 2 | 123 | 21.837 | 21.960 | 5.490 | nein: search zeigt alphabetisch andere Tabellen, `invoices` fehlt | 18.263 |
 
+`shop.revenue_per_customer` lief in der Baseline mit 4 Aufrufen (1.392 B), weil `search` damals alle Spalten zeigte. Seit Phase 1 zeigt `search` nur passende Spalten, deshalb braucht die Aufgabe `describe order_items` für `unit_price`. Die Antwort von `describe` hat sich nicht geändert (46 + 219 B), die vergleichbare Baseline mit 5 Aufrufen ist also 1.392 + 265 = 1.657 B. Diese Zahl steht in `BASELINE`.
+
 Beobachtungen:
 
 - `dashboard` ist mehr als die Hälfte von `tools/list`, weil das Chart-Schema in `charts.items` und `spec` doppelt steht.
 - Ein Suchaufruf auf dem großen Katalog kostet bis zu 20 KB und läuft im Debug-Build 6 bis 9 s. Pro Aufruf wird die Spaltenliste zweimal vollständig kopiert.
 - Leerer Suchbegriff und häufige Begriffe zeigen die ersten 50 Treffer alphabetisch. Bei 50.000 Tabellen sieht das Modell so weder Schemas noch die wichtigen Tabellen.
+
+## Phase 1
+
+Änderungen: kompakte veröffentlichte Tool-Definitionen (verschachtelte Dashboard-Schemas nur über `action=chart_types`, das volle Schema bleibt intern für `normalize_args`), Tool-Annotationen nach MCP 2025-06-18, Workflow-Instructions, Katalog-Cache (`mcp/catalog.rs`) mit geteilten Spalten, Namenswörterbüchern und gecachtem `SchemaIndex`, neue Suche (mehrere Wörter, Wortgrenzen, Ranking, nur passende Spalten, Übersicht nach Schemas mit zusammengefassten gleichen Schemas), gecachte kompilierte Maskierungsregeln.
+
+Budgets: `BUDGET` in `token_benchmark.rs`. Der Test schlägt fehl, wenn eine Messung darüber liegt oder einer Aufgabe Information fehlt. Budgets nicht lockern.
+
+Oberfläche:
+
+| Messung | Baseline B | Phase 1 B | ≈Tokens (Bytes/4) | Budget B |
+|---|---:|---:|---:|---:|
+| tools/list (14 Tools) | 28.737 | 10.207 | 2.552 | 10.240 |
+| instructions | 1.324 | 871 | 218 | 950 |
+| BYOK-Startkatalog | 12.201 | 8.696 | 2.174 | 9.000 |
+| davon dashboard | 15.658 | 1.683 | 421 | |
+| davon workflow | 2.030 | 1.152 | 288 | |
+| davon drilldown | 1.677 | 945 | 237 | |
+| davon script | 1.506 | 901 | 226 | |
+| davon open | 1.269 | 706 | 177 | |
+
+Aufgaben:
+
+| Aufgabe | Aufrufe | Baseline B | Phase 1 B | ≈Tokens | Budget B | Info vollständig |
+|---|---:|---:|---:|---:|---:|---|
+| shop.revenue_per_customer | 5 | 1.657 | 1.360 | 340 | 1.450 | ja |
+| shop.overview | 2 | 939 | 947 | 237 | 1.000 | ja |
+| huge.overview | 1 | 2.073 | 807 | 202 | 900 | ja (vorher nein) |
+| huge.tenant_id_tables | 1 | 20.030 | 2.020 | 505 | 2.200 | ja |
+| huge.wide_table_column | 1 | 12.223 | 123 | 31 | 160 | ja |
+| huge.revenue_per_customer | 2 | 21.960 | 4.170 | 1.043 | 4.400 | ja (vorher nein) |
+
+## Performance (Phase 1)
+
+Test: `huge_catalog_search_and_query_checks_stay_fast_shared_and_cached` in `token_benchmark.rs`, Aufruf aus `src-tauri/`:
+
+```sh
+cargo test --lib huge_catalog_search_and_query -- --nocapture
+```
+
+Workload: der `Huge`-Katalog oben (50.007 Tabellen, 1.977.120 Spalten), 1 kalte Suche, 1 kalter `SchemaIndex`, 21 warme Suchen (10 Begriffe ×2 plus leerer Begriff), 20 Query-Vorprüfungen (`Redactor::new` + gecachter `SchemaIndex` + `check_read_sql`) über 5 Statements mit Mandanten-, Archiv- und CTE-Bezug. Die Verbindung zeigt auf `127.0.0.1:1`, jeder Metadatenzugriff auf die Datenbank würde also fehlschlagen.
+
+Geprüft wird:
+
+- 0 Metadaten-Abfragen innerhalb der TTL: Katalog und Spaltenliste sind nach allen Aufrufen per `Arc::ptr_eq` dieselben Objekte, es gibt weder Neuladen noch Kopie.
+- Speicher: abgeleitete Indizes (Wörterbücher, Tabellenliste, Familien, `SchemaIndex`) unter 1/8 der rohen Spaltenliste. Höchstens 4 `SchemaIndex`-Varianten pro Katalog und höchstens 8 kompilierte Maskierungsregelsätze.
+- Zeiten mit Budgets: kalte Suche < 15 s, kalter Index < 5 s, Suche Median < 500 ms und p95 < 1 s, Vorprüfung Median < 10 ms und p95 < 25 ms.
+
+Messung auf der Maschine oben (Debug-Build, drei Läufe, parallel lief ein anderer Agent; Lauf 3 nach dem Review-Fix):
+
+| Messung | Lauf 1 | Lauf 2 | Lauf 3 |
+|---|---:|---:|---:|
+| rohe Spaltenliste | ≈275 MB | ≈275 MB | ≈275 MB |
+| abgeleitete Indizes | ≈18 MB | ≈18 MB | ≈18 MB |
+| kalte Suche (baut Wörterbücher) | 0,99 s | 1,92 s | 3,15 s |
+| kalter `SchemaIndex` | 82 ms | 179 ms | 260 ms |
+| Suche Median / p95 | 45 / 93 ms | 86 / 176 ms | 123 / 249 ms |
+| Vorprüfung Median / p95 | 0,18 / 0,22 ms | 0,34 / 0,43 ms | 0,27 / 0,47 ms |
+| davon `Redactor::new` Median | 0,09 ms | 0,18 ms | 0,13 ms |
+
+Zum Vergleich vor Phase 1: eine Suche auf diesem Katalog 6 bis 18 s (Baseline-Tabelle, ms-Spalte), weil jede Suche die Spaltenliste zweimal kopierte. Vor dem Cache der Maskierungsregeln kostete jede Vorprüfung 136 ms Median, fast nur Regex-Kompilierung. Nicht gemessen: Release-Build, Linux/Windows, echte PostgreSQL-Kataloge dieser Größe, gedrosselte CPU.
+
+Cache-Verhalten: Für `search`, `describe`, `relations`, `open` und Dashboard-Joins gilt ein Katalog 10 min. Sicherheitsprüfungen (`check_read_sql`/`check_write_sql` in query, execute, script, benchmark, sandbox, drilldown, dashboard, explain) laden ihn wie vor Phase 1 neu, sobald er älter als 60 s ist. Neue Tabellen, Spalten und Schemas außerhalb des MCP sind für die Prüfungen also nicht länger unbekannt als vorher. Jedes `execute`, jeder Workflow-Lauf und jeder CSV-Import im KI-Arbeitsbereich verwirft den Katalog der Verbindung. `search` mit `refresh=true` lädt neu.
