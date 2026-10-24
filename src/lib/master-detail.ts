@@ -4,9 +4,11 @@ import { persist } from "zustand/middleware";
 import { scanBindParams } from "@/lib/bind-params";
 import { createChangedOnlyJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
+import type { DatabaseKind } from "@/lib/db";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { isReadOnlyStatement } from "@/lib/perf-test";
 import { usePaneConnectionId } from "@/lib/split-view";
+import { quoteString } from "@/lib/sql-filter";
 
 export type MasterCell = {
   column: string;
@@ -89,16 +91,23 @@ export function masterDetailScriptError(sql: string): string | null {
   }
 }
 
-export function bindMasterDetail(sql: string, value: unknown, row?: Record<string, unknown>) {
+export function bindMasterDetail(
+  sql: string,
+  value: unknown,
+  row?: Record<string, unknown>,
+  literal?: (value: unknown) => string,
+) {
   const error = masterDetailScriptError(sql);
   if (error) throw new Error(error);
   const indexes = new Map<string | undefined, number>();
   const params: (string | null)[] = [];
+  const values: unknown[] = [];
   const occurrences = masterParams(sql).map((param) => {
     if (!indexes.has(param.column)) {
       if (param.column !== undefined && (!row || !Object.hasOwn(row, param.column)))
         throw new Error(`Die Spalte „${param.column}“ fehlt in der ausgewählten Master-Zeile.`);
       const entry = param.column === undefined ? value : row?.[param.column];
+      values.push(entry);
       params.push(
         entry == null ? null : typeof entry === "object" ? JSON.stringify(entry) : String(entry),
       );
@@ -108,9 +117,48 @@ export function bindMasterDetail(sql: string, value: unknown, row?: Record<strin
   });
   let boundSql = sql;
   for (const param of occurrences.reverse()) {
-    boundSql = `${boundSql.slice(0, param.start)}$${param.index}${boundSql.slice(param.end)}`;
+    const placeholder = literal ? literal(values[(param.index ?? 1) - 1]) : `$${param.index}`;
+    boundSql = `${boundSql.slice(0, param.start)}${placeholder}${boundSql.slice(param.end)}`;
   }
   return { sql: boundSql, params };
+}
+
+export function masterDetailLiteral(value: unknown, kind: DatabaseKind): string {
+  if (value == null) return "NULL";
+  return quoteString(typeof value === "object" ? JSON.stringify(value) : String(value), kind);
+}
+
+const IDENT = String.raw`(?:"((?:[^"]|"")+)"|\x60([^\x60]+)\x60|\[([^\]]+)\]|([\p{L}_][\p{L}\p{N}_$#]*))`;
+const SINGLE_TABLE = new RegExp(
+  String.raw`^\s*select\s+(?:top\s*\(?\s*(\d+)\s*\)?\s+)?\*\s+from\s+${IDENT}\s*\.\s*${IDENT}\s+where\s+([\s\S]+?)(?:\s+limit\s+(\d+)|\s+fetch\s+first\s+(\d+)\s+rows?\s+only)?\s*;?\s*$`,
+  "iu",
+);
+
+export function masterDetailTable(sql: string, kind: DatabaseKind) {
+  const match = sql.match(SINGLE_TABLE);
+  if (!match) return null;
+  const where = match[10];
+  const unquoted = where.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"/g, "''");
+  if (
+    /[;]|--|\/\*|\b(?:limit|offset|fetch|for|order|group|having|union|intersect|except|window)\b/i.test(
+      unquoted,
+    ) ||
+    /(?:''|[\p{L}_\]\x60])\s*\.\s*(?:''|[\p{L}_[\x60])/u.test(unquoted)
+  )
+    return null;
+  const name = (offset: number) => {
+    const bare = match[offset + 3];
+    if (bare === undefined)
+      return (match[offset] ?? match[offset + 1] ?? match[offset + 2]).replace(/""/g, '"');
+    return kind === "oracle" ? bare.toUpperCase() : kind === "postgres" ? bare.toLowerCase() : bare;
+  };
+  const limit = match[1] ?? match[11] ?? match[12];
+  return {
+    schema: name(2),
+    table: name(6),
+    where,
+    limit: limit === undefined ? undefined : Number(limit),
+  };
 }
 
 export const useMasterDetail = create<MasterDetailState>()(

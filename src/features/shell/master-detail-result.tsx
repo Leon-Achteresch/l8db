@@ -1,7 +1,12 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCwIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
+import type { TableData } from "@/lib/db";
 import { useMasterDetailQuery } from "@/lib/hooks/use-master-detail-query";
+import { useActiveMasks } from "@/lib/masking-display";
+import { useDeleteRowMutation, useDetailedColumnsQuery, useUpdateRowMutation } from "@/lib/queries";
 
 export function MasterDetailResult({
   source,
@@ -14,7 +19,41 @@ export function MasterDetailResult({
   column?: string;
   preview?: boolean;
 }) {
-  const { query, selection, supported, waiting, error } = useMasterDetailQuery(source, sql, column);
+  const { query, queryKey, selection, supported, waiting, error, table } = useMasterDetailQuery(
+    source,
+    sql,
+    column,
+    !preview,
+  );
+  const queryClient = useQueryClient();
+  const { active: masks } = useActiveMasks(query.data?.columns ?? []);
+  const editable = table && masks.length === 0;
+  const updateRow = useUpdateRowMutation(table?.schema ?? "", table?.table ?? "");
+  const deleteRow = useDeleteRowMutation(table?.schema ?? "", table?.table ?? "");
+  const { data: columnDetails } = useDetailedColumnsQuery(table?.schema ?? "", table?.table ?? "");
+  const patchRows = (change: (rows: TableData["rows"]) => TableData["rows"]) =>
+    queryClient.setQueriesData<TableData>({ queryKey }, (old) =>
+      old ? { ...old, rows: change(old.rows) } : old,
+    );
+  const saveRow = async (
+    ctid: string,
+    updates: Record<string, string | null>,
+    oldValues: Record<string, unknown>,
+  ) => {
+    const { newCtid } = await updateRow.mutateAsync({ ctid, updates, oldValues });
+    patchRows((rows) =>
+      rows.map((row) => (row.__ctid__ === ctid ? { ...row, ...updates, __ctid__: newCtid } : row)),
+    );
+  };
+  const removeRow = async (ctid: string, oldValues: Record<string, unknown>) => {
+    try {
+      await deleteRow.mutateAsync({ ctid, oldValues });
+      patchRows((rows) => rows.filter((row) => row.__ctid__ !== ctid));
+      toast.success("Zeile gelöscht.");
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    }
+  };
   if (!supported)
     return (
       <p role="alert" className="p-4 text-sm text-muted-foreground">
@@ -76,6 +115,9 @@ export function MasterDetailResult({
         onSortingChange={() => {}}
         isFetching={query.isFetching}
         autoSelectFirstCell={!preview}
+        onSaveRow={editable ? saveRow : undefined}
+        onDeleteRow={editable ? removeRow : undefined}
+        columnDetails={editable ? columnDetails : undefined}
       />
     </div>
   );
