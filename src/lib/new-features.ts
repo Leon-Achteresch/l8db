@@ -112,6 +112,7 @@ export const NEW_FEATURES = {
   "settings.about.usage-metrics": "0.7.0",
   "settings.about.open-source-licenses": "0.8.0",
   "settings.about.update-channel": "0.14.0",
+  "settings.about.blog-suggestions": NEXT_FEATURE_VERSION,
   "connections.baas": "0.7.0",
   "connections.welcome": "0.14.0",
   "connections.import.external": "0.14.0",

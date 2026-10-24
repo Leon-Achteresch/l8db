@@ -33,6 +33,8 @@ export function UpdateSection() {
   const setUpdateChannel = useSettingsStore((s) => s.setUpdateChannel);
   const autoFeatureVideos = useSettingsStore((s) => s.autoFeatureVideos);
   const setAutoFeatureVideos = useSettingsStore((s) => s.setAutoFeatureVideos);
+  const blogSuggestions = useSettingsStore((s) => s.blogSuggestions);
+  const setBlogSuggestions = useSettingsStore((s) => s.setBlogSuggestions);
   const isSkipped = Boolean(pending && skippedUpdateVersion === pending.version);
 
   useEffect(() => {
@@ -135,6 +137,13 @@ export function UpdateSection() {
           checked={autoFeatureVideos}
           onCheckedChange={setAutoFeatureVideos}
           aria-label="Neue Features automatisch zeigen"
+        />
+      </SettingsRow>
+      <SettingsRow settingId="blog-suggestions" featureId="settings.about.blog-suggestions">
+        <Switch
+          checked={blogSuggestions}
+          onCheckedChange={setBlogSuggestions}
+          aria-label="Blog-Vorschläge zeigen"
         />
       </SettingsRow>
       <SettingsRow settingId="release-notes">
