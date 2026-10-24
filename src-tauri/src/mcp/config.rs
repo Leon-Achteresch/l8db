@@ -280,6 +280,7 @@ pub fn save(config: &McpConfig) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| format!("mcp.json schreiben: {e}"))?;
     restrict(&path);
+    super::persist::prune(config);
     Ok(())
 }
 

@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 const CORE: &[&str] = &[
     "connections",
+    "overview",
     "search",
     "describe",
     "relations",
@@ -63,7 +64,7 @@ impl Catalog {
         loaded.push(super::harness::plan_definition());
         loaded.push(json!({
             "name": "discover_tools",
-            "description": "Find and load tools for data rules (discover, verify and save invariants), notebooks, dashboards, workflows, benchmarks, health checks, opening things in l8db, saving knowledge, importing attachments and external MCPs. Search with query or request exact names. Empty arguments list available names and brief descriptions. Loaded tools become callable in the next round; do not call them in this round.",
+            "description": "Load more tools: data rules, notebooks, dashboards, workflows, benchmarks, health checks, open in l8db, knowledge, attachment import, external MCPs. Search by query or exact names; empty arguments list all. Loaded tools are callable from the next round on.",
             "inputSchema": {"type": "object", "properties": {
                 "query": {"type": "string", "description": "Tool name or words describing the task"},
                 "names": {"type": "array", "items": {"type": "string"}, "maxItems": 8, "description": "Exact tool names to load"}

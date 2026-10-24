@@ -1,17 +1,298 @@
+use super::insight::Edge;
 use super::redact::{Redactor, SchemaIndex};
 use crate::db::ColumnInfo;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const INDEX_SLOTS: usize = 4;
+const MIN_TTL: Duration = Duration::from_secs(600);
+const MAX_TTL: Duration = Duration::from_secs(6 * 3600);
+const SOURCE_SLOTS: usize = 32;
+const SOURCE_BYTES: usize = 8 << 20;
 
 pub(crate) struct Catalog {
     pub(crate) at: Instant,
+    pub(crate) taken: i64,
+    pub(crate) ms: u64,
+    pub(crate) live: bool,
+    pub(crate) key: Option<String>,
     pub(crate) columns: Arc<Vec<ColumnInfo>>,
     tables: OnceLock<Tables>,
     indexes: Mutex<Vec<(String, Arc<SchemaIndex>)>>,
+    extra: Mutex<Extra>,
+}
+
+#[derive(Default)]
+struct Extra {
+    objects: Option<Arc<Objects>>,
+    keys: Option<Arc<Keys>>,
+    sources: VecDeque<(String, Arc<str>)>,
+    source_bytes: usize,
+    complete: bool,
+    file: Option<SystemTime>,
+    dirty: bool,
+    listed: Option<Option<Arc<Vec<String>>>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub(crate) enum Kind {
+    #[serde(rename = "T")]
+    Table,
+    #[serde(rename = "V")]
+    View,
+    #[serde(rename = "M")]
+    Matview,
+    #[serde(rename = "FT")]
+    Foreign,
+    #[serde(rename = "PT")]
+    Partitioned,
+    #[serde(rename = "F")]
+    Function,
+    #[serde(rename = "P")]
+    Procedure,
+    #[serde(rename = "Trg")]
+    Trigger,
+}
+
+impl Kind {
+    pub fn code(self) -> &'static str {
+        match self {
+            Kind::Table | Kind::Foreign | Kind::Partitioned => "T",
+            Kind::View => "V",
+            Kind::Matview => "M",
+            Kind::Function => "F",
+            Kind::Procedure => "P",
+            Kind::Trigger => "Trg",
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Kind::Table => "table",
+            Kind::View => "view",
+            Kind::Matview => "materialized view",
+            Kind::Foreign => "foreign table",
+            Kind::Partitioned => "partitioned table",
+            Kind::Function => "function",
+            Kind::Procedure => "procedure",
+            Kind::Trigger => "trigger",
+        }
+    }
+
+    pub fn relation(self) -> bool {
+        !matches!(self, Kind::Function | Kind::Procedure | Kind::Trigger)
+    }
+
+    pub fn filter(text: &str) -> Result<Vec<Kind>, String> {
+        let mut kinds = Vec::new();
+        for word in text
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|word| !word.is_empty())
+        {
+            kinds.extend_from_slice(match word.to_ascii_lowercase().as_str() {
+                "t" | "table" | "tables" => &[Kind::Table, Kind::Foreign, Kind::Partitioned][..],
+                "v" | "view" | "views" => &[Kind::View],
+                "m" | "matview" | "matviews" | "materialized" => &[Kind::Matview],
+                "f" | "function" | "functions" => &[Kind::Function],
+                "p" | "procedure" | "procedures" => &[Kind::Procedure],
+                "routine" | "routines" => &[Kind::Function, Kind::Procedure],
+                "trg" | "trigger" | "triggers" => &[Kind::Trigger],
+                other => {
+                    return Err(format!(
+                        "kind '{other}' unbekannt. Erlaubt: T, V, M, F, P, Trg (kommagetrennt)."
+                    ))
+                }
+            });
+        }
+        Ok(kinds)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct Relation {
+    #[serde(rename = "s")]
+    pub schema: String,
+    #[serde(rename = "n")]
+    pub name: String,
+    #[serde(rename = "k")]
+    pub kind: Kind,
+    #[serde(rename = "r", default, skip_serializing_if = "Option::is_none")]
+    pub rows: Option<i64>,
+    #[serde(rename = "b", default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<i64>,
+    #[serde(rename = "c", default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct Routine {
+    #[serde(rename = "s")]
+    pub schema: String,
+    #[serde(rename = "n")]
+    pub name: String,
+    #[serde(rename = "k")]
+    pub kind: Kind,
+    #[serde(rename = "a", default)]
+    pub args: String,
+    #[serde(rename = "r", default)]
+    pub returns: String,
+    #[serde(rename = "l", default)]
+    pub language: String,
+    #[serde(rename = "i", default)]
+    pub id: String,
+    #[serde(rename = "c", default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct Trigger {
+    #[serde(rename = "s")]
+    pub schema: String,
+    #[serde(rename = "n")]
+    pub name: String,
+    #[serde(rename = "t")]
+    pub table: String,
+    #[serde(rename = "f", default)]
+    pub routine: String,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+pub(crate) struct Objects {
+    pub taken: i64,
+    pub ms: u64,
+    #[serde(default)]
+    pub relations: Vec<Relation>,
+    #[serde(default)]
+    pub routines: Vec<Routine>,
+    #[serde(default)]
+    pub triggers: Vec<Trigger>,
+    #[serde(skip)]
+    pub(crate) names: OnceLock<Vec<Name>>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Keys {
+    pub taken: i64,
+    pub ms: u64,
+    pub edges: Vec<Edge>,
+}
+
+pub(crate) fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+pub(crate) fn ttl(ms: u64) -> Duration {
+    Duration::from_millis(ms)
+        .saturating_mul(600)
+        .clamp(MIN_TTL, MAX_TTL)
+}
+
+pub(crate) fn fresh(taken: i64, ms: u64) -> bool {
+    ((now() - taken).max(0) as u64) < ttl(ms).as_secs()
+}
+
+pub(crate) fn stamp(taken: i64) -> String {
+    use chrono::TimeZone;
+    let Some(at) = chrono::Local.timestamp_opt(taken, 0).single() else {
+        return String::new();
+    };
+    if at.date_naive() == chrono::Local::now().date_naive() {
+        at.format("%H:%M").to_string()
+    } else {
+        at.format("%Y-%m-%d %H:%M").to_string()
+    }
+}
+
+impl Objects {
+    pub fn sort(&mut self) {
+        self.relations
+            .sort_by(|a, b| (&a.schema, &a.name).cmp(&(&b.schema, &b.name)));
+        self.relations
+            .dedup_by(|a, b| a.schema == b.schema && a.name == b.name);
+        self.routines
+            .sort_by(|a, b| (&a.schema, &a.name, &a.args).cmp(&(&b.schema, &b.name, &b.args)));
+        self.triggers
+            .sort_by(|a, b| (&a.schema, &a.table, &a.name).cmp(&(&b.schema, &b.table, &b.name)));
+    }
+
+    pub fn relation(&self, schema: &str, name: &str) -> Option<&Relation> {
+        self.relations
+            .binary_search_by(|entry| {
+                (entry.schema.as_str(), entry.name.as_str()).cmp(&(schema, name))
+            })
+            .ok()
+            .map(|index| &self.relations[index])
+    }
+
+    pub fn fresh(&self) -> bool {
+        fresh(self.taken, self.ms)
+    }
+
+    pub fn names(&self) -> &[Name] {
+        self.names.get_or_init(|| {
+            self.relations
+                .iter()
+                .map(|entry| Name::new(&entry.name))
+                .chain(self.routines.iter().map(|entry| Name::new(&entry.name)))
+                .chain(self.triggers.iter().map(|entry| Name::new(&entry.name)))
+                .collect()
+        })
+    }
+
+    #[cfg(test)]
+    pub fn retained_bytes(&self) -> usize {
+        use std::mem::size_of;
+        self.relations
+            .iter()
+            .map(|entry| {
+                size_of::<Relation>()
+                    + entry.schema.capacity()
+                    + entry.name.capacity()
+                    + entry.comment.as_ref().map_or(0, String::capacity)
+            })
+            .sum::<usize>()
+            + self
+                .routines
+                .iter()
+                .map(|entry| {
+                    size_of::<Routine>()
+                        + entry.schema.capacity()
+                        + entry.name.capacity()
+                        + entry.args.capacity()
+                        + entry.returns.capacity()
+                        + entry.language.capacity()
+                        + entry.id.capacity()
+                })
+                .sum::<usize>()
+            + self
+                .triggers
+                .iter()
+                .map(|entry| {
+                    size_of::<Trigger>()
+                        + entry.schema.capacity()
+                        + entry.name.capacity()
+                        + entry.table.capacity()
+                        + entry.routine.capacity()
+                })
+                .sum::<usize>()
+            + self.names.get().map_or(0, |names| {
+                names
+                    .iter()
+                    .map(|name| {
+                        size_of::<Name>()
+                            + name.original.capacity()
+                            + name.lower.capacity()
+                            + name.words.capacity()
+                    })
+                    .sum()
+            })
+    }
 }
 
 pub(crate) struct Name {
@@ -190,16 +471,165 @@ impl Tables {
     pub fn visible(&self, table: &Table, allowed: &[String]) -> bool {
         allowed.is_empty() || allowed.iter().any(|schema| *schema == self.schema(table))
     }
+
+    pub fn find(&self, schema: &str, name: &str) -> Option<usize> {
+        self.list
+            .binary_search_by(|table| (self.schema(table), self.name(table)).cmp(&(schema, name)))
+            .ok()
+    }
+}
+
+pub(crate) fn allowed(schema: &str, allowed: &[String]) -> bool {
+    allowed.is_empty() || allowed.iter().any(|entry| entry == schema)
 }
 
 impl Catalog {
+    #[cfg(test)]
     pub(crate) fn new(columns: Arc<Vec<ColumnInfo>>) -> Self {
+        Self::loaded(columns, 0)
+    }
+
+    pub(crate) fn loaded(columns: Arc<Vec<ColumnInfo>>, ms: u64) -> Self {
         Self {
             at: Instant::now(),
+            taken: now(),
+            ms,
+            live: true,
+            key: None,
             columns,
             tables: OnceLock::new(),
             indexes: Mutex::new(Vec::new()),
+            extra: Mutex::new(Extra::default()),
         }
+    }
+
+    pub(crate) fn restored(columns: Vec<ColumnInfo>, taken: i64, ms: u64, key: String) -> Self {
+        let age = Duration::from_secs((now() - taken).max(0) as u64);
+        Self {
+            at: Instant::now().checked_sub(age).unwrap_or_else(Instant::now),
+            taken,
+            live: false,
+            key: Some(key),
+            ..Self::loaded(Arc::new(columns), ms)
+        }
+    }
+
+    pub(crate) fn fresh(&self) -> bool {
+        self.at.elapsed() < ttl(self.ms)
+    }
+
+    fn extra(&self) -> std::sync::MutexGuard<'_, Extra> {
+        self.extra.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn stamp(&self) -> String {
+        let objects = self.objects().map_or(self.taken, |objects| objects.taken);
+        stamp(self.taken.min(objects))
+    }
+
+    pub(crate) fn objects(&self) -> Option<Arc<Objects>> {
+        self.extra().objects.clone()
+    }
+
+    pub(crate) fn set_objects(&self, objects: Objects, dirty: bool) -> Arc<Objects> {
+        let objects = Arc::new(objects);
+        let mut extra = self.extra();
+        extra.objects = Some(objects.clone());
+        extra.dirty |= dirty;
+        objects
+    }
+
+    pub(crate) fn keys(&self) -> Option<Arc<Keys>> {
+        self.extra().keys.clone()
+    }
+
+    pub(crate) fn set_keys(&self, keys: Keys) -> Arc<Keys> {
+        let keys = Arc::new(keys);
+        let mut extra = self.extra();
+        extra.keys = Some(keys.clone());
+        extra.dirty = true;
+        keys
+    }
+
+    pub(crate) fn source(&self, key: &str) -> Option<Arc<str>> {
+        let mut extra = self.extra();
+        let position = extra.sources.iter().position(|(slot, _)| slot == key)?;
+        let entry = extra.sources.remove(position)?;
+        extra.sources.push_back(entry.clone());
+        Some(entry.1)
+    }
+
+    pub(crate) fn remember_source(&self, key: &str, text: Arc<str>) {
+        let mut extra = self.extra();
+        if let Some(position) = extra.sources.iter().position(|(slot, _)| slot == key) {
+            if let Some((_, old)) = extra.sources.remove(position) {
+                extra.source_bytes -= old.len();
+            }
+        }
+        extra.source_bytes += text.len();
+        extra.sources.push_back((key.to_string(), text));
+        while extra.sources.len() > 1
+            && (extra.sources.len() > SOURCE_SLOTS || extra.source_bytes > SOURCE_BYTES)
+        {
+            if let Some((_, old)) = extra.sources.pop_front() {
+                extra.source_bytes -= old.len();
+            }
+        }
+    }
+
+    pub(crate) fn sources(&self) -> (Vec<(String, Arc<str>)>, bool) {
+        let extra = self.extra();
+        (extra.sources.iter().cloned().collect(), extra.complete)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn preload_sources(&self, sources: Vec<(String, Arc<str>)>) {
+        let mut extra = self.extra();
+        extra.source_bytes = sources.iter().map(|(_, text)| text.len()).sum();
+        extra.sources = sources.into();
+        extra.complete = true;
+    }
+
+    pub(crate) fn file(&self) -> Option<SystemTime> {
+        self.extra().file
+    }
+
+    pub(crate) fn saved(&self, file: Option<SystemTime>) {
+        let mut extra = self.extra();
+        extra.file = file;
+        extra.dirty = false;
+    }
+
+    pub(crate) fn dirty(&self) -> bool {
+        self.extra().dirty
+    }
+
+    pub(crate) fn mark_dirty(&self) {
+        self.extra().dirty = true;
+    }
+
+    pub(crate) fn adopt(&self, old: &Catalog) {
+        if self.key != old.key {
+            return;
+        }
+        let previous = old.extra();
+        let mut extra = self.extra();
+        extra.objects = previous.objects.clone();
+        extra.keys = previous.keys.clone();
+        extra.file = previous.file;
+    }
+
+    pub(crate) fn keyed(mut self, key: String) -> Self {
+        self.key = Some(key);
+        self
+    }
+
+    pub(crate) fn listed(&self) -> Option<Option<Arc<Vec<String>>>> {
+        self.extra().listed.clone()
+    }
+
+    pub(crate) fn set_listed(&self, listed: Option<Vec<String>>) {
+        self.extra().listed = Some(listed.map(Arc::new));
     }
 
     pub(crate) fn tables(&self) -> &Tables {
@@ -275,6 +705,20 @@ mod tests {
             name: name.into(),
             data_type: "int".into(),
         }
+    }
+
+    #[test]
+    fn reloads_adopt_objects_only_under_the_same_key_and_drop_sources() {
+        let columns = Arc::new(vec![column("public", "orders", "id")]);
+        let old = Catalog::loaded(columns.clone(), 1).keyed("a".into());
+        old.set_objects(Objects::default(), true);
+        old.remember_source("V\u{1f}public\u{1f}v", Arc::from("SELECT 1"));
+        let same = Catalog::loaded(columns.clone(), 1).keyed("a".into());
+        same.adopt(&old);
+        assert!(same.objects().is_some() && same.source("V\u{1f}public\u{1f}v").is_none());
+        let changed = Catalog::loaded(columns, 1).keyed("b".into());
+        changed.adopt(&old);
+        assert!(changed.objects().is_none());
     }
 
     #[test]
