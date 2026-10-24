@@ -20,6 +20,7 @@ for (const kind of ["postgres", "oracle"] as const) {
             errors.push(error.message);
         });
         const calls: { sql: string; params: (string | null)[] }[] = [];
+        const fetches: string[] = [];
         const schema = kind === "oracle" ? "L8DB_MD_LAB" : "public";
         try {
           let health: { providers: unknown[] } | undefined;
@@ -38,8 +39,11 @@ for (const kind of ["postgres", "oracle"] as const) {
               if (command === "list_providers") return health.providers;
               if (command === "execute_query_with_params")
                 calls.push({ sql: String(args.sql), params: args.params as (string | null)[] });
+              if (command === "fetch_table_rows") fetches.push(String(args.filter ?? ""));
               const delayMs =
-                command === "execute_query_with_params" && (args.params as string[])?.[0] === "102"
+                (command === "execute_query_with_params" &&
+                  (args.params as string[])?.[0] === "102") ||
+                (command === "fetch_table_rows" && /= '102'$/.test(String(args.filter)))
                   ? 400
                   : 0;
               const data = await fetch(bridge!, {
@@ -157,7 +161,7 @@ for (const kind of ["postgres", "oracle"] as const) {
           await detail.getByText("O'Reilly", { exact: true }).waitFor();
           await master.locator('tbody tr[data-index="2"] td[data-col="LABEL"]').click();
           await detail.getByText("Keine passenden Details für diese Master-Zeile.").waitFor();
-          expect(calls.at(-1)?.params).toEqual([null]);
+          expect(fetches.at(-1)).toMatch(/= NULL$/);
           await master.locator('tbody tr[data-index="1"] td[data-col="REF_TENANT"]').click();
           await link.click();
           await relation.click();
