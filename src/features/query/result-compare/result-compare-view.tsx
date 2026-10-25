@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { type ReactNode, type SetStateAction, useMemo, useState } from "react";
-import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import type { QueryResult } from "@/lib/db";
 import { useActiveMasks } from "@/lib/masking-display";
@@ -208,6 +207,16 @@ export function ResultCompareView({
 
   const counts = comparison && !comparison.error ? comparison.counts : null;
   const total = comparison?.changes.length ?? 0;
+  const filters: { value: Filter; label: string; count: number }[] = counts
+    ? [
+        { value: "all", label: "Alle", count: total },
+        ...KINDS.filter((kind) => counts[kind] > 0).map((kind) => ({
+          value: kind,
+          label: CHANGE_TONE[kind].label.toLowerCase(),
+          count: counts[kind],
+        })),
+      ]
+    : [];
 
   return (
     <section
@@ -217,24 +226,14 @@ export function ResultCompareView({
       <div className="flex h-10 shrink-0 items-center gap-3 border-b bg-muted/30 pr-2 pl-3">
         <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium">
           <GitCompareArrowsIcon className="size-3.5 text-primary" />
-          Vergleich
+          Änderungen
         </span>
         {counts && (
-          <span
-            aria-live="polite"
-            className="hidden min-w-0 items-center gap-3 truncate text-[11px] tabular-nums text-muted-foreground @min-[34rem]/compare:flex"
-          >
-            {KINDS.map(
-              (kind) =>
-                counts[kind] > 0 && (
-                  <span key={kind} className="flex shrink-0 items-center gap-1.5">
-                    <span className={cn("size-1.5 rounded-full", CHANGE_TONE[kind].dot)} />
-                    <span className="text-foreground/90">{counts[kind]}</span>
-                    {CHANGE_TONE[kind].label.toLowerCase()}
-                  </span>
-                ),
+          <span className="sr-only" aria-live="polite">
+            {KINDS.map((kind) => `${counts[kind]} ${CHANGE_TONE[kind].label.toLowerCase()}`).join(
+              ", ",
             )}
-            <span className="shrink-0">{counts.equal} gleich</span>
+            , {counts.equal} gleich
           </span>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -277,53 +276,70 @@ export function ResultCompareView({
         </div>
       </div>
 
-      {pair && comparison && !comparison.error && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-3 py-1.5 text-[11px] text-muted-foreground">
-          <span>
-            Basis <time className="font-mono text-foreground/80">{clock(pair.baseline.at)}</time> ·{" "}
-            {rowsLabel(pair.baseline.result.rows.length)}
-          </span>
-          <ArrowRightIcon aria-label="verglichen mit" className="size-3" />
-          <span>
-            Jetzt <time className="font-mono text-foreground/80">{clock(pair.latest.at)}</time> ·{" "}
-            {rowsLabel(pair.latest.result.rows.length)}
-          </span>
-          {!sameSql(pair.baseline.sql, pair.latest.sql) && (
-            <span
-              className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-              title={`SQL der Basis:\n${pair.baseline.sql}`}
-            >
-              Andere SQL
+      {pair && comparison && counts && (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-2 py-1.5 text-[11px] text-muted-foreground">
+          <fieldset aria-label="Unterschiede filtern" className="flex items-center gap-0.5">
+            {total > 0 &&
+              filters.map((option) => {
+                const pressed = activeFilter === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={pressed}
+                    onClick={() => {
+                      setFilter(pressed ? "all" : option.value);
+                      setSelectedId(null);
+                    }}
+                    className={cn(
+                      "flex h-6 items-center gap-1.5 rounded-md px-2 tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                      pressed
+                        ? "bg-accent text-foreground ring-1 ring-border"
+                        : "hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {option.value !== "all" && (
+                      <span
+                        aria-hidden="true"
+                        className={cn("size-1.5 rounded-full", CHANGE_TONE[option.value].dot)}
+                      />
+                    )}
+                    {option.value === "all" && option.label}
+                    <span className="font-medium text-foreground/90">{option.count}</span>
+                    {option.value !== "all" && option.label}
+                  </button>
+                );
+              })}
+            <span className="px-2 tabular-nums">{counts.equal} gleich</span>
+          </fieldset>
+          <div className="ml-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-1">
+            <span>
+              Basis <time className="font-mono text-foreground/80">{clock(pair.baseline.at)}</time>{" "}
+              · {rowsLabel(pair.baseline.result.rows.length)}
             </span>
-          )}
-          {comparison.columns.added.length + comparison.columns.removed.length > 0 && (
-            <span className="truncate" title="Nur gemeinsame Spalten werden verglichen">
-              Spalten{" "}
-              {[
-                ...comparison.columns.added.map((column) => `+${column}`),
-                ...comparison.columns.removed.map((column) => `−${column}`),
-              ].join(" ")}
+            <ArrowRightIcon aria-label="verglichen mit" className="size-3" />
+            <span>
+              Jetzt <time className="font-mono text-foreground/80">{clock(pair.latest.at)}</time> ·{" "}
+              {rowsLabel(pair.latest.result.rows.length)}
             </span>
-          )}
-          {total > 0 && (
-            <div className="ml-auto w-full max-w-[22rem] @min-[52rem]/compare:w-[22rem]">
-              <SegmentedControl
-                label="Unterschiede filtern"
-                value={activeFilter}
-                onChange={(next) => {
-                  setFilter(next);
-                  setSelectedId(null);
-                }}
-                options={[
-                  { value: "all", label: `Alle ${total}` },
-                  ...KINDS.map((kind) => ({
-                    value: kind,
-                    label: `${CHANGE_TONE[kind].label} ${comparison.counts[kind]}`,
-                  })),
-                ]}
-              />
-            </div>
-          )}
+            {!sameSql(pair.baseline.sql, pair.latest.sql) && (
+              <span
+                className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                title={`SQL der Basis:\n${pair.baseline.sql}`}
+              >
+                Andere SQL
+              </span>
+            )}
+            {comparison.columns.added.length + comparison.columns.removed.length > 0 && (
+              <span className="truncate" title="Nur gemeinsame Spalten werden verglichen">
+                Spalten{" "}
+                {[
+                  ...comparison.columns.added.map((column) => `+${column}`),
+                  ...comparison.columns.removed.map((column) => `−${column}`),
+                ].join(" ")}
+              </span>
+            )}
+          </div>
         </div>
       )}
 

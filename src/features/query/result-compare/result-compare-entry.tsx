@@ -32,29 +32,31 @@ export function ResultCompareEntry({
       <span className="max-w-[38%] shrink-0 truncate font-mono text-[11px] text-foreground/90">
         {changeKeyLabel(change, keyColumns, masks)}
       </span>
-      <span className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap text-muted-foreground">
+      <span className="flex min-w-0 flex-1 items-center gap-3.5 overflow-hidden whitespace-nowrap text-muted-foreground [mask-image:linear-gradient(to_left,transparent,black_1.5rem)]">
         {cells.map((column) => (
-          <span key={column} className="flex min-w-0 shrink items-center gap-1">
+          <span key={column} className="flex shrink-0 items-center gap-1">
             <span className="shrink-0">{column}</span>
             {change.kind === "changed" ? (
               <>
-                <span className="truncate font-mono text-[11px] line-through decoration-muted-foreground/50">
+                <span className="max-w-48 truncate font-mono text-[11px] line-through decoration-muted-foreground/50">
                   {compareCellText(column, change.before?.[column], masks)}
                 </span>
                 <ArrowRightIcon aria-label="zu" className="size-3 shrink-0 text-primary/70" />
-                <span className="truncate font-mono text-[11px] text-foreground">
+                <span className="max-w-48 truncate font-mono text-[11px] text-foreground">
                   {compareCellText(column, change.after?.[column], masks)}
                 </span>
               </>
             ) : (
-              <span className="truncate font-mono text-[11px] text-foreground/80">
+              <span className="max-w-48 truncate font-mono text-[11px] text-foreground/80">
                 {compareCellText(column, row[column], masks)}
               </span>
             )}
           </span>
         ))}
-        {more > 0 && <span className="shrink-0 text-[10px] tabular-nums">+{more}</span>}
       </span>
+      {more > 0 && (
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">+{more}</span>
+      )}
     </>
   );
 }
