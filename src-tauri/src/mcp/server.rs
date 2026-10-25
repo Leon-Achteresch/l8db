@@ -1941,6 +1941,7 @@ mod tests {
         assert_eq!(seen[2], all);
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn duckdb_queries_cannot_reach_local_files_or_hidden_schemas() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -2058,6 +2059,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn overview_resources_list_exposed_connections_and_hide_unshared_schemas() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
