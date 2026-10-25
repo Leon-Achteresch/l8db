@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { CHANGE_TONE } from "./tone";
 
 const WIDTH = 1000;
-const MARK = 4;
+const MARK = 7;
 const TRACK: Record<ResultChangeKind, [number, number]> = {
   added: [0, 6],
   removed: [8, 6],
