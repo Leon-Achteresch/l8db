@@ -1,11 +1,10 @@
-import { Plus } from "lucide-react";
+import { Code2, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import { SupabaseSectionHeader } from "../supabase-section-header";
-import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
+import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import {
   SupabaseFunctionDeployDialog,
@@ -47,28 +46,31 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
           </Button>
         }
       />
-      <BaasSidebarPortal>
-        <SupabaseFunctionsList
-          reference={project.reference}
-          cloud={cloud}
-          selected={selected}
-          onSelect={(id) => {
-            setSelected(id);
-            setTab("functions");
-          }}
-        />
-      </BaasSidebarPortal>
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList variant="line" className={SECTION_TABS_CLASS}>
-          <TabsTrigger value="functions">Funktionen</TabsTrigger>
-          <TabsTrigger
-            value="secrets"
-            disabled={!cloud}
-            title={cloud ? undefined : SELF_HOSTED_HINT}
-          >
-            Secrets
-          </TabsTrigger>
-        </TabsList>
+        <SupabaseSidebarTabs
+          label="Edge Functions"
+          items={[
+            { value: "functions", label: "Funktionen", icon: Code2 },
+            {
+              value: "secrets",
+              label: "Secrets",
+              icon: KeyRound,
+              disabledReason: cloud ? null : SELF_HOSTED_HINT,
+            },
+          ]}
+        >
+          <div className="mt-3 border-t pt-2">
+            <SupabaseFunctionsList
+              reference={project.reference}
+              cloud={cloud}
+              selected={selected}
+              onSelect={(id) => {
+                setSelected(id);
+                setTab("functions");
+              }}
+            />
+          </div>
+        </SupabaseSidebarTabs>
         <TabsContent value="functions">
           <div>
             {selected ? (

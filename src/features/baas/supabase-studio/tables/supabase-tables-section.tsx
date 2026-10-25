@@ -1,3 +1,4 @@
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
@@ -13,14 +14,30 @@ import {
   type StudioTableRef,
 } from "./supabase-tables-utils";
 
+const route = getRouteApi("/baas");
+
 export function SupabaseTablesSection({ project, capabilities }: SupabaseStudioSectionProps) {
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.supabase.studio.tables");
-  const [selected, setSelected] = useState<StudioTableRef | null>(null);
+  const search = route.useSearch();
+  const navigate = useNavigate();
+  const selected: StudioTableRef | null =
+    search.table && search.tableProject === project.reference
+      ? { schema: search.tableSchema ?? "public", name: search.table }
+      : null;
   const reference = project.reference;
   const [recent, setRecent] = useState(() => loadRecentTables(reference));
 
   function select(table: StudioTableRef | null) {
-    setSelected(table);
+    void navigate({
+      to: "/baas",
+      search: {
+        ...search,
+        table: table?.name,
+        tableSchema: table?.schema,
+        tableProject: table ? reference : undefined,
+      },
+      replace: true,
+    });
     if (table && !capabilities.sql) {
       setRecent(rememberRecentTable(reference, table));
     }

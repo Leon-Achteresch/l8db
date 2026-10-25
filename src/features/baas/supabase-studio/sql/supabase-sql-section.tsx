@@ -13,6 +13,7 @@ import {
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
+import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import { SupabaseSectionHeader } from "../supabase-section-header";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseSqlLibrary } from "./supabase-sql-library";
@@ -115,7 +116,7 @@ export function SupabaseSqlSection({ project }: SupabaseStudioSectionProps) {
         isNew={feature.isNew}
         description="Ergebnisse sind auf 1000 Zeilen begrenzt. Bei mehreren Anweisungen wird das Ergebnis der letzten angezeigt."
       />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="grid min-w-0 gap-4">
         <div className="grid min-w-0 gap-3">
           <div className="flex flex-wrap items-center gap-1 border-b pb-1" role="tablist">
             {state.tabs.map((item) => (
@@ -208,21 +209,25 @@ export function SupabaseSqlSection({ project }: SupabaseStudioSectionProps) {
             running={running}
           />
         </div>
-        <SupabaseSqlLibrary
-          project={state}
-          onOpen={(sql) => change((current) => addSupabaseSqlTab(current, sql))}
-          onRenameSnippet={(id, name) =>
-            change((current) => ({
-              snippets: current.snippets.map((item) => (item.id === id ? { ...item, name } : item)),
-            }))
-          }
-          onDeleteSnippet={(id) =>
-            change((current) => ({
-              snippets: current.snippets.filter((item) => item.id !== id),
-            }))
-          }
-          onClearHistory={() => change(() => ({ history: [] }))}
-        />
+        <BaasSidebarPortal>
+          <SupabaseSqlLibrary
+            project={state}
+            onOpen={(sql) => change((current) => addSupabaseSqlTab(current, sql))}
+            onRenameSnippet={(id, name) =>
+              change((current) => ({
+                snippets: current.snippets.map((item) =>
+                  item.id === id ? { ...item, name } : item,
+                ),
+              }))
+            }
+            onDeleteSnippet={(id) =>
+              change((current) => ({
+                snippets: current.snippets.filter((item) => item.id !== id),
+              }))
+            }
+            onClearHistory={() => change(() => ({ history: [] }))}
+          />
+        </BaasSidebarPortal>
       </div>
       {savingSnippet && (
         <SupabaseSqlNameDialog

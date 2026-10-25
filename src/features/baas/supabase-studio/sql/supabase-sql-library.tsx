@@ -60,13 +60,13 @@ export function SupabaseSqlLibrary({
   );
 
   return (
-    <div className="flex min-h-0 flex-col rounded-md border">
+    <div className="flex min-h-0 flex-1 flex-col">
       <Tabs defaultValue="snippets" className="flex min-h-0 flex-1 flex-col gap-0">
-        <TabsList className="m-2">
+        <TabsList className="mb-2 w-full">
           <TabsTrigger value="snippets">Snippets ({project.snippets.length})</TabsTrigger>
           <TabsTrigger value="history">Verlauf ({project.history.length})</TabsTrigger>
         </TabsList>
-        <TabsContent value="snippets" className="min-h-0 overflow-auto px-2 pb-2">
+        <TabsContent value="snippets" className="min-h-0 overflow-auto">
           {project.snippets.length === 0 ? (
             <p className="px-2 py-4 text-xs text-muted-foreground">
               Noch keine Snippets. Speichere die aktuelle Abfrage über „Als Snippet speichern“.
@@ -118,7 +118,7 @@ export function SupabaseSqlLibrary({
             </ul>
           )}
         </TabsContent>
-        <TabsContent value="history" className="min-h-0 overflow-auto px-2 pb-2">
+        <TabsContent value="history" className="min-h-0 overflow-auto">
           {project.history.length === 0 ? (
             <p className="px-2 py-4 text-xs text-muted-foreground">
               Noch keine Abfragen ausgeführt.
