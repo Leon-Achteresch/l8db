@@ -137,7 +137,7 @@ test("oversized feeds are rejected or bounded quickly", async () => {
     rejectThousandItems: rejectThousand,
     parseTwentyMaxItems: parseTwenty,
     streamFiveMegabytes: streamed,
-    thousandItemsOverHttp: { ...thousandOverHttp, bodyBytes: body.length },
+    thousandItemsOverHttp: { ...thousandOverHttp, bodyBytes: bytes.byteLength },
     maxBytesPulled: maxPulled,
     limitBytes: MAX_FEED_BYTES,
     retainedBytes,
