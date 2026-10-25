@@ -85,7 +85,7 @@ jobs:
           components: rustfmt,clippy
       - run: cargo fmt --check
         working-directory: src-tauri
-      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177
         with:
           tool: cargo-audit
       - name: RustSec audit
