@@ -11,7 +11,7 @@ import {
 
 const writeText = mock(async (_text: string) => {});
 const copyToast = mock((_title: string) => 1);
-mock.module("sonner", () => ({ toast: { success: copyToast } }));
+mock.module("sonner", () => ({ toast: { success: copyToast, getToasts: () => [] } }));
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({
   writeText,
   readText: async () => "",

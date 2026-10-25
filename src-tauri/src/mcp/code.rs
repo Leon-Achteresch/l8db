@@ -193,7 +193,7 @@ fn worker() -> Result<Command, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Sandbox nicht gefunden: {e}"))?;
     #[cfg(test)]
     let exe = std::env::var_os("L8DB_TEST_SANDBOX_EXE").map_or(exe, std::path::PathBuf::from);
-    let mut command = Command::new(&exe);
+    let mut command = crate::process::command(&exe);
     command.env_clear();
     #[cfg(windows)]
     if let Some(root) = std::env::var_os("SystemRoot") {

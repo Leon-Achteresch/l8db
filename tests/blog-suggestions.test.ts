@@ -9,8 +9,6 @@ mock.module("@tauri-apps/plugin-opener", () => ({
   },
 }));
 
-type StorageListener = (event: { key: string; newValue: string | null }) => void;
-const storageListeners: StorageListener[] = [];
 const host = window as unknown as Record<string, unknown>;
 const previousAdd = host.addEventListener;
 const hadStorage = "localStorage" in globalThis;
@@ -19,9 +17,7 @@ if (!hadStorage)
     value: host.localStorage,
     configurable: true,
   });
-host.addEventListener = (type: string, listener: StorageListener) => {
-  if (type === "storage") storageListeners.push(listener);
-};
+host.addEventListener = () => {};
 
 const { COOLDOWN, DAY, eligiblePosts, FETCH_INTERVAL, nextSuggestion, parseBlogFeed } =
   await import("../src/lib/blog-suggestions/model");
@@ -361,7 +357,15 @@ describe("multiple windows", () => {
   test("persists shown state for other windows", () => {
     useBlogSuggestionStore.setState({ posts: [post()] });
     useBlogSuggestionStore.getState().show("ruhige-abfragen");
-    const saved = JSON.parse(localStorage.getItem("l8db.blog-suggestions") ?? "{}");
+    const saved = useBlogSuggestionStore.persist
+      .getOptions()
+      .storage?.getItem("l8db.blog-suggestions") as {
+      state: {
+        lastShownAt: number;
+        history: Record<string, { status: string }>;
+        activeSlug?: string;
+      };
+    };
     expect(saved.state.lastShownAt).toBe(now);
     expect(saved.state.history["ruhige-abfragen"].status).toBe("seen");
     expect(saved.state.activeSlug).toBeUndefined();
@@ -371,7 +375,7 @@ describe("multiple windows", () => {
     useBlogSuggestionStore.setState({
       posts: [post(), post({ slug: "zwei", url: `${SITE}/blog/zwei` })],
     });
-    const value = JSON.stringify({
+    useBlogSuggestionStore.persist.getOptions().storage?.setItem("l8db.blog-suggestions", {
       state: {
         posts: [item(), item({ slug: "boese", url: "https://evil.example/blog/boese" })],
         checkedAt: now,
@@ -379,10 +383,8 @@ describe("multiple windows", () => {
         lastShownAt: now,
       },
       version: 0,
-    });
-    localStorage.setItem("l8db.blog-suggestions", value);
-    for (const listener of storageListeners)
-      listener({ key: "l8db.blog-suggestions", newValue: value });
+    } as never);
+    useBlogSuggestionStore.persist.rehydrate();
     const state = useBlogSuggestionStore.getState();
     expect(state.posts.map((entry) => entry.slug)).toEqual(["ruhige-abfragen"]);
     expect(state.lastShownAt).toBe(now);
