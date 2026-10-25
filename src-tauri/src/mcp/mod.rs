@@ -2,7 +2,7 @@ pub mod benchmark;
 mod catalog;
 pub mod clients;
 mod code;
-#[cfg(test)]
+#[cfg(all(test, feature = "duckdb"))]
 mod code_tests;
 mod code_worker;
 pub mod config;
@@ -23,7 +23,7 @@ mod script;
 pub mod server;
 pub mod workflow;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "duckdb"))]
 mod token_benchmark;
 
 pub fn serve() {

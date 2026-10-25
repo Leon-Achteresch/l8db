@@ -21,16 +21,13 @@ host.addEventListener = () => {};
 
 const { COOLDOWN, DAY, eligiblePosts, FETCH_INTERVAL, nextSuggestion, parseBlogFeed } =
   await import("../src/lib/blog-suggestions/model");
-const { isQuiet, watchQuiet } = await import("../src/lib/blog-suggestions/quiet");
+const { isQuiet, readQuietSignals, watchQuiet } = await import("../src/lib/blog-suggestions/quiet");
 const { pruneBlogHistory, readBlogPost, refreshBlogFeed, useBlogSuggestionStore } = await import(
   "../src/lib/blog-suggestions/store"
 );
 const { BlogSuggestionCard } = await import("../src/features/updates/blog-suggestion-card");
 const { useSettingsStore } = await import("../src/lib/settings");
 const { useTasksStore } = await import("../src/lib/tasks");
-const { useTourStore } = await import("../src/lib/tour/store");
-const { useFeatureVideoStore } = await import("../src/lib/feature-videos/store");
-const { useTransactionStore } = await import("../src/lib/transactions");
 const { websiteUrl } = await import("../src/lib/website");
 
 import type { BlogPost } from "../src/lib/blog-suggestions/model";
@@ -303,11 +300,11 @@ describe("quiet conditions", () => {
       tick();
       expect(calls).toBe(1);
       useSettingsStore.setState({ onboardingDone: true });
-      useTourStore.setState({ active: false, offerOpen: false });
-      useFeatureVideoStore.setState({ activeId: null });
-      useTransactionStore.setState({ transactions: [] });
       tick();
-      expect(calls).toBe(2);
+      expect({
+        calls,
+        signals: readQuietSignals(performance.timeOrigin + 11 * 60_000),
+      }).toMatchObject({ calls: 2 });
       stop();
       expect(listeners.size).toBe(0);
     } finally {
