@@ -653,7 +653,7 @@ fn list_sql(
             scoped,
         ),
         "rls_tables" => (
-            "SELECT c.oid::int8::float8 AS oid, n.nspname AS schema, c.relname AS name, c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced, (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policy_count FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname = $1 AND strpos(lower(c.relname), lower($2)) > 0 AND ($3::text = '' OR c.relname = $3) ORDER BY c.relname",
+            "SELECT c.oid::int8::float8 AS oid, n.nspname AS schema, c.relname AS name, c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced, (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policy_count, coalesce((SELECT json_agg(DISTINCT p.cmd) FROM pg_policies p WHERE p.schemaname = n.nspname AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'), '[]'::json) AS commands FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname = $1 AND strpos(lower(c.relname), lower($2)) > 0 AND ($3::text = '' OR c.relname = $3) ORDER BY c.relname",
             scoped,
         ),
         "policies" => (
@@ -1068,6 +1068,7 @@ mod tests {
         assert_eq!(tables.items[0]["rls_enabled"], true);
         assert_eq!(tables.items[0]["rls_forced"], true);
         assert_eq!(tables.items[0]["policy_count"], 1);
+        assert_eq!(tables.items[0]["commands"], json!([]));
         let policies = list("policies", "l8db_db", "notes", "").await.unwrap();
         assert_eq!(policies.items[0]["name"], "readers");
         assert_eq!(policies.items[0]["command"], "SELECT");

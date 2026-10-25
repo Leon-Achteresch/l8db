@@ -1,8 +1,8 @@
-import { Users } from "lucide-react";
 import { useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { SupabaseSectionHeader } from "../supabase-section-header";
+import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseAuthConfigPanel } from "./supabase-auth-config";
 import { SupabaseAuthUsers } from "./supabase-auth-users";
@@ -12,13 +12,15 @@ export function SupabaseAuthSection({ project, capabilities }: SupabaseStudioSec
   const [tab, setTab] = useState("users");
 
   return (
-    <div className="grid gap-4">
-      <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-        <Users className="size-4 text-muted-foreground" /> Auth
-        {feature.isNew && <NewBadge />}
-      </h2>
+    <div className="grid gap-5">
+      <SupabaseSectionHeader
+        title="Auth"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Benutzer, Anmeldemethoden und Sitzungen des Projekts."
+      />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="h-8">
+        <TabsList variant="line" className={SECTION_TABS_CLASS}>
           <TabsTrigger value="users" className="text-xs">
             Benutzer
           </TabsTrigger>

@@ -20,8 +20,8 @@ export function SupabaseFunctionDetail({
   onDeleted: () => void;
 }) {
   return (
-    <div className="min-w-0 space-y-3">
-      <h3 className="font-mono text-sm font-semibold">{slug}</h3>
+    <div className="min-w-0 space-y-4">
+      <h3 className="font-mono text-base font-semibold">{slug}</h3>
       <Tabs defaultValue={cloud ? "details" : "invoke"}>
         <TabsList>
           <TabsTrigger

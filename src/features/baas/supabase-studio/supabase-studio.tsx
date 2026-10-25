@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { type SupabaseProject, supabaseStudioCapabilities } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasStudioFrame } from "../baas-studio-frame";
+import { SupabaseProjectPulse } from "./supabase-project-pulse";
 import { SUPABASE_STUDIO_SECTIONS } from "./supabase-studio-sections";
 
 const route = getRouteApi("/baas");
@@ -40,10 +41,12 @@ export function SupabaseStudio({
       isNew={feature.isNew}
       header={header}
       footer={footer}
+      aside={<SupabaseProjectPulse reference={project.reference} />}
       details={`${project.self_hosted ? (project.api_url ?? "Selbst gehostet") : (project.region ?? "Cloud")} · ${!project.self_hosted ? "Zugangstoken" : project.secret_key ? "Secret Key" : "Publishable Key"}`}
       tabs={SUPABASE_STUDIO_SECTIONS.map((section) => ({
         value: section.id,
         label: section.label,
+        group: section.group,
         icon: section.icon,
         featureScope: `baas.supabase.studio.${section.id}`,
         disabledReason: capabilities.data

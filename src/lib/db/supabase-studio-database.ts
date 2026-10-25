@@ -143,6 +143,7 @@ export interface DbRlsTable {
   rls_enabled: boolean;
   rls_forced: boolean;
   policy_count: number;
+  commands: PolicyCommand[];
 }
 
 export type PolicyCommand = "ALL" | "SELECT" | "INSERT" | "UPDATE" | "DELETE";

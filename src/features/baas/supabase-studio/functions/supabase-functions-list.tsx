@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { sidebarMenuButtonVariants } from "@/components/ui/sidebar/shared";
 import { supabaseFunctions } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "../supabase-services";
 import { FUNCTION_SLUG, useSupabaseFunctionSlugs } from "./supabase-functions-store";
 
 const EMPTY: string[] = [];
@@ -119,7 +120,7 @@ export function SupabaseFunctionsList({
                 <span className="text-[10px] text-muted-foreground">v{item.version}</span>
               )}
               {item.status && item.status !== "ACTIVE" && (
-                <Badge variant="outline">{item.status}</Badge>
+                <Badge variant="outline">{statusLabel(item.status)}</Badge>
               )}
             </button>
             {!cloud && (

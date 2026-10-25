@@ -1,8 +1,8 @@
 import { type ReactNode, type Ref, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
-import { type SidebarObjectTab, SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { BaasSidebarSlot } from "./baas-sidebar-portal";
+import { BaasStudioNav, type BaasStudioTab } from "./baas-studio-nav";
 
 export function BaasStudioFrame({
   label,
@@ -10,6 +10,7 @@ export function BaasStudioFrame({
   isNew,
   header,
   details,
+  aside,
   footer,
   tabs,
   value,
@@ -21,8 +22,9 @@ export function BaasStudioFrame({
   isNew?: boolean;
   header: ReactNode;
   details?: ReactNode;
+  aside?: ReactNode;
   footer?: ReactNode;
-  tabs: SidebarObjectTab[];
+  tabs: BaasStudioTab[];
   value: string;
   onValueChange: (value: string) => unknown;
   children: ReactNode;
@@ -49,10 +51,9 @@ export function BaasStudioFrame({
             {isNew && <NewBadge />}
           </div>
         </div>
-        <nav ref={navRef} aria-label={label} className="shrink-0 border-b px-2 py-2">
-          <SidebarObjectTabs tabs={tabs} value={value} onValueChange={onValueChange} />
-        </nav>
-        <p className="flex h-8 shrink-0 items-center px-4 [&:has(+div:empty)]:hidden text-xs font-medium text-sidebar-foreground/70">
+        {aside && <div className="shrink-0 border-b px-2 py-2.5">{aside}</div>}
+        <p className="flex h-8 shrink-0 items-center gap-2 px-4 [&:has(+div:empty)]:hidden text-xs font-medium text-sidebar-foreground/70">
+          {active && <active.icon className="size-3.5" />}
           {active?.label}
         </p>
         <div
@@ -65,6 +66,9 @@ export function BaasStudioFrame({
         data-slot="sidebar-inset"
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-xl border-t border-l bg-background shadow-lg shadow-black/10 dark:shadow-black/40"
       >
+        <nav ref={navRef} aria-label={label} className="shrink-0 border-b px-3">
+          <BaasStudioNav tabs={tabs} value={value} onValueChange={onValueChange} />
+        </nav>
         <section
           aria-label={active?.label}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"

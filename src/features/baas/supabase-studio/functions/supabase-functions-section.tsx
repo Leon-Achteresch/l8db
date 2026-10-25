@@ -1,10 +1,11 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
+import { SupabaseSectionHeader } from "../supabase-section-header";
+import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import {
   SupabaseFunctionDeployDialog,
@@ -25,27 +26,27 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
   const [deploy, setDeploy] = useState<SupabaseFunctionDeployTarget | null>(null);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 ref={feature.ref} className="flex items-center gap-2 text-lg font-semibold">
-            Edge Functions {feature.isNew && <NewBadge />}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {cloud
-              ? "Funktionen deployen, konfigurieren, testen und Secrets verwalten."
-              : `${SELF_HOSTED_HINT} Hier kannst du bekannte Funktionen aufrufen und testen.`}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          disabled={!cloud}
-          title={cloud ? undefined : SELF_HOSTED_HINT}
-          onClick={() => setDeploy({ slug: "", name: "", verifyJwt: true })}
-        >
-          <Plus className="size-3.5" /> Neue Funktion
-        </Button>
-      </div>
+    <div className="space-y-5">
+      <SupabaseSectionHeader
+        title="Edge Functions"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description={
+          cloud
+            ? "Funktionen deployen, konfigurieren, testen und Secrets verwalten."
+            : `${SELF_HOSTED_HINT} Hier kannst du bekannte Funktionen aufrufen und testen.`
+        }
+        actions={
+          <Button
+            size="sm"
+            disabled={!cloud}
+            title={cloud ? undefined : SELF_HOSTED_HINT}
+            onClick={() => setDeploy({ slug: "", name: "", verifyJwt: true })}
+          >
+            <Plus className="size-3.5" /> Neue Funktion
+          </Button>
+        }
+      />
       <BaasSidebarPortal>
         <SupabaseFunctionsList
           reference={project.reference}
@@ -58,7 +59,7 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
         />
       </BaasSidebarPortal>
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList variant="line" className={SECTION_TABS_CLASS}>
           <TabsTrigger value="functions">Funktionen</TabsTrigger>
           <TabsTrigger
             value="secrets"

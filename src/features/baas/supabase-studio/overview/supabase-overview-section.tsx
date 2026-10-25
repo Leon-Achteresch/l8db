@@ -1,25 +1,27 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Database, ExternalLink, Globe2, KeyRound } from "lucide-react";
+import { Database, ExternalLink, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { supabaseStudioSettingsOverviewStats } from "@/lib/db/supabase-studio-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { activateConnectionWithToast } from "@/lib/ssh";
 import { SupabaseDatabaseConnectDialog } from "../../supabase-database-connect-dialog";
-import { SupabaseServiceHealth } from "../../supabase-service-health";
 import { useSupabaseDatabase } from "../../use-supabase-database";
-import {
-  SUPABASE_STUDIO_SECTIONS,
-  type SupabaseStudioSectionProps,
-} from "../supabase-studio-sections";
-import { SupabaseOverviewStats } from "./supabase-overview-stats";
+import { statusLabel } from "../supabase-services";
+import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
+import { useSupabaseHealth } from "../use-supabase-health";
+import { SupabaseOverviewProtection } from "./supabase-overview-protection";
+import { SupabaseSystemMap } from "./supabase-system-map";
 
 const route = getRouteApi("/baas");
 
 export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudioSectionProps) {
   const search = route.useSearch();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.studio.overview");
   const apiUrl = project.self_hosted ? project.api_url : null;
   const cloudRef = apiUrl?.match(/^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/)?.[1];
@@ -28,14 +30,23 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
     apiUrl ? { url: apiUrl, name: project.name } : undefined,
   );
   const [connecting, setConnecting] = useState(false);
+  const health = useSupabaseHealth(project.reference);
+  const statsEnabled = capabilities.sql || capabilities.management;
+  const stats = useQuery({
+    queryKey: ["supabase", project.reference, "studio-overview-stats"],
+    queryFn: () => supabaseStudioSettingsOverviewStats(project.reference),
+    enabled: statsEnabled,
+  });
   const keyType = capabilities.service_key
     ? "Secret Key"
     : capabilities.data_api
       ? "Publishable Key"
       : "Kein Projekt-Key";
-  const links = SUPABASE_STUDIO_SECTIONS.filter(
-    (section) => section.id !== "overview" && !section.unavailable(capabilities),
-  );
+  const errors = [
+    ...(health.isError ? [String(health.error)] : []),
+    ...(stats.isError ? [String(stats.error)] : []),
+    ...(stats.data?.errors ?? []),
+  ];
 
   async function openDatabase() {
     if (!database) return;
@@ -43,19 +54,43 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border bg-card p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div ref={feature.ref} className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-semibold tracking-tight">{project.name}</h2>
+    <div className="mx-auto max-w-6xl space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="eyebrow mb-2">
+            {project.self_hosted
+              ? "Selbst gehostet"
+              : `Cloud · ${project.region ?? "Region unbekannt"}`}
+          </p>
+          <div ref={feature.ref} className="flex flex-wrap items-center gap-2">
+            <h2 className="text-2xl font-semibold tracking-[-0.03em]">{project.name}</h2>
+            {!project.self_hosted && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                {project.self_hosted ? "Selbst gehostet" : (project.status ?? "Status unbekannt")}
+                {project.status ? statusLabel(project.status) : "Status unbekannt"}
               </span>
-              {feature.isNew && <NewBadge />}
-            </div>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">{project.reference}</p>
+            )}
+            {feature.isNew && <NewBadge />}
           </div>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">{project.reference}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Übersicht aktualisieren"
+            disabled={health.isFetching || stats.isFetching}
+            onClick={() => {
+              void health.refetch();
+              if (statsEnabled) void stats.refetch();
+              void queryClient.invalidateQueries({
+                queryKey: ["supabase", project.reference, "studio-database", "rls_tables"],
+              });
+            }}
+          >
+            <RefreshCw
+              className={`size-3.5 ${health.isFetching || stats.isFetching ? "animate-spin" : ""}`}
+            />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -70,39 +105,41 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
             {apiUrl && !cloudRef ? "Supabase Studio" : "Supabase-Dashboard"}
             <ExternalLink className="size-3.5" />
           </Button>
+          <Button size="sm" onClick={() => (database ? void openDatabase() : setConnecting(true))}>
+            <Database className="size-3.5" />
+            {database ? `${database.name} öffnen` : "Datenbank verbinden"}
+          </Button>
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border bg-background/50 p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Globe2 className="size-3.5" /> {apiUrl ? "API-URL" : "Region"}
-            </div>
-            <p className="mt-2 truncate text-sm font-medium" title={apiUrl ?? undefined}>
-              {apiUrl ?? project.region ?? "Unbekannt"}
-            </p>
-          </div>
-          <div className="rounded-xl border bg-background/50 p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <KeyRound className="size-3.5" /> Zugriff
-            </div>
-            <p className="mt-2 truncate text-sm font-medium">
-              {keyType}
-              {capabilities.management ? " · Zugangstoken" : ""}
-            </p>
-          </div>
-          <div className="rounded-xl border bg-background/50 p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Database className="size-3.5" /> Datenbank in l8db
-            </div>
-            <button
-              type="button"
-              className="mt-2 text-left text-sm font-medium text-primary hover:underline"
-              onClick={() => (database ? void openDatabase() : setConnecting(true))}
-            >
-              {database ? `${database.name} öffnen` : "Datenbank verbinden"}
-            </button>
-          </div>
-        </div>
+      </header>
+
+      <section className="rounded-2xl border bg-[radial-gradient(color-mix(in_oklch,var(--border)_70%,transparent)_0.8px,transparent_0.8px)] bg-size-[14px_14px] p-5">
+        <SupabaseSystemMap
+          project={project}
+          capabilities={capabilities}
+          health={health.data}
+          stats={stats.data}
+          keyType={keyType}
+          onOpen={(id) => void navigate({ to: "/baas", search: { ...search, studio: id } })}
+        />
+        {!statsEnabled && (
+          <p className="mt-4 text-xs text-muted-foreground">
+            Kennzahlen benötigen SQL-Zugriff (Secret Key einer selbst gehosteten Instanz) oder einen
+            Supabase-Zugangstoken.
+          </p>
+        )}
+        {errors.map((error) => (
+          <p key={error} role="alert" className="mt-2 text-xs text-destructive">
+            {error}
+          </p>
+        ))}
       </section>
+
+      {capabilities.sql && (
+        <SupabaseOverviewProtection
+          reference={project.reference}
+          onOpen={() => void navigate({ to: "/baas", search: { ...search, studio: "policies" } })}
+        />
+      )}
 
       <SupabaseDatabaseConnectDialog
         reference={project.reference}
@@ -111,30 +148,6 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
         open={connecting}
         onOpenChange={setConnecting}
       />
-      <SupabaseServiceHealth reference={project.reference} />
-      <SupabaseOverviewStats reference={project.reference} capabilities={capabilities} />
-
-      <section className="rounded-2xl border bg-card p-5">
-        <h3 className="text-sm font-semibold">Schnellzugriff</h3>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {links.map((section) => {
-            const Icon = section.icon;
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() =>
-                  void navigate({ to: "/baas", search: { ...search, studio: section.id } })
-                }
-                className="flex items-center gap-2 rounded-lg border bg-background/50 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
-              >
-                <Icon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{section.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
     </div>
   );
 }
