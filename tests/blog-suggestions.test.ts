@@ -21,7 +21,7 @@ host.addEventListener = () => {};
 
 const { COOLDOWN, DAY, eligiblePosts, FETCH_INTERVAL, nextSuggestion, parseBlogFeed } =
   await import("../src/lib/blog-suggestions/model");
-const { isQuiet, readQuietSignals, watchQuiet } = await import("../src/lib/blog-suggestions/quiet");
+const { isQuiet, watchQuiet } = await import("../src/lib/blog-suggestions/quiet");
 const { pruneBlogHistory, readBlogPost, refreshBlogFeed, useBlogSuggestionStore } = await import(
   "../src/lib/blog-suggestions/store"
 );
@@ -258,7 +258,7 @@ describe("quiet conditions", () => {
 
   test("watcher reads live signals and resets on input", () => {
     const listeners = new Map<string, () => void>();
-    let tick: () => void = () => {};
+    let tick: (() => void) | undefined;
     let overlay = false;
     const previous = { document: globalThis.document, setInterval: globalThis.setInterval };
     Object.assign(globalThis, {
@@ -271,7 +271,7 @@ describe("quiet conditions", () => {
         removeEventListener: (type: string) => listeners.delete(type),
       },
       setInterval: (callback: () => void) => {
-        tick = callback;
+        tick ??= callback;
         return 1;
       },
     });
@@ -280,31 +280,28 @@ describe("quiet conditions", () => {
       let calls = 0;
       const stop = watchQuiet(() => calls++);
       setSystemTime(performance.timeOrigin + 11 * 60_000);
-      tick();
+      tick?.();
       expect(calls).toBe(1);
       listeners.get("keydown")?.();
-      tick();
+      tick?.();
       expect(calls).toBe(1);
       setSystemTime(performance.timeOrigin + 12 * 60_000);
       overlay = true;
-      tick();
+      tick?.();
       useTasksStore.setState({
         tasks: [
           { id: "q", title: "SQL-Abfrage", startedAt: 0, status: "running", cancellable: true },
         ],
       });
       overlay = false;
-      tick();
+      tick?.();
       useTasksStore.setState({ tasks: [] });
       useSettingsStore.setState({ onboardingDone: false });
-      tick();
+      tick?.();
       expect(calls).toBe(1);
       useSettingsStore.setState({ onboardingDone: true });
-      tick();
-      expect({
-        calls,
-        signals: readQuietSignals(performance.timeOrigin + 11 * 60_000),
-      }).toMatchObject({ calls: 2 });
+      tick?.();
+      expect(calls).toBe(2);
       stop();
       expect(listeners.size).toBe(0);
     } finally {
