@@ -28,6 +28,9 @@ const { pruneBlogHistory, readBlogPost, refreshBlogFeed, useBlogSuggestionStore 
 const { BlogSuggestionCard } = await import("../src/features/updates/blog-suggestion-card");
 const { useSettingsStore } = await import("../src/lib/settings");
 const { useTasksStore } = await import("../src/lib/tasks");
+const { useTourStore } = await import("../src/lib/tour/store");
+const { useFeatureVideoStore } = await import("../src/lib/feature-videos/store");
+const { useTransactionStore } = await import("../src/lib/transactions");
 const { websiteUrl } = await import("../src/lib/website");
 
 import type { BlogPost } from "../src/lib/blog-suggestions/model";
@@ -300,6 +303,9 @@ describe("quiet conditions", () => {
       tick();
       expect(calls).toBe(1);
       useSettingsStore.setState({ onboardingDone: true });
+      useTourStore.setState({ active: false, offerOpen: false });
+      useFeatureVideoStore.setState({ activeId: null });
+      useTransactionStore.setState({ transactions: [] });
       tick();
       expect(calls).toBe(2);
       stop();
