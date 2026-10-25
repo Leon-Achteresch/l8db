@@ -106,6 +106,7 @@ test("oversized feeds are rejected or bounded quickly", async () => {
     )) as unknown as typeof fetch;
   let maxPulled = 0;
   const body = JSON.stringify(thousand);
+  const bytes = new TextEncoder().encode(body);
   const before = heap();
   const streamed = await measureScenario(async () => {
     pulled = 0;
@@ -114,7 +115,18 @@ test("oversized feeds are rejected or bounded quickly", async () => {
     maxPulled = Math.max(maxPulled, pulled);
     expect(useBlogSuggestionStore.getState().posts).toEqual([]);
   }, 40);
-  globalThis.fetch = (async () => new Response(body)) as unknown as typeof fetch;
+  globalThis.fetch = (async () => {
+    let offset = 0;
+    return new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (offset >= bytes.byteLength) return controller.close();
+          controller.enqueue(bytes.subarray(offset, offset + chunk.byteLength));
+          offset += chunk.byteLength;
+        },
+      }),
+    );
+  }) as unknown as typeof fetch;
   const thousandOverHttp = await measureScenario(async () => {
     useBlogSuggestionStore.setState({ checkedAt: 0 });
     await refreshBlogFeed();
