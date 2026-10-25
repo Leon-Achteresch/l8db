@@ -69,6 +69,7 @@ mock.module("sonner", () => ({
     error: (message: string) => events.push(`toast:${message}`),
     success: (message: string) => events.push(`toast:${message}`),
     warning: (message: string) => events.push(`toast:${message}`),
+    getToasts: () => [],
   }),
 }));
 
