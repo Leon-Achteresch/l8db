@@ -204,6 +204,10 @@ async function openStudio(page: Page, section: string, label: string) {
   return page.locator(`section[aria-label="${label}"]`);
 }
 
+function studioSidebar(page: Page) {
+  return page.locator("[data-baas-studio] > aside");
+}
+
 async function confirmAlert(page: Page, action: string) {
   const dialog = page.getByRole("alertdialog");
   await dialog.getByRole("button", { name: action, exact: true }).click();
@@ -454,7 +458,7 @@ test.skipIf(!enabled)(
       await confirmAlert(page, "Löschen");
       await main.getByText("l8db_ui_schema", { exact: true }).waitFor({ state: "detached" });
 
-      await main.getByRole("tab", { name: "Indizes" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Indizes" }).click();
       await main.getByRole("button", { name: "Index", exact: true }).click();
       const index = page.getByRole("dialog");
       await index.getByLabel("Tabelle", { exact: true }).fill("l8db_ui");
@@ -469,7 +473,7 @@ test.skipIf(!enabled)(
       await confirmAlert(page, "Löschen");
       await main.getByText("l8db_ui_label_idx").waitFor({ state: "detached" });
 
-      await main.getByRole("tab", { name: "Enums" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Enums" }).click();
       await main.getByLabel("Name des neuen Enums").fill("l8db_ui_mood");
       await main.getByLabel("Werte des neuen Enums").fill("gut, schlecht");
       await main.getByRole("button", { name: "Erstellen" }).click();
@@ -482,7 +486,7 @@ test.skipIf(!enabled)(
       await confirmAlert(page, "Löschen");
       await main.getByText("l8db_ui_mood").waitFor({ state: "detached" });
 
-      await main.getByRole("tab", { name: "Erweiterungen" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Erweiterungen" }).click();
       await search.fill("hstore");
       const hstore = await rowWith(main, "hstore");
       await hstore.getByRole("button", { name: "Aktivieren" }).click();
@@ -490,7 +494,7 @@ test.skipIf(!enabled)(
       await confirmAlert(page, "Deaktivieren");
       await hstore.getByRole("button", { name: "Aktivieren" }).waitFor();
 
-      await main.getByRole("tab", { name: "Rollen" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Rollen" }).click();
       await main.getByRole("button", { name: "Rolle", exact: true }).click();
       const role = page.getByRole("dialog");
       await role.getByLabel("Rollenname").fill("l8db_ui_role");
@@ -504,7 +508,7 @@ test.skipIf(!enabled)(
       await main.getByText("l8db_ui_role").waitFor({ state: "detached" });
 
       for (const tab of ["Views", "Funktionen", "Trigger", "Publikationen", "Sequenzen"]) {
-        await main.getByRole("tab", { name: tab }).click();
+        await studioSidebar(page).getByRole("tab", { name: tab }).click();
         await main.locator("table, p").first().waitFor();
       }
       expect(
@@ -542,7 +546,7 @@ test.skipIf(!enabled)(
       await main.getByRole("switch", { name: "RLS für l8db_ui", exact: true }).click();
       await confirmAlert(page, "Deaktivieren");
       await table.getByText("Ungeschützt").waitFor();
-      await main.getByRole("tab", { name: "Storage" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Storage" }).click();
       await main.locator("table, p").first().waitFor();
     });
   },
@@ -594,7 +598,7 @@ test.skipIf(!enabled)(
       const { users } = (await response.json()) as { users: { email: string }[] };
       expect(users.filter((user) => user.email?.startsWith("ui-lab"))).toEqual([]);
 
-      await main.getByRole("tab", { name: "Konfiguration" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Konfiguration" }).click();
       await main.getByText("Aktive Einstellungen").waitFor();
       await shot(page, "15-auth-config");
     });
@@ -731,7 +735,7 @@ test.skipIf(!enabled)(
   async () => {
     await withPage("supabase-realtime", async (page) => {
       const main = await openStudio(page, "realtime", "Realtime");
-      await main.getByRole("tab", { name: "Publikation" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Publikation" }).click();
       await main.getByLabel("Tabellen suchen").fill("l8db_ui");
       const publish = main.getByRole("switch", { name: "Realtime für public.l8db_ui" });
       await publish.click();
@@ -741,7 +745,7 @@ test.skipIf(!enabled)(
       );
       expect(await publish.getAttribute("aria-checked")).toBe("true");
 
-      await main.getByRole("tab", { name: "Inspektor" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Inspektor" }).click();
       await main.getByLabel("Tabelle", { exact: true }).fill("l8db_ui");
       await main.getByRole("button", { name: "Verbinden" }).click();
       await main.getByText("Verbunden", { exact: true }).waitFor();
@@ -771,7 +775,7 @@ test.skipIf(!enabled)(
       await main.getByText("Verbunden", { exact: true }).waitFor({ state: "detached" });
       await pgQuery("DELETE FROM public.l8db_ui WHERE id >= 3");
 
-      await main.getByRole("tab", { name: "Publikation" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Publikation" }).click();
       await main.getByLabel("Tabellen suchen").fill("l8db_ui");
       await publish.click();
       await poll(
@@ -793,16 +797,16 @@ test.skipIf(!enabled)(
       await main.getByText("Inaktive Sitzungen anzeigen").click();
       await rowWith(main, "idle");
       await shot(page, "20-logs-sessions");
-      await main.getByRole("tab", { name: "Sperren" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Sperren" }).click();
       await main.locator("table, p").first().waitFor();
-      await main.getByRole("tab", { name: "Abfragen" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Abfragen" }).click();
       await main.getByText("Top-Abfragen").waitFor();
       await main.getByRole("columnheader", { name: "Aufrufe" }).waitFor();
       await shot(page, "21-logs-statements");
-      await main.getByRole("tab", { name: "Datenbank-Zustand" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Datenbank-Zustand" }).click();
       await main.locator("table").first().waitFor();
       await shot(page, "22-logs-health");
-      await main.getByRole("tab", { name: "Logs" }).click();
+      await studioSidebar(page).getByRole("tab", { name: "Logs" }).click();
       await main.locator("table, p").first().waitFor();
     });
   },

@@ -1,5 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import {
+  BarChart3,
+  HeartPulse,
+  Lightbulb,
+  Lock,
+  type LucideIcon,
+  RefreshCw,
+  ScrollText,
+  Timer,
+  Users,
+} from "lucide-react";
 import { type ComponentType, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,11 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { SupabaseStudioCapabilities } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { SupabaseSectionHeader } from "../supabase-section-header";
-import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
+import { SupabaseSectionTitle } from "../supabase-section-title";
+import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { LogsAdvisorsTab } from "./logs-advisors-tab";
 import { LogsExplorerTab } from "./logs-explorer-tab";
@@ -33,47 +44,55 @@ const MANAGEMENT_REASON = "Nur für Supabase-Cloud-Projekte mit Zugangstoken.";
 const TABS: {
   id: string;
   label: string;
+  icon: LucideIcon;
   component: ComponentType<LogsTabProps>;
   unavailable: (capabilities: SupabaseStudioCapabilities) => string | null;
 }[] = [
   {
     id: "sessions",
+    icon: Users,
     label: "Sitzungen",
     component: LogsSessionsTab,
     unavailable: (c) => (c.sql ? null : SQL_REASON),
   },
   {
     id: "locks",
+    icon: Lock,
     label: "Sperren",
     component: LogsLocksTab,
     unavailable: (c) => (c.sql ? null : SQL_REASON),
   },
   {
     id: "statements",
+    icon: Timer,
     label: "Abfragen",
     component: LogsStatementsTab,
     unavailable: (c) => (c.sql ? null : SQL_REASON),
   },
   {
     id: "health",
+    icon: HeartPulse,
     label: "Datenbank-Zustand",
     component: LogsHealthTab,
     unavailable: (c) => (c.sql ? null : SQL_REASON),
   },
   {
     id: "logs",
+    icon: ScrollText,
     label: "Logs",
     component: LogsExplorerTab,
     unavailable: (c) => (c.management || c.self_hosted ? null : MANAGEMENT_REASON),
   },
   {
     id: "advisors",
+    icon: Lightbulb,
     label: "Advisors",
     component: LogsAdvisorsTab,
     unavailable: (c) => (c.management ? null : MANAGEMENT_REASON),
   },
   {
     id: "usage",
+    icon: BarChart3,
     label: "Nutzung",
     component: LogsUsageTab,
     unavailable: (c) => (c.management ? null : MANAGEMENT_REASON),
@@ -95,7 +114,12 @@ export function SupabaseLogsSection({ project, capabilities }: SupabaseStudioSec
   return (
     <div className="space-y-5">
       <SupabaseSectionHeader
-        title="Logs & Leistung"
+        title={
+          <SupabaseSectionTitle
+            section="Logs & Leistung"
+            part={TABS.find((item) => item.id === tab)?.label}
+          />
+        }
         titleRef={feature.ref}
         isNew={feature.isNew}
         description="Logs der Dienste, langsame Abfragen, Sperren und Hinweise zur Datenbank."
@@ -131,25 +155,18 @@ export function SupabaseLogsSection({ project, capabilities }: SupabaseStudioSec
           </>
         }
       />
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList variant="line" className={SECTION_TABS_CLASS}>
-          {TABS.map((item) => {
-            const reason = item.unavailable(capabilities);
-            return (
-              <TabsTrigger
-                key={item.id}
-                value={item.id}
-                className="text-xs"
-                disabled={reason !== null}
-                title={reason ?? undefined}
-              >
-                {item.label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+      <Tabs value={tab} onValueChange={setTab} orientation="vertical" className="flex-col">
+        <SupabaseSidebarTabs
+          label="Logs & Leistung"
+          items={TABS.map((item) => ({
+            value: item.id,
+            label: item.label,
+            icon: item.icon,
+            disabledReason: item.unavailable(capabilities),
+          }))}
+        />
         {TABS.map(({ id, component: Tab }) => (
-          <TabsContent key={id} value={id} className="pt-3">
+          <TabsContent key={id} value={id}>
             {tab === id &&
               (id === "logs" && !capabilities.management ? (
                 <LogsSelfHostedNotice />

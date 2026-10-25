@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { Radar, RefreshCw, Share2 } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { supabaseHealth } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { SupabaseSectionHeader } from "../supabase-section-header";
-import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
+import { SupabaseSectionTitle } from "../supabase-section-title";
+import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { RealtimeInspector } from "./realtime-inspector";
 import { SupabaseRealtimePublication } from "./supabase-realtime-publication";
@@ -16,6 +18,7 @@ const NEEDS_SQL =
 
 export function SupabaseRealtimeSection({ project, capabilities }: SupabaseStudioSectionProps) {
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.supabase.studio.realtime");
+  const [tab, setTab] = useState("inspector");
   const health = useQuery({
     queryKey: ["supabase", project.reference, "health"],
     queryFn: () => supabaseHealth(project.reference),
@@ -31,7 +34,12 @@ export function SupabaseRealtimeSection({ project, capabilities }: SupabaseStudi
   return (
     <div className="space-y-5">
       <SupabaseSectionHeader
-        title="Realtime"
+        title={
+          <SupabaseSectionTitle
+            section="Realtime"
+            part={tab === "inspector" ? "Inspektor" : "Publikation"}
+          />
+        }
         titleRef={feature.ref}
         isNew={feature.isNew}
         description="Kanäle abonnieren, Broadcasts senden, Presence beobachten und Tabellen für Postgres-Änderungen freigeben. Die Verbindung läuft in l8db, der Key verlässt die App nicht."
@@ -56,17 +64,19 @@ export function SupabaseRealtimeSection({ project, capabilities }: SupabaseStudi
           </div>
         }
       />
-      <Tabs defaultValue="inspector">
-        <TabsList variant="line" className={SECTION_TABS_CLASS}>
-          <TabsTrigger value="inspector">Inspektor</TabsTrigger>
-          <TabsTrigger
-            value="publication"
-            disabled={!capabilities.sql}
-            title={capabilities.sql ? undefined : NEEDS_SQL}
-          >
-            Publikation
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={tab} onValueChange={setTab} orientation="vertical" className="flex-col">
+        <SupabaseSidebarTabs
+          label="Realtime"
+          items={[
+            { value: "inspector", label: "Inspektor", icon: Radar },
+            {
+              value: "publication",
+              label: "Publikation",
+              icon: Share2,
+              disabledReason: capabilities.sql ? null : NEEDS_SQL,
+            },
+          ]}
+        />
         <TabsContent value="inspector">
           <RealtimeInspector reference={project.reference} />
         </TabsContent>

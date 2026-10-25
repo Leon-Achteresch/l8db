@@ -66,6 +66,8 @@ test.skipIf(!enabled)(
       expect(count(calls, "supabase_health")).toBe(1);
       expect(count(calls, "supabase_studio_settings_overview_stats")).toBe(1);
       expect(count(calls, "supabase_studio_database_list:rls_tables")).toBe(1);
+      expect(count(calls, "supabase_studio_tables_schemas")).toBe(1);
+      expect(count(calls, "supabase_studio_tables_list")).toBe(1);
       expect(calls.filter((entry) => entry.startsWith("supabase")).length).toBeLessThanOrEqual(8);
       await page.close();
     }
@@ -112,6 +114,31 @@ test.skipIf(!enabled)(
     );
     expect(await main.getByText("SELECT geregelt").count()).toBeGreaterThan(0);
     expect(errors).toEqual([]);
+    await page.close();
+  },
+  60_000,
+);
+
+test.skipIf(!enabled)(
+  "die Sidebar führt wie bei einer Datenbank durch Tabellen und Unterbereiche",
+  async () => {
+    const { page, errors } = await openStudio("overview");
+    const sidebar = page.locator("[data-baas-studio] > aside");
+    await sidebar.getByRole("button", { name: "orders", exact: true }).click();
+    await page.waitForURL(/studio=tables.*table=orders|table=orders.*studio=tables/);
+    await page.getByRole("tab", { name: "Spalten" }).waitFor();
+    const before = await invokes(page);
+    await page.getByRole("tab", { name: "Datenbank" }).click();
+    await sidebar.getByRole("tab", { name: "Indizes" }).click();
+    await page.getByRole("heading", { name: /Datenbank\s*\/\s*Indizes/ }).waitFor();
+    await page.getByRole("tab", { name: "Logs & Leistung" }).click();
+    await sidebar.getByRole("tab", { name: "Sperren" }).click();
+    await page.getByRole("heading", { name: /Logs & Leistung\s*\/\s*Sperren/ }).waitFor();
+    const after = await invokes(page);
+    expect(errors).toEqual([]);
+    expect(
+      count(after, "supabase_studio_tables_list") - count(before, "supabase_studio_tables_list"),
+    ).toBe(0);
     await page.close();
   },
   60_000,

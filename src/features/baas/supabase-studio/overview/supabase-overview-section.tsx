@@ -8,10 +8,18 @@ import { Button } from "@/components/ui/button";
 import { supabaseStudioSettingsOverviewStats } from "@/lib/db/supabase-studio-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { activateConnectionWithToast } from "@/lib/ssh";
+import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import { SupabaseDatabaseConnectDialog } from "../../supabase-database-connect-dialog";
 import { useSupabaseDatabase } from "../../use-supabase-database";
 import { statusLabel } from "../supabase-services";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
+import { SupabaseTablesBrowser } from "../tables/supabase-tables-browser";
+import { SupabaseTablesOpener } from "../tables/supabase-tables-opener";
+import {
+  loadRecentTables,
+  rememberRecentTable,
+  type StudioTableRef,
+} from "../tables/supabase-tables-utils";
 import { useSupabaseHealth } from "../use-supabase-health";
 import { SupabaseOverviewProtection } from "./supabase-overview-protection";
 import { SupabaseSystemMap } from "./supabase-system-map";
@@ -48,6 +56,22 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
     ...(stats.data?.errors ?? []),
   ];
 
+  const [recent] = useState(() => loadRecentTables(project.reference));
+
+  function openTable(table: StudioTableRef) {
+    if (!capabilities.sql) rememberRecentTable(project.reference, table);
+    void navigate({
+      to: "/baas",
+      search: {
+        ...search,
+        studio: "tables",
+        table: table.name,
+        tableSchema: table.schema,
+        tableProject: project.reference,
+      },
+    });
+  }
+
   async function openDatabase() {
     if (!database) return;
     if (await activateConnectionWithToast(database.id)) await navigate({ to: "/" });
@@ -55,6 +79,19 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {(capabilities.sql || capabilities.data_api) && (
+        <BaasSidebarPortal>
+          {capabilities.sql ? (
+            <SupabaseTablesBrowser
+              reference={project.reference}
+              selected={null}
+              onSelect={openTable}
+            />
+          ) : (
+            <SupabaseTablesOpener selected={null} recent={recent} onSelect={openTable} />
+          )}
+        </BaasSidebarPortal>
+      )}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="eyebrow mb-2">
