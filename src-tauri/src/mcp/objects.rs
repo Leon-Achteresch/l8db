@@ -1221,6 +1221,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn duckdb_views_carry_estimates_comments_and_sources() {
         let dir = tempfile::tempdir().unwrap();
