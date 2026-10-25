@@ -38,7 +38,7 @@ export const HOME_WIDGETS: Record<
 > = {
   metrics: { label: "Kennzahlen", w: 12, h: 2, minW: 3, minH: 2, single: true },
   tables: { label: "Tabellen", w: 7, h: 7, minW: 3, minH: 4, single: true },
-  recent: { label: "Letzte Abfragen", w: 7, h: 5, minW: 3, minH: 3, single: true },
+  recent: { label: "Letzte Abfragen", w: 7, h: 7, minW: 3, minH: 3, single: true },
   storage: { label: "Speicher & Schemas", w: 5, h: 9, minW: 3, minH: 4, single: true },
   "er-diagram": { label: "ER-Diagramm", w: 5, h: 4, minW: 3, minH: 4, single: true },
   performance: { label: "Performance", w: 7, h: 8, minW: 4, minH: 5, single: true },
@@ -50,7 +50,7 @@ export const HOME_WIDGETS: Record<
 export const DEFAULT_HOME_LAYOUT: HomeWidget[] = [
   { id: "metrics", kind: "metrics", x: 0, y: 0, w: 12, h: 2 },
   { id: "tables", kind: "tables", x: 0, y: 2, w: 7, h: 7 },
-  { id: "recent", kind: "recent", x: 0, y: 9, w: 7, h: 5 },
+  { id: "recent", kind: "recent", x: 0, y: 9, w: 7, h: 7 },
   { id: "storage", kind: "storage", x: 7, y: 2, w: 5, h: 9 },
   { id: "er-diagram", kind: "er-diagram", x: 7, y: 11, w: 5, h: 4 },
 ];

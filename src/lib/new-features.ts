@@ -57,6 +57,7 @@ export const NEW_FEATURES = {
   "health.advisor": "0.10.0",
   "monitor.live": "0.14.0",
   "home.customize": "0.8.0",
+  "home.activity": NEXT_FEATURE_VERSION,
   "dashboard.visual-builder": "0.8.0",
   "dashboard.chart-gallery": "0.8.0",
   "dashboard.studio": "0.13.0",
