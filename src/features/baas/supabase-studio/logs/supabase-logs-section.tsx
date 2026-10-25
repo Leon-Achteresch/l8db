@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { type ComponentType, useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,6 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SupabaseStudioCapabilities } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { SupabaseSectionHeader } from "../supabase-section-header";
+import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { LogsAdvisorsTab } from "./logs-advisors-tab";
 import { LogsExplorerTab } from "./logs-explorer-tab";
@@ -92,43 +93,46 @@ export function SupabaseLogsSection({ project, capabilities }: SupabaseStudioSec
   const refetchInterval = autoRefresh ? seconds * 1000 : false;
   const reference = project.reference;
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-          Logs & Leistung {feature.isNew && <NewBadge />}
-        </h2>
-        <div className="ml-auto flex items-center gap-2">
-          <Label className="flex items-center gap-2 text-xs">
-            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            Automatisch aktualisieren
-          </Label>
-          <Select value={String(seconds)} onValueChange={(value) => setSeconds(Number(value))}>
-            <SelectTrigger size="sm" className="h-8 w-24 text-xs" aria-label="Intervall">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {INTERVALS.map((value) => (
-                <SelectItem key={value} value={String(value)} className="text-xs">
-                  alle {value} s
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: logsQueryKey(reference, tab) })
-            }
-          >
-            <RefreshCw className="size-3.5" />
-            Aktualisieren
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <SupabaseSectionHeader
+        title="Logs & Leistung"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Logs der Dienste, langsame Abfragen, Sperren und Hinweise zur Datenbank."
+        actions={
+          <>
+            <Label className="flex items-center gap-2 text-xs">
+              <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
+              Automatisch aktualisieren
+            </Label>
+            <Select value={String(seconds)} onValueChange={(value) => setSeconds(Number(value))}>
+              <SelectTrigger size="sm" className="h-8 w-24 text-xs" aria-label="Intervall">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INTERVALS.map((value) => (
+                  <SelectItem key={value} value={String(value)} className="text-xs">
+                    alle {value} s
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              onClick={() =>
+                void queryClient.invalidateQueries({ queryKey: logsQueryKey(reference, tab) })
+              }
+            >
+              <RefreshCw className="size-3.5" />
+              Aktualisieren
+            </Button>
+          </>
+        }
+      />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="h-auto flex-wrap">
+        <TabsList variant="line" className={SECTION_TABS_CLASS}>
           {TABS.map((item) => {
             const reason = item.unavailable(capabilities);
             return (

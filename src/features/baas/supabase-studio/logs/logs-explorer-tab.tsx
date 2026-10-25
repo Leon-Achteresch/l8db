@@ -18,7 +18,7 @@ import {
   supabaseStudioObservabilityLogs,
 } from "@/lib/db/supabase-studio-observability";
 import { DatabaseTable } from "../database/database-table";
-import { formatLogTimestamp, type LogsTabProps, logsQueryKey } from "./logs-format";
+import { formatLogTimestamp, type LogsTabProps, logsQueryKey, logTone } from "./logs-format";
 import { LogsRowDetail } from "./logs-row-detail";
 
 const RANGES = [
@@ -154,26 +154,37 @@ export function LogsExplorerTab({ reference, refetchInterval }: LogsTabProps) {
       ) : (
         <div className="max-h-[560px] overflow-auto rounded-xl border">
           <DatabaseTable headers={["Zeitpunkt", "Nachricht"]}>
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                className="cursor-pointer hover:bg-muted/40"
-                onClick={() => setDetail(row)}
-              >
-                <td className="whitespace-nowrap tabular-nums">
-                  {formatLogTimestamp(row.timestamp)}
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="line-clamp-2 text-left font-mono break-all"
-                    onClick={() => setDetail(row)}
+            {rows.map((row) => {
+              const tone = logTone(row.event_message);
+              return (
+                <tr
+                  key={row.id}
+                  className="cursor-pointer hover:bg-muted/40"
+                  onClick={() => setDetail(row)}
+                >
+                  <td
+                    className={`border-l-2 whitespace-nowrap tabular-nums ${
+                      tone === "error"
+                        ? "border-l-destructive"
+                        : tone === "warning"
+                          ? "border-l-amber-500"
+                          : "border-l-transparent"
+                    }`}
                   >
-                    {row.event_message ?? "–"}
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {formatLogTimestamp(row.timestamp)}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="line-clamp-2 text-left font-mono break-all"
+                      onClick={() => setDetail(row)}
+                    >
+                      {row.event_message ?? "–"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </DatabaseTable>
         </div>
       )}

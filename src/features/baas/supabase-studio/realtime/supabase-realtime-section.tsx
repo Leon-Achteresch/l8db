@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabaseHealth } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { SupabaseSectionHeader } from "../supabase-section-header";
+import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { RealtimeInspector } from "./realtime-inspector";
 import { SupabaseRealtimePublication } from "./supabase-realtime-publication";
@@ -28,39 +29,35 @@ export function SupabaseRealtimeSection({ project, capabilities }: SupabaseStudi
       : "Kein Status";
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 ref={feature.ref} className="flex items-center gap-2 text-lg font-semibold">
-            Realtime {feature.isNew && <NewBadge />}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Kanäle abonnieren, Broadcasts senden, Presence beobachten und Tabellen für
-            Postgres-Änderungen freigeben. Die Verbindung läuft in l8db, der Key verlässt die App
-            nicht.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          {realtime ? (
-            <Badge variant={realtime.healthy ? "secondary" : "destructive"}>
-              Realtime: {realtime.healthy ? "gesund" : realtime.status}
-            </Badge>
-          ) : (
-            <span className="text-muted-foreground">{fallback}</span>
-          )}
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Status neu laden"
-            disabled={health.isFetching}
-            onClick={() => void health.refetch()}
-          >
-            <RefreshCw className="size-3.5" />
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <SupabaseSectionHeader
+        title="Realtime"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Kanäle abonnieren, Broadcasts senden, Presence beobachten und Tabellen für Postgres-Änderungen freigeben. Die Verbindung läuft in l8db, der Key verlässt die App nicht."
+        actions={
+          <div className="flex items-center gap-2 text-xs">
+            {realtime ? (
+              <Badge variant={realtime.healthy ? "secondary" : "destructive"}>
+                Realtime: {realtime.healthy ? "gesund" : realtime.status}
+              </Badge>
+            ) : (
+              <span className="text-muted-foreground">{fallback}</span>
+            )}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Status neu laden"
+              disabled={health.isFetching}
+              onClick={() => void health.refetch()}
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
+          </div>
+        }
+      />
       <Tabs defaultValue="inspector">
-        <TabsList>
+        <TabsList variant="line" className={SECTION_TABS_CLASS}>
           <TabsTrigger value="inspector">Inspektor</TabsTrigger>
           <TabsTrigger
             value="publication"

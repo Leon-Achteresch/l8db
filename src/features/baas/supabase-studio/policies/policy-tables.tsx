@@ -10,6 +10,8 @@ import { DatabaseSchemaSelect } from "../database/database-schema-select";
 import { DatabaseTable } from "../database/database-table";
 import { useDatabaseAction } from "../database/use-database-action";
 import { useDatabaseList } from "../database/use-database-list";
+import { PolicyAccessCell } from "./policy-access-cell";
+import { PolicyCoverageSummary } from "./policy-coverage-summary";
 import { PolicyList } from "./policy-list";
 
 export function PolicyTables({ reference }: { reference: string }) {
@@ -18,8 +20,14 @@ export function PolicyTables({ reference }: { reference: string }) {
   const action = useDatabaseAction(reference);
   const [open, setOpen] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const commands = ["SELECT", "INSERT", "UPDATE", "DELETE"] as const;
   return (
     <>
+      {list.query.data && list.query.data.items.length > 0 && (
+        <div className="mb-4">
+          <PolicyCoverageSummary tables={list.query.data.items} />
+        </div>
+      )}
       <DatabaseListFrame
         list={list}
         empty="Keine Tabellen in diesem Schema."
@@ -35,14 +43,13 @@ export function PolicyTables({ reference }: { reference: string }) {
         }
       >
         {(items) => (
-          <DatabaseTable headers={["Tabelle", "RLS", "Erzwungen", "Richtlinien"]}>
+          <DatabaseTable headers={["Tabelle", "RLS", "Erzwungen", ...commands, "Richtlinien"]}>
             {items.map((table) => (
               <Fragment key={table.oid}>
-                <tr>
-                  <td className="font-medium">
-                    {table.name}{" "}
-                    {!table.rls_enabled && <Badge variant="destructive">Ungeschützt</Badge>}
-                  </td>
+                <tr
+                  className={`[&>td]:align-middle ${table.rls_enabled ? "" : "bg-destructive/[0.035]"}`}
+                >
+                  <td className="font-medium">{table.name}</td>
                   <td>
                     <Switch
                       size="sm"
@@ -89,6 +96,19 @@ export function PolicyTables({ reference }: { reference: string }) {
                       }
                     />
                   </td>
+                  {table.rls_enabled ? (
+                    commands.map((command) => (
+                      <PolicyAccessCell
+                        key={command}
+                        command={command}
+                        commands={table.commands ?? []}
+                      />
+                    ))
+                  ) : (
+                    <td colSpan={commands.length} className="text-center">
+                      <Badge variant="destructive">Ungeschützt: Data API ohne Zeilenfilter</Badge>
+                    </td>
+                  )}
                   <td>
                     <Button
                       size="xs"
@@ -102,7 +122,7 @@ export function PolicyTables({ reference }: { reference: string }) {
                 </tr>
                 {open === table.name && (
                   <tr>
-                    <td colSpan={4} className="bg-muted/20">
+                    <td colSpan={commands.length + 4} className="bg-muted/20">
                       <PolicyList reference={reference} schema={schema} table={table.name} />
                     </td>
                   </tr>

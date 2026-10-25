@@ -2,7 +2,6 @@ import { EditorView } from "@codemirror/view";
 import { useMutation } from "@tanstack/react-query";
 import { BookmarkPlusIcon, PlayIcon, PlusIcon, TextCursorInputIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,6 +13,7 @@ import {
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
+import { SupabaseSectionHeader } from "../supabase-section-header";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseSqlLibrary } from "./supabase-sql-library";
 import { SupabaseSqlNameDialog } from "./supabase-sql-name-dialog";
@@ -109,16 +109,12 @@ export function SupabaseSqlSection({ project }: SupabaseStudioSectionProps) {
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 ref={feature.ref} className="flex items-center gap-2 text-lg font-semibold">
-          SQL
-          {feature.isNew && <NewBadge />}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Ergebnisse sind auf 1000 Zeilen begrenzt. Bei mehreren Anweisungen wird das Ergebnis der
-          letzten angezeigt.
-        </p>
-      </div>
+      <SupabaseSectionHeader
+        title="SQL"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Ergebnisse sind auf 1000 Zeilen begrenzt. Bei mehreren Anweisungen wird das Ergebnis der letzten angezeigt."
+      />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
         <div className="grid min-w-0 gap-3">
           <div className="flex flex-wrap items-center gap-1 border-b pb-1" role="tablist">

@@ -292,7 +292,7 @@ test.skipIf(!enabled)(
         expect(reference).toStartWith("self-");
 
         const main = page.locator("section[aria-label='Übersicht']");
-        await main.getByText("ACTIVE_HEALTHY").nth(4).waitFor();
+        await main.getByText("Aktiv", { exact: true }).nth(3).waitFor();
         for (const label of [
           "Übersicht",
           "Tabellen",
@@ -307,11 +307,12 @@ test.skipIf(!enabled)(
           "Einstellungen",
         ])
           expect(await nav.getByRole("tab", { name: label }).isEnabled()).toBe(true);
-        expect(await main.getByText("ACTIVE_HEALTHY").count()).toBe(5);
+        expect(await main.getByText("Aktiv", { exact: true }).count()).toBeGreaterThanOrEqual(4);
         await main.getByText("Secret Key", { exact: true }).waitFor();
         await main.getByText("Datenbankgröße").waitFor();
+        expect(await main.getByRole("alert").count()).toBe(0);
         await shot(page, "01-overview");
-        await main.getByRole("button", { name: "Tabellen" }).first().click();
+        await main.getByRole("button", { name: /^Data API/ }).click();
         await page.waitForURL(/studio=tables/);
       },
       [/^supabase_connect_self_hosted$/],

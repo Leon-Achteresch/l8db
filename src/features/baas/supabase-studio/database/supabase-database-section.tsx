@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { SupabaseSectionHeader } from "../supabase-section-header";
+import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { DatabaseEnumsTab } from "./database-enums-tab";
 import { DatabaseExtensionsTab } from "./database-extensions-tab";
@@ -31,12 +32,15 @@ export function SupabaseDatabaseSection({ project }: SupabaseStudioSectionProps)
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.supabase.studio.database");
   const [tab, setTab] = useState("schemas");
   return (
-    <div className="space-y-4">
-      <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-        Datenbank {feature.isNew && <NewBadge />}
-      </h2>
+    <div className="space-y-5">
+      <SupabaseSectionHeader
+        title="Datenbank"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Schemas, Funktionen, Trigger, Indizes und weitere Postgres-Objekte."
+      />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="h-auto flex-wrap">
+        <TabsList variant="line" className={SECTION_TABS_CLASS}>
           {TABS.map((item) => (
             <TabsTrigger key={item.id} value={item.id} className="text-xs">
               {item.label}

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { SupabaseSectionHeader } from "../supabase-section-header";
+import { SECTION_TABS_CLASS } from "../supabase-section-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { PolicyList } from "./policy-list";
 import { PolicyTables } from "./policy-tables";
@@ -10,12 +11,15 @@ export function SupabasePoliciesSection({ project }: SupabaseStudioSectionProps)
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.supabase.studio.policies");
   const [tab, setTab] = useState("tables");
   return (
-    <div className="space-y-4">
-      <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-        Richtlinien {feature.isNew && <NewBadge />}
-      </h2>
+    <div className="space-y-5">
+      <SupabaseSectionHeader
+        title="Richtlinien"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Wer über die Data API welche Zeilen lesen und ändern darf: Row Level Security je Tabelle und Befehl."
+      />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList variant="line" className={SECTION_TABS_CLASS}>
           <TabsTrigger value="tables" className="text-xs">
             Tabellen
           </TabsTrigger>
