@@ -15,6 +15,7 @@ import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { MultiTargetButton } from "./query-view/multi-target-button";
@@ -51,6 +52,7 @@ import { useScriptRun } from "./query-view/use-script-run";
 import { useServerOutput } from "./query-view/use-server-output";
 import { useSubstitutionPrompt } from "./query-view/use-substitution-prompt";
 import { useWorkspaceLayoutSync } from "./query-view/use-workspace-layout-sync";
+import { ResultCompareButton } from "./result-compare/result-compare-button";
 
 interface QueryViewProps {
   tabId: string;
@@ -194,16 +196,22 @@ export function QueryView({ tabId }: QueryViewProps) {
   const chart = useResultChartBinding(tabId, exec.executedSql, connection, database, caps);
   const isSql = caps.query_language === "sql";
 
+  const [compareOpen, setCompareOpen] = useTabState(tabStateKey(exec.scope, "compareOpen"), false);
   const resultActions = (
-    <ResultActions
-      result={exec.result}
-      serverOutput={caps.server_output}
-      outputOpen={output.outputOpen}
-      connected={Boolean(connection)}
-      onToggleOutput={() => output.setOutputOpen((open) => !open)}
-      exportState={exportState}
-      sql={exec.executedSql ?? undefined}
-    />
+    <>
+      {exec.result && exec.result.columns.length > 0 && (
+        <ResultCompareButton open={compareOpen} onToggle={() => setCompareOpen((open) => !open)} />
+      )}
+      <ResultActions
+        result={exec.result}
+        serverOutput={caps.server_output}
+        outputOpen={output.outputOpen}
+        connected={Boolean(connection)}
+        onToggleOutput={() => output.setOutputOpen((open) => !open)}
+        exportState={exportState}
+        sql={exec.executedSql ?? undefined}
+      />
+    </>
   );
 
   return (
@@ -352,6 +360,9 @@ export function QueryView({ tabId }: QueryViewProps) {
               tables={schema.registry.tables}
               maximized={resultFocus && !editorFocus}
               onToggleMaximized={toggleResultFocus}
+              compareOpen={compareOpen}
+              connectionId={connection?.id ?? null}
+              database={database}
               sql={sql}
               names={errorNames}
               onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
