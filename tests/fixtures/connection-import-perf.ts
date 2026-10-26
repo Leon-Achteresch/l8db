@@ -188,9 +188,9 @@ function build(connections: Parameters<typeof buildExternalCandidates>[0]) {
   return buildExternalCandidates(connections, existing, syntheticEndpoints);
 }
 
-function heapUsed() {
+function heap() {
   Bun.gc(true);
-  return heapStats().heapSize;
+  return heapStats();
 }
 
 export async function scenario(name: string, parse: () => Promise<ExternalParseResult>) {
@@ -209,11 +209,11 @@ export async function scenario(name: string, parse: () => Promise<ExternalParseR
     Array.from({ length: RETAINED_ROUNDS }, async () => (await parse()).connections),
   );
   candidates = [];
-  const before = heapUsed();
-  const objectsBefore = heapStats().objectCount;
+  const before = heap();
   for (const input of parsedInputs) held.push(await build(input));
-  const retainedBytes = Math.round((heapUsed() - before) / RETAINED_ROUNDS);
-  const retainedObjects = Math.round((heapStats().objectCount - objectsBefore) / RETAINED_ROUNDS);
+  const after = heap();
+  const retainedBytes = Math.round((after.heapSize - before.heapSize) / RETAINED_ROUNDS);
+  const retainedObjects = Math.round((after.objectCount - before.objectCount) / RETAINED_ROUNDS);
   candidates = held[held.length - 1] ?? [];
   const selected = new Set(candidates.map((candidate) => candidate.index));
   const resolved = resolveExternalImport(candidates, selected, "copy");

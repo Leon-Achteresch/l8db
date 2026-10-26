@@ -30,6 +30,22 @@ const ENDS_FROM = new Set([
 
 const WORD_START = /[\p{L}_]/u;
 const WORD_PART = /[\p{L}\p{M}\p{N}_$]/u;
+
+function isAsciiLetter(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function wordStart(c: string): boolean {
+  const code = c.charCodeAt(0);
+  return code < 128 ? isAsciiLetter(code) || code === 95 : WORD_START.test(c);
+}
+
+function wordPart(c: string): boolean {
+  const code = c.charCodeAt(0);
+  return code < 128
+    ? isAsciiLetter(code) || (code >= 48 && code <= 57) || code === 95 || code === 36
+    : WORD_PART.test(c);
+}
 const BACKSLASH_KINDS = new Set<DatabaseKind>(["mysql", "clickhouse", "bigquery", "snowflake"]);
 const NESTED_COMMENT_KINDS = new Set<DatabaseKind>(["postgres", "mssql", "duckdb", "clickhouse"]);
 const HASH_COMMENT_KINDS = new Set<DatabaseKind>(["mysql", "bigquery"]);
@@ -172,17 +188,17 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
-    if (sql.startsWith("--", i) || (hash && c === "#")) {
+    if ((c === "-" && sql[i + 1] === "-") || (hash && c === "#")) {
       const end = sql.indexOf("\n", i);
       i = end < 0 ? sql.length : end + 1;
-    } else if (sql.startsWith("/*", i)) {
+    } else if (c === "/" && sql[i + 1] === "*") {
       let nesting = 1;
       i += 2;
       while (i < sql.length && nesting) {
-        if (nested && sql.startsWith("/*", i)) {
+        if (nested && sql[i] === "/" && sql[i + 1] === "*") {
           nesting++;
           i += 2;
-        } else if (sql.startsWith("*/", i)) {
+        } else if (sql[i] === "*" && sql[i + 1] === "/") {
           nesting--;
           i += 2;
         } else i++;
@@ -226,13 +242,13 @@ function tokenize(sql: string, kind: DatabaseKind | null): TableToken[] {
     } else if (c === "(" || c === ")" || c === "," || c === "." || c === "[" || c === "]") {
       tokens.push({ word: null, ident: null, mark: c, start: i, end: i + 1 });
       i++;
-    } else if (/\d/.test(c)) {
+    } else if (c >= "0" && c <= "9") {
       const length = sql.slice(i, i + 64).match(NUMBER)?.[0].length || 1;
       tokens.push({ word: null, ident: null, mark: "number", start: i, end: i + length });
       i += length;
-    } else if (WORD_START.test(c)) {
+    } else if (wordStart(c)) {
       const start = i++;
-      while (i < sql.length && WORD_PART.test(sql[i])) i++;
+      while (i < sql.length && wordPart(sql[i])) i++;
       const text = sql.slice(start, i).toLowerCase();
       tokens.push({ word: text, ident: text, mark: null, start, end: i });
     } else i++;

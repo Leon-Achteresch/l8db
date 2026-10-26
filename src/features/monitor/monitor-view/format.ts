@@ -1,34 +1,36 @@
+const BYTES = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+const MILLISECONDS = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+const TIME = new Intl.DateTimeFormat("de-DE", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+const DATE_TIME = new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "medium" });
+
 export function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** index).toLocaleString("de-DE", { maximumFractionDigits: 1 })} ${units[index]}`;
+  return `${BYTES.format(bytes / 1024 ** index)} ${units[index]}`;
 }
 
 export function formatMs(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return `${value.toLocaleString("de-DE", { maximumFractionDigits: 0 })} ms`;
+  return `${MILLISECONDS.format(value)} ms`;
 }
 
 export function formatTime(value: number | string | null): string {
   if (value == null) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return TIME.format(date);
 }
 
 export function formatDateTime(value: number | string | null): string {
   if (value == null) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("de-DE", {
-    dateStyle: "short",
-    timeStyle: "medium",
-  });
+  return DATE_TIME.format(date);
 }
 
 export function firstLine(sql: string): string {
