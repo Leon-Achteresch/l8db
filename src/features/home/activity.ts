@@ -5,6 +5,7 @@ export const ACTIVITY_POINT_LIMIT = 400;
 export const RECENT_LIMIT = 20;
 
 const msFormatter = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+const weekdayFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
 export interface ActivityPoint {
   id: string;
@@ -55,7 +56,7 @@ export function selectActivity(
   while (date.getTime() > cutoff) {
     days.push({
       x: 1 - (now - date.getTime()) / ACTIVITY_RANGE_MS,
-      label: date.toLocaleDateString("de-DE", { weekday: "short" }),
+      label: weekdayFormatter.format(date),
     });
     date.setDate(date.getDate() - 1);
   }
