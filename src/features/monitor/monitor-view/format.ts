@@ -67,12 +67,23 @@ export function secondsSince(value: string | null | undefined, now: number): num
   return Math.max(0, (now - timestamp) / 1000);
 }
 
+const COUNTS = new Map<number, Intl.NumberFormat>();
+
+function countFormat(digits: number): Intl.NumberFormat {
+  let format = COUNTS.get(digits);
+  if (!format) {
+    format = new Intl.NumberFormat("de-DE", { maximumFractionDigits: digits });
+    COUNTS.set(digits, format);
+  }
+  return format;
+}
+
 export function formatCount(value: number | null, digits = 0): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return value.toLocaleString("de-DE", { maximumFractionDigits: digits });
+  return countFormat(digits).format(value);
 }
 
 export function formatPercent(value: number | null, digits = 0): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return `${value.toLocaleString("de-DE", { maximumFractionDigits: digits })} %`;
+  return `${countFormat(digits).format(value)} %`;
 }
