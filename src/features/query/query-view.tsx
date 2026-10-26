@@ -22,7 +22,7 @@ import { QueryEditorContent } from "./query-view/query-editor-content";
 import { QueryResultsContent } from "./query-view/query-results-content";
 import { QueryToolsMenu } from "./query-view/query-tools-menu";
 import { QueryViewDialogs } from "./query-view/query-view-dialogs";
-import { QueryViewDrawers } from "./query-view/query-view-drawers";
+import { type QueryHistoryHandle, QueryViewDrawers } from "./query-view/query-view-drawers";
 import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
@@ -75,7 +75,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
   const editorApiRef = useRef<QueryEditorApi | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyRef = useRef<QueryHistoryHandle | null>(null);
 
   const exec = useQueryExecutionState(tabId);
   const exportState = useResultExport(exec.result);
@@ -166,7 +166,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     connected: connection !== null,
     editorApiRef,
     handleFileSave: file.handleFileSave,
-    toggleHistory: () => startTransition(() => setHistoryOpen((open) => !open)),
+    toggleHistory: () => startTransition(() => historyRef.current?.toggle()),
     openCsvExport: exportState.openCsvExport,
   });
 
@@ -269,7 +269,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
                 isRunning={exec.isRunning}
-                onOpenHistory={() => startTransition(() => setHistoryOpen(true))}
+                onOpenHistory={() => startTransition(() => historyRef.current?.open())}
                 onOpenOutput={() => output.setOutputOpen(true)}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}
@@ -434,8 +434,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           output={output}
           exec={exec}
           onSelectScriptEntry={script.handleSelectScriptEntry}
-          historyOpen={historyOpen}
-          onHistoryOpenChange={setHistoryOpen}
+          historyRef={historyRef}
           tabId={tabId}
           onReplaceSql={updateQuerySql}
         />
