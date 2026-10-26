@@ -261,9 +261,7 @@ const REF_STOP_WORDS = new Set([
   "OUTER",
 ]);
 
-function stripComments(text: string, dialect: string): string {
-  const comments: [number, number][] = [];
-  sqlTokens(text, dialect, comments);
+function withoutComments(text: string, comments: [number, number][]): string {
   if (!comments.length) return text;
   let result = "";
   let cursor = 0;
@@ -274,8 +272,12 @@ function stripComments(text: string, dialect: string): string {
   return result + text.slice(cursor);
 }
 
-function normalize(text: string, dialect: string): string {
-  return stripComments(text, dialect).trim().replace(/;\s*$/, "").trim();
+function normalizedStatement(raw: string, dialect: string): { text: string; tokens: Token[] } {
+  const comments: [number, number][] = [];
+  const tokens = sqlTokens(raw, dialect, comments);
+  const text = withoutComments(raw, comments).trim().replace(/;\s*$/, "").trim();
+  if (comments.length || !raw.startsWith(text)) return { text, tokens: sqlTokens(text, dialect) };
+  return { text, tokens: tokens.filter((token) => token.start < text.length) };
 }
 
 function maskLiterals(text: string, dialect: string): string {
@@ -854,7 +856,7 @@ function hasTopLevelWhere(tokens: Token[]): boolean {
 }
 
 export function dmlKindOf(statement: string, dialect: string): DmlKind | "cte" | null {
-  return kindOfTokens(sqlTokens(normalize(statement, dialect), dialect));
+  return kindOfTokens(normalizedStatement(statement, dialect).tokens);
 }
 
 export function hasBindParameters(sql: string): boolean {
@@ -874,9 +876,8 @@ export function deriveDmlPreview(
   limit = 100,
 ): DmlPreviewDerivation | null {
   const statements = splitSqlStatements(sql, dialect).statements.flatMap((statement) => {
-    const text = normalize(statement.text, dialect);
+    const { text, tokens } = normalizedStatement(statement.text, dialect);
     if (!text) return [];
-    const tokens = sqlTokens(text, dialect);
     return [{ text, tokens, kind: kindOfTokens(tokens) }];
   });
   const relevant = statements.filter((statement) => statement.kind !== null);

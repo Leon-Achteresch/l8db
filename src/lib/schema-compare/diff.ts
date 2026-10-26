@@ -88,13 +88,26 @@ export function quoteName(name: string, kind?: DatabaseKind | null): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+const qualifierPatterns = new Map<string, RegExp>();
+
+function qualifierPattern(from: string): RegExp {
+  let pattern = qualifierPatterns.get(from);
+  if (!pattern) {
+    if (qualifierPatterns.size >= 64) qualifierPatterns.clear();
+    pattern = new RegExp(`(^|[^\\w$#."\`\\[\\]])${escapeRegExp(from)}\\.`, "gi");
+    qualifierPatterns.set(from, pattern);
+  }
+  return pattern;
+}
+
 function requalifyCode(sql: string, from: string, to: string, kind: DatabaseKind): string {
   const quotedTo = `${quoteName(to, kind)}.`;
-  let out = sql.split(`${quoteName(from, kind)}.`).join(quotedTo);
+  const quotedFrom = `${quoteName(from, kind)}.`;
+  let out = sql.includes(quotedFrom) ? sql.split(quotedFrom).join(quotedTo) : sql;
   if (plainIdentifier(from, kind)) {
     const bareTo = plainIdentifier(to, kind) ? `${to}.` : quotedTo;
     out = out.replace(
-      new RegExp(`(^|[^\\w$#."\`\\[\\]])${escapeRegExp(from)}\\.`, "gi"),
+      qualifierPattern(from),
       (match, before: string, offset: number, text: string) =>
         kind === "postgres" &&
         SETTING_CONTEXT.test(text.slice(Math.max(0, offset - 40), offset + before.length))
@@ -107,6 +120,7 @@ function requalifyCode(sql: string, from: string, to: string, kind: DatabaseKind
 
 export function requalify(sql: string, from: string, to: string, kind: DatabaseKind): string {
   if (!from || from === to) return sql;
+  if (!sql.includes("'")) return requalifyCode(sql, from, to, kind);
   let out = "";
   let code = 0;
   for (const match of sql.matchAll(TOKEN)) {
@@ -179,6 +193,10 @@ export function canonical(
     if (options.ignoreCase) value = value.toLowerCase();
     return value;
   };
+  if (!/[-/"'`#[$]/.test(out)) {
+    const plain = normalize(out);
+    return options.ignoreComments ? plain.trim() : plain;
+  }
   let result = "";
   let pending = "";
   let code = 0;
