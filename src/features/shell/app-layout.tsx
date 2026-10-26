@@ -1,10 +1,10 @@
+import { lazy, Suspense } from "react";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guard";
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
-import { VersioningPanel } from "@/features/versioning/versioning-panel";
 import { useAiStore } from "@/lib/ai/store";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useSettingsStore } from "@/lib/settings";
@@ -12,6 +12,12 @@ import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { WorkspaceStatus } from "./workspace-status";
+
+const VersioningPanel = lazy(() =>
+  import("@/features/versioning/versioning-panel").then(({ VersioningPanel }) => ({
+    default: VersioningPanel,
+  })),
+);
 
 export function AppLayout() {
   const fullAiPage = useRouterSelect((state) => state.location.pathname === "/ai");
@@ -62,7 +68,9 @@ export function AppLayout() {
               source="versioning-panel"
               className="w-80 shrink-0 border-l"
             >
-              <VersioningPanel />
+              <Suspense fallback={null}>
+                <VersioningPanel />
+              </Suspense>
             </PanelErrorBoundary>
           )}
         </div>
