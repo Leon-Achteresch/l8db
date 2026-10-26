@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { TabsContent } from "@/components/ui/tabs";
 import {
   firstLine,
+  formatCount,
   formatDateTime,
   formatMs,
   formatTime,
@@ -267,9 +268,7 @@ export function LogsTab({
                           {formatMs(entry.durationMs)}
                         </span>
                         <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
-                          {entry.rowCount == null
-                            ? "—"
-                            : `${entry.rowCount.toLocaleString("de-DE")} Zeilen`}
+                          {entry.rowCount == null ? "—" : `${formatCount(entry.rowCount)} Zeilen`}
                         </span>
                         <Badge
                           variant={entry.error ? "destructive" : "secondary"}
@@ -289,7 +288,7 @@ export function LogsTab({
                             <span>
                               {entry.rowCount == null
                                 ? "Keine Zeilenangabe"
-                                : `${entry.rowCount.toLocaleString("de-DE")} Zeilen`}
+                                : `${formatCount(entry.rowCount)} Zeilen`}
                             </span>
                           </div>
                           {entry.error && (
