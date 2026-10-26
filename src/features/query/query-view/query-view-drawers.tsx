@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { type Ref, useImperativeHandle, useState } from "react";
 
 import {
   Drawer,
@@ -22,10 +23,14 @@ interface QueryViewDrawersProps {
   output: ServerOutputState;
   exec: QueryExecutionState;
   onSelectScriptEntry: (entry: ScriptRunEntry) => void;
-  historyOpen: boolean;
-  onHistoryOpenChange: (open: boolean) => void;
+  historyRef: Ref<QueryHistoryHandle>;
   tabId: string;
   onReplaceSql: (tabId: string, sql: string) => void;
+}
+
+export interface QueryHistoryHandle {
+  open: () => void;
+  toggle: () => void;
 }
 
 export function QueryViewDrawers({
@@ -34,12 +39,20 @@ export function QueryViewDrawers({
   output,
   exec,
   onSelectScriptEntry,
-  historyOpen,
-  onHistoryOpenChange,
+  historyRef,
   tabId,
   onReplaceSql,
 }: QueryViewDrawersProps) {
   const navigate = useNavigate();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  useImperativeHandle(
+    historyRef,
+    () => ({
+      open: () => setHistoryOpen(true),
+      toggle: () => setHistoryOpen((open) => !open),
+    }),
+    [],
+  );
   const { scriptEntries, setScriptEntries, scriptActiveIndex, setScriptActiveIndex, scriptNote } =
     exec;
   return (
@@ -92,7 +105,7 @@ export function QueryViewDrawers({
 
       <QueryHistorySheet
         open={historyOpen}
-        onOpenChange={onHistoryOpenChange}
+        onOpenChange={setHistoryOpen}
         connectionId={connection?.id ?? null}
         onLoad={(loaded, mode) => {
           if (mode === "replace") onReplaceSql(tabId, loaded);
