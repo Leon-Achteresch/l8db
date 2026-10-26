@@ -10,13 +10,23 @@ export interface SqlSplitResult {
   unterminated: boolean;
 }
 
-const WORD_CHAR = /[A-Za-z0-9_]/;
-
 const DOLLAR_TAG_ASCII = /\$([A-Za-z_][A-Za-z0-9_]*)?\$/y;
 const DOLLAR_TAG_START = /[A-Za-z_$]/;
 
+function isWordStartCode(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isWordCode(code: number): boolean {
+  return isWordStartCode(code) || (code >= 48 && code <= 57);
+}
+
+function isWordStart(ch: string | undefined): boolean {
+  return ch !== undefined && isWordStartCode(ch.charCodeAt(0));
+}
+
 function isWordChar(ch: string | undefined): boolean {
-  return ch !== undefined && WORD_CHAR.test(ch);
+  return ch !== undefined && isWordCode(ch.charCodeAt(0));
 }
 
 const ROUTINE_OBJECTS = ["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
@@ -122,6 +132,7 @@ export function splitSqlStatements(
   let blockDepth = 0;
   let delimiter = ";";
   const leadingWords: string[] = [];
+  let routine = false;
 
   const flush = (endExclusive: number) => {
     if (segmentStart < 0 || !hasCode) {
@@ -145,6 +156,7 @@ export function splitSqlStatements(
     batch = false;
     blockDepth = 0;
     leadingWords.length = 0;
+    routine = false;
   };
 
   const lineEndFrom = (from: number) => {
@@ -154,7 +166,7 @@ export function splitSqlStatements(
 
   const readWord = (from: number) => {
     let end = from;
-    while (end < length && isWordChar(sql[end])) end += 1;
+    while (end < length && isWordCode(sql.charCodeAt(end))) end += 1;
     return end;
   };
 
@@ -241,7 +253,7 @@ export function splitSqlStatements(
       }
       const quoteStart = ch === "n" || ch === "N" ? index + 1 : index;
       if (
-        /q/i.test(sql[quoteStart]) &&
+        (sql[quoteStart] === "q" || sql[quoteStart] === "Q") &&
         sql[quoteStart + 1] === "'" &&
         !isWordChar(sql[index - 1])
       ) {
@@ -260,7 +272,7 @@ export function splitSqlStatements(
           continue;
         }
       }
-      if (/[A-Za-z_]/.test(ch)) {
+      if (isWordStart(ch)) {
         const start = index;
         while (
           index < length &&
@@ -292,7 +304,8 @@ export function splitSqlStatements(
         }
         hasCode = true;
         if (!plsql) {
-          if (leadingWords.length < 8) leadingWords.push(word);
+          if (leadingWords.length >= 8) continue;
+          leadingWords.push(word);
           const first = leadingWords[0];
           const objectIndex = leadingWords.findIndex(
             (w, i) => i > 0 && !ORACLE_CREATE_MODIFIERS.includes(w),
@@ -361,9 +374,13 @@ export function splitSqlStatements(
       }
     }
 
-    if (dialect !== "oracle" && /[A-Za-z_]/.test(ch) && !isWordChar(sql[index - 1])) {
+    if (dialect !== "oracle" && isWordStart(ch) && !isWordChar(sql[index - 1])) {
       const start = index;
       index = readWord(start);
+      if (leadingWords.length >= 8 && !routine && dialect !== "mssql" && dialect !== "mysql") {
+        hasCode = true;
+        continue;
+      }
       const word = sql.slice(start, index).toUpperCase();
       if (dialect === "mssql" && word === "GO") {
         const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
@@ -386,7 +403,12 @@ export function splitSqlStatements(
         }
       }
       hasCode = true;
-      if (leadingWords.length < 8) leadingWords.push(word);
+      if (leadingWords.length < 8) {
+        leadingWords.push(word);
+        routine =
+          leadingWords[0] === "CREATE" &&
+          leadingWords.slice(1).some((w) => ROUTINE_OBJECTS.includes(w));
+      }
       const first = leadingWords[0];
       if (dialect === "mssql") {
         const object = leadingWords.slice(1).find((w) => w !== "OR" && w !== "ALTER");
@@ -397,13 +419,7 @@ export function splitSqlStatements(
         continue;
       }
       const prev = sql[start - 1];
-      if (
-        first !== "CREATE" ||
-        prev === "." ||
-        prev === "@" ||
-        !leadingWords.slice(1).some((w) => ROUTINE_OBJECTS.includes(w))
-      )
-        continue;
+      if (!routine || prev === "." || prev === "@") continue;
       if (word === "BEGIN" || word === "CASE") blockDepth += 1;
       else if (word === "END") {
         let next = index;

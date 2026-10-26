@@ -6,6 +6,14 @@ interface Token {
   start: number;
 }
 
+function isWordStart(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isWordPart(code: number): boolean {
+  return isWordStart(code) || (code >= 48 && code <= 57) || code === 36;
+}
+
 export function sqlTokens(sql: string, dialect?: string, comments?: [number, number][]): Token[] {
   const result: Token[] = [];
   let depth = 0;
@@ -13,18 +21,19 @@ export function sqlTokens(sql: string, dialect?: string, comments?: [number, num
   while (i < sql.length) {
     const tokenStart = i;
     const c = sql[i];
-    if (sql.startsWith("--", i) || (dialect === "mysql" && c === "#")) {
+    const code = sql.charCodeAt(i);
+    if ((c === "-" && sql[i + 1] === "-") || (dialect === "mysql" && c === "#")) {
       const end = sql.indexOf("\n", i);
       i = end < 0 ? sql.length : end + 1;
       comments?.push([tokenStart, i]);
-    } else if (sql.startsWith("/*", i)) {
+    } else if (c === "/" && sql[i + 1] === "*") {
       let nesting = 1;
       i += 2;
       while (i < sql.length && nesting) {
-        if (sql.startsWith("/*", i)) {
+        if (sql[i] === "/" && sql[i + 1] === "*") {
           nesting++;
           i += 2;
-        } else if (sql.startsWith("*/", i)) {
+        } else if (sql[i] === "*" && sql[i + 1] === "/") {
           nesting--;
           i += 2;
         } else i++;
@@ -64,9 +73,9 @@ export function sqlTokens(sql: string, dialect?: string, comments?: [number, num
       depth = Math.max(0, depth - 1);
       result.push({ word: ")", depth, start: tokenStart });
       i++;
-    } else if (/[A-Za-z_]/.test(c)) {
+    } else if (isWordStart(code)) {
       const start = i++;
-      while (i < sql.length && /[\w$]/.test(sql[i])) i++;
+      while (i < sql.length && isWordPart(sql.charCodeAt(i))) i++;
       result.push({ word: sql.slice(start, i).toUpperCase(), depth, start });
     } else {
       if (c === ";") result.push({ word: ";", depth, start: tokenStart });
@@ -189,9 +198,9 @@ export function writesData(sql: string, dialect?: string): boolean {
       .map((line) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? "")
       .some((word) => word && !REDIS_READ.has(word));
   return splitSqlStatements(text, dialect).statements.some((statement) => {
-    const explained = explainedStatement(statement.text, dialect);
-    if (explained !== null) return !explained || writesData(explained, dialect);
     const words = sqlTokens(statement.text, dialect);
+    const explained = explainedStatement(statement.text, dialect, words);
+    if (explained !== null) return !explained || writesData(explained, dialect);
     const first = words[0]?.word;
     if (!first) return false;
     if (first === "WITH" || first === "SELECT")
@@ -216,8 +225,11 @@ const EXPLAINABLE_WORDS = new Set([
   "CALL",
 ]);
 
-function explainedStatement(text: string, dialect?: string): string | null {
-  const words = sqlTokens(text, dialect);
+function explainedStatement(
+  text: string,
+  dialect?: string,
+  words = sqlTokens(text, dialect),
+): string | null {
   if (words[0]?.word !== "EXPLAIN") return null;
   const index = words.findIndex(
     (token, position) => position > 0 && token.depth === 0 && EXPLAINABLE_WORDS.has(token.word),
