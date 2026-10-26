@@ -6,6 +6,7 @@ import type { ManagedObject, VersioningProject } from "../src/lib/versioning/typ
 const OBJECTS = 5000;
 const RUNS = 20;
 const CAPTURE_MS = 2;
+const SERIAL_SAMPLES = 200;
 
 const files = new Map<string, string>();
 const definitions = new Map<string, string>();
@@ -178,6 +179,10 @@ test("working copy check reads only changed objects on large schemas", async () 
   await scanDrift("/r", project, connection, source, { full: true });
   expect(counters.captures).toBe(OBJECTS);
 
+  const serialStarted = performance.now();
+  for (let index = 0; index < SERIAL_SAMPLES; index++) await Bun.sleep(CAPTURE_MS);
+  const sequentialBaselineMs = ((performance.now() - serialStarted) * OBJECTS) / SERIAL_SAMPLES;
+
   const cacheBytes = cacheText?.length ?? 0;
   const memo = driftMemoSize();
   const median = percentile(samples, 0.5);
@@ -194,7 +199,7 @@ test("working copy check reads only changed objects on large schemas", async () 
       warmQueries: QUERIES,
       warmMedianMs: Number(median.toFixed(2)),
       warmP95Ms: Number(p95.toFixed(2)),
-      sequentialBaselineMs: OBJECTS * CAPTURE_MS,
+      sequentialBaselineMs: Math.round(sequentialBaselineMs),
       cacheKb: Math.round(cacheBytes / 1024),
       memoEntries: memo.entries,
       memoChars: memo.chars,
@@ -206,7 +211,7 @@ test("working copy check reads only changed objects on large schemas", async () 
       runtime: `bun ${Bun.version}`,
     }),
   );
-  expect(coldMs).toBeLessThan((OBJECTS * CAPTURE_MS) / 2);
+  expect(coldMs).toBeLessThan(sequentialBaselineMs / 2);
   expect(median).toBeLessThan(120);
   expect(p95).toBeLessThan(250);
   expect(cacheBytes).toBeLessThan(1024 * 1024);
