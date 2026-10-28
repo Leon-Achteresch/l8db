@@ -1,0 +1,233 @@
+{
+  "cases": [
+    {
+      "name": "oracle q-quotes keep semicolons and apostrophes",
+      "dialect": "oracle",
+      "sql": "SELECT q'[a;'b]' FROM dual;\nSELECT nq'{c;'d}' FROM dual;\nSELECT Q'!x;y!', q'<p;q>' FROM dual;",
+      "statements": [
+        "SELECT q'[a;'b]' FROM dual",
+        "SELECT nq'{c;'d}' FROM dual",
+        "SELECT Q'!x;y!', q'<p;q>' FROM dual"
+      ]
+    },
+    {
+      "name": "oracle semicolons in literals, comments and quoted identifiers",
+      "dialect": "oracle",
+      "sql": "SELECT 'a;b', \"C;D\" FROM dual -- x;y\n;\n/* p;q */ SELECT 2 FROM dual;",
+      "statements": ["SELECT 'a;b', \"C;D\" FROM dual -- x;y", "SELECT 2 FROM dual"]
+    },
+    {
+      "name": "oracle CREATE TYPE spec ends at its semicolon, the body at its END",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE TYPE point_t AS OBJECT (x NUMBER, y NUMBER, MEMBER FUNCTION len RETURN NUMBER);\n/\nCREATE OR REPLACE TYPE BODY point_t AS\n  MEMBER FUNCTION len RETURN NUMBER IS\n  BEGIN\n    RETURN SQRT(x * x + y * y);\n  END;\nEND;\n/\nSELECT 1 FROM dual;",
+      "statements": [
+        "CREATE OR REPLACE TYPE point_t AS OBJECT (x NUMBER, y NUMBER, MEMBER FUNCTION len RETURN NUMBER)",
+        "CREATE OR REPLACE TYPE BODY point_t AS\n  MEMBER FUNCTION len RETURN NUMBER IS\n  BEGIN\n    RETURN SQRT(x * x + y * y);\n  END;\nEND",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle CREATE TRIGGER with DECLARE keeps its body",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE TRIGGER trg_emp\nBEFORE INSERT ON emp\nFOR EACH ROW\nDECLARE\n  v NUMBER;\nBEGIN\n  IF :NEW.id IS NULL THEN\n    SELECT emp_seq.NEXTVAL INTO :NEW.id FROM dual;\n  END IF;\nEND;\n/\nINSERT INTO emp (name) VALUES ('x');",
+      "statements": [
+        "CREATE OR REPLACE TRIGGER trg_emp\nBEFORE INSERT ON emp\nFOR EACH ROW\nDECLARE\n  v NUMBER;\nBEGIN\n  IF :NEW.id IS NULL THEN\n    SELECT emp_seq.NEXTVAL INTO :NEW.id FROM dual;\n  END IF;\nEND",
+        "INSERT INTO emp (name) VALUES ('x')"
+      ]
+    },
+    {
+      "name": "oracle compound trigger closes at its last END",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE TRIGGER trg_c\nFOR INSERT ON emp\nCOMPOUND TRIGGER\n  BEFORE STATEMENT IS\n  BEGIN\n    NULL;\n  END BEFORE STATEMENT;\n  AFTER EACH ROW IS\n  BEGIN\n    NULL;\n  END AFTER EACH ROW;\nEND trg_c;\nSELECT 1 FROM dual;",
+      "statements": [
+        "CREATE OR REPLACE TRIGGER trg_c\nFOR INSERT ON emp\nCOMPOUND TRIGGER\n  BEFORE STATEMENT IS\n  BEGIN\n    NULL;\n  END BEFORE STATEMENT;\n  AFTER EACH ROW IS\n  BEGIN\n    NULL;\n  END AFTER EACH ROW;\nEND trg_c",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle CREATE JAVA SOURCE ends only at a slash line",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED \"Hello\" AS\npublic class Hello {\n  public static String world() {\n    // it's java; not sql\n    return \"a;b\";\n  }\n};\n/\nSELECT 1 FROM dual;",
+      "statements": [
+        "CREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED \"Hello\" AS\npublic class Hello {\n  public static String world() {\n    // it's java; not sql\n    return \"a;b\";\n  }\n}",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle wrapped code ends only at a slash line",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE PACKAGE BODY demo wrapped \na000000\n1\nabcd\nend\n3b 6d\nbegin;case'x\n/\nSELECT 1 FROM dual;",
+      "statements": [
+        "CREATE OR REPLACE PACKAGE BODY demo wrapped \na000000\n1\nabcd\nend\n3b 6d\nbegin;case'x",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle identifiers named wrapped are no wrapped code",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE PACKAGE pkg AS\n  wrapped NUMBER;\nEND pkg;\nCREATE OR REPLACE TRIGGER trg BEFORE INSERT ON wrapped FOR EACH ROW BEGIN NULL; END;\nSELECT 1 FROM dual;",
+      "statements": [
+        "CREATE OR REPLACE PACKAGE pkg AS\n  wrapped NUMBER;\nEND pkg",
+        "CREATE OR REPLACE TRIGGER trg BEFORE INSERT ON wrapped FOR EACH ROW BEGIN NULL; END",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle slash alone ends a statement, mid-line it divides",
+      "dialect": "oracle",
+      "sql": "SELECT 10\n/ 2 AS half FROM dual;\nSELECT 4/2 FROM dual\n/\nBEGIN\n  x := 4 / 2;\nEND;\n  /  \nSELECT 1 FROM dual;",
+      "statements": [
+        "SELECT 10\n/ 2 AS half FROM dual",
+        "SELECT 4/2 FROM dual",
+        "BEGIN\n  x := 4 / 2;\nEND",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle WITH FUNCTION runs until the slash",
+      "dialect": "oracle",
+      "sql": "WITH\n  FUNCTION twice(n NUMBER) RETURN NUMBER IS\n  BEGIN\n    RETURN n * 2;\n  END;\nSELECT twice(21) AS answer FROM dual;\n/\nSELECT 2 FROM dual;",
+      "statements": [
+        "WITH\n  FUNCTION twice(n NUMBER) RETURN NUMBER IS\n  BEGIN\n    RETURN n * 2;\n  END;\nSELECT twice(21) AS answer FROM dual",
+        "SELECT 2 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle EXEC ends at the line end and continues with a hyphen",
+      "dialect": "oracle",
+      "sql": "EXEC dbms_output.put_line('a;b')\nEXEC pkg.run(1, -\n  2)\nexecute p;\nSELECT 1 FROM dual;",
+      "statements": [
+        "EXEC dbms_output.put_line('a;b')",
+        "EXEC pkg.run(1, -\n  2)",
+        "execute p",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle SQL*Plus commands end at the line, SET TRANSACTION stays SQL",
+      "dialect": "oracle",
+      "sql": "SET DEFINE OFF\nPROMPT loading; it's fine\nREM a;b\nSET TRANSACTION READ ONLY;\nUPDATE t\nSET x = 1;\nSPOOL out.log\nWHENEVER SQLERROR EXIT ROLLBACK\nEXIT",
+      "statements": ["SET TRANSACTION READ ONLY", "UPDATE t\nSET x = 1"],
+      "commands": [
+        "SET DEFINE OFF",
+        "PROMPT loading; it's fine",
+        "REM a;b",
+        "SPOOL out.log",
+        "WHENEVER SQLERROR EXIT ROLLBACK",
+        "EXIT"
+      ]
+    },
+    {
+      "name": "oracle substitution variables do not change statement boundaries",
+      "dialect": "oracle",
+      "sql": "DEFINE tab = 'emp;x'\nSELECT '&tab;' FROM dual WHERE a = &&n;\nSELECT &x. FROM dual;",
+      "statements": ["SELECT '&tab;' FROM dual WHERE a = &&n", "SELECT &x. FROM dual"],
+      "commands": ["DEFINE tab = 'emp;x'"]
+    },
+    {
+      "name": "oracle nested CASE, END IF and END LOOP inside an anonymous block",
+      "dialect": "oracle",
+      "sql": "DECLARE\n  v NUMBER := CASE WHEN 1 = 1 THEN 1 ELSE 0 END;\nBEGIN\n  FOR i IN 1..3 LOOP\n    IF i > 1 THEN v := v + i; END IF;\n  END LOOP;\n  CASE v WHEN 1 THEN NULL; ELSE NULL; END CASE;\nEND;\nSELECT 'END;' FROM dual;",
+      "statements": [
+        "DECLARE\n  v NUMBER := CASE WHEN 1 = 1 THEN 1 ELSE 0 END;\nBEGIN\n  FOR i IN 1..3 LOOP\n    IF i > 1 THEN v := v + i; END IF;\n  END LOOP;\n  CASE v WHEN 1 THEN NULL; ELSE NULL; END CASE;\nEND",
+        "SELECT 'END;' FROM dual"
+      ]
+    },
+    {
+      "name": "oracle package spec and body without slashes",
+      "dialect": "oracle",
+      "sql": "CREATE OR REPLACE PACKAGE pkg AS\n  PROCEDURE p;\nEND pkg;\nCREATE OR REPLACE PACKAGE BODY pkg AS\n  PROCEDURE p IS BEGIN NULL; END p;\nEND pkg;\nSELECT 1 FROM dual",
+      "statements": [
+        "CREATE OR REPLACE PACKAGE pkg AS\n  PROCEDURE p;\nEND pkg",
+        "CREATE OR REPLACE PACKAGE BODY pkg AS\n  PROCEDURE p IS BEGIN NULL; END p;\nEND pkg",
+        "SELECT 1 FROM dual"
+      ]
+    },
+    {
+      "name": "oracle unsupported SQL*Plus commands and abbreviations are commands, not SQL",
+      "dialect": "oracle",
+      "sql": "VARIABLE n NUMBER\nPRINT n\nCOL x FORMAT a10\nSHO ERRORS\nCONN scott/tiger@db\nSELECT 1 FROM dual;\nHOST ls",
+      "statements": ["SELECT 1 FROM dual"],
+      "commands": [
+        "VARIABLE n NUMBER",
+        "PRINT n",
+        "COL x FORMAT a10",
+        "SHO ERRORS",
+        "CONN scott/tiger@db",
+        "HOST ls"
+      ]
+    },
+    {
+      "name": "oracle DESC is a SQL*Plus command, ORDER BY … DESC stays SQL",
+      "dialect": "oracle",
+      "sql": "DESC emp\nSELECT * FROM emp ORDER BY 1\nDESC;\ndescribe hr.\"Dept\"",
+      "statements": ["SELECT * FROM emp ORDER BY 1\nDESC"],
+      "commands": ["DESC emp", "describe hr.\"Dept\""]
+    },
+    {
+      "name": "mssql GO separates batches and procedure bodies stay together",
+      "dialect": "mssql",
+      "sql": "CREATE OR ALTER PROCEDURE dbo.p AS\nBEGIN\n  SET NOCOUNT ON;\n  SELECT 'C:\\';\nEND;\nGO\nSELECT 1;\ngo\nSELECT [a;b], #tmp.x FROM #tmp;\nGO -- done\nSELECT 2",
+      "statements": [
+        "CREATE OR ALTER PROCEDURE dbo.p AS\nBEGIN\n  SET NOCOUNT ON;\n  SELECT 'C:\\';\nEND",
+        "SELECT 1",
+        "SELECT [a;b], #tmp.x FROM #tmp",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "mssql GO inside strings, comments and longer words is no separator",
+      "dialect": "mssql",
+      "sql": "SELECT 'a\nGO\nb';\n/*\nGO\n*/ SELECT GOTO_x;\nSELECT 1 GO",
+      "statements": ["SELECT 'a\nGO\nb'", "SELECT GOTO_x", "SELECT 1 GO"]
+    },
+    {
+      "name": "mysql DELIMITER, routine bodies, backslash escapes and hash comments",
+      "dialect": "mysql",
+      "sql": "DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT '$$'; END$$\nDELIMITER ;\nCREATE TRIGGER t BEFORE INSERT ON a FOR EACH ROW BEGIN SET NEW.x = 1; END;\nSELECT 'O\\'Brien; x' # trailing; comment\n;\nSELECT 2;",
+      "statements": [
+        "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT '$$'; END",
+        "CREATE TRIGGER t BEFORE INSERT ON a FOR EACH ROW BEGIN SET NEW.x = 1; END",
+        "SELECT 'O\\'Brien; x' # trailing; comment",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "mysql tables named like routine keywords still split",
+      "dialect": "mysql",
+      "sql": "CREATE TABLE event (id INT, `end` INT);\nBEGIN;\nINSERT INTO event VALUES (1, 2);\nCOMMIT;",
+      "statements": [
+        "CREATE TABLE event (id INT, `end` INT)",
+        "BEGIN",
+        "INSERT INTO event VALUES (1, 2)",
+        "COMMIT"
+      ]
+    },
+    {
+      "name": "postgres dollar quotes, E-strings and BEGIN ATOMIC bodies",
+      "dialect": "postgres",
+      "sql": "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END; $body$ LANGUAGE plpgsql;\nSELECT E'a\\';b', 'c\\';\nCREATE FUNCTION g(a int) RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1; SELECT 2; END;\nSELECT $1, $$x;y$$;",
+      "statements": [
+        "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END; $body$ LANGUAGE plpgsql",
+        "SELECT E'a\\';b', 'c\\'",
+        "CREATE FUNCTION g(a int) RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1; SELECT 2; END",
+        "SELECT $1, $$x;y$$"
+      ]
+    },
+    {
+      "name": "sqlite trigger bodies and doubled quotes",
+      "dialect": "sqlite",
+      "sql": "CREATE TRIGGER tr AFTER INSERT ON a BEGIN INSERT INTO b VALUES (new.id); UPDATE c SET n = CASE WHEN new.id > 1 THEN 1 ELSE 0 END; END;\nSELECT 'it''s; ok', 'C:\\';",
+      "statements": [
+        "CREATE TRIGGER tr AFTER INSERT ON a BEGIN INSERT INTO b VALUES (new.id); UPDATE c SET n = CASE WHEN new.id > 1 THEN 1 ELSE 0 END; END",
+        "SELECT 'it''s; ok', 'C:\\'"
+      ]
+    },
+    {
+      "name": "generic semicolons in literals, identifiers and comments",
+      "dialect": "generic",
+      "sql": "SELECT 'a;b', -- x;y\n\"c;d\", [e;f] FROM t;/* y; */SELECT 2",
+      "statements": ["SELECT 'a;b', -- x;y\n\"c;d\", [e;f] FROM t", "SELECT 2"]
+    }
+  ]
+}

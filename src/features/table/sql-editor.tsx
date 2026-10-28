@@ -18,6 +18,8 @@ interface SqlEditorProps {
   className?: string;
   readOnly?: boolean;
   autoFocus?: boolean;
+  singleLine?: boolean;
+  onModSubmit?: () => void;
 }
 
 const language = new Compartment();
@@ -35,13 +37,28 @@ function columnCompletions(columns: string[]): Completion[] {
   }));
 }
 
-function editorAppearance(family: string, size: number, lineHeight: number, dark: boolean) {
+function editorAppearance(
+  family: string,
+  size: number,
+  lineHeight: number,
+  dark: boolean,
+  singleLine = false,
+) {
   return EditorView.theme(
     {
       "&": { height: "100%", backgroundColor: "transparent", color: "var(--foreground)" },
       "&.cm-focused": { outline: "none" },
-      ".cm-scroller": { overflow: "auto", fontFamily: family, fontSize: `${size}px` },
-      ".cm-content": { minHeight: "100%", lineHeight: `${lineHeight}px`, padding: "8px 0" },
+      ".cm-scroller": singleLine
+        ? {
+            overflow: "auto hidden",
+            scrollbarWidth: "none",
+            fontFamily: family,
+            fontSize: `${size}px`,
+          }
+        : { overflow: "auto", fontFamily: family, fontSize: `${size}px` },
+      ".cm-content": singleLine
+        ? { minHeight: "auto", lineHeight: `${lineHeight}px`, padding: "4px 0" }
+        : { minHeight: "100%", lineHeight: `${lineHeight}px`, padding: "8px 0" },
       ".cm-gutters": { backgroundColor: "transparent", border: "none" },
       ".cm-activeLine": { backgroundColor: "transparent" },
     },
@@ -58,11 +75,14 @@ export function SqlEditor({
   className,
   readOnly = false,
   autoFocus = false,
+  singleLine = false,
+  onModSubmit,
 }: SqlEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onSubmitRef = useRef(onSubmit);
+  const onModSubmitRef = useRef(onModSubmit);
   const suppressChangeRef = useRef(false);
   const columnSignature = JSON.stringify(columns);
   const { resolvedTheme } = useTheme();
@@ -78,6 +98,7 @@ export function SqlEditor({
     editorFontSize,
     editorLineHeight,
     resolvedTheme,
+    singleLine,
   });
   const applied = useRef({
     columnSignature,
@@ -91,6 +112,7 @@ export function SqlEditor({
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
+  onModSubmitRef.current = onModSubmit;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -105,7 +127,7 @@ export function SqlEditor({
           {
             key: "Mod-Enter",
             run: () => {
-              onSubmitRef.current?.();
+              (onModSubmitRef.current ?? onSubmitRef.current)?.();
               return true;
             },
           },
@@ -119,6 +141,17 @@ export function SqlEditor({
             },
           },
           ...completionKeymap,
+          ...(settings.singleLine
+            ? [
+                {
+                  key: "Enter",
+                  run: () => {
+                    onSubmitRef.current?.();
+                    return true;
+                  },
+                },
+              ]
+            : []),
         ]),
         minimalSetup,
         autocompletion(),
@@ -129,6 +162,7 @@ export function SqlEditor({
             size,
             editorLineHeightPx(size, settings.editorLineHeight),
             settings.resolvedTheme === "dark",
+            settings.singleLine,
           ),
         ),
         editable.of([
@@ -136,7 +170,7 @@ export function SqlEditor({
           EditorState.readOnly.of(settings.readOnly),
         ]),
         hint.of(settings.placeholder ? editorPlaceholder(settings.placeholder) : []),
-        EditorView.lineWrapping,
+        settings.singleLine ? [] : EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !suppressChangeRef.current)
             onChangeRef.current?.(update.state.doc.toString());
@@ -184,6 +218,7 @@ export function SqlEditor({
             size,
             editorLineHeightPx(size, editorLineHeight),
             resolvedTheme === "dark",
+            initial.current.singleLine,
           ),
         ),
       );

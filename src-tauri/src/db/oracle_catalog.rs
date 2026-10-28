@@ -5,9 +5,26 @@ use futures_util::future::try_join_all;
 use oracle::Row;
 
 use super::{binds, create_script, fetch, lit, quote, s, view_create_script, OracleAdapter};
-use crate::db::schema_catalog::CatalogObject;
+use crate::db::schema_catalog::{attach_dependencies, CatalogObject, DependencyEdge};
 
 const SYSTEM_TYPE_OWNERS: [&str; 6] = ["SYS", "PUBLIC", "MDSYS", "XDB", "CTXSYS", "ORDSYS"];
+
+const DEPENDENT_TYPES: [&str; 10] = [
+    "view",
+    "materialized_view",
+    "type",
+    "type_body",
+    "function",
+    "procedure",
+    "package",
+    "package_body",
+    "trigger",
+    "synonym",
+];
+
+fn dependency_type(oracle_type: &str) -> String {
+    oracle_type.to_ascii_lowercase().replace(' ', "_")
+}
 
 type Objects = Result<Vec<CatalogObject>, String>;
 
@@ -198,6 +215,9 @@ fn table_objects(
             if s(r, 4) == "IOT" {
                 object = object.attr("organization", "INDEX");
             }
+            if !temporary && !s(r, 6).is_empty() {
+                object = object.attr("tablespace", s(r, 6));
+            }
             object
         })
         .collect()
@@ -218,7 +238,8 @@ impl OracleAdapter {
         .into_iter()
         .filter(|(_, kind)| want(kind))
         .collect();
-        let (relations, views, mviews, sequences, source, synonyms, comments, grants) = tokio::try_join!(
+        let dependent = DEPENDENT_TYPES.iter().any(|kind| want(kind));
+        let (relations, views, mviews, sequences, source, synonyms, comments, grants, edges) = tokio::try_join!(
             self.catalog_relations(schema, want("table"), want("constraint"), want("index")),
             when(want("view"), self.catalog_views(schema)),
             when(want("materialized_view"), self.catalog_mviews(schema)),
@@ -227,13 +248,47 @@ impl OracleAdapter {
             when(want("synonym"), self.catalog_synonyms(schema)),
             when(want("comment"), self.catalog_comments(schema, None)),
             when(want("grant"), self.catalog_grants(schema)),
+            self.catalog_dependencies(schema, dependent),
         )?;
-        Ok([
+        let mut out: Vec<CatalogObject> = [
             relations, views, mviews, sequences, source, synonyms, comments, grants,
         ]
         .into_iter()
         .flatten()
-        .collect())
+        .collect();
+        if dependent {
+            attach_dependencies(&mut out, &DEPENDENT_TYPES, edges);
+        }
+        Ok(out)
+    }
+
+    async fn catalog_dependencies(
+        &self,
+        schema: &str,
+        enabled: bool,
+    ) -> Result<Vec<DependencyEdge>, String> {
+        if !enabled {
+            return Ok(Vec::new());
+        }
+        let rows = self
+            .rows_bound(
+                "SELECT type, name, referenced_type, referenced_name FROM all_dependencies \
+                 WHERE owner = :owner AND referenced_owner = :owner"
+                    .to_string(),
+                scope(schema, None),
+            )
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                (
+                    dependency_type(&s(r, 0)),
+                    s(r, 1),
+                    dependency_type(&s(r, 2)),
+                    s(r, 3),
+                )
+            })
+            .collect())
     }
 
     pub(super) async fn schema_partition_ddl_impl(
@@ -337,13 +392,13 @@ impl OracleAdapter {
         let containers = only_table("container_name", table);
         let rows = self
             .rows_bound(format!(
-                "SELECT table_name, temporary, duration, partitioned, iot_type, 'T' FROM all_tables \
+                "SELECT table_name, temporary, duration, partitioned, iot_type, 'T', tablespace_name FROM all_tables \
                  WHERE owner = {owner}{tables} AND nested = 'NO' AND secondary = 'N' AND dropped = 'NO' \
                  AND (iot_type IS NULL OR iot_type = 'IOT') \
                  AND table_name NOT LIKE 'BIN$%' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' \
                  AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'AQ$%' \
-                 UNION ALL SELECT container_name, NULL, NULL, NULL, NULL, 'X' FROM all_mviews WHERE owner = {owner}{containers} \
-                 UNION ALL SELECT table_name, NULL, NULL, NULL, NULL, 'X' FROM all_external_tables WHERE owner = {owner}{tables}"
+                 UNION ALL SELECT container_name, NULL, NULL, NULL, NULL, 'X', NULL FROM all_mviews WHERE owner = {owner}{containers} \
+                 UNION ALL SELECT table_name, NULL, NULL, NULL, NULL, 'X', NULL FROM all_external_tables WHERE owner = {owner}{tables}"
             ), scope(schema, table))
             .await?;
         let excluded: HashSet<String> = rows
@@ -576,7 +631,7 @@ impl OracleAdapter {
             ), scope(schema, table)),
             self.rows_bound(format!(
                 "SELECT index_name, table_name, index_type, uniqueness, generated, ityp_owner, ityp_name, \
-                        parameters, partitioned \
+                        parameters, partitioned, tablespace_name \
                  FROM all_indexes \
                  WHERE owner = {owner} AND table_owner = {owner}{only} AND index_type NOT IN ('LOB', 'IOT - TOP', 'CLUSTER') \
                  AND table_name NOT LIKE 'BIN$%' AND index_name NOT LIKE 'BIN$%' AND table_type = 'TABLE' \
@@ -638,6 +693,9 @@ impl OracleAdapter {
                 .attr("definition", format!("{kind}{body}"));
             if s(r, 4) == "Y" {
                 object = object.attr("generated", "YES");
+            }
+            if !s(r, 9).is_empty() {
+                object = object.attr("tablespace", s(r, 9));
             }
             out.push(object);
         }
@@ -959,7 +1017,9 @@ impl OracleAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::{column_type, is_not_null_check, partition_clause};
+    use super::{
+        column_type, dependency_type, is_not_null_check, partition_clause, DEPENDENT_TYPES,
+    };
 
     #[test]
     fn extracts_partition_clause() {
@@ -1013,5 +1073,13 @@ mod tests {
         assert!(is_not_null_check("\"ID\" IS NOT NULL"));
         assert!(!is_not_null_check("\"A\" IS NOT NULL AND \"B\" > 0"));
         assert!(!is_not_null_check("amount > 0"));
+    }
+
+    #[test]
+    fn maps_dependency_types_to_catalog_types() {
+        assert_eq!(dependency_type("PACKAGE BODY"), "package_body");
+        assert_eq!(dependency_type("MATERIALIZED VIEW"), "materialized_view");
+        assert_eq!(dependency_type("VIEW"), "view");
+        assert!(DEPENDENT_TYPES.contains(&dependency_type("TYPE BODY").as_str()));
     }
 }

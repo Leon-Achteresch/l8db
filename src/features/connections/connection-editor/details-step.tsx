@@ -13,6 +13,7 @@ import { ConnectionCloudAuthFields } from "./cloud-auth-fields";
 import { DriverMissingNotice } from "./driver-missing-notice";
 import { ConnectionFileInput } from "./file-input";
 import { ConnectionHostFields } from "./host-fields";
+import { ConnectionOracleLoginFields } from "./oracle-login-fields";
 import { ConnectionSnowflakeFields } from "./snowflake-fields";
 import { ConnectionTestResultStatus } from "./test-result-status";
 import { ConnectionTnsInputs } from "./tns-inputs";
@@ -245,6 +246,9 @@ export function ConnectionDetailsStep({
           setPassword={setPassword}
           hidePassword={cloudAuthActive}
         />
+      )}
+      {mode === "fields" && kind === "oracle" && (
+        <ConnectionOracleLoginFields extraParams={extraParams} setExtraParams={setExtraParams} />
       )}
       {mode !== "tns" && !info.file_based && (
         <ConnectionCloudAuthFields kind={mode === "string" ? quickKind : kind} draft={cloudAuth} />

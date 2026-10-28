@@ -57,6 +57,20 @@ test("AI context preserves schema restrictions, masking and connection read-only
   });
 });
 
+test("AI context grants production writes only to the confirmed connection", () => {
+  const entries = [
+    connection("prod", { environment: "production" }),
+    connection("other", { environment: "production" }),
+  ];
+  expect(aiConnections(entries, "prod", ["other"], {}).map((e) => e.productionWrites)).toEqual([
+    false,
+    false,
+  ]);
+  expect(
+    aiConnections(entries, "prod", ["other"], {}, {}, "prod").map((e) => e.productionWrites),
+  ).toEqual([true, false]);
+});
+
 test("persisted provider endpoints cannot embed credentials or query tokens", () => {
   expect(safeEndpoint("https://example.com/v1")).toBe("https://example.com/v1");
   for (const url of [

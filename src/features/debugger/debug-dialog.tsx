@@ -1,5 +1,6 @@
 import { Bug, CircleDot, Code2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
@@ -73,6 +74,7 @@ function DebugDialogContent(
   const [busy, setBusy] = useState(false);
   const session = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
+  const content = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -124,6 +126,7 @@ function DebugDialogContent(
       if (mounted.current) setError(String(e));
     } finally {
       if (mounted.current) setBusy(false);
+      if (document.activeElement === document.body) content.current?.focus({ preventScroll: true });
     }
   };
 
@@ -184,7 +187,9 @@ function DebugDialogContent(
       }}
     >
       <DialogContent
-        className="debug-workbench"
+        ref={content}
+        tabIndex={-1}
+        className="debug-workbench outline-none"
         showCloseButton={false}
         onKeyDown={(event) => {
           if (!["F5", "F10", "F11"].includes(event.key)) return;
@@ -286,7 +291,13 @@ function DebugDialogContent(
               }
               onToggle={(line) => {
                 if (!frame) return;
-                const next = breakpoints.some((b) => b.oid === frame.oid && b.line === line)
+                const exists = breakpoints.some((b) => b.oid === frame.oid && b.line === line);
+                const executable = snapshot?.executableLines ?? [];
+                if (!exists && executable.length && !executable.includes(line)) {
+                  toast.info(`Zeile ${line} enthält keine ausführbare Anweisung.`);
+                  return;
+                }
+                const next = exists
                   ? breakpoints.filter((b) => b.oid !== frame.oid || b.line !== line)
                   : [...breakpoints, { oid: frame.oid, line }];
                 void run(async () => {
@@ -315,6 +326,7 @@ function DebugDialogContent(
             <DebugInspector
               snapshot={snapshot}
               paused={paused}
+              oracle={context.kind === "oracle"}
               onAction={(action) => void act(action)}
             />
           )}

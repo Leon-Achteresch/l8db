@@ -1,13 +1,19 @@
 import { Badge } from "@/components/ui/badge";
 import type { LockInfo } from "@/lib/db";
 
-export function LocksTable({ locks }: { locks: LockInfo[] | undefined }) {
+export function LocksTable({
+  locks,
+  idLabel = "PID",
+}: {
+  locks: LockInfo[] | undefined;
+  idLabel?: string;
+}) {
   return (
     <>
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-muted/60 text-left text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 font-medium">PID</th>
+            <th className="px-3 py-2 font-medium">{idLabel}</th>
             <th className="px-3 py-2 font-medium">Typ</th>
             <th className="px-3 py-2 font-medium">Relation</th>
             <th className="px-3 py-2 font-medium">Modus</th>

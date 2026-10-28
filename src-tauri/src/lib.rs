@@ -1,13 +1,18 @@
 mod ai;
 mod appwrite;
 mod automation;
+#[cfg(test)]
+mod baas_browser_tests;
 mod baas_file;
+#[cfg(test)]
+mod baas_self_hosted_live_tests;
 mod branching;
 mod check_cli;
 mod cli;
 mod community_extensions;
 mod connection_import;
 mod convex;
+mod convex_studio;
 mod db;
 mod desktop;
 mod extension_process;
@@ -18,7 +23,9 @@ mod mcp;
 mod pocketbase;
 mod process;
 mod supabase;
+mod supabase_studio;
 mod sync;
+mod team;
 mod updates;
 mod versioning;
 mod windows;
@@ -50,6 +57,9 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().nth(1).as_deref() == Some("--mcp-sandbox") {
+        std::process::exit(mcp::sandbox());
+    }
     #[cfg(feature = "odbc")]
     db::configure_odbc();
     if std::env::args().any(|arg| arg == "--mcp") {
@@ -186,6 +196,7 @@ pub fn run() {
             automation::automation_cli_command,
             automation::automation_ai_activity,
             convex::convex_connect,
+            convex::convex_connect_self_hosted,
             convex::convex_profiles,
             convex::convex_disconnect,
             convex::convex_projects,
@@ -193,6 +204,55 @@ pub fn run() {
             convex::convex_environment_variables,
             convex::convex_set_environment_variable,
             convex::convex_delete_environment_variable,
+            convex_studio::data::convex_studio_data_tables,
+            convex_studio::data::convex_studio_data_documents,
+            convex_studio::data::convex_studio_data_resolve,
+            convex_studio::data::convex_studio_data_insert,
+            convex_studio::data::convex_studio_data_replace,
+            convex_studio::data::convex_studio_data_patch,
+            convex_studio::data::convex_studio_data_delete,
+            convex_studio::data::convex_studio_data_clear,
+            convex_studio::data::convex_studio_data_create_table,
+            convex_studio::data::convex_studio_data_delete_table,
+            convex_studio::data::convex_studio_data_schema,
+            convex_studio::data::convex_studio_data_infer_schema,
+            convex_studio::data::convex_studio_data_import,
+            convex_studio::files::convex_studio_files_list,
+            convex_studio::files::convex_studio_files_count,
+            convex_studio::files::convex_studio_files_get,
+            convex_studio::files::convex_studio_files_preview,
+            convex_studio::files::convex_studio_files_download,
+            convex_studio::files::convex_studio_files_upload,
+            convex_studio::files::convex_studio_files_delete,
+            convex_studio::functions::convex_studio_functions_list,
+            convex_studio::functions::convex_studio_functions_detail,
+            convex_studio::functions::convex_studio_functions_run,
+            convex_studio::functions::convex_studio_functions_http_request,
+            convex_studio::functions::convex_studio_functions_stats,
+            convex_studio::logs::convex_studio_logs_fetch,
+            convex_studio::logs::convex_studio_logs_cancel,
+            convex_studio::schedules::convex_studio_schedules_jobs,
+            convex_studio::schedules::convex_studio_schedules_job_args,
+            convex_studio::schedules::convex_studio_schedules_cancel_job,
+            convex_studio::schedules::convex_studio_schedules_cancel_all,
+            convex_studio::schedules::convex_studio_schedules_functions,
+            convex_studio::schedules::convex_studio_schedules_crons,
+            convex_studio::schedules::convex_studio_schedules_cron_runs,
+            convex_studio::schedules::convex_studio_schedules_run_cron,
+            convex_studio::settings::convex_studio_settings_info,
+            convex_studio::settings::convex_studio_settings_stats,
+            convex_studio::settings::convex_studio_settings_recent_errors,
+            convex_studio::settings::convex_studio_settings_env_reveal,
+            convex_studio::settings::convex_studio_settings_env_import,
+            convex_studio::settings::convex_studio_settings_env_export,
+            convex_studio::settings::convex_studio_settings_set_paused,
+            convex_studio::settings::convex_studio_settings_export_request,
+            convex_studio::settings::convex_studio_settings_export_status,
+            convex_studio::settings::convex_studio_settings_export_download,
+            convex_studio::settings::convex_studio_settings_import_start,
+            convex_studio::settings::convex_studio_settings_import_status,
+            convex_studio::settings::convex_studio_settings_import_confirm,
+            convex_studio::settings::convex_studio_settings_import_cancel,
             pocketbase::pocketbase_connect,
             pocketbase::pocketbase_profiles,
             pocketbase::pocketbase_disconnect,
@@ -234,6 +294,8 @@ pub fn run() {
             appwrite::appwrite_delete_function,
             appwrite::appwrite_sites,
             supabase::supabase_connect,
+            supabase::supabase_connect_self_hosted,
+            supabase::supabase_disconnect_self_hosted,
             supabase::supabase_disconnect,
             supabase::supabase_is_connected,
             supabase::supabase_projects,
@@ -246,6 +308,90 @@ pub fn run() {
             supabase::supabase_functions,
             supabase::supabase_delete_function,
             supabase::supabase_health,
+            supabase_studio::supabase_studio_capabilities,
+            supabase_studio::auth::supabase_studio_auth_users,
+            supabase_studio::auth::supabase_studio_auth_user,
+            supabase_studio::auth::supabase_studio_auth_create_user,
+            supabase_studio::auth::supabase_studio_auth_update_user,
+            supabase_studio::auth::supabase_studio_auth_soft_delete_user,
+            supabase_studio::auth::supabase_studio_auth_invite,
+            supabase_studio::auth::supabase_studio_auth_generate_link,
+            supabase_studio::auth::supabase_studio_auth_sign_out_user,
+            supabase_studio::auth::supabase_studio_auth_delete_factor,
+            supabase_studio::auth::supabase_studio_auth_settings,
+            supabase_studio::auth::supabase_studio_auth_config,
+            supabase_studio::auth::supabase_studio_auth_update_config,
+            supabase_studio::database::supabase_studio_database_list,
+            supabase_studio::database::supabase_studio_database_definition,
+            supabase_studio::database::supabase_studio_database_action,
+            supabase_studio::edge::supabase_studio_edge_function,
+            supabase_studio::edge::supabase_studio_edge_function_source,
+            supabase_studio::edge::supabase_studio_edge_function_download,
+            supabase_studio::edge::supabase_studio_edge_function_deploy,
+            supabase_studio::edge::supabase_studio_edge_function_update,
+            supabase_studio::edge::supabase_studio_edge_secrets,
+            supabase_studio::edge::supabase_studio_edge_secret_set,
+            supabase_studio::edge::supabase_studio_edge_secret_delete,
+            supabase_studio::edge::supabase_studio_edge_invoke,
+            supabase_studio::edge::supabase_studio_edge_realtime_open,
+            supabase_studio::edge::supabase_studio_edge_realtime_push,
+            supabase_studio::edge::supabase_studio_edge_realtime_close,
+            supabase_studio::edge::supabase_studio_edge_realtime_broadcast,
+            supabase_studio::edge::supabase_studio_edge_publication_tables,
+            supabase_studio::edge::supabase_studio_edge_publication_toggle,
+            supabase_studio::edge::supabase_studio_edge_publication_actions,
+            supabase_studio::observability::supabase_studio_observability_sessions,
+            supabase_studio::observability::supabase_studio_observability_signal,
+            supabase_studio::observability::supabase_studio_observability_locks,
+            supabase_studio::observability::supabase_studio_observability_statements,
+            supabase_studio::observability::supabase_studio_observability_statements_enable,
+            supabase_studio::observability::supabase_studio_observability_statements_reset,
+            supabase_studio::observability::supabase_studio_observability_health,
+            supabase_studio::observability::supabase_studio_observability_sizes,
+            supabase_studio::observability::supabase_studio_observability_logs,
+            supabase_studio::observability::supabase_studio_observability_advisors,
+            supabase_studio::observability::supabase_studio_observability_usage,
+            supabase_studio::settings::supabase_studio_settings_overview_stats,
+            supabase_studio::settings::supabase_studio_settings_reveal_key,
+            supabase_studio::settings::supabase_studio_settings_api_keys,
+            supabase_studio::settings::supabase_studio_settings_replace_self_hosted_key,
+            supabase_studio::settings::supabase_studio_settings_postgrest,
+            supabase_studio::settings::supabase_studio_settings_update_postgrest,
+            supabase_studio::settings::supabase_studio_settings_postgres_config,
+            supabase_studio::settings::supabase_studio_settings_update_postgres_config,
+            supabase_studio::settings::supabase_studio_settings_pooler,
+            supabase_studio::settings::supabase_studio_settings_ssl_enforcement,
+            supabase_studio::settings::supabase_studio_settings_update_ssl_enforcement,
+            supabase_studio::settings::supabase_studio_settings_network_restrictions,
+            supabase_studio::settings::supabase_studio_settings_set_paused,
+            supabase_studio::sql::supabase_studio_sql_run,
+            supabase_studio::storage::supabase_studio_storage_buckets,
+            supabase_studio::storage::supabase_studio_storage_bucket_create,
+            supabase_studio::storage::supabase_studio_storage_bucket_update,
+            supabase_studio::storage::supabase_studio_storage_bucket_empty,
+            supabase_studio::storage::supabase_studio_storage_objects,
+            supabase_studio::storage::supabase_studio_storage_upload,
+            supabase_studio::storage::supabase_studio_storage_create_folder,
+            supabase_studio::storage::supabase_studio_storage_transfer,
+            supabase_studio::storage::supabase_studio_storage_delete,
+            supabase_studio::storage::supabase_studio_storage_signed_url,
+            supabase_studio::storage::supabase_studio_storage_public_url,
+            supabase_studio::storage::supabase_studio_storage_object_info,
+            supabase_studio::tables::supabase_studio_tables_schemas,
+            supabase_studio::tables::supabase_studio_tables_list,
+            supabase_studio::tables::supabase_studio_tables_describe,
+            supabase_studio::tables::supabase_studio_tables_rows,
+            supabase_studio::tables::supabase_studio_tables_insert_row,
+            supabase_studio::tables::supabase_studio_tables_update_row,
+            supabase_studio::tables::supabase_studio_tables_delete_rows,
+            supabase_studio::tables::supabase_studio_tables_create_table,
+            supabase_studio::tables::supabase_studio_tables_rename_table,
+            supabase_studio::tables::supabase_studio_tables_drop_table,
+            supabase_studio::tables::supabase_studio_tables_truncate,
+            supabase_studio::tables::supabase_studio_tables_set_rls,
+            supabase_studio::tables::supabase_studio_tables_add_column,
+            supabase_studio::tables::supabase_studio_tables_alter_column,
+            supabase_studio::tables::supabase_studio_tables_drop_column,
             supabase::supabase_backups,
             supabase::supabase_tables,
             supabase::supabase_table_columns,
@@ -423,7 +569,10 @@ pub fn run() {
             db::commands::list_invalid_objects,
             db::commands::list_compile_errors,
             db::commands::compile_invalid_objects,
-            db::commands::start_debug_session,
+            db::commands::server_info,
+            db::sql_log::sql_log_configure,
+            db::sql_log::sql_log_entries,
+            db::sql_log::sql_log_clear,
             db::debugger::debug_availability,
             db::debugger::debug_launch,
             db::debugger::debug_snapshot,
@@ -472,6 +621,7 @@ pub fn run() {
             db::commands::uninstall_extension,
             db::commands::list_available_extensions,
             db::commands::execute_script,
+            db::sql_script::sql_search_path,
             db::commands::set_server_output,
             db::commands::take_server_output,
             db::commands::create_table,
@@ -491,6 +641,7 @@ pub fn run() {
             db::secrets::store_secret,
             db::secrets::load_secret,
             db::secrets::delete_secret,
+            team::team_connections,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,

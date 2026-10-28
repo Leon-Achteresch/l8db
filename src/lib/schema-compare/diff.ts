@@ -40,7 +40,10 @@ export const ATTRIBUTE_LABELS: Record<string, string> = {
   status: "Status",
   owned_column: "Besitzer-Spalte",
   on_update: "ON UPDATE",
+  tablespace: "Tablespace",
 };
+
+export const COLUMN_ORDER = "Spaltenreihenfolge";
 
 const SETTING_CONTEXT = /\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)$/i;
 const TOKEN =
@@ -49,9 +52,25 @@ const CANONICAL_TOKEN: Partial<Record<DatabaseKind, RegExp>> = {
   mysql:
     /--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|`(?:[^`]|``)*`|"(?:[^"\\]|\\[\s\S]|"")*"|'(?:[^'\\]|\\[\s\S]|'')*'/g,
   mssql: /--[^\n]*|\/\*[\s\S]*?\*\/|\[(?:[^\]]|\]\])*\]|"(?:[^"]|"")*"|[nN]?'(?:[^']|'')*'/g,
+  postgres: new RegExp(
+    `${TOKEN.source}|\\$(?!function\\$)([A-Za-z_]\\w*)?\\$[\\s\\S]*?\\$\\2\\$`,
+    "g",
+  ),
 };
 const SQL_TEXT =
   /\b(?:select|from|join|into|update|delete|insert|table|view|truncate|call|execute|alter|drop|create|merge|references)\b/i;
+
+const KEYWORDS = new Set(
+  (
+    "access add all alter and any as asc between by case cast check column comment connect constraint " +
+    "create cross current current_date current_role current_schema current_time current_timestamp " +
+    "current_user date default delete desc distinct drop else end exists false fetch for foreign from " +
+    "full grant group having identity in index inner insert intersect interval into is join key left " +
+    "level like limit localtime localtimestamp minus natural not null offset on or order outer primary " +
+    "references right rowid rownum select session_user set some sysdate systimestamp table then time " +
+    "timestamp to trigger true uid union unique update user using values view when where with"
+  ).split(" "),
+);
 
 function plainIdentifier(name: string, kind: DatabaseKind): boolean {
   if (kind === "oracle") return /^[A-Z][A-Z0-9_$#]*$/.test(name);
@@ -69,13 +88,26 @@ export function quoteName(name: string, kind?: DatabaseKind | null): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+const qualifierPatterns = new Map<string, RegExp>();
+
+function qualifierPattern(from: string): RegExp {
+  let pattern = qualifierPatterns.get(from);
+  if (!pattern) {
+    if (qualifierPatterns.size >= 64) qualifierPatterns.clear();
+    pattern = new RegExp(`(^|[^\\w$#."\`\\[\\]])${escapeRegExp(from)}\\.`, "gi");
+    qualifierPatterns.set(from, pattern);
+  }
+  return pattern;
+}
+
 function requalifyCode(sql: string, from: string, to: string, kind: DatabaseKind): string {
   const quotedTo = `${quoteName(to, kind)}.`;
-  let out = sql.split(`${quoteName(from, kind)}.`).join(quotedTo);
+  const quotedFrom = `${quoteName(from, kind)}.`;
+  let out = sql.includes(quotedFrom) ? sql.split(quotedFrom).join(quotedTo) : sql;
   if (plainIdentifier(from, kind)) {
     const bareTo = plainIdentifier(to, kind) ? `${to}.` : quotedTo;
     out = out.replace(
-      new RegExp(`(^|[^\\w$#."\`\\[\\]])${escapeRegExp(from)}\\.`, "gi"),
+      qualifierPattern(from),
       (match, before: string, offset: number, text: string) =>
         kind === "postgres" &&
         SETTING_CONTEXT.test(text.slice(Math.max(0, offset - 40), offset + before.length))
@@ -88,6 +120,7 @@ function requalifyCode(sql: string, from: string, to: string, kind: DatabaseKind
 
 export function requalify(sql: string, from: string, to: string, kind: DatabaseKind): string {
   if (!from || from === to) return sql;
+  if (!sql.includes("'")) return requalifyCode(sql, from, to, kind);
   let out = "";
   let code = 0;
   for (const match of sql.matchAll(TOKEN)) {
@@ -122,6 +155,9 @@ function requalifyObject(
     name: routine ? requalify(object.name, from, to, kind) : object.name,
     ddl: requalify(object.ddl, from, to, kind),
     attributes,
+    ...(object.depends_on
+      ? { depends_on: object.depends_on.map((name) => requalify(name, from, to, kind)) }
+      : {}),
   };
 }
 
@@ -138,34 +174,78 @@ export function canonical(
     .join("\n")
     .trim()
     .replace(/[;\s/]+$/, "");
-  if (!options.ignoreWhitespace && !options.ignoreCase) return out;
+  if (
+    !options.ignoreWhitespace &&
+    !options.ignoreCase &&
+    !options.ignoreComments &&
+    !options.ignoreQuotes &&
+    !options.ignoreTimestampPrecision &&
+    !options.ignoreLengthSemantics
+  )
+    return out;
   const normalize = (code: string, identifier = false) => {
     let value = code;
+    if (!identifier && options.ignoreTimestampPrecision)
+      value = value.replace(/\b(timestamp|datetime2|datetimeoffset|time)\s*\(\s*\d+\s*\)/gi, "$1");
+    if (!identifier && options.ignoreLengthSemantics)
+      value = value.replace(/\(\s*(\d+)\s+(?:byte|char)\s*\)/gi, "($1)");
     if (options.ignoreWhitespace && !identifier) value = value.replace(/\s+/g, " ");
     if (options.ignoreCase) value = value.toLowerCase();
     return value;
   };
+  if (!/[-/"'`#[$]/.test(out)) {
+    const plain = normalize(out);
+    return options.ignoreComments ? plain.trim() : plain;
+  }
   let result = "";
+  let pending = "";
   let code = 0;
   for (const match of out.matchAll(CANONICAL_TOKEN[kind] ?? TOKEN)) {
     const token = match[0];
     const start = match.index ?? 0;
-    result += normalize(out.slice(code, start));
-    if (/^(?:--|\/\*|#)/.test(token)) result += normalize(token);
-    else if (/^[`["]/.test(token) && !(kind === "mysql" && token.startsWith('"')))
-      result += normalize(token, true);
-    else result += token;
+    pending += out.slice(code, start);
     code = start + token.length;
+    if (/^(?:--|\/\*|#)/.test(token)) {
+      if (options.ignoreComments) pending += " ";
+      else {
+        result += normalize(pending) + normalize(token);
+        pending = "";
+      }
+      continue;
+    }
+    if (/^[`["]/.test(token) && !(kind === "mysql" && token.startsWith('"'))) {
+      const name = token.slice(1, -1).replace(/""|``|]]/g, (pair) => pair[0]);
+      if (options.ignoreQuotes && plainIdentifier(name, kind) && !KEYWORDS.has(name.toLowerCase()))
+        pending += name;
+      else {
+        result += normalize(pending) + normalize(token, true);
+        pending = "";
+      }
+      continue;
+    }
+    result += normalize(pending) + token;
+    pending = "";
   }
-  return result + normalize(out.slice(code));
+  result += normalize(pending + out.slice(code));
+  return options.ignoreComments ? result.trim() : result;
+}
+
+const NULL_DEFAULT = /^\(*\s*null\s*(?:::\s*[\w\s."[\]]+)?\)*$/i;
+
+export function attributeValue(object: CatalogObject, key: string, context: CompareContext) {
+  const value = object.attributes[key];
+  if (value === undefined) return "";
+  const { options } = context;
+  if (key === "current" && options.ignoreSequenceValues) return "";
+  if (key === "tablespace" && options.ignoreTablespace) return "";
+  if (key === "default" && options.ignoreDefaultNull && NULL_DEFAULT.test(value)) return "";
+  return canonical(value, context.targetSchema, context.kind, options);
 }
 
 function comparableAttributes(object: CatalogObject, context: CompareContext) {
   const values: Record<string, string> = {};
-  for (const [key, value] of Object.entries(object.attributes)) {
-    if (key === "current" && context.options.ignoreSequenceValues) continue;
-    values[key] = canonical(value, context.targetSchema, context.kind, context.options);
-  }
+  for (const key of Object.keys(object.attributes))
+    values[key] = attributeValue(object, key, context);
   return values;
 }
 
@@ -201,18 +281,55 @@ export function differences(
   for (const key of STATUS_ATTRIBUTES)
     if ((source.attributes[key] ?? "") !== (target.attributes[key] ?? ""))
       out.push(ATTRIBUTE_LABELS[key] ?? key);
+  if (
+    !context.options.ignoreTablespace &&
+    (source.attributes.tablespace ?? "") !== (target.attributes.tablespace ?? "")
+  )
+    out.push(ATTRIBUTE_LABELS.tablespace);
   return out;
 }
 
 export function objectKey(object: CatalogObject, context: CompareContext): string {
   const base = `${object.object_type}|${object.parent ?? ""}|`;
   if (
-    context.options.ignoreSystemNames &&
-    object.attributes.generated === "YES" &&
-    object.attributes.definition
+    object.attributes.definition &&
+    ((context.options.ignoreSystemNames && object.attributes.generated === "YES") ||
+      (context.options.ignoreConstraintNames && object.object_type === "constraint"))
   )
     return `${base}#${canonical(object.attributes.definition, context.targetSchema, context.kind, context.options)}`;
   return `${base}${object.name}`;
+}
+
+export function excludePattern(patterns: string): RegExp | null {
+  const parts = patterns
+    .split(/[,;\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) =>
+      part.replace(/\\([\s\S])|(%)|(_)|([\s\S])/g, (_, escaped, any, one, plain) =>
+        any ? "[\\s\\S]*" : one ? "[\\s\\S]" : escapeRegExp(escaped ?? plain),
+      ),
+    );
+  return parts.length > 0 ? new RegExp(`^(?:${parts.join("|")})$`, "i") : null;
+}
+
+export function limitDifferences(
+  items: DiffItem[],
+  limit: number,
+): { items: DiffItem[]; omitted: number } {
+  if (!limit || limit <= 0) return { items, omitted: 0 };
+  let shown = 0;
+  let omitted = 0;
+  const kept = items.filter((item) => {
+    if (item.status === "identical") return true;
+    if (shown < limit) {
+      shown++;
+      return true;
+    }
+    omitted++;
+    return false;
+  });
+  return { items: kept, omitted };
 }
 
 function typeRank(type: CatalogObjectType): number {
@@ -224,13 +341,18 @@ export function compareCatalogs(
   target: CatalogObject[],
   context: CompareContext,
 ): DiffItem[] {
-  const src = source.map((object) =>
-    requalifyObject(object, context.sourceSchema, context.targetSchema, context.kind),
-  );
+  const pattern = excludePattern(context.options.excludePatterns ?? "");
+  const kept = (object: CatalogObject) => !pattern?.test(object.parent ?? object.name);
+  const src = source
+    .filter(kept)
+    .map((object) =>
+      requalifyObject(object, context.sourceSchema, context.targetSchema, context.kind),
+    );
+  const tgt = target.filter(kept);
   const containers = (list: CatalogObject[]) =>
     new Set(list.filter((item) => CONTAINER_TYPES.has(item.object_type)).map((item) => item.name));
   const sourceContainers = containers(src);
-  const targetContainers = containers(target);
+  const targetContainers = containers(tgt);
   const onlySource = new Set([...sourceContainers].filter((name) => !targetContainers.has(name)));
   const onlyTarget = new Set([...targetContainers].filter((name) => !sourceContainers.has(name)));
   const children = new Map<string, CatalogObject[]>();
@@ -258,7 +380,23 @@ export function compareCatalogs(
     return map;
   };
   const left = index(src, "s", onlySource);
-  const right = index(target, "t", onlyTarget);
+  const right = index(tgt, "t", onlyTarget);
+  const columns = (list: CatalogObject[]) => {
+    const map = new Map<string, string[]>();
+    if (context.options.ignoreColumnOrder) return map;
+    for (const object of list)
+      if (object.object_type === "column" && object.parent)
+        map.set(object.parent, [...(map.get(object.parent) ?? []), object.name]);
+    return map;
+  };
+  const sourceColumns = columns(src);
+  const targetColumns = columns(tgt);
+  const reordered = (table: string) => {
+    const a = sourceColumns.get(table) ?? [];
+    const b = targetColumns.get(table) ?? [];
+    const common = (list: string[], other: string[]) => list.filter((name) => other.includes(name));
+    return common(a, b).join("\u0000") !== common(b, a).join("\u0000");
+  };
   const items: DiffItem[] = [];
   for (const key of new Set([...left.keys(), ...right.keys()])) {
     const a = left.get(key) ?? null;
@@ -268,6 +406,12 @@ export function compareCatalogs(
     let differsBy: string[] = [];
     if (a && b) {
       differsBy = differences(a, b, context);
+      if (
+        base.object_type === "table" &&
+        !context.options.ignoreColumnOrder &&
+        reordered(base.name)
+      )
+        differsBy.push(COLUMN_ORDER);
       status = differsBy.length > 0 ? "different" : "identical";
     }
     let related: CatalogObject[] = [];
@@ -299,8 +443,38 @@ export function compareCatalogs(
 export function defaultSelection(items: DiffItem[]): Record<string, boolean> {
   const selection: Record<string, boolean> = {};
   for (const item of items)
-    if (item.status === "only_source" || item.status === "different") selection[item.key] = true;
+    if ((item.status === "only_source" || item.status === "different") && !item.blocked)
+      selection[item.key] = true;
   return selection;
+}
+
+export function renameCandidates(items: DiffItem[], item: DiffItem): DiffItem[] {
+  if (item.type !== "column" || (item.status !== "only_source" && item.status !== "only_target"))
+    return [];
+  const wanted = item.status === "only_source" ? "only_target" : "only_source";
+  const type = (entry: DiffItem) => (entry.source ?? entry.target)?.attributes.type ?? "";
+  return items.filter(
+    (other) =>
+      other.type === "column" &&
+      other.status === wanted &&
+      other.parent === item.parent &&
+      type(other) === type(item),
+  );
+}
+
+export function markMissingTablespaces(items: DiffItem[], available: ReadonlySet<string>): void {
+  for (const item of items) {
+    if (!item.source) continue;
+    const creates =
+      (item.status === "only_source" && (item.type === "table" || item.type === "index")) ||
+      (item.status === "different" && item.type === "index");
+    if (!creates) continue;
+    const missing = [item.source, ...item.children]
+      .map((object) => object.attributes.tablespace)
+      .filter((name): name is string => Boolean(name) && !available.has(name as string));
+    if (missing.length > 0)
+      item.blocked = `Tablespace ${[...new Set(missing)].join(", ")} fehlt im Ziel oder ist dort nicht nutzbar`;
+  }
 }
 
 export function detailText(item: DiffItem, side: "source" | "target", items: DiffItem[]): string {

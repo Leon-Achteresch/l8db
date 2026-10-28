@@ -90,6 +90,7 @@ pub struct Snapshot {
     pub source: String,
     pub selected_frame: i32,
     pub watches: Vec<Watch>,
+    pub executable_lines: Vec<i32>,
 }
 
 impl Snapshot {
@@ -103,6 +104,7 @@ impl Snapshot {
             source: String::new(),
             selected_frame: 0,
             watches: vec![],
+            executable_lines: vec![],
         }
     }
 }
@@ -117,6 +119,7 @@ pub enum Action {
     SelectFrame { frame: i32 },
     Breakpoints { breakpoints: Vec<Breakpoint> },
     Watches { names: Vec<String> },
+    SetValue { name: String, value: String },
 }
 
 #[async_trait]
@@ -199,6 +202,23 @@ fn validate_launch(request: &Launch) -> Result<(), String> {
 fn validate_breakpoints(breakpoints: &[Breakpoint]) -> Result<(), String> {
     if breakpoints.len() > 1000 || breakpoints.iter().any(|b| b.line < 1 || b.oid.is_empty()) {
         return Err("Ungültige Breakpoints (maximal 1000, Zeilen ab 1).".into());
+    }
+    Ok(())
+}
+
+fn validate_assignment(name: &str, value: &str) -> Result<(), String> {
+    let identifier = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || "_$\"".contains(c))
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || "_$#.\"".contains(c));
+    if !identifier || name.len() > 256 {
+        return Err("Ungültiger Variablenname.".into());
+    }
+    if value.trim().is_empty() || value.len() > 4000 {
+        return Err("Der neue Wert muss 1–4000 Zeichen lang sein.".into());
     }
     Ok(())
 }
@@ -341,6 +361,9 @@ pub async fn debug_action(
     }
     if let Action::Breakpoints { breakpoints } = &action {
         validate_breakpoints(breakpoints)?;
+    }
+    if let Action::SetValue { name, value } = &action {
+        validate_assignment(name, value)?;
     }
     if let Action::Watches { names } = &action {
         if names.len() > 100 || names.iter().any(|name| name.is_empty() || name.len() > 256) {

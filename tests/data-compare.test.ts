@@ -335,6 +335,99 @@ describe("Sync-Skript je Datenbank", () => {
     expect(script.insertCount).toBe(1);
   });
 
+  test("Oracle nutzt HEXTORAW und vergleicht keine LOB-Spalten", () => {
+    const script = buildSyncScript({
+      rows: diff,
+      direction: "left_to_right",
+      target: { schema: "APP", table: "T" },
+      keyColumns: ["id"],
+      compareColumns: ["name", "data", "flag", "ratio"],
+      kind: "oracle",
+      columnTypes: { ...columnTypes, name: "CLOB", data: "BLOB", ratio: "NUMBER" },
+      includeDeletes: true,
+    });
+    expect(script.sql).toContain("HEXTORAW('00FF')");
+    const where = script.sql.slice(script.sql.indexOf(' WHERE "id" = 2'));
+    expect(where).not.toContain(`"name"`);
+    expect(where).not.toContain(`"data"`);
+    expect(where).toContain(`AND "ratio" = 2`);
+  });
+
+  test("Oracle teilt lange CLOBs und lehnt nicht schreibbare Werte ab", () => {
+    const text = `${"ä".repeat(999)}😀${"b".repeat(1500)}`;
+    const rows = compareTableData({
+      keyColumns: ["id"],
+      compareColumns: ["doc"],
+      left: [{ id: 1, doc: text }],
+      right: [],
+    }).rows;
+    const oracle = (doc: string) =>
+      buildSyncScript({
+        rows,
+        direction: "left_to_right",
+        target: { schema: "APP", table: "T" },
+        keyColumns: ["id"],
+        compareColumns: ["doc"],
+        kind: "oracle",
+        columnTypes: { id: "NUMBER", doc },
+      });
+    const sql = oracle("CLOB").sql;
+    const parts = [...sql.matchAll(/TO_CLOB\('([^']*)'\)/g)].map((match) => match[1]);
+    expect(parts.length).toBe(3);
+    expect(parts.join("")).toBe(text);
+    expect(parts.every((part) => part.length <= 1000)).toBe(true);
+    expect(() => oracle("XMLTYPE")).toThrow(/XMLTYPE/);
+    expect(() => oracle("MDSYS.SDO_GEOMETRY")).toThrow(/SDO_GEOMETRY/);
+    const blob = compareTableData({
+      keyColumns: ["id"],
+      compareColumns: ["doc"],
+      left: [{ id: 1, doc: `\\x${"00".repeat(2001)}` }],
+      right: [],
+    }).rows;
+    expect(() =>
+      buildSyncScript({
+        rows: blob,
+        direction: "left_to_right",
+        target: { table: "T" },
+        keyColumns: ["id"],
+        compareColumns: ["doc"],
+        kind: "oracle",
+        columnTypes: { id: "NUMBER", doc: "BLOB" },
+      }),
+    ).toThrow(/2000 Byte/);
+  });
+
+  test("Oracle-CLOB-Skript für 200 × 50 000 Zeichen bleibt schnell", () => {
+    const doc = "x'y".repeat(16_667).slice(0, 50_000);
+    const rows = compareTableData({
+      keyColumns: ["id"],
+      compareColumns: ["doc"],
+      left: Array.from({ length: 200 }, (_, id) => ({ id, doc })),
+      right: [],
+    }).rows;
+    const samples: number[] = [];
+    let sql = "";
+    for (let run = 0; run < 5; run += 1) {
+      const started = performance.now();
+      sql = buildSyncScript({
+        rows,
+        direction: "left_to_right",
+        target: { schema: "APP", table: "T" },
+        keyColumns: ["id"],
+        compareColumns: ["doc"],
+        kind: "oracle",
+        columnTypes: { id: "NUMBER", doc: "CLOB" },
+      }).sql;
+      samples.push(performance.now() - started);
+    }
+    samples.sort((a, b) => a - b);
+    console.log(
+      `oracle clob sync: 200 rows x 50k chars, median ${samples[2].toFixed(1)} ms, max ${samples[4].toFixed(1)} ms, ${(sql.length / 1e6).toFixed(1)} MB script`,
+    );
+    expect(sql.split("TO_CLOB(").length - 1).toBe(200 * 50);
+    expect(samples[2]).toBeLessThan(500);
+  });
+
   test("SQLite nutzt X-Literale und IS", () => {
     const script = build("sqlite", false);
     expect(script.sql).toContain("X'00FF'");

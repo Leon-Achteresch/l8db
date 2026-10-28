@@ -32,7 +32,10 @@ for (const policy of [csp, security.devCsp]) {
   );
   assert(!policy["media-src"].includes("*"));
   assert(policy["img-src"].includes("https://release-assets.githubusercontent.com"));
+  assert(policy["img-src"].split(/\s+/).includes("https://l8db.leon-achteresch.de"));
+  assert(!policy["img-src"].includes("*"));
 }
+assert(!csp["img-src"].includes("localhost"), "Production images must not load from localhost");
 assert.equal(csp["object-src"], "'none'");
 assert.equal(csp["base-uri"], "'none'");
 assert.equal(csp["form-action"], "'none'");

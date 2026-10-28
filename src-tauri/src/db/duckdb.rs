@@ -211,10 +211,15 @@ impl DuckdbAdapter {
         F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
     {
         let path = self.path.clone();
+        let sealed = self.pool_state.seals_files();
         let conn: Arc<Mutex<Connection>> = self
             .pool_state
             .shared(&self.key, || async move {
                 let view = file_view_sql(&path);
+                let seal = sealed.then(|| {
+                    let allowed = if view.is_some() { lit(&path) } else { String::new() };
+                    format!("SET allowed_paths = [{allowed}]; SET enable_external_access = false; SET lock_configuration = true;")
+                });
                 let conn = if path == ":memory:" || view.is_some() {
                     Connection::open_in_memory()
                 } else {
@@ -224,6 +229,14 @@ impl DuckdbAdapter {
                 if let Some(sql) = view {
                     conn.execute_batch(&sql)
                         .map_err(|e| format!("Datei konnte nicht gelesen werden ({path}): {e}"))?;
+                }
+                if let Some(sql) = seal {
+                    conn.execute_batch("SET autoinstall_known_extensions = false")
+                        .map_err(map_err)?;
+                    for extension in ["icu", "json"] {
+                        let _ = conn.execute_batch(&format!("LOAD {extension}"));
+                    }
+                    conn.execute_batch(&sql).map_err(map_err)?;
                 }
                 Ok(Mutex::new(conn))
             })

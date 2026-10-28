@@ -7,7 +7,10 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import { useBaasConnections } from "@/features/baas/use-baas-connections";
-import { supabaseReferenceOf } from "@/features/baas/use-supabase-database";
+import {
+  isSelfHostedSupabaseDatabase,
+  supabaseReferenceOf,
+} from "@/features/baas/use-supabase-database";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import {
   groupByServer,
@@ -76,9 +79,15 @@ export function ConnectionsView() {
   const supabaseProjects = new Set(
     allBaasConnections.filter((item) => item.provider === "supabase").map((item) => item.id),
   );
+  const selfHostedSupabase = allBaasConnections.filter(
+    (item) => item.provider === "supabase" && item.url,
+  );
   const listed = connections.filter((connection) => {
     const reference = supabaseReferenceOf(connection);
-    return !reference || !supabaseProjects.has(reference);
+    if (reference && supabaseProjects.has(reference)) return false;
+    return !selfHostedSupabase.some((item) =>
+      isSelfHostedSupabaseDatabase(connection, item.url ?? "", item.name),
+    );
   });
   const filtered = sortConnectionsByName(
     listed.filter((connection) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildEmptyPrefill } from "@/lib/row-duplicate";
 import type { DataTableProps } from "../data-table-types";
 import { useAutoRefresh } from "./use-auto-refresh";
@@ -38,6 +38,10 @@ export function useDataTable(props: DataTableProps) {
     addRowSignal,
   } = props;
   const {
+    infinite,
+    rowOffset,
+    visiblePage,
+    scrollToRow,
     connection,
     layout,
     drafts,
@@ -122,6 +126,30 @@ export function useDataTable(props: DataTableProps) {
     commitEditingCell,
     handleCellEdit,
   } = useCellEditing({ onSaveRow, columnNames, emptyEditValue, canEditCell, setActiveCell });
+  const windowOffset = infinite ? rowOffset : 0;
+  const [shiftedOffset, setShiftedOffset] = useState(windowOffset);
+  const shiftedData = useRef(data);
+  useLayoutEffect(() => {
+    shiftedData.current = data;
+  });
+  if (shiftedOffset !== windowOffset) {
+    const previous = shiftedData.current;
+    const prepended = previous.length ? data.indexOf(previous[0]) : -1;
+    const dropped = data.length ? previous.indexOf(data[0]) : -1;
+    const delta =
+      prepended >= 0 ? -prepended : dropped >= 0 ? dropped : windowOffset - shiftedOffset;
+    const shift = <T extends { rowIndex: number }>(cell: T) => ({
+      ...cell,
+      rowIndex: cell.rowIndex - delta,
+    });
+    setShiftedOffset(windowOffset);
+    if (delta !== 0) {
+      setActiveCell((cell) => cell && shift(cell));
+      setSelectionAnchor((cell) => cell && shift(cell));
+      setExtraCells((cells) => (cells.length ? cells.map(shift) : cells));
+      setEditingCell((cell) => cell && shift(cell));
+    }
+  }
   const openDraftRef = useRef<() => void>(() => {});
   openDraftRef.current = () => {
     setEditingCell(null);
@@ -149,6 +177,8 @@ export function useDataTable(props: DataTableProps) {
     revealColumn,
     activeColumnMatch,
     activeMatch,
+    navSeq: search.navSeq,
+    rowOffset: windowOffset,
   });
   const columnTypeByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -176,10 +206,18 @@ export function useDataTable(props: DataTableProps) {
     typeInfoByColumn,
     data,
   });
+  const navPage = infinite ? visiblePage : page;
+  const scrollToPage = useCallback(
+    (next: number) => scrollToRow(next * pageSize),
+    [scrollToRow, pageSize],
+  );
+  const changePage = infinite ? scrollToPage : onPageChange;
   const hasNextPage =
     totalCount != null
-      ? page < Math.ceil(totalCount / pageSize) - 1
-      : countLabel !== undefined && data.length >= pageSize;
+      ? navPage < Math.ceil(totalCount / pageSize) - 1
+      : infinite
+        ? (props.rowExtent ?? 0) > (navPage + 1) * pageSize
+        : countLabel !== undefined && data.length >= pageSize;
   useGridHotkeys({
     rootRef,
     searchInputRef: search.searchInputRef,
@@ -190,13 +228,18 @@ export function useDataTable(props: DataTableProps) {
     rows,
     selectedCount,
     editingCell,
-    onPageChange,
+    onPageChange: changePage,
     hasNextPage,
-    page,
+    page: navPage,
     totalPages: totalCount == null ? undefined : Math.ceil(totalCount / pageSize),
     isFetching,
   });
-  const waveRefs = usePageFlip(scrollRef, page, hasNextPage, onPageChange);
+  const waveRefs = usePageFlip(
+    scrollRef,
+    infinite ? 0 : page,
+    hasNextPage,
+    infinite ? undefined : onPageChange,
+  );
   useGridKeyboard({
     activeCell,
     setActiveCell,
@@ -238,6 +281,10 @@ export function useDataTable(props: DataTableProps) {
   });
 
   return {
+    infinite,
+    rowOffset,
+    navPage,
+    changePage,
     hasNextPage,
     activeCell,
     activeMatch,

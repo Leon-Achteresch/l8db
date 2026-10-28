@@ -20,12 +20,20 @@ import type { TableRow } from "../data-table-types";
 
 const FIRST_PAINT_ROWS = 8;
 
+export type InfiniteRows = {
+  rowOffset: number;
+  rowExtent: number;
+  pageSize: number;
+  onVisibleRowsChange?: (firstRow: number, lastRow: number) => void;
+};
+
 export function useRowVirtualizer(
   rows: Row<TableRow>[],
   draftHeight: number,
   scrollRef: RefObject<HTMLDivElement | null>,
   stateKey: string | undefined,
   scrollIdentity: string,
+  infinite?: InfiniteRows,
 ) {
   const uiScale = useSettingsStore((state) => state.uiScale);
   const uiDensity = useSettingsStore((state) => state.uiDensity);
@@ -53,9 +61,13 @@ export function useRowVirtualizer(
     },
     [windowRanges],
   );
+  const rowOffset = infinite?.rowOffset ?? 0;
+  const scrollMargin = draftHeight + rowOffset * estimatedRowHeight;
+  const getItemKey = useCallback((index: number) => rowOffset + index, [rowOffset]);
   const rowVirtualizer = useGridVirtualizer({
     count: rows.length,
-    scrollMargin: draftHeight,
+    scrollMargin,
+    getItemKey,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
     measureElement: (element, entry) => {
@@ -169,14 +181,61 @@ export function useRowVirtualizer(
     const frame = requestAnimationFrame(() => startTransition(() => setWarm(true)));
     return () => cancelAnimationFrame(frame);
   }, []);
+  const viewport = useRef({ draftHeight, estimatedRowHeight, infinite });
+  viewport.current = { draftHeight, estimatedRowHeight, infinite };
+  const [visiblePage, setVisiblePage] = useState(0);
+  const reportedPage = useRef(visiblePage);
+  const reportVisible = useRef(() => {});
+  const tracksRows = infinite !== undefined;
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !tracksRows) return;
+    const report = () => {
+      const { draftHeight, estimatedRowHeight, infinite } = viewport.current;
+      if (!infinite || estimatedRowHeight <= 0) return;
+      const top = element.scrollTop - draftHeight;
+      const height = rowVirtualizer.scrollRect?.height ?? element.clientHeight;
+      const first = Math.max(0, Math.floor(top / estimatedRowHeight));
+      const last = Math.max(first, Math.floor((top + height) / estimatedRowHeight));
+      infinite.onVisibleRowsChange?.(first, last);
+      const page = Math.floor(first / infinite.pageSize);
+      if (page === reportedPage.current) return;
+      reportedPage.current = page;
+      startTransition(() => setVisiblePage(page));
+    };
+    reportVisible.current = report;
+    report();
+    element.addEventListener("scroll", report, { passive: true });
+    return () => {
+      reportVisible.current = () => {};
+      element.removeEventListener("scroll", report);
+    };
+  }, [tracksRows, scrollRef, rowVirtualizer]);
+  const viewportHeight = rowVirtualizer.scrollRect?.height;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Sichtbereich nach Daten-, Quellen- und Größenwechsel neu melden
+  useEffect(() => {
+    reportVisible.current();
+  }, [scrollIdentity, rows.length, infinite?.rowOffset, infinite?.rowExtent, viewportHeight]);
+  const scrollToRow = useCallback(
+    (row: number) => {
+      const { draftHeight, estimatedRowHeight } = viewport.current;
+      scrollRef.current?.scrollTo({ top: draftHeight + row * estimatedRowHeight });
+    },
+    [scrollRef],
+  );
   const allRows = rowVirtualizer.getVirtualItems();
   const virtualRows = warm ? allRows : allRows.slice(0, FIRST_PAINT_ROWS);
-  const paddingTop = Math.max(0, (virtualRows[0]?.start ?? 0) - draftHeight);
-  const paddingBottom = Math.max(
-    0,
-    rowVirtualizer.getTotalSize() - ((virtualRows.at(-1)?.end ?? draftHeight) - draftHeight),
-  );
+  const tailRows = infinite ? Math.max(0, infinite.rowExtent - rowOffset - rows.length) : 0;
+  const paddingTop = Math.max(0, (virtualRows[0]?.start ?? scrollMargin) - draftHeight);
+  const paddingBottom =
+    Math.max(
+      0,
+      rowVirtualizer.getTotalSize() - ((virtualRows.at(-1)?.end ?? scrollMargin) - scrollMargin),
+    ) +
+    tailRows * estimatedRowHeight;
   return {
+    visiblePage,
+    scrollToRow,
     uiScale,
     rowVirtualizer,
     measureRow: rowMeasurer.measureElement,

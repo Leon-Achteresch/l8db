@@ -1,4 +1,5 @@
-import type { ScriptRunEntry } from "@/features/query/script-result-list";
+import { stat } from "@tauri-apps/plugin-fs";
+import type { ScriptRunEntry, ScriptRunStatus } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import type { SavedConnection } from "@/lib/connections";
 import {
@@ -6,15 +7,30 @@ import {
   confirmSqlExecution,
   executeInTransaction,
   executeQuery,
+  listTableColumnsDetailed,
   type QueryResult,
 } from "@/lib/db";
+import { sqlSearchPath } from "@/lib/db/sql-include";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
+import { toggleServerOutput } from "@/lib/server-output";
 import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/lib/session-views";
+import { readSqlText } from "@/lib/sql-file";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
+import { expandIncludes, type ScriptItem, scriptItems } from "@/lib/sql-statements/includes";
+import {
+  type AskVariables,
+  applySqlPlusSetting,
+  askMissingVariables,
+  createSubstitutionState,
+  oracleObjectName,
+  parseSqlPlusCommand,
+  type SubstitutionSession,
+  substitute,
+} from "@/lib/sql-statements/sqlplus";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
 import {
@@ -23,6 +39,9 @@ import {
 } from "@/lib/transaction-sql-changes";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
+const CONNECT_UNSUPPORTED =
+  "CONNECT/DISCONNECT wird nicht unterstützt. Das Skript wurde angehalten, damit die folgenden Statements nicht im falschen Schema laufen.";
+
 export interface ScriptRequest {
   connection: SavedConnection;
   database: string | null;
@@ -30,6 +49,9 @@ export interface ScriptRequest {
   mode: ScriptRunMode;
   stopOnError?: boolean;
   selectRowLimit?: number;
+  filePath?: string | null;
+  variables?: SubstitutionSession;
+  askVariables?: AskVariables;
   title?: string;
   onJob?: (id: string) => void;
   onProgress?: (entries: ScriptRunEntry[]) => void;
@@ -50,11 +72,38 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     throw new Error(
       "Nicht abgeschlossenes SQL-Literal oder Kommentar. Das Skript wurde nicht gestartet.",
     );
-  if (!split.statements.length)
-    throw new Error("Das Skript enthält keine ausführbaren Statements.");
-  const policyIssue = scriptPolicyIssue(request.sql, connection.kind, mode !== "autocommit");
+  const oracle = connection.kind === "oracle";
+  const items = split.commands.length
+    ? await expandIncludes(scriptItems(split), {
+        file: request.filePath ?? null,
+        searchPath: await sqlSearchPath().catch(() => []),
+        stat: (path) =>
+          stat(path).then(
+            (info) => ({ size: info.size }),
+            () => null,
+          ),
+        read: readSqlText,
+      })
+    : scriptItems(split);
+  const shown = items.filter(
+    (item) => item.kind !== "command" || parseSqlPlusCommand(item.text).type !== "remark",
+  );
+  if (!shown.length) throw new Error("Das Skript enthält keine ausführbaren Statements.");
+  const session = request.variables ?? { state: createSubstitutionState(), answers: {} };
+  const answers = oracle ? await askMissingVariables(items, session, request.askVariables) : {};
+  if (!answers) throw new Error("Ausführung vom Benutzer abgebrochen.");
+  const preview = { ...session.state, defines: { ...session.state.defines } };
+  const executable = oracle
+    ? items
+        .flatMap((item) => {
+          if (item.kind === "command") applySqlPlusSetting(parseSqlPlusCommand(item.text), preview);
+          return item.kind === "sql" ? [substitute(item.text, preview, answers).text] : [];
+        })
+        .join("\n/\n")
+    : request.sql;
+  const policyIssue = scriptPolicyIssue(executable, connection.kind, mode !== "autocommit");
   if (policyIssue) throw new Error(policyIssue);
-  await confirmSqlExecution(connection.kind, url, request.sql, database ?? undefined);
+  await confirmSqlExecution(connection.kind, url, executable, database ?? undefined);
   const existing = getQueryTransaction(connection.id, database);
   if (existing && mode !== "existing-transaction")
     throw new Error(
@@ -65,17 +114,23 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
   if (mode !== "autocommit" && !supports(connection, "transactions"))
     throw new Error("Dieser Provider unterstützt keine Skript-Transaktionen.");
 
-  const entries: ScriptRunEntry[] = split.statements.map((statement, index) => ({
-    index,
-    sql: statement.text,
-    start: statement.start,
-    end: statement.end,
-    status: "pending",
-    durationMs: null,
-    rowCount: null,
-    rowsAffected: null,
-    error: null,
-  }));
+  const entryOf = new Map<ScriptItem, ScriptRunEntry>();
+  const entries: ScriptRunEntry[] = shown.map((item, index) => {
+    const entry: ScriptRunEntry = {
+      index,
+      sql: item.text,
+      start: item.start,
+      end: item.end,
+      status: "pending",
+      durationMs: null,
+      rowCount: null,
+      rowsAffected: null,
+      error: null,
+      ...(item.source ? { source: item.source } : {}),
+    };
+    entryOf.set(item, entry);
+    return entry;
+  });
   let stopped = false;
   let currentJob: string | null = null;
   const jobId = startTask(
@@ -105,9 +160,107 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       useTransactionStore.getState().setPanelOpen(true);
     }
     const publish = () => request.onProgress?.(entries.map((entry) => ({ ...entry })));
-    for (const entry of entries) {
-      if (stopped || (error && (request.stopOnError !== false || txId))) {
+    let stopOnError = request.stopOnError !== false;
+    let halted = false;
+    const fail = (message: string) => {
+      error = message;
+      if (stopOnError || (txId && !oracle)) halted = true;
+    };
+    const runCommand = async (text: string, entry: ScriptRunEntry): Promise<ScriptRunStatus> => {
+      const command = parseSqlPlusCommand(text);
+      if (command.type === "connect") {
+        halted = true;
+        throw new Error(CONNECT_UNSUPPORTED);
+      }
+      if (command.type === "describe") {
+        const result = await describe(command.name);
+        entry.result = result;
+        entry.rowCount = result.rows.length;
+        lastResult = result;
+      } else if (command.type === "whenever") stopOnError = command.exit;
+      else if (command.type === "exit") halted = true;
+      else if (command.type === "serveroutput") await switchServerOutput(command.enabled);
+      else if (command.type !== "prompt" && !applySqlPlusSetting(command, session.state))
+        return "ignored";
+      return "success";
+    };
+    const describe = async (name: string): Promise<QueryResult> => {
+      const started = performance.now();
+      const target = oracleObjectName(name);
+      if (!target)
+        throw new Error(`DESC unterstützt Tabellen und Views der Form [schema.]name: ${name}`);
+      const options = { confirmed: true, track: false, session: jobId };
+      const schema =
+        target.schema ??
+        String(
+          Object.values(
+            (
+              await executeQuery(
+                connection.kind,
+                url,
+                "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual",
+                database ?? undefined,
+                options,
+              )
+            ).rows[0] ?? {},
+          )[0] ?? "",
+        );
+      const columns = await listTableColumnsDetailed(
+        connection.kind,
+        url,
+        schema,
+        target.object,
+        database ?? undefined,
+      );
+      if (!columns.length) throw new Error(`Tabelle oder View nicht gefunden: ${name}`);
+      return {
+        columns: ["Name", "Null?", "Typ"],
+        rows: columns.map((column) => ({
+          Name: column.name,
+          "Null?": column.is_nullable ? "" : "NOT NULL",
+          Typ: column.data_type,
+        })),
+        rows_affected: null,
+        execution_time_ms: Math.round(performance.now() - started),
+      };
+    };
+    const switchServerOutput = async (enabled: boolean) => {
+      if (!supports(connection, "server_output")) return;
+      await toggleServerOutput(connection.kind, url, connection.id, enabled, database ?? undefined);
+      const active = txId;
+      if (active)
+        await runManagedOperation(active, () =>
+          executeInTransaction(
+            active,
+            enabled ? "BEGIN DBMS_OUTPUT.ENABLE(NULL); END;" : "BEGIN DBMS_OUTPUT.DISABLE; END;",
+            { confirmed: true, track: false, session: jobId },
+          ),
+        );
+    };
+    for (const item of items) {
+      const entry = entryOf.get(item);
+      if (!entry) continue;
+      if (stopped || halted) {
         entry.status = "skipped";
+        publish();
+        continue;
+      }
+      if (item.kind === "command") {
+        entry.status = await runCommand(item.text, entry).catch((failure: unknown) => {
+          entry.error = failure instanceof Error ? failure.message : String(failure);
+          fail(entry.error);
+          return "error" as const;
+        });
+        publish();
+        continue;
+      }
+      if (oracle && item.kind === "sql")
+        entry.sql = substitute(item.text, session.state, answers).text;
+      const failure = item.error;
+      if (failure) {
+        entry.status = "error";
+        entry.error = failure;
+        fail(failure);
         publish();
         continue;
       }
@@ -178,7 +331,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       } catch (failure) {
         entry.status = "error";
         entry.error = failure instanceof Error ? failure.message : String(failure);
-        error = entry.error;
+        fail(entry.error);
       } finally {
         currentJob = null;
         entry.durationMs = Math.round(performance.now() - started);
@@ -191,7 +344,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           error: entry.error,
         });
         updateTask(jobId, {
-          progress: entries.filter((item) => item.status === "success" || item.status === "error")
+          progress: entries.filter((item) => item.status !== "pending" && item.status !== "skipped")
             .length,
           detail: txId
             ? "Ausgeführt in einer verwalteten Transaktion. Commit oder Rollback erfolgt separat im Transaktionspanel."

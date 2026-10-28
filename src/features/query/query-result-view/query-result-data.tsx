@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
-import { TableFilterPanel } from "@/features/table/table-filter-panel";
+import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { QUERY_RESULT_SCHEMA } from "@/lib/query-result-view";
 import type { QueryResultViewModel } from "./use-query-result-view-model";
 
@@ -24,7 +24,7 @@ export function QueryResultData({ model, text, columns, onShowClassic }: QueryRe
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
-        <TableFilterPanel
+        <TableFilterBar
           key={stateKey}
           stateKey={stateKey}
           columns={model.data?.columns ?? columns}

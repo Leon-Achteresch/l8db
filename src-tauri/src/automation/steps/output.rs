@@ -462,7 +462,7 @@ mod tests {
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&zipped).unwrap()).unwrap();
         assert_eq!(archive.len(), 1);
         let mut entry = archive.by_index(0).unwrap();
-        assert_eq!(entry.name(), "daten.csv");
+        assert_eq!(entry.name().unwrap(), "daten.csv");
         let mut text = String::new();
         std::io::Read::read_to_string(&mut entry, &mut text).unwrap();
         assert_eq!(text, "a,b\n1,2");

@@ -15,6 +15,7 @@ import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
+import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { MultiTargetButton } from "./query-view/multi-target-button";
@@ -22,7 +23,7 @@ import { QueryEditorContent } from "./query-view/query-editor-content";
 import { QueryResultsContent } from "./query-view/query-results-content";
 import { QueryToolsMenu } from "./query-view/query-tools-menu";
 import { QueryViewDialogs } from "./query-view/query-view-dialogs";
-import { QueryViewDrawers } from "./query-view/query-view-drawers";
+import { type QueryHistoryHandle, QueryViewDrawers } from "./query-view/query-view-drawers";
 import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
@@ -49,7 +50,9 @@ import { useRunActions } from "./query-view/use-run-actions";
 import { useRunSql } from "./query-view/use-run-sql";
 import { useScriptRun } from "./query-view/use-script-run";
 import { useServerOutput } from "./query-view/use-server-output";
+import { useSubstitutionPrompt } from "./query-view/use-substitution-prompt";
 import { useWorkspaceLayoutSync } from "./query-view/use-workspace-layout-sync";
+import { ResultCompareButton } from "./result-compare/result-compare-button";
 
 interface QueryViewProps {
   tabId: string;
@@ -74,7 +77,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
   const editorApiRef = useRef<QueryEditorApi | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyRef = useRef<QueryHistoryHandle | null>(null);
 
   const exec = useQueryExecutionState(tabId);
   const exportState = useResultExport(exec.result);
@@ -107,9 +110,13 @@ export function QueryView({ tabId }: QueryViewProps) {
   );
   const sessionViews = useSessionViews(connection?.id, database);
   const output = useServerOutput(connection, database, caps);
+  const substitution = useSubstitutionPrompt();
 
   const script = useScriptRun({
     sql,
+    filePath,
+    tabId,
+    askVariables: substitution.ask,
     connection,
     database,
     caps,
@@ -123,8 +130,9 @@ export function QueryView({ tabId }: QueryViewProps) {
   const multiTargetRun = useMultiTargetRun();
   const [multiTargetOpen, setMultiTargetOpen] = useState(false);
   const dmlPreviewWarnThreshold = useSettingsStore((state) => state.dmlPreviewWarnThreshold);
+  const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
 
-  const { runSql, bind } = useRunSql({
+  const { runSql, prepareSql, bind } = useRunSql({
     tabId,
     sql,
     connection,
@@ -137,6 +145,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     collectOutput: output.collectOutput,
     runMultiStatement: script.runScriptFor,
     confirmPreview: dmlPreview.confirmBeforeRun,
+    askVariables: substitution.ask,
   });
 
   const actions = useRunActions({
@@ -148,6 +157,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     cursor,
     runSql,
     previewSql: dmlPreview.preview,
+    prepareSql,
     setEditorFocus,
   });
 
@@ -158,7 +168,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     connected: connection !== null,
     editorApiRef,
     handleFileSave: file.handleFileSave,
-    toggleHistory: () => startTransition(() => setHistoryOpen((open) => !open)),
+    toggleHistory: () => startTransition(() => historyRef.current?.toggle()),
     openCsvExport: exportState.openCsvExport,
   });
 
@@ -186,16 +196,22 @@ export function QueryView({ tabId }: QueryViewProps) {
   const chart = useResultChartBinding(tabId, exec.executedSql, connection, database, caps);
   const isSql = caps.query_language === "sql";
 
+  const [compareOpen, setCompareOpen] = useTabState(tabStateKey(exec.scope, "compareOpen"), false);
   const resultActions = (
-    <ResultActions
-      result={exec.result}
-      serverOutput={caps.server_output}
-      outputOpen={output.outputOpen}
-      connected={Boolean(connection)}
-      onToggleOutput={() => output.setOutputOpen((open) => !open)}
-      exportState={exportState}
-      sql={exec.executedSql ?? undefined}
-    />
+    <>
+      {exec.result && exec.result.columns.length > 0 && (
+        <ResultCompareButton open={compareOpen} onToggle={() => setCompareOpen((open) => !open)} />
+      )}
+      <ResultActions
+        result={exec.result}
+        serverOutput={caps.server_output}
+        outputOpen={output.outputOpen}
+        connected={Boolean(connection)}
+        onToggleOutput={() => output.setOutputOpen((open) => !open)}
+        exportState={exportState}
+        sql={exec.executedSql ?? undefined}
+      />
+    </>
   );
 
   return (
@@ -261,7 +277,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
                 isRunning={exec.isRunning}
-                onOpenHistory={() => startTransition(() => setHistoryOpen(true))}
+                onOpenHistory={() => startTransition(() => historyRef.current?.open())}
                 onOpenOutput={() => output.setOutputOpen(true)}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}
@@ -344,6 +360,9 @@ export function QueryView({ tabId }: QueryViewProps) {
               tables={schema.registry.tables}
               maximized={resultFocus && !editorFocus}
               onToggleMaximized={toggleResultFocus}
+              compareOpen={compareOpen}
+              connectionId={connection?.id ?? null}
+              database={database}
               sql={sql}
               names={errorNames}
               onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
@@ -384,6 +403,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           exportState={exportState}
           analysis={analysis}
           explain={explain}
+          substitution={substitution.dialog}
         />
 
         <DmlPreviewDialog
@@ -409,6 +429,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                     cursor.cursorOffset,
                     workspace.runTarget,
                     connection?.kind,
+                    { blankLines, sqlOnly: true },
                   )
                 : ""
             }
@@ -424,8 +445,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           output={output}
           exec={exec}
           onSelectScriptEntry={script.handleSelectScriptEntry}
-          historyOpen={historyOpen}
-          onHistoryOpenChange={setHistoryOpen}
+          historyRef={historyRef}
           tabId={tabId}
           onReplaceSql={updateQuerySql}
         />

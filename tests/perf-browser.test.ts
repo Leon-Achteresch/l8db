@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import type { UiDensity } from "../src/lib/settings";
+import { type TableStyle, tableRowHeight } from "../src/lib/table-style";
 import { requestCounts } from "./fixtures/perf-app-requests";
 import { profileWebKit } from "./fixtures/perf-webkit-profile";
 
@@ -40,7 +42,7 @@ const CSS =
   ".flex{display:flex}.flex-col{flex-direction:column}.flex-1{flex:1 1 0%}.basis-0{flex-basis:0}" +
   ".min-h-0{min-height:0}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.relative{position:relative}" +
   ".h-full{height:100%}.border-spacing-0{border-spacing:0}.table-fixed{table-layout:fixed}.min-w-full{min-width:100%}" +
-  ".truncate{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.sticky{position:sticky}.top-0{top:0}.left-0{left:0}";
+  ".truncate{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.whitespace-nowrap{white-space:nowrap}.text-ellipsis{text-overflow:ellipsis}.leading-5{line-height:1.25rem}.sticky{position:sticky}.top-0{top:0}.left-0{left:0}";
 
 const ROWS = Number(process.env.L8DB_PERF_ROWS ?? 5000);
 const DURATION = Number(process.env.L8DB_PERF_DURATION ?? 2000);
@@ -49,11 +51,22 @@ const SCALE = Number(process.env.L8DB_PERF_SCALE ?? 100);
 const DENSITY = process.env.L8DB_PERF_DENSITY ?? "normal";
 const STEP = Number(process.env.L8DB_PERF_STEP ?? 120);
 const FK = process.env.L8DB_PERF_FK === "1";
+const ROW_DENSITY: UiDensity = DENSITY === "compact" || DENSITY === "spacious" ? DENSITY : "normal";
 
 for (const kind of ["table", "result"])
-  for (const columns of [12, 49, 120]) {
+  for (const [columns, style] of [
+    [12, "classic"],
+    [49, "classic"],
+    [120, "classic"],
+    ...(kind === "table" && (process.env.L8DB_PERF_STYLED || process.env.L8DB_PERF_CSS)
+      ? [
+          [12, "semantic"],
+          [49, "semantic"],
+        ]
+      : []),
+  ] as [number, TableStyle][]) {
     test.skipIf(!process.env.L8DB_PERF_BROWSER)(
-      `${kind}: FPS, DOM-Größe und Mount-Zeit bei ${ROWS} × ${columns + 1} Zellen`,
+      `${kind}${style === "classic" ? "" : ` (${style})`}: FPS, DOM-Größe und Mount-Zeit bei ${ROWS} × ${columns + 1} Zellen`,
       async () => {
         const bundle = await Bun.build({
           entrypoints: ["tests/fixtures/perf-browser.tsx"],
@@ -180,10 +193,11 @@ for (const kind of ["table", "result"])
               transferMode: "ReturnAsStream",
             });
           }
+          const label = `${kind}/${columns}${style === "classic" ? "" : `/${style}`}`;
           const errors: string[] = [];
           page.on("pageerror", (error) => errors.push(error.message));
           await page.goto(
-            `http://localhost:${server.port}?columns=${columns}&kind=${kind}&rows=${ROWS}&duration=${DURATION}&textSize=${TEXT_SIZE}&scale=${SCALE}&density=${DENSITY}&step=${STEP}&fk=${FK ? 1 : 0}`,
+            `http://localhost:${server.port}?columns=${columns}&kind=${kind}&rows=${ROWS}&duration=${DURATION}&textSize=${TEXT_SIZE}&scale=${SCALE}&density=${DENSITY}&step=${STEP}&fk=${FK ? 1 : 0}&tableStyle=${style}`,
           );
           const stopWebKitProfile =
             process.env.L8DB_PERF_PROFILE && WEBKIT
@@ -226,12 +240,12 @@ for (const kind of ["table", "result"])
             await Bun.write(`/tmp/l8db-perf-${kind}-${columns}.trace.json`, trace);
           }
           console.log(
-            `perf ${kind}/${columns}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb === null ? "n/a" : `${result.heapMb.toFixed(1)} MB`}, horizontal ${result.horizontalFps.toFixed(1)} fps, worst ${result.horizontalWorstFrameMs.toFixed(1)} ms`,
+            `perf ${label}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb === null ? "n/a" : `${result.heapMb.toFixed(1)} MB`}, horizontal ${result.horizontalFps.toFixed(1)} fps, worst ${result.horizontalWorstFrameMs.toFixed(1)} ms`,
           );
           for (const axis of ["vertical", "horizontal", "diagonal"] as const)
-            console.log(`${kind}/${columns} ${axis}: ${JSON.stringify(result[axis])}`);
+            console.log(`${label} ${axis}: ${JSON.stringify(result[axis])}`);
           if (process.env.L8DB_PERF_REPORT_DIR) {
-            const name = `${WEBKIT ? "webkit" : "chromium"}-${kind}-${ROWS}-${columns}-${TEXT_SIZE}-${SCALE}-${DENSITY}-${FK ? "fk" : "plain"}`;
+            const name = `${WEBKIT ? "webkit" : "chromium"}-${kind}-${ROWS}-${columns}-${TEXT_SIZE}-${SCALE}-${DENSITY}-${FK ? "fk" : "plain"}-${style}`;
             await Bun.write(
               resolve(process.env.L8DB_PERF_REPORT_DIR, `${name}.json`),
               JSON.stringify(
@@ -268,8 +282,7 @@ for (const kind of ["table", "result"])
           expect(result.renderedCells).toBeLessThan(1200);
           expect(result.mountMs).toBeLessThan(3000);
           if (stylesheet && kind === "table") {
-            const height =
-              ((DENSITY === "compact" ? 24 : DENSITY === "spacious" ? 40 : 32) * SCALE) / 100 + 1;
+            const height = tableRowHeight(style, ROW_DENSITY, SCALE);
             expect(result.horizontalHeights).toEqual([height]);
           }
           const scrollBox = await page.locator(".overflow-auto").first().boundingBox();

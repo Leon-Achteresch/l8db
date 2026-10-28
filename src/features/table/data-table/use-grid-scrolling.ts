@@ -27,6 +27,8 @@ type Options = {
   revealColumn: { name: string; nonce: number } | null | undefined;
   activeColumnMatch: string | null;
   activeMatch: { rowIndex: number; columnId: string } | null;
+  navSeq: number;
+  rowOffset: number;
 };
 
 export function useGridScrolling({
@@ -44,11 +46,15 @@ export function useGridScrolling({
   revealColumn,
   activeColumnMatch,
   activeMatch,
+  navSeq,
+  rowOffset,
 }: Options) {
-  const previousActiveCell = useRef(activeCell);
+  const activeCellKey =
+    activeCell && `${rowOffset + activeCell.rowIndex}\u0000${activeCell.columnId}`;
+  const previousActiveCell = useRef(activeCellKey);
   useEffect(() => {
-    if (previousActiveCell.current === activeCell) return;
-    previousActiveCell.current = activeCell;
+    if (previousActiveCell.current === activeCellKey) return;
+    previousActiveCell.current = activeCellKey;
     if (!activeCell) return;
     rowVirtualizer.scrollToIndex(activeCell.rowIndex, { align: "auto" });
     const columnIndex = visibleColumns.findIndex((column) => column.id === activeCell.columnId);
@@ -57,6 +63,7 @@ export function useGridScrolling({
     }
   }, [
     activeCell,
+    activeCellKey,
     rowVirtualizer,
     columnWindow.enabled,
     columnWindow.virtualizer,
@@ -67,8 +74,14 @@ export function useGridScrolling({
   const layoutRef = useRef({ visibleColumns, columnWidths, pinnedIndices });
   layoutRef.current = { visibleColumns, columnWidths, pinnedIndices };
 
+  const editingKey =
+    editingCell &&
+    `${rowOffset + editingCell.rowIndex}\u0000${editingCell.columnId}\u0000${editingCell.value}`;
+  const editingRef = useRef(editingCell);
+  editingRef.current = editingCell;
   useEffect(() => {
-    if (!editingCell || !tbodyRef.current) return;
+    const editingCell = editingRef.current;
+    if (!editingKey || !editingCell || !tbodyRef.current) return;
     rowVirtualizer.scrollToIndex(editingCell.rowIndex, { align: "auto" });
     requestAnimationFrame(() => {
       const tbody = tbodyRef.current;
@@ -80,7 +93,7 @@ export function useGridScrolling({
         tr.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     });
-  }, [editingCell]);
+  }, [editingKey]);
 
   const scrollToColumnHeader = useCallback((name: string) => {
     const scroller = scrollRef.current;
@@ -125,8 +138,11 @@ export function useGridScrolling({
     return scrollToColumnHeader(activeColumnMatch);
   }, [activeColumnMatch, scrollToColumnHeader]);
 
+  const activeMatchRef = useRef(activeMatch);
+  activeMatchRef.current = activeMatch;
   useEffect(() => {
-    if (!activeMatch) return;
+    const activeMatch = activeMatchRef.current;
+    if (!navSeq || !activeMatch) return;
     const matchCell = { rowIndex: activeMatch.rowIndex, columnId: activeMatch.columnId };
     setActiveCell(matchCell);
     setSelectionAnchor(matchCell);
@@ -138,5 +154,5 @@ export function useGridScrolling({
         element.dataset.col === activeMatch.columnId,
     );
     cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeMatch]);
+  }, [navSeq]);
 }

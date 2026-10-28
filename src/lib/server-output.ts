@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { create } from "zustand";
 
 import { type DatabaseKind, type ServerMessage, setServerOutput, takeServerOutput } from "./db";
@@ -79,7 +80,16 @@ export async function collectServerOutput(
   connectionId: string,
   database?: string,
 ): Promise<void> {
-  if (!isServerOutputEnabled(connectionId)) return;
   const messages = await takeServerOutput(kind, connectionString, database);
-  useServerOutputStore.getState().append(connectionId, database ?? null, messages);
+  if (isServerOutputEnabled(connectionId)) {
+    useServerOutputStore.getState().append(connectionId, database ?? null, messages);
+    return;
+  }
+  for (const message of messages) {
+    if (message.level !== "WARNING") continue;
+    useServerOutputStore.getState().append(connectionId, database ?? null, [message]);
+    const [title, ...lines] = message.message.split("\n");
+    const more = lines.length > 3 ? [`… ${lines.length - 3} weitere in der Server-Ausgabe`] : [];
+    toast.warning(title, { description: [...lines.slice(0, 3), ...more].join("\n") || undefined });
+  }
 }

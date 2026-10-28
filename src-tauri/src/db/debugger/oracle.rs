@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,11 +34,12 @@ pub async fn availability(url: &str) -> Result<Availability, String> {
     let conn = connect(url).await?;
     tokio::task::spawn_blocking(move || {
         let result = conn.execute("DECLARE major BINARY_INTEGER; minor BINARY_INTEGER; BEGIN DBMS_DEBUG.PROBE_VERSION(major, minor); END;", &[]).map_err(error);
-        let privilege = conn.query_row_as::<(i64,)>("SELECT COUNT(*) FROM session_privs WHERE privilege = 'DEBUG CONNECT SESSION'", &[]).map_err(error)?.0 > 0;
+        let (count, user) = conn.query_row_as::<(i64, String)>("SELECT COUNT(*), USER FROM session_privs WHERE privilege = 'DEBUG CONNECT SESSION'", &[]).map_err(error)?;
+        let privilege = count > 0;
         Ok(Availability {
             available: result.is_ok() && privilege,
             engine: Some("DBMS_DEBUG".into()),
-            message: if !privilege { "DEBUG CONNECT SESSION fehlt.".into() } else { result.err().unwrap_or_else(|| "Oracle DBMS_DEBUG (von Oracle als veraltet markiert). Start kompiliert das gewählte Objekt mit Debug-Informationen. Zwei SQL-Verbindungen, kein JDWP-Rückkanal erforderlich.".into()) },
+            message: if !privilege { format!("DEBUG CONNECT SESSION fehlt. Ein DBA kann es vergeben: GRANT DEBUG CONNECT SESSION TO {user}; für Objekte anderer Schemas zusätzlich GRANT DEBUG ON <schema>.<objekt> TO {user};") } else { result.err().unwrap_or_else(|| "Oracle DBMS_DEBUG (von Oracle als veraltet markiert). Start kompiliert das gewählte Objekt mit Debug-Informationen. Zwei SQL-Verbindungen, kein JDWP-Rückkanal erforderlich.".into()) },
             step_out: true,
         })
     }).await.map_err(|_| "Oracle-Debug-Prüfung fehlgeschlagen")?
@@ -66,6 +68,7 @@ pub struct OracleDebugger {
     call: String,
     cancel: CancellationToken,
     stopped: bool,
+    line_maps: HashMap<String, Vec<i32>>,
 }
 
 impl Drop for OracleDebugger {
@@ -114,6 +117,7 @@ pub async fn launch(
         call: request.sql.clone(),
         cancel,
         stopped: false,
+        line_maps: HashMap::new(),
     };
     let conn = backend.target.clone();
     let oid = request.oid.clone();
@@ -141,9 +145,42 @@ pub async fn launch(
     tokio::task::spawn_blocking(move || advance(&conn, None))
         .await
         .map_err(|_| "Oracle-Debug-Synchronisierung fehlgeschlagen")??;
-    backend.set_breakpoints(request.breakpoints.clone()).await?;
+    let skipped = backend.set_breakpoints(request.breakpoints.clone()).await?;
     backend.inspect(state, 0).await?;
+    state.message = skipped;
     Ok(backend)
+}
+
+fn namespace(kind: &str) -> &'static str {
+    if kind == "PACKAGE BODY" {
+        "namespace_pkg_body"
+    } else {
+        "namespace_pkgspec_or_toplevel"
+    }
+}
+
+fn line_map(conn: &Connection, oid: &str) -> Result<Vec<i32>, String> {
+    let (owner, name, kind) = object(oid)?;
+    let sql = format!("DECLARE p DBMS_DEBUG.program_info; maxline BINARY_INTEGER; entries BINARY_INTEGER; map RAW(32767); code BINARY_INTEGER; BEGIN p.owner := :owner; p.name := :name; p.namespace := DBMS_DEBUG.{}; code := DBMS_DEBUG.GET_LINE_MAP(p, maxline, entries, map); :map := CASE WHEN code = DBMS_DEBUG.success THEN RAWTOHEX(map) END; END;", namespace(kind));
+    let stmt = conn
+        .execute(&sql, &[&owner, &name, &OracleType::Varchar2(32767)])
+        .map_err(error)?;
+    let hex: Option<String> = stmt.bind_value(3).map_err(error)?;
+    Ok(executable_lines(hex.as_deref().unwrap_or_default()))
+}
+
+fn executable_lines(hex: &str) -> Vec<i32> {
+    hex.as_bytes()
+        .chunks(2)
+        .filter_map(|pair| u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok())
+        .enumerate()
+        .flat_map(|(index, byte)| {
+            (0..8)
+                .filter(move |bit| byte & (1 << bit) != 0)
+                .map(move |bit| (index * 8 + bit) as i32)
+        })
+        .filter(|line| *line > 0)
+        .collect()
 }
 
 fn advance(conn: &Connection, flag: Option<&str>) -> Result<bool, String> {
@@ -157,38 +194,53 @@ fn advance(conn: &Connection, flag: Option<&str>) -> Result<bool, String> {
 }
 
 impl OracleDebugger {
-    async fn set_breakpoints(&mut self, breakpoints: Vec<Breakpoint>) -> Result<(), String> {
+    async fn set_breakpoints(
+        &mut self,
+        breakpoints: Vec<Breakpoint>,
+    ) -> Result<Option<String>, String> {
         for breakpoint in &breakpoints {
             object(&breakpoint.oid)?;
         }
         let conn = self.control.clone();
         let old = std::mem::take(&mut self.breakpoint_ids);
-        self.breakpoint_ids = tokio::task::spawn_blocking(move || {
+        let (ids, skipped) = tokio::task::spawn_blocking(move || {
             for id in old { conn.execute("DECLARE code BINARY_INTEGER; BEGIN code := DBMS_DEBUG.DELETE_BREAKPOINT(:id); END;", &[&id]).map_err(error)?; }
             let mut ids = vec![];
+            let mut skipped = vec![];
             for breakpoint in breakpoints {
                 let (owner, name, kind) = object(&breakpoint.oid)?;
-                let namespace = if kind == "PACKAGE BODY" { "namespace_pkg_body" } else { "namespace_pkgspec_or_toplevel" };
-                let sql = format!("DECLARE p DBMS_DEBUG.program_info; code BINARY_INTEGER; BEGIN p.owner := :owner; p.name := :name; p.namespace := DBMS_DEBUG.{namespace}; code := DBMS_DEBUG.SET_BREAKPOINT(p, :line, :id); IF code <> DBMS_DEBUG.success THEN raise_application_error(-20001, 'Breakpoint-Status ' || code); END IF; END;");
+                let sql = format!("DECLARE p DBMS_DEBUG.program_info; code BINARY_INTEGER; BEGIN p.owner := :owner; p.name := :name; p.namespace := DBMS_DEBUG.{}; code := DBMS_DEBUG.SET_BREAKPOINT(p, :line, :id); IF code = DBMS_DEBUG.error_illegal_line THEN :id := -1; ELSIF code <> DBMS_DEBUG.success THEN raise_application_error(-20001, 'Breakpoint-Status ' || code); END IF; END;", namespace(kind));
                 let stmt = conn.execute(&sql, &[&owner, &name, &breakpoint.line, &OracleType::Int64]).map_err(error)?;
-                ids.push(stmt.bind_value(4).map_err(error)?);
+                match stmt.bind_value::<_, i32>(4).map_err(error)? {
+                    -1 => skipped.push(format!("{name}:{}", breakpoint.line)),
+                    id => ids.push(id),
+                }
             }
-            Ok::<_, String>(ids)
+            Ok::<_, String>((ids, skipped))
         }).await.map_err(|_| "Oracle-Breakpoints fehlgeschlagen")??;
-        Ok(())
+        self.breakpoint_ids = ids;
+        Ok((!skipped.is_empty()).then(|| {
+            format!(
+                "Breakpoint übersprungen, die Zeile enthält keine ausführbare Anweisung: {}",
+                skipped.join(", ")
+            )
+        }))
     }
 
-    async fn inspect(&self, state: &mut Snapshot, selected: i32) -> Result<(), String> {
+    async fn inspect(&mut self, state: &mut Snapshot, selected: i32) -> Result<(), String> {
         let conn = self.control.clone();
         let call = self.call.clone();
         let watches = state.watches.clone();
-        let (frames, source, variables, selected, watches) = tokio::task::spawn_blocking(move || {
+        let known: Vec<String> = self.line_maps.keys().cloned().collect();
+        let (frames, source, variables, selected, watches, line_map) = tokio::task::spawn_blocking(move || {
             let sql = "DECLARE bt DBMS_DEBUG.backtrace_table; items JSON_ARRAY_T := JSON_ARRAY_T(); item JSON_OBJECT_T; idx BINARY_INTEGER; kind VARCHAR2(30); BEGIN DBMS_DEBUG.PRINT_BACKTRACE(bt); idx := bt.LAST; WHILE idx IS NOT NULL LOOP item := JSON_OBJECT_T(); IF bt(idx).namespace = DBMS_DEBUG.namespace_pkg_body THEN kind := 'PACKAGE BODY'; ELSIF bt(idx).libunittype = DBMS_DEBUG.LibunitType_function THEN kind := 'FUNCTION'; ELSE kind := 'PROCEDURE'; END IF; item.put('id', idx); item.put('oid', bt(idx).owner || CHR(31) || bt(idx).name || CHR(31) || kind); item.put('name', NVL(bt(idx).owner || '.', '') || NVL(bt(idx).name, 'Aufrufskript')); item.put('line', NVL(bt(idx).line#, 1)); items.append(item); idx := bt.PRIOR(idx); END LOOP; :result := items.to_string; END;";
             let stmt = conn.execute(sql, &[&OracleType::Varchar2(32767)]).map_err(error)?;
             let json: String = stmt.bind_value(1).map_err(error)?;
             let frames: Vec<Frame> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
             let frame = frames.iter().find(|f| f.id == selected).or_else(|| frames.first());
             let selected = frame.map_or(0, |f| f.id);
+            let line_map = frame.filter(|f| !known.contains(&f.oid) && object(&f.oid).is_ok()).map(|f| (f.oid.clone(), line_map(&conn, &f.oid).unwrap_or_default()));
+            let frame_oid = frame.map(|f| f.oid.clone());
             let source = if let Some((owner, name, kind)) = frame.and_then(|f| object(&f.oid).ok()) {
                 let mut source = String::new();
                 for row in conn.query("SELECT text FROM all_source WHERE owner = :1 AND name = :2 AND type = :3 ORDER BY line", &[&owner, &name, &kind]).map_err(error)? {
@@ -214,8 +266,15 @@ impl OracleDebugger {
                 });
                 match result { Ok(value) => Watch { name: watch.name, value, error: None }, Err(error) => Watch { name: watch.name, value: None, error: Some(error) } }
             }).collect();
-            Ok::<_, String>((frames, source, variables, selected, watches))
+            Ok::<_, String>((frames, source, variables, selected, watches, (frame_oid, line_map)))
         }).await.map_err(|_| "Oracle-Debug-Inspektion fehlgeschlagen")??;
+        let (frame_oid, line_map) = line_map;
+        if let Some((oid, lines)) = line_map {
+            self.line_maps.insert(oid, lines);
+        }
+        state.executable_lines = frame_oid
+            .and_then(|oid| self.line_maps.get(&oid).cloned())
+            .unwrap_or_default();
         state.watches = watches;
         state.frames = frames;
         state.source = source;
@@ -247,9 +306,27 @@ impl Backend for OracleDebugger {
                 return self.inspect(state, state.selected_frame).await;
             }
             Action::SelectFrame { frame } => return self.inspect(state, frame).await,
+            Action::SetValue { name, value } => {
+                let conn = self.control.clone();
+                let frame = state.selected_frame;
+                let assignment = format!("{name} := {value};");
+                let failure = tokio::task::spawn_blocking(move || {
+                    let stmt = conn.execute("DECLARE code BINARY_INTEGER; BEGIN code := DBMS_DEBUG.SET_VALUE(:frame, :assignment); :message := CASE WHEN code = DBMS_DEBUG.success THEN NULL WHEN code = DBMS_DEBUG.error_illegal_value THEN 'Der Wert passt nicht zum Datentyp oder verletzt eine Einschränkung.' WHEN code = DBMS_DEBUG.error_illegal_null THEN 'Die Variable ist NOT NULL.' WHEN code = DBMS_DEBUG.error_value_malformed THEN 'Der Ausdruck ist kein gültiger Wert, z. B. 42, ''Text'' oder NULL.' WHEN code = DBMS_DEBUG.error_name_incomplete THEN 'Bei Records und Collections das Feld oder Element angeben.' ELSE 'Debug-Status ' || code END; END;", &[&frame, &assignment, &OracleType::Varchar2(512)]).map_err(error)?;
+                    stmt.bind_value::<_, Option<String>>(3).map_err(error)
+                })
+                .await
+                .map_err(|_| "Oracle-Debug-Wert setzen fehlgeschlagen")?
+                .unwrap_or_else(Some);
+                self.inspect(state, frame).await?;
+                state.message =
+                    failure.map(|reason| format!("{name} wurde nicht geändert: {reason}"));
+                return Ok(());
+            }
             Action::Breakpoints { breakpoints } => {
-                self.set_breakpoints(breakpoints).await?;
-                return self.inspect(state, state.selected_frame).await;
+                let skipped = self.set_breakpoints(breakpoints).await?;
+                self.inspect(state, state.selected_frame).await?;
+                state.message = skipped;
+                return Ok(());
             }
         };
         let conn = self.control.clone();

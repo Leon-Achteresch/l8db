@@ -8,6 +8,7 @@ import { summarizeExplainPlan } from "@/lib/extensions/plan-summary";
 import { useExtensionHost, useExtensionSnapshot } from "@/lib/extensions/react-context";
 import { supports } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
+import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 import type { QueryViewConnection, QueryWorkspaceState } from "./types";
@@ -46,6 +47,7 @@ export function useAutoAssessment({
   });
   const lastKey = useRef("");
   const runId = useRef(0);
+  const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
 
   useEffect(() => {
     if (!command || !connection || !supports(connection, "explain")) return;
@@ -55,6 +57,7 @@ export function useAutoAssessment({
       cursorOffset,
       workspace.runTarget,
       connection.kind,
+      { blankLines, sqlOnly: true },
     ).trim();
     const key = `${connection.id}\u0000${database ?? ""}\u0000${target}`;
     if (!target || key === lastKey.current) return;
@@ -91,6 +94,7 @@ export function useAutoAssessment({
     selectedSql,
     cursorOffset,
     workspace.runTarget,
+    blankLines,
     host,
     editorApiRef,
   ]);

@@ -32,6 +32,7 @@ export function InvalidProblemGroup({
 }) {
   const { item, errors } = problem;
   const synonym = item.object_type.toUpperCase() === "SYNONYM";
+  const debug = item.status === "DEBUG";
   const shown = errors.slice(0, INVALID_ERRORS_PER_OBJECT);
   return (
     <li>
@@ -53,6 +54,11 @@ export function InvalidProblemGroup({
           <span className="shrink-0 font-sans text-[11px] text-muted-foreground">
             {item.schema} · {invalidTypeLabel(item.object_type)}
           </span>
+          {debug && (
+            <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 font-sans text-[10px] text-amber-700 dark:text-amber-400">
+              Debug-kompiliert
+            </span>
+          )}
           {messages === "ready" && (
             <span className="ml-1 shrink-0 rounded-full bg-muted px-1.5 font-sans text-[10px] text-muted-foreground tabular-nums">
               {errors.length}
@@ -102,7 +108,11 @@ export function InvalidProblemGroup({
           </p>
         ) : errors.length === 0 ? (
           <p className="h-6 pl-[3.25rem] font-sans text-[11px] leading-6 text-muted-foreground">
-            {synonym ? "Ziel des Synonyms fehlt oder ist invalid" : "Keine Meldung in ALL_ERRORS"}
+            {synonym
+              ? "Ziel des Synonyms fehlt oder ist invalid"
+              : debug
+                ? "Mit Debug-Informationen oder niedriger Optimierungsstufe kompiliert. Neu kompilieren stellt den Normalzustand her."
+                : "Keine Meldung in ALL_ERRORS"}
           </p>
         ) : (
           <ul>

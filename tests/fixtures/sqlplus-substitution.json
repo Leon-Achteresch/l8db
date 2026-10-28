@@ -1,0 +1,61 @@
+{
+  "cases": [
+    {
+      "name": "plain and permanent references with the concatenation dot",
+      "sql": "SELECT &col., &&tab._x FROM &tab WHERE id = &id.",
+      "defines": { "COL": "a", "TAB": "emp", "ID": "7" },
+      "expected": "SELECT a, emp_x FROM emp WHERE id = 7"
+    },
+    {
+      "name": "literals are substituted, comments are not",
+      "sql": "SELECT '&x' -- &x\n/* &x */ FROM dual",
+      "defines": { "X": "1" },
+      "expected": "SELECT '1' -- &x\n/* &x */ FROM dual"
+    },
+    {
+      "name": "q-quotes and quoted identifiers are substituted, -- inside a literal is no comment",
+      "sql": "SELECT q'[&x -- y]', \"&x\", 'a--&x', nq'{&x}' FROM dual",
+      "defines": { "X": "v" },
+      "expected": "SELECT q'[v -- y]', \"v\", 'a--v', nq'{v}' FROM dual"
+    },
+    {
+      "name": "SET ESCAPE keeps an escaped marker",
+      "sql": "SELECT 'R\\&D', '&x' FROM dual",
+      "defines": { "X": "1" },
+      "escape": "\\",
+      "expected": "SELECT 'R&D', '1' FROM dual"
+    },
+    {
+      "name": "SET DEFINE OFF keeps every marker",
+      "sql": "SELECT '&x', &y FROM dual",
+      "defines": {},
+      "marker": null,
+      "expected": "SELECT '&x', &y FROM dual"
+    },
+    {
+      "name": "SET DEFINE with another marker character",
+      "sql": "SELECT ^x, '&y' FROM dual",
+      "defines": { "X": "1" },
+      "marker": "^",
+      "expected": "SELECT 1, '&y' FROM dual"
+    },
+    {
+      "name": "a marker without a name stays as typed",
+      "sql": "SELECT 'a & b', 1 && 2 FROM dual",
+      "defines": {},
+      "expected": "SELECT 'a & b', 1 && 2 FROM dual"
+    },
+    {
+      "name": "names are case-insensitive",
+      "sql": "SELECT &Tab, &&TAB FROM dual",
+      "defines": { "TAB": "x" },
+      "expected": "SELECT x, x FROM dual"
+    },
+    {
+      "name": "undefined variables are reported once each",
+      "sql": "SELECT &a, &&b, &a FROM dual",
+      "defines": {},
+      "missing": ["A", "B"]
+    }
+  ]
+}

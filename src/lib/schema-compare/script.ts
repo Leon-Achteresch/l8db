@@ -1,5 +1,5 @@
 import type { CatalogObject, CatalogObjectType, DatabaseKind } from "@/lib/db";
-import { CONTAINER_TYPES, quoteName } from "./diff";
+import { attributeValue, CONTAINER_TYPES, quoteName } from "./diff";
 import { addColumnCheck, columnChecks, type DataCheck, keyCheck } from "./precheck";
 import type { CompareResult, DiffItem } from "./types";
 import { OBJECT_TYPE_META } from "./types";
@@ -105,7 +105,14 @@ function label(object: CatalogObject): string {
 
 interface Dependency {
   name: string;
+  key: string;
   body: string;
+  deps?: string[] | null;
+}
+
+interface Named {
+  type: CatalogObjectType;
+  name: string;
 }
 
 function mentions(sql: string, name: string, kind?: DatabaseKind): boolean {
@@ -116,24 +123,82 @@ function mentions(sql: string, name: string, kind?: DatabaseKind): boolean {
   ).test(sql);
 }
 
-function sortByDependencies(
-  statements: SyncStatement[],
-  dependencies: Map<SyncStatement, Dependency>,
-  kind: DatabaseKind,
-) {
-  const pending = [...statements];
-  const ordered: SyncStatement[] = [];
-  while (pending.length > 0) {
-    const index = pending.findIndex((statement) =>
-      pending.every((other) => {
-        const name = dependencies.get(other)?.name;
-        const body = dependencies.get(statement)?.body ?? statement.sql;
-        return other === statement || !name || !mentions(body, name, kind);
-      }),
-    );
-    ordered.push(...pending.splice(index < 0 ? 0 : index, 1));
+function dependsOn(object: CatalogObject, other: Named, text: string, kind: DatabaseKind) {
+  return object.depends_on
+    ? object.depends_on.includes(`${other.type}:${other.name}`)
+    : mentions(text, other.name, kind);
+}
+
+const QUALIFIED_NAME =
+  /\.\s*(?:"((?:[^"]|"")*)"|`((?:[^`]|``)*)`|\[((?:[^\]]|\]\])*)\]|([\w$#]+))/g;
+
+function qualifiedNames(sql: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of sql.matchAll(QUALIFIED_NAME)) {
+    const name =
+      match[1]?.replace(/""/g, '"') ??
+      match[2]?.replace(/``/g, "`") ??
+      match[3]?.replace(/]]/g, "]") ??
+      match[4];
+    names.add(name.toLowerCase());
   }
-  return ordered;
+  return names;
+}
+
+function sortByDependencies(
+  group: SyncStatement[],
+  dependencies: Map<SyncStatement, Dependency>,
+  reverse: boolean,
+  warnings: string[],
+): SyncStatement[] {
+  const exact = new Map<string, number[]>();
+  const loose = new Map<string, number[]>();
+  const add = (map: Map<string, number[]>, name: string, index: number) =>
+    map.set(name, [...(map.get(name) ?? []), index]);
+  group.forEach((statement, index) => {
+    const dependency = dependencies.get(statement);
+    if (!dependency) return;
+    add(exact, dependency.key, index);
+    add(loose, dependency.name.toLowerCase(), index);
+  });
+  if (exact.size === 0) return group;
+  const next: number[][] = group.map(() => []);
+  const blockers = group.map(() => 0);
+  group.forEach((statement, index) => {
+    const dependency = dependencies.get(statement);
+    const required = dependency?.deps
+      ? dependency.deps.flatMap((name) => exact.get(name) ?? [])
+      : [...qualifiedNames(dependency?.body ?? statement.sql)].flatMap(
+          (name) => loose.get(name) ?? [],
+        );
+    for (const other of new Set(required)) {
+      if (other === index) continue;
+      const [first, then] = reverse ? [index, other] : [other, index];
+      next[first].push(then);
+      blockers[then]++;
+    }
+  });
+  const ready = group.map((_, index) => index).filter((index) => blockers[index] === 0);
+  ready.reverse();
+  const order: number[] = [];
+  while (ready.length > 0) {
+    const index = ready.pop() as number;
+    order.push(index);
+    for (const then of next[index]) {
+      if (--blockers[then] > 0) continue;
+      let at = ready.length;
+      while (at > 0 && ready[at - 1] < then) at--;
+      ready.splice(at, 0, then);
+    }
+  }
+  if (order.length < group.length) {
+    const cycle = group.map((_, index) => index).filter((index) => blockers[index] > 0);
+    warnings.push(
+      `Zyklische Abhängigkeit zwischen ${cycle.map((index) => dependencies.get(group[index])?.name ?? group[index].sql.slice(0, 60)).join(", ")}: Diese Anweisungen stehen in der ursprünglichen Reihenfolge und können fehlschlagen.`,
+    );
+    order.push(...cycle);
+  }
+  return order.map((index) => group[index]);
 }
 
 function unicodeText(value: string): string {
@@ -152,9 +217,39 @@ function sqliteAddable(column: CatalogObject): boolean {
   );
 }
 
+function sameAttributes(a: CatalogObject | null, b: CatalogObject | null): boolean {
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a.attributes), ...Object.keys(b.attributes)]);
+  return [...keys].every((key) => a.attributes[key] === b.attributes[key]);
+}
+
+export function activeRenames(
+  items: DiffItem[],
+  renames: Readonly<Record<string, string>>,
+): Map<string, DiffItem> {
+  const out = new Map<string, DiffItem>();
+  const entries = Object.entries(renames);
+  if (entries.length === 0) return out;
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  for (const [from, to] of entries) {
+    const added = byKey.get(from);
+    const dropped = byKey.get(to);
+    if (
+      added?.type === "column" &&
+      dropped?.type === "column" &&
+      added.status === "only_source" &&
+      dropped.status === "only_target" &&
+      added.parent === dropped.parent
+    )
+      out.set(from, dropped);
+  }
+  return out;
+}
+
 export function buildSyncScript(
   result: CompareResult,
   selected: Readonly<Record<string, boolean>>,
+  renames: Readonly<Record<string, string>> = {},
 ): SyncScript {
   const kind = result.kind;
   const oracle = kind === "oracle";
@@ -167,9 +262,28 @@ export function buildSyncScript(
   const qualified = (name: string) => `${q(schema)}.${q(name)}`;
   const statements: SyncStatement[] = [];
   const dependencies = new Map<SyncStatement, Dependency>();
+  if (result.omitted)
+    return {
+      statements: [],
+      warnings: [
+        `Limit erreicht: ${result.omitted} weitere Unterschiede fehlen im Vergleich. Ein Synchronisationsskript entsteht erst ohne Limit, damit keine Abhängigkeiten oder Spaltendaten verloren gehen.`,
+      ],
+    };
   const warnings: string[] = [];
   const seen = new Set<string>();
   let key = "";
+  const byKey = new Map(result.items.map((item) => [item.key, item]));
+  const byParent = new Map<string, DiffItem[]>();
+  for (const item of result.items) {
+    if (item.parent === null) continue;
+    const list = byParent.get(item.parent);
+    if (list) list.push(item);
+    else byParent.set(item.parent, [item]);
+  }
+  const childrenOf = (name: string | null) => byParent.get(name ?? "") ?? [];
+  const partitionTables = result.items.filter(
+    (item) => item.type === "table" && item.target?.attributes.partition_of,
+  );
   const relations = (status: DiffItem["status"]) =>
     result.items.filter(
       (item) =>
@@ -198,7 +312,7 @@ export function buildSyncScript(
     options: {
       plsql?: boolean;
       dangerous?: boolean;
-      name?: string;
+      node?: CatalogObject;
       body?: string;
       checks?: (DataCheck | null)[];
       repeat?: boolean;
@@ -221,8 +335,13 @@ export function buildSyncScript(
       ...(options.backup ? { backup: options.backup } : {}),
     };
     statements.push(statement);
-    if (options.name)
-      dependencies.set(statement, { name: options.name, body: options.body ?? text });
+    if (options.node)
+      dependencies.set(statement, {
+        name: options.node.name,
+        key: `${options.node.object_type}:${options.node.name}`,
+        body: options.body ?? text,
+        deps: options.node.depends_on,
+      });
   };
 
   const compound = (type: CatalogObjectType) =>
@@ -282,7 +401,7 @@ export function buildSyncScript(
       phase = Math.max(
         POSTGRES_ROUTINE_PHASE,
         ...createdRelations
-          .filter((item) => mentions(header, item.name, kind))
+          .filter((item) => dependsOn(object, item, header, kind))
           .map((item) => (CREATE_PHASE[item.type] ?? 12) + 0.5),
       );
     }
@@ -313,9 +432,16 @@ export function buildSyncScript(
       );
     const keyed =
       (type === "constraint" || type === "index") && existingTables.has(object.parent ?? "");
-    emit(phase, object.ddl, {
+    const tablespace =
+      oracle &&
+      !result.options.ignoreTablespace &&
+      (type === "table" || type === "index") &&
+      object.attributes.tablespace
+        ? ` TABLESPACE ${q(object.attributes.tablespace)}`
+        : "";
+    emit(phase, `${object.ddl}${tablespace}`, {
       plsql,
-      name: SORTED_TYPES.has(type) ? object.name : undefined,
+      node: SORTED_TYPES.has(type) || object.depends_on ? object : undefined,
       checks: keyed
         ? [
             keyCheck(
@@ -357,7 +483,7 @@ export function buildSyncScript(
       phase = Math.min(
         POSTGRES_ROUTINE_DROP_PHASE,
         ...droppedRelations
-          .filter((item) => mentions(header, item.name, kind))
+          .filter((item) => dependsOn(object, item, header, kind))
           .map((item) => (DROP_PHASE[item.type] ?? 6) - 0.1),
       );
     }
@@ -368,9 +494,8 @@ export function buildSyncScript(
       case "table": {
         for (const child of children)
           if ((isForeignKey(child) && !sqlite) || child.object_type === "trigger") drop(child);
-        const partitions = result.items.filter(
+        const partitions = partitionTables.filter(
           (item) =>
-            item.type === "table" &&
             !selected[item.key] &&
             mentions(item.target?.attributes.partition_of ?? "", object.name, kind),
         );
@@ -424,7 +549,7 @@ export function buildSyncScript(
         emit(
           phase,
           `DROP ${postgres && object.attributes.kind === "domain" ? "DOMAIN" : "TYPE"} ${target}`,
-          { dangerous: true, name: object.name, body: object.ddl },
+          { dangerous: true, node: object, body: object.ddl },
         );
         return;
       case "comment":
@@ -444,7 +569,7 @@ export function buildSyncScript(
         const ifExists = postgres && type === "sequence" && object.parent ? "IF EXISTS " : "";
         emit(phase, `DROP ${keyword} ${ifExists}${target}`, {
           dangerous: true,
-          name: VIEW_TYPES.has(type) ? object.name : undefined,
+          node: VIEW_TYPES.has(type) || object.depends_on ? object : undefined,
           body: object.ddl,
         });
       }
@@ -452,11 +577,10 @@ export function buildSyncScript(
   };
 
   const computedDependents = (column: CatalogObject) =>
-    result.items
+    childrenOf(column.parent)
       .filter(
         (item) =>
           item.type === "column" &&
-          item.parent === column.parent &&
           item.name !== column.name &&
           item.target &&
           !(item.status === "only_target" && selected[item.key]),
@@ -475,9 +599,8 @@ export function buildSyncScript(
 
   const rebuiltKeys = new Set<string>();
   const rebuildDependents = (table: string, column: string) => {
-    for (const item of result.items) {
+    for (const item of childrenOf(table)) {
       if (
-        item.parent !== table ||
         (item.type !== "index" && item.type !== "constraint") ||
         !item.target ||
         rebuiltKeys.has(item.key)
@@ -495,7 +618,8 @@ export function buildSyncScript(
   const alterColumn = (source: CatalogObject, target: CatalogObject) => {
     const a = source.attributes;
     const b = target.attributes;
-    const changed = (name: string) => (a[name] ?? "") !== (b[name] ?? "");
+    const changed = (name: string) =>
+      attributeValue(source, name, result) !== attributeValue(target, name, result);
     const table = qualified(source.parent ?? "");
     const column = q(source.name);
     if (changed("virtual") || changed("identity") || changed("generated")) {
@@ -576,8 +700,8 @@ export function buildSyncScript(
 
   const alterSequence = (source: CatalogObject, target: CatalogObject) => {
     const a = source.attributes;
-    const b = target.attributes;
-    const changed = (name: string) => (a[name] ?? "") !== (b[name] ?? "");
+    const changed = (name: string) =>
+      attributeValue(source, name, result) !== attributeValue(target, name, result);
     const clauses: string[] = [];
     if (!oracle && changed("type")) clauses.push(`AS ${a.type}`);
     if (changed("increment")) clauses.push(`INCREMENT BY ${a.increment}`);
@@ -693,15 +817,27 @@ export function buildSyncScript(
     }
   };
 
+  const renamed = activeRenames(result.items, renames);
+  const renamedTargets = new Set([...renamed.values()].map((item) => item.key));
+  const renameColumn = (source: CatalogObject, target: CatalogObject) => {
+    emit(
+      (CREATE_PHASE.column ?? 13) - 0.2,
+      mssql
+        ? `EXEC sp_rename ${unicodeText(`${qualified(source.parent ?? "")}.${q(target.name)}`)}, ${unicodeText(source.name)}, N'COLUMN'`
+        : `ALTER TABLE ${qualified(source.parent ?? "")} RENAME COLUMN ${q(target.name)} TO ${q(source.name)}`,
+    );
+    alterColumn(source, { ...target, name: source.name });
+  };
+
   const tableRebuild = new Map<string, DiffItem>();
   if (sqlite)
     for (const table of result.items) {
       if (table.type !== "table" || !table.source || !table.target) continue;
-      const children = result.items.filter(
+      const children = childrenOf(table.name).filter(
         (item) =>
-          item.parent === table.name &&
           (item.type === "column" || item.type === "constraint") &&
-          item.status !== "identical",
+          item.status !== "identical" &&
+          !renamedTargets.has(item.key),
       );
       const chosen = children.filter((item) => selected[item.key]);
       if (chosen.length === 0) continue;
@@ -709,10 +845,12 @@ export function buildSyncScript(
         chosen.length === children.length &&
         chosen.every(
           (item) =>
-            item.type === "column" &&
-            item.status === "only_source" &&
-            item.source &&
-            sqliteAddable(item.source),
+            (renamed.has(item.key) &&
+              sameAttributes(item.source, renamed.get(item.key)?.target ?? null)) ||
+            (item.type === "column" &&
+              item.status === "only_source" &&
+              item.source &&
+              sqliteAddable(item.source)),
         )
       )
         continue;
@@ -740,8 +878,11 @@ export function buildSyncScript(
         item.type === "column" &&
         item.parent &&
         item.target &&
-        (item.source?.attributes.type !== item.target.attributes.type ||
-          item.source?.attributes.collation !== item.target.attributes.collation)
+        (!item.source ||
+          attributeValue(item.source, "type", result) !==
+            attributeValue(item.target, "type", result) ||
+          attributeValue(item.source, "collation", result) !==
+            attributeValue(item.target, "collation", result))
       )
         altered.add(item.parent);
     const views = result.items.filter(
@@ -755,9 +896,10 @@ export function buildSyncScript(
       for (const view of views)
         if (
           !rebuild.has(view.name) &&
-          [...altered, ...rebuild.keys()].some((name) =>
-            mentions(view.target?.ddl ?? "", name, kind),
-          )
+          [
+            ...[...altered].map((name): Named => ({ type: "table", name })),
+            ...rebuild.values(),
+          ].some((other) => view.target && dependsOn(view.target, other, view.target.ddl, kind))
         ) {
           rebuild.set(view.name, view);
           grew = true;
@@ -774,8 +916,8 @@ export function buildSyncScript(
     drop(target);
     const object = desired(item);
     if (!object) continue;
-    const children = result.items
-      .filter((child) => child.parent === item.name && child.type !== "column")
+    const children = childrenOf(item.name)
+      .filter((child) => child.type !== "column")
       .map(desired)
       .filter((child): child is CatalogObject => Boolean(child));
     create(object, children);
@@ -790,18 +932,20 @@ export function buildSyncScript(
     key = table.key;
     const source = table.source as CatalogObject;
     const copy = qualified(`_l8db_copy_${table.name}`);
-    const copied = result.items
+    const pairs = childrenOf(table.name)
       .filter(
         (item) =>
           item.type === "column" &&
-          item.parent === table.name &&
           item.source &&
           item.target &&
           !item.source.attributes.generated &&
           !item.target.attributes.generated,
       )
-      .map((item) => q(item.name))
-      .join(", ");
+      .map((item) => [item.name, item.name]);
+    for (const [from, dropped] of renamed)
+      if (dropped.parent === table.name) pairs.push([byKey.get(from)?.name ?? "", dropped.name]);
+    const copied = pairs.map(([, old]) => q(old)).join(", ");
+    const restored = pairs.map(([name]) => q(name)).join(", ");
     warnings.push(
       `Tabelle ${table.name} wird neu aufgebaut: Daten sichern, Tabelle löschen und neu anlegen, Daten zurückkopieren. Indizes und Trigger werden neu angelegt.`,
     );
@@ -815,7 +959,7 @@ export function buildSyncScript(
     if (copied) {
       emit(
         phase,
-        `INSERT OR ROLLBACK INTO ${qualified(table.name)} (${copied}) SELECT ${copied} FROM ${copy}`,
+        `INSERT OR ROLLBACK INTO ${qualified(table.name)} (${restored}) SELECT ${copied} FROM ${copy}`,
         { repeat: true },
       );
       emit(phase, `DROP TABLE ${copy}`, {
@@ -826,9 +970,8 @@ export function buildSyncScript(
         },
       });
     }
-    for (const child of result.items) {
-      if (child.parent !== table.name || (child.type !== "index" && child.type !== "trigger"))
-        continue;
+    for (const child of childrenOf(table.name)) {
+      if (child.type !== "index" && child.type !== "trigger") continue;
       const object = desired(child);
       key = child.key;
       if (object) create(object);
@@ -840,8 +983,11 @@ export function buildSyncScript(
     if (rebuild.has(item.parent ?? "") || (VIEW_TYPES.has(item.type) && rebuild.has(item.name)))
       continue;
     if (tableRebuild.has(item.parent ?? "") && item.type !== "table") continue;
+    if (renamedTargets.has(item.key)) continue;
     key = item.key;
-    if (item.status === "only_source" && item.source)
+    const dropped = renamed.get(item.key);
+    if (dropped?.target && item.source) renameColumn(item.source, dropped.target);
+    else if (item.status === "only_source" && item.source)
       create(item.source, CONTAINER_TYPES.has(item.type) ? item.children : []);
     else if (item.status === "only_target" && item.target)
       drop(item.target, CONTAINER_TYPES.has(item.type) ? item.children : []);
@@ -866,11 +1012,12 @@ export function buildSyncScript(
   const final: SyncStatement[] = [];
   for (const [phase, group] of phases)
     final.push(
-      ...(phase === CREATE_PHASE.view || phase === CREATE_PHASE.type
-        ? sortByDependencies(group, dependencies, kind)
-        : phase === DROP_PHASE.view || phase === DROP_PHASE.type
-          ? sortByDependencies(group, dependencies, kind).reverse()
-          : group),
+      ...sortByDependencies(
+        group,
+        dependencies,
+        phase >= 0 && phase < (CREATE_PHASE.type ?? 10),
+        warnings,
+      ),
     );
   return { statements: final, warnings: [...new Set(warnings)] };
 }

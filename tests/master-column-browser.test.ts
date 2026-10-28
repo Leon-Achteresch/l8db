@@ -60,6 +60,16 @@ test.skipIf(!process.env.L8DB_MASTER_DETAIL_BROWSER_URL)(
                 to_column: "id",
               },
             ];
+          if (
+            command === "fetch_table_rows" &&
+            ["customers", "items"].includes(String(args?.table))
+          ) {
+            const match = String(args?.filter).match(/= (?:'([^']*)'|(-?\d+))$/);
+            return {
+              columns: ["matched"],
+              rows: [{ __ctid__: "(0,1)", matched: `detail-${match?.[1] ?? match?.[2]}` }],
+            };
+          }
           if (command === "execute_query_with_params")
             return {
               columns: ["matched"],

@@ -10,6 +10,8 @@ const MANAGEMENT_URL: &str = "https://api.convex.dev/v1";
 pub struct ConvexProfile {
     pub id: String,
     pub team_id: u64,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -54,7 +56,7 @@ struct ConvexEnvironmentVariables {
     environment_variables: std::collections::BTreeMap<String, String>,
 }
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -65,19 +67,23 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
-fn profile_id(team_id: u64) -> String {
-    let digest = Sha256::digest(team_id.to_string().as_bytes());
+fn profile_id(seed: &str) -> String {
+    let digest = Sha256::digest(seed.as_bytes());
     digest[..16]
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
 }
 
+pub(crate) fn self_hosted_url(raw: &str) -> Result<reqwest::Url, String> {
+    crate::baas_file::origin_url(raw, "Convex", "http://127.0.0.1:3210")
+}
+
 fn token_account(id: &str) -> String {
     format!("baas:convex:{id}:token")
 }
 
-fn validate_id(id: &str) -> Result<&str, String> {
+pub(crate) fn validate_id(id: &str) -> Result<&str, String> {
     if id.len() != 32 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("Ungültige Convex-Verbindungs-ID.".into());
     }
@@ -101,7 +107,15 @@ async fn save_profiles(items: &[ConvexProfile]) -> Result<(), String> {
     .await
 }
 
-async fn profile_and_token(id: &str) -> Result<(ConvexProfile, String), String> {
+async fn cloud_profile_and_token(id: &str) -> Result<(ConvexProfile, String), String> {
+    let (profile, token) = profile_and_token(id).await?;
+    if profile.url.is_some() {
+        return Err("Selbst gehostete Convex-Instanzen haben keine Projekte.".into());
+    }
+    Ok((profile, token))
+}
+
+pub(crate) async fn profile_and_token(id: &str) -> Result<(ConvexProfile, String), String> {
     let id = validate_id(id)?;
     let profile = profiles()
         .await?
@@ -160,12 +174,43 @@ pub async fn convex_connect(team_id: u64, token: String) -> Result<ConvexProfile
     }
     let token = token.trim();
     projects_for(team_id, token, None).await?;
-    let profile = ConvexProfile {
-        id: profile_id(team_id),
-        team_id,
-    };
+    save_profile(
+        ConvexProfile {
+            id: profile_id(&team_id.to_string()),
+            team_id,
+            url: None,
+        },
+        token,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn convex_connect_self_hosted(
+    url: String,
+    admin_key: String,
+) -> Result<ConvexProfile, String> {
+    let admin_key = admin_key.trim();
+    if admin_key.is_empty() || admin_key.len() > 8192 {
+        return Err("Convex-Admin-Key fehlt.".into());
+    }
+    let url = self_hosted_url(&url)?;
+    list_environment_variables(url.clone(), admin_key).await?;
+    save_profile(
+        ConvexProfile {
+            id: profile_id(&format!("self-hosted:{url}")),
+            team_id: 0,
+            url: Some(url.to_string()),
+        },
+        admin_key,
+    )
+    .await
+}
+
+async fn save_profile(profile: ConvexProfile, token: &str) -> Result<ConvexProfile, String> {
     let mut items = profiles().await?;
     crate::db::secrets::store_secret(token_account(&profile.id), token.to_string()).await?;
+    crate::convex_studio::forget_access(&profile.id);
     items.retain(|item| item.id != profile.id);
     items.push(profile.clone());
     save_profiles(&items).await?;
@@ -185,13 +230,14 @@ pub async fn convex_disconnect(id: String) -> Result<(), String> {
         return Err("Convex-Team nicht gefunden.".into());
     }
     crate::db::secrets::delete_secret(token_account(id)).await?;
+    crate::convex_studio::forget_access(id);
     items.retain(|item| item.id != id);
     save_profiles(&items).await
 }
 
 #[tauri::command]
 pub async fn convex_projects(id: String, cursor: Option<String>) -> Result<ConvexProjects, String> {
-    let (profile, token) = profile_and_token(&id).await?;
+    let (profile, token) = cloud_profile_and_token(&id).await?;
     projects_for(profile.team_id, &token, cursor.as_deref()).await
 }
 
@@ -232,16 +278,19 @@ pub async fn convex_deployments(
     id: String,
     project_id: u64,
 ) -> Result<Vec<ConvexDeployment>, String> {
-    let (profile, token) = profile_and_token(&id).await?;
+    let (profile, token) = cloud_profile_and_token(&id).await?;
     deployments_for(&profile, &token, project_id).await
 }
 
-async fn deployment_endpoint(
+pub(crate) async fn deployment_endpoint(
     profile: &ConvexProfile,
     token: &str,
     project_id: u64,
     deployment_name: &str,
 ) -> Result<reqwest::Url, String> {
+    if let Some(url) = &profile.url {
+        return self_hosted_url(url);
+    }
     let deployment = deployments_for(profile, token, project_id)
         .await?
         .into_iter()
@@ -274,7 +323,14 @@ pub async fn convex_environment_variables(
     deployment_name: String,
 ) -> Result<Vec<String>, String> {
     let (profile, token) = profile_and_token(&id).await?;
-    let mut url = deployment_endpoint(&profile, &token, project_id, &deployment_name).await?;
+    let url = deployment_endpoint(&profile, &token, project_id, &deployment_name).await?;
+    list_environment_variables(url, &token).await
+}
+
+async fn list_environment_variables(
+    mut url: reqwest::Url,
+    token: &str,
+) -> Result<Vec<String>, String> {
     url.set_path("/api/v1/list_environment_variables");
     let response = client()
         .get(url)
@@ -363,15 +419,16 @@ pub async fn convex_delete_environment_variable(
 #[cfg(test)]
 mod tests {
     use super::{
-        profile_id, valid_environment_name, validate_id, ConvexDeployment, ConvexProjects,
+        profile_id, self_hosted_url, valid_environment_name, validate_id, ConvexDeployment,
+        ConvexProjects,
     };
 
     #[test]
     fn profile_ids_are_stable_and_validated() {
-        let id = profile_id(42);
+        let id = profile_id("42");
         assert_eq!(id.len(), 32);
         assert!(validate_id(&id).is_ok());
-        assert_ne!(id, profile_id(43));
+        assert_ne!(id, profile_id("43"));
         assert!(validate_id("../projects").is_err());
     }
 
@@ -405,5 +462,24 @@ mod tests {
         assert!(valid_environment_name("API_KEY_2"));
         assert!(!valid_environment_name("2_API_KEY"));
         assert!(!valid_environment_name("A/B"));
+    }
+
+    #[test]
+    fn self_hosted_urls_are_origin_only() {
+        assert_eq!(
+            self_hosted_url(" http://127.0.0.1:3210 ").unwrap().as_str(),
+            "http://127.0.0.1:3210/"
+        );
+        assert!(self_hosted_url("https://convex.example.com/").is_ok());
+        for invalid in [
+            "ftp://example.com",
+            "http://user:pw@example.com",
+            "http://example.com/api",
+            "http://convex.example.com:3210",
+            "http://example.com/?x=1",
+            "example.com",
+        ] {
+            assert!(self_hosted_url(invalid).is_err(), "{invalid}");
+        }
     }
 }

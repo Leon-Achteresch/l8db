@@ -98,6 +98,17 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
           aria-label="Parameter-Hinweise"
         />
       </Row>
+      <Row
+        settingId="editor-plsql-warnings"
+        featureId="settings.editor.plsql-warnings"
+        compact={compact}
+      >
+        <Switch
+          checked={store.oraclePlsqlWarnings}
+          onCheckedChange={store.setOraclePlsqlWarnings}
+          aria-label="PL/SQL-Warnungen"
+        />
+      </Row>
     </Section>
   );
 }

@@ -22,7 +22,7 @@ for (const engine of [chromium, webkit]) {
         await page.addInitScript(() => {
           Object.assign(window, {
             __TAURI_INTERNALS__: {
-              invoke: async (command: string) => {
+              invoke: async (command: string, args?: { offset?: number }) => {
                 if (command === "count_table_rows") return 500;
                 if (command === "count_table_rows_capped")
                   return { count: 500, exact: true, estimate: null };
@@ -35,10 +35,14 @@ for (const engine of [chromium, webkit]) {
                   ];
                   return {
                     columns,
-                    rows: Array.from({ length: 100 }, (_, i) =>
-                      Object.fromEntries(
-                        columns.map((column) => [column, column === "id" ? i : `Row ${i}`]),
-                      ),
+                    rows: Array.from(
+                      { length: Math.max(0, Math.min(100, 500 - (args?.offset ?? 0))) },
+                      (_, index) => {
+                        const i = (args?.offset ?? 0) + index;
+                        return Object.fromEntries(
+                          columns.map((column) => [column, column === "id" ? i : `Row ${i}`]),
+                        );
+                      },
                     ),
                   };
                 }
@@ -105,7 +109,7 @@ for (const engine of [chromium, webkit]) {
         await page.waitForTimeout(200);
         expect(await scroller.evaluate((element) => element.scrollLeft)).toBe(850);
         await scroller.evaluate((element) => {
-          element.scrollTop = 1100;
+          element.scrollTop += 1100;
           element.scrollLeft = 850;
         });
         await page.waitForTimeout(350);

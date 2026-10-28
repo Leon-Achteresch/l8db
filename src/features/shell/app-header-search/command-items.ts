@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { CommandItem } from "@/components/motion/command-palette";
 import { SEARCH_ITEMS } from "@/features/settings/settings-search-results/search-items";
+import type { PackageMemberInfo } from "@/lib/db";
 import {
   emitHotkeyAction,
   formatHotkeyDisplay,
@@ -23,6 +24,7 @@ import {
 import type { RecentNotebook } from "@/lib/notebook/store";
 import {
   buildObjectEntries,
+  entryKey,
   OBJECT_TYPE_PLURAL,
   objectEntryHint,
   objectEntryKeywords,
@@ -86,6 +88,30 @@ export function buildObjectItems(
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema: entry.schema, table: entry.name },
+      });
+    },
+  }));
+}
+
+export function buildPackageMemberItems(
+  members: PackageMemberInfo[] | undefined,
+  setOpen: (open: boolean) => void,
+  navigate: ReturnType<typeof useNavigate>,
+): CommandItem[] {
+  return (members ?? []).map((member) => ({
+    id: `package-member:${member.schema}.${member.package}.${member.name}`,
+    label: member.name,
+    kind: "object",
+    icon: Braces,
+    keywords: [`${member.package}.${member.name}`],
+    featureId: "search.package-members",
+    parentId: entryKey("package", member.schema, member.package, ""),
+    onSelect: () => {
+      setOpen(false);
+      void navigate({
+        to: "/packages/$schema/$name",
+        params: { schema: member.schema, name: member.package },
+        search: { part: "body", member: member.name },
       });
     },
   }));

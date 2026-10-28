@@ -184,19 +184,19 @@
 }
 
 .dark {
-  --background: oklch(0.175 0.02 var(--db-hue));
+  --background: oklch(0.175 0.008 var(--db-hue));
   --foreground: oklch(0.97 0.01 var(--db-hue));
-  --card: oklch(0.21 0.022 var(--db-hue));
+  --card: oklch(0.21 0.009 var(--db-hue));
   --card-foreground: oklch(0.97 0.01 var(--db-hue));
-  --popover: oklch(0.2 0.024 var(--db-hue));
+  --popover: oklch(0.2 0.01 var(--db-hue));
   --popover-foreground: oklch(0.97 0.01 var(--db-hue));
   --primary: oklch(0.78 calc(var(--db-chroma) + 0.02) var(--db-hue));
   --primary-foreground: oklch(0.18 0.03 var(--db-hue));
-  --secondary: oklch(0.26 0.02 var(--db-hue));
+  --secondary: oklch(0.26 0.009 var(--db-hue));
   --secondary-foreground: oklch(0.96 0.01 var(--db-hue));
-  --muted: oklch(0.26 0.018 var(--db-hue));
-  --muted-foreground: oklch(0.74 0.03 var(--db-hue));
-  --accent: oklch(0.28 0.03 var(--db-hue));
+  --muted: oklch(0.26 0.008 var(--db-hue));
+  --muted-foreground: oklch(0.74 0.014 var(--db-hue));
+  --accent: oklch(0.28 0.014 var(--db-hue));
   --accent-foreground: oklch(0.96 0.01 var(--db-hue));
   --destructive: oklch(0.72 0.16 24);
   --border: oklch(1 0 0 / 12%);
@@ -207,18 +207,23 @@
   --chart-3: oklch(0.62 0.08 calc(var(--db-hue) - 30));
   --chart-4: oklch(0.55 0.06 var(--db-hue));
   --chart-5: oklch(0.84 0.08 var(--db-hue));
-  --sidebar: oklch(0.19 0.02 var(--db-hue));
+  --sidebar: oklch(0.19 0.008 var(--db-hue));
   --sidebar-foreground: oklch(0.97 0.01 var(--db-hue));
   --sidebar-primary: oklch(0.78 calc(var(--db-chroma) + 0.02) var(--db-hue));
   --sidebar-primary-foreground: oklch(0.18 0.03 var(--db-hue));
-  --sidebar-accent: oklch(0.27 0.03 var(--db-hue));
+  --sidebar-accent: oklch(0.27 0.014 var(--db-hue));
   --sidebar-accent-foreground: oklch(0.96 0.01 var(--db-hue));
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.7 0.08 var(--db-hue));
-  --menu: oklch(0.25 0.018 var(--db-hue));
+  --menu: oklch(0.25 0.009 var(--db-hue));
   --menu-highlight: oklch(0.6 0.14 var(--db-hue));
   --shadow-menu: 0 0 0 0.5px rgb(0 0 0 / 0.7), 0 12px 32px -6px rgb(0 0 0 / 0.55),
     0 3px 8px rgb(0 0 0 / 0.3);
+  --chrome-gradient: linear-gradient(
+    180deg,
+    oklch(0.215 0.018 var(--db-hue)),
+    var(--sidebar) 70%
+  );
 }
 
 .l8-toast {
@@ -375,6 +380,7 @@
 
 .l8-toast-description {
   margin-top: 0.25rem;
+  white-space: pre-line;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
 }
@@ -485,6 +491,10 @@ body[data-onboarding-active]
   background: var(--card);
   border-radius: calc(var(--radius) * 1.4);
   box-shadow: none;
+}
+.dark .bg-sidebar,
+.dark [data-slot="app-workspace-shell"]:has([data-slot="sidebar-inset"]) {
+  background: var(--chrome-gradient) fixed !important;
 }
 .dark .shell-bezel {
   background:

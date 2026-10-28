@@ -77,6 +77,7 @@ export interface Capabilities {
   migration_script: boolean;
   server_output: boolean;
   query_cancel: boolean;
+  server_info: boolean;
   dashboard_parallelism: number;
   ssl: boolean;
   ssh: boolean;

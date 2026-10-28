@@ -53,6 +53,7 @@ pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
 mod snowflake;
+pub mod sql_log;
 pub(crate) mod sql_script;
 mod sqlite;
 mod sqlite_http;
@@ -371,6 +372,7 @@ pub struct CompileErrorInfo {
     pub line: Option<i32>,
     pub position: Option<i32>,
     pub message: String,
+    pub severity: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -383,12 +385,6 @@ pub struct InvalidCompileOutcome {
     pub message: Option<String>,
     pub line: Option<i32>,
     pub position: Option<i32>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct DebugSessionInfo {
-    pub available: bool,
-    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -631,6 +627,13 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         Err(unsupported("Invalide Objekte"))
     }
+    async fn list_debug_compiled(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        let _ = schema;
+        Ok(vec![])
+    }
     async fn list_compile_errors(
         &self,
         schema: Option<&str>,
@@ -644,14 +647,6 @@ pub trait DatabaseAdapter: Send + Sync {
     ) -> Result<Vec<InvalidCompileOutcome>, String> {
         let _ = schema;
         Err(unsupported("Invalide Objekte kompilieren"))
-    }
-    async fn start_debug_session(
-        &self,
-        oid: &str,
-        object_type: &str,
-    ) -> Result<DebugSessionInfo, String> {
-        let _ = (oid, object_type);
-        Err(unsupported("PL/SQL-Debugger"))
     }
     async fn search_columns(
         &self,
@@ -1090,6 +1085,9 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn list_locks(&self) -> Result<Vec<LockInfo>, String> {
         Err(unsupported("Sperren"))
+    }
+    async fn server_info(&self) -> Result<oracle::info::ServerInfo, String> {
+        Err(unsupported("Verbindungsinfo"))
     }
     async fn live_metrics(&self, include_details: bool) -> Result<LiveMetrics, String> {
         let _ = include_details;
@@ -2810,6 +2808,12 @@ mod row_path_perf_tests;
 
 #[cfg(test)]
 mod live_plan_tests;
+
+#[cfg(test)]
+mod oracle_live_tests;
+
+#[cfg(test)]
+mod oracle_browser_tests;
 
 #[cfg(test)]
 mod value_viewer_live_tests;

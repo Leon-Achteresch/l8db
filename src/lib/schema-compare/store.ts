@@ -1,10 +1,28 @@
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/connections";
-import { loadPartitionDdl, loadSchemaCatalog } from "@/lib/db";
+import {
+  type CatalogObject,
+  type CatalogObjectType,
+  type DatabaseKind,
+  executeQuery,
+  loadPartitionDdl,
+  loadSchemaCatalog,
+} from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
+import {
+  buildCatalogSnapshot,
+  type CatalogSnapshot,
+  parseCatalogSnapshot,
+} from "@/lib/schema-snapshot";
 import { effectiveConnectionString, ensureSshTunnel } from "@/lib/ssh";
-import { compareCatalogs, defaultSelection } from "./diff";
+import {
+  compareCatalogs,
+  defaultSelection,
+  limitDifferences,
+  markMissingTablespaces,
+} from "./diff";
 import {
   type CompareResult,
   type CompareSide,
@@ -23,6 +41,8 @@ interface SchemaCompareState {
   options: SchemaCompareOptions;
   result: CompareResult | null;
   selection: Record<string, boolean>;
+  renames: Record<string, string>;
+  renamePrior: Record<string, boolean>;
   activeKey: string | null;
   loading: string | null;
   error: string | null;
@@ -37,12 +57,22 @@ export const useSchemaCompareStore = create<SchemaCompareState>()(
       options: DEFAULT_COMPARE_OPTIONS,
       result: null,
       selection: {},
+      renames: {},
+      renamePrior: {},
       activeKey: null,
       loading: null,
       error: null,
     }),
     {
       name: "l8db.schema-compare",
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<SchemaCompareState>;
+        return {
+          ...current,
+          ...saved,
+          options: { ...DEFAULT_COMPARE_OPTIONS, ...saved.options },
+        };
+      },
       partialize: (state) => ({
         source: state.source,
         target: state.target,
@@ -59,7 +89,19 @@ export function connectionFor(side: CompareSide): SavedConnection | null {
   );
 }
 
+export function sideKind(side: CompareSide): DatabaseKind | undefined {
+  return side.snapshot?.kind ?? connectionFor(side)?.kind;
+}
+
+export function snapshotFileLabel(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
 export function sideLabel(side: CompareSide): string {
+  if (side.snapshot)
+    return [`Snapshot ${snapshotFileLabel(side.snapshot.path)}`, side.schema]
+      .filter(Boolean)
+      .join(" · ");
   const connection = connectionFor(side);
   return [connection?.name ?? "?", side.database, side.schema].filter(Boolean).join(" · ");
 }
@@ -97,11 +139,12 @@ export function pickSchema(
   return null;
 }
 
-function sameSide(a: CompareSide, b: CompareSide): boolean {
+export function sameSide(a: CompareSide, b: CompareSide): boolean {
   return (
     a.connectionId === b.connectionId &&
     (a.database ?? "") === (b.database ?? "") &&
-    a.schema === b.schema
+    a.schema === b.schema &&
+    (a.snapshot?.path ?? "") === (b.snapshot?.path ?? "")
   );
 }
 
@@ -110,18 +153,100 @@ export function setupProblem(
   target: CompareSide,
   types: SelectableType[],
 ): string | null {
-  const left = connectionFor(source);
-  const right = connectionFor(target);
-  if (!source.connectionId || !left) return "Quelle: Verbindung wählen.";
+  const left = sideKind(source);
+  const right = sideKind(target);
+  if (!left) return "Quelle: Verbindung wählen.";
   if (!source.schema) return "Quelle: Schema wählen.";
-  if (!target.connectionId || !right) return "Ziel: Verbindung wählen.";
+  if (!right) return "Ziel: Verbindung wählen.";
   if (!target.schema) return "Ziel: Schema wählen.";
-  if (left.kind !== right.kind)
+  if (left !== right)
     return "Quelle und Ziel müssen dieselbe Datenbankart verwenden (z. B. beide Oracle).";
   if (sameSide(source, target))
     return "Quelle und Ziel sind identisch. Bitte ein anderes Schema wählen.";
   if (types.length === 0) return "Mindestens einen Objekttyp wählen.";
   return null;
+}
+
+export async function readCatalogSnapshot(path: string): Promise<CatalogSnapshot> {
+  return parseCatalogSnapshot(await readTextFile(path));
+}
+
+function inTypes(object: CatalogObject, types: readonly CatalogObjectType[]): boolean {
+  return (
+    types.includes(object.object_type) ||
+    (object.object_type === "column" && types.includes("table"))
+  );
+}
+
+async function addPartitionDdl(
+  connection: SavedConnection,
+  side: CompareSide,
+  objects: CatalogObject[],
+  tables: CatalogObject[],
+): Promise<void> {
+  if (tables.length === 0) return;
+  const clauses = await loadPartitionDdl(
+    connection.kind,
+    effectiveConnectionString(connection),
+    side.schema ?? "",
+    tables.map((object) => object.name),
+    side.database ?? undefined,
+  ).catch((): Record<string, string> => ({}));
+  for (const object of objects)
+    if (tables.includes(object) && clauses[object.name])
+      object.ddl = `${object.ddl}\n${clauses[object.name]}`;
+}
+
+const unpartitioned = (object: CatalogObject) =>
+  object.object_type === "table" &&
+  object.attributes.partitioned === "YES" &&
+  !/PARTITION BY/i.test(object.ddl);
+
+export async function captureCatalogSnapshot(side: CompareSide): Promise<CatalogSnapshot> {
+  if (!side.connectionId || !side.schema) throw new Error("Bitte Verbindung und Schema wählen.");
+  const connection = await prepareConnection(side.connectionId);
+  const types = compareTypesFor(connection.kind);
+  if (types.length === 0)
+    throw new Error("Für diese Datenbank sind Katalog-Snapshots nicht verfügbar.");
+  const objects = await loadSchemaCatalog(
+    connection.kind,
+    effectiveConnectionString(connection),
+    side.schema,
+    types,
+    side.database ?? undefined,
+  );
+  await addPartitionDdl(connection, side, objects, objects.filter(unpartitioned));
+  return buildCatalogSnapshot(
+    {
+      kind: connection.kind,
+      connection_name: connection.name,
+      database: side.database,
+      schema: side.schema,
+      types,
+    },
+    objects,
+  );
+}
+
+async function targetTablespaces(connection: SavedConnection, side: CompareSide) {
+  const values = async (sql: string) =>
+    (
+      await executeQuery(
+        connection.kind,
+        effectiveConnectionString(connection),
+        sql,
+        side.database ?? undefined,
+        { confirmed: true, track: false },
+      )
+    ).rows.map((row) => String(Object.values(row)[0] ?? ""));
+  const [user] = await values("SELECT USER FROM dual");
+  return new Set(
+    await values(
+      user === side.schema
+        ? "SELECT tablespace_name FROM user_tablespaces"
+        : "SELECT tablespace_name FROM dba_tablespaces",
+    ),
+  );
 }
 
 export async function runSchemaCompare(sides?: {
@@ -132,66 +257,79 @@ export async function runSchemaCompare(sides?: {
   const set = useSchemaCompareStore.setState;
   const { source, target } = sides ?? state;
   try {
-    if (!source.connectionId || !source.schema || !target.connectionId || !target.schema)
+    if (
+      (!source.connectionId && !source.snapshot) ||
+      !source.schema ||
+      (!target.connectionId && !target.snapshot) ||
+      !target.schema
+    )
       throw new Error("Bitte Quelle und Ziel vollständig auswählen.");
     if (sameSide(source, target)) throw new Error("Quelle und Ziel sind identisch.");
     set({ loading: "Verbindungen werden vorbereitet…", error: null });
-    const left = await prepareConnection(source.connectionId);
-    const right = await prepareConnection(target.connectionId);
-    if (left.kind !== right.kind)
+    const open = async (side: CompareSide) =>
+      side.snapshot
+        ? { snapshot: await readCatalogSnapshot(side.snapshot.path), connection: null }
+        : { snapshot: null, connection: await prepareConnection(side.connectionId ?? "") };
+    const left = await open(source);
+    const right = await open(target);
+    const kind = left.snapshot?.kind ?? left.connection?.kind;
+    if (!kind || kind !== (right.snapshot?.kind ?? right.connection?.kind))
       throw new Error("Quelle und Ziel müssen dieselbe Datenbankart verwenden.");
-    const types = activeTypes(state, left.kind);
+    const types = activeTypes(state, kind).filter(
+      (type) =>
+        (!left.snapshot || left.snapshot.types.includes(type)) &&
+        (!right.snapshot || right.snapshot.types.includes(type)),
+    );
     if (types.length === 0)
       throw new Error(
-        "Für diese Datenbank ist der Schema-Vergleich nicht verfügbar oder es ist kein Objekttyp gewählt.",
+        left.snapshot || right.snapshot
+          ? "Der Snapshot enthält keinen der gewählten Objekttypen."
+          : "Für diese Datenbank ist der Schema-Vergleich nicht verfügbar oder es ist kein Objekttyp gewählt.",
       );
     set({ loading: "Objekte werden gelesen…" });
-    const [sourceObjects, targetObjects] = await Promise.all([
-      loadSchemaCatalog(
-        left.kind,
-        effectiveConnectionString(left),
-        source.schema,
-        types,
-        source.database ?? undefined,
-      ),
-      loadSchemaCatalog(
-        right.kind,
-        effectiveConnectionString(right),
-        target.schema,
-        types,
-        target.database ?? undefined,
-      ),
-    ]);
+    const load = (side: CompareSide, opened: typeof left) =>
+      opened.snapshot
+        ? Promise.resolve(opened.snapshot.objects.filter((object) => inTypes(object, types)))
+        : loadSchemaCatalog(
+            kind,
+            effectiveConnectionString(opened.connection as SavedConnection),
+            side.schema ?? "",
+            types,
+            side.database ?? undefined,
+          );
+    const scopes = [left.snapshot?.tables, right.snapshot?.tables]
+      .filter((list): list is string[] => Array.isArray(list))
+      .map((list) => new Set(list));
+    const scoped = (objects: CatalogObject[]) =>
+      scopes.length === 0
+        ? objects
+        : objects.filter((object) => scopes.every((set) => set.has(object.parent ?? object.name)));
+    const [sourceObjects, targetObjects] = (
+      await Promise.all([load(source, left), load(target, right)])
+    ).map(scoped);
     const targetTables = new Set(
       targetObjects.filter((object) => object.object_type === "table").map((object) => object.name),
     );
-    const unpartitioned = sourceObjects.filter(
-      (object) =>
-        object.object_type === "table" &&
-        object.attributes.partitioned === "YES" &&
-        !/PARTITION BY/i.test(object.ddl) &&
-        !targetTables.has(object.name),
+    const missing = sourceObjects.filter(
+      (object) => unpartitioned(object) && !targetTables.has(object.name),
     );
-    if (unpartitioned.length > 0) {
+    if (left.connection && missing.length > 0) {
       set({ loading: "Partitionierung wird gelesen…" });
-      const clauses = await loadPartitionDdl(
-        left.kind,
-        effectiveConnectionString(left),
-        source.schema,
-        unpartitioned.map((object) => object.name),
-        source.database ?? undefined,
-      ).catch((): Record<string, string> => ({}));
-      for (const object of unpartitioned)
-        if (clauses[object.name]) object.ddl = `${object.ddl}\n${clauses[object.name]}`;
+      await addPartitionDdl(left.connection, source, sourceObjects, missing);
     }
     set({ loading: "Unterschiede werden berechnet…" });
     const context = {
-      kind: left.kind,
-      sourceSchema: source.schema,
-      targetSchema: target.schema,
+      kind,
+      sourceSchema: left.snapshot?.schema ?? source.schema,
+      targetSchema: right.snapshot?.schema ?? target.schema,
       options: state.options,
     };
     const items = compareCatalogs(sourceObjects, targetObjects, context);
+    if (kind === "oracle" && !state.options.ignoreTablespace && right.connection) {
+      const available = await targetTablespaces(right.connection, target).catch(() => null);
+      if (available) markMissingTablespaces(items, available);
+    }
+    const limited = limitDifferences(items, state.options.diffLimit);
     set({
       source,
       target,
@@ -202,16 +340,43 @@ export async function runSchemaCompare(sides?: {
         sourceLabel: sideLabel(source),
         targetLabel: sideLabel(target),
         types,
-        items,
+        items: limited.items,
         comparedAt: new Date().toISOString(),
+        omitted: limited.omitted,
       },
-      selection: defaultSelection(items),
+      selection: defaultSelection(limited.items),
+      renames: {},
+      renamePrior: {},
       activeKey: null,
       loading: null,
     });
   } catch (error) {
     set({ loading: null, error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+export function toggleRename(sourceKey: string, targetKey: string, enabled: boolean): void {
+  useSchemaCompareStore.setState((state) => {
+    const selection = { ...state.selection };
+    const renamePrior = { ...state.renamePrior };
+    const renames: Record<string, string> = {};
+    for (const [from, to] of Object.entries(state.renames)) {
+      if (from !== sourceKey && to !== targetKey) {
+        renames[from] = to;
+        continue;
+      }
+      if (renamePrior[to]) selection[to] = true;
+      else delete selection[to];
+      delete renamePrior[to];
+    }
+    if (enabled) {
+      renamePrior[targetKey] = Boolean(selection[targetKey]);
+      renames[sourceKey] = targetKey;
+      selection[sourceKey] = true;
+      selection[targetKey] = true;
+    }
+    return { renames, renamePrior, selection };
+  });
 }
 
 export function reverseSchemaCompare(): Promise<void> {

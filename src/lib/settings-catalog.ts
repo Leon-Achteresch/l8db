@@ -250,6 +250,27 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "tableStyle",
   },
   {
+    id: "filter-bar-style",
+    tabId: "appearance",
+    title: "Filterleiste",
+    description:
+      "Wie Tabellenfilter und Farbregeln bedient werden: klassisches Panel ohne KI, Omnibar mit einer Eingabezeile oder Pill-Leiste. Omnibar und Pill-Leiste setzen Filter auf Wunsch per KI.",
+    keywords: [
+      "filter",
+      "filterleiste",
+      "omnibar",
+      "pill",
+      "pille",
+      "ki",
+      "ai",
+      "farbregel",
+      "markieren",
+      "where",
+      "sql",
+    ],
+    key: "filterBarStyle",
+  },
+  {
     id: "reset-appearance",
     tabId: "appearance",
     title: "Darstellung zurücksetzen",
@@ -517,6 +538,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "autoFeatureVideos",
   },
   {
+    id: "blog-suggestions",
+    tabId: "about",
+    title: "Blog-Vorschläge",
+    description:
+      "Ab und zu unten rechts einen Artikel aus dem l8db-Blog vorschlagen, wenn gerade nichts los ist.",
+    keywords: ["blog", "artikel", "tipps", "vorschläge", "lesen"],
+    key: "blogSuggestions",
+  },
+  {
     id: "release-notes",
     tabId: "about",
     title: "Release Notes",
@@ -586,6 +616,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "Beim Aufruf von Funktionen, Prozeduren und Package-Routinen die Parameter einblenden und den aktuellen hervorheben.",
     keywords: ["signatur", "parameter", "prozedur", "package"],
     key: "editorParameterHints",
+  },
+  {
+    id: "editor-plsql-warnings",
+    tabId: "editor",
+    title: "PL/SQL-Warnungen (Oracle)",
+    description:
+      "Beim Kompilieren und bei CREATE OR REPLACE im Editor alle PL/SQL-Warnungen (PLW) melden. Setzt PLSQL_WARNINGS auf ENABLE:ALL.",
+    keywords: ["oracle", "plsql", "warnung", "plw", "kompilieren"],
+    key: "oraclePlsqlWarnings",
   },
   {
     id: "rulers",
@@ -848,6 +887,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "editorFormatOnType",
   },
   {
+    id: "editor-blank-line-terminator",
+    tabId: "editor",
+    title: "Leerzeile beendet Statement",
+    description:
+      "Ausführen am Cursor und die Statement-Übersicht trennen Statements auch an Leerzeilen, nie innerhalb von PL/SQL-Blöcken.",
+    keywords: ["leerzeile", "statement", "cursor", "ausführen", "sql*plus", "toad"],
+    key: "editorBlankLineTerminator",
+  },
+  {
     id: "transactions-per-table",
     tabId: "data",
     title: "Transaktionen pro Tabelle",
@@ -886,6 +934,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "abgleich",
       "synchronisieren",
     ],
+  },
+  {
+    id: "team",
+    tabId: "general",
+    title: "Team-Verbindungen",
+    description:
+      "Verbindungen, die die IT als connections.json im Ordner .l8db hinterlegt, automatisch übernehmen.",
+    keywords: ["team", "firma", "unternehmen", "verbindungen", "admin", "datei", "json", "appdata"],
   },
   {
     id: "sync-secrets",

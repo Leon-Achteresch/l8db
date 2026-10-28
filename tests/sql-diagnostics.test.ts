@@ -46,6 +46,27 @@ test("ORA-06550 line/column and compile output become markers with details", () 
   expect(compiled[0].severity).toBe("warning");
 });
 
+test("Oracle compile lines count from the object keyword when CREATE stands alone", () => {
+  const split = "-- deploy\nCREATE OR REPLACE\nPROCEDURE p IS\nBEGIN\n  missing_proc;\nEND;";
+  const [marker] = sqlErrorMarkers(
+    "Zeile 3, Spalte 3: PLS-00201: identifier 'MISSING_PROC' must be declared",
+    split,
+    0,
+    "oracle",
+  );
+  expect(at(split, marker)).toBe("missing_proc");
+  const joined = "CREATE OR REPLACE EDITIONABLE PROCEDURE p IS\nBEGIN\n  missing_proc;\nEND;";
+  const [same] = sqlErrorMarkers("Zeile 3, Spalte 3: PLS-00201: x", joined, 0, "oracle");
+  expect(at(joined, same)).toBe("missing_proc");
+  const position = sqlErrorMarkers(
+    "Oracle: ORA-00942: table or view does not exist\nPosition: 43",
+    "CREATE OR REPLACE\nVIEW v AS SELECT * FROM nope",
+    0,
+    "oracle",
+  );
+  expect(at("CREATE OR REPLACE\nVIEW v AS SELECT * FROM nope", position[0])).toBe("nope");
+});
+
 test("Postgres position and MySQL line fall back correctly", () => {
   const sql = "SELECT 1;\nSELEC 2";
   expect(at(sql, sqlErrorMarkers("ERROR: syntax error\nPosition: 11", sql, 0, "postgres")[0])).toBe(

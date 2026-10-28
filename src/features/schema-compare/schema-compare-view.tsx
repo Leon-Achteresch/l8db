@@ -7,6 +7,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   TableIcon,
+  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
@@ -24,16 +25,17 @@ import {
   useActiveSchema,
 } from "@/lib/db-selection";
 import { useSchemasQuery } from "@/lib/queries";
-import { buildSyncScript, renderSyncScript } from "@/lib/schema-compare/script";
+import { activeRenames, buildSyncScript, renderSyncScript } from "@/lib/schema-compare/script";
 import {
   activeTypes,
-  connectionFor,
   reverseSchemaCompare,
   runSchemaCompare,
+  sameSide,
   setupProblem,
+  sideKind,
   useSchemaCompareStore,
 } from "@/lib/schema-compare/store";
-import type { CompareSide, DiffStatus } from "@/lib/schema-compare/types";
+import type { DiffStatus } from "@/lib/schema-compare/types";
 import { compareTypesFor, OBJECT_TYPE_META, STATUS_LABEL } from "@/lib/schema-compare/types";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cn } from "@/lib/utils";
@@ -51,14 +53,6 @@ const MARKERS = ["only_source", "different", "only_target"] as const;
 
 const SCOPE = "tool:schema-compare";
 
-function sameSide(a: CompareSide, b: CompareSide): boolean {
-  return (
-    a.connectionId === b.connectionId &&
-    (a.database ?? "") === (b.database ?? "") &&
-    a.schema === b.schema
-  );
-}
-
 function comparedAgo(iso: string, now: number): string {
   const minutes = Math.floor((now - new Date(iso).getTime()) / 60000);
   if (minutes < 1) return "Gerade verglichen";
@@ -68,7 +62,7 @@ function comparedAgo(iso: string, now: number): string {
 
 export function SchemaCompareView() {
   const state = useSchemaCompareStore();
-  const { result, selection, activeKey, loading, error, source, target } = state;
+  const { result, selection, renames, activeKey, loading, error, source, target } = state;
   const set = useSchemaCompareStore.setState;
   const [view, setView] = useTabState<"details" | "summary">(tabStateKey(SCOPE, "view"), "details");
   const [scriptOpen, setScriptOpen] = useTabState(tabStateKey(SCOPE, "scriptOpen"), false);
@@ -82,7 +76,7 @@ export function SchemaCompareView() {
   const activeDatabase = useActiveDatabase();
   const activeSchema = useActiveSchema();
   const activeReady = useSchemasQuery().isSuccess;
-  const kind = connectionFor(source)?.kind ?? connectionFor(target)?.kind;
+  const kind = sideKind(source) ?? sideKind(target);
   const problem = setupProblem(source, target, activeTypes(state, kind));
   const stale = Boolean(
     result && (!sameSide(result.source, source) || !sameSide(result.target, target)),
@@ -90,7 +84,8 @@ export function SchemaCompareView() {
 
   useEffect(() => {
     if (!active || !activeReady || compareTypesFor(active.kind).length === 0) return;
-    if (useSchemaCompareStore.getState().source.connectionId) return;
+    const current = useSchemaCompareStore.getState().source;
+    if (current.connectionId || current.snapshot) return;
     set({
       source: {
         connectionId: active.id,
@@ -129,9 +124,19 @@ export function SchemaCompareView() {
     return out;
   }, [result]);
 
+  const renamed = useMemo(() => activeRenames(result?.items ?? [], renames), [result, renames]);
+  const notes = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [from, dropped] of renamed) {
+      const added = result?.items.find((item) => item.key === from);
+      out[from] = `umbenannt aus ${dropped.name}`;
+      out[dropped.key] = `umbenannt in ${added?.name ?? ""}`;
+    }
+    return out;
+  }, [result, renamed]);
   const script = useMemo(
-    () => (result ? buildSyncScript(result, selection) : { statements: [], warnings: [] }),
-    [result, selection],
+    () => (result ? buildSyncScript(result, selection, renames) : { statements: [], warnings: [] }),
+    [result, selection, renames],
   );
   const text = useMemo(
     () =>
@@ -146,14 +151,15 @@ export function SchemaCompareView() {
   );
   const plan = useMemo(() => {
     const out = { create: 0, alter: 0, drop: 0 };
+    const droppedByRename = new Set([...renamed.values()].map((item) => item.key));
     for (const item of result?.items ?? []) {
-      if (!selection[item.key]) continue;
-      if (item.status === "only_source") out.create++;
-      else if (item.status === "different") out.alter++;
+      if (!selection[item.key] || droppedByRename.has(item.key)) continue;
+      if (renamed.has(item.key) || item.status === "different") out.alter++;
+      else if (item.status === "only_source") out.create++;
       else if (item.status === "only_target") out.drop++;
     }
     return out;
-  }, [result, selection]);
+  }, [result, selection, renamed]);
   const selectedCount = plan.create + plan.alter + plan.drop;
   const actionable = items.filter((item) => item.status !== "identical").map((item) => item.key);
   const actionableSelected = actionable.filter((key) => selection[key]).length;
@@ -162,7 +168,9 @@ export function SchemaCompareView() {
   const toggle = (keys: string[], checked: boolean) =>
     set((current) => {
       const next = { ...current.selection };
-      for (const key of keys) {
+      const pairs = Object.entries(current.renames);
+      const linked = keys.flatMap((key) => pairs.filter((pair) => pair.includes(key)).flat());
+      for (const key of [...keys, ...linked]) {
         if (checked) next[key] = true;
         else delete next[key];
       }
@@ -333,6 +341,16 @@ export function SchemaCompareView() {
                     <span className="sr-only">Filter aufheben</span>
                   </button>
                 )}
+                {result.omitted ? (
+                  <p
+                    role="status"
+                    className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400"
+                  >
+                    <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
+                    Limit erreicht: {result.omitted} weitere Unterschiede werden nicht angezeigt und
+                    nicht synchronisiert.
+                  </p>
+                ) : null}
               </div>
               {result.items.every((item) => item.status === "identical") && !showIdentical ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-xs text-muted-foreground">
@@ -354,6 +372,7 @@ export function SchemaCompareView() {
                   showIdentical={showIdentical || focus?.status === "identical"}
                   onShowIdenticalChange={setShowIdentical}
                   selection={selection}
+                  notes={notes}
                   activeKey={activeKey}
                   expandAll={Boolean(search) || Boolean(focus)}
                   onToggle={toggle}

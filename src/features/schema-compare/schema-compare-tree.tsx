@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, TriangleAlertIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { CatalogObjectType } from "@/lib/db";
@@ -36,6 +36,7 @@ interface SchemaCompareTreeProps {
   showIdentical: boolean;
   onShowIdenticalChange: (value: boolean) => void;
   selection: Record<string, boolean>;
+  notes?: Record<string, string>;
   activeKey: string | null;
   expandAll: boolean;
   onToggle: (keys: string[], checked: boolean) => void;
@@ -56,6 +57,7 @@ export function SchemaCompareTree({
   showIdentical,
   onShowIdenticalChange,
   selection,
+  notes = {},
   activeKey,
   expandAll,
   onToggle,
@@ -222,7 +224,8 @@ export function SchemaCompareTree({
               tabIndex={-1}
               title={[
                 `${OBJECT_TYPE_META[item.type].label} ${STATUS_ACTION[item.status]}`,
-                item.differsBy.length > 0 ? item.differsBy.join(", ") : "",
+                item.differsBy.length > 0 ? `Unterschied in: ${item.differsBy.join(", ")}` : "",
+                item.blocked ?? "",
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -262,9 +265,15 @@ export function SchemaCompareTree({
               </span>
               {parent && <span className="truncate font-mono text-muted-foreground">{parent}</span>}
               {related > 0 && <span className="shrink-0 text-muted-foreground">+{related}</span>}
-              {grouping === "status" && item.differsBy.length > 0 && (
+              {(notes[item.key] || item.differsBy.length > 0) && (
                 <span className="min-w-0 truncate text-muted-foreground">
-                  {item.differsBy.join(", ")}
+                  {notes[item.key] ?? item.differsBy.join(", ")}
+                </span>
+              )}
+              {item.blocked && (
+                <span className="flex min-w-0 items-center gap-1 text-amber-700 dark:text-amber-400">
+                  <TriangleAlertIcon className="size-3 shrink-0" />
+                  <span className="truncate">{item.blocked}</span>
                 </span>
               )}
               <span className="ml-auto pl-2">

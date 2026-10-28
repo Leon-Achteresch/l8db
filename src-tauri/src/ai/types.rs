@@ -54,6 +54,8 @@ pub struct ConnectionContext {
     pub mask_rules: Vec<crate::mcp::config::RedactRule>,
     #[serde(default)]
     pub default_schema: Option<String>,
+    #[serde(default)]
+    pub production_writes: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

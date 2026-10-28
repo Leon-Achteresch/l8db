@@ -250,12 +250,17 @@ fn completions_cover_commands_and_formats() {
 #[test]
 fn scripts_are_split_per_family() {
     let sql = "create table t(a int);\ninsert into t values (1); -- a;b\nselect ';' as x;";
-    assert_eq!(statements(DatabaseKind::Postgres, sql).len(), 3);
-    assert_eq!(statements(DatabaseKind::Mysql, sql).len(), 3);
+    assert_eq!(statements(DatabaseKind::Postgres, sql).unwrap().len(), 3);
+    assert_eq!(statements(DatabaseKind::Mysql, sql).unwrap().len(), 3);
     let body = "create function f() returns int as $$ begin return 1; end $$ language plpgsql;\nselect f();";
-    assert_eq!(statements(DatabaseKind::Postgres, body).len(), 2);
-    assert_eq!(statements(DatabaseKind::Redis, "SET a 1").len(), 1);
-    assert!(statements(DatabaseKind::Postgres, " ;\n ; ").is_empty());
+    assert_eq!(statements(DatabaseKind::Postgres, body).unwrap().len(), 2);
+    assert_eq!(statements(DatabaseKind::Redis, "SET a 1").unwrap().len(), 1);
+    assert!(statements(DatabaseKind::Postgres, " ;\n ; ")
+        .unwrap()
+        .is_empty());
+    let batch = "CREATE PROCEDURE dbo.p AS\nBEGIN\n  SELECT 1;\nEND\nGO\nSELECT 2";
+    assert_eq!(statements(DatabaseKind::Mssql, batch).unwrap().len(), 2);
+    assert!(statements(DatabaseKind::Oracle, "CONN hr/hr\nDROP TABLE t;").is_err());
 }
 
 #[test]

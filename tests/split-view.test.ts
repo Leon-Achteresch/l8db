@@ -40,6 +40,8 @@ function reset() {
     byConnection: {},
     paneConnections: {},
     orientation: "horizontal",
+    activeGroup: null,
+    groups: {},
   });
 }
 
@@ -83,7 +85,7 @@ describe("split view", () => {
     expect(useSplitView.getState().panes).toHaveLength(MAX_SPLIT_PANES);
   });
 
-  test("reveal fokussiert ein vorhandenes Pane oder belegt das aktive", () => {
+  test("reveal fokussiert ein vorhandenes Pane oder verlässt die Tab-Gruppe", () => {
     const a = addConnection("a");
     useConnectionsStore.getState().setActiveId(a.id);
     useTableTabs.getState().openTab({ schema: "public", table: "users" });
@@ -97,8 +99,11 @@ describe("split view", () => {
     expect(useSplitView.getState().focusedPane).toBe(0);
 
     useSplitView.getState().reveal(items);
-    expect(useSplitView.getState().panes).toEqual([items, orders]);
-    expect(useSplitView.getState().focusedPane).toBe(0);
+    expect(useSplitView.getState().panes).toEqual([]);
+    expect(useSplitView.getState().groups[a.id][0].tabs.map((tab) => tab && tabKey(tab))).toEqual([
+      users,
+      orders,
+    ]);
   });
 
   test("closePane auf 1 Pane beendet den Split", () => {
@@ -111,7 +116,7 @@ describe("split view", () => {
     expect(useSplitView.getState().panes).toEqual([]);
   });
 
-  test("geschlossene Tabs werden aus den Panes entfernt", () => {
+  test("geschlossener Tab beendet den Split, die Gruppe bleibt", () => {
     const a = addConnection("a");
     useConnectionsStore.getState().setActiveId(a.id);
     useTableTabs.getState().openTab({ schema: "public", table: "users" });
@@ -120,7 +125,8 @@ describe("split view", () => {
     const orders = tabKey({ kind: "table", schema: "public", table: "orders" });
     useSplitView.getState().addPane(users);
     useTableTabs.getState().closeTab(orders);
-    expect(useSplitView.getState().panes).toEqual([users, null]);
+    expect(useSplitView.getState().panes).toEqual([]);
+    expect(useSplitView.getState().groups[a.id]).toHaveLength(1);
   });
 
   test("Split bleibt pro Connection erhalten", () => {
@@ -242,7 +248,7 @@ describe("Verbindung pro Bereich", () => {
     useTableTabs.getState().closeTab(orders);
     expect(useSplitView.getState().panes).toEqual([users, remoteUsers]);
 
-    useSplitView.getState().reveal(orders);
+    useSplitView.getState().setPane(0, orders);
     expect(useSplitView.getState().panes).toEqual([orders, remoteUsers]);
     expect(useSplitView.getState().focusedPane).toBe(0);
 
@@ -373,5 +379,106 @@ describe("Master pro Bereich", () => {
     } as never);
     await useSplitView.persist.rehydrate();
     expect(useSplitView.getState().masters).toEqual([null, 0, 1]);
+  });
+});
+
+describe("Gespeicherte Ansichten", () => {
+  function savedSplit() {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openTab({ schema: "public", table: "users" });
+    useTableTabs.getState().openTab({ schema: "public", table: "orders" });
+    useTableTabs.getState().openTab({ schema: "public", table: "items" });
+    const users = tabKey({ kind: "table", schema: "public", table: "users" });
+    const orders = tabKey({ kind: "table", schema: "public", table: "orders" });
+    const items = tabKey({ kind: "table", schema: "public", table: "items" });
+    useSplitView.getState().addPane(users, orders);
+    useSplitView.getState().setOrientation("vertical");
+    const [group] = useSplitView.getState().groups[a.id];
+    return { a, users, orders, items, group };
+  }
+
+  test("speichert jeden Split automatisch als Gruppe und folgt Änderungen", () => {
+    const { a, users, orders, items, group } = savedSplit();
+    expect(group.name).toBe("Ansicht 1");
+    expect(group.tabs.map((tab) => tab && tabKey(tab))).toEqual([users, orders]);
+    expect(useSplitView.getState().activeGroup).toBe(group.id);
+    useSplitView.getState().setPane(1, items);
+    expect(useSplitView.getState().groups[a.id][0].tabs.map((tab) => tab && tabKey(tab))).toEqual([
+      users,
+      items,
+    ]);
+  });
+
+  test("Einzelansicht behält die Gruppe, Öffnen stellt sie wieder her", () => {
+    const { a, users, orders, group } = savedSplit();
+    useSplitView.getState().collapse();
+    useSplitView.getState().setOrientation("horizontal");
+    expect(useSplitView.getState().activeGroup).toBeNull();
+    expect(useSplitView.getState().groups[a.id]).toHaveLength(1);
+
+    const tab = useSplitView.getState().openGroup(group.id);
+    expect(tab && tabKey(tab)).toBe(orders);
+    expect(useSplitView.getState().panes).toEqual([users, orders]);
+    expect(useSplitView.getState().orientation).toBe("vertical");
+    expect(useSplitView.getState().activeGroup).toBe(group.id);
+  });
+
+  test("geschlossener Gruppen-Tab beendet den Split und wird beim Öffnen wieder geöffnet", () => {
+    const { a, users, orders, group } = savedSplit();
+    useTableTabs.getState().closeTab(orders);
+    expect(useSplitView.getState().panes).toEqual([]);
+    expect(useSplitView.getState().groups[a.id][0].tabs.map((tab) => tab && tabKey(tab))).toEqual([
+      users,
+      orders,
+    ]);
+
+    useSplitView.getState().openGroup(group.id);
+    expect(useTableTabs.getState().tabs.map(tabKey)).toContain(orders);
+    expect(useSplitView.getState().panes).toEqual([users, orders]);
+  });
+
+  test("Gruppen überstehen Neuladen und Verbindungswechsel", async () => {
+    const { a, group } = savedSplit();
+    const b = addConnection("b");
+    useSplitView.getState().renameGroup(group.id, "  Bestellungen ");
+    await useSplitView.persist.rehydrate();
+    expect(useSplitView.getState().activeGroup).toBe(group.id);
+    expect(useSplitView.getState().groups[a.id][0].name).toBe("Bestellungen");
+
+    useConnectionsStore.getState().setActiveId(b.id);
+    expect(useSplitView.getState().activeGroup).toBeNull();
+    useConnectionsStore.getState().setActiveId(a.id);
+    expect(useSplitView.getState().activeGroup).toBe(group.id);
+
+    useSplitView.getState().deleteGroup(group.id);
+    expect(useSplitView.getState().groups[a.id]).toEqual([]);
+    expect(useSplitView.getState().activeGroup).toBeNull();
+    expect(useSplitView.getState().panes).toEqual([]);
+  });
+
+  test("gleicher Split nutzt die vorhandene Gruppe, ein neuer legt eine weitere an", () => {
+    const { a, users, orders, items, group } = savedSplit();
+    useSplitView.getState().collapse();
+    useSplitView.getState().setOrientation("horizontal");
+    useSplitView.getState().addPane(users, orders);
+    expect(useSplitView.getState().activeGroup).toBe(group.id);
+    expect(useSplitView.getState().orientation).toBe("vertical");
+    expect(useSplitView.getState().groups[a.id][0].orientation).toBe("vertical");
+    expect(useSplitView.getState().groups[a.id]).toHaveLength(1);
+
+    useSplitView.getState().collapse();
+    useSplitView.getState().addPane(users, items);
+    const groups = useSplitView.getState().groups[a.id];
+    expect(groups.map((entry) => entry.name)).toEqual(["Ansicht 1", "Ansicht 2"]);
+    expect(useSplitView.getState().activeGroup).toBe(groups[1].id);
+
+    useSplitView.getState().collapse();
+    useSplitView.getState().deleteGroup(group.id);
+    useSplitView.getState().addPane(orders, items);
+    expect(useSplitView.getState().groups[a.id].map((entry) => entry.name)).toEqual([
+      "Ansicht 2",
+      "Ansicht 1",
+    ]);
   });
 });

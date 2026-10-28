@@ -26,6 +26,18 @@ function detectObjectStorage(value: string, candidates: ProviderInfo[]): string 
   return host.includes("minio") || endpoint.port === "9000" ? "minio" : "s3-compatible";
 }
 
+const PRIVATE_SUFFIX = /\.(intern|internal|local|localdomain|lan|corp|home|arpa)$/;
+const PRIVATE_IP = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/;
+
+function publicHost(host: string): boolean {
+  return (
+    host.includes(".") &&
+    !PRIVATE_SUFFIX.test(host) &&
+    !PRIVATE_IP.test(host) &&
+    !host.includes(":")
+  );
+}
+
 export function detectProvider(value: string, kind = kindFromUrl(value)): string {
   const candidates = allProviders().filter((provider) => provider.kind === (kind ?? "postgres"));
   if (!candidates.length) return "postgres";
@@ -44,7 +56,9 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
   const match = candidates.find((provider) =>
     provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
   );
-  const cloud = host ? candidates.find((provider) => provider.id === "cloud-postgres") : undefined;
+  const cloud = publicHost(host)
+    ? candidates.find((provider) => provider.id === "cloud-postgres")
+    : undefined;
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value.trim())?.[1]?.toLowerCase();
   const byScheme = candidates.find((provider) => provider.id === scheme);
   return (match ?? cloud ?? byScheme ?? candidates[0]).id;

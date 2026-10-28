@@ -62,6 +62,9 @@ export type DataTableProps = {
   onExactCount?: () => void;
   pageSize?: number;
   onPageChange?: (page: number) => void;
+  rowOffset?: number;
+  rowExtent?: number;
+  onVisibleRowsChange?: (firstRow: number, lastRow: number) => void;
   foreignKeys?: ForeignKeyInfo[];
   currentSchema?: string;
   currentTable?: string;

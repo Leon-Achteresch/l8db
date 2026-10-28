@@ -105,3 +105,133 @@ test("one-line scripts build all statement positions within the same large-scrip
     { line: 3, column: 13 },
   ]);
 });
+
+function oracleScript(statements: number): string {
+  const parts: string[] = [];
+  for (let index = 0; index < statements; index++) {
+    if (index % 50 === 0) parts.push(`PROMPT step ${index}`);
+    parts.push(
+      index % 10 === 0
+        ? `BEGIN\n  x := q'[${index};]' || &&tag;\n\n  NULL;\nEND;\n/`
+        : `SELECT &col, '${index};' FROM t_${index} WHERE id = ${index};`,
+    );
+  }
+  return parts.join("\n\n");
+}
+
+test("5000-statement Oracle scripts with SQL*Plus commands split within the large-script budget", async () => {
+  const { splitSqlStatements } = await import("../src/lib/sql-statements");
+  const sql = oracleScript(5000);
+  const split = await measureScenario(() => {
+    splitSqlStatements(sql, "oracle");
+  });
+  const result = splitSqlStatements(sql, "oracle");
+  await reportScenario("query-oracle-script-split", {
+    statements: result.statements.length,
+    commands: result.commands.length,
+    sqlCharacters: sql.length,
+    split,
+  });
+  expect(result.statements).toHaveLength(5000);
+  expect(result.commands).toHaveLength(100);
+  expect(split.p95Ms).toBeLessThan(250);
+});
+
+test("200 @-files with 5000 statements expand with one read per file", async () => {
+  const { splitSqlStatements } = await import("../src/lib/sql-statements");
+  const { expandIncludes, scriptItems } = await import("../src/lib/sql-statements/includes");
+  const files = new Map<string, string>();
+  for (let file = 0; file < 200; file++)
+    files.set(
+      `/s/f${file}.sql`,
+      Array.from({ length: 25 }, (_, row) => `INSERT INTO t VALUES (${file}, ${row});`).join("\n"),
+    );
+  const top = `${Array.from({ length: 200 }, (_, file) => `@f${file}`).join("\n")}\n@f0`;
+  let reads = 0;
+  const run = () =>
+    expandIncludes(scriptItems(splitSqlStatements(top, "oracle")), {
+      file: "/s/main.sql",
+      searchPath: [],
+      stat: async (path) => (files.has(path) ? { size: files.get(path)?.length ?? 0 } : null),
+      read: async (path) => {
+        reads++;
+        const text = files.get(path);
+        if (text === undefined) throw new Error("missing");
+        return text;
+      },
+    });
+  const expand = await measureScenario(async () => {
+    await run();
+  });
+  reads = 0;
+  const items = await run();
+  await reportScenario("query-oracle-script-includes", {
+    files: files.size,
+    statements: items.length,
+    readsPerRun: reads,
+    expand,
+  });
+  expect(items).toHaveLength(5025);
+  expect(reads).toBe(200);
+  expect(expand.p95Ms).toBeLessThan(250);
+});
+
+test("substituting 5000 statements stays within budget without retained state", async () => {
+  const { splitSqlStatements } = await import("../src/lib/sql-statements");
+  const { substitute } = await import("../src/lib/sql-statements/sqlplus");
+  const texts = splitSqlStatements(oracleScript(5000), "oracle").statements.map(
+    (statement) => statement.text,
+  );
+  const values = { COL: "name", TAG: "'x'" };
+  const runOnce = () => {
+    const state = { defines: {}, marker: "&", escape: null };
+    for (const text of texts) substitute(text, state, values);
+  };
+  const timing = await measureScenario(runOnce);
+  Bun.gc(true);
+  const before = process.memoryUsage().heapUsed;
+  for (let run = 0; run < 5; run++) runOnce();
+  Bun.gc(true);
+  const retainedBytes = process.memoryUsage().heapUsed - before;
+  await reportScenario("query-oracle-script-substitution", {
+    statements: texts.length,
+    timing,
+    retainedBytes,
+  });
+  expect(substitute(texts[1], { defines: {}, marker: "&", escape: null }, values).text).toBe(
+    "SELECT name, '1;' FROM t_1 WHERE id = 1;",
+  );
+  expect(timing.p95Ms).toBeLessThan(150);
+  expect(retainedBytes).toBeLessThan(4 * 1024 * 1024);
+});
+
+test("the blank-line option keeps statement-at-cursor latency on a 5000-statement script", async () => {
+  const { statementAtOffset } = await import("../src/lib/sql-statements");
+  const sql = oracleScript(5000);
+  const offset = Math.floor(sql.length / 2);
+  const plain = await measureScenario(() => {
+    statementAtOffset(sql, offset, "oracle");
+  });
+  const blank = await measureScenario(() => {
+    statementAtOffset(sql, offset, "oracle", { blankLines: true });
+  });
+  const outline = await measureScenario(() => {
+    new QueryStatementOutlineCache().read(sql, "oracle", true);
+  });
+  const cache = new QueryStatementOutlineCache();
+  const entries = cache.read(sql, "oracle", true);
+  await reportScenario("query-statement-at-cursor-blank-lines", {
+    statements: entries.length,
+    sqlCharacters: sql.length,
+    plain,
+    blank,
+    outline,
+    retainedEntries: cache.retainedEntries,
+  });
+  expect(statementAtOffset(sql, offset, "oracle", { blankLines: true })).not.toBeNull();
+  expect(entries).toHaveLength(5000);
+  expect(cache.retainedEntries).toBe(0);
+  expect(blank.p95Ms).toBeLessThan(250);
+  expect(blank.medianMs).toBeLessThan(plain.medianMs * 2 + 10);
+  expect(outline.p95Ms).toBeLessThan(250);
+});

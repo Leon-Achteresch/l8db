@@ -1,11 +1,11 @@
 import { FilterXIcon, RefreshCwIcon } from "lucide-react";
-import { useDeferredValue } from "react";
+import { useCallback, useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
 import { AiFlash } from "@/features/automation/ai-flash";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
-import { TableFilterPanel } from "@/features/table/table-filter-panel";
+import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
@@ -24,9 +24,12 @@ type Props = Pick<
   | "stateKey"
   | "caps"
   | "tableRows"
+  | "rowOffset"
+  | "rowExtent"
+  | "onVisibleRowsChange"
   | "masked"
-  | "updateRowMutation"
-  | "insertRowMutation"
+  | "saveRow"
+  | "addRow"
   | "handleFilterChange"
   | "handleDeleteRow"
   | "handleRefresh"
@@ -47,7 +50,6 @@ type Props = Pick<
   | "sorting"
   | "setSorting"
   | "revealColumn"
-  | "page"
   | "setPage"
   | "addRowSignal"
 > & {
@@ -66,9 +68,12 @@ export function TableDataContent({
   stateKey,
   caps,
   tableRows,
+  rowOffset,
+  rowExtent,
+  onVisibleRowsChange,
   masked,
-  updateRowMutation,
-  insertRowMutation,
+  saveRow,
+  addRow,
   handleFilterChange,
   handleDeleteRow,
   handleRefresh,
@@ -89,7 +94,6 @@ export function TableDataContent({
   sorting,
   setSorting,
   revealColumn,
-  page,
   setPage,
   addRowSignal,
   schema,
@@ -97,6 +101,14 @@ export function TableDataContent({
   emptyMessage,
 }: Props) {
   const gridReady = useDeferredValue(!isLoading, false);
+  const redis = caps.query_language === "redis";
+  const handleSortingChange = useCallback<typeof setSorting>(
+    (update) => {
+      setSorting(update);
+      setPage(0);
+    },
+    [setSorting, setPage],
+  );
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -125,7 +137,7 @@ export function TableDataContent({
         className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
         data-tour="table-filter"
       >
-        <TableFilterPanel
+        <TableFilterBar
           key={stateKey}
           stateKey={stateKey}
           columns={data?.columns ?? []}
@@ -166,17 +178,14 @@ export function TableDataContent({
         <DataTable
           key={stateKey}
           stateKey={stateKey}
-          scrollIdentity={JSON.stringify([filter, filterRaw, sorting, page, rowLimit])}
+          scrollIdentity={JSON.stringify([filter, filterRaw, sorting, rowLimit])}
           className="h-full min-h-0 flex-1"
-          columns={data?.columns ?? []}
+          columns={data?.columns ?? NO_COLUMNS}
           data={tableRows}
           emptyMessage={emptyMessage}
           sorting={sorting}
-          sortableColumns={caps.query_language === "redis" ? ["key"] : undefined}
-          onSortingChange={(update) => {
-            setSorting(update);
-            setPage(0);
-          }}
+          sortableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
+          onSortingChange={handleSortingChange}
           isFetching={isFetching}
           onSaveRow={
             masked
@@ -187,14 +196,12 @@ export function TableDataContent({
                   : saveRedisRow
                 : isView || !caps.row_edit
                   ? undefined
-                  : async (ctid, updates, oldValues) => {
-                      await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
-                    }
+                  : saveRow
           }
           canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
           cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
           emptyEditValue={caps.query_language === "redis" ? "" : undefined}
-          filterableColumns={caps.query_language === "redis" ? ["key"] : undefined}
+          filterableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
           compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
           filterOperators={caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined}
           filterPrefix={
@@ -206,22 +213,19 @@ export function TableDataContent({
           }
           onApplyFilter={handleFilterChange}
           revealColumn={revealColumn}
-          page={page}
+          rowOffset={rowOffset}
+          rowExtent={rowExtent}
+          onVisibleRowsChange={onVisibleRowsChange}
           totalCount={totalCount ?? undefined}
           countLabel={countLabel}
           onExactCount={handleExactCount}
           pageSize={rowLimit}
-          onPageChange={setPage}
           foreignKeys={foreignKeys}
           currentSchema={schema}
           currentTable={table}
           onNavigateToTable={handleNavigateToTable}
           onInsertRow={
-            masked || isView || !caps.row_edit || connection?.readOnly
-              ? undefined
-              : async (values) => {
-                  await insertRowMutation.mutateAsync(values);
-                }
+            masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
           }
           onDeleteRow={masked || isView || !caps.row_edit ? undefined : handleDeleteRow}
           columnDetails={columnDetails}
@@ -233,3 +237,6 @@ export function TableDataContent({
     </div>
   );
 }
+
+const NO_COLUMNS: string[] = [];
+const REDIS_KEY_COLUMNS = ["key"];

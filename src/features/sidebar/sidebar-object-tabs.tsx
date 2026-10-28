@@ -10,6 +10,7 @@ export type SidebarObjectTab = {
   label: string;
   icon: LucideIcon;
   featureScope?: string;
+  disabledReason?: string | null;
 };
 
 export function SidebarObjectTabs({
@@ -19,7 +20,7 @@ export function SidebarObjectTabs({
 }: {
   tabs: SidebarObjectTab[];
   value: string;
-  onValueChange: (value: string) => void;
+  onValueChange: (value: string) => unknown;
 }) {
   const [shown, setShown] = useOptimistic(value);
   const seen = useSeenNewFeatures();
@@ -27,9 +28,9 @@ export function SidebarObjectTabs({
     <Tabs
       value={shown}
       onValueChange={(next) =>
-        startTransition(() => {
+        startTransition(async () => {
           setShown(next);
-          onValueChange(next);
+          await onValueChange(next);
         })
       }
     >
@@ -37,7 +38,7 @@ export function SidebarObjectTabs({
         {tabs.map((tab) => (
           <Tooltip
             key={tab.value}
-            content={tab.label}
+            content={tab.disabledReason ?? tab.label}
             side="bottom"
             wrapperClassName="h-full flex-1"
           >
@@ -45,6 +46,8 @@ export function SidebarObjectTabs({
               value={tab.value}
               className="relative h-full w-full px-0 transition-none"
               aria-label={tab.label}
+              disabled={Boolean(tab.disabledReason)}
+              title={tab.disabledReason ?? undefined}
             >
               <tab.icon className="size-4" />
               {hasNewFeatures(tab.featureScope, seen) ? (

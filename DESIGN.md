@@ -2,7 +2,7 @@
 name: l8db
 description: A fast native desktop database client whose quiet, hue-tinted workbench lets the data and the AI's figures carry the colour.
 colors:
-  primary: "oklch(0.4 0.12 248)"
+  primary: "oklch(0.4 0.045 248)"
   primary-foreground: "oklch(0.99 0.005 248)"
   ring: "oklch(0.5 0.06 248)"
   background: "oklch(0.975 0.004 248)"
@@ -19,11 +19,13 @@ colors:
   sidebar: "oklch(0.965 0.004 248)"
   sidebar-accent: "oklch(0.925 0.008 248)"
   destructive: "oklch(0.56 0.2 28)"
-  dark-background: "oklch(0.175 0.02 248)"
-  dark-card: "oklch(0.21 0.022 248)"
+  dark-background: "oklch(0.175 0.008 248)"
+  dark-card: "oklch(0.21 0.009 248)"
+  dark-sidebar: "oklch(0.19 0.008 248)"
+  dark-chrome-top: "oklch(0.215 0.018 248)"
   dark-foreground: "oklch(0.97 0.01 248)"
-  dark-primary: "oklch(0.78 0.14 248)"
-  dark-muted-foreground: "oklch(0.74 0.03 248)"
+  dark-primary: "oklch(0.78 0.065 248)"
+  dark-muted-foreground: "oklch(0.74 0.014 248)"
   access-read: "oklch(0.696 0.17 162.48)"
   access-write: "oklch(0.769 0.188 70.08)"
   access-schema: "oklch(0.637 0.237 25.331)"
@@ -225,15 +227,26 @@ A cool, hue-tinted neutral system with one navy voice and a small set of semanti
 - **Mist** (muted, secondary, accent): hover fills, segmented-control tracks, code and detail wells, table footers.
 - **Hairline** (border, input): every divider and outline.
 - **Rail** (sidebar, sidebar-accent): navigation rails and the AI history rail.
-- **Night ground** (dark-background, dark-card, dark-foreground, dark-muted-foreground): the dark theme; borders there are translucent white (12%, inputs 16%).
+- **Night ground** (dark-background, dark-card, dark-sidebar, dark-foreground, dark-muted-foreground): the dark theme, near-neutral with only a trace of the database hue; borders there are translucent white (12%, inputs 16%).
+- **Night chrome** (dark-chrome-top to dark-sidebar): header, nav rail, connection sidebar and the frame around the workspace share one top-to-bottom gradient in dark mode, see Database Theme.
 - **Signal Red** (destructive): errors, failed and denied stations, destructive buttons drawn as a 10% red wash with red text.
 
 ### Named Rules
-**The Tinted Neutral Rule.** Every solid neutral is an OKLCH value at `--db-hue` with chroma at or below 0.03. Translucent white or black borders and shadows are the only untinted values.
+**The Tinted Neutral Rule.** Every solid neutral is an OKLCH value at `--db-hue`, with chroma at or below 0.03 in light mode and at or below 0.015 in dark mode. Translucent white or black borders and shadows are the only untinted values.
 
 **The Access Is Colour Rule.** Emerald, amber and red mean read, write and schema/production access in the AI. They are never used decoratively elsewhere on an AI surface.
 
 **The Shared Figure Palette Rule.** Charts draw series colours from the shared figure palette, in order, so the same result looks the same in a figure, the shelf and a dashboard.
+
+## Database Theme
+
+Each database family and provider has a theme entry in `src/lib/db-theme.ts` (`hue`, `chroma`, `glow`, three shader colours). `DbThemeRoot` writes them to `:root` as `--db-hue`, `--db-chroma` (capped at 0.045), `--db-glow` (capped at 0.05) and `--db-shader-1..3`; the connection editor previews a theme before it is saved.
+
+- **Light mode:** the hue tints every neutral faintly; the primary carries the most colour.
+- **Dark mode:** neutrals stay nearly grey (chroma 0.008 to 0.014). The hue shows only in the primary, the focus ring and the chrome gradient.
+- **Chrome gradient** (`--chrome-gradient`, dark only): `linear-gradient(180deg, oklch(0.215 0.018 hue), var(--sidebar) 70%)`, painted with `background-attachment: fixed` on every `bg-sidebar` surface, so header, nav rail, connection sidebar and its sticky list headers share one seamless gradient. The workspace itself stays flat.
+
+**The Quiet Night Rule.** In dark mode the database colour is a hint at the top of the window, never a coloured surface. New dark surfaces use `--sidebar`, `--background` or `--card`, not a hue with more chroma.
 
 ## Typography
 
@@ -269,7 +282,7 @@ AI panel: a 48px header (title, new, history, one overflow menu, close), an unde
 
 ## Elevation & Depth
 
-Depth is mostly tonal: card and popover sit a few lightness points above the ground, and hairline borders do the separating. Shadows exist but stay faint and wide, with a 1px inner highlight on cards and inputs in light mode. Dark mode replaces shadow cues with a faint top-down gradient on the shell bezel.
+Depth is mostly tonal: card and popover sit a few lightness points above the ground, and hairline borders do the separating. Shadows exist but stay faint and wide, with a 1px inner highlight on cards and inputs in light mode. Dark mode replaces shadow cues with faint top-down gradients on the shell bezel and the app chrome (see Database Theme).
 
 ### Shadow Vocabulary
 - **Hairline lift** (`box-shadow: 0 1px 2px oklch(0 0 0 / 4%)`): figure cards at rest.
@@ -339,6 +352,7 @@ A bordered 15px card with hairline-divided rows, each a 13px question behind a c
 
 ### Do:
 - **Do** derive every new neutral from `--db-hue` in OKLCH so the surface follows the active database.
+- **Do** use `bg-sidebar` for chrome surfaces so they join the dark chrome gradient.
 - **Do** reserve Bench Navy for focus, selection, the primary action and figure labels.
 - **Do** number every AI chart or table as "Abb. n" and send it to the results shelf.
 - **Do** show the AI's access level as the composer's tinted top edge, with production writes always red.
@@ -352,4 +366,5 @@ A bordered 15px card with hairline-divided rows, each a 13px question behind a c
 - **Don't** set prose, labels or buttons in monospace.
 - **Don't** let AI answer text run wider than the 704px reading measure.
 - **Don't** introduce radii that are not multiples of `--radius`.
+- **Don't** raise dark-mode neutral chroma above 0.015 or fill dark surfaces with the database hue.
 - **Don't** put heavy shadows on resting surfaces; strong shadows belong to toasts and floating menus.

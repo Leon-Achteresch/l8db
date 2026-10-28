@@ -1,3 +1,4 @@
+import { CornerDownRight } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
@@ -39,10 +40,17 @@ export function CommandPaletteOption({
       className={cn(
         "relative isolate flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
         isActive ? "text-foreground" : "text-muted-foreground",
+        item.parentId && "pl-4",
       )}
     >
       {isActive ? (
         <span aria-hidden className="absolute inset-0 z-0 rounded-md bg-primary/[0.05]" />
+      ) : null}
+      {item.parentId ? (
+        <CornerDownRight
+          aria-hidden
+          className="relative z-10 -mr-1.5 h-3.5 w-3.5 shrink-0 opacity-60"
+        />
       ) : null}
       {Icon ? (
         <Icon className="relative z-10 h-4 w-4" />

@@ -273,7 +273,9 @@ async fn import(
         pool,
         &request,
     )
-    .await?;
+    .await;
+    server.lock().await.forget_catalog(&writable);
+    let outcome = outcome?;
     if let Some(error) = outcome.error {
         return Err(format!(
             "Tabelle {table} wurde angelegt, der Import brach aber ab: {error}"

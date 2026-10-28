@@ -1,13 +1,25 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio_util::io::ReaderStream;
 
 const TOKEN_ACCOUNT: &str = "baas:supabase:access-token";
 const KEY_INDEX_ACCOUNT: &str = "baas:supabase:project-key-index";
+const SELF_HOSTED_ACCOUNT: &str = "baas:supabase:self-hosted";
+const SELF_HOSTED_PREFIX: &str = "self-";
+const PUBLIC_REST_HEALTH: &str = "rest/v1/l8db_health_probe?limit=0";
+const PUBLIC_TABLE_LIST: &str = "Mit Publishable/anon Key oder über eine Supabase-Cloud-URL gibt Supabase keine Tabellenliste heraus. Öffne eine Tabelle über ihren Namen, verbinde selbst gehostet mit einem Secret Key oder Supabase Cloud mit einem Zugangstoken.";
+const SELF_HOSTED_HEALTH: [(&str, &str); 5] = [
+    ("auth", "auth/v1/health"),
+    ("db", "pg/health"),
+    ("realtime", "realtime/v1/api/ping"),
+    ("rest", "rest/v1/"),
+    ("storage", "storage/v1/status"),
+];
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -18,7 +30,10 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
-fn project_api_auth(request: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+pub(crate) fn project_api_auth(
+    request: reqwest::RequestBuilder,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
     let request = request.header("apikey", api_key);
     if api_key.starts_with("eyJ") && api_key.split('.').count() == 3 {
         request.bearer_auth(api_key)
@@ -27,26 +42,65 @@ fn project_api_auth(request: reqwest::RequestBuilder, api_key: &str) -> reqwest:
     }
 }
 
-fn validate_project_secret_key(api_key: &str) -> Result<(), String> {
-    if api_key.starts_with("sb_secret_") && api_key.len() > "sb_secret_".len() {
-        return Ok(());
-    }
+fn jwt_role(api_key: &str) -> Option<String> {
     let parts = api_key.split('.').collect::<Vec<_>>();
     if parts.len() != 3 || !parts[0].starts_with("eyJ") || parts[2].is_empty() {
-        return Err("Ein Supabase Secret API Key oder service_role Key wird benötigt.".into());
+        return None;
     }
     let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(parts[1])
         .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
-    if claims.as_ref().and_then(|value| value["role"].as_str()) == Some("service_role") {
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())?;
+    claims["role"].as_str().map(str::to_string)
+}
+
+fn validate_project_secret_key(api_key: &str) -> Result<(), String> {
+    if api_key.starts_with("sb_secret_") && api_key.len() > "sb_secret_".len()
+        || jwt_role(api_key).as_deref() == Some("service_role")
+    {
         Ok(())
     } else {
         Err("Ein Supabase Secret API Key oder service_role Key wird benötigt.".into())
     }
 }
 
-fn validate_ref(reference: &str) -> Result<&str, String> {
+fn project_key_is_secret(api_key: &str) -> Result<bool, String> {
+    if validate_project_secret_key(api_key).is_ok() {
+        return Ok(true);
+    }
+    if api_key.starts_with("sb_publishable_") && api_key.len() > "sb_publishable_".len()
+        || jwt_role(api_key).as_deref() == Some("anon")
+    {
+        return Ok(false);
+    }
+    Err("Erwartet wird ein Publishable Key, anon Key, Secret API Key oder service_role Key.".into())
+}
+
+fn env_value(raw: &str) -> &str {
+    let raw = raw.trim();
+    let value = match raw.split_once('=') {
+        Some((name, value))
+            if !name.is_empty()
+                && name.bytes().all(|byte| {
+                    byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_'
+                }) =>
+        {
+            value.trim()
+        }
+        _ => raw,
+    };
+    value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
+        .unwrap_or(value)
+}
+
+pub(crate) fn validate_ref(reference: &str) -> Result<&str, String> {
     if reference.is_empty()
         || reference.len() > 80
         || !reference
@@ -58,11 +112,138 @@ fn validate_ref(reference: &str) -> Result<&str, String> {
     Ok(reference)
 }
 
+pub(crate) fn is_self_hosted(reference: &str) -> bool {
+    reference.starts_with(SELF_HOSTED_PREFIX)
+}
+
+fn self_hosted_base_url(raw: &str) -> Result<reqwest::Url, String> {
+    crate::baas_file::origin_url(raw, "Supabase", "https://supabase.example.com")
+}
+
+pub(crate) fn cloud_ref(reference: &str) -> Result<&str, String> {
+    let reference = validate_ref(reference)?;
+    if is_self_hosted(reference) {
+        return Err("Bei selbst gehosteten Supabase-Instanzen nicht verfügbar.".into());
+    }
+    Ok(reference)
+}
+
+fn self_hosted_reference(url: &reqwest::Url) -> String {
+    let digest = Sha256::digest(url.as_str().as_bytes());
+    let hex: String = digest[..8]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("{SELF_HOSTED_PREFIX}{hex}")
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct SelfHostedProject {
+    pub(crate) reference: String,
+    pub(crate) name: String,
+    pub(crate) url: String,
+    #[serde(default = "secret_key_default")]
+    pub(crate) secret_key: bool,
+}
+
+fn secret_key_default() -> bool {
+    true
+}
+
+impl From<SelfHostedProject> for SupabaseProject {
+    fn from(project: SelfHostedProject) -> Self {
+        SupabaseProject {
+            id: project.reference.clone(),
+            reference: project.reference,
+            name: project.name,
+            region: None,
+            status: Some(
+                if project.secret_key {
+                    "Secret Key"
+                } else {
+                    "Publishable Key"
+                }
+                .into(),
+            ),
+            organization_id: None,
+            database: None,
+            self_hosted: true,
+            api_url: Some(project.url),
+            secret_key: project.secret_key,
+        }
+    }
+}
+
+async fn self_hosted_projects() -> Result<Vec<SelfHostedProject>, String> {
+    match crate::db::secrets::load_secret(SELF_HOSTED_ACCOUNT.to_string()).await? {
+        Some(raw) => serde_json::from_str(&raw)
+            .map_err(|_| "Ungültiger Index selbst gehosteter Supabase-Instanzen.".into()),
+        None => Ok(Vec::new()),
+    }
+}
+
+async fn save_self_hosted_projects(projects: &[SelfHostedProject]) -> Result<(), String> {
+    crate::db::secrets::store_secret(
+        SELF_HOSTED_ACCOUNT.to_string(),
+        serde_json::to_string(projects)
+            .map_err(|_| "Supabase-Instanzen konnten nicht gespeichert werden.")?,
+    )
+    .await
+}
+
+pub(crate) async fn self_hosted_project(reference: &str) -> Result<SelfHostedProject, String> {
+    self_hosted_projects()
+        .await?
+        .into_iter()
+        .find(|project| project.reference == reference)
+        .ok_or_else(|| "Selbst gehostete Supabase-Instanz nicht gefunden.".to_string())
+}
+
+impl SelfHostedProject {
+    pub(crate) fn pg_meta(&self) -> bool {
+        self.secret_key
+            && self_hosted_base_url(&self.url)
+                .map(|base| cloud_reference_of(&base).is_none())
+                .unwrap_or(false)
+    }
+}
+
+pub(crate) async fn uses_pg_meta(reference: &str) -> Result<bool, String> {
+    Ok(!is_self_hosted(reference) || self_hosted_project(reference).await?.pg_meta())
+}
+
+fn cloud_reference_of(base: &reqwest::Url) -> Option<&str> {
+    base.host_str()?
+        .strip_suffix(".supabase.co")
+        .filter(|reference| {
+            reference.len() == 20
+                && reference
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
+}
+
+fn cloud_project_url(reference: &str) -> Result<reqwest::Url, String> {
+    reqwest::Url::parse(&format!("https://{reference}.supabase.co/"))
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())
+}
+
+pub(crate) async fn project_url(reference: &str, path: &str) -> Result<reqwest::Url, String> {
+    let reference = validate_ref(reference)?;
+    let base = if is_self_hosted(reference) {
+        self_hosted_base_url(&self_hosted_project(reference).await?.url)?
+    } else {
+        cloud_project_url(reference)?
+    };
+    base.join(path)
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())
+}
+
 fn project_key_account(reference: &str) -> String {
     format!("baas:supabase:{reference}:project-key")
 }
 
-fn validate_object_key(key: &str) -> Result<&str, String> {
+pub(crate) fn validate_object_key(key: &str) -> Result<&str, String> {
     if key.is_empty()
         || key.len() > 1024
         || key.contains('\\')
@@ -75,7 +256,7 @@ fn validate_object_key(key: &str) -> Result<&str, String> {
     Ok(key)
 }
 
-fn validate_bucket(bucket: &str) -> Result<&str, String> {
+pub(crate) fn validate_bucket(bucket: &str) -> Result<&str, String> {
     if bucket.is_empty()
         || bucket.len() > 256
         || bucket.contains('/')
@@ -107,14 +288,14 @@ async fn save_project_key_index(references: &[String]) -> Result<(), String> {
     .await
 }
 
-async fn token() -> Result<String, String> {
+pub(crate) async fn token() -> Result<String, String> {
     crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
         .await?
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "Supabase ist noch nicht verbunden.".to_string())
 }
 
-async fn response_json<T: serde::de::DeserializeOwned>(
+pub(crate) async fn response_json<T: serde::de::DeserializeOwned>(
     response: reqwest::Response,
 ) -> Result<T, String> {
     let status = response.status();
@@ -134,7 +315,7 @@ async fn response_json<T: serde::de::DeserializeOwned>(
         .map_err(|_| "Supabase hat unerwartete Daten geliefert.".into())
 }
 
-async fn management_get<T: serde::de::DeserializeOwned>(
+pub(crate) async fn management_get<T: serde::de::DeserializeOwned>(
     access_token: &str,
     path: &str,
 ) -> Result<T, String> {
@@ -148,12 +329,23 @@ async fn management_get<T: serde::de::DeserializeOwned>(
     response_json(response).await
 }
 
-async fn management_query<T: serde::de::DeserializeOwned>(
+pub(crate) async fn database_query<T: serde::de::DeserializeOwned>(
     reference: &str,
     query: &str,
     parameters: &[serde_json::Value],
 ) -> Result<Vec<T>, String> {
     let reference = validate_ref(reference)?;
+    if is_self_hosted(reference) {
+        let response = project_api_auth(
+            client().post(project_url(reference, "pg/query").await?),
+            &project_secret_key(reference).await?,
+        )
+        .json(&serde_json::json!({"query": query, "parameters": parameters}))
+        .send()
+        .await
+        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+        return response_json(response).await;
+    }
     let response = client()
         .post(format!(
             "https://api.supabase.com/v1/projects/{reference}/database/query"
@@ -170,7 +362,34 @@ async fn management_query<T: serde::de::DeserializeOwned>(
     response_json(response).await
 }
 
-fn quote_identifier(value: &str) -> Result<String, String> {
+pub(crate) async fn database_execute(
+    reference: &str,
+    query: &str,
+    parameters: &[serde_json::Value],
+) -> Result<Vec<serde_json::Value>, String> {
+    let reference = validate_ref(reference)?;
+    if !uses_pg_meta(reference).await? {
+        return Err(
+            "SQL ist nur mit Secret Key (selbst gehostet) oder Supabase-Zugangstoken möglich."
+                .into(),
+        );
+    }
+    if is_self_hosted(reference) {
+        return database_query(reference, query, parameters).await;
+    }
+    let response = client()
+        .post(format!(
+            "https://api.supabase.com/v1/projects/{reference}/database/query"
+        ))
+        .bearer_auth(token().await?)
+        .json(&serde_json::json!({"query": query, "parameters": parameters}))
+        .send()
+        .await
+        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+pub(crate) fn quote_identifier(value: &str) -> Result<String, String> {
     if value.is_empty() || value.len() > 128 || value.contains('\0') {
         return Err("Ungültiger Datenbankname.".into());
     }
@@ -204,6 +423,12 @@ pub struct SupabaseProject {
     pub status: Option<String>,
     pub organization_id: Option<String>,
     pub database: Option<SupabaseDatabase>,
+    #[serde(default)]
+    pub self_hosted: bool,
+    #[serde(default)]
+    pub api_url: Option<String>,
+    #[serde(default)]
+    pub secret_key: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -368,11 +593,89 @@ pub async fn supabase_connect(access_token: String) -> Result<Vec<SupabaseProjec
 }
 
 #[tauri::command]
+pub async fn supabase_connect_self_hosted(
+    url: String,
+    api_key: String,
+    name: String,
+) -> Result<SupabaseProject, String> {
+    let base = self_hosted_base_url(env_value(&url))?;
+    let api_key = env_value(&api_key);
+    let secret_key = project_key_is_secret(api_key)?;
+    let response = project_api_auth(
+        client().get(
+            base.join("auth/v1/settings")
+                .map_err(|_| "Ungültige Supabase-URL.".to_string())?,
+        ),
+        api_key,
+    )
+    .send()
+    .await
+    .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+    let _: serde_json::Value = response_json(response).await?;
+    let name = name.trim();
+    if name.chars().count() > 100 {
+        return Err("Der Name darf höchstens 100 Zeichen lang sein.".into());
+    }
+    let project = SelfHostedProject {
+        reference: self_hosted_reference(&base),
+        name: if name.is_empty() {
+            format!(
+                "Supabase {}",
+                &base[url::Position::BeforeHost..url::Position::AfterPort]
+            )
+        } else {
+            name.to_string()
+        },
+        url: base.to_string(),
+        secret_key,
+    };
+    crate::db::secrets::store_secret(project_key_account(&project.reference), api_key.to_string())
+        .await?;
+    let mut references = project_key_index().await?;
+    if !references.contains(&project.reference) {
+        references.push(project.reference.clone());
+        save_project_key_index(&references).await?;
+    }
+    let mut projects = self_hosted_projects().await?;
+    projects.retain(|item| item.reference != project.reference);
+    projects.push(project.clone());
+    save_self_hosted_projects(&projects).await?;
+    Ok(project.into())
+}
+
+#[tauri::command]
+pub async fn supabase_disconnect_self_hosted(reference: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    if !is_self_hosted(reference) {
+        return Err("Keine selbst gehostete Supabase-Instanz.".into());
+    }
+    let mut projects = self_hosted_projects().await?;
+    if !projects.iter().any(|item| item.reference == reference) {
+        return Err("Selbst gehostete Supabase-Instanz nicht gefunden.".into());
+    }
+    crate::db::secrets::delete_secret(project_key_account(reference)).await?;
+    let references = project_key_index().await?;
+    save_project_key_index(
+        &references
+            .into_iter()
+            .filter(|entry| entry != reference)
+            .collect::<Vec<_>>(),
+    )
+    .await?;
+    projects.retain(|item| item.reference != reference);
+    save_self_hosted_projects(&projects).await
+}
+
+#[tauri::command]
 pub async fn supabase_disconnect() -> Result<(), String> {
-    for reference in project_key_index().await? {
+    let (self_hosted, cloud): (Vec<_>, Vec<_>) = project_key_index()
+        .await?
+        .into_iter()
+        .partition(|reference| is_self_hosted(reference));
+    for reference in cloud {
         crate::db::secrets::delete_secret(project_key_account(&reference)).await?;
     }
-    crate::db::secrets::delete_secret(KEY_INDEX_ACCOUNT.to_string()).await?;
+    save_project_key_index(&self_hosted).await?;
     crate::db::secrets::delete_secret(TOKEN_ACCOUNT.to_string()).await
 }
 
@@ -380,12 +683,26 @@ pub async fn supabase_disconnect() -> Result<(), String> {
 pub async fn supabase_is_connected() -> Result<bool, String> {
     Ok(crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
         .await?
-        .is_some())
+        .is_some()
+        || !self_hosted_projects().await?.is_empty())
 }
 
 #[tauri::command]
 pub async fn supabase_projects() -> Result<Vec<SupabaseProject>, String> {
-    management_get(&token().await?, "projects").await
+    let projects = match crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
+        .await?
+        .filter(|value| !value.is_empty())
+    {
+        Some(token) => management_get(&token, "projects").await,
+        None => Ok(Vec::new()),
+    };
+    let self_hosted = self_hosted_projects().await?;
+    if self_hosted.is_empty() {
+        return projects;
+    }
+    let mut projects = projects.unwrap_or_default();
+    projects.extend(self_hosted.into_iter().map(SupabaseProject::from));
+    Ok(projects)
 }
 
 #[derive(Deserialize)]
@@ -441,6 +758,18 @@ pub async fn supabase_database_endpoint(
     reference: String,
 ) -> Result<SupabaseDatabaseEndpoint, String> {
     let reference = validate_ref(&reference)?;
+    if is_self_hosted(reference) {
+        let base = self_hosted_base_url(&self_hosted_project(reference).await?.url)?;
+        if let Some(cloud) = cloud_reference_of(&base) {
+            return Ok(database_endpoint(cloud, Vec::new()));
+        }
+        return Ok(SupabaseDatabaseEndpoint {
+            host: base.host_str().unwrap_or("localhost").to_string(),
+            port: 5432,
+            user: "postgres.your-tenant-id".into(),
+            database: "postgres".into(),
+        });
+    }
     let configs = management_get(
         &token().await?,
         &format!("projects/{reference}/config/database/pooler"),
@@ -453,6 +782,16 @@ pub async fn supabase_database_endpoint(
 #[tauri::command]
 pub async fn supabase_buckets(reference: String) -> Result<Vec<SupabaseBucket>, String> {
     let reference = validate_ref(&reference)?;
+    if is_self_hosted(reference) {
+        let response = project_api_auth(
+            client().get(project_url(reference, "storage/v1/bucket").await?),
+            &project_secret_key(reference).await?,
+        )
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+        return response_json(response).await;
+    }
     management_get(
         &token().await?,
         &format!("projects/{reference}/storage/buckets"),
@@ -460,13 +799,12 @@ pub async fn supabase_buckets(reference: String) -> Result<Vec<SupabaseBucket>, 
     .await
 }
 
-fn bucket_details_url(reference: &str, bucket: &str) -> Result<reqwest::Url, String> {
-    let reference = validate_ref(reference)?;
+async fn bucket_details_url(reference: &str, bucket: &str) -> Result<reqwest::Url, String> {
+    bucket_url(project_url(reference, "storage/v1/bucket").await?, bucket)
+}
+
+fn bucket_url(mut url: reqwest::Url, bucket: &str) -> Result<reqwest::Url, String> {
     let bucket = validate_bucket(bucket)?;
-    let mut url = reqwest::Url::parse(&format!(
-        "https://{reference}.supabase.co/storage/v1/bucket"
-    ))
-    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(bucket);
@@ -486,7 +824,7 @@ pub async fn supabase_bucket_details(
             "Für Bucket-Details wird ein Supabase Secret API Key benötigt.".to_string()
         })?;
     let response = project_api_auth(
-        client().get(bucket_details_url(reference, bucket)?),
+        client().get(bucket_details_url(reference, bucket).await?),
         &api_key,
     )
     .send()
@@ -499,7 +837,7 @@ pub async fn supabase_bucket_details(
     Ok(details)
 }
 
-async fn project_secret_key(reference: &str) -> Result<String, String> {
+pub(crate) async fn project_secret_key(reference: &str) -> Result<String, String> {
     crate::db::secrets::load_secret(project_key_account(reference))
         .await?
         .ok_or_else(|| "Für diese Aktion wird ein Supabase Secret API Key benötigt.".into())
@@ -515,7 +853,7 @@ pub async fn supabase_create_bucket(
     let name = validate_bucket(&name)?;
     let key = project_secret_key(reference).await?;
     let response = project_api_auth(
-        client().post(format!("https://{reference}.supabase.co/storage/v1/bucket")),
+        client().post(project_url(reference, "storage/v1/bucket").await?),
         &key,
     )
     .json(&serde_json::json!({"name": name, "id": name, "public": public}))
@@ -540,11 +878,14 @@ pub async fn supabase_update_bucket_public(
     let reference = validate_ref(&reference)?;
     let bucket = validate_bucket(&bucket)?;
     let key = project_secret_key(reference).await?;
-    let response = project_api_auth(client().put(bucket_details_url(reference, bucket)?), &key)
-        .json(&serde_json::json!({"public": public}))
-        .send()
-        .await
-        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let response = project_api_auth(
+        client().put(bucket_details_url(reference, bucket).await?),
+        &key,
+    )
+    .json(&serde_json::json!({"public": public}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
         return Err(format!(
             "Supabase HTTP {}: Bucket konnte nicht geändert werden.",
@@ -560,7 +901,7 @@ pub async fn supabase_delete_bucket(reference: String, bucket: String) -> Result
     let bucket = validate_bucket(&bucket)?;
     let key = project_secret_key(reference).await?;
     let response = project_api_auth(
-        client().delete(bucket_details_url(reference, bucket)?),
+        client().delete(bucket_details_url(reference, bucket).await?),
         &key,
     )
     .send()
@@ -577,13 +918,13 @@ pub async fn supabase_delete_bucket(reference: String, bucket: String) -> Result
 
 #[tauri::command]
 pub async fn supabase_functions(reference: String) -> Result<Vec<SupabaseFunction>, String> {
-    let reference = validate_ref(&reference)?;
+    let reference = cloud_ref(&reference)?;
     management_get(&token().await?, &format!("projects/{reference}/functions")).await
 }
 
 #[tauri::command]
 pub async fn supabase_delete_function(reference: String, slug: String) -> Result<(), String> {
-    let reference = validate_ref(&reference)?;
+    let reference = cloud_ref(&reference)?;
     if slug.is_empty()
         || slug.len() > 128
         || !slug
@@ -612,6 +953,45 @@ pub async fn supabase_delete_function(reference: String, slug: String) -> Result
 #[tauri::command]
 pub async fn supabase_health(reference: String) -> Result<Vec<SupabaseServiceHealth>, String> {
     let reference = validate_ref(&reference)?;
+    if is_self_hosted(reference) {
+        let key = project_secret_key(reference).await?;
+        let project = self_hosted_project(reference).await?;
+        let base = self_hosted_base_url(&project.url)?;
+        let mut checks = Vec::new();
+        for (name, path) in SELF_HOSTED_HEALTH {
+            if name == "db" && !project.pg_meta() {
+                continue;
+            }
+            let public_rest = name == "rest" && !project.pg_meta();
+            let url = base
+                .join(if public_rest {
+                    PUBLIC_REST_HEALTH
+                } else {
+                    path
+                })
+                .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+            let key = key.clone();
+            checks.push(async move {
+                let status = match project_api_auth(client().get(url), &key).send().await {
+                    Ok(response) if response.status().is_success() => None,
+                    Ok(response) if public_rest && response.status().as_u16() == 404 => {
+                        match response.text().await {
+                            Ok(body) if body.contains("PGRST") => None,
+                            _ => Some("HTTP 404".to_string()),
+                        }
+                    }
+                    Ok(response) => Some(format!("HTTP {}", response.status().as_u16())),
+                    Err(_) => Some("Nicht erreichbar".to_string()),
+                };
+                SupabaseServiceHealth {
+                    name: name.to_string(),
+                    healthy: status.is_none(),
+                    status: status.unwrap_or_else(|| "ACTIVE_HEALTHY".into()),
+                }
+            });
+        }
+        return Ok(futures_util::future::join_all(checks).await);
+    }
     management_get(
         &token().await?,
         &format!("projects/{reference}/health?services=auth&services=db&services=pooler&services=realtime&services=rest&services=storage"),
@@ -621,7 +1001,7 @@ pub async fn supabase_health(reference: String) -> Result<Vec<SupabaseServiceHea
 
 #[tauri::command]
 pub async fn supabase_backups(reference: String) -> Result<SupabaseBackups, String> {
-    let reference = validate_ref(&reference)?;
+    let reference = cloud_ref(&reference)?;
     management_get(
         &token().await?,
         &format!("projects/{reference}/database/backups"),
@@ -634,10 +1014,13 @@ pub async fn supabase_tables(reference: String, offset: u32) -> Result<SupabaseT
     if offset > 100_000 {
         return Err("Ungültiger Tabellen-Offset.".into());
     }
+    if !uses_pg_meta(validate_ref(&reference)?).await? {
+        return Err(PUBLIC_TABLE_LIST.into());
+    }
     let query = format!(
         "SELECT table_schema AS schema, table_name AS name, table_type AS kind FROM information_schema.tables WHERE table_schema <> 'information_schema' AND left(table_schema, 3) <> 'pg_' ORDER BY table_schema, table_name LIMIT 101 OFFSET {offset}"
     );
-    let mut tables = management_query(&reference, &query, &[]).await?;
+    let mut tables = database_query(&reference, &query, &[]).await?;
     let has_more = tables.len() > 100;
     tables.truncate(100);
     Ok(SupabaseTablesPage { tables, has_more })
@@ -651,7 +1034,10 @@ pub async fn supabase_table_columns(
 ) -> Result<Vec<SupabaseColumn>, String> {
     quote_identifier(&schema)?;
     quote_identifier(&table)?;
-    management_query(
+    if !uses_pg_meta(validate_ref(&reference)?).await? {
+        return Ok(Vec::new());
+    }
+    database_query(
         &reference,
         "SELECT column_name AS name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
         &[serde_json::json!(schema), serde_json::json!(table)],
@@ -667,7 +1053,11 @@ pub async fn supabase_table_rows(
     offset: u32,
 ) -> Result<SupabaseRowsPage, String> {
     let query = table_rows_sql(&schema, &table, offset)?;
-    let mut rows = management_query(&reference, &query, &[]).await?;
+    let mut rows = if uses_pg_meta(validate_ref(&reference)?).await? {
+        database_query(&reference, &query, &[]).await?
+    } else {
+        data_api_rows(&reference, &schema, &table, offset).await?
+    };
     let has_more = rows.len() > 50;
     rows.truncate(50);
     let rows = rows
@@ -679,6 +1069,34 @@ pub async fn supabase_table_rows(
         })
         .collect();
     Ok(SupabaseRowsPage { rows, has_more })
+}
+
+async fn data_api_rows(
+    reference: &str,
+    schema: &str,
+    table: &str,
+    offset: u32,
+) -> Result<Vec<serde_json::Map<String, serde_json::Value>>, String> {
+    let mut url = project_url(reference, "rest/v1/").await?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .pop_if_empty()
+        .push(table);
+    url.query_pairs_mut()
+        .append_pair("select", "*")
+        .append_pair("limit", "51")
+        .append_pair("offset", &offset.to_string());
+    let response = project_api_auth(client().get(url), &project_secret_key(reference).await?)
+        .header("Accept-Profile", schema)
+        .send()
+        .await
+        .map_err(|error| format!("Supabase Data API ist nicht erreichbar: {error}"))?;
+    if matches!(response.status().as_u16(), 404 | 406) {
+        return Err(format!(
+            "Tabelle {schema}.{table} nicht gefunden oder nicht über die Data API freigegeben."
+        ));
+    }
+    response_json(response).await
 }
 
 #[tauri::command]
@@ -700,7 +1118,7 @@ pub async fn supabase_set_project_key(reference: String, api_key: String) -> Res
     }
     validate_project_secret_key(api_key)?;
     let response = project_api_auth(
-        client().get(format!("https://{reference}.supabase.co/storage/v1/bucket")),
+        client().get(project_url(reference, "storage/v1/bucket").await?),
         api_key,
     )
     .send()
@@ -718,7 +1136,7 @@ pub async fn supabase_set_project_key(reference: String, api_key: String) -> Res
 
 #[tauri::command]
 pub async fn supabase_import_project_key(reference: String) -> Result<(), String> {
-    let reference = validate_ref(&reference)?;
+    let reference = cloud_ref(&reference)?;
     let keys: Vec<SupabaseApiKey> = management_get(
         &token().await?,
         &format!("projects/{reference}/api-keys?reveal=true"),
@@ -756,10 +1174,7 @@ pub async fn supabase_objects(
         .ok_or_else(|| {
             "Für die Dateiliste wird ein Supabase Secret API Key benötigt.".to_string()
         })?;
-    let mut url = reqwest::Url::parse(&format!(
-        "https://{reference}.supabase.co/storage/v1/object/list"
-    ))
-    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    let mut url = project_url(reference, "storage/v1/object/list").await?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(bucket);
@@ -790,10 +1205,7 @@ async fn object_response(
         .ok_or_else(|| {
             "Für die Dateivorschau wird ein Supabase Secret API Key benötigt.".to_string()
         })?;
-    let mut url = reqwest::Url::parse(&format!(
-        "https://{reference}.supabase.co/storage/v1/object/authenticated"
-    ))
-    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    let mut url = project_url(reference, "storage/v1/object/authenticated").await?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(bucket)
@@ -869,10 +1281,7 @@ pub async fn supabase_upload_object(
         .and_then(|name| name.to_str())
         .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
     let object_key = validate_object_key(&format!("{prefix}{name}"))?.to_string();
-    let mut url = reqwest::Url::parse(&format!(
-        "https://{reference}.supabase.co/storage/v1/object"
-    ))
-    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    let mut url = project_url(reference, "storage/v1/object").await?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(bucket)
@@ -893,10 +1302,7 @@ pub async fn supabase_delete_object(
     let api_key = crate::db::secrets::load_secret(project_key_account(reference))
         .await?
         .ok_or_else(|| "Für das Löschen wird ein Supabase Secret API Key benötigt.".to_string())?;
-    let mut url = reqwest::Url::parse(&format!(
-        "https://{reference}.supabase.co/storage/v1/object"
-    ))
-    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    let mut url = project_url(reference, "storage/v1/object").await?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(bucket)
@@ -929,9 +1335,7 @@ pub async fn supabase_move_object(
             "Für das Verschieben wird ein Supabase Secret API Key benötigt.".to_string()
         })?;
     let response = project_api_auth(
-        client().post(format!(
-            "https://{reference}.supabase.co/storage/v1/object/move"
-        )),
+        client().post(project_url(reference, "storage/v1/object/move").await?),
         &api_key,
     )
     .json(&serde_json::json!({
@@ -992,9 +1396,7 @@ pub async fn supabase_auth_users(
         .await?
         .ok_or_else(|| "Für Auth wird ein Supabase Secret API Key benötigt.".to_string())?;
     let response = project_api_auth(
-        client().get(format!(
-            "https://{reference}.supabase.co/auth/v1/admin/users"
-        )),
+        client().get(project_url(reference, "auth/v1/admin/users").await?),
         &api_key,
     )
     .query(&[("page", page), ("per_page", 50)])
@@ -1043,9 +1445,7 @@ pub async fn supabase_create_auth_user(
     }
     let key = project_secret_key(reference).await?;
     let response = project_api_auth(
-        client().post(format!(
-            "https://{reference}.supabase.co/auth/v1/admin/users"
-        )),
+        client().post(project_url(reference, "auth/v1/admin/users").await?),
         &key,
     )
     .json(&serde_json::json!({"email": email, "password": password}))
@@ -1072,9 +1472,7 @@ pub async fn supabase_update_auth_user_email(
     let email = validate_auth_email(email.trim())?;
     let key = project_secret_key(reference).await?;
     let response = project_api_auth(
-        client().put(format!(
-            "https://{reference}.supabase.co/auth/v1/admin/users/{user_id}"
-        )),
+        client().put(project_url(reference, &format!("auth/v1/admin/users/{user_id}")).await?),
         &key,
     )
     .json(&serde_json::json!({"email": email}))
@@ -1096,9 +1494,7 @@ pub async fn supabase_delete_auth_user(reference: String, user_id: String) -> Re
     let user_id = validate_auth_user_id(&user_id)?;
     let key = project_secret_key(reference).await?;
     let response = project_api_auth(
-        client().delete(format!(
-            "https://{reference}.supabase.co/auth/v1/admin/users/{user_id}"
-        )),
+        client().delete(project_url(reference, &format!("auth/v1/admin/users/{user_id}")).await?),
         &key,
     )
     .send()
@@ -1116,9 +1512,11 @@ pub async fn supabase_delete_auth_user(reference: String, user_id: String) -> Re
 #[cfg(test)]
 mod tests {
     use super::{
-        bucket_details_url, client, database_endpoint, project_api_auth, select_project_key,
-        table_rows_sql, upload_file, validate_auth_email, validate_auth_user_id,
-        validate_object_key, validate_project_secret_key, validate_ref, SupabaseApiKey,
+        bucket_url, client, cloud_project_url, cloud_ref, cloud_reference_of, database_endpoint,
+        env_value, is_self_hosted, project_api_auth, project_key_is_secret, select_project_key,
+        self_hosted_base_url, self_hosted_reference, table_rows_sql, upload_file,
+        validate_auth_email, validate_auth_user_id, validate_object_key,
+        validate_project_secret_key, validate_ref, SelfHostedProject, SupabaseApiKey,
         SupabaseAuthUsersPage, SupabaseBackups, SupabaseBucket, SupabaseFunction, SupabaseObject,
         SupabasePoolerConfig, SupabaseProject, SupabaseServiceHealth,
     };
@@ -1231,6 +1629,37 @@ mod tests {
     }
 
     #[test]
+    fn project_keys_are_classified_and_env_lines_unwrapped() {
+        assert_eq!(project_key_is_secret("sb_secret_example"), Ok(true));
+        assert_eq!(project_key_is_secret("sb_publishable_example"), Ok(false));
+        assert_eq!(
+            project_key_is_secret("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.signature"),
+            Ok(false)
+        );
+        assert_eq!(
+            project_key_is_secret("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature"),
+            Ok(true)
+        );
+        assert!(project_key_is_secret("sb_publishable_").is_err());
+        assert!(project_key_is_secret("random").is_err());
+        assert_eq!(
+            env_value(" NEXT_PUBLIC_SUPABASE_URL=\"https://abc.supabase.co\" "),
+            "https://abc.supabase.co"
+        );
+        assert_eq!(env_value("KEY='sb_publishable_x'"), "sb_publishable_x");
+        assert_eq!(
+            env_value("https://abc.supabase.co"),
+            "https://abc.supabase.co"
+        );
+        let cloud = self_hosted_base_url("https://abcdefghijklmnopqrst.supabase.co").unwrap();
+        assert_eq!(cloud_reference_of(&cloud), Some("abcdefghijklmnopqrst"));
+        assert_eq!(
+            cloud_reference_of(&self_hosted_base_url("https://supabase.example.com").unwrap()),
+            None
+        );
+    }
+
+    #[test]
     fn project_key_validation_rejects_public_keys() {
         assert!(validate_project_secret_key("sb_secret_example").is_ok());
         assert!(validate_project_secret_key("sb_publishable_example").is_err());
@@ -1307,11 +1736,55 @@ mod tests {
 
     #[test]
     fn bucket_details_use_project_host_and_encode_bucket_id() {
-        let url = bucket_details_url("abcdefghijklmnopqrst", "photos & files").unwrap();
+        let base = cloud_project_url("abcdefghijklmnopqrst")
+            .unwrap()
+            .join("storage/v1/bucket")
+            .unwrap();
+        let url = bucket_url(base.clone(), "photos & files").unwrap();
         assert_eq!(url.host_str(), Some("abcdefghijklmnopqrst.supabase.co"));
         assert_eq!(url.path(), "/storage/v1/bucket/photos%20&%20files");
-        assert!(bucket_details_url("example.com", "photos").is_err());
-        assert!(bucket_details_url("abcdefghijklmnopqrst", "../auth").is_err());
+        assert!(bucket_url(base, "../auth").is_err());
+    }
+
+    #[test]
+    fn self_hosted_urls_are_origin_only_and_get_stable_references() {
+        assert!(self_hosted_base_url("http://localhost:8000").is_ok());
+        assert!(self_hosted_base_url("http://[::1]:8000").is_ok());
+        let base = self_hosted_base_url(" http://127.0.0.1:8000 ").unwrap();
+        assert_eq!(base.as_str(), "http://127.0.0.1:8000/");
+        assert_eq!(
+            base.join("storage/v1/bucket").unwrap().as_str(),
+            "http://127.0.0.1:8000/storage/v1/bucket"
+        );
+        let reference = self_hosted_reference(&base);
+        assert!(validate_ref(&reference).is_ok());
+        assert!(is_self_hosted(&reference));
+        assert!(cloud_ref(&reference).is_err());
+        assert!(cloud_ref("abcdefghijklmnopqrst").is_ok());
+        assert_eq!(reference, self_hosted_reference(&base));
+        assert_ne!(
+            reference,
+            self_hosted_reference(&self_hosted_base_url("https://supabase.example.com").unwrap())
+        );
+        for invalid in [
+            "ftp://example.com",
+            "http://user:pw@example.com",
+            "http://example.com/rest/v1",
+            "http://supabase.example.com:8000",
+            "http://example.com/?x=1",
+            "example.com",
+        ] {
+            assert!(self_hosted_base_url(invalid).is_err(), "{invalid}");
+        }
+        let project = |url: &str, secret_key| SelfHostedProject {
+            reference: String::new(),
+            name: String::new(),
+            url: url.into(),
+            secret_key,
+        };
+        assert!(project("http://127.0.0.1:8000", true).pg_meta());
+        assert!(!project("http://127.0.0.1:8000", false).pg_meta());
+        assert!(!project("https://abcdefghijklmnopqrst.supabase.co", true).pg_meta());
     }
 
     #[test]

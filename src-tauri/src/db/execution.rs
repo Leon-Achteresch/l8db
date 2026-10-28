@@ -70,6 +70,10 @@ where
     PROGRESS.scope(Arc::new(callback), future).await
 }
 
+pub fn active_cancellation() -> Option<CancellationToken> {
+    CONTEXT.try_with(|ctx| ctx.cancel.clone()).ok()
+}
+
 pub fn cancellation_token() -> CancellationToken {
     CONTEXT
         .try_with(|ctx| ctx.cancel.clone())
@@ -219,7 +223,7 @@ where
 {
     run(options, native_cancel, async {
         if native_cancel {
-            future.await
+            DEADLINE.scope(query_duration(), future).await
         } else {
             let deadline = query_duration();
             tokio::time::timeout(deadline, DEADLINE.scope(deadline, future))

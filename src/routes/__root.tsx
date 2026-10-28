@@ -29,6 +29,12 @@ const FeatureVideoHost = lazy(() =>
   })),
 );
 
+const BlogSuggestionHost = lazy(() =>
+  import("@/features/updates/blog-suggestion-host").then(({ BlogSuggestionHost }) => ({
+    default: BlogSuggestionHost,
+  })),
+);
+
 const AutoSyncHost = lazy(() =>
   import("@/features/shell/auto-sync-host").then(({ AutoSyncHost }) => ({
     default: AutoSyncHost,
@@ -70,6 +76,11 @@ function RootComponent() {
         {(backgroundReady || activeFeatureVideo) && (
           <Suspense fallback={null}>
             <FeatureVideoHost />
+          </Suspense>
+        )}
+        {backgroundReady && (
+          <Suspense fallback={null}>
+            <BlogSuggestionHost />
           </Suspense>
         )}
         <Toaster />

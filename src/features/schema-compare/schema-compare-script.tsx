@@ -145,7 +145,12 @@ export function SchemaCompareScript({
             size="sm"
             variant="outline"
             className="h-7 text-xs"
-            disabled={empty}
+            disabled={empty || Boolean(target.snapshot)}
+            title={
+              target.snapshot
+                ? "Das Ziel ist eine Snapshot-Datei. Skript kopieren oder speichern."
+                : undefined
+            }
             onClick={() => setRunning(true)}
           >
             <PlayIcon className="size-3.5" />

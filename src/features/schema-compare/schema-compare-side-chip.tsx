@@ -1,9 +1,12 @@
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, FileJsonIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { providerFor } from "@/lib/connection-url";
 import { useConnectionsStore } from "@/lib/connections";
+import { useHasNewFeatures } from "@/lib/new-features";
+import { snapshotFileLabel } from "@/lib/schema-compare/store";
 import type { CompareSide } from "@/lib/schema-compare/types";
 import { SchemaCompareSidePicker } from "./schema-compare-side-picker";
 
@@ -23,6 +26,10 @@ export function SchemaCompareSideChip({
   const connection = useConnectionsStore(
     (state) => state.connections.find((item) => item.id === value.connectionId) ?? null,
   );
+  const snapshotNew = useHasNewFeatures("schema-compare.snapshot");
+  const name = value.snapshot
+    ? snapshotFileLabel(value.snapshot.path)
+    : (connection?.name ?? "Verbindung wählen");
 
   return (
     <Popover>
@@ -31,10 +38,12 @@ export function SchemaCompareSideChip({
           size="sm"
           variant="outline"
           className="h-7 max-w-72 gap-1.5 px-2 text-xs"
-          aria-label={`${title}: ${connection?.name ?? "Verbindung wählen"}`}
-          title={title}
+          aria-label={`${title}: ${name}`}
+          title={value.snapshot ? `${title}: Snapshot ${value.snapshot.path}` : title}
         >
-          {connection ? (
+          {value.snapshot ? (
+            <FileJsonIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : connection ? (
             <ProviderLogo
               providerId={providerFor(connection).id}
               kind={connection.kind}
@@ -43,10 +52,11 @@ export function SchemaCompareSideChip({
           ) : (
             <span className="text-muted-foreground">{title}</span>
           )}
-          <span className="truncate font-medium">{connection?.name ?? "Verbindung wählen"}</span>
+          <span className="truncate font-medium">{name}</span>
           {value.schema && (
             <span className="truncate font-mono text-muted-foreground">{value.schema}</span>
           )}
+          {snapshotNew && <NewBadge />}
           <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>

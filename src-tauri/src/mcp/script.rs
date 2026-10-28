@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use super::config::{McpConfig, McpConnection};
-use super::redact::{self, Redactor};
+use super::redact::Redactor;
 use super::server::{
     adapter, arg_str, cap, check_read_sql, check_write_sql, connection_url, format_result, run,
     Server, SQL_KINDS,
@@ -12,15 +12,15 @@ use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult, TxSession};
 pub fn tool_definition() -> Value {
     json!({
         "name": "script",
-        "description": "Run many statements in one call (only on connections with scripts enabled). Every statement is checked like query/execute before anything runs; writes need confirm=true and a writable connection, DDL needs DDL enabled. Runs on one dedicated session inside a transaction: commits at the end, rolls back on the first error; commit=false always rolls back (dry run). Do not write BEGIN/ROLLBACK/SAVEPOINT; COMMIT lines are skipped. Oracle takes SQL*Plus scripts: / terminators, DEFINE x = v with &x/&&x, SET DEFINE OFF, PROMPT, EXEC, SET SERVEROUTPUT ON (DBMS_OUTPUT shown as |), WHENEVER SQLERROR EXIT|CONTINUE, EXIT [ROLLBACK]; other SQL*Plus settings are ignored, @file is rejected. Oracle DDL commits implicitly. Output: one line per statement, result rows as TSV.",
+        "description": "Multi-statement script where scripts are enabled; each statement is checked like query/execute. One transaction: commit at the end, rollback on the first error, commit=false is a dry run; writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
             "sql": {"type": "string"},
-            "confirm": {"type": "boolean", "description": "Required when the script writes"},
-            "commit": {"type": "boolean", "description": "false = roll back at the end (dry run). Default true"},
-            "onError": {"type": "string", "enum": ["stop", "continue"], "description": "Default stop (rolls back)"},
-            "limit": {"type": "integer", "minimum": 1, "description": "Rows shown per result, default 20"}
+            "confirm": {"type": "boolean"},
+            "commit": {"type": "boolean"},
+            "onError": {"type": "string", "enum": ["stop", "continue"]},
+            "limit": {"type": "integer", "minimum": 1, "description": "Rows per result, default 20"}
         }, "required": ["connection", "sql"]}
     })
 }
@@ -65,35 +65,99 @@ fn transaction_control(kind: DatabaseKind, sql: &str) -> Option<bool> {
     }
 }
 
+#[derive(Clone, Copy)]
+struct Markers {
+    define: Option<char>,
+    escape: Option<char>,
+}
+
 fn substitute(
     text: &str,
     defines: &HashMap<String, String>,
-    marker: Option<char>,
+    markers: Markers,
 ) -> Result<String, String> {
-    let Some(marker) = marker else {
+    let Some(marker) = markers.define.filter(|m| text.contains(*m)) else {
         return Ok(text.to_string());
     };
     let chars: Vec<char> = text.chars().collect();
-    let ident = |c: char| c.is_alphanumeric() || matches!(c, '_' | '$' | '#');
+    let ident = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '#');
     let mut out = String::with_capacity(text.len());
+    let mut close: Option<Vec<char>> = None;
     let mut i = 0;
     while i < chars.len() {
-        if chars[i] != marker {
-            out.push(chars[i]);
+        let c = chars[i];
+        if let Some(seq) = &close {
+            if chars[i..].starts_with(seq) {
+                out.extend(seq.iter());
+                i += seq.len();
+                close = None;
+                continue;
+            }
+        } else {
+            let end = match (c, chars.get(i + 1)) {
+                ('-', Some('-')) => (i..chars.len()).find(|&n| chars[n] == '\n'),
+                ('/', Some('*')) => (i + 2..chars.len().saturating_sub(1))
+                    .find(|&n| chars[n] == '*' && chars[n + 1] == '/')
+                    .map(|n| n + 2),
+                _ => Some(i),
+            };
+            if end != Some(i) {
+                let end = end.unwrap_or(chars.len());
+                out.extend(chars[i..end].iter());
+                i = end;
+                continue;
+            }
+            let q = if matches!(c, 'n' | 'N') && matches!(chars.get(i + 1), Some('q' | 'Q')) {
+                i + 1
+            } else {
+                i
+            };
+            if matches!(chars.get(q), Some('q' | 'Q'))
+                && chars.get(q + 1) == Some(&'\'')
+                && chars.get(q + 2).is_some_and(|o| !o.is_whitespace())
+                && !(i > 0 && ident(chars[i - 1]))
+            {
+                let closing = match chars[q + 2] {
+                    '[' => ']',
+                    '{' => '}',
+                    '(' => ')',
+                    '<' => '>',
+                    other => other,
+                };
+                close = Some(vec![closing, '\'']);
+                out.extend(chars[i..q + 3].iter());
+                i = q + 3;
+                continue;
+            }
+            if c == '\'' || c == '"' {
+                close = Some(vec![c]);
+                out.push(c);
+                i += 1;
+                continue;
+            }
+        }
+        if markers.escape == Some(c) && chars.get(i + 1) == Some(&marker) {
+            out.push(marker);
+            i += 2;
+            continue;
+        }
+        if c != marker {
+            out.push(c);
             i += 1;
             continue;
         }
-        let mut start = i + 1;
-        if chars.get(start) == Some(&marker) {
-            start += 1;
-        }
+        let start = if chars.get(i + 1) == Some(&marker) {
+            i + 2
+        } else {
+            i + 1
+        };
         let mut end = start;
         while end < chars.len() && ident(chars[end]) {
             end += 1;
         }
         if end == start {
-            out.push(chars[i]);
-            i += 1;
+            out.extend(chars[i..start].iter());
+            i = start;
             continue;
         }
         let name: String = chars[start..end].iter().collect();
@@ -108,6 +172,15 @@ fn substitute(
         };
     }
     Ok(out)
+}
+
+fn switch(value: &str, fallback: char) -> Option<char> {
+    let value = value.trim_matches(|c| c == '\'' || c == '"');
+    match value.to_ascii_uppercase().as_str() {
+        "OFF" => None,
+        "ON" | "" => Some(fallback),
+        _ => value.chars().next(),
+    }
 }
 
 fn define(rest: &str, defines: &mut HashMap<String, String>) {
@@ -127,7 +200,7 @@ fn sqlplus(
     line: &str,
     plan: &mut Plan,
     defines: &mut HashMap<String, String>,
-    marker: &mut Option<char>,
+    markers: &mut Markers,
 ) -> Result<bool, String> {
     let words = words(line);
     let rest = |n: usize| {
@@ -136,7 +209,14 @@ fn sqlplus(
             .collect::<Vec<_>>()
             .join(" ")
     };
+    let raw = |n: usize| line.split_whitespace().nth(n).unwrap_or("");
     let arg = |n: usize| words.get(n).map(String::as_str).unwrap_or("");
+    if line.starts_with('@') || matches!(arg(0), "START" | "STA") {
+        return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
+    }
+    if db::sql_script::is_connect_command(line) {
+        return Err(db::sql_script::CONNECT_UNSUPPORTED.into());
+    }
     match arg(0) {
         "DEFINE" | "DEF" => define(&rest(1), defines),
         "UNDEFINE" | "UNDEF" => {
@@ -146,14 +226,9 @@ fn sqlplus(
         }
         "PROMPT" | "PRO" => plan
             .steps
-            .push(Step::Prompt(substitute(&rest(1), defines, *marker)?)),
-        "SET" if arg(1).starts_with("DEF") => {
-            *marker = match arg(2) {
-                "OFF" => None,
-                "ON" | "" => Some('&'),
-                other => other.chars().next(),
-            }
-        }
+            .push(Step::Prompt(substitute(&rest(1), defines, *markers)?)),
+        "SET" if arg(1).starts_with("DEF") => markers.define = switch(raw(2), '&'),
+        "SET" if arg(1).starts_with("ESC") => markers.escape = switch(raw(2), '\\'),
         "SET" if arg(1).starts_with("SERVEROUT") => plan.steps.push(Step::Output(arg(2) == "ON")),
         "WHENEVER" if arg(1) == "SQLERROR" => plan.steps.push(Step::Continue(arg(2) == "CONTINUE")),
         "EXIT" | "QUIT" => {
@@ -181,11 +256,6 @@ fn statement(kind: DatabaseKind, text: String, plan: &mut Plan) -> Result<(), St
         }
         None => {}
     }
-    if kind == DatabaseKind::Oracle
-        && (text.starts_with('@') || words(&text).first().is_some_and(|word| word == "START"))
-    {
-        return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
-    }
     plan.steps.push(Step::Sql(text));
     Ok(())
 }
@@ -194,26 +264,25 @@ fn plan(kind: DatabaseKind, sql: &str) -> Result<Plan, String> {
     let mut plan = Plan::default();
     let items: Vec<(bool, String)> = match kind {
         DatabaseKind::Oracle => db::oracle::script_items(sql),
-        DatabaseKind::Postgres => db::sql_script::split_postgres(sql)
-            .into_iter()
-            .map(|statement| (false, statement))
-            .collect(),
-        _ => db::sql_script::split(sql)
+        _ => db::sql_script::split_for(kind, sql)
             .into_iter()
             .map(|statement| (false, statement))
             .collect(),
     };
     let mut defines = HashMap::new();
-    let mut marker = Some('&');
+    let mut markers = Markers {
+        define: Some('&'),
+        escape: None,
+    };
     for (is_sqlplus, text) in items {
         if is_sqlplus {
-            if !sqlplus(&text, &mut plan, &mut defines, &mut marker)? {
+            if !sqlplus(&text, &mut plan, &mut defines, &mut markers)? {
                 break;
             }
             continue;
         }
         let text = match kind {
-            DatabaseKind::Oracle => substitute(&text, &defines, marker)?,
+            DatabaseKind::Oracle => substitute(&text, &defines, markers)?,
             _ => text,
         };
         statement(kind, text, &mut plan)?;
@@ -303,8 +372,7 @@ impl Server {
         }
         let plan = plan(connection.kind, sql)?;
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let mut writes = false;
         for (number, step) in plan.steps.iter().enumerate() {
             let Step::Sql(statement) = step else { continue };
@@ -448,8 +516,7 @@ impl Server {
             return Err(e);
         }
         if writes {
-            self.columns.remove(&super::server::cache_key(connection));
-            super::insight::forget(connection);
+            self.forget_catalog(connection);
         }
         let state = match (transactional, commit, stopped) {
             (false, _, Some(n)) => {
@@ -521,6 +588,11 @@ mod tests {
             .unwrap_err()
             .contains("&x"));
         assert!(plan(DatabaseKind::Oracle, "@install.sql").is_err());
+        assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\n  @@sub.sql").is_err());
+        assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\nSTART x.sql").is_err());
+        assert!(plan(DatabaseKind::Oracle, "CONN hr/hr@db\nDROP TABLE t;")
+            .unwrap_err()
+            .contains("CONNECT"));
         assert!(plan(DatabaseKind::Oracle, "SELECT 1 FROM dual;\nROLLBACK;").is_err());
         for sql in [
             "BEGIN; DELETE FROM t;",
@@ -530,6 +602,53 @@ mod tests {
             assert!(plan(DatabaseKind::Postgres, sql).is_err(), "{sql}");
         }
         assert!(plan(DatabaseKind::Postgres, "COMMIT;").is_err());
+    }
+
+    #[test]
+    fn substitution_matches_the_shared_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/sqlplus-substitution.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let defines: HashMap<String, String> = case["defines"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+                .collect();
+            let char_of = |key: &str, fallback: Option<char>| match case.get(key) {
+                Some(Value::Null) => None,
+                Some(value) => value.as_str().and_then(|s| s.chars().next()),
+                None => fallback,
+            };
+            let markers = Markers {
+                define: char_of("marker", Some('&')),
+                escape: char_of("escape", None),
+            };
+            let result = substitute(case["sql"].as_str().unwrap(), &defines, markers);
+            match case.get("missing") {
+                Some(missing) => {
+                    let error = result.unwrap_err().to_ascii_uppercase();
+                    assert!(
+                        error.contains(&format!("&{}", missing[0].as_str().unwrap())),
+                        "{}",
+                        case["name"]
+                    );
+                }
+                None => assert_eq!(result.unwrap(), case["expected"], "{}", case["name"]),
+            }
+        }
+    }
+
+    #[test]
+    fn set_escape_and_comments_in_scripts() {
+        let script = "DEFINE x = 1\nSET ESCAPE ON\nSELECT 'R\\&D', &x FROM dual; -- &y\nSET DEFINE ^\nSELECT ^x, '&z' FROM dual;";
+        let plan = plan(DatabaseKind::Oracle, script).unwrap();
+        assert_eq!(
+            sqls(&plan),
+            vec!["SELECT 'R&D', 1 FROM dual;", "SELECT 1, '&z' FROM dual;"]
+        );
     }
 
     #[test]
