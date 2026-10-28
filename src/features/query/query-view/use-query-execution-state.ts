@@ -6,6 +6,12 @@ import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { QueryResult } from "@/lib/db";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import {
+  EMPTY_RESULT_RUNS,
+  nextResultRuns,
+  type ResultRun,
+  type ResultRuns,
+} from "@/lib/result-compare";
+import {
   queryTabScope,
   readTabState,
   tabStateKey,
@@ -68,6 +74,11 @@ export function useQueryExecutionState(tabId: string) {
     null,
   );
   const [scriptNote, setScriptNote] = useTabState(key("scriptNote"), "");
+  const [runs, setRuns] = useTabState<ResultRuns>(key("runs"), EMPTY_RESULT_RUNS);
+  const recordRun = useCallback(
+    (run: ResultRun) => setRuns((current) => nextResultRuns(current, run)),
+    [setRuns],
+  );
 
   return {
     scope,
@@ -99,6 +110,9 @@ export function useQueryExecutionState(tabId: string) {
     setScriptActiveIndex,
     scriptNote,
     setScriptNote,
+    runs,
+    setRuns,
+    recordRun,
   };
 }
 
