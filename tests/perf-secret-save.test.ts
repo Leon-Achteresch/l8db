@@ -6,8 +6,8 @@ const IPC_DELAY_MS = 1;
 let invokes = 0;
 
 mock.module("@tauri-apps/api/core", () => ({
-  invoke: async () => {
-    invokes++;
+  invoke: async (command: string) => {
+    if (command === "store_secret" || command === "load_secret") invokes++;
     await new Promise((resolve) => setTimeout(resolve, IPC_DELAY_MS));
     return null;
   },
