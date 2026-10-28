@@ -2,18 +2,69 @@ import { useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   appwriteConnect,
   convexConnect,
+  convexConnectSelfHosted,
   firebaseConnect,
   pocketbaseConnect,
   supabaseConnect,
+  supabaseConnectSelfHosted,
 } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { BaasProvider } from "./baas-providers";
 
-const FIELDS: Record<BaasProvider, { key: string; label: string; secret?: boolean }[]> = {
+type Field = { key: string; label: string; secret?: boolean; optional?: boolean };
+type Guide = { steps: string[]; link: { label: string; url: string } };
+
+const SELF_HOSTED: Partial<Record<BaasProvider, { label: string; fields: Field[]; guide: Guide }>> =
+  {
+    supabase: {
+      label: "Projekt-URL & Key",
+      fields: [
+        { key: "endpoint", label: "Projekt-URL (NEXT_PUBLIC_SUPABASE_URL)" },
+        {
+          key: "token",
+          label: "Publishable/anon Key oder Secret/service_role Key",
+          secret: true,
+        },
+        { key: "name", label: "Name (optional)", optional: true },
+      ],
+      guide: {
+        steps: [
+          "Die Projekt-URL ist NEXT_PUBLIC_SUPABASE_URL, also https://<ref>.supabase.co oder die Adresse deiner selbst gehosteten Instanz.",
+          "Publishable oder anon Key (NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY bzw. NEXT_PUBLIC_SUPABASE_ANON_KEY): Lesen wie deine App, mit RLS. Tabellen öffnest du über ihren Namen.",
+          "Secret oder service_role Key: voller Zugriff mit Tabellenliste, Auth-Benutzern und Bucket-Verwaltung. Ganze .env-Zeilen kannst du direkt einfügen.",
+        ],
+        link: {
+          label: "Supabase-Doku zum Self-Hosting",
+          url: "https://supabase.com/docs/guides/self-hosting/docker",
+        },
+      },
+    },
+    convex: {
+      label: "Selbst gehostet",
+      fields: [
+        { key: "endpoint", label: "Backend-URL, z. B. http://127.0.0.1:3210" },
+        { key: "token", label: "Admin-Key", secret: true },
+      ],
+      guide: {
+        steps: [
+          "Die Backend-URL ist CONVEX_CLOUD_ORIGIN deiner Instanz, im Docker-Setup http://127.0.0.1:3210.",
+          "Einen Admin-Key erzeugst du im Backend-Container mit ./generate_admin_key.sh.",
+        ],
+        link: {
+          label: "Convex-Doku zum Self-Hosting",
+          url: "https://github.com/get-convex/convex-backend/tree/main/self-hosted",
+        },
+      },
+    },
+  };
+
+const FIELDS: Record<BaasProvider, Field[]> = {
   supabase: [{ key: "token", label: "Personal Access Token", secret: true }],
   appwrite: [
     { key: "endpoint", label: "API-Endpunkt, z. B. https://fra.cloud.appwrite.io/v1" },
@@ -31,7 +82,7 @@ const FIELDS: Record<BaasProvider, { key: string; label: string; secret?: boolea
   firebase: [],
 };
 
-const GUIDES: Record<BaasProvider, { steps: string[]; link: { label: string; url: string } }> = {
+const GUIDES: Record<BaasProvider, Guide> = {
   supabase: {
     steps: [
       "Im Supabase-Dashboard oben rechts auf dein Konto → Account preferences → Access Tokens.",
@@ -95,14 +146,28 @@ export function BaasConnectForm({
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fields = FIELDS[provider];
+  const [selfHosted, setSelfHosted] = useState(false);
+  const selfHostedFeature = useNewFeatureVisibility<HTMLDivElement>(
+    provider === "supabase"
+      ? "baas.supabase.self-hosted"
+      : provider === "convex"
+        ? "baas.convex.self-hosted"
+        : undefined,
+  );
+  const variant = selfHosted ? SELF_HOSTED[provider] : undefined;
+  const fields = variant?.fields ?? FIELDS[provider];
+  const guide = variant?.guide ?? GUIDES[provider];
   const value = (key: string) => values[key]?.trim() ?? "";
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      if (provider === "supabase") await supabaseConnect(value("token"));
+      if (provider === "supabase" && selfHosted)
+        await supabaseConnectSelfHosted(value("endpoint"), value("token"), value("name"));
+      else if (provider === "convex" && selfHosted)
+        await convexConnectSelfHosted(value("endpoint"), value("token"));
+      else if (provider === "supabase") await supabaseConnect(value("token"));
       else if (provider === "appwrite")
         await appwriteConnect(value("endpoint"), value("project"), value("token"));
       else if (provider === "pocketbase")
@@ -127,19 +192,41 @@ export function BaasConnectForm({
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-2">
+        {SELF_HOSTED[provider] && (
+          <div ref={selfHostedFeature.ref} className="flex items-center gap-2">
+            <fieldset aria-label="Hosting" className="m-0 flex min-w-0 rounded-lg border p-0.5">
+              {[false, true].map((option) => (
+                <button
+                  key={String(option)}
+                  type="button"
+                  aria-pressed={selfHosted === option}
+                  onClick={() => {
+                    setSelfHosted(option);
+                    setValues({});
+                    setError(null);
+                  }}
+                  className={`rounded-md px-3 py-1 text-xs transition-colors ${selfHosted === option ? "bg-primary/10 font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {option ? SELF_HOSTED[provider]?.label : "Cloud"}
+                </button>
+              ))}
+            </fieldset>
+            {selfHostedFeature.isNew && <NewBadge />}
+          </div>
+        )}
         <div className="rounded-lg border bg-muted/30 p-3 text-xs">
           <p className="mb-2 font-medium">So bekommst du die Zugangsdaten</p>
           <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
-            {GUIDES[provider].steps.map((step) => (
+            {guide.steps.map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
           <button
             type="button"
-            onClick={() => void openUrl(GUIDES[provider].link.url)}
+            onClick={() => void openUrl(guide.link.url)}
             className="mt-2 inline-flex items-center gap-1 text-primary underline"
           >
-            {GUIDES[provider].link.label} <ExternalLink className="size-3" />
+            {guide.link.label} <ExternalLink className="size-3" />
           </button>
         </div>
         {fields.map((field) => (
@@ -156,7 +243,7 @@ export function BaasConnectForm({
               }
               autoComplete="off"
               spellCheck={false}
-              required
+              required={!field.optional}
             />
           </div>
         ))}
@@ -184,7 +271,7 @@ export function BaasConnectForm({
         </Button>
         <Button
           type="submit"
-          disabled={busy || fields.some((field) => !value(field.key))}
+          disabled={busy || fields.some((field) => !field.optional && !value(field.key))}
           className="h-11 min-w-36"
         >
           {busy

@@ -145,6 +145,45 @@ fn scope_is_private_and_only_exposes_active_and_mentions() {
 }
 
 #[test]
+fn production_writes_need_an_explicit_per_connection_grant() {
+    let mut request = request();
+    for connection in &mut request.connections {
+        connection.environment = Some("production".into());
+    }
+    request.connections[0].production_writes = true;
+    request.connections[1].production_writes = true;
+    let scoped = context::scoped_config(&request, McpConfig::default()).unwrap();
+    assert!(!scoped.connections[0].writes_blocked());
+    assert!(scoped.connections[1].writes_blocked());
+    let mut existing = policy("active");
+    existing.environment = Some("production".into());
+    let guarded = McpConfig {
+        connections: vec![existing.clone()],
+        ..McpConfig::default()
+    };
+    assert!(context::scoped_config(&request, guarded)
+        .unwrap()
+        .connections[0]
+        .writes_blocked());
+    existing.allow_production_writes = true;
+    let allowed = McpConfig {
+        connections: vec![existing],
+        ..McpConfig::default()
+    };
+    assert!(!context::scoped_config(&request, allowed)
+        .unwrap()
+        .connections[0]
+        .writes_blocked());
+    request.allow_writes = false;
+    let scoped = context::scoped_config(&request, McpConfig::default()).unwrap();
+    assert!(scoped.connections[0].writes_blocked());
+    request.allow_writes = true;
+    request.profile.mode = "plan".into();
+    let scoped = context::scoped_config(&request, McpConfig::default()).unwrap();
+    assert!(scoped.connections[0].writes_blocked());
+}
+
+#[test]
 fn scope_intersects_all_connection_policies() {
     let mut request = request();
     request.connections[0].schemas = vec!["main".into(), "private".into()];

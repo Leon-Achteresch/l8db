@@ -13,17 +13,17 @@ const MIN_SHARE: f64 = 0.1;
 pub fn tool_definition() -> Value {
     json!({
         "name": "drilldown",
-        "description": "Root-cause analysis: explain why a metric changed between two periods. Splits the change by every given dimension in one GROUP BY per dimension, ranks dimensions with the Adtributor method (explanatory power and surprise) and drills one level deeper into the strongest segment. Use it for why questions about drops, spikes or differences instead of guessing breakdowns by hand. Only additive metrics (sums and counts).",
+        "description": "Why an additive metric (sum or count) changed between two periods: splits the change by each dimension, ranks them, drills into the strongest segment.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
-            "from": {"type": "string", "description": "FROM clause body without the word FROM, joins allowed, e.g. sales.orders o JOIN sales.customers c ON c.id = o.customer_id"},
-            "value": {"type": "string", "description": "Additive value expression per row, e.g. o.total. Default 1 (row count)"},
-            "current": {"type": "string", "description": "SQL condition selecting rows of the period to explain, e.g. o.created_at >= DATE '2026-10-12'"},
-            "baseline": {"type": "string", "description": "SQL condition selecting the comparison rows"},
-            "dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": MAX_DIMENSIONS, "description": "Column expressions to split by, e.g. c.country, o.channel. Prefer low-cardinality columns"},
-            "filter": {"type": "string", "description": "Optional extra condition for both periods"},
-            "depth": {"type": "integer", "minimum": 1, "maximum": 2, "description": "2 (default) also drills into the strongest segment"}
+            "from": {"type": "string", "description": "FROM body, joins allowed"},
+            "value": {"type": "string", "description": "Additive expression, default 1"},
+            "current": {"type": "string", "description": "Condition for the period to explain"},
+            "baseline": {"type": "string", "description": "Condition for the comparison period"},
+            "dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": MAX_DIMENSIONS},
+            "filter": {"type": "string"},
+            "depth": {"type": "integer", "minimum": 1, "maximum": 2}
         }, "required": ["connection", "from", "current", "baseline", "dimensions"]}
     })
 }
@@ -312,8 +312,7 @@ impl Server {
             extra => vec![extra.to_string()],
         };
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let mut levels = Vec::new();
         let ((base_total, current_total), mut first) = self
             .rank_dimensions(config, connection, &index, &request, &dimensions, &filter)

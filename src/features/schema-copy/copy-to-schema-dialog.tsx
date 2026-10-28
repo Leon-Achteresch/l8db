@@ -18,9 +18,10 @@ import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
 import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
-import { listSchemas, previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
+import { previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
 import { useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
-import { ensurePassword } from "@/lib/password-prompt";
+import { prepareConnection } from "@/lib/schema-compare/store";
+import { loadCopyTargetSchemas } from "@/lib/schema-copy";
 import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -52,27 +53,17 @@ function CopyToSchemaContent({
 
   const targetConnection = connections.find((entry) => entry.id === targetConnectionId) ?? null;
   const sameConnection = targetConnectionId === connection?.id;
-  const { data: schemas } = useQuery({
+  const schemasQuery = useQuery({
     queryKey: ["schemas-target", targetConnectionId, database],
-    queryFn: async () => {
-      if (targetConnection!.schemas?.length) return targetConnection!.schemas;
-      if (targetConnection!.id !== connection?.id && !(await ensurePassword(targetConnection!.id)))
-        return [];
-      const current = useConnectionsStore
-        .getState()
-        .connections.find((entry) => entry.id === targetConnectionId)!;
-      return listSchemas(
-        current.kind,
-        effectiveConnectionString(current),
-        current.id === connection?.id ? (database ?? undefined) : undefined,
-      );
-    },
+    queryFn: () => loadCopyTargetSchemas(targetConnectionId, connection?.id, database ?? undefined),
     select: (list) =>
       visibleSchemas(targetConnection, list).filter(
         (entry) => !(sameConnection && entry === target?.schema),
       ),
     enabled: Boolean(targetConnection && target),
+    retry: false,
   });
+  const schemas = schemasQuery.data;
 
   useEffect(() => {
     if (schemas?.length && !schemas.includes(targetSchema)) setTargetSchema(schemas[0]);
@@ -82,12 +73,8 @@ function CopyToSchemaContent({
 
   const ddlQuery = useQuery({
     queryKey: ["schema-copy-preview", connection?.id, database, target, targetConnectionId, schema],
-    queryFn: () => {
-      const destination = sameConnection
-        ? undefined
-        : useConnectionsStore
-            .getState()
-            .connections.find((entry) => entry.id === targetConnectionId);
+    queryFn: async () => {
+      const destination = sameConnection ? undefined : await prepareConnection(targetConnectionId);
       return previewSchemaObjectCopy(
         connection!.kind,
         effectiveConnectionString(connection!),
@@ -133,7 +120,13 @@ function CopyToSchemaContent({
       title="In anderem Schema erstellen"
       description={target ? `${target.schema}.${target.name}` : undefined}
       ddl={ddlQuery.data ?? ""}
-      ddlError={ddlQuery.error ? String(ddlQuery.error) : null}
+      ddlError={
+        schemasQuery.error
+          ? String(schemasQuery.error)
+          : ddlQuery.error
+            ? String(ddlQuery.error)
+            : null
+      }
       isLoading={ddlQuery.isFetching}
       confirmLabel="Im Editor öffnen"
       confirmDisabled={!targetConnectionId || !schema}

@@ -1,9 +1,15 @@
 use regex::{Regex, RegexBuilder};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
 use super::config::Redaction;
 
+const COMPILED_SLOTS: usize = 8;
+static COMPILED: LazyLock<Mutex<Vec<(String, Redactor)>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+#[derive(Clone)]
 pub struct Redactor {
     columns: Vec<Regex>,
     values: Vec<Regex>,
@@ -27,6 +33,22 @@ fn invalid_pattern_error(pattern: &str) -> String {
 
 impl Redactor {
     pub fn new(redaction: &Redaction, extra_columns: &[String]) -> Self {
+        let Ok(key) = serde_json::to_string(&(redaction, extra_columns)) else {
+            return Self::compile(redaction, extra_columns);
+        };
+        let mut compiled = COMPILED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, redactor)) = compiled.iter().find(|(slot, _)| *slot == key) {
+            return redactor.clone();
+        }
+        let redactor = Self::compile(redaction, extra_columns);
+        if compiled.len() >= COMPILED_SLOTS {
+            compiled.remove(0);
+        }
+        compiled.push((key, redactor.clone()));
+        redactor
+    }
+
+    fn compile(redaction: &Redaction, extra_columns: &[String]) -> Self {
         let mut columns = Vec::new();
         let mut invalid = None;
         for pattern in redaction
@@ -63,6 +85,12 @@ impl Redactor {
             Some(pattern) => Err(invalid_pattern_error(pattern)),
             None => Ok(()),
         }
+    }
+
+    pub fn column_key(&self) -> String {
+        let mut key: Vec<&str> = self.columns.iter().map(Regex::as_str).collect();
+        key.extend(self.invalid.as_deref());
+        key.join("\u{1}")
     }
 
     pub fn column_is_sensitive(&self, name: &str) -> bool {
@@ -141,15 +169,120 @@ pub enum Token {
     Other(char),
 }
 
+#[derive(Clone, Copy)]
+struct Lexer {
+    escapes: bool,
+    escaped_quotes: bool,
+    escaped_ticks: bool,
+    e_strings: bool,
+    hash: bool,
+    spaced_dash: bool,
+    dollar: bool,
+    nested: bool,
+    brackets: bool,
+}
+
+const MYSQL: Lexer = Lexer {
+    escapes: true,
+    escaped_quotes: false,
+    escaped_ticks: false,
+    e_strings: false,
+    hash: true,
+    spaced_dash: false,
+    dollar: true,
+    nested: true,
+    brackets: true,
+};
+
+const STANDARD: Lexer = Lexer {
+    escapes: false,
+    hash: false,
+    ..MYSQL
+};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Dialect {
+    Mysql,
+    Postgres,
+    Sqlite,
+    Backslash,
+}
+
+impl Dialect {
+    fn lexer(self) -> Lexer {
+        match self {
+            Self::Mysql => Lexer {
+                escaped_quotes: true,
+                spaced_dash: true,
+                dollar: false,
+                nested: false,
+                brackets: false,
+                ..MYSQL
+            },
+            Self::Postgres => Lexer {
+                e_strings: true,
+                brackets: false,
+                ..STANDARD
+            },
+            Self::Sqlite => Lexer {
+                dollar: false,
+                nested: false,
+                ..STANDARD
+            },
+            Self::Backslash => Lexer {
+                escaped_quotes: true,
+                escaped_ticks: true,
+                nested: false,
+                brackets: false,
+                ..MYSQL
+            },
+        }
+    }
+}
+
 pub fn tokenize(sql: &str) -> Vec<Token> {
-    tokenize_as(sql, true)
+    tokenize_as(sql, MYSQL)
 }
 
 fn readings(sql: &str) -> [Vec<Token>; 2] {
-    [tokenize_as(sql, true), tokenize_as(sql, false)]
+    [tokenize_as(sql, MYSQL), tokenize_as(sql, STANDARD)]
 }
 
-fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
+pub fn check_dialect(
+    sql: &str,
+    dialect: Dialect,
+    index: &SchemaIndex,
+    row_values: bool,
+) -> Result<(), String> {
+    let tokens = tokenize_as(sql, dialect.lexer());
+    if statement_count_in(&tokens) > 1 {
+        return Err("Nur ein Statement pro Aufruf (Anführungszeichen und Kommentare im Dialekt der Verbindung gelesen).".into());
+    }
+    if let Some(word) = write_word_in(&tokens) {
+        return Err(format!("query ist read-only, '{word}' ist nicht erlaubt."));
+    }
+    if let Some(word) = dangerous_word_in(&tokens) {
+        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+    }
+    check_references_in(&tokens, index, row_values)
+}
+
+fn dollar_tag(chars: &std::iter::Peekable<std::str::Chars>) -> Option<usize> {
+    let mut ahead = chars.clone();
+    let mut length = 0;
+    loop {
+        let n = ahead.next()?;
+        length += 1;
+        if n == '$' {
+            return Some(length);
+        }
+        if !(n.is_alphabetic() || n == '_' || (length > 1 && n.is_alphanumeric())) {
+            return None;
+        }
+    }
+}
+
+fn tokenize_as(sql: &str, lexer: Lexer) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut chars = sql.chars().peekable();
@@ -162,6 +295,8 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
     while let Some(c) = chars.next() {
         match c {
             '\'' => {
+                let escapes =
+                    lexer.escapes || (lexer.e_strings && current.eq_ignore_ascii_case("e"));
                 flush(&mut current, &mut tokens);
                 loop {
                     match chars.next() {
@@ -169,7 +304,7 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                             chars.next();
                         }
                         Some('\'') | None => break,
-                        Some('\\') if mysql => {
+                        Some('\\') if escapes => {
                             chars.next();
                         }
                         Some(_) => {}
@@ -177,12 +312,17 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                 }
                 tokens.push(Token::Other('\''));
             }
-            '"' | '`' | '[' => {
+            '"' | '`' | '[' if c != '[' || lexer.brackets => {
                 flush(&mut current, &mut tokens);
                 let close = if c == '[' { ']' } else { c };
+                let escapes =
+                    (c == '"' && lexer.escaped_quotes) || (c == '`' && lexer.escaped_ticks);
                 let mut ident = String::new();
                 loop {
                     match chars.next() {
+                        Some('\\') if escapes => {
+                            chars.next();
+                        }
                         Some(ch) if ch == close && chars.peek() == Some(&close) => {
                             chars.next();
                             ident.push(ch);
@@ -194,33 +334,30 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                 }
                 tokens.push(Token::Word(ident.to_lowercase()));
             }
-            '$' if chars
-                .peek()
-                .is_some_and(|n| *n == '$' || n.is_alphabetic() || *n == '_') =>
-            {
+            '$' if lexer.dollar && dollar_tag(&chars).is_some() => {
                 flush(&mut current, &mut tokens);
                 let mut tag = String::from("$");
-                while let Some(&n) = chars.peek() {
-                    tag.push(n);
-                    chars.next();
-                    if n == '$' {
+                for _ in 0..dollar_tag(&chars).unwrap_or(0) {
+                    tag.extend(chars.next());
+                }
+                let mut body = String::new();
+                while let Some(n) = chars.next() {
+                    body.push(n);
+                    if body.ends_with(&tag) {
                         break;
                     }
                 }
-                if tag.ends_with('$') && tag.len() > 1 {
-                    let mut body = String::new();
-                    while let Some(n) = chars.next() {
-                        body.push(n);
-                        if body.ends_with(&tag) {
-                            break;
-                        }
-                    }
-                    tokens.push(Token::Other('\''));
-                } else {
-                    tokens.push(Token::Other('$'));
-                }
+                tokens.push(Token::Other('\''));
             }
-            '-' if chars.peek() == Some(&'-') => {
+            '-' if chars.peek() == Some(&'-')
+                && (!lexer.spaced_dash || {
+                    let mut ahead = chars.clone();
+                    ahead.next();
+                    ahead
+                        .next()
+                        .is_none_or(|n| n.is_whitespace() || n.is_control())
+                }) =>
+            {
                 flush(&mut current, &mut tokens);
                 for n in chars.by_ref() {
                     if n == '\n' {
@@ -228,7 +365,7 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
                     }
                 }
             }
-            '#' if mysql => {
+            '#' if lexer.hash => {
                 flush(&mut current, &mut tokens);
                 for n in chars.by_ref() {
                     if n == '\n' {
@@ -239,13 +376,20 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
             '/' if chars.peek() == Some(&'*') => {
                 flush(&mut current, &mut tokens);
                 chars.next();
+                let mut ahead = chars.clone();
+                if matches!(ahead.next(), Some('M' | 'm')) && ahead.next() == Some('!') {
+                    chars.next();
+                }
                 if matches!(chars.peek(), Some('!') | Some('+')) {
                     tokens.push(Token::Other('/'));
+                    if chars.next_if_eq(&'!').is_some() {
+                        while chars.next_if(char::is_ascii_digit).is_some() {}
+                    }
                     continue;
                 }
                 let mut depth = 1;
                 while let Some(n) = chars.next() {
-                    if n == '/' && chars.peek() == Some(&'*') {
+                    if lexer.nested && n == '/' && chars.peek() == Some(&'*') {
                         chars.next();
                         depth += 1;
                     } else if n == '*' && chars.peek() == Some(&'/') {
@@ -260,6 +404,12 @@ fn tokenize_as(sql: &str, mysql: bool) -> Vec<Token> {
             '*' if chars.peek() == Some(&'/') => {
                 flush(&mut current, &mut tokens);
                 chars.next();
+            }
+            '.' if !current.is_empty()
+                && current.chars().all(|c| c.is_ascii_digit())
+                && chars.peek().is_some_and(char::is_ascii_digit) =>
+            {
+                current.push('.')
             }
             '.' => {
                 flush(&mut current, &mut tokens);
@@ -439,6 +589,132 @@ const DANGEROUS_FUNCTIONS: &[&str] = &[
     "pg_logical_emit_message",
     "txid_current",
     "pg_current_xact_id",
+    "get_lock",
+    "release_lock",
+    "release_all_locks",
+    "source_pos_wait",
+    "master_pos_wait",
+    "wait_for_executed_gtid_set",
+    "wait_until_sql_thread_after_gtids",
+    "arrowflight",
+    "azureblobstorage",
+    "azureblobstoragecluster",
+    "clusterallreplicas",
+    "cosn",
+    "deltalake",
+    "deltalakeazure",
+    "deltalakecluster",
+    "deltalakelocal",
+    "deltalakes3",
+    "executable",
+    "filecluster",
+    "gcs",
+    "hdfscluster",
+    "hive",
+    "hudi",
+    "hudicluster",
+    "iceberg",
+    "icebergazure",
+    "icebergazurecluster",
+    "iceberghdfs",
+    "iceberghdfscluster",
+    "iceberglocal",
+    "icebergs3",
+    "icebergs3cluster",
+    "mergetreeindex",
+    "mergetreeprojection",
+    "mongodb",
+    "oss",
+    "prometheusquery",
+    "prometheusqueryrange",
+    "redis",
+    "s3cluster",
+    "sqlite",
+    "timeseriesdata",
+    "timeseriesmetrics",
+    "timeseriesselector",
+    "timeseriestags",
+    "urlcluster",
+    "ytsaurus",
+    "loop",
+    "dictionary",
+];
+
+const DUCKDB_FILE_FUNCTIONS: &[&str] = &[
+    "delta_scan",
+    "glob",
+    "iceberg_metadata",
+    "iceberg_scan",
+    "iceberg_snapshots",
+    "json_execute_serialized_sql",
+    "parquet_bloom_probe",
+    "parquet_file_metadata",
+    "parquet_kv_metadata",
+    "parquet_metadata",
+    "parquet_scan",
+    "parquet_schema",
+    "query",
+    "query_table",
+    "read_avro",
+    "read_blob",
+    "read_csv",
+    "read_csv_auto",
+    "read_json",
+    "read_json_auto",
+    "read_json_objects",
+    "read_json_objects_auto",
+    "read_ndjson",
+    "read_ndjson_auto",
+    "read_ndjson_objects",
+    "read_parquet",
+    "read_text",
+    "read_xlsx",
+    "sniff_csv",
+    "sqlite_scan",
+    "st_read",
+    "st_read_meta",
+];
+
+const TSQL_BATCH_WORDS: &[&str] = &[
+    "checkpoint",
+    "deny",
+    "receive",
+    "send",
+    "setuser",
+    "updatetext",
+    "writetext",
+];
+
+const WRITE_STATEMENTS: &[&str] = &[
+    "administer",
+    "associate",
+    "audit",
+    "binlog",
+    "cache",
+    "change",
+    "checkpoint",
+    "clone",
+    "deny",
+    "disable",
+    "disassociate",
+    "enable",
+    "exchange",
+    "export",
+    "flashback",
+    "force",
+    "handler",
+    "noaudit",
+    "repair",
+    "restart",
+    "setuser",
+    "start",
+    "stop",
+    "undrop",
+    "uninstall",
+    "unlock",
+    "updatetext",
+    "writetext",
+    "xa",
 ];
 
 const DANGEROUS_PREFIXES: &[&str] = &[
@@ -561,6 +837,11 @@ fn write_word_in(tokens: &[Token]) -> Option<String> {
         Some(Token::Word(word)) => Some(word.as_str()),
         _ => None,
     };
+    if let Some(Token::Word(first)) = tokens.iter().find(|token| matches!(token, Token::Word(_))) {
+        if WRITE_STATEMENTS.contains(&first.as_str()) {
+            return Some(first.clone());
+        }
+    }
     tokens.iter().enumerate().find_map(|(i, token)| {
         let Token::Word(word) = token else {
             return None;
@@ -602,6 +883,63 @@ fn dangerous_word_in(tokens: &[Token]) -> Option<String> {
     None
 }
 
+pub fn duckdb_file_access(sql: &str) -> Option<String> {
+    let [mysql, standard] = readings(sql);
+    [mysql, standard, tokenize_as(sql, Dialect::Postgres.lexer())]
+        .iter()
+        .find_map(|tokens| duckdb_file_access_in(tokens))
+}
+
+fn duckdb_file_access_in(tokens: &[Token]) -> Option<String> {
+    let mut scopes = vec![false];
+    let mut previous: Option<&Token> = None;
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::Open => scopes.push(matches!(
+                previous,
+                Some(Token::Word(word)) if matches!(word.as_str(), "extract" | "trim" | "substring" | "overlay" | "position")
+            )),
+            Token::Close if scopes.len() > 1 => {
+                scopes.pop();
+            }
+            Token::Word(word) => match tokens.get(i + 1) {
+                Some(Token::Open)
+                    if DUCKDB_FILE_FUNCTIONS.contains(&word.as_str())
+                        || word.starts_with("pragma_") =>
+                {
+                    return Some(word.clone())
+                }
+                Some(Token::Other('\''))
+                    if (word == "from"
+                        && scopes.last() == Some(&false)
+                        && previous != Some(&Token::Word("distinct".into())))
+                        || word == "join" =>
+                {
+                    return Some(format!("{word} '…'"))
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        previous = Some(token);
+    }
+    None
+}
+
+pub fn tsql_batch_word(sql: &str) -> Option<String> {
+    readings(sql).iter().find_map(|tokens| {
+        tokens.iter().enumerate().find_map(|(i, token)| {
+            let Token::Word(word) = token else {
+                return None;
+            };
+            let statement = TSQL_BATCH_WORDS.contains(&word.as_str())
+                || (matches!(word.as_str(), "disable" | "enable")
+                    && tokens.get(i + 1) == Some(&Token::Word("trigger".into())));
+            (statement && !(i > 0 && tokens[i - 1] == Token::Dot)).then(|| word.clone())
+        })
+    })
+}
+
 pub fn is_ddl(sql: &str) -> bool {
     sql_words(sql)
         .iter()
@@ -637,6 +975,7 @@ pub struct SchemaIndex {
     pub sensitive_columns: HashSet<String>,
     pub tables: HashMap<String, HashSet<String>>,
     pub allowed_schemas: HashSet<String>,
+    schemas: HashSet<String>,
     column_rules: Vec<Regex>,
     invalid_pattern: Option<String>,
 }
@@ -647,21 +986,41 @@ impl SchemaIndex {
         redactor: &Redactor,
         allowed_schemas: &[String],
     ) -> Self {
-        let mut sensitive_columns = HashSet::new();
-        let mut tables: HashMap<String, HashSet<String>> = HashMap::new();
-        for column in columns {
-            if redactor.column_is_sensitive(&column.name) {
-                sensitive_columns.insert(column.name.to_lowercase());
-            }
-            tables
-                .entry(column.table.to_lowercase())
+        Self::from_parts(
+            columns.iter().map(|column| column.name.as_str()),
+            columns
+                .iter()
+                .map(|column| (column.schema.as_str(), column.table.as_str())),
+            redactor,
+            allowed_schemas,
+        )
+    }
+
+    pub fn from_parts<'a>(
+        column_names: impl Iterator<Item = &'a str>,
+        tables: impl Iterator<Item = (&'a str, &'a str)>,
+        redactor: &Redactor,
+        allowed_schemas: &[String],
+    ) -> Self {
+        let sensitive_columns = column_names
+            .filter(|name| redactor.column_is_sensitive(name))
+            .map(str::to_lowercase)
+            .collect();
+        let mut by_table: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut schemas = HashSet::new();
+        for (schema, table) in tables {
+            let schema = schema.to_lowercase();
+            by_table
+                .entry(table.to_lowercase())
                 .or_default()
-                .insert(column.schema.to_lowercase());
+                .insert(schema.clone());
+            schemas.insert(schema);
         }
         Self {
             sensitive_columns,
-            tables,
+            tables: by_table,
             allowed_schemas: allowed_schemas.iter().map(|s| s.to_lowercase()).collect(),
+            schemas,
             column_rules: redactor.columns.clone(),
             invalid_pattern: redactor.invalid.clone(),
         }
@@ -882,7 +1241,7 @@ fn check_references_in(
             if !named
                 && !index.allowed_schemas.is_empty()
                 && !index.allowed_schemas.contains(word)
-                && index.tables.values().any(|schemas| schemas.contains(word))
+                && index.schemas.contains(word)
             {
                 return Err(format!(
                     "Schema '{word}' ist für diese Verbindung nicht freigegeben."
@@ -1240,6 +1599,72 @@ mod tests {
     }
 
     #[test]
+    fn dialect_readings_close_quote_and_comment_mixing() {
+        let idx = index(&[]);
+        for (dialect, sql) in [
+            (
+                Dialect::Mysql,
+                "SELECT \"a\\\"\" ; DELETE FROM users ; SELECT \"x\"",
+            ),
+            (Dialect::Mysql, "SELECT 1 --1, password AS p FROM users"),
+            (
+                Dialect::Mysql,
+                "SELECT 1 /* /* */ , password AS p FROM users -- */",
+            ),
+            (
+                Dialect::Mysql,
+                "SELECT 1 AS $$, password AS p FROM users -- $$",
+            ),
+            (
+                Dialect::Postgres,
+                "SELECT E'\\'' AS a, '\\' AS b, password AS p FROM users -- '",
+            ),
+            (
+                Dialect::Postgres,
+                "SELECT ARRAY['a]'], password AS p FROM users -- '",
+            ),
+            (
+                Dialect::Sqlite,
+                "SELECT 1 /* /* */ , password AS p FROM users -- */",
+            ),
+            (
+                Dialect::Backslash,
+                "SELECT `a\\`` , password AS p FROM users, `x`",
+            ),
+            (
+                Dialect::Backslash,
+                "SELECT \"a\\\"\" , password AS p FROM users -- \"",
+            ),
+        ] {
+            assert!(
+                check_dialect(sql, dialect, &idx, true).is_err(),
+                "{dialect:?}: {sql}"
+            );
+        }
+        assert!(check_references("SELECT $a, password AS p FROM users", &idx, true).is_err());
+        for (dialect, sql) in [
+            (
+                Dialect::Mysql,
+                "SELECT 'it\\'s', \"a\\\"b\" AS q, `id` FROM users -- note",
+            ),
+            (
+                Dialect::Postgres,
+                "SELECT E'it\\'s', $$x; delete$$, \"name\" FROM users /* a /* b */ c */",
+            ),
+            (Dialect::Sqlite, "SELECT [name], 'C:\\' FROM users /* c */"),
+            (
+                Dialect::Backslash,
+                "SELECT `na\\`me`, 'it\\'s' FROM users # c",
+            ),
+        ] {
+            assert!(
+                check_dialect(sql, dialect, &idx, true).is_ok(),
+                "{dialect:?}: {sql}"
+            );
+        }
+    }
+
+    #[test]
     fn rejects_references_to_redacted_columns() {
         let idx = index(&[]);
         for sql in [
@@ -1306,6 +1731,160 @@ mod tests {
         assert!(check_references("select * from users", &idx, true).is_ok());
         assert!(check_references("select * from public.users", &idx, true).is_ok());
         assert!(check_references("select u.name from users u where u.id = 1", &idx, true).is_ok());
+        for sql in [
+            "select quantile(0.9)(id) from users",
+            "select id * 1.19, 0.5e3 from public.users where id > 2.5",
+        ] {
+            assert!(check_references(sql, &idx, true).is_ok(), "{sql}");
+            assert!(
+                check_dialect(sql, Dialect::Backslash, &idx, true).is_ok(),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "select * from `2024`.vault",
+            "select * from \"0\".\"9\"",
+            "select * from secret.vault where id > 0.5",
+        ] {
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn duckdb_file_readers_and_string_tables_are_flagged() {
+        for sql in [
+            "SELECT * FROM read_text('/etc/hosts')",
+            "select * from READ_CSV_AUTO('x.csv')",
+            "SELECT * FROM '/etc/hosts'",
+            "SELECT * FROM (SELECT * FROM 'x.parquet')",
+            "SELECT * FROM t JOIN 'x.csv' USING (id)",
+            "SELECT extract(year FROM d) FROM 'x.csv'",
+            "SELECT column_name, stats FROM pragma_storage_info('secret.notes')",
+            "SELECT * FROM query('SELECT * FROM secret.notes')",
+            "SELECT * FROM query_table('secret.notes')",
+            "SELECT E'\\'' AS q, '\\' AS a, * FROM read_text('/etc/hosts') -- '",
+        ] {
+            assert!(duckdb_file_access(sql).is_some(), "{sql}");
+        }
+        for sql in [
+            "SELECT extract(year FROM '2024-01-01'::date) AS y FROM t",
+            "SELECT trim(both 'x' FROM 'xax'), substring('abc' FROM 2) FROM t",
+            "SELECT 'from' AS read_text, glob FROM t WHERE name GLOB 'a*'",
+            "SELECT * FROM read_text_log",
+            "SELECT * FROM t WHERE status IS DISTINCT FROM 'open' OR status IS NOT DISTINCT FROM 'x'",
+        ] {
+            assert!(duckdb_file_access(sql).is_none(), "{sql}");
+        }
+        assert!(dangerous_word("SELECT x.query('/a') AS q FROM t").is_none());
+    }
+
+    #[test]
+    fn mariadb_executable_comments_and_tsql_batches_are_read_as_statements() {
+        let idx = index(&["public"]);
+        for sql in [
+            "SELECT 1 /*M! UNION SELECT password FROM hidden.users */",
+            "SELECT 1 /*M!100100 UNION SELECT password FROM hidden.users */",
+        ] {
+            assert!(check_references(sql, &idx, true).is_err(), "{sql}");
+        }
+        assert!(write_word("/*M!100100 DELETE FROM users */").is_some());
+        assert!(write_word("SELECT 1 /*M! deny */").is_none());
+        for sql in [
+            "SELECT 1 DENY SELECT ON SCHEMA::dbo TO public",
+            "SELECT 1 WHERE 1 = 1 DISABLE TRIGGER ALL ON dbo.orders",
+            "SELECT 1 CHECKPOINT",
+            "RECEIVE TOP (1) * FROM dbo.queue",
+        ] {
+            assert!(tsql_batch_word(sql).is_some(), "{sql}");
+        }
+        for sql in [
+            "SELECT t.deny, t.checkpoint, t.send FROM t",
+            "SELECT disabled, enable_flag FROM t",
+        ] {
+            assert!(tsql_batch_word(sql).is_none(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn admin_statements_and_external_table_functions_are_not_reads() {
+        for sql in [
+            "STOP REPLICA",
+            "start replica",
+            "START TRANSACTION",
+            "CHANGE REPLICATION SOURCE TO SOURCE_HOST = 'x'",
+            "BINLOG 'AAAA'",
+            "RESTART",
+            "CLONE LOCAL DATA DIRECTORY = '/tmp/x'",
+            "UNINSTALL PLUGIN audit_log",
+            "XA START 'x'",
+            "HANDLER users OPEN",
+            "CACHE INDEX users IN hot",
+            "UNLOCK TABLES",
+            "REPAIR TABLE users",
+            "EXCHANGE TABLES a AND b",
+            "UNDROP TABLE users",
+            "/*!80000 STOP REPLICA */",
+            "DENY SELECT ON users TO public",
+            "DISABLE TRIGGER ALL ON users",
+            "enable trigger all on users",
+            "CHECKPOINT",
+            "SETUSER",
+            "WRITETEXT users.name 0x0 'x'",
+            "/*!80000DELETE FROM users */",
+            "/*!800001UPDATE users SET name = 'x' */",
+            "SELECT 1 /*!50000INTO OUTFILE '/tmp/x' */",
+            "FLASHBACK TABLE users TO BEFORE DROP",
+            "AUDIT SELECT ON users",
+            "NOAUDIT ALL",
+            "ASSOCIATE STATISTICS WITH COLUMNS users.id USING NULL",
+            "DISASSOCIATE STATISTICS FROM COLUMNS users.id",
+            "ADMINISTER KEY MANAGEMENT CREATE KEYSTORE 'x' IDENTIFIED BY y",
+            "EXPORT DATABASE '/tmp/x'",
+            "FORCE CHECKPOINT",
+        ] {
+            assert!(write_word(sql).is_some(), "{sql}");
+        }
+        let idx = index(&[]);
+        assert!(check_dialect(
+            "SELECT id /*!80000, password */ FROM users",
+            Dialect::Mysql,
+            &idx,
+            true
+        )
+        .is_err());
+        assert!(check_dialect(
+            "SELECT 1 /*!80000DELETE FROM users */",
+            Dialect::Mysql,
+            &idx,
+            true
+        )
+        .is_err());
+        for sql in [
+            "select start, stop, change, cache, handler from users",
+            "select u.xa, u.repair from users u where exchange = 1",
+        ] {
+            assert!(write_word(sql).is_none(), "{sql}");
+        }
+        for sql in [
+            "select get_lock('x', 10)",
+            "select release_all_locks()",
+            "select source_pos_wait('f', 4)",
+            "SELECT * FROM s3Cluster('c', 'http://x/y.csv')",
+            "select * from urlCluster('c', 'http://x')",
+            "select * from gcs('http://x')",
+            "select * from azureBlobStorage('http://x', 'c', 'f')",
+            "select * from fileCluster('c', '/etc/passwd')",
+            "select * from sqlite('/x.db', 't')",
+            "select * from executable('x.sh', TSV, 'a String')",
+            "select * from mongodb('h', 'd', 'c', 'u', 'p', 'a String')",
+            "select * from icebergS3('http://x')",
+            "select * from mergeTreeIndex('secret', 'vault')",
+            "select * from timeSeriesData('secret', 'vault')",
+            "select * from clusterAllReplicas('default', 'secret', 'vault')",
+        ] {
+            assert!(dangerous_word(sql).is_some(), "{sql}");
+        }
+        assert!(dangerous_word("select sqlite, redis, gcs, hive, oss from users").is_none());
     }
 
     #[test]
@@ -1433,6 +2012,29 @@ mod tests {
         let ok = Redactor::new(&config.redaction, &["kunden_.*".into(), " ".into()]);
         assert!(ok.check_valid().is_ok());
         assert!(!ok.column_is_sensitive("id"));
+    }
+
+    #[test]
+    fn compiled_redactors_are_reused_bounded_and_keyed_by_rules() {
+        let config = McpConfig::default();
+        for n in 0..COMPILED_SLOTS * 2 {
+            let r = Redactor::new(&config.redaction, &[format!("extra_{n}")]);
+            assert!(r.column_is_sensitive(&format!("extra_{n}")));
+            assert!(!r.column_is_sensitive(&format!("other_{n}")));
+        }
+        assert!(COMPILED.lock().unwrap().len() <= COMPILED_SLOTS);
+        let split = Redactor::new(&config.redaction, &["a".into(), "b".into()]);
+        let joined = Redactor::new(&config.redaction, &["a\u{0}b".into()]);
+        assert!(split.column_is_sensitive("b"));
+        assert!(!joined.column_is_sensitive("b"));
+        let mut off = config.clone();
+        off.redaction
+            .columns
+            .iter_mut()
+            .for_each(|rule| rule.enabled = false);
+        assert!(Redactor::new(&config.redaction, &[]).column_is_sensitive("password"));
+        assert!(!Redactor::new(&off.redaction, &[]).column_is_sensitive("password"));
+        assert!(Redactor::new(&config.redaction, &[]).column_is_sensitive("password"));
     }
 
     #[test]

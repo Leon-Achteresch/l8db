@@ -11,6 +11,7 @@ import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
 import { parsePlsqlMembers } from "@/lib/plsql";
 import { QueryStatementOutlineCache } from "@/lib/query-statement-outline";
 import type { SessionView } from "@/lib/session-views";
+import { useSettingsStore } from "@/lib/settings";
 import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 
 const sortedTableCache = new WeakMap<TableInfo[], TableInfo[]>();
@@ -85,7 +86,8 @@ export function QuerySchemaBrowser({
   const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
   const outlineCache = useRef<QueryStatementOutlineCache | null>(null);
   if (!outlineCache.current) outlineCache.current = new QueryStatementOutlineCache();
-  outlineCache.current.invalidate(sql, kind);
+  const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
+  outlineCache.current.invalidate(sql, kind, blankLines);
   const [memberQuery, setMemberQuery] = useState("");
   const [activeMember, setActiveMember] = useState<string | undefined>(undefined);
   const members = useMemo(() => parsePlsqlMembers(sql), [sql]);
@@ -152,8 +154,8 @@ export function QuerySchemaBrowser({
   });
   const statements = useMemo(() => {
     if (tab !== "outline" || members.length > 0) return [];
-    return outlineCache.current?.read(sql, kind) ?? [];
-  }, [sql, kind, tab, members.length]);
+    return outlineCache.current?.read(sql, kind, blankLines) ?? [];
+  }, [sql, kind, blankLines, tab, members.length]);
   const statementVirtualizer = useVirtualizer({
     count: statements.length,
     getScrollElement: () => statementScrollRef.current,

@@ -8,6 +8,7 @@ export interface SqlLint {
 
 const REF_PATTERN = /(?:FROM|JOIN)\s+([A-Za-z_][\w$]*|"[^"]+")(?:\.([A-Za-z_][\w$]*|"[^"]+"))?/gi;
 const CTE_PATTERN = /(?:WITH|,)\s+([A-Za-z_][\w$]*)\s+AS\s*\(/gi;
+const ORACLE_DICTIONARY = /^(?:dual|(?:all|user|dba|cdb)_\w+|g?v\$\w+)$/;
 
 function unquote(name: string): string {
   return name.startsWith('"') ? name.slice(1, -1).replace(/""/g, '"') : name;
@@ -23,13 +24,15 @@ function collectCtes(sql: string): Set<string> {
   return names;
 }
 
-export function lintUnknownTables(sql: string, tables: TableInfo[]): SqlLint[] {
+export function lintUnknownTables(sql: string, tables: TableInfo[], oracle = false): SqlLint[] {
   if (tables.length === 0) return [];
   const known = new Map<string, Set<string>>();
+  const knownSchemas = new Set<string>();
   for (const table of tables) {
     const key = table.name.toLowerCase();
     if (!known.has(key)) known.set(key, new Set());
     known.get(key)?.add(table.schema.toLowerCase());
+    knownSchemas.add(table.schema.toLowerCase());
   }
   const ctes = collectCtes(sql);
   const findings: SqlLint[] = [];
@@ -45,6 +48,8 @@ export function lintUnknownTables(sql: string, tables: TableInfo[]): SqlLint[] {
     if (after.startsWith("(")) continue;
     const schemas = known.get(tableName);
     if (!schemas) {
+      if (schemaName ? !knownSchemas.has(schemaName) : oracle && ORACLE_DICTIONARY.test(tableName))
+        continue;
       findings.push({
         offset: match.index + match[0].lastIndexOf(match[2] ?? match[1]),
         length: (match[2] ?? match[1]).length,

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
+import { type FilterBarStyle, normalizeFilterBarStyle } from "@/lib/filter-bar-style";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -40,6 +41,8 @@ export interface SettingsState {
   transactionsPerTable: boolean;
   autoFeatureVideos: boolean;
   setAutoFeatureVideos: (value: boolean) => void;
+  blogSuggestions: boolean;
+  setBlogSuggestions: (value: boolean) => void;
   autoUpdateCheck: boolean;
   crashReports: boolean;
   setCrashReports: (value: boolean) => void;
@@ -74,11 +77,13 @@ export interface SettingsState {
   editorAcceptSuggestionOnEnter: EditorAcceptSuggestionOnEnter;
   editorTabCompletion: EditorTabCompletion;
   editorParameterHints: boolean;
+  oraclePlsqlWarnings: boolean;
   editorFormatOnPaste: boolean;
   editorFormatOnType: boolean;
   editorFormatDenseOperators: boolean;
   editorFormatNewlineBeforeSemicolon: boolean;
   editorFormatLinesBetweenQueries: number;
+  editorBlankLineTerminator: boolean;
   editorKeymap: EditorKeymap;
   confirmDestructiveQueries: boolean;
   productionReadOnly: boolean;
@@ -107,6 +112,7 @@ export interface SettingsState {
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   tableStyle: TableStyle;
+  filterBarStyle: FilterBarStyle;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -143,11 +149,13 @@ export interface SettingsState {
   setEditorAcceptSuggestionOnEnter: (v: EditorAcceptSuggestionOnEnter) => void;
   setEditorTabCompletion: (v: EditorTabCompletion) => void;
   setEditorParameterHints: (v: boolean) => void;
+  setOraclePlsqlWarnings: (v: boolean) => void;
   setEditorFormatOnPaste: (v: boolean) => void;
   setEditorFormatOnType: (v: boolean) => void;
   setEditorFormatDenseOperators: (v: boolean) => void;
   setEditorFormatNewlineBeforeSemicolon: (v: boolean) => void;
   setEditorFormatLinesBetweenQueries: (v: number) => void;
+  setEditorBlankLineTerminator: (v: boolean) => void;
   setEditorKeymap: (v: EditorKeymap) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
   setProductionReadOnly: (v: boolean) => void;
@@ -177,6 +185,7 @@ export interface SettingsState {
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
+  setFilterBarStyle: (value: FilterBarStyle) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -208,6 +217,7 @@ export const DEFAULT_SETTINGS = {
   transactionsEnabled: true,
   transactionsPerTable: true,
   autoFeatureVideos: true,
+  blogSuggestions: true,
   autoUpdateCheck: true,
   crashReports: false,
   usageMetrics: false,
@@ -239,11 +249,13 @@ export const DEFAULT_SETTINGS = {
   editorAcceptSuggestionOnEnter: "on" as EditorAcceptSuggestionOnEnter,
   editorTabCompletion: "off" as EditorTabCompletion,
   editorParameterHints: true,
+  oraclePlsqlWarnings: false,
   editorFormatOnPaste: false,
   editorFormatOnType: false,
   editorFormatDenseOperators: false,
   editorFormatNewlineBeforeSemicolon: false,
   editorFormatLinesBetweenQueries: 2,
+  editorBlankLineTerminator: false,
   editorKeymap: "default" as EditorKeymap,
   confirmDestructiveQueries: true,
   productionReadOnly: true,
@@ -272,6 +284,7 @@ export const DEFAULT_SETTINGS = {
   fitColumnsToHeader: true,
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
+  filterBarStyle: "classic" as FilterBarStyle,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -295,6 +308,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTransactionsEnabled: (transactionsEnabled) => set({ transactionsEnabled }),
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
       setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
+      setBlogSuggestions: (blogSuggestions) => set({ blogSuggestions }),
       setAutoUpdateCheck: (autoUpdateCheck) =>
         set((state) => ({
           autoUpdateCheck,
@@ -333,6 +347,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ editorAcceptSuggestionOnEnter }),
       setEditorTabCompletion: (editorTabCompletion) => set({ editorTabCompletion }),
       setEditorParameterHints: (editorParameterHints) => set({ editorParameterHints }),
+      setOraclePlsqlWarnings: (oraclePlsqlWarnings) => set({ oraclePlsqlWarnings }),
       setEditorFormatOnPaste: (editorFormatOnPaste) => set({ editorFormatOnPaste }),
       setEditorFormatOnType: (editorFormatOnType) => set({ editorFormatOnType }),
       setEditorFormatDenseOperators: (editorFormatDenseOperators) =>
@@ -341,6 +356,8 @@ export const useSettingsStore = create<SettingsState>()(
         set({ editorFormatNewlineBeforeSemicolon }),
       setEditorFormatLinesBetweenQueries: (editorFormatLinesBetweenQueries) =>
         set({ editorFormatLinesBetweenQueries }),
+      setEditorBlankLineTerminator: (editorBlankLineTerminator) =>
+        set({ editorBlankLineTerminator }),
       setEditorKeymap: (editorKeymap) => set({ editorKeymap }),
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),
@@ -375,6 +392,8 @@ export const useSettingsStore = create<SettingsState>()(
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
+      setFilterBarStyle: (filterBarStyle) =>
+        set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
       resetAppearance: () =>
         set({
           uiScale: 100,
@@ -386,6 +405,7 @@ export const useSettingsStore = create<SettingsState>()(
           fitColumnsToHeader: true,
           monochromeCells: true,
           tableStyle: "classic",
+          filterBarStyle: "classic",
         }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -410,6 +430,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...saved,
           easyMode: saved?.easyMode === true,
           autoFeatureVideos: saved?.autoFeatureVideos !== false,
+          blogSuggestions: saved?.blogSuggestions !== false,
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,
           usageMetrics: saved?.usageMetrics === true,
@@ -425,6 +446,7 @@ export const useSettingsStore = create<SettingsState>()(
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
+          filterBarStyle: normalizeFilterBarStyle(saved?.filterBarStyle),
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",

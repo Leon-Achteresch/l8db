@@ -13,6 +13,8 @@ Relevant Supabase documentation: [Management API](https://supabase.com/docs/refe
 Supabase Storage buckets can be created, switched between public and private access, and deleted when empty. These actions require the project's Secret API Key and use the [Storage API](https://supabase.com/docs/reference/self-hosting-storage).
 Auth users can be created with an email and password, have their email changed, and be deleted with confirmation through the [Auth Admin API](https://supabase.com/docs/reference/javascript/auth-admin-createuser). Edge Functions can be deleted with confirmation through the [Management API](https://supabase.com/docs/reference/api/v1-delete-a-function).
 
+Self-hosted Supabase ([Docker setup](https://supabase.com/docs/guides/self-hosting/docker)) connects with the API gateway URL (`SUPABASE_PUBLIC_URL`, origin only) and the `SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`; l8db checks the key against `/storage/v1/bucket` before storing it in the OS keychain. Each instance gets a `self-<hash>` reference. Storage and Auth use the same project APIs as the cloud; the table preview uses pg-meta (`/pg/query`, service role only), and service health probes Auth, pg-meta, Realtime, PostgREST and Storage. Edge Functions, backups and key import need the Management API and are hidden. The database dialog prefills the Supavisor pooler (`postgres.your-tenant-id`, port 5432, `sslmode=prefer`) and lets host, port and user be changed. Removing a self-hosted instance leaves the cloud token alone and vice versa.
+
 ## Appwrite BaaS
 
 The **Appwrite** tab in BaaS connects one project at a time using its API endpoint (`https://<region>.cloud.appwrite.io/v1` for Appwrite Cloud), project ID and [project API key](https://appwrite.io/docs/partners/project/api-keys). Because keys are project-scoped, add each project separately. l8db verifies the key with `GET /project` before saving it in the OS keychain; the form clears the key after connection and never persists it in localStorage. HTTPS is required, except for localhost development endpoints. Redirects are not followed when sending the key.
@@ -26,6 +28,10 @@ Appwrite buckets can be created, renamed, and deleted with `buckets.write`. Auth
 ## Convex BaaS
 
 The **Convex** tab connects a team by its numeric team ID and a Team Access Token from Team Settings. l8db verifies the token through the [Management API](https://docs.convex.dev/management-api/list-projects), keeps it in the OS keychain, and shows paginated projects with their cloud and local deployments. Each project links to its Convex dashboard. Cloud deployments show environment variable names and support setting and deleting their values through the [Deployment API](https://docs.convex.dev/deployment-api/update-environment-variables); existing values never reach the frontend. The integration uses only official Convex APIs. Generic table and file writes are unavailable because Convex exposes those operations through functions defined by each project.
+
+Self-hosted Convex ([self-hosting guide](https://github.com/get-convex/convex-backend/tree/main/self-hosted)) connects with the backend URL (`CONVEX_CLOUD_ORIGIN`, e.g. `http://127.0.0.1:3210`) and an admin key from `./generate_admin_key.sh`. l8db verifies it with `/api/v1/list_environment_variables` and then manages environment variables like a cloud deployment; projects and deployments do not exist there.
+
+Live checks against real self-hosted instances: `cargo test --lib baas_self_hosted_live -- --ignored --test-threads=1` with `L8DB_E2E_SUPABASE_URL`, `L8DB_E2E_SUPABASE_KEY` (optional `L8DB_E2E_SUPABASE_DB_PASSWORD`, `L8DB_E2E_SUPABASE_DB_PORT`), `L8DB_E2E_CONVEX_URL` and `L8DB_E2E_CONVEX_KEY`. With the same variables, `bun run test:baas-browser` drives the UI through Playwright against the real commands.
 
 ## PocketBase BaaS
 
@@ -136,7 +142,7 @@ All adapters implement connection testing, database/schema/table/column discover
 | Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, schema and data comparison |
 | Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation, schema and data comparison; no SSH/TLS or stored functions |
 | Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user, schema and data comparison |
-| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation, server output, object grants and administration, explain (PLAN_TABLE; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL) |
+| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation (warnings via ATTRIBUTE, optional `PLSQL_WARNINGS`), server output, object grants and administration, explain (PLAN_TABLE, adaptive plans via `display_map`; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL), sessions and locks with blocking chain, cancellation (break, then kill via MODULE/ACTION), connection info (capability probe), DBMS_XPLAN text view, data compare (LOB/LONG/XMLTYPE columns are not compared), bulk compile in dependency order (skips objects in use) |
 | Duckdb | SQL catalog objects, DDL, explain; no row editing or transaction UI |
 | Clickhouse | Views, functions, DDL, column changes, explain and overview |
 | Mongodb | JSON queries and filters, collections, indexes and DDL |
@@ -210,6 +216,28 @@ BigQuery and Snowflake talk HTTPS to the vendor APIs; SSH tunnels and the SSL se
 - Types: FIXED with scale 0 as numbers within ±2^53 (otherwise strings), DATE/TIME/TIMESTAMP_NTZ/LTZ/TZ converted from epoch values, VARIANT/OBJECT/ARRAY parsed as JSON, BINARY as `\x…` hex.
 
 Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with the `dataset1.table_a` fixture from `tests/lab/bigquery/data.yaml`: `docker run -d --platform linux/amd64 --name l8db-bq -p 127.0.0.1:9050:9050 -v "$PWD/tests/lab/bigquery/data.yaml:/data.yaml" ghcr.io/goccy/bigquery-emulator:latest --project=test --data-from-yaml=/data.yaml`. Snowflake has no emulator; only the mocked tests exist.
+
+## Oracle connections
+
+`oracle://user:pw@host:1521/service` connects through EZConnect. Query parameters:
+
+- `?sid=ORCL` connects by SID instead of the service name.
+- `?privilege=sysdba` (also `sysoper`, `sysbackup`, `sysdg`, `syskm`, `sysasm`) logs in with an administrative role; user `sys` defaults to SYSDBA.
+- `?protocol=tcps` (or `?ssl=true`) uses TCPS; `&wallet=/path/to/wallet` sets `MY_WALLET_DIRECTORY` (quoted, so paths such as `C:\Program Files (x86)\…` work; `"` is rejected).
+- In the connection editor (field mode), SID, role, TCPS and wallet are set in the Oracle section instead of typing the parameters.
+- `?tns=ALIAS` or `?connect_string=…` passes a TNS alias or descriptor unchanged; the other parameters are then ignored.
+
+Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `meta …` or `transaction …` in V$SESSION. On connect, one PL/SQL probe reads version, container, identifier length, privileges and the readable V$ views; the result is cached per connection for 5 minutes and shown under Sitzungen & Locks → Verbindung (the SID shown there belongs to the metadata session, not the editor). Without rights on V$SESSION or V$LOCK, the session and lock views explain the missing grant instead of failing with ORA-00942. Input that contains only SQL*Plus commands (`DESC`, `SET`, `@file`) is rejected before it reaches the server. With V$SESSION_LONGOPS, the session list shows progress and remaining time next to the wait event.
+
+- **Debugger:** DBMS_DEBUG reads each frame's line map (`GET_LINE_MAP`). Breakpoints on lines without an executable statement are skipped with a message instead of ending the session. Values in the inspector can be changed while the session is paused (`SET_VALUE`, PL/SQL literal syntax such as `42` or `'text'`); rejected values leave the variable unchanged and report the reason. PostgreSQL uses `pldbg_deposit_value` (not live-tested).
+- **Explain:** with Oracle 12.1+ and read access to V$SQL and V$SQL_PLAN, the DBMS_XPLAN text also contains the cached cursor plan (`DISPLAY_CURSOR` via `DBMS_SQL_TRANSLATOR.SQL_ID`), when the statement already ran.
+- **Transactions:** `DBMS_TRANSACTION.LOCAL_TRANSACTION_ID` tells whether the session has an open transaction before V$LOCKED_OBJECT is read. Without an open transaction there is nothing to list; with one but no V$ rights, the error says so.
+- **Compiling:** warnings from `CREATE OR REPLACE` in the editor and from package spec, body and callers are shown together. Objects compiled with debug info (`PLSQL_DEBUG` or optimize level below 2) appear only in the invalid-objects view, not in the sidebar markers, the compile-all count or deployment checks.
+- **Notices:** reconnects and extra result sets from `DBMS_SQL.RETURN_RESULT` are shown as a warning even when server output is off. Server output is read only when it is enabled.
+- **Cancellation:** the editor call has an outer safety timeout (query timeout + 2 × connect timeout + 5 s); idle pings run under the connect timeout. The fallback kill only matches ACTIVE sessions of the same user and machine and is skipped when the call ends in the meantime.
+- **Data compare:** LOB columns are read through locators, so a fetch batch does not buffer 500 full LOBs. Sync scripts split CLOBs into `TO_CLOB` pieces of 1000 characters and refuse XMLTYPE, SDO_GEOMETRY, BFILE, LONG and binary values above 2000 bytes.
+- **SQL log:** passwords after `IDENTIFIED BY`, `REPLACE` and `PASSWORD '…'` are masked. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
+- **Browser lab:** `bun run test:oracle-browser` starts the ignored bridge `oracle_browser_bridge` on 127.0.0.1:27031 (it calls the real Tauri command functions), Vite on port 1431 and the Oracle browser tests (`tests/oracle-*-browser.test.ts`). It expects the lab at `127.0.0.1:15219/FREEPDB1` with users `l8db` and `l8db_debug` (password `l8dbtest`) and Instant Client in `LD_LIBRARY_PATH`.
 
 ## Default and optional builds
 

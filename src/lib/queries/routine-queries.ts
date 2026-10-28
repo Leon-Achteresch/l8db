@@ -50,6 +50,22 @@ export function usePackageMembersQuery(enabled = true) {
   });
 }
 
+export function useAllPackageMembersQuery(enabled = true) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["package-members", connection?.id, database, undefined],
+    queryFn: () =>
+      listPackageMembers(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: enabled && supports(connection, "functions"),
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useProceduresQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -84,18 +100,19 @@ export function useFunctionDefinitionQuery(oid: string) {
   });
 }
 
-export function useInvalidObjectsQuery() {
+export function useInvalidObjectsQuery(includeDebug = false) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
   return useQuery({
-    queryKey: ["invalid-objects", connection?.id, database, schema],
+    queryKey: ["invalid-objects", connection?.id, database, schema, includeDebug],
     queryFn: () =>
       listInvalidObjects(
         connection!.kind,
         effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
+        includeDebug,
       ),
     enabled: supports(connection, "compile_objects"),
     staleTime: 15_000,

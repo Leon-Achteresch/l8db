@@ -29,5 +29,29 @@ test("empty editor does not produce a statement", () => {
 
 test("Oracle statement target runs the entire package from inside a procedure", () => {
   const body = "CREATE OR REPLACE PACKAGE BODY demo AS PROCEDURE p IS BEGIN NULL; END p; END demo;";
-  expect(resolveQueryRunTarget(`${body}\n/`, "", body.indexOf("NULL"), "selection-or-statement", "oracle")).toBe(body);
+  expect(
+    resolveQueryRunTarget(
+      `${body}\n/`,
+      "",
+      body.indexOf("NULL"),
+      "selection-or-statement",
+      "oracle",
+    ),
+  ).toBe(body);
+});
+
+test("SQL-only targets skip SQL*Plus command lines for Explain, Check and assessment", () => {
+  const sql = "DEFINE x = 1\nSELECT &x FROM dual;";
+  expect(resolveQueryRunTarget(sql, "", 2, "selection-or-statement", "oracle")).toBe(
+    "DEFINE x = 1",
+  );
+  expect(
+    resolveQueryRunTarget(sql, "", 2, "selection-or-statement", "oracle", { sqlOnly: true }),
+  ).toBe("");
+  expect(
+    resolveQueryRunTarget(sql, "", sql.length - 3, "selection-or-statement", "oracle", {
+      sqlOnly: true,
+    }),
+  ).toBe("SELECT &x FROM dual;");
+  expect(resolveQueryRunTarget(sql, "", 0, "all", "oracle", { sqlOnly: true })).toBe(sql);
 });

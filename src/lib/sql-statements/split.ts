@@ -6,22 +6,42 @@ export interface SqlStatement {
 
 export interface SqlSplitResult {
   statements: SqlStatement[];
+  commands: SqlStatement[];
   unterminated: boolean;
 }
-
-const WORD_CHAR = /[A-Za-z0-9_]/;
 
 const DOLLAR_TAG_ASCII = /\$([A-Za-z_][A-Za-z0-9_]*)?\$/y;
 const DOLLAR_TAG_START = /[A-Za-z_$]/;
 
+function isWordStartCode(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isWordCode(code: number): boolean {
+  return isWordStartCode(code) || (code >= 48 && code <= 57);
+}
+
+function isWordStart(ch: string | undefined): boolean {
+  return ch !== undefined && isWordStartCode(ch.charCodeAt(0));
+}
+
 function isWordChar(ch: string | undefined): boolean {
-  return ch !== undefined && WORD_CHAR.test(ch);
+  return ch !== undefined && isWordCode(ch.charCodeAt(0));
 }
 
 const ROUTINE_OBJECTS = ["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
 const MSSQL_BATCH_OBJECTS = ["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
 const END_SUFFIXES = ["IF", "LOOP", "WHILE", "REPEAT"];
-const ORACLE_CREATE_MODIFIERS = ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
+const ORACLE_CREATE_MODIFIERS = [
+  "OR",
+  "REPLACE",
+  "EDITIONABLE",
+  "NONEDITIONABLE",
+  "AND",
+  "RESOLVE",
+  "COMPILE",
+  "NOFORCE",
+];
 const ORACLE_PLSQL_OBJECTS = ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER"];
 const SQLPLUS_COMMANDS = new Set([
   "SET",
@@ -43,14 +63,35 @@ const SQLPLUS_COMMANDS = new Set([
   "BREAK",
   "CLEAR",
   "TIMING",
+  "START",
+  "STA",
+  ...[
+    "PRO DEF UNDEF COL SPO SHO ACC PAU VAR VARIABLE PRINT HOST CONNECT CONN DISCONNECT DISC",
+    "PASSWORD STORE COMPUTE REPHEADER REPFOOTER STARTUP SHUTDOWN RECOVER ARCHIVE COPY XQUERY",
+    "ATTRIBUTE SAVE GET EDIT INPUT LIST APPEND CHANGE DEL RUN HELP DESC DESCRIBE",
+  ]
+    .join(" ")
+    .split(" "),
 ]);
 const SQL_SET_TARGETS = ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"];
+const SLASH_LINE = /^[ \t]*\/[ \t\r]*$/gm;
+const WRAPPED_HEADER =
+  /^\s+(?:BODY\s+)?(?:"[^"]+"|[A-Za-z][\w$#]*)(?:\s*\.\s*(?:"[^"]+"|[A-Za-z][\w$#]*))?\s+$/i;
 
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
 }
 
-export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResult {
+export interface SqlSplitOptions {
+  blankLines?: boolean;
+}
+
+export function splitSqlStatements(
+  sql: string,
+  dialect?: string,
+  options: SqlSplitOptions = {},
+): SqlSplitResult {
+  const blankLines = options.blankLines === true;
   if (dialect === "redis") {
     let offset = 0;
     const statements: SqlStatement[] = [];
@@ -62,17 +103,19 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       }
       offset += line.length + 1;
     }
-    return { statements, unterminated: false };
+    return { statements, commands: [], unterminated: false };
   }
   if (dialect === "mongodb") {
     const text = sql.trim();
     const start = sql.indexOf(text);
     return {
       statements: text ? [{ text, start, end: start + text.length }] : [],
+      commands: [],
       unterminated: false,
     };
   }
   const statements: SqlStatement[] = [];
+  const commands: SqlStatement[] = [];
   const length = sql.length;
   let index = 0;
   let segmentStart = -1;
@@ -84,10 +127,12 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
   let plsqlHeader = false;
   let plsqlClosed = false;
   let plsqlBody = false;
+  let plsqlHead = 0;
   let batch = false;
   let blockDepth = 0;
   let delimiter = ";";
   const leadingWords: string[] = [];
+  let routine = false;
 
   const flush = (endExclusive: number) => {
     if (segmentStart < 0 || !hasCode) {
@@ -111,6 +156,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
     batch = false;
     blockDepth = 0;
     leadingWords.length = 0;
+    routine = false;
   };
 
   const lineEndFrom = (from: number) => {
@@ -120,8 +166,30 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
 
   const readWord = (from: number) => {
     let end = from;
-    while (end < length && isWordChar(sql[end])) end += 1;
+    while (end < length && isWordCode(sql.charCodeAt(end))) end += 1;
     return end;
+  };
+
+  const blankBefore = (at: number) => !sql.slice(sql.lastIndexOf("\n", at - 1) + 1, at).trim();
+
+  const pushCommand = (from: number) => {
+    const next = lineEndFrom(from);
+    let end = next;
+    while (end > from && isSpace(sql[end - 1])) end -= 1;
+    commands.push({ text: sql.slice(from, end), start: from, end });
+    segmentStart = -1;
+    index = next;
+  };
+
+  const skipToSlash = () => {
+    SLASH_LINE.lastIndex = index;
+    const match = SLASH_LINE.exec(sql);
+    if (!match) {
+      index = length;
+      return;
+    }
+    flush(match.index + match[0].indexOf("/"));
+    index = lineEndFrom(match.index);
   };
 
   while (index < length) {
@@ -179,9 +247,13 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
           continue;
         }
       }
+      if (ch === "@" && !hasCode && blankBefore(index)) {
+        pushCommand(index);
+        continue;
+      }
       const quoteStart = ch === "n" || ch === "N" ? index + 1 : index;
       if (
-        /q/i.test(sql[quoteStart]) &&
+        (sql[quoteStart] === "q" || sql[quoteStart] === "Q") &&
         sql[quoteStart + 1] === "'" &&
         !isWordChar(sql[index - 1])
       ) {
@@ -200,7 +272,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
           continue;
         }
       }
-      if (/[A-Za-z_]/.test(ch)) {
+      if (isWordStart(ch)) {
         const start = index;
         while (
           index < length &&
@@ -213,41 +285,67 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         }
         const word = sql.slice(start, index).toUpperCase();
         if (!hasCode && SQLPLUS_COMMANDS.has(word)) {
-          const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
           let next = index;
           while (next < length && isSpace(sql[next])) next += 1;
           const target = sql.slice(next, readWord(next)).toUpperCase();
-          if (
-            !sql.slice(lineStart, start).trim() &&
-            !(word === "SET" && SQL_SET_TARGETS.includes(target))
-          ) {
-            segmentStart = -1;
-            index = lineEndFrom(index);
+          if (blankBefore(start) && !(word === "SET" && SQL_SET_TARGETS.includes(target))) {
+            pushCommand(start);
             continue;
           }
         }
+        if (!hasCode && (word === "EXEC" || word === "EXECUTE") && blankBefore(start)) {
+          let end = lineEndFrom(index);
+          while (end < length && sql.slice(start, end).trimEnd().endsWith("-"))
+            end = lineEndFrom(end + 1);
+          hasCode = true;
+          flush(end);
+          index = end;
+          continue;
+        }
         hasCode = true;
         if (!plsql) {
-          if (leadingWords.length < 6) leadingWords.push(word);
+          if (leadingWords.length >= 8) continue;
+          leadingWords.push(word);
           const first = leadingWords[0];
           const objectIndex = leadingWords.findIndex(
             (w, i) => i > 0 && !ORACLE_CREATE_MODIFIERS.includes(w),
           );
           const object = objectIndex > 0 ? leadingWords[objectIndex] : undefined;
+          const inline =
+            first === "WITH" && (leadingWords[1] === "FUNCTION" || leadingWords[1] === "PROCEDURE");
           plsql =
             first === "BEGIN" ||
             first === "DECLARE" ||
+            inline ||
             (first === "CREATE" &&
               object !== undefined &&
               (ORACLE_PLSQL_OBJECTS.includes(object) ||
+                object === "JAVA" ||
                 (object === "TYPE" && leadingWords[objectIndex + 1] === "BODY")));
           if (plsql) {
             plsqlDepth = 1;
             plsqlBody = first === "BEGIN";
+            plsqlHeader = inline;
+            plsqlHead = index;
+            if (object === "JAVA") skipToSlash();
           }
           continue;
         }
-        if ((word === "PROCEDURE" || word === "FUNCTION") && plsqlDepth === 1) plsqlHeader = true;
+        if (
+          word === "WRAPPED" &&
+          plsqlDepth === 1 &&
+          !plsqlBody &&
+          !plsqlHeader &&
+          plsqlPending === 0 &&
+          WRAPPED_HEADER.test(sql.slice(plsqlHead, start))
+        ) {
+          skipToSlash();
+          continue;
+        }
+        if (word === "COMPOUND" && /^\s+TRIGGER\b/i.test(sql.slice(index, index + 20)))
+          plsqlBody = true;
+        else if ((word === "PROCEDURE" || word === "FUNCTION") && plsqlDepth === 1)
+          plsqlHeader = true;
         else if ((word === "IS" || word === "AS") && plsqlHeader) {
           plsqlHeader = false;
           plsqlPending += 1;
@@ -276,9 +374,13 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       }
     }
 
-    if (dialect !== "oracle" && /[A-Za-z_]/.test(ch) && !isWordChar(sql[index - 1])) {
+    if (dialect !== "oracle" && isWordStart(ch) && !isWordChar(sql[index - 1])) {
       const start = index;
       index = readWord(start);
+      if (leadingWords.length >= 8 && !routine && dialect !== "mssql" && dialect !== "mysql") {
+        hasCode = true;
+        continue;
+      }
       const word = sql.slice(start, index).toUpperCase();
       if (dialect === "mssql" && word === "GO") {
         const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
@@ -301,7 +403,12 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         }
       }
       hasCode = true;
-      if (leadingWords.length < 8) leadingWords.push(word);
+      if (leadingWords.length < 8) {
+        leadingWords.push(word);
+        routine =
+          leadingWords[0] === "CREATE" &&
+          leadingWords.slice(1).some((w) => ROUTINE_OBJECTS.includes(w));
+      }
       const first = leadingWords[0];
       if (dialect === "mssql") {
         const object = leadingWords.slice(1).find((w) => w !== "OR" && w !== "ALTER");
@@ -312,13 +419,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         continue;
       }
       const prev = sql[start - 1];
-      if (
-        first !== "CREATE" ||
-        prev === "." ||
-        prev === "@" ||
-        !leadingWords.slice(1).some((w) => ROUTINE_OBJECTS.includes(w))
-      )
-        continue;
+      if (!routine || prev === "." || prev === "@") continue;
       if (word === "BEGIN" || word === "CASE") blockDepth += 1;
       else if (word === "END") {
         let next = index;
@@ -426,25 +527,41 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       continue;
     }
 
+    if (
+      ch === "\n" &&
+      blankLines &&
+      hasCode &&
+      !plsql &&
+      !batch &&
+      blockDepth === 0 &&
+      delimiter === ";"
+    ) {
+      const lineStart = sql.lastIndexOf("\n", index - 1) + 1;
+      if (!sql.slice(lineStart, index).trim()) flush(lineStart);
+    }
     if (!isSpace(ch)) hasCode = true;
     index += 1;
   }
 
   if (unterminated) {
-    return { statements, unterminated: true };
+    return { statements, commands, unterminated: true };
   }
 
   flush(length);
-  return { statements, unterminated: false };
+  return { statements, commands, unterminated: false };
 }
 
 export function statementAtOffset(
   sql: string,
   offset: number,
   dialect?: string,
+  options?: SqlSplitOptions,
 ): SqlStatement | null {
-  const { statements, unterminated } = splitSqlStatements(sql, dialect);
-  if (unterminated) return null;
+  const split = splitSqlStatements(sql, dialect, options);
+  if (split.unterminated) return null;
+  const statements = split.commands.length
+    ? [...split.statements, ...split.commands].sort((a, b) => a.start - b.start)
+    : split.statements;
   const position = Math.max(0, Math.min(offset, sql.length));
   for (const statement of statements) {
     if (position >= statement.start && position <= statement.end) return statement;

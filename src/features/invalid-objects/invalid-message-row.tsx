@@ -10,7 +10,9 @@ export function InvalidMessageRow({
   source?: string;
 }) {
   const parsed = parseCompileMessage(message.message);
-  const warning = parsed.code?.startsWith("PLW") ?? false;
+  const warning = message.severity
+    ? message.severity === "WARNING"
+    : (parsed.code?.startsWith("PLW") ?? false);
   const Icon = warning ? TriangleAlertIcon : CircleXIcon;
   return (
     <li className="flex h-6 items-center gap-2 pr-3 pl-[3.25rem] hover:bg-muted/60">

@@ -15,6 +15,12 @@ import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
+import {
+  type AskVariables,
+  askMissingVariables,
+  substitute,
+  substitutionSession,
+} from "@/lib/sql-statements/sqlplus";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
@@ -37,6 +43,7 @@ interface UseRunSqlParams {
   setEditorFocus: (focus: boolean) => void;
   collectOutput: () => Promise<void>;
   runMultiStatement: (text: string) => Promise<void>;
+  askVariables: AskVariables;
   confirmPreview: (sql: string, bound?: boolean) => Promise<boolean>;
 }
 
@@ -52,6 +59,7 @@ export function useRunSql({
   setEditorFocus,
   collectOutput,
   runMultiStatement,
+  askVariables,
   confirmPreview,
 }: UseRunSqlParams) {
   const queryClient = useQueryClient();
@@ -71,21 +79,39 @@ export function useRunSql({
     setResultState,
     setExecutedSql,
     setViewSource,
+    recordRun,
   } = exec;
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
+  const prepareSql = useCallback(
+    async (text: string): Promise<string | null> => {
+      if (connection?.kind !== "oracle") return text;
+      const split = splitSqlStatements(text, connection.kind);
+      if (split.statements.length !== 1 || split.commands.length > 0) return text;
+      const session = substitutionSession(tabId);
+      const answers = await askMissingVariables([{ kind: "sql", text }], session, askVariables);
+      return answers ? substitute(text, session.state, answers).text : null;
+    },
+    [connection?.kind, tabId, askVariables],
+  );
+
   const runSql = useCallback(
     async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
-      const sql = text;
+      let sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
-      if (
-        !bound &&
-        runsOneStatementPerCall(connection.kind) &&
-        splitSqlStatements(sql, connection.kind).statements.length > 1
-      ) {
+      const split =
+        !bound && runsOneStatementPerCall(connection.kind)
+          ? splitSqlStatements(sql, connection.kind)
+          : null;
+      if (split && (split.statements.length > 1 || split.commands.length > 0)) {
         if (!previewed && !(await confirmPreview(sql))) return;
         await runMultiStatement(sql);
         return;
+      }
+      if (!bound && !skipBind && !previewed) {
+        const prepared = await prepareSql(sql);
+        if (prepared === null) return;
+        sql = prepared;
       }
       if (
         !bound &&
@@ -114,7 +140,7 @@ export function useRunSql({
       const currentTab = useTableTabs
         .getState()
         .tabs.find((tab) => tab.kind === "query" && tab.id === tabId);
-      if (currentTab?.kind === "query" && currentTab.sql === sql) {
+      if (currentTab?.kind === "query" && currentTab.sql === text) {
         markQueryTabExecuted(tabId, sql);
       }
       runningRef.current = true;
@@ -157,6 +183,14 @@ export function useRunSql({
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
         setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
+        if (res.columns.length > 0)
+          recordRun({
+            result: res,
+            sql,
+            at: Date.now(),
+            connectionId: connection.id,
+            database: database ?? null,
+          });
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
         const message = String(err);
@@ -193,10 +227,12 @@ export function useRunSql({
       setResultState,
       setExecutedSql,
       setViewSource,
+      recordRun,
       editorSqlRef,
       cursorOffsetRef,
       setEditorFocus,
       runMultiStatement,
+      prepareSql,
       confirmPreview,
     ],
   );
@@ -238,6 +274,7 @@ export function useRunSql({
 
   return {
     runSql,
+    prepareSql,
     bind: {
       open: bindDialogOpen,
       onOpenChange: (open: boolean) => {

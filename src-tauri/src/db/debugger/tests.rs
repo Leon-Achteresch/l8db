@@ -141,7 +141,7 @@ async fn oracle_debugger_live_steps_variables_and_stop() {
         .into_inner()
         .unwrap();
     tokio::task::spawn_blocking(move || {
-        conn.execute("CREATE OR REPLACE PROCEDURE l8db_debug_test(n IN NUMBER) AS\nvalue NUMBER := n;\nBEGIN\nvalue := value + 1;\nvalue := value * 2;\nNULL;\nEND;", &[]).unwrap();
+        conn.execute("CREATE OR REPLACE PROCEDURE l8db_debug_test(n IN NUMBER) AS\nvalue NUMBER := n;\nBEGIN\nvalue := value + 1;\n-- Kommentar\nvalue := value * 2;\nNULL;\nEND;", &[]).unwrap();
     }).await.unwrap();
     assert!(
         debug_availability(DatabaseKind::Oracle, url.clone(), None)
@@ -191,7 +191,87 @@ async fn oracle_debugger_live_steps_variables_and_stop() {
     )
     .await
     .unwrap();
-    assert!(paused(&url, id).await.watches[0].error.is_none());
+    let watched = paused(&url, id).await;
+    assert!(watched.watches[0].error.is_none());
+    eprintln!("oracle line map: {:?}", watched.executable_lines);
+    assert!(
+        watched.executable_lines.contains(&4) && !watched.executable_lines.contains(&5),
+        "{:?}",
+        watched.executable_lines
+    );
+    let mut samples = vec![];
+    let mut changed = None;
+    for value in 37..=41 {
+        let started = std::time::Instant::now();
+        debug_action(
+            id.into(),
+            url.clone(),
+            None,
+            Action::SetValue {
+                name: "value".into(),
+                value: value.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        changed = Some(paused(&url, id).await);
+        samples.push(started.elapsed().as_millis());
+    }
+    let changed = changed.unwrap();
+    samples.sort_unstable();
+    let (set_median, set_max) = (samples[2], samples[4]);
+    assert_eq!(
+        changed.watches[0].value.as_deref(),
+        Some("41"),
+        "{:?}",
+        changed.message
+    );
+    assert!(changed.message.is_none(), "{:?}", changed.message);
+    debug_action(
+        id.into(),
+        url.clone(),
+        None,
+        Action::SetValue {
+            name: "value".into(),
+            value: "'abc'".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let rejected = paused(&url, id).await;
+    assert!(
+        rejected
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("nicht geändert")),
+        "{:?}",
+        rejected.message
+    );
+    assert_eq!(rejected.watches[0].value.as_deref(), Some("41"));
+    debug_action(
+        id.into(),
+        url.clone(),
+        None,
+        Action::Breakpoints {
+            breakpoints: vec![Breakpoint {
+                oid: "L8DB_DEBUG\u{1f}L8DB_DEBUG_TEST\u{1f}PROCEDURE".into(),
+                line: 5,
+            }],
+        },
+    )
+    .await
+    .unwrap();
+    let skipped = paused(&url, id).await;
+    assert!(
+        skipped
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("übersprungen")),
+        "{:?}",
+        skipped.message
+    );
+    eprintln!("oracle debugger: set value and re-inspect median {set_median} ms, max {set_max} ms (5 runs)");
+    assert!(set_median < 1000 && set_max < 2000);
     debug_stop(id.into(), url.clone(), None).await.unwrap();
 }
 

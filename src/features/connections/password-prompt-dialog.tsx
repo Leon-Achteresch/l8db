@@ -11,24 +11,52 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { usePasswordPrompt } from "@/lib/password-prompt";
+import { connectionSummary } from "@/lib/connection-url";
+import type { SavedConnection } from "@/lib/connections";
+import { asksTeamUser, needsUser, usePasswordPrompt } from "@/lib/password-prompt";
+
+function currentUser(connection: SavedConnection): string {
+  try {
+    return connectionSummary(connection.connectionString, connection.kind).user ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function targetOf(connection: SavedConnection): string {
+  try {
+    if (connection.ssh?.host)
+      return `${connection.ssh.remoteHost}:${connection.ssh.remotePort} über ${connection.ssh.host}`;
+    const { host, port } = connectionSummary(connection.connectionString, connection.kind);
+    return port ? `${host}:${port}` : host;
+  } catch {
+    return "";
+  }
+}
 
 export function PasswordPromptDialog() {
   const connection = usePasswordPrompt((state) => state.connection);
   const message = usePasswordPrompt((state) => state.message);
   const resolve = usePasswordPrompt((state) => state.resolve);
+  const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [save, setSave] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const userRef = useRef<HTMLInputElement>(null);
+  const askUser =
+    connection !== null &&
+    (needsUser(connection) || (Boolean(message) && asksTeamUser(connection)));
 
   useEffect(() => {
     if (!connection) return;
+    setUser(currentUser(connection));
     setPassword("");
-    setSave(Boolean(message));
+    setSave(Boolean(message) || needsUser(connection));
   }, [connection, message]);
 
-  function finish(answer: { password: string; save: boolean } | null) {
+  function finish(answer: { user?: string; password: string; save: boolean } | null) {
     resolve?.(answer);
+    setUser("");
     setPassword("");
     setSave(false);
   }
@@ -40,25 +68,46 @@ export function PasswordPromptDialog() {
         overlayClassName="z-[120]"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          passwordRef.current?.focus();
+          (askUser ? userRef : passwordRef).current?.focus();
         }}
       >
         <form
           className="contents"
           onSubmit={(event) => {
             event.preventDefault();
-            finish({ password, save });
+            finish({ user: askUser ? user : undefined, password, save });
           }}
         >
           <DialogHeader>
-            <DialogTitle>Passwort erforderlich</DialogTitle>
+            <DialogTitle>
+              {askUser ? "Anmeldung erforderlich" : "Passwort erforderlich"}
+            </DialogTitle>
             <DialogDescription>
-              {message
-                ? `Das gespeicherte Passwort für „${connection?.name}“ wurde abgelehnt.`
-                : `Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
+              {askUser
+                ? `Melde dich mit deinem Datenbank-Benutzer für „${connection?.name}“ an.`
+                : message
+                  ? `Das gespeicherte Passwort für „${connection?.name}“ wurde abgelehnt.`
+                  : `Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
             </DialogDescription>
+            {connection?.team && targetOf(connection) && (
+              <p className="text-xs text-muted-foreground">
+                Von deiner Organisation bereitgestellt. Ziel: {targetOf(connection)}
+              </p>
+            )}
           </DialogHeader>
           <div className="grid gap-3 py-2">
+            {askUser && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="prompt-user">Benutzer</Label>
+                <Input
+                  ref={userRef}
+                  id="prompt-user"
+                  autoComplete="username"
+                  value={user}
+                  onChange={(event) => setUser(event.target.value)}
+                />
+              </div>
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="prompt-password">Passwort</Label>
               <Input
@@ -92,7 +141,7 @@ export function PasswordPromptDialog() {
             <Button type="button" tabIndex={0} variant="outline" onClick={() => finish(null)}>
               Abbrechen
             </Button>
-            <Button type="submit" tabIndex={0}>
+            <Button type="submit" tabIndex={0} disabled={askUser && !user.trim()}>
               Verbinden
             </Button>
           </DialogFooter>

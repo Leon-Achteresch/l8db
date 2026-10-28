@@ -12,7 +12,7 @@ pub mod knowledge;
 mod rpc;
 mod rules;
 mod runtime;
-mod tools;
+pub(crate) mod tools;
 mod types;
 
 pub use runtime::AiState;

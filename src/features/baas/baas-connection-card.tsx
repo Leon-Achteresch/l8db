@@ -40,7 +40,10 @@ export function BaasConnectionCard({
   const [confirm, setConfirm] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const supabase = connection.provider === "supabase" && Boolean(connection.id);
-  const database = useSupabaseDatabase(supabase ? connection.id : "");
+  const database = useSupabaseDatabase(
+    supabase ? connection.id : "",
+    supabase && connection.url ? { url: connection.url, name: connection.name } : undefined,
+  );
   const providerName = BAAS_PROVIDERS.find((item) => item.id === connection.provider)?.name;
   const [primary, ...sections] = PROVIDER_SECTIONS[connection.provider];
   const PrimaryIcon = SECTION_INFO[primary].icon;
@@ -191,6 +194,7 @@ export function BaasConnectionCard({
         <SupabaseDatabaseConnectDialog
           reference={connection.id}
           name={connection.name}
+          apiUrl={connection.url}
           open={connecting}
           onOpenChange={setConnecting}
         />
@@ -200,7 +204,7 @@ export function BaasConnectionCard({
           <AlertDialogHeader>
             <AlertDialogTitle>{providerName}-Zugang entfernen?</AlertDialogTitle>
             <AlertDialogDescription>
-              {connection.provider === "supabase"
+              {connection.provider === "supabase" && !connection.url
                 ? "Der Supabase-Zugangstoken wird aus dem Schlüsselbund entfernt. Das betrifft alle Supabase-Projekte. Verbundene Datenbanken bleiben als Verbindung erhalten."
                 : `„${connection.name}“ und die gespeicherten Zugangsdaten werden aus l8db entfernt. Das Projekt selbst bleibt erhalten.`}
             </AlertDialogDescription>

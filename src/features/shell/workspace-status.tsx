@@ -2,10 +2,12 @@ import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useWorkspaceStatusStore } from "@/lib/workspace-status";
 import { version } from "../../../package.json";
@@ -20,6 +22,7 @@ export function WorkspaceStatus() {
   const caps = useActiveCapabilities();
   const schema = useActiveSchema();
   const activeTasks = useTasksStore((state) => state.tasks.filter(isTaskActive).length);
+  const tasksNew = useHasNewFeatures("tasks");
   const fetching = useIsFetching({
     predicate: (query) => Boolean(connection) && query.queryKey[1] === connection?.id,
   });
@@ -66,6 +69,7 @@ export function WorkspaceStatus() {
           className="rounded px-1 hover:text-foreground focus-visible:outline-2"
         >
           Aufgaben{activeTasks ? ` (${activeTasks})` : ""}
+          {tasksNew && <NewBadge className="ml-1" />}
         </button>
         {Boolean(fetching) && <span role="status">Daten werden geladen…</span>}
         {connection && (

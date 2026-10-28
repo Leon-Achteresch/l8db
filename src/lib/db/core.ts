@@ -347,8 +347,13 @@ export async function confirmSqlExecution(
 export async function configureExecutionDefaults(
   queryTimeout: number,
   connectionTimeout: number,
+  plsqlWarnings?: boolean,
 ): Promise<void> {
-  return invoke("configure_execution_defaults", { queryTimeout, connectionTimeout });
+  return invoke("configure_execution_defaults", {
+    queryTimeout,
+    connectionTimeout,
+    plsqlWarnings,
+  });
 }
 
 export async function cancelExecution(jobId: string): Promise<boolean> {

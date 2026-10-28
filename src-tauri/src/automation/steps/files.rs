@@ -315,9 +315,10 @@ pub fn unzip_archive(archive: &Path, target: &Path, overwrite: bool) -> Result<u
     let mut plan = Vec::with_capacity(zip.len());
     for index in 0..zip.len() {
         let entry = zip.by_index(index).map_err(output::zip_error)?;
-        let relative = safe_entry_path(entry.name())
+        let name = entry.name().map_err(output::zip_error)?.into_owned();
+        let relative = safe_entry_path(&name)
             .filter(|_| entry.enclosed_name().is_some())
-            .ok_or_else(|| format!("Unsicherer Pfad im Archiv abgelehnt: {}", entry.name()))?;
+            .ok_or_else(|| format!("Unsicherer Pfad im Archiv abgelehnt: {name}"))?;
         let destination = target.join(relative);
         if !entry.is_dir() && destination.exists() && !overwrite {
             return Err(format!("Ziel existiert bereits: {}", destination.display()));

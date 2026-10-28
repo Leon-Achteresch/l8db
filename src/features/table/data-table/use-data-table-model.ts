@@ -33,6 +33,9 @@ export function useDataTableModel({
   compileColumnFilter,
   page = 0,
   pageSize = 100,
+  rowOffset: infiniteOffset,
+  rowExtent,
+  onVisibleRowsChange,
   foreignKeys,
   currentSchema,
   currentTable,
@@ -45,6 +48,16 @@ export function useDataTableModel({
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();
+  const infinite = rowExtent !== undefined;
+  const rowOffset = infiniteOffset ?? page * pageSize;
+  const sample = useRef({ identity: scrollIdentity, rows: data });
+  if (
+    !infinite ||
+    sample.current.identity !== scrollIdentity ||
+    (sample.current.rows.length === 0 && data.length > 0)
+  )
+    sample.current = { identity: scrollIdentity, rows: data };
+  const sampleRows = sample.current.rows;
   const layout = useTableColumnLayout(
     connection?.id,
     currentSchema,
@@ -65,6 +78,7 @@ export function useDataTableModel({
     data,
     tableKey,
     markerKeys,
+    !infinite,
   );
   const [activeCell, setActiveCell] = useGridActiveCell(data, columnNames, autoSelectFirstCell);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
@@ -84,28 +98,27 @@ export function useDataTableModel({
   const canPickFk = !!onSaveRow && capabilities.foreign_keys && !!currentSchema && !!currentTable;
   const { columns, typeInfoByColumn } = useDataTableColumns({
     columnNames,
-    data,
+    data: sampleRows,
     columnDetails,
     isFetching,
-    page,
-    pageSize,
+    rowOffset,
     fkByColumn,
     onNavigateToTable,
     currentSchema,
     currentTable,
     sortableColumns,
   });
-  const gridStyle = useGridStyle(columnNames, data, columnDetails, typeInfoByColumn);
+  const gridStyle = useGridStyle(columnNames, sampleRows, columnDetails, typeInfoByColumn);
   const { columnOrder, columnVisibility, searchColumns, columnPinning, pinnedSet } =
     useColumnLayoutState(order, hidden, pinned);
-  const search = useGridSearch(data, searchColumns);
+  const search = useGridSearch(data, searchColumns, infinite ? scrollIdentity : data);
   const { matchesByRow, activeMatch, activeColumnMatch } = search;
   const { savedColumnSizing, setColumnSizing, columnSizing } = useColumnSizing(
     stateKey,
     order,
     fkByColumn,
     typeInfoByColumn,
-    data,
+    sampleRows,
     gridStyle,
   );
   const table = useReactTable({
@@ -124,14 +137,29 @@ export function useDataTableModel({
     columnResizeMode: "onChange",
     getRowId: (row, index) => {
       const ctid = row.__ctid__ as string | undefined;
-      return ctid ?? `row-${index}`;
+      return ctid ?? `row-${infinite ? rowOffset + index : index}`;
     },
     getCoreRowModel: getVirtualRowModel(),
   });
 
   const rows = table.getRowModel().rows;
-  const { uiScale, rowVirtualizer, measureRow, virtualRows, paddingTop, paddingBottom } =
-    useRowVirtualizer(rows, draftHeight, scrollRef, stateKey, scrollIdentity);
+  const {
+    uiScale,
+    rowVirtualizer,
+    measureRow,
+    virtualRows,
+    paddingTop,
+    paddingBottom,
+    visiblePage,
+    scrollToRow,
+  } = useRowVirtualizer(
+    rows,
+    draftHeight,
+    scrollRef,
+    stateKey,
+    scrollIdentity,
+    infinite ? { rowOffset, rowExtent, pageSize, onVisibleRowsChange } : undefined,
+  );
   const tableWidth = table.getTotalSize();
   const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
   const hasRowActions = !!onInsertRow || !!onDeleteRow;
@@ -147,6 +175,10 @@ export function useDataTableModel({
     keepColumn,
   } = useVisibleColumns(table, columnSizing, columnPinning, scrollRef);
   return {
+    infinite,
+    rowOffset,
+    visiblePage,
+    scrollToRow,
     connection,
     layout,
     drafts,

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
+import { BlogSuggestionPreview } from "./blog-suggestion-preview";
 import { ConnectionSelectLab } from "./connection-select-lab";
 import { DriverOverviewLab } from "./driver-overview-lab";
 import { FeatureVideoPreview } from "./feature-video-preview";
@@ -63,6 +64,9 @@ export function DevView() {
             <TabsTrigger value="feature-video" className="flex-none px-4">
               Feature-Popup
             </TabsTrigger>
+            <TabsTrigger value="blog-suggestion" className="flex-none px-4">
+              Blog-Popup
+            </TabsTrigger>
             <TabsTrigger value="table-tabs" className="flex-none px-4">
               Tab-Leiste
             </TabsTrigger>
@@ -94,6 +98,9 @@ export function DevView() {
         </div>
         <TabsContent value="feature-video">
           <FeatureVideoPreview />
+        </TabsContent>
+        <TabsContent value="blog-suggestion">
+          <BlogSuggestionPreview />
         </TabsContent>
         <TabsContent value="table-tabs" className="space-y-8">
           <div className="flex flex-wrap items-end justify-between gap-5">

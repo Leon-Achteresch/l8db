@@ -195,6 +195,9 @@ describe("PostgreSQL URLs", () => {
     expect(detectProvider("postgres://user@db.example.supabase.co/postgres")).toBe("supabase");
     expect(detectProvider("postgres://user@ep-example.neon.tech/neondb")).toBe("neon");
     expect(detectProvider("postgres://user@fake-supabase.co/app")).toBe("cloud-postgres");
+    expect(detectProvider("postgres://dwh.firma.intern:5432/app")).toBe("postgres");
+    expect(detectProvider("postgres://10.0.0.5/app")).toBe("postgres");
+    expect(detectProvider("postgres://dbserver/app")).toBe("postgres");
     expect(detectProvider("postgres://user@localhost/app")).toBe("postgres");
   });
   test("preserves the hostname for TLS and all URL options through SSH", () => {

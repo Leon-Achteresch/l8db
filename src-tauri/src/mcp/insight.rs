@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use super::catalog::{allowed, Kind};
 use super::config::{McpConfig, McpConnection};
 use super::redact::{self, Redactor};
 use super::server::{
@@ -16,8 +17,8 @@ const MAX_DESCRIBE: usize = 10;
 const MAX_HOPS: usize = 6;
 const LARGE_SCAN_ROWS: f64 = 100_000.0;
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct Edge {
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Edge {
     pub from: (String, String),
     pub to: (String, String),
     pub pairs: Vec<(String, String)>,
@@ -42,13 +43,19 @@ fn graph_key(connection: &McpConnection) -> String {
 }
 
 pub(super) fn forget(connection: &McpConnection) {
-    let prefix = format!("{}|", cache_key(connection));
+    let prefix = format!("{}#", connection.id);
     if let Ok(mut graphs) = GRAPHS.lock() {
         graphs.retain(|key, _| !key.starts_with(&prefix));
     }
 }
 
-fn cached(connection: &McpConnection) -> Option<Arc<Graph>> {
+pub(super) fn forget_all() {
+    if let Ok(mut graphs) = GRAPHS.lock() {
+        graphs.clear();
+    }
+}
+
+pub(super) fn cached(connection: &McpConnection) -> Option<Arc<Graph>> {
     let graphs = GRAPHS.lock().ok()?;
     let (at, graph) = graphs.get(&graph_key(connection))?;
     (at.elapsed() < GRAPH_TTL).then(|| graph.clone())
@@ -145,12 +152,12 @@ fn not_transactional(error: &str) -> bool {
 pub fn explain_definition() -> Value {
     json!({
         "name": "explain",
-        "description": "Show the execution plan of one statement as a compact tree: scans, joins, estimated rows and cost, filters and index use, with warnings for full scans of large tables and bad row estimates. PostgreSQL adds index suggestions. Use it to check a query before running it on large tables, to answer performance questions and to verify that a rewrite helps. analyze=true runs read-only statements for real timings; never for writes.",
+        "description": "Compact plan with warnings for full scans and bad estimates; PostgreSQL adds index suggestions. analyze=true times read-only statements.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
             "sql": {"type": "string"},
-            "analyze": {"type": "boolean", "description": "Execute the read-only statement to measure actual rows and time. Default false"}
+            "analyze": {"type": "boolean"}
         }, "required": ["connection", "sql"]}
     })
 }
@@ -158,23 +165,23 @@ pub fn explain_definition() -> Value {
 pub fn relations_definition() -> Value {
     json!({
         "name": "relations",
-        "description": "Foreign key relationships. With from and to: the shortest join path between two tables as ready JOIN conditions, so you do not need to describe every table in between. With only from: tables it references and tables referencing it. Composite keys are joined with AND.",
+        "description": "JOIN conditions along foreign keys: from and to gives the shortest path, only from lists referenced and referencing tables.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
-            "from": {"type": "string", "description": "Table, schema.table when ambiguous"},
-            "to": {"type": "string", "description": "Target table for a join path"}
+            "from": {"type": "string"},
+            "to": {"type": "string"}
         }, "required": ["connection", "from"]}
     })
 }
 
-fn number(value: &Value) -> Option<f64> {
+pub(super) fn number(value: &Value) -> Option<f64> {
     value
         .as_f64()
         .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
 }
 
-fn rows(value: f64) -> String {
+pub(super) fn rows(value: f64) -> String {
     match value {
         v if v >= 1e9 => format!("{:.1}B", v / 1e9),
         v if v >= 1e6 => format!("{:.1}M", v / 1e6),
@@ -183,7 +190,7 @@ fn rows(value: f64) -> String {
     }
 }
 
-fn flat(text: &str, max: usize) -> String {
+pub(super) fn flat(text: &str, max: usize) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() > max {
         format!("{}…", flat.chars().take(max).collect::<String>())
@@ -614,7 +621,7 @@ pub(super) fn edges_from(keys: Vec<ForeignKeyInfo>) -> Vec<Edge> {
     grouped.into_values().collect()
 }
 
-fn text_cell(row: &Value, column: &str, index: usize) -> String {
+pub(super) fn text_cell(row: &Value, column: &str, index: usize) -> String {
     let value = match row {
         Value::Object(map) => map.get(column).cloned().unwrap_or(Value::Null),
         Value::Array(list) => list.get(index).cloned().unwrap_or(Value::Null),
@@ -627,7 +634,7 @@ fn text_cell(row: &Value, column: &str, index: usize) -> String {
     }
 }
 
-fn keys_from(result: &QueryResult) -> Vec<ForeignKeyInfo> {
+pub(super) fn keys_from(result: &QueryResult) -> Vec<ForeignKeyInfo> {
     let column = |row: &Value, index: usize| {
         let name = result.columns.get(index).map(String::as_str).unwrap_or("");
         text_cell(row, name, index)
@@ -671,7 +678,7 @@ JOIN sys.tables t2 ON t2.object_id = fkc.referenced_object_id \
 JOIN sys.columns c2 ON c2.object_id = fkc.referenced_object_id AND c2.column_id = fkc.referenced_column_id \
 ORDER BY fk.name, fkc.constraint_column_id";
 
-fn bulk_query(kind: DatabaseKind) -> Option<&'static str> {
+pub(super) fn bulk_query(kind: DatabaseKind) -> Option<&'static str> {
     match kind {
         DatabaseKind::Postgres => Some(POSTGRES_KEYS),
         DatabaseKind::Mysql => Some(MYSQL_KEYS),
@@ -711,6 +718,81 @@ fn estimate_query(kind: DatabaseKind, tables: &[(String, String)]) -> Option<Str
     }
 }
 
+pub(super) async fn cached_source(
+    config: &McpConfig,
+    kind: DatabaseKind,
+    catalog: &super::catalog::Catalog,
+    adapter: &dyn db::DatabaseAdapter,
+    target: &super::objects::Target<'_>,
+) -> Result<Arc<str>, String> {
+    use super::objects::{source, source_key, Target};
+    let (object, schema, name) = match target {
+        Target::Routine(routine) => (
+            routine.kind,
+            routine.schema.as_str(),
+            format!("{}({})", routine.name, routine.args),
+        ),
+        Target::Relation(schema, name, kind) => (*kind, *schema, name.to_string()),
+        Target::Trigger(trigger) => (Kind::Trigger, trigger.schema.as_str(), trigger.name.clone()),
+    };
+    let key = source_key(object, schema, &name);
+    if let Some(text) = catalog.source(&key) {
+        return Ok(text);
+    }
+    let text: Arc<str> = Arc::from(run(config, kind, source(adapter, kind, target)).await?);
+    catalog.remember_source(&key, text.clone());
+    Ok(text)
+}
+
+pub(super) struct Excerpt {
+    from: usize,
+    to: Option<usize>,
+}
+
+impl Excerpt {
+    const DEFAULT: usize = 120;
+    const MAX: usize = 400;
+
+    pub(super) fn parse(text: &str) -> Result<Self, String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Ok(Self { from: 1, to: None });
+        }
+        let bad =
+            || format!("lines '{text}' ungültig. Beispiel: lines=\"1-120\" oder lines=\"240\".");
+        let (from, to) = match text.split_once('-') {
+            Some((from, to)) => (
+                from.trim().parse::<usize>().map_err(|_| bad())?,
+                Some(to.trim().parse::<usize>().map_err(|_| bad())?),
+            ),
+            None => (text.parse::<usize>().map_err(|_| bad())?, None),
+        };
+        if from == 0 || to.is_some_and(|to| to < from) {
+            return Err(bad());
+        }
+        Ok(Self { from, to })
+    }
+
+    fn span(&self) -> usize {
+        self.to
+            .map_or(Self::DEFAULT, |to| (to - self.from).saturating_add(1))
+            .clamp(1, Self::MAX)
+    }
+
+    pub(super) fn range(&self, total: usize) -> (usize, usize) {
+        let from = self.from.min(total.max(1));
+        let to = (from + self.span() - 1).min(total);
+        (from, to.max(from.min(total)))
+    }
+}
+
+fn flat_line(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    format!("{}…", text.chars().take(max).collect::<String>())
+}
+
 pub struct DryRun {
     pub summary: String,
     pub failed: bool,
@@ -732,22 +814,44 @@ impl Server {
         if let Some(graph) = cached(connection) {
             return Ok(graph);
         }
-        let all = self.columns_for(config, connection).await?;
-        let nodes: Vec<(String, String)> = Self::visible_columns(&all, connection)
-            .into_iter()
-            .map(|column| (column.schema, column.table))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
+        let catalog = self.catalog(config, connection).await?;
+        let tables = catalog.tables();
+        let nodes: Vec<(String, String)> = tables
+            .list
+            .iter()
+            .filter(|table| tables.visible(table, connection.allowed_schemas()))
+            .map(|table| {
+                (
+                    tables.schema(table).to_string(),
+                    tables.name(table).to_string(),
+                )
+            })
             .collect();
         let adapter = adapter(connection, &self.pool)?;
         let mut unread = 0;
         let keys = match bulk_query(connection.kind) {
-            Some(sql) => {
-                let result = run(config, connection.kind, async {
-                    adapter.execute_query(sql).await
-                })
-                .await?;
-                keys_from(&result)
+            Some(_) => {
+                let keys = self
+                    .keys(config, connection, &catalog)
+                    .await
+                    .ok_or("Fremdschlüssel konnten nicht gelesen werden.")?;
+                let known: HashSet<&(String, String)> = nodes.iter().collect();
+                let edges = keys
+                    .edges
+                    .iter()
+                    .filter(|edge| known.contains(&edge.from) && known.contains(&edge.to))
+                    .cloned()
+                    .collect();
+                let graph = Arc::new(Graph {
+                    nodes,
+                    edges,
+                    unread: 0,
+                });
+                if let Ok(mut graphs) = GRAPHS.lock() {
+                    graphs.retain(|_, (at, _)| at.elapsed() < GRAPH_TTL);
+                    graphs.insert(graph_key(connection), (Instant::now(), graph.clone()));
+                }
+                return Ok(graph);
             }
             None => {
                 if nodes.len() > GRAPH_TABLE_LIMIT {
@@ -834,8 +938,7 @@ impl Server {
             return Err("explain unterstützt nur SQL-Datenbanken.".into());
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, connection).await?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self.schema_index(config, connection, &redactor).await?;
         let analyze = args
             .get("analyze")
             .and_then(Value::as_bool)
@@ -882,6 +985,7 @@ impl Server {
         connection: &McpConnection,
         args: &Value,
     ) -> Result<String, String> {
+        use super::discovery::{resolve, Detail, Found, Missing, Notes, View};
         let mut names: Vec<String> = args["tables"]
             .as_array()
             .into_iter()
@@ -899,159 +1003,445 @@ impl Server {
         if names.len() > MAX_DESCRIBE {
             return Err(format!("Höchstens {MAX_DESCRIBE} Tabellen pro describe."));
         }
-        let all = self.columns_for(config, connection).await?;
-        let columns = Self::visible_columns(&all, connection);
-        let mut found = Vec::new();
-        let mut sections = Vec::new();
-        for name in &names {
-            match super::discovery::describe(&columns, name, config.max_chars) {
-                Ok(line) => {
-                    let key = line
-                        .split_once('(')
-                        .map(|(key, _)| key.to_string())
-                        .unwrap_or_default();
-                    let table = columns
-                        .iter()
-                        .find(|column| qualified(&column.schema, &column.table) == key)
-                        .map(|column| (column.schema.clone(), column.table.clone()));
-                    sections.push(line);
-                    if let Some(table) = table {
-                        found.push((sections.len() - 1, table));
-                    }
-                }
-                Err(error) => sections.push(error),
-            }
+        let filter: Vec<String> = arg_str(args, "columns")
+            .split(',')
+            .map(str::trim)
+            .filter(|pattern| !pattern.is_empty())
+            .map(str::to_string)
+            .collect();
+        let excerpt = Excerpt::parse(arg_str(args, "lines"))?;
+        let sql = super::server::SQL_KINDS.contains(&connection.kind);
+        let catalog = self.catalog(config, connection).await?;
+        let allowed = connection.allowed_schemas();
+        let quick = View::new(&catalog, allowed);
+        let needs_objects = sql
+            && names.iter().any(|name| {
+                matches!(
+                    resolve(&quick, name, config.max_chars),
+                    Err(Missing::Unknown(_))
+                )
+            });
+        drop(quick);
+        let objects = if needs_objects {
+            self.objects(config, connection, &catalog).await
+        } else {
+            catalog.objects()
+        };
+        if sql {
+            self.list_schemas(config, connection, &catalog).await;
         }
-        let detail = args.get("details").and_then(Value::as_bool).unwrap_or(true);
-        if detail && super::server::SQL_KINDS.contains(&connection.kind) && !found.is_empty() {
-            let adapter = adapter(connection, &self.pool)?;
-            let adapter = adapter.as_ref();
-            let tables: Vec<(String, String)> =
-                found.iter().map(|(_, table)| table.clone()).collect();
-            let estimates: HashMap<(String, String), f64> =
-                match estimate_query(connection.kind, &tables) {
-                    Some(sql) => run(config, connection.kind, async {
-                        adapter.execute_query(&sql).await
-                    })
-                    .await
-                    .map(|result| {
-                        result
-                            .rows
-                            .iter()
-                            .filter_map(|row| {
-                                let count = number(&Value::String(text_cell(
-                                    row,
-                                    result.columns.get(2).map(String::as_str).unwrap_or(""),
-                                    2,
-                                )))?;
-                                Some((
-                                    (
-                                        text_cell(
-                                            row,
-                                            result
-                                                .columns
-                                                .first()
-                                                .map(String::as_str)
-                                                .unwrap_or(""),
-                                            0,
-                                        ),
-                                        text_cell(
-                                            row,
-                                            result.columns.get(1).map(String::as_str).unwrap_or(""),
-                                            1,
-                                        ),
-                                    ),
-                                    count,
-                                ))
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                    None => HashMap::new(),
-                };
-            let graph = cached(connection);
-            for (position, (schema, table)) in &found {
-                let mut extra = Vec::new();
-                let (keys, indexes) = run(config, connection.kind, async {
-                    Ok(tokio::join!(
-                        adapter.list_foreign_keys(schema, table),
-                        adapter.list_indexes(schema, table)
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
+        let notes = Notes::new(crate::ai::knowledge::load(&connection.id), &redactor);
+        let view = View::with(&catalog, allowed, objects, notes);
+        let resolved: Vec<Result<Found, Missing>> = names
+            .iter()
+            .map(|name| resolve(&view, name, config.max_chars))
+            .collect();
+        let tables = catalog.tables();
+        let detail = args.get("details").and_then(Value::as_bool).unwrap_or(true) && sql;
+        let found_tables: Vec<(String, String)> = resolved
+            .iter()
+            .filter_map(|found| match found {
+                Ok(Found::Table(index)) => {
+                    let table = &tables.list[*index];
+                    Some((
+                        tables.schema(table).to_string(),
+                        tables.name(table).to_string(),
                     ))
+                }
+                _ => None,
+            })
+            .collect();
+        let adapter = if sql
+            && (detail
+                || resolved.iter().any(|found| {
+                    matches!(
+                        found,
+                        Ok(Found::Relation(_) | Found::Routine(_) | Found::Trigger(_))
+                    )
+                })) {
+            Some(adapter(connection, &self.pool)?)
+        } else {
+            None
+        };
+        let mut estimates: HashMap<(String, String), f64> = HashMap::new();
+        if let (true, Some(adapter)) = (detail, &adapter) {
+            let unknown: Vec<(String, String)> = found_tables
+                .iter()
+                .filter(|(schema, name)| {
+                    view.relation(schema, name)
+                        .and_then(|entry| entry.rows)
+                        .is_none()
+                })
+                .cloned()
+                .collect();
+            if let Some(sql) =
+                estimate_query(connection.kind, &unknown).filter(|_| !unknown.is_empty())
+            {
+                if let Ok(result) = run(config, connection.kind, async {
+                    adapter.execute_query(&sql).await
                 })
                 .await
-                .unwrap_or((Err(String::new()), Err(String::new())));
-                if let Ok(indexes) = &indexes {
-                    if let Some(primary) = indexes.iter().find(|index| index.is_primary) {
-                        extra.push(format!("  primary key: ({})", primary.columns.join(", ")));
-                    }
-                    let other: Vec<String> = indexes
-                        .iter()
-                        .filter(|index| !index.is_primary)
-                        .take(20)
-                        .map(|index| {
-                            format!(
-                                "{}{}({})",
-                                if index.is_unique { "unique " } else { "" },
-                                index.name,
-                                index.columns.join(", ")
+                {
+                    for row in &result.rows {
+                        let cell = |index: usize| {
+                            text_cell(
+                                row,
+                                result.columns.get(index).map(String::as_str).unwrap_or(""),
+                                index,
                             )
-                        })
-                        .collect();
-                    if !other.is_empty() {
-                        extra.push(format!("  indexes: {}", other.join("; ")));
+                        };
+                        if let Some(count) =
+                            number(&Value::String(cell(2))).filter(|count| *count >= 0.0)
+                        {
+                            estimates.insert((cell(0), cell(1)), count);
+                        }
                     }
-                }
-                let me = (schema.clone(), table.clone());
-                if let Ok(keys) = keys {
-                    let outgoing: Vec<String> = edges_from(keys)
-                        .iter()
-                        .filter(|edge| edge.from == me && visible_schema(connection, &edge.to.0))
-                        .map(|edge| {
-                            format!(
-                                "({}) -> {}({})",
-                                edge.pairs
-                                    .iter()
-                                    .map(|pair| pair.0.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", "),
-                                qualified(&edge.to.0, &edge.to.1),
-                                edge.pairs
-                                    .iter()
-                                    .map(|pair| pair.1.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            )
-                        })
-                        .collect();
-                    if !outgoing.is_empty() {
-                        extra.push(format!("  references: {}", outgoing.join("; ")));
-                    }
-                }
-                if let Some(graph) = &graph {
-                    let incoming: Vec<String> = graph
-                        .edges
-                        .iter()
-                        .filter(|edge| edge.to == me && edge.from != me)
-                        .take(20)
-                        .map(|edge| qualified(&edge.from.0, &edge.from.1))
-                        .collect();
-                    if !incoming.is_empty() {
-                        extra.push(format!("  referenced by: {}", incoming.join(", ")));
-                    }
-                }
-                if let Some(count) = estimates.get(&me).filter(|count| **count >= 0.0) {
-                    extra.push(format!("  rows: ≈{}", rows(*count)));
-                }
-                if !extra.is_empty() {
-                    sections[*position].push('\n');
-                    sections[*position].push_str(&extra.join("\n"));
                 }
             }
         }
-        if found.is_empty() {
+        let keys = catalog.keys();
+        let graph = cached(connection);
+        let incoming: &[Edge] = match (&keys, &graph) {
+            (Some(keys), _) => &keys.edges,
+            (None, Some(graph)) => &graph.edges,
+            _ => &[],
+        };
+        let mut sections = Vec::new();
+        let mut any = false;
+        for found in &resolved {
+            let found = match found {
+                Ok(found) => found,
+                Err(Missing::Unknown(text) | Missing::Ambiguous(text)) => {
+                    sections.push(text.clone());
+                    continue;
+                }
+            };
+            any = true;
+            match found {
+                Found::Table(index) => {
+                    let table = &tables.list[*index];
+                    let me = (
+                        tables.schema(table).to_string(),
+                        tables.name(table).to_string(),
+                    );
+                    let mut info = Detail {
+                        rows: estimates.get(&me).copied(),
+                        ..Detail::default()
+                    };
+                    if let (true, Some(adapter)) = (detail, &adapter) {
+                        let adapter = adapter.as_ref();
+                        super::objects::count();
+                        let (keys, indexes, columns) = run(config, connection.kind, async {
+                            Ok(tokio::join!(
+                                adapter.list_foreign_keys(&me.0, &me.1),
+                                adapter.list_indexes(&me.0, &me.1),
+                                adapter.list_table_columns_detailed(&me.0, &me.1)
+                            ))
+                        })
+                        .await
+                        .unwrap_or((
+                            Err(String::new()),
+                            Err(String::new()),
+                            Err(String::new()),
+                        ));
+                        if let Ok(columns) = columns {
+                            for column in columns {
+                                info.nullable
+                                    .insert(column.name.clone(), column.is_nullable);
+                                if column.is_primary_key {
+                                    info.primary.push(column.name.clone());
+                                }
+                                if let Some(comment) =
+                                    column.comment.filter(|text| !text.trim().is_empty())
+                                {
+                                    info.comments
+                                        .insert(column.name, redactor.redact_text(&comment));
+                                }
+                            }
+                        }
+                        if let Ok(indexes) = &indexes {
+                            for index in indexes {
+                                if index.is_primary {
+                                    for column in &index.columns {
+                                        if !info.primary.contains(column) {
+                                            info.primary.push(column.clone());
+                                        }
+                                    }
+                                    continue;
+                                }
+                                if info.indexes.len() < 20 {
+                                    info.indexes.push(format!(
+                                        "{}{}({})",
+                                        if index.is_unique { "unique " } else { "" },
+                                        index.name,
+                                        index.columns.join(", ")
+                                    ));
+                                }
+                            }
+                        }
+                        if let Ok(keys) = keys {
+                            for edge in edges_from(keys) {
+                                if edge.from == me && visible_schema(connection, &edge.to.0) {
+                                    for (from, to) in &edge.pairs {
+                                        info.foreign.insert(
+                                            from.clone(),
+                                            format!("{}.{to}", qualified(&edge.to.0, &edge.to.1)),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if detail {
+                        let mut referencing: Vec<String> = Vec::new();
+                        for edge in incoming.iter().filter(|edge| {
+                            edge.to == me
+                                && edge.from != me
+                                && visible_schema(connection, &edge.from.0)
+                        }) {
+                            let name = qualified(&edge.from.0, &edge.from.1);
+                            if !referencing.contains(&name) {
+                                referencing.push(name);
+                            }
+                        }
+                        if referencing.len() > 10 {
+                            let more = referencing.len() - 10;
+                            referencing.truncate(10);
+                            referencing.push(format!("+{more} more (relations lists all)"));
+                        }
+                        info.referenced_by = referencing;
+                    }
+                    let mut text = super::discovery::table_section(&view, *index, &info, &filter);
+                    let kind = view.kind(&me.0, &me.1);
+                    if matches!(kind, Kind::View | Kind::Matview) {
+                        if let Some(adapter) = &adapter {
+                            let target = super::objects::Target::Relation(&me.0, &me.1, kind);
+                            text.push_str(
+                                &self
+                                    .source_section(
+                                        config,
+                                        connection,
+                                        &view,
+                                        &redactor,
+                                        adapter.as_ref(),
+                                        &target,
+                                        &excerpt,
+                                    )
+                                    .await,
+                            );
+                        }
+                    }
+                    sections.push(text);
+                }
+                other => {
+                    let Some(objects) = view.objects.clone() else {
+                        continue;
+                    };
+                    let target = match other {
+                        Found::Relation(index) => {
+                            let entry = &objects.relations[*index];
+                            super::objects::Target::Relation(&entry.schema, &entry.name, entry.kind)
+                        }
+                        Found::Routine(index) => {
+                            super::objects::Target::Routine(&objects.routines[*index])
+                        }
+                        Found::Trigger(index) => {
+                            super::objects::Target::Trigger(&objects.triggers[*index])
+                        }
+                        Found::Table(_) => continue,
+                    };
+                    let mut text = super::discovery::object_header(&view, &target);
+                    if let Some(adapter) = &adapter {
+                        if let super::objects::Target::Relation(schema, name, _) = &target {
+                            super::objects::count();
+                            if let Ok(columns) = run(config, connection.kind, async {
+                                adapter.list_table_columns_detailed(schema, name).await
+                            })
+                            .await
+                            {
+                                for column in columns.iter().take(200) {
+                                    text.push_str(&format!(
+                                        "\n {} {}{}",
+                                        column.name,
+                                        column.data_type,
+                                        if column.is_nullable { "?" } else { "" }
+                                    ));
+                                }
+                            }
+                        }
+                        text.push_str(
+                            &self
+                                .source_section(
+                                    config,
+                                    connection,
+                                    &view,
+                                    &redactor,
+                                    adapter.as_ref(),
+                                    &target,
+                                    &excerpt,
+                                )
+                                .await,
+                        );
+                    }
+                    sections.push(text);
+                }
+            }
+        }
+        if !any {
             return Err(sections.join("\n"));
         }
-        Ok(cap(sections.join("\n"), config.max_chars))
+        let mut text = sections.join("\n");
+        text.push_str(&format!("\n[{}]", view.stamp()));
+        Ok(cap(text, config.max_chars))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn source_section(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        view: &super::discovery::View<'_>,
+        redactor: &Redactor,
+        adapter: &dyn db::DatabaseAdapter,
+        target: &super::objects::Target<'_>,
+        excerpt: &Excerpt,
+    ) -> String {
+        use super::objects::{lexical, reported, Names, Target};
+        let schema = match target {
+            Target::Routine(routine) => routine.schema.as_str(),
+            Target::Relation(schema, ..) => schema,
+            Target::Trigger(trigger) => trigger.schema.as_str(),
+        };
+        let text = match cached_source(config, connection.kind, view.catalog, adapter, target).await
+        {
+            Ok(text) if !text.trim().is_empty() => text,
+            Ok(_) => return "\n [source is empty or not visible to this database user]".into(),
+            Err(error) => {
+                return format!(
+                    "\n [source not available: {}]",
+                    flat(&super::server::scrub_error(&error), 120)
+                )
+            }
+        };
+        let mut out = String::new();
+        let tables = view.catalog.tables();
+        let mut names = Names {
+            relations: HashMap::new(),
+            routines: HashMap::new(),
+        };
+        let add = |list: &mut HashMap<String, Vec<(String, String)>>, schema: &str, name: &str| {
+            if allowed(schema, view.allowed) {
+                let entry = list.entry(name.to_lowercase()).or_default();
+                if !entry
+                    .iter()
+                    .any(|(seen, known)| seen == schema && known == name)
+                {
+                    entry.push((schema.to_string(), name.to_string()));
+                }
+            }
+        };
+        for table in &tables.list {
+            add(
+                &mut names.relations,
+                tables.schema(table),
+                tables.name(table),
+            );
+        }
+        if let Some(objects) = &view.objects {
+            for entry in &objects.relations {
+                add(&mut names.relations, &entry.schema, &entry.name);
+            }
+            for entry in &objects.routines {
+                add(&mut names.routines, &entry.schema, &entry.name);
+            }
+        }
+        let uses = lexical(&text, &names, schema);
+        let own = qualified(
+            schema,
+            match target {
+                Target::Routine(routine) => routine.name.as_str(),
+                Target::Relation(_, name, _) => name,
+                Target::Trigger(trigger) => trigger.name.as_str(),
+            },
+        );
+        let visible = |list: Vec<String>| -> Vec<String> {
+            list.into_iter()
+                .filter(|entry| *entry != own)
+                .filter(|entry| {
+                    entry
+                        .split_once('.')
+                        .is_none_or(|(schema, _)| allowed(schema, view.allowed))
+                })
+                .take(30)
+                .collect()
+        };
+        let db = run(config, connection.kind, async {
+            Ok(reported(adapter, connection.kind, target).await)
+        })
+        .await
+        .ok()
+        .flatten()
+        .map(|list| {
+            visible(
+                list.into_iter()
+                    .map(|(schema, name)| qualified(&schema, &name))
+                    .collect(),
+            )
+        })
+        .filter(|list| !list.is_empty());
+        let lexical_reads = visible(uses.reads.into_iter().collect());
+        let lexical_writes = visible(uses.writes.into_iter().collect());
+        let lexical_calls = visible(uses.calls.into_iter().collect());
+        match db {
+            Some(list) => out.push_str(&format!(
+                "\n uses (reported by the database): {}",
+                list.join(", ")
+            )),
+            None if !lexical_reads.is_empty() => out.push_str(&format!(
+                "\n reads (from source): {}",
+                lexical_reads.join(", ")
+            )),
+            None => {}
+        }
+        if !lexical_writes.is_empty() {
+            out.push_str(&format!(
+                "\n writes (from source): {}",
+                lexical_writes.join(", ")
+            ));
+        }
+        if !lexical_calls.is_empty() {
+            out.push_str(&format!(
+                "\n calls (from source): {}",
+                lexical_calls.join(", ")
+            ));
+        }
+        let lines: Vec<&str> = text.lines().collect();
+        let total = lines.len();
+        let (from, to) = excerpt.range(total);
+        out.push_str(&format!("\n source lines {from}-{to} of {total}:"));
+        let width = to.to_string().len();
+        for (number, line) in lines.iter().enumerate().take(to).skip(from - 1) {
+            let shown = if view.hides(line) {
+                "[line references a hidden schema]".to_string()
+            } else {
+                redactor.redact_text(line.trim_end())
+            };
+            out.push_str(&format!(
+                "\n{:>width$} {}",
+                number + 1,
+                flat_line(&shown, 300)
+            ));
+        }
+        if to < total {
+            let next_to = (to + excerpt.span()).min(total);
+            out.push_str(&format!(
+                "\n [{} more lines; next: lines=\"{}-{next_to}\"]",
+                total - to,
+                to + 1
+            ));
+        }
+        out
     }
 
     pub(crate) async fn prepare_dry_run(
@@ -1076,8 +1466,10 @@ impl Server {
             return None;
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
-        let columns = self.columns_for(config, &connection).await.ok()?;
-        let index = redact::SchemaIndex::new(&columns, &redactor, connection.allowed_schemas());
+        let index = self
+            .schema_index(config, &connection, &redactor)
+            .await
+            .ok()?;
         if let Err(error) = check_write_sql(&sql, &connection, &index) {
             return Some(DryRunStep::Done(DryRun {
                 summary: error,
@@ -1533,14 +1925,16 @@ mod tests {
         .await;
         assert!(!error, "{text}");
         assert!(
-            text.contains("main.orders(id INTEGER, customer_id INTEGER, status TEXT)"),
+            text.starts_with(
+                "main.orders\n id INTEGER PK\n customer_id INTEGER? → main.customers.id\n status TEXT?\n"
+            ),
             "{text}"
         );
+        assert!(text.contains(" indexes: orders_status(status)"), "{text}");
         assert!(
-            text.contains("references: (customer_id) -> main.customers(id)"),
+            text.contains("main.customers\n id INTEGER PK\n email TEXT?\n"),
             "{text}"
         );
-        assert!(text.contains("orders_status(status)"), "{text}");
         assert!(text.contains("referenced by: main.orders"), "{text}");
     }
 

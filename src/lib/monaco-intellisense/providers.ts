@@ -4,18 +4,27 @@ import { selectForResults } from "@/lib/select-extract";
 import { useSnippetsStore } from "@/lib/snippets";
 import {
   hoverMarkdown,
+  joinSuggestions,
   limitMatches,
   memberSuggestions,
   packageForQualifier,
   resolveSymbol,
   type Suggestion,
   type SymbolTarget,
+  scopeAt,
+  statementBounds,
   suggestCompletions,
   tokenAt,
 } from "@/lib/sql-intellisense";
 import { callAt, signatureHelp } from "@/lib/sql-intellisense/signature";
 import { attached, ctx, gotoUri } from "./context";
-import { hoverExtras, openSymbolTarget, packageMembers, routineSignatures } from "./symbols";
+import {
+  hoverExtras,
+  joinForeignKeys,
+  openSymbolTarget,
+  packageMembers,
+  routineSignatures,
+} from "./symbols";
 
 const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionItemKind> = {
   schema: monaco.languages.CompletionItemKind.Module,
@@ -27,34 +36,31 @@ const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionIte
   package: monaco.languages.CompletionItemKind.Module,
   keyword: monaco.languages.CompletionItemKind.Keyword,
   snippet: monaco.languages.CompletionItemKind.Snippet,
+  join: monaco.languages.CompletionItemKind.Reference,
 };
 
 const MAX_SUGGESTIONS = 300;
+const JOIN_TRIGGER = /\b(?:ON|AND)\s$|\bUSING\s*\($/i;
 
-function textBefore(model: monaco.editor.ITextModel, position: monaco.Position) {
-  const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
-  let startLineNumber = position.lineNumber;
-  while (
-    startLineNumber > 1 &&
-    !model
-      .getLineContent(startLineNumber - 1)
-      .trimEnd()
-      .endsWith(";")
-  )
-    startLineNumber -= 1;
-  const text = model.getValueInRange({
-    startLineNumber,
-    startColumn: 1,
-    endLineNumber: position.lineNumber,
-    endColumn: position.column,
-  });
-  return { line, text };
+function statementAt(model: monaco.editor.ITextModel, position: monaco.Position) {
+  const source = model.getValue();
+  const offset = model.getOffsetAt(position);
+  const dialect = ctx.registry.dialect;
+  const bounds = statementBounds(source, offset, dialect);
+  const statement = source.slice(bounds.start, bounds.end);
+  const local = offset - bounds.start;
+  return {
+    source,
+    text: statement.slice(0, local),
+    scope: scopeAt(statement, local, dialect),
+  };
 }
 
 export function symbolAt(model: monaco.editor.ITextModel, position: monaco.Position) {
   const token = tokenAt(model.getLineContent(position.lineNumber), position.column);
   if (!token) return null;
-  const target = resolveSymbol(ctx.registry, token, model.getValue());
+  const { source, scope } = statementAt(model, position);
+  const target = resolveSymbol(ctx.registry, token, source, scope);
   if (!target) return null;
   const range = new monaco.Range(
     position.lineNumber,
@@ -67,10 +73,14 @@ export function symbolAt(model: monaco.editor.ITextModel, position: monaco.Posit
 
 for (const language of ["sql", "plsql"]) {
   monaco.languages.registerCompletionItemProvider(language, {
-    triggerCharacters: ["."],
-    async provideCompletionItems(model, position) {
+    triggerCharacters: [".", " ", "("],
+    async provideCompletionItems(model, position, context, token) {
       if (!attached.has(model)) return { suggestions: [] };
-      const { line, text } = textBefore(model, position);
+      const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+      const joinOnly =
+        context.triggerKind === monaco.languages.CompletionTriggerKind.TriggerCharacter &&
+        context.triggerCharacter !== ".";
+      if (joinOnly && !JOIN_TRIGGER.test(line)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
       const wordRange: monaco.IRange = {
         startLineNumber: position.lineNumber,
@@ -83,14 +93,26 @@ for (const language of ["sql", "plsql"]) {
         startColumn: line.lastIndexOf(".") + 2,
         endColumn: position.column,
       };
-      const pkg = packageForQualifier(ctx.registry, line);
-      const items = pkg
-        ? memberSuggestions(await packageMembers(pkg.schema, pkg.name))
-        : suggestCompletions(ctx.registry, text, line, useSnippetsStore.getState().snippets);
+      const { text, scope } = statementAt(model, position);
+      const pkg = packageForQualifier(ctx.registry, line, scope);
+      let items: Suggestion[];
+      if (pkg) items = memberSuggestions(await packageMembers(pkg.schema, pkg.name));
+      else {
+        const snippets = useSnippetsStore.getState().snippets;
+        items = joinOnly ? [] : suggestCompletions(ctx.registry, text, line, snippets, scope);
+        if (scope.join) {
+          const controller = new AbortController();
+          const cancel = token.onCancellationRequested(() => controller.abort());
+          if (token.isCancellationRequested) controller.abort();
+          const keys = await joinForeignKeys(scope.join, controller.signal);
+          cancel.dispose();
+          items = joinSuggestions(ctx.registry, scope.join, keys).concat(items);
+        }
+      }
       const typed = pkg ? "" : word.word;
       const matches = limitMatches(items, typed, MAX_SUGGESTIONS);
       return {
-        incomplete: typed !== "" || matches.truncated,
+        incomplete: joinOnly || typed !== "" || matches.truncated,
         suggestions: matches.items.map((item) => ({
           label: item.label,
           kind: COMPLETION_KIND[item.kind],

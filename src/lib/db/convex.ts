@@ -3,6 +3,7 @@ import { invoke } from "./core";
 export interface ConvexProfile {
   id: string;
   team_id: number;
+  url: string | null;
 }
 
 export interface ConvexProject {
@@ -31,6 +32,8 @@ export interface ConvexDeployment {
 
 export const convexConnect = (teamId: number, token: string) =>
   invoke<ConvexProfile>("convex_connect", { teamId, token });
+export const convexConnectSelfHosted = (url: string, adminKey: string) =>
+  invoke<ConvexProfile>("convex_connect_self_hosted", { url, adminKey });
 export const convexProfiles = () => invoke<ConvexProfile[]>("convex_profiles");
 export const convexDisconnect = (id: string) => invoke<void>("convex_disconnect", { id });
 export const convexProjects = (id: string, cursor?: string) =>

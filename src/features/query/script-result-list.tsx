@@ -1,9 +1,18 @@
-import { CheckCircle2Icon, CircleDashedIcon, LoaderIcon, XCircleIcon, XIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  CircleDashedIcon,
+  CircleMinusIcon,
+  LoaderIcon,
+  XCircleIcon,
+  XIcon,
+} from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QueryResult } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
-export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped";
+export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped" | "ignored";
 
 export interface ScriptRunEntry {
   index: number;
@@ -15,6 +24,7 @@ export interface ScriptRunEntry {
   rowCount: number | null;
   rowsAffected: number | null;
   error: string | null;
+  source?: string;
   result?: QueryResult;
 }
 
@@ -24,6 +34,7 @@ interface ScriptResultListProps {
   onSelect: (entry: ScriptRunEntry) => void;
   onClose: () => void;
   note: string;
+  featureId?: "query.sqlplus-scripts";
 }
 
 function firstLine(sql: string): string {
@@ -35,15 +46,18 @@ function statusIcon(status: ScriptRunStatus) {
   if (status === "success") return <CheckCircle2Icon className="size-3.5 text-emerald-500" />;
   if (status === "error") return <XCircleIcon className="size-3.5 text-destructive" />;
   if (status === "running") return <LoaderIcon className="size-3.5 animate-spin" />;
+  if (status === "ignored") return <CircleMinusIcon className="size-3.5 text-amber-500" />;
   return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
 }
 
 function detailOf(entry: ScriptRunEntry): string {
   const parts: string[] = [];
-  if (entry.rowCount !== null) parts.push(`${entry.rowCount} Zeilen`);
+  if (entry.rowCount !== null)
+    parts.push(`${entry.rowCount} ${entry.rowCount === 1 ? "Zeile" : "Zeilen"}`);
   if (entry.rowsAffected !== null) parts.push(`${entry.rowsAffected} betroffen`);
   if (entry.durationMs !== null) parts.push(`${entry.durationMs} ms`);
   if (entry.status === "skipped") parts.push("nicht ausgeführt");
+  if (entry.status === "ignored") parts.push("ignoriert (SQL*Plus-Befehl)");
   return parts.join(" · ");
 }
 
@@ -53,14 +67,19 @@ export function ScriptResultList({
   onSelect,
   onClose,
   note,
+  featureId,
 }: ScriptResultListProps) {
   const failed = entries.filter((entry) => entry.status === "error").length;
   const done = entries.filter((entry) => entry.status === "success").length;
+  const { ref, isNew } = useNewFeatureVisibility<HTMLSpanElement>(featureId);
 
   return (
     <div className="flex max-h-64 shrink-0 flex-col border-t bg-card/40">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs">
-        <span className="font-medium">Skriptausführung</span>
+        <span ref={ref} className="flex items-center gap-1 font-medium">
+          Skriptausführung
+          {isNew && <NewBadge />}
+        </span>
         <span className="text-muted-foreground">
           {done}/{entries.length} erfolgreich
           {failed > 0 ? ` · ${failed} fehlgeschlagen` : ""}
@@ -93,6 +112,9 @@ export function ScriptResultList({
               <span className="mt-0.5 shrink-0">{statusIcon(entry.status)}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono">{firstLine(entry.sql)}</span>
+                {entry.source && (
+                  <span className="block truncate text-muted-foreground">aus {entry.source}</span>
+                )}
                 {entry.error && (
                   <span className="block truncate text-destructive">{entry.error}</span>
                 )}

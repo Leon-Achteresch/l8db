@@ -292,6 +292,25 @@ impl Backend for PgDebugger {
                     .collect();
                 return self.inspect(state, state.selected_frame).await;
             }
+            Action::SetValue { name, value } => {
+                let failure = match self
+                    .control
+                    .query_one(
+                        &self.sql("pldbg_deposit_value", "$1, $2, -1, $3"),
+                        &[&self.handle, &name, &value],
+                    )
+                    .await
+                {
+                    Ok(row) if row.get::<_, Option<bool>>(0) == Some(true) => None,
+                    Ok(_) => Some(format!(
+                        "{name} wurde nicht geändert: Der Wert passt nicht zum Datentyp."
+                    )),
+                    Err(error) => Some(map_pg_err(error)),
+                };
+                self.inspect(state, state.selected_frame).await?;
+                state.message = failure;
+                return Ok(());
+            }
             Action::SelectFrame { frame } => {
                 self.control
                     .query_one(

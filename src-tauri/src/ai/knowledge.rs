@@ -8,6 +8,7 @@ const MAX_TEXT: usize = 2_000;
 const MAX_TABLES: usize = 2_000;
 const MAX_TERMS: usize = 500;
 const MAX_PROMPT: usize = 24_000;
+const PROMPT_MEANING: usize = 160;
 const MAX_RULES: usize = 8_000;
 pub const MAX_INVARIANTS: usize = 100;
 const MAX_INVARIANT_SQL: usize = 4_000;
@@ -58,6 +59,9 @@ pub struct TableNote {
 }
 
 fn path() -> PathBuf {
+    #[cfg(test)]
+    return crate::mcp::config::config_path().with_file_name("ai-knowledge.json");
+    #[cfg(not(test))]
     crate::mcp::config::config_dir().join("ai-knowledge.json")
 }
 
@@ -279,26 +283,21 @@ fn knowledge_prompt(knowledge: &Knowledge, name: &str) -> String {
         text.push_str(&format!("Notes: {}\n", knowledge.notes));
     }
     for term in &knowledge.glossary {
-        text.push_str(&format!("Term \"{}\": {}\n", term.term, term.meaning));
-        if text.len() > MAX_PROMPT {
-            return crate::mcp::server::cap(text, MAX_PROMPT);
+        let mut meaning: String = term.meaning.chars().take(PROMPT_MEANING).collect();
+        if meaning.len() < term.meaning.len() {
+            meaning.push('…');
         }
-    }
-    for (table, note) in &knowledge.tables {
-        text.push_str(&format!("Table {table}: {}", note.description));
-        let columns: Vec<String> = note
-            .columns
-            .iter()
-            .map(|(column, text)| format!("{column} = {text}"))
-            .collect();
-        if !columns.is_empty() {
-            text.push_str(&format!(" | {}", columns.join("; ")));
-        }
-        text.push('\n');
+        text.push_str(&format!("Term \"{}\": {meaning}\n", term.term));
         if text.len() > MAX_PROMPT {
-            text.push_str("[further table notes omitted]\n");
+            text.push_str("[further glossary terms omitted; search matches them]\n");
             break;
         }
+    }
+    if !knowledge.tables.is_empty() {
+        text.push_str(&format!(
+            "Descriptions of {} tables and their columns appear in search, describe and overview results; glossary terms match in search.\n",
+            knowledge.tables.len()
+        ));
     }
     crate::mcp::server::cap(text, MAX_PROMPT)
 }
@@ -327,9 +326,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn glossary_and_table_notes_share_the_prompt_limit() {
+    fn glossary_is_shortened_and_table_notes_are_left_to_the_tools() {
         let knowledge = Knowledge {
-            glossary: (0..50)
+            glossary: (0..MAX_TERMS)
                 .map(|index| Term {
                     term: format!("term_{index}"),
                     meaning: "meaning ".repeat(250),
@@ -346,9 +345,19 @@ mod tests {
         };
         let prompt = knowledge_prompt(&knowledge, "Fixture");
         assert!(prompt.chars().count() <= MAX_PROMPT + 100);
-        assert!(prompt.contains("term_0") && prompt.contains("truncated"));
-        assert_eq!(knowledge.glossary.len(), 50);
-        assert!(knowledge.tables.contains_key("public.orders"));
+        assert!(prompt.contains("term_0") && prompt.contains("glossary terms omitted"));
+        assert!(!prompt.contains(&"meaning ".repeat(30)));
+        let small = Knowledge {
+            glossary: knowledge.glossary[..3].to_vec(),
+            ..knowledge.clone()
+        };
+        let prompt = knowledge_prompt(&small, "Fixture");
+        assert!(
+            prompt.contains("term_2") && prompt.contains("meaning …"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("Descriptions of 1 tables") && !prompt.contains("public.orders"));
+        assert!(prompt.len() < 1_000, "{}", prompt.len());
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Braces,
   ChartColumn,
   Database,
   Eye,
@@ -28,9 +29,11 @@ import { ImageGeneration } from "./beui/agents/image-generation";
 
 const TOOL_NAMES: Record<string, string> = {
   query: "Datenabfrage",
+  code: "Code-Analyse",
   visualize: "Diagramm",
+  overview: "Datenbankübersicht",
   search: "Schemasuche",
-  describe: "Tabellenansicht",
+  describe: "Objektansicht",
   connections: "Verbindungsliste",
   execute: "Datenänderung",
   dashboard: "Dashboard",
@@ -53,11 +56,12 @@ function toolIcon(name: string) {
   if (name === "editor") return SquarePen;
   if (name === "sandbox") return FlaskConical;
   if (name === "drilldown") return Network;
+  if (name === "code") return Braces;
   if (name === "rules") return ListChecks;
   if (name === "notebook") return NotebookPen;
   if (/search|find|grep/i.test(name)) return Search;
   if (/query|sql|execute|benchmark/i.test(name)) return Database;
-  if (/list|describe|read|get|schema|show/i.test(name)) return Eye;
+  if (/list|describe|overview|read|get|schema|show/i.test(name)) return Eye;
   if (/bash|shell|command|exec|run/i.test(name)) return Terminal;
   if (/write|edit|patch|apply|create/i.test(name)) return SquarePen;
   return Wrench;

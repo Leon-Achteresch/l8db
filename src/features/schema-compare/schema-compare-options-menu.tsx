@@ -1,4 +1,5 @@
 import { ChevronDownIcon, LayersIcon, SlidersHorizontalIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,16 +13,20 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { activeTypes, connectionFor, useSchemaCompareStore } from "@/lib/schema-compare/store";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
+import { activeTypes, sideKind, useSchemaCompareStore } from "@/lib/schema-compare/store";
 import {
+  type CompareFlag,
   compareTypesFor,
   DEFAULT_COMPARE_OPTIONS,
   OBJECT_TYPE_META,
-  type SchemaCompareOptions,
 } from "@/lib/schema-compare/types";
 import { SchemaObjectIcon } from "./schema-object-icon";
 
-const OPTION_LABELS: { key: keyof SchemaCompareOptions; label: string; hint: string }[] = [
+const OPTION_LABELS: { key: CompareFlag; label: string; hint: string }[] = [
   {
     key: "ignoreWhitespace",
     label: "Leerzeichen und Umbrüche",
@@ -42,6 +47,46 @@ const OPTION_LABELS: { key: keyof SchemaCompareOptions; label: string; hint: str
     label: "Groß- und Kleinschreibung",
     hint: "Vergleicht Quelltext ohne Beachtung der Schreibweise.",
   },
+  {
+    key: "ignoreComments",
+    label: "Kommentare im Quelltext",
+    hint: "-- und /* */ Kommentare zählen nicht; Texte in Anführungszeichen bleiben unberührt.",
+  },
+  {
+    key: "ignoreQuotes",
+    label: "Anführungszeichen um einfache Namen",
+    hint: '"KUNDE" und KUNDE gelten als gleich, wenn der Name keine Sonderzeichen enthält.',
+  },
+  {
+    key: "ignoreDefaultNull",
+    label: "DEFAULT NULL",
+    hint: "Ein Default NULL gilt wie kein Default.",
+  },
+  {
+    key: "ignoreTimestampPrecision",
+    label: "Genauigkeit von Zeitstempeln",
+    hint: "TIMESTAMP(6) und TIMESTAMP(9) gelten als gleich.",
+  },
+  {
+    key: "ignoreLengthSemantics",
+    label: "BYTE- und CHAR-Länge",
+    hint: "VARCHAR2(20 BYTE) und VARCHAR2(20 CHAR) gelten als gleich.",
+  },
+  {
+    key: "ignoreConstraintNames",
+    label: "Constraint-Namen",
+    hint: "Constraints werden über ihre Definition zugeordnet; reine Namensunterschiede gelten als identisch.",
+  },
+  {
+    key: "ignoreColumnOrder",
+    label: "Spaltenreihenfolge",
+    hint: "Tabellen mit denselben Spalten in anderer Reihenfolge gelten als gleich.",
+  },
+  {
+    key: "ignoreTablespace",
+    label: "Tablespaces",
+    hint: "Tablespace-Unterschiede zählen nicht; neue Tabellen und Indizes entstehen im Standard-Tablespace des Ziels.",
+  },
 ];
 
 const keep = (event: Event) => event.preventDefault();
@@ -49,9 +94,14 @@ const keep = (event: Event) => event.preventDefault();
 export function SchemaCompareOptionsMenu() {
   const state = useSchemaCompareStore();
   const set = useSchemaCompareStore.setState;
-  const kind = connectionFor(state.source)?.kind ?? connectionFor(state.target)?.kind;
+  const kind = sideKind(state.source) ?? sideKind(state.target);
   const supported = compareTypesFor(kind);
   const selected = activeTypes(state, kind);
+  const optionsNew = useHasNewFeatures("schema-compare.options");
+  const normalizeFeature = useNewFeatureVisibility<HTMLDivElement>(
+    "schema-compare.options.normalize",
+  );
+  const filterFeature = useNewFeatureVisibility<HTMLDivElement>("schema-compare.options.filter");
 
   return (
     <DropdownMenu>
@@ -64,6 +114,7 @@ export function SchemaCompareOptionsMenu() {
               {selected.length} von {supported.length}
             </span>
           )}
+          {optionsNew && <NewBadge />}
           <ChevronDownIcon className="size-3 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
@@ -110,6 +161,7 @@ export function SchemaCompareOptionsMenu() {
         {OPTION_LABELS.map((option) => (
           <DropdownMenuCheckboxItem
             key={option.key}
+            ref={option.key === "ignoreComments" ? normalizeFeature.ref : undefined}
             title={option.hint}
             checked={state.options[option.key]}
             onSelect={keep}
@@ -118,8 +170,50 @@ export function SchemaCompareOptionsMenu() {
             }
           >
             {option.label}
+            {option.key === "ignoreComments" && normalizeFeature.isNew && <NewBadge />}
           </DropdownMenuCheckboxItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="flex items-center gap-1.5">
+          Filter
+          {filterFeature.isNew && <NewBadge />}
+        </DropdownMenuLabel>
+        <div ref={filterFeature.ref} className="flex flex-col gap-1.5 px-2 pb-1.5">
+          <Label htmlFor="schema-compare-exclude" className="text-xs font-normal">
+            Namen ausschließen (LIKE, mit Komma getrennt)
+          </Label>
+          <Input
+            id="schema-compare-exclude"
+            onKeyDown={(event) => event.stopPropagation()}
+            value={state.options.excludePatterns}
+            placeholder="TMP%, %_BAK"
+            className="h-7 text-xs"
+            onChange={(event) =>
+              set({ options: { ...state.options, excludePatterns: event.target.value } })
+            }
+          />
+          <Label htmlFor="schema-compare-limit" className="text-xs font-normal">
+            Höchstens so viele Unterschiede
+          </Label>
+          <Input
+            id="schema-compare-limit"
+            onKeyDown={(event) => event.stopPropagation()}
+            type="number"
+            min={0}
+            step={100}
+            value={state.options.diffLimit || ""}
+            placeholder="Kein Limit"
+            className="h-7 text-xs"
+            onChange={(event) =>
+              set({
+                options: {
+                  ...state.options,
+                  diffLimit: Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                },
+              })
+            }
+          />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={keep}

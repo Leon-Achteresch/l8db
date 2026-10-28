@@ -94,6 +94,7 @@ const settingEnums: Record<string, string[]> = {
   editorTabCompletion: ["on", "off", "onlySnippets"],
   uiDensity: ["compact", "normal", "spacious"],
   tableStyle: ["classic", "compact", "semantic", "profile"],
+  filterBarStyle: ["classic", "omnibar", "pills"],
   sslDefaultMode: ["prefer", "require", "disable", "verify-full"],
 };
 const settingRanges: Record<string, [number, number]> = {

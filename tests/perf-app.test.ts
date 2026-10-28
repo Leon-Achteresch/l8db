@@ -64,6 +64,10 @@ async function open(
   ready: string,
   grid?: { rows: number; columns: number },
   overviewSchemas = 8,
+  {
+    rowLimit = grid?.rows,
+    setup,
+  }: { rowLimit?: number; setup?: (page: Page) => Promise<void> } = {},
 ) {
   if (!(await Bun.file("dist/index.html").exists()))
     throw new Error("dist fehlt – vor dem Perf-Test 'bun run build' ausführen.");
@@ -85,14 +89,15 @@ async function open(
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await seedApp(page, TABLES, grid, null, overviewSchemas);
-  if (grid)
+  if (rowLimit)
     await page.addInitScript((rowLimit) => {
       const saved = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
       localStorage.setItem(
         "l8db.settings",
         JSON.stringify({ ...saved, state: { ...saved.state, rowLimit } }),
       );
-    }, grid.rows);
+    }, rowLimit);
+  await setup?.(page);
   await page.goto(`http://localhost:${server.port}${path}`);
   await page.waitForSelector(ready, { timeout: 60000 });
   await page.waitForTimeout(2500);
@@ -675,6 +680,241 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(scroll.fps).toBeGreaterThan(55);
       expect(scroll.p95).toBeLessThan(28);
       expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+type RowStats = { offsets: number[]; inflight: number; maxInflight: number; cancels: number };
+
+async function trackRowRequests(page: Page) {
+  await page.addInitScript(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const original = internals.invoke;
+    const stats = { offsets: [] as number[], inflight: 0, maxInflight: 0, cancels: 0 };
+    Object.assign(window, { __rowStats: stats });
+    internals.invoke = async (command, args) => {
+      if (command === "cancel_execution") stats.cancels++;
+      if (command !== "fetch_table_rows") return original(command, args);
+      stats.offsets.push(Number(args?.offset ?? 0));
+      stats.inflight++;
+      stats.maxInflight = Math.max(stats.maxInflight, stats.inflight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return await original(command, args);
+      } finally {
+        stats.inflight--;
+      }
+    };
+  });
+}
+
+const rowStats = (page: Page) =>
+  page.evaluate(() => structuredClone((window as unknown as { __rowStats: RowStats }).__rowStats));
+
+function centerRow(page: Page) {
+  return page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>("[data-grid-scroll]");
+    if (!scroller) return null;
+    const box = scroller.getBoundingClientRect();
+    const row = document
+      .elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      ?.closest("tr[data-index]");
+    const id = row?.querySelector('td[data-col="id"]')?.textContent;
+    const number = row?.querySelector("td")?.textContent;
+    return id ? { id: Number(id), number: Number(number) } : null;
+  });
+}
+
+async function heapBytes(page: Page) {
+  if (process.env.L8DB_PERF_ENGINE === "webkit") return null;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("HeapProfiler.collectGarbage");
+  const { usedSize } = await cdp.send("Runtime.getHeapUsage");
+  await cdp.detach();
+  return usedSize;
+}
+
+function percentile(values: number[], fraction: number) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+}
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Infinite Scrolling durch 2.000.000 Zeilen bleibt flüssig, speicherbegrenzt und sparsam bei Anfragen",
+  async () => {
+    const app = await open(
+      "/tables/public/table_0000",
+      'tbody tr[data-index="0"]',
+      { rows: 2_000_000, columns: 30 },
+      8,
+      { rowLimit: 100, setup: trackRowRequests },
+    );
+    try {
+      const heapBefore = await heapBytes(app.page);
+      const scroll = await measure("infinite-table-scroll", app.page, () =>
+        app.page.evaluate(async () => {
+          const target = document.querySelector<HTMLElement>("[data-grid-scroll]")!;
+          let start = 0;
+          await new Promise<void>((resolve) => {
+            const step = (now: number) => {
+              if (!start) start = now;
+              target.scrollTop += 90;
+              if (now - start < 8000) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+        }),
+      );
+      await app.page.waitForTimeout(400);
+      const reached = await centerRow(app.page);
+      const afterScroll = await rowStats(app.page);
+      const domRows = await app.page.locator("tbody tr[data-index]").count();
+      const heapAfter = await heapBytes(app.page);
+      const pages = Math.floor((reached?.id ?? 0) / 100) + 1;
+
+      const exposure = await app.page.evaluate(async () => {
+        const target = document.querySelector<HTMLElement>("[data-grid-scroll]")!;
+        const box = target.getBoundingClientRect();
+        let samples = 0;
+        let placeholders = 0;
+        let frame = 0;
+        let start = 0;
+        await new Promise<void>((resolve) => {
+          const step = (now: number) => {
+            if (!start) start = now;
+            target.scrollTop += 60;
+            if (++frame % 6 === 0) {
+              samples++;
+              const hit = document.elementFromPoint(
+                box.left + box.width / 2,
+                box.top + box.height / 2,
+              );
+              if (!hit?.closest("tr[data-index]")) placeholders++;
+            }
+            if (now - start < 3000) requestAnimationFrame(step);
+            else resolve();
+          };
+          requestAnimationFrame(step);
+        });
+        return { samples, placeholders };
+      });
+
+      const maxTop = await app.page.evaluate(
+        () => document.querySelector<HTMLElement>("[data-grid-scroll]")!.scrollTop,
+      );
+      const jumpLatencies: number[] = [];
+      const jumpErrors: string[] = [];
+      for (let jump = 1; jump <= 7; jump++) {
+        const top = Math.round((maxTop * ((jump * 37) % 100)) / 100);
+        const started = Date.now();
+        await app.page.evaluate((top) => {
+          document.querySelector<HTMLElement>("[data-grid-scroll]")!.scrollTop = top;
+        }, top);
+        let row = await centerRow(app.page);
+        while (!row && Date.now() - started < 5000) {
+          await app.page.waitForTimeout(10);
+          row = await centerRow(app.page);
+        }
+        jumpLatencies.push(Date.now() - started);
+        if (!row || row.number !== row.id + 1) jumpErrors.push(`${top}: ${JSON.stringify(row)}`);
+      }
+
+      const beforeDrag = await rowStats(app.page);
+      await app.page.evaluate(async (maxTop) => {
+        const target = document.querySelector<HTMLElement>("[data-grid-scroll]")!;
+        for (let frame = 0; frame < 25; frame++) {
+          target.scrollTop = (maxTop * ((frame * 53) % 100)) / 100;
+          await new Promise(requestAnimationFrame);
+        }
+        target.scrollTop = maxTop / 3;
+      }, maxTop);
+      await app.page.waitForTimeout(800);
+      const afterDrag = await rowStats(app.page);
+      await app.page.waitForTimeout(2000);
+      const idle = await rowStats(app.page);
+
+      const summary = {
+        scroll,
+        reachedRow: reached?.id,
+        pages,
+        fetches: afterScroll.offsets.length,
+        uniqueFetches: new Set(afterScroll.offsets).size,
+        maxInflight: idle.maxInflight,
+        cancels: idle.cancels,
+        domRows,
+        heapGrowthMb: heapBefore && heapAfter ? (heapAfter - heapBefore) / 1024 / 1024 : null,
+        exposure,
+        jumpMedianMs: percentile(jumpLatencies, 0.5),
+        jumpP95Ms: percentile(jumpLatencies, 0.95),
+        dragFetches: afterDrag.offsets.length - beforeDrag.offsets.length,
+        idleFetches: idle.offsets.length - afterDrag.offsets.length,
+      };
+      console.log(`perf infinite-table ${JSON.stringify(summary)}`);
+      expect(reached?.id ?? 0).toBeGreaterThan(500);
+      expect(scroll.fps).toBeGreaterThan(MIN_FPS);
+      expect(scroll.p95).toBeLessThan(MAX_P95_MS);
+      expect(summary.uniqueFetches).toBe(summary.fetches);
+      expect(summary.fetches).toBeLessThanOrEqual(pages + 3);
+      expect(summary.maxInflight).toBeLessThanOrEqual(2);
+      expect(domRows).toBeLessThan(100);
+      if (summary.heapGrowthMb !== null) expect(summary.heapGrowthMb).toBeLessThan(40);
+      expect(exposure.placeholders / exposure.samples).toBeLessThan(0.1);
+      expect(jumpErrors).toEqual([]);
+      expect(summary.jumpP95Ms).toBeLessThan(800);
+      expect(summary.dragFetches).toBeLessThanOrEqual(3);
+      expect(summary.idleFetches).toBe(0);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  120000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Letzte Seite springt in 100.000 Zeilen ohne Zwischenseiten ans Ende",
+  async () => {
+    const app = await open(
+      "/tables/public/table_0000",
+      'tbody tr[data-index="0"]',
+      { rows: 100_000, columns: 30 },
+      8,
+      { rowLimit: 100, setup: trackRowRequests },
+    );
+    try {
+      await app.page.getByText("Seite 1 / 1000", { exact: true }).waitFor();
+      const before = await rowStats(app.page);
+      const started = Date.now();
+      await app.page.getByRole("button", { name: "Letzte Seite", exact: true }).click();
+      await app.page.getByText("Seite 1000 / 1000", { exact: true }).waitFor();
+      await app.page.waitForFunction(() =>
+        [...document.querySelectorAll('td[data-col="id"]')].some(
+          (cell) => cell.textContent === "99900",
+        ),
+      );
+      const latency = Date.now() - started;
+      const after = await rowStats(app.page);
+      const fetched = after.offsets.slice(before.offsets.length);
+      await app.page.getByRole("button", { name: "Erste Seite", exact: true }).click();
+      await app.page.waitForFunction(
+        () =>
+          document.querySelector('tbody tr[data-index="0"] td[data-col="id"]')?.textContent === "0",
+      );
+      console.log(`perf infinite-last-page ${JSON.stringify({ latency, fetched })}`);
+      expect(fetched.every((offset) => offset >= 99_000)).toBe(true);
+      expect(fetched.length).toBeLessThanOrEqual(2);
+      expect(latency).toBeLessThan(1000);
       expect(app.errors).toEqual([]);
     } finally {
       await app.close();

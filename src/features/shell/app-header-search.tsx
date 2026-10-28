@@ -30,7 +30,7 @@ import { markNewFeatureSeen, useHasNewFeatures } from "@/lib/new-features";
 import { useNotebookStore } from "@/lib/notebook/store";
 import { usePaletteHistoryStore } from "@/lib/palette-history";
 import { supports } from "@/lib/providers";
-import { useAllSchemaObjectsQuery } from "@/lib/queries";
+import { useAllPackageMembersQuery, useAllSchemaObjectsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTourStore } from "@/lib/tour/store";
@@ -75,6 +75,11 @@ export function AppHeaderSearch() {
   if (objectSearchOpen) objectSearchMounted.current = true;
   if (shortcutsOpen) shortcutsMounted.current = true;
   const { data: objects } = useAllSchemaObjectsQuery(open && Boolean(builders));
+  const hasPackages = useMemo(
+    () => Boolean(objects?.functions?.some((fn) => fn.return_type === "PACKAGE")),
+    [objects],
+  );
+  const { data: packageMembers } = useAllPackageMembersQuery(open && hasPackages);
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
   const extensionHost = useExtensionHost();
@@ -193,6 +198,10 @@ export function AppHeaderSearch() {
     () => builders?.buildObjectItems(objects, setOpen, navigate) ?? NO_ITEMS,
     [builders, objects, navigate],
   );
+  const packageMemberItems = useMemo(
+    () => builders?.buildPackageMemberItems(packageMembers, setOpen, navigate) ?? NO_ITEMS,
+    [builders, packageMembers, navigate],
+  );
   const settingsItems = useMemo(
     () => builders?.buildSettingsItems(setOpen, navigate) ?? NO_ITEMS,
     [builders, navigate],
@@ -291,6 +300,7 @@ export function AppHeaderSearch() {
       connectionManagerItem,
       ...deepSearchItem,
       ...objectItems,
+      ...packageMemberItems,
       ...notebookItems,
       ...compareItems,
       ...extensionItems,
@@ -310,6 +320,7 @@ export function AppHeaderSearch() {
     navigate,
     recentNotebooks,
     objectItems,
+    packageMemberItems,
     settingsItems,
     onSelectConnection,
     isSwitching,

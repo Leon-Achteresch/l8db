@@ -11,6 +11,7 @@ import {
 } from "@/features/compare/definition-diff-editor";
 import { detailText } from "@/lib/schema-compare/diff";
 import { type CompareResult, OBJECT_TYPE_META, STATUS_LABEL } from "@/lib/schema-compare/types";
+import { SchemaCompareRenameBar } from "./schema-compare-rename-bar";
 import { SchemaObjectIcon } from "./schema-object-icon";
 import { StatusMarker } from "./status-marker";
 
@@ -61,8 +62,11 @@ export function SchemaCompareDetail({
           {OBJECT_TYPE_META[item.type].label}
           {stats.changes > 0 &&
             ` · ${stats.changes} ${stats.changes === 1 ? "Änderung" : "Änderungen"}`}
-          {item.differsBy.length > 0 && ` · ${item.differsBy.join(", ")}`}
+          {item.differsBy.length > 0 && ` · Unterschied in: ${item.differsBy.join(", ")}`}
         </span>
+        {item.blocked && (
+          <span className="truncate text-amber-700 dark:text-amber-400">{item.blocked}</span>
+        )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <ToggleGroup
             type="single"
@@ -122,6 +126,7 @@ export function SchemaCompareDetail({
           </IconMenu>
         </div>
       </div>
+      <SchemaCompareRenameBar result={result} item={item} />
       <div className="relative min-h-0 flex-1">
         <DefinitionDiffEditor
           ref={diffRef}

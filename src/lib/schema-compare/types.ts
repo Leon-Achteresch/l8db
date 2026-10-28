@@ -9,19 +9,51 @@ export interface SchemaCompareOptions {
   ignoreCase: boolean;
   ignoreSystemNames: boolean;
   ignoreSequenceValues: boolean;
+  ignoreComments: boolean;
+  ignoreQuotes: boolean;
+  ignoreDefaultNull: boolean;
+  ignoreTimestampPrecision: boolean;
+  ignoreLengthSemantics: boolean;
+  ignoreConstraintNames: boolean;
+  ignoreColumnOrder: boolean;
+  ignoreTablespace: boolean;
+  diffLimit: number;
+  excludePatterns: string;
 }
+
+export type CompareFlag = {
+  [K in keyof SchemaCompareOptions]: SchemaCompareOptions[K] extends boolean ? K : never;
+}[keyof SchemaCompareOptions];
 
 export const DEFAULT_COMPARE_OPTIONS: SchemaCompareOptions = {
   ignoreWhitespace: true,
   ignoreCase: false,
   ignoreSystemNames: true,
   ignoreSequenceValues: true,
+  ignoreComments: false,
+  ignoreQuotes: false,
+  ignoreDefaultNull: false,
+  ignoreTimestampPrecision: false,
+  ignoreLengthSemantics: false,
+  ignoreConstraintNames: false,
+  ignoreColumnOrder: true,
+  ignoreTablespace: true,
+  diffLimit: 0,
+  excludePatterns: "",
 };
+
+export interface SnapshotRef {
+  path: string;
+  kind: DatabaseKind;
+  createdAt: string;
+  connectionName: string;
+}
 
 export interface CompareSide {
   connectionId: string | null;
   database: string | null;
   schema: string | null;
+  snapshot?: SnapshotRef | null;
 }
 
 export const EMPTY_SIDE: CompareSide = { connectionId: null, database: null, schema: null };
@@ -36,6 +68,7 @@ export interface DiffItem {
   target: CatalogObject | null;
   differsBy: string[];
   children: CatalogObject[];
+  blocked?: string;
 }
 
 export interface CompareContext {
@@ -53,6 +86,7 @@ export interface CompareResult extends CompareContext {
   types: SelectableType[];
   items: DiffItem[];
   comparedAt: string;
+  omitted?: number;
 }
 
 export const OBJECT_TYPE_META: Record<CatalogObjectType, { label: string; plural: string }> = {

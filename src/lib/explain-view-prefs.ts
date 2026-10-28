@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type ExplainViewMode = "tree" | "graph" | "flame";
+export type ExplainViewMode = "tree" | "graph" | "flame" | "text";
 export type ExplainGraphDirection = "DOWN" | "RIGHT";
 
 interface ExplainViewPrefsState {

@@ -104,6 +104,7 @@ export function useSqlIntellisenseSync(): void {
         columns: columns ?? [],
         functions: objects?.functions ?? [],
         procedures: objects?.procedures ?? [],
+        dialect: connection?.kind,
       },
       connection,
       database,

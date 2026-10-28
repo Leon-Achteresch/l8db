@@ -97,6 +97,7 @@ export interface AiConnection {
   environment: string | null;
   maskRules: MaskRule[];
   defaultSchema: string | null;
+  productionWrites: boolean;
 }
 export interface AiRunRequest {
   runId: string;

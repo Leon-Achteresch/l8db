@@ -1,6 +1,6 @@
 import { type Column, createCell, flexRender } from "@tanstack/react-table";
 import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
-import { memo, useContext, useMemo } from "react";
+import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
@@ -174,16 +174,13 @@ export const DataTableCell = memo(function DataTableCell({
       }
       data-row-index={rowIndex}
       data-col={cellIndex > 0 ? columnId : undefined}
-      style={{
-        width,
-        left: pinnedOffset ?? undefined,
-        lineHeight: "1.25rem",
-        whiteSpace: "nowrap",
-        textOverflow: "ellipsis",
-        ...(isSticky ? { "--cell-tint": stickyTint } : null),
-      }}
+      style={
+        isSticky
+          ? ({ left: pinnedOffset ?? undefined, "--cell-tint": stickyTint } as CSSProperties)
+          : undefined
+      }
       className={cn(
-        "align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden font-mono text-xs",
+        "align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden whitespace-nowrap text-ellipsis font-mono text-xs leading-5",
         tableStyle === "classic"
           ? "px-3 py-[var(--ui-cell-padding)]"
           : tableStyle === "semantic"
@@ -196,7 +193,15 @@ export const DataTableCell = memo(function DataTableCell({
             : monochromeCells
               ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
               : VALUE_CLASSES[preview.kind]),
-        cellIndex > 0 && tableStyle === "semantic" && "text-foreground/90",
+        cellIndex > 0 &&
+          tableStyle === "semantic" &&
+          (columnStyle?.primaryKey && !badge
+            ? "text-amber-600 dark:text-amber-400"
+            : columnStyle?.numeric
+              ? "text-foreground"
+              : columnStyle?.kind === "uuid"
+                ? "text-foreground/85"
+                : "text-foreground/90"),
         tableStyle === "semantic" &&
           cellIndex > 0 &&
           !columnStyle?.numeric &&
@@ -206,7 +211,7 @@ export const DataTableCell = memo(function DataTableCell({
         tableStyle === "semantic" && hasCustomContent && "text-blue-600 dark:text-blue-400",
         tableStyle !== "classic" && columnStyle?.numeric && "text-right tabular-nums",
         cellIndex === 0 &&
-          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none font-mono text-xs",
+          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none",
         cellIndex === 0 && tableStyle !== "classic" && "px-1",
         cellIndex === 0 && isMarked && "text-primary",
         pinnedOffset !== null &&

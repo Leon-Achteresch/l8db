@@ -76,6 +76,7 @@ pub struct Capabilities {
     pub bind_parameters: bool,
     pub server_output: bool,
     pub query_cancel: bool,
+    pub server_info: bool,
     pub dashboard_parallelism: u8,
     pub used_by: bool,
     pub object_grants: bool,
@@ -150,6 +151,7 @@ const NONE: Capabilities = Capabilities {
     object_admin: false,
     server_output: false,
     query_cancel: false,
+    server_info: false,
     dashboard_parallelism: 0,
     ssl: true,
     ssh: true,
@@ -261,6 +263,7 @@ impl DatabaseKind {
                 table_transactions: true,
                 row_edit: true,
                 data_compare: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Sqlite => Capabilities {
@@ -274,6 +277,7 @@ impl DatabaseKind {
                 table_transactions: false,
                 row_edit: true,
                 data_compare: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Duckdb => Capabilities {
@@ -295,6 +299,7 @@ impl DatabaseKind {
                 table_transactions: true,
                 row_edit: true,
                 data_compare: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
@@ -316,6 +321,10 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                query_cancel: true,
+                server_info: true,
+                locks: true,
+                data_compare: true,
                 query_stats: true,
                 object_grants: true,
                 proxy_user: true,
@@ -335,6 +344,7 @@ impl DatabaseKind {
                 transactions: true,
                 table_transactions: true,
                 row_edit: true,
+                schema_snapshot: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Cassandra => Capabilities {

@@ -125,9 +125,10 @@ export function useInsertRowMutation(schema: string, table: string) {
       queryClient.setQueriesData<TableData>(
         {
           predicate: (q) =>
-            matchesTable(q.queryKey, "rows", schema, table, connection?.id, database),
+            matchesTable(q.queryKey, "rows", schema, table, connection?.id, database) &&
+            q.queryKey[9] === 0,
         },
-        (old) => (old ? { ...old, rows: [...old.rows, row] } : old),
+        (old) => (old ? { ...old, rows: [row, ...old.rows] } : old),
       );
       queryClient.setQueriesData<RowCount>(
         {
@@ -160,9 +161,10 @@ export function useDuplicateRowMutation(schema: string, table: string) {
       queryClient.setQueriesData<TableData>(
         {
           predicate: (q) =>
-            matchesTable(q.queryKey, "rows", schema, table, connection?.id, database),
+            matchesTable(q.queryKey, "rows", schema, table, connection?.id, database) &&
+            q.queryKey[9] === 0,
         },
-        (old) => (old ? { ...old, rows: [...old.rows, row] } : old),
+        (old) => (old ? { ...old, rows: [row, ...old.rows] } : old),
       );
       queryClient.setQueriesData<RowCount>(
         {

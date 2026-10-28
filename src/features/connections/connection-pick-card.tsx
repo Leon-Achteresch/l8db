@@ -321,7 +321,10 @@ function ConnectionCardShell({
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 text-muted-foreground">
             <User className="size-3 shrink-0 text-muted-foreground/70" />
-            <span className="truncate font-mono">{endpoint.user || "Kein Benutzer"}</span>
+            <span className="truncate font-mono">
+              {endpoint.user ||
+                (connection.team ? "Benutzer beim ersten Verbinden" : "Kein Benutzer")}
+            </span>
             {endpoint.host && (
               <span className="truncate text-muted-foreground/60">
                 @{endpoint.host}

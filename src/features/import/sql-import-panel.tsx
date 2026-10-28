@@ -21,6 +21,7 @@ import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { supports } from "@/lib/providers";
 import { runSqlScript } from "@/lib/script-runner";
 import { splitSqlStatements } from "@/lib/sql-statements";
+import { createSubstitutionState } from "@/lib/sql-statements/sqlplus";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cancelTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
@@ -85,6 +86,8 @@ export function SqlImportPanel({
         sql: draft.sql,
         mode,
         stopOnError: draft.stopOnError,
+        filePath: draft.filePath,
+        variables: { state: { ...createSubstitutionState(), marker: null }, answers: {} },
         title: `SQL-Import · ${draft.fileName}`,
         onJob: (jobId) => update({ jobId }),
         onProgress: (entries) => update({ entries }),

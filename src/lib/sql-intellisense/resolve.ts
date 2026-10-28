@@ -1,5 +1,6 @@
 import type { FunctionInfo, TableInfo } from "@/lib/db";
 import { type PlsqlMember, parsePlsqlMembers } from "@/lib/plsql";
+import { findRef, type QueryScope } from "./scope";
 import type { SqlObjectRegistry, SqlToken, Suggestion, SymbolTarget } from "./types";
 
 export const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -87,10 +88,12 @@ export function resolveSymbol(
   registry: SqlObjectRegistry,
   token: SqlToken,
   source = "",
+  scope?: QueryScope,
 ): SymbolTarget | null {
   if (token.qualifier) {
     const qualifier = token.qualifier;
-    const pkg = registry.functions.find((fn) => isPackage(fn) && eq(fn.name, qualifier));
+    const ref = scope && findRef(scope, qualifier);
+    const pkg = !ref && registry.functions.find((fn) => isPackage(fn) && eq(fn.name, qualifier));
     if (pkg) {
       return {
         kind: "package",
@@ -99,11 +102,11 @@ export function resolveSymbol(
         member: token.word.toUpperCase(),
       };
     }
-    if (registry.schemas.some((schema) => eq(schema, qualifier))) {
+    if (!ref && registry.schemas.some((schema) => eq(schema, qualifier))) {
       return findObject(registry, token.word, qualifier);
     }
-    const tableName = aliasMap(source).get(qualifier.toLowerCase()) ?? qualifier;
-    const table = findTable(registry, tableName, null);
+    const tableName = ref ? ref.name : (aliasMap(source).get(qualifier.toLowerCase()) ?? qualifier);
+    const table = findTable(registry, tableName, ref?.schema ?? null);
     if (!table) return null;
     const column = registry.columns.find(
       (c) =>
@@ -126,9 +129,10 @@ export function resolveSymbol(
 export function packageForQualifier(
   registry: SqlObjectRegistry,
   lineBeforeCursor: string,
+  scope?: QueryScope,
 ): FunctionInfo | null {
   const match = /"?([\w$#]+)"?\s*\.\s*[\w$#]*$/.exec(lineBeforeCursor);
-  if (!match) return null;
+  if (!match || (scope && findRef(scope, match[1]))) return null;
   return registry.functions.find((fn) => isPackage(fn) && eq(fn.name, match[1])) ?? null;
 }
 

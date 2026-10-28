@@ -1,6 +1,19 @@
-import { fetchTableRows, getFunctionDefinition } from "@/lib/db";
+import {
+  cancelExecution,
+  type ForeignKeyInfo,
+  fetchTableRows,
+  getFunctionDefinition,
+  listForeignKeys,
+} from "@/lib/db";
 import { packageOid, parsePlsqlMembers } from "@/lib/plsql";
-import { BUILTIN_FUNCTIONS, type HoverExtras, type SymbolTarget } from "@/lib/sql-intellisense";
+import { supports } from "@/lib/providers";
+import {
+  BUILTIN_FUNCTIONS,
+  type HoverExtras,
+  type JoinTarget,
+  joinTables,
+  type SymbolTarget,
+} from "@/lib/sql-intellisense";
 import { isPackage } from "@/lib/sql-intellisense/resolve";
 import {
   parseRoutineSignatures,
@@ -10,6 +23,39 @@ import {
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { ctx } from "./context";
+import { loadForeignKeys } from "./foreign-keys";
+
+export async function joinForeignKeys(
+  join: JoinTarget,
+  signal: AbortSignal,
+): Promise<ForeignKeyInfo[]> {
+  const { connection, database, queryClient, registry } = ctx;
+  const tables = joinTables(registry, join);
+  if (!connection || !queryClient || !tables.length || !supports(connection, "foreign_keys"))
+    return [];
+  try {
+    return await loadForeignKeys(
+      queryClient,
+      connection.id,
+      database,
+      tables,
+      signal,
+      (schema, table, jobId) =>
+        listForeignKeys(
+          connection.kind,
+          effectiveConnectionString(connection),
+          schema,
+          table,
+          database ?? undefined,
+          { jobId },
+        ),
+      (jobId) =>
+        supports(connection, "query_cancel") ? cancelExecution(jobId) : Promise.resolve(false),
+    );
+  } catch {
+    return [];
+  }
+}
 
 async function fetchDefinition(oid: string): Promise<string> {
   const { connection, database, queryClient } = ctx;

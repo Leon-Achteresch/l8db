@@ -22,7 +22,7 @@ type Props = {
 export function SemanticCellValue({ value, preview, column, now }: Props) {
   if (value === null || value === undefined)
     return (
-      <span className="rounded border border-dashed border-muted-foreground/30 px-1 font-mono text-[10.5px] text-muted-foreground/70">
+      <span className="rounded bg-muted px-1 font-mono text-[10.5px] text-muted-foreground/70">
         null
       </span>
     );
@@ -43,26 +43,25 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     return (
       <span
         className={cn(
-          "inline-flex max-w-full items-center gap-1.5 rounded-full px-2 font-sans text-[11px] leading-[18px] font-medium",
+          "inline-block max-w-full truncate rounded-full px-2 align-middle font-sans text-[11px] leading-[18px] font-medium before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-current before:align-middle before:opacity-80",
           CATEGORY_PILL_CLASSES[categoryColorIndex(value)],
         )}
       >
-        <span className="size-1.5 shrink-0 rounded-full bg-current opacity-80" />
-        <span className="truncate">{preview.text}</span>
+        {preview.text}
       </span>
     );
-  if (column?.primaryKey)
-    return <span className="font-mono text-amber-600 dark:text-amber-400">{preview.text}</span>;
-  if (column?.numeric || preview.kind === "number")
+  if (column?.primaryKey || column?.numeric) return preview.text;
+  if (preview.kind === "number")
     return <span className="font-mono tabular-nums text-foreground">{preview.text}</span>;
   if (preview.kind === "uuid") {
     const short = shortUuid(String(value));
-    return (
-      <span className="font-mono text-foreground/85">
+    const parts = (
+      <>
         {short.slice(0, 8)}
         <span className="text-muted-foreground/60">{short.slice(8)}</span>
-      </span>
+      </>
     );
+    return column?.kind === "uuid" ? parts : <span className="font-mono">{parts}</span>;
   }
   if (column?.kind === "date" && typeof value === "string") {
     const display = timestampDisplay(value, now);
@@ -71,7 +70,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
         <span title={value}>
           {display.primary}
           {display.secondary ? (
-            <span className="ml-1.5 font-mono text-[11px] text-muted-foreground/70">
+            <span className="ml-1.5 font-mono text-[11px] leading-none text-muted-foreground/70">
               {display.secondary}
             </span>
           ) : null}
@@ -82,25 +81,20 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     const entries = jsonEntries(value);
     if (!entries)
       return <span className="text-violet-600 dark:text-violet-400">{preview.text}</span>;
-    return (
-      <span>
-        {entries.map(([key, entry], index) => (
-          <Fragment key={key}>
-            {index > 0 ? <span className="text-muted-foreground/50"> · </span> : null}
-            <span className="text-violet-600 dark:text-violet-400">{key}</span>
-            <span className="ml-1">{entry}</span>
-          </Fragment>
-        ))}
-      </span>
-    );
+    return entries.map(([key, entry], index) => (
+      <Fragment key={key}>
+        {index > 0 ? <span className="text-muted-foreground/50"> · </span> : null}
+        <span className="text-violet-600 dark:text-violet-400">{key}</span> {entry}
+      </Fragment>
+    ));
   }
   const email = typeof value === "string" ? splitEmail(preview.text) : null;
   if (email)
     return (
-      <span>
+      <>
         {email[0]}
         <span className="text-muted-foreground/70">{email[1]}</span>
-      </span>
+      </>
     );
   return preview.text;
 }

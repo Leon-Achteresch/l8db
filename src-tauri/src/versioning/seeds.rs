@@ -43,11 +43,7 @@ pub fn validate_seed(sql: &str, schema: &str, kind: DatabaseKind) -> Result<Vec<
     let ident = r#"(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$#]*)"#;
     let header = Regex::new(&format!(r"(?is)^\s*INSERT\s+INTO\s+({ident})\s*\.\s*({ident})\s*\((\s*{ident}(?:\s*,\s*{ident})*\s*)\)\s+VALUES\s+(.+?)\s*$")).map_err(|e| e.to_string())?;
     let literal = Regex::new(r"(?is)^(?:NULL|TRUE|FALSE|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?|(?:DATE|TIMESTAMP)\s+'(?:[^']|'')*'|'(?:[^']|'')*')$").map_err(|e| e.to_string())?;
-    let statements = if kind == DatabaseKind::Postgres {
-        db::sql_script::split_postgres(sql)
-    } else {
-        db::sql_script::split(sql)
-    };
+    let statements = db::sql_script::split_for(kind, sql);
     if statements.is_empty() || statements.len() > 10000 {
         return Err("Ungültige Anzahl Seed-Anweisungen.".into());
     }

@@ -33,7 +33,7 @@ import { useAiSetupNeeded } from "@/lib/ai/setup";
 import { AI_PROVIDERS, type AiSession, aiSessionConnection, useAiStore } from "@/lib/ai/store";
 import { aiLatestLeaf, aiThread } from "@/lib/ai/thread";
 import { mergeAiUsage } from "@/lib/ai/usage";
-import { isReadOnlyConnection, useConnectionsStore } from "@/lib/connections";
+import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import {
   type AiAttachment,
   type AiEvent,
@@ -71,6 +71,7 @@ import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
 import { AiOnboarding } from "./ai-onboarding";
 import { AiPanelHeader } from "./ai-panel-header";
 import { AiPlusActions } from "./ai-plus-actions";
+import { AiProductionConfirmDialog } from "./ai-production-confirm-dialog";
 import { AiProviderPicker } from "./ai-provider-picker";
 import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiResultsShelf } from "./ai-results-shelf";
@@ -132,6 +133,23 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
 
   const [allowWrites, setAllowWrites] = useState(false);
   const [allowDdl, setAllowDdl] = useState(false);
+  const [productionGrant, setProductionGrant] = useState<{
+    id: string;
+    level: "write" | "ddl";
+    sessionId: string | null;
+  } | null>(null);
+  const [productionConfirm, setProductionConfirm] = useState<{
+    id: string;
+    name: string;
+    level: "write" | "ddl";
+    sessionId: string | null;
+  } | null>(null);
+  const accessCap = (connection: SavedConnection | undefined) =>
+    !connection || !isProduction(connection)
+      ? "ddl"
+      : productionGrant?.id === connection.id && productionGrant.sessionId === (session?.id ?? null)
+        ? productionGrant.level
+        : "read";
   const [runId, setRunId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<AiEvent[]>([]);
   const [queue, setQueue] = useState<
@@ -322,6 +340,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setUsage({});
     setAllowWrites(false);
     setAllowDdl(false);
+    setProductionGrant(null);
     setAttachments([]);
   };
   const resolve = (id: string) =>
@@ -400,12 +419,14 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     try {
       const current = useConnectionsStore.getState();
       const selection = useDbSelectionStore.getState();
+      const cap = accessCap(current.connections.find((entry) => entry.id === current.activeId));
       const selected = aiConnections(
         current.connections,
         current.activeId,
         mentioned,
         selection.databaseByConnection,
         selection.schemaByConnection,
+        productionGrant?.id === current.activeId ? productionGrant.id : null,
       );
       const files = [
         ...new Map(
@@ -425,6 +446,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       liveSession.current = next;
       state.saveSession(next);
       state.selectSession(next.id);
+      if (!session)
+        setProductionGrant((grant) =>
+          grant && grant.sessionId === null ? { ...grant, sessionId: next.id } : grant,
+        );
       onStart?.();
       setRunId(id);
       setApprovals([]);
@@ -458,8 +483,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           servers: state.servers.filter(
             (server) => !server.deleted && selectedServers.includes(server.id),
           ),
-          allowWrites,
-          allowDdl,
+          allowWrites: allowWrites && cap !== "read",
+          allowDdl: allowDdl && cap === "ddl",
           attachments: files,
         },
         (event) => {
@@ -786,6 +811,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     setEditorContext(true);
     setAllowWrites(false);
     setAllowDdl(false);
+    setProductionGrant(null);
     setMentioned([]);
     setContextItems([]);
     setApprovals([]);
@@ -965,11 +991,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const locked = Boolean(
     active && (active.readOnly || isReadOnlyConnection(active) || isProductionLocked(active)),
   );
+  const cap = accessCap(active);
   const level: AiAccessLevel = locked
     ? "locked"
-    : allowDdl
+    : allowDdl && cap === "ddl"
       ? "ddl"
-      : allowWrites
+      : allowWrites && cap !== "read"
         ? "write"
         : "read";
   const settingsButton = (
@@ -1005,8 +1032,21 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         />
       }
       onLevel={(next) => {
+        const rank = ["read", "write", "ddl"];
+        if (active && next !== "read" && rank.indexOf(next) > rank.indexOf(cap)) {
+          setProductionConfirm({
+            id: active.id,
+            name: active.name,
+            level: next,
+            sessionId: session?.id ?? null,
+          });
+          return;
+        }
         setAllowWrites(next !== "read");
         setAllowDdl(next === "ddl");
+        if (next === "read") setProductionGrant(null);
+        else if (active && isProduction(active))
+          setProductionGrant({ id: active.id, level: next, sessionId: session?.id ?? null });
       }}
       disabled={busy}
       approval={<AiApprovalPicker profile={profile} disabled={busy} />}
@@ -1170,6 +1210,23 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         )}
       >
         {strip}
+        {productionConfirm && (
+          <AiProductionConfirmDialog
+            name={productionConfirm.name}
+            level={productionConfirm.level}
+            onConfirm={() => {
+              setAllowWrites(true);
+              setAllowDdl(productionConfirm.level === "ddl");
+              setProductionGrant({
+                id: productionConfirm.id,
+                level: productionConfirm.level,
+                sessionId: productionConfirm.sessionId,
+              });
+              setProductionConfirm(null);
+            }}
+            onClose={() => setProductionConfirm(null)}
+          />
+        )}
         <PromptInput
           inputRef={input}
           aria-label="Nachricht an AI"
@@ -1338,7 +1395,13 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const main = (
     <>
       {!fullPage && (
-        <div className={cn(!figures.length || view !== "chat" || minimized ? "border-b" : "")}>
+        <div
+          className={cn(
+            minimized
+              ? "group-data-active/mini:border-b"
+              : (!figures.length || view !== "chat") && "border-b",
+          )}
+        >
           <AiPanelHeader
             title={session?.title || "KI-Assistent"}
             view={view}

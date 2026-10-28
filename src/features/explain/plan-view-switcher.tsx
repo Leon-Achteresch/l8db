@@ -1,17 +1,26 @@
-import { ArrowDownIcon, ArrowRightIcon, FlameIcon, ListTreeIcon, NetworkIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowRightIcon,
+  FileTextIcon,
+  FlameIcon,
+  ListTreeIcon,
+  NetworkIcon,
+} from "lucide-react";
 
+import { NewBadge } from "@/components/new-badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   type ExplainGraphDirection,
   type ExplainViewMode,
   useExplainViewPrefs,
 } from "@/lib/explain-view-prefs";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
-export function PlanViewSwitcher() {
-  const view = useExplainViewPrefs((state) => state.view);
+export function PlanViewSwitcher({ hasText, view }: { hasText: boolean; view: ExplainViewMode }) {
   const direction = useExplainViewPrefs((state) => state.direction);
   const setView = useExplainViewPrefs((state) => state.setView);
   const setDirection = useExplainViewPrefs((state) => state.setDirection);
+  const { ref, isNew } = useNewFeatureVisibility<HTMLButtonElement>("query.analysis.plan-text");
   return (
     <div className="flex items-center gap-1">
       <ToggleGroup
@@ -39,6 +48,18 @@ export function PlanViewSwitcher() {
           <FlameIcon className="size-3.5" />
           Flame
         </ToggleGroupItem>
+        {hasText && (
+          <ToggleGroupItem
+            ref={ref}
+            value="text"
+            className="h-7 gap-1 px-2 text-xs"
+            title="DBMS_XPLAN-Text"
+          >
+            <FileTextIcon className="size-3.5" />
+            Text
+            {isNew && <NewBadge />}
+          </ToggleGroupItem>
+        )}
       </ToggleGroup>
       {view === "graph" && (
         <ToggleGroup

@@ -14,6 +14,7 @@ export interface BaasConnection {
   id: string;
   name: string;
   detail: string;
+  url?: string;
 }
 
 export function useBaasConnections(): BaasConnection[] {
@@ -47,7 +48,8 @@ export function useBaasConnections(): BaasConnection[] {
       provider: "supabase" as const,
       id: item.reference,
       name: item.name,
-      detail: item.region ?? item.reference,
+      detail: item.api_url ?? item.region ?? item.reference,
+      url: item.api_url ?? undefined,
     })),
     ...(appwrite.data ?? []).map((item) => ({
       provider: "appwrite" as const,
@@ -64,8 +66,8 @@ export function useBaasConnections(): BaasConnection[] {
     ...(convex.data ?? []).map((item) => ({
       provider: "convex" as const,
       id: item.id,
-      name: `Convex-Team ${item.team_id}`,
-      detail: `Team ${item.team_id}`,
+      name: item.url ? "Convex (selbst gehostet)" : `Convex-Team ${item.team_id}`,
+      detail: item.url ?? `Team ${item.team_id}`,
     })),
     ...(firebase.data ?? []).map((item) => ({
       provider: "firebase" as const,

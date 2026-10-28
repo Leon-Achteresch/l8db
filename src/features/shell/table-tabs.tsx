@@ -9,17 +9,20 @@ import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
+import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
+import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
 import { useSettingsStore } from "@/lib/settings";
-import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
+import { MAX_SPLIT_PANES, type SplitGroup, useSplitGroups, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
@@ -40,6 +43,12 @@ export function TableTabs() {
   const addPane = useSplitView((state) => state.addPane);
   const collapse = useSplitView((state) => state.collapse);
   const reveal = useSplitView((state) => state.reveal);
+  const activeGroup = useSplitView((state) => state.activeGroup);
+  const groups = useSplitGroups();
+  const renameGroup = useSplitView((state) => state.renameGroup);
+  const deleteGroup = useSplitView((state) => state.deleteGroup);
+  const openGroup = groups.find((group) => group.id === activeGroup);
+  const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
   const router = useRouter();
@@ -94,6 +103,11 @@ export function TableTabs() {
     navigateToTab(navigate, tab);
   };
 
+  const handleOpenGroup = (group: SplitGroup) => {
+    const tab = useSplitView.getState().openGroup(group.id);
+    if (tab) navigateToTab(navigate, tab);
+  };
+
   const handleNewQueryTab = () => {
     const id = openQueryTab();
     void navigate({ to: "/query/$id", params: { id } });
@@ -130,6 +144,15 @@ export function TableTabs() {
           className="no-scrollbar min-w-0 overflow-x-auto py-1"
         >
           <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
+            {split && openGroup && (
+              <SplitGroupTab
+                group={openGroup}
+                onOpen={() => handleOpenGroup(openGroup)}
+                onRename={(name) => renameGroup(openGroup.id, name)}
+                onClose={collapse}
+                onDelete={() => deleteGroup(openGroup.id)}
+              />
+            )}
             {tabs.map((tab, index) => (
               <TableTabsSortableTab
                 key={tabKey(tab)}
@@ -194,6 +217,16 @@ export function TableTabs() {
             />
           </button>
         </Tooltip>
+      )}
+      {!easyMode && groups.length > 0 && (
+        <SplitGroupsMenu
+          groups={groups}
+          activeGroup={split ? activeGroup : null}
+          isNew={groupFeature.isNew}
+          triggerRef={groupFeature.ref}
+          onOpen={handleOpenGroup}
+          onDelete={(group) => deleteGroup(group.id)}
+        />
       )}
       {split && (
         <Tooltip content="Einzelansicht" side="bottom" wrapperClassName="shrink-0">

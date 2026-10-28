@@ -47,6 +47,34 @@ const STAT_COLUMNS: &str = "starts, last_output_rows, last_elapsed_time, last_cr
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+fn plan_select(source: &str, filter: &str, stats: bool) -> String {
+    let columns = COLUMNS
+        .split(", ")
+        .map(|column| match column {
+            "id" => "NVL(m.dis, p.id)".to_string(),
+            "parent_id" => "NVL(m.par, p.parent_id)".to_string(),
+            other => format!("p.{other}"),
+        })
+        .chain(
+            stats
+                .then(|| STAT_COLUMNS.split(", ").map(|c| format!("p.{c}")))
+                .into_iter()
+                .flatten(),
+        )
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "WITH display_map AS (SELECT x.op, x.dis, x.par, x.skp FROM {source} q, \
+         XMLTABLE('/other_xml/display_map/row' PASSING XMLTYPE(q.other_xml) \
+         COLUMNS op NUMBER PATH '@op', dis NUMBER PATH '@dis', par NUMBER PATH '@par', skp NUMBER PATH '@skp') x \
+         WHERE {} AND q.other_xml IS NOT NULL) \
+         SELECT {columns} FROM {source} p LEFT JOIN display_map m ON m.op = p.id \
+         WHERE {} AND NVL(m.skp, 0) <> 1 ORDER BY NVL(m.dis, p.id)",
+        filter.replace("{t}", "q"),
+        filter.replace("{t}", "p")
+    )
+}
+
 fn statement_id() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -108,14 +136,29 @@ fn is_privilege_error(message: &str) -> bool {
         .any(|code| message.contains(code))
 }
 
-pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> {
+pub(super) fn explain(
+    c: &Connection,
+    statement: &str,
+    cursor_cache: bool,
+) -> Result<Value, String> {
     let id = statement_id();
     let sql = format!("EXPLAIN PLAN SET STATEMENT_ID = '{id}' FOR {statement}");
     c.execute(&sql, &[]).map_err(|e| map_sql_err(e, &sql))?;
     let rows = fetch(
         c,
-        &format!("SELECT {COLUMNS} FROM plan_table WHERE statement_id = '{id}' ORDER BY id"),
+        &plan_select("plan_table", &format!("{{t}}.statement_id = '{id}'"), false),
     );
+    let text = xplan(
+        c,
+        &format!("SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY('PLAN_TABLE', '{id}', 'TYPICAL'))"),
+    );
+    let text = match (
+        text,
+        cursor_cache.then(|| cached_plan(c, statement)).flatten(),
+    ) {
+        (Some(text), Some(cached)) => Some(format!("{text}\n\n{CACHED_PLAN}\n\n{cached}")),
+        (text, cached) => text.or(cached.map(|cached| format!("{CACHED_PLAN}\n\n{cached}"))),
+    };
     let cleanup = c
         .execute(
             &format!("DELETE FROM plan_table WHERE statement_id = '{id}'"),
@@ -123,12 +166,25 @@ pub(super) fn explain(c: &Connection, statement: &str) -> Result<Value, String> 
         )
         .map(|_| ())
         .map_err(map_err);
-    let plan = plan_tree(rows?.iter().map(plan_row).collect(), None)?;
+    let plan = with_text(plan_tree(rows?.iter().map(plan_row).collect(), None)?, text);
     cleanup?;
     Ok(plan)
 }
 
+pub(super) const ANALYZE_ONLY_DML: &str = "EXPLAIN ANALYZE ist bei Oracle nur für Abfragen und DML (INSERT, UPDATE, DELETE, MERGE) möglich. DDL und PL/SQL-Blöcke würden sofort festgeschrieben und wurden nicht ausgeführt.";
+
+pub(super) fn analyzable(statement: &str) -> bool {
+    is_query(statement)
+        || matches!(
+            super::sql::first_word(statement).as_str(),
+            "INSERT" | "UPDATE" | "DELETE" | "MERGE"
+        )
+}
+
 pub(super) fn analyze(c: &mut Connection, statement: &str) -> Result<Value, String> {
+    if !analyzable(statement) {
+        return Err(ANALYZE_ONLY_DML.to_string());
+    }
     for probe in [
         "SELECT prev_sql_id FROM v$session WHERE ROWNUM = 0",
         "SELECT sql_id FROM v$sql_plan_statistics_all WHERE ROWNUM = 0",
@@ -178,10 +234,14 @@ fn run_measured(c: &Connection, statement: &str) -> Result<Value, String> {
     }
     let rows = fetch(
         c,
-        &format!(
-            "SELECT {COLUMNS}, {STAT_COLUMNS} FROM v$sql_plan_statistics_all WHERE sql_id = '{}' AND child_number = {} ORDER BY id",
-            sql_id.replace('\'', ""),
-            child.trim().parse::<i64>().unwrap_or(0)
+        &plan_select(
+            "v$sql_plan_statistics_all",
+            &format!(
+                "{{t}}.sql_id = '{}' AND {{t}}.child_number = {}",
+                sql_id.replace('\'', ""),
+                child.trim().parse::<i64>().unwrap_or(0)
+            ),
+            true,
         ),
     )?;
     let rows: Vec<PlanRow> = rows
@@ -191,7 +251,54 @@ fn run_measured(c: &Connection, statement: &str) -> Result<Value, String> {
             ..plan_row(r)
         })
         .collect();
-    plan_tree(rows, Some(execution_ms))
+    let text = xplan(
+        c,
+        &format!(
+            "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR('{}', {}, 'ALLSTATS LAST +PEEKED_BINDS'))",
+            sql_id.replace('\'', ""),
+            child.trim().parse::<i64>().unwrap_or(0)
+        ),
+    );
+    Ok(with_text(plan_tree(rows, Some(execution_ms))?, text))
+}
+
+pub(super) const CACHED_PLAN: &str =
+    "Zuletzt tatsächlich verwendeter Plan aus dem Cursor-Cache (V$SQL_PLAN):";
+
+fn cached_plan(c: &Connection, statement: &str) -> Option<String> {
+    if statement.len() > 4000 {
+        return None;
+    }
+    let lines: Vec<String> = c
+        .query_named(
+            "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(DBMS_SQL_TRANSLATOR.SQL_ID(:stmt), \
+             (SELECT NVL(MAX(child_number) KEEP (DENSE_RANK LAST ORDER BY last_active_time), -1) FROM v$sql \
+              WHERE sql_id = DBMS_SQL_TRANSLATOR.SQL_ID(:stmt) AND parsing_schema_name = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')), 'TYPICAL'))",
+            &[("stmt", &statement)],
+        )
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|row| s(&row, 0))
+        .collect();
+    lines
+        .iter()
+        .any(|line| line.contains("Plan hash value"))
+        .then(|| lines.join("\n"))
+}
+
+fn xplan(c: &Connection, sql: &str) -> Option<String> {
+    let lines: Vec<String> = fetch(c, sql).ok()?.iter().map(|r| s(r, 0)).collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+fn with_text(mut plan: Value, text: Option<String>) -> Value {
+    if let (Some(text), Some(root)) = (
+        text,
+        plan.pointer_mut("/0/Plan").and_then(Value::as_object_mut),
+    ) {
+        root.insert("Plan Text".into(), Value::String(text));
+    }
+    plan
 }
 
 fn put(map: &mut Map<String, Value>, key: &str, value: Option<f64>) {
@@ -446,6 +553,42 @@ mod tests {
         assert_eq!(plan[0]["Plan"]["Node Type"], "PLAN");
         assert_eq!(plan[0]["Plan"]["Plans"].as_array().unwrap().len(), 2);
         assert!(plan_tree(Vec::new(), None).is_err());
+    }
+
+    #[test]
+    fn analyze_accepts_only_queries_and_dml() {
+        for ok in [
+            "SELECT 1 FROM dual",
+            "with x as (select 1 from dual) select * from x",
+            "update t set a = 1",
+            "MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a = 1",
+            "delete from t",
+        ] {
+            assert!(analyzable(ok), "{ok}");
+        }
+        for rejected in [
+            "CREATE TABLE t (a NUMBER)",
+            "drop table t",
+            "TRUNCATE TABLE t",
+            "BEGIN NULL; END;",
+            "ALTER TABLE t ADD b NUMBER",
+            "GRANT SELECT ON t TO u",
+        ] {
+            assert!(!analyzable(rejected), "{rejected}");
+        }
+    }
+
+    #[test]
+    fn plan_select_hides_inactive_adaptive_rows() {
+        let sql = plan_select("plan_table", "{t}.statement_id = 'X'", false);
+        assert!(sql.contains("q.statement_id = 'X' AND q.other_xml IS NOT NULL"));
+        assert!(sql.contains("WHERE p.statement_id = 'X' AND NVL(m.skp, 0) <> 1"));
+        assert!(sql.contains("SELECT NVL(m.dis, p.id), NVL(m.par, p.parent_id), p.operation"));
+        assert!(!sql.contains("p.starts"));
+        assert!(
+            plan_select("v$sql_plan_statistics_all", "{t}.sql_id = 'a'", true)
+                .contains("p.last_execution FROM v$sql_plan_statistics_all p")
+        );
     }
 
     #[test]
