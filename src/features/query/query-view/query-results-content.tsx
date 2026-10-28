@@ -7,6 +7,7 @@ import { ResultError } from "@/features/query/query-result-table/result-error";
 import { QueryResultView } from "@/features/query/query-result-view/query-result-view";
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import type { ResultChartBinding } from "@/features/query/result-chart/types";
+import { ResultCompareView } from "@/features/query/result-compare/result-compare-view";
 import type { DatabaseKind, TableInfo } from "@/lib/db";
 import type { SqlMarker } from "@/lib/sql-diagnostics";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
@@ -28,6 +29,9 @@ interface QueryResultsContentProps {
   tables: TableInfo[];
   maximized: boolean;
   onToggleMaximized: () => void;
+  compareOpen: boolean;
+  connectionId: string | null;
+  database: string | null;
 }
 
 export function QueryResultsContent({
@@ -44,12 +48,17 @@ export function QueryResultsContent({
   tables,
   maximized,
   onToggleMaximized,
+  compareOpen,
+  connectionId,
+  database,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError, viewSource, scriptEntries } = exec;
   const [classic, setClassic] = useTabState(tabStateKey(exec.scope, "classic"), false);
   const viewable =
     viewSource !== null && !scriptEntries && !error && result !== null && result.columns.length > 0;
   const showView = viewable && !classic && !isRunning;
+  const showCompare =
+    compareOpen && !isRunning && !error && result !== null && result.columns.length > 0;
   const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
   return (
     <>
@@ -83,6 +92,18 @@ export function QueryResultsContent({
             onReveal={onRevealError}
             onReplace={onReplaceSql}
             onFixWithAi={onFixWithAi}
+          />
+        ) : showCompare ? (
+          <ResultCompareView
+            scope={exec.scope}
+            result={result}
+            runs={exec.runs}
+            onRunsChange={exec.setRuns}
+            connectionId={connectionId}
+            database={database}
+            actions={actions}
+            maximized={maximized}
+            onToggleMaximized={onToggleMaximized}
           />
         ) : showView && viewSource && result ? (
           <QueryResultView

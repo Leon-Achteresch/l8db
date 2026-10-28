@@ -46,6 +46,7 @@ export const NEW_FEATURES = {
   "ai.chat.plus.knowledge.rules": "0.14.0",
   "ai.chat.plus.knowledge.data-rules": "0.15.0",
   "query.result.ask-ai": "0.14.0",
+  "query.result.compare": NEXT_FEATURE_VERSION,
   "automation.tasks": "0.10.0",
   "automation.schedules": "0.10.0",
   "automation.notifications": "0.10.0",

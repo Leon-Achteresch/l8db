@@ -79,6 +79,7 @@ export function useRunSql({
     setResultState,
     setExecutedSql,
     setViewSource,
+    recordRun,
   } = exec;
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
@@ -182,6 +183,14 @@ export function useRunSql({
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
         setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
+        if (res.columns.length > 0)
+          recordRun({
+            result: res,
+            sql,
+            at: Date.now(),
+            connectionId: connection.id,
+            database: database ?? null,
+          });
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
         const message = String(err);
@@ -218,6 +227,7 @@ export function useRunSql({
       setResultState,
       setExecutedSql,
       setViewSource,
+      recordRun,
       editorSqlRef,
       cursorOffsetRef,
       setEditorFocus,
