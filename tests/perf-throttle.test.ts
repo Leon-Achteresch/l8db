@@ -511,7 +511,10 @@ test.skipIf(!ENABLED)(
     expect(Math.max(0, ...durations)).toBeLessThanOrEqual(Math.max(96, RATE * 18));
     await page.getByRole("menuitem", { name: "Bibliothek" }).hover();
     await page.getByRole("menuitem", { name: "Snippets verwalten…" }).click();
-    await page.getByRole("dialog", { name: "SQL-Snippets" }).waitFor();
+    await page
+      .locator("[data-workbench-content]")
+      .getByRole("heading", { name: "SQL-Snippets" })
+      .waitFor();
     await page.keyboard.press("Escape");
     await page.getByRole("menuitem", { name: "Bibliothek" }).waitFor({ state: "hidden" });
   },
