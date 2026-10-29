@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
+import { afterPaint } from "@/lib/after-paint";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 
 interface ToolbarViewControlsProps {
@@ -39,8 +40,8 @@ export function ToolbarViewControls({
           title="Schema und Statement-Navigator"
           aria-pressed={navigatorVisible}
           onClick={() => {
-            const current = useQueryWorkspace.getState();
-            current.update({ navigatorVisible: !current.navigatorVisible });
+            const next = !navigatorVisible;
+            afterPaint(() => useQueryWorkspace.getState().update({ navigatorVisible: next }));
           }}
         >
           <PanelLeftIcon className="size-3.5" />
