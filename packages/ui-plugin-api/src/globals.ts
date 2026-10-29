@@ -32,4 +32,10 @@ export const SHADOWED_GLOBALS = [
   "Function",
   "eval",
   "process",
+  "__TAURI__",
+  "__TAURI_INTERNALS__",
+  "__TAURI_EVENT_PLUGIN_INTERNALS__",
+  "ipc",
+  "webkit",
+  "chrome",
 ] as const;

@@ -227,6 +227,38 @@ export default definePlugin({
     expect(uiPluginRegistry().plugins).toEqual([]);
   });
 
+  test("keeps the owner's faults when a file with a duplicate id appears", async () => {
+    files.set("a.tsx", STATUS);
+    await settle();
+    const tripped = { "test.status:grid.cell": "zu langsam" };
+    useUiPluginRuntime.setState({ tripped });
+    files.set("b.tsx", STATUS);
+    await settle();
+    expect(useUiPluginRuntime.getState().errors["b.tsx"].message).toContain("a.tsx");
+    expect(useUiPluginRuntime.getState().tripped).toEqual(tripped);
+    useUiPluginRuntime.setState({ tripped: {} });
+  });
+
+  test("stops timers of disabled plugins and restarts them when enabled again", async () => {
+    const ticker = `import { definePlugin } from "@l8db/ui";
+setInterval(() => undefined, 1000);
+export default definePlugin({ id: "test.ticker", slots: { grid: { cell: () => undefined } } });
+`;
+    useUiPluginSettings.setState({ disabled: ["test.ticker"] });
+    files.set("ticker.tsx", ticker);
+    await settle();
+    const off = useUiPluginRuntime.getState().loaded["ticker.tsx"];
+    expect(off.timers.active).toBe(0);
+    useUiPluginSettings.getState().setEnabled("test.ticker", true);
+    await settle();
+    const on = useUiPluginRuntime.getState().loaded["ticker.tsx"];
+    expect(on).not.toBe(off);
+    expect(on.timers.active).toBe(1);
+    useUiPluginSettings.getState().setEnabled("test.ticker", false);
+    expect(on.timers.active).toBe(0);
+    expect(useUiPluginRuntime.getState().loaded["ticker.tsx"]).toBe(on);
+  });
+
   test("rejects duplicate ids and reports blocked APIs with lines", async () => {
     files.set("a.tsx", STATUS);
     files.set("b.tsx", STATUS);
@@ -298,6 +330,43 @@ describe("runtime isolation", () => {
     expect(isValidElement(runtime.jsx("div", { children: "ok" }))).toBe(true);
     expect(Object.isFrozen(UI_PLUGIN_MODULES.react)).toBe(true);
     expect("createElement" in (UI_PLUGIN_MODULES.react as object)).toBe(false);
+  });
+
+  test("shadows Tauri and webview IPC globals", () => {
+    const names = [
+      "__TAURI__",
+      "__TAURI_INTERNALS__",
+      "__TAURI_EVENT_PLUGIN_INTERNALS__",
+      "ipc",
+      "webkit",
+      "chrome",
+    ];
+    const scope = globalThis as Record<string, unknown>;
+    for (const name of names) scope[name] = {};
+    try {
+      const source = `module.exports = [${names.map((name) => `typeof ${name}`).join(", ")}];`;
+      expect(evaluatePlugin(source, {})).toEqual(names.map(() => "undefined"));
+    } finally {
+      for (const name of names) delete scope[name];
+    }
+  });
+
+  test("plugin timers only clear their own ids", async () => {
+    const timers = createPluginTimers(() => undefined);
+    let fired = false;
+    const host = setTimeout(() => {
+      fired = true;
+    }, 1);
+    timers.globals.clearTimeout(host);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fired).toBe(true);
+    let hostTicks = 0;
+    const interval = setInterval(() => hostTicks++, 1);
+    timers.globals.clearInterval(interval);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    clearInterval(interval);
+    expect(hostTicks).toBeGreaterThan(0);
+    timers.dispose();
   });
 
   test("shadows eval at runtime", () => {
@@ -949,6 +1018,12 @@ describe("sdk helpers", () => {
     expect(helpers.asNumber(10n)).toBe(10);
     expect(helpers.asDate("2026-10-29 12:00:00")?.getFullYear()).toBe(2026);
     expect(helpers.asDate("kein Datum")).toBeNull();
+    expect(helpers.asDate("2026-10-29 10:30:00+00")?.toISOString()).toBe(
+      "2026-10-29T10:30:00.000Z",
+    );
+    expect(helpers.asDate("2026-10-29 10:30:00.5+01")?.toISOString()).toBe(
+      "2026-10-29T09:30:00.500Z",
+    );
     const today = new Date();
     expect(helpers.daysFromToday(today)).toBe(0);
     expect(helpers.formatNumber(1234.5, { decimals: 2 })).toBe("1.234,50");

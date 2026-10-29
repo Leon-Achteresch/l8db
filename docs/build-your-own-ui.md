@@ -46,13 +46,13 @@ Ohne Plugins bekommen die Zellen kein Plugin-Prop und keine zusätzlichen Hooks.
 
 ## Leitplanken
 
-UI-Plugins laufen im Fenster von l8db. Die Leitplanken verhindern Versehen und offensichtlichen Missbrauch, sind aber keine Sandbox:
+UI-Plugins laufen im Fenster von l8db und haben damit dieselben Rechte wie die App. Die Leitplanken verhindern Versehen und offensichtlichen Missbrauch, sind aber keine Sandbox:
 
 - **Imports:** nur `react` (kuratierte Liste, kein `createElement` und kein `use`) und `@l8db/ui`.
-- **Gesperrte APIs:** `window`, `document`, `fetch`, `localStorage`, `eval`, `Function` und weitere sind schon bei der statischen Prüfung gesperrt und zur Laufzeit verschattet.
+- **Gesperrte APIs:** `window`, `document`, `fetch`, `localStorage`, `eval`, `Function` und weitere sind schon bei der statischen Prüfung gesperrt und zur Laufzeit verschattet. Namen und Texte mit `__TAURI` sind überall gesperrt. `__TAURI__`, `__TAURI_INTERNALS__`, `ipc`, `webkit` und `chrome` sind zur Laufzeit `undefined`.
 - **JSX:** Die Laufzeit lehnt `script`, `style`, `iframe`, `object`, `embed`, `link`, `meta`, `base`, `template` und Ähnliches ab, ebenso `dangerouslySetInnerHTML` und `ref`.
 - **Zeilen:** Plugins bekommen eingefrorene Kopien ohne `__ctid__`. Maskierte Spalten sind schon maskiert.
-- **Netzwerk:** Nur über `ctx.http`. Das Ziel muss in `permissions.http` stehen und von der Person freigegeben sein, und es gilt nur `https`.
+- **Netzwerk:** Vorgesehen ist `ctx.http`. Das Ziel muss in `permissions.http` stehen und von der Person freigegeben sein, und es gilt nur `https`. Die Freigabe bindet Plugins, die sich an die Regeln halten. Ein Plugin, das die Prüfung absichtlich umgeht, braucht sie nicht.
 - **Laufzeitbudgets (p95):**
   - `grid.cell` und `tabs.item`: 4 ms
   - `grid.rowTone` und `tabs.group`: 2 ms
@@ -63,12 +63,12 @@ UI-Plugins laufen im Fenster von l8db. Die Leitplanken verhindern Versehen und o
 - **Fehler in Plugin-Komponenten:** `PluginBoundary` fängt sie ab und zeigt den normalen Inhalt.
   - Die JSX-Laufzeit des SDK markiert diese Fehler (`markPluginError`).
   - `src/main.tsx` leitet markierte Fehler in `onCaughtError` und `onRecoverableError` auf `console.warn` um, damit sie nicht in Diagnose oder Absturzberichten landen.
-- **Timer:** Timer eines Plugins werden beim Entladen aufgeräumt.
+- **Timer:** Timer eines Plugins werden beim Entladen und beim Abschalten aufgeräumt. Wird es wieder eingeschaltet, lädt l8db die Datei neu. `clearTimeout`, `clearInterval` und `cancelAnimationFrame` beenden nur eigene Timer.
 
 - **Hooks in Slots:** Ein Hook direkt in einer Slot-Funktion wirft einen Plugin-Fehler (`withoutHooks` in `modules.ts`), statt die Host-Komponente zu beschädigen.
 - **Zeilen in Detail-Tabs und Toolbar:** Sie kommen aus dem View-Model, sind also aktuell und maskiert. Die gemeinsame Ablage (`table-slots.ts`) hält nur die Auswahl, höchstens für 20 Tabs. Sie liefert nur Zeilen, die noch in den aktuellen Daten stehen.
 
-Die statische Prüfung arbeitet mit Tokens. Sie findet versehentliche Verstöße, aber keine absichtlichen Umgehungen, etwa über berechnete Eigenschaftsnamen, `Reflect` oder Event-Objekte (`event.view`). Plugins aus der Galerie prüft deshalb vor dem Merge ein Mensch. Installiere nur Plugins, deren Code du gelesen hast oder denen du vertraust.
+Die statische Prüfung arbeitet mit Tokens. Sie findet versehentliche Verstöße, aber keine absichtlichen Umgehungen, etwa über berechnete Eigenschaftsnamen, `Reflect` oder Event-Objekte (`event.view`). Wer so an `window` kommt, kann alles, was l8db kann: Tauri-Befehle aufrufen, Verbindungen und gespeicherte Passwörter lesen und beliebige Server erreichen. Plugins aus der Galerie prüft deshalb vor dem Merge ein Mensch. Die Galerie weist vor der Installation darauf hin. Installiere nur Plugins, deren Code du gelesen hast oder denen du vertraust.
 
 ## Einstellungen und Galerie
 
@@ -144,10 +144,12 @@ Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64; Bun 1.4.3 und Bun
 - **Tabellen-Scroll ohne Plugins:** Gebaute App, 5.000 × 120 Zellen, 601 Frames, Chromium ohne Drosselung, Median aus 5 Läufen.
   - Script je Frame 1,50 ms, vor dem Feature 1,48 ms. Die Basis streut zwischen 1,44 und 1,57 ms.
   - Solange jede Zelle die Plugin-Hooks hatte, lag die Script-Zeit im selben Lauf 4–6 % darüber. Der Cache je Zeile hat das behoben.
-- **Modulgraph:** Vom Datengrid aus sind 436 Module erreichbar, mit dynamischen Imports und ohne Router. Den Plugin-Host, den Erweiterungs-Host und die Einstellungen erreicht es nicht. Der Scan dauert 25 ms. Die statischen Importe beider Shell-Layouts umfassen 528 Module ohne Registry, Validatoren, Guard, Host und Compiler.
+- **Modulgraph:** Vom Datengrid aus sind 436 Module erreichbar, mit dynamischen Imports und ohne Router. Den Plugin-Host, den Erweiterungs-Host und die Einstellungen erreicht es nicht. Der Scan dauert 25 ms. Die statischen Importe beider Shell-Layouts umfassen 524 Module ohne Registry, Validatoren, Guard, Host und Compiler.
 - **Startpaket** (`tests/perf-bundle.test.ts`, Budget 1.800.000 Byte):
   - Vor dem Feature: 1.806.831 Byte. Das Budget war damit schon überschritten.
   - Erste Fassung des Features: 1.836.281 Byte. Der Store zog Registry, Validatoren und Guard in die Shell.
-  - Jetzt: 1.818.483 Byte. Davon stammen 860 Byte aus einer fremden Änderung an `src/lib/ai/store.ts`.
+  - Nach der Trennung von Store und Host: 1.818.483 Byte.
+  - Jetzt: 1.796.638 Byte. Der Store des Schema-Vergleichs lag nur wegen `prepareConnection` im Startpaket. Die Funktion steht jetzt in `src/lib/prepare-connection.ts`.
+- **Zeilenfarben:** `rowTone` läuft einmal je Zeile und Grid. Beim Scrollen kommt die Farbe aus einem Cache. 40 Scrollschritte über 313 Zeilen ergeben 313 Aufrufe.
 
 Windows läuft nur in CI: `.github/workflows/performance.yml` führt `test:perf:core` samt `tests/perf-ui-plugins.test.ts` auf windows-2025 aus. Bedient wurde die App unter Windows nicht. Die Messungen mit gedrosselter CPU laufen ebenfalls nur dort.

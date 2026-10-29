@@ -211,6 +211,32 @@ test("plugin cells stay cheap on a wide grid and in the visible window", async (
   expect(visible.p95Ms).toBeLessThan(3);
 });
 
+test("row tones run once per row while the visible window scrolls", () => {
+  let calls = 0;
+  const rows = makeRows(ROWS);
+  const table = tableInfo(CONNECTION, "perf", "sales", "orders", false);
+  const grid = createPluginGrid(
+    {
+      cell: null,
+      rowTone: () => {
+        calls++;
+        return "danger";
+      },
+    },
+    table,
+    columnInfos(columnNames, details),
+    rows,
+    columnDefaults([]),
+  );
+  const seen = new Set<number>();
+  for (let pass = 0; pass < 40; pass++)
+    for (let row = pass * 7; row < pass * 7 + VISIBLE_ROWS; row++) {
+      seen.add(row);
+      expect(grid.rowColor?.(rows[row])).toBeDefined();
+    }
+  expect(calls).toBe(seen.size);
+});
+
 test("loading many plugins compiles once and unchanged reloads are nearly free", async () => {
   const many: Record<string, string> = {};
   for (let index = 0; index < 30; index++) {
