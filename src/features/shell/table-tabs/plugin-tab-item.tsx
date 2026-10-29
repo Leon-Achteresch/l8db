@@ -2,8 +2,8 @@ import { type ReactNode, useMemo } from "react";
 import { PluginBoundary } from "@/features/ui-plugins/plugin-boundary";
 import { useConnectionsStore } from "@/lib/connections";
 import type { Tab } from "@/lib/table-tabs";
-import { tabInfo } from "@/lib/ui-plugins/info";
 import type { UiPluginRegistry } from "@/lib/ui-plugins/registry";
+import { tabInfo } from "@/lib/ui-plugins/tab-info";
 import { TabItemDefault, TabItemDefaultContent } from "./tab-item-default";
 
 export function PluginTabItem({

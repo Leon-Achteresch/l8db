@@ -220,6 +220,7 @@ export async function startUiPluginHost(sdkModules: Readonly<Record<string, unkn
   startTabPolicy();
   useUiPluginRuntime.subscribe((state, previous) => {
     if (
+      state.registry !== previous.registry ||
       state.slotErrors !== previous.slotErrors ||
       state.tripped !== previous.tripped ||
       state.runtimeErrors !== previous.runtimeErrors

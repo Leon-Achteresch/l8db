@@ -1,3 +1,4 @@
+import { heapStats } from "bun:jsc";
 import { expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -39,6 +40,7 @@ mock.module("@tauri-apps/api/event", () => ({
 const { UI_PLUGIN_MODULES } = await import("../src/features/ui-plugins/sdk-modules");
 const { startUiPluginHost, reloadUiPlugins } = await import("../src/lib/ui-plugins/host");
 const { uiPluginRegistry, useUiPluginRuntime } = await import("../src/lib/ui-plugins/store");
+const { useUiPluginSettings } = await import("../src/lib/ui-plugins/settings");
 const { columnDefaults, createPluginGrid } = await import("../src/lib/ui-plugins/grid");
 const { columnInfos, tableInfo } = await import("../src/lib/ui-plugins/info");
 const { publishPluginSelection, pluginSelection } = await import(
@@ -154,6 +156,13 @@ async function loadPlugins(sources: Record<string, string>) {
   await reloadUiPlugins();
 }
 
+async function settledHeap() {
+  Bun.gc(true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  Bun.gc(true);
+  return { bytes: process.memoryUsage().heapUsed, objects: heapStats().objectCount };
+}
+
 function gridFor(rows: Record<string, unknown>[]) {
   const registry = uiPluginRegistry();
   const table = tableInfo(CONNECTION, "perf", "sales", "orders", false);
@@ -256,16 +265,16 @@ test("plugin state stays bounded and the host stays idle", async () => {
     pluginSelection(`tab-${index}`, [marked]),
   ).filter((selection) => selection.length > 0).length;
 
-  Bun.gc(true);
-  const before = process.memoryUsage().heapUsed;
+  const before = await settledHeap();
   for (let round = 0; round < 5; round++) {
     const rows = makeRows(10_000);
     const grid = gridFor(rows);
     for (let row = 0; row < rows.length; row++)
       grid.cell?.(rows[row].status, rows[row], "status", row);
   }
-  Bun.gc(true);
-  const retainedBytes = Math.max(0, process.memoryUsage().heapUsed - before);
+  const after = await settledHeap();
+  const retainedBytes = Math.max(0, after.bytes - before.bytes);
+  const retainedObjects = Math.max(0, after.objects - before.objects);
 
   const items = Array.from({ length: 10_000 }, (_, index) => index);
   const markup = renderToStaticMarkup(
@@ -284,18 +293,34 @@ test("plugin state stays bounded and the host stays idle", async () => {
   await new Promise((resolve) => setTimeout(resolve, 600));
   const idleCalls = calls.filter((command) => command !== "ui_plugins_write_support").length;
 
+  calls.length = 0;
+  const optionStarted = performance.now();
+  for (let index = 0; index < 200; index++)
+    useUiPluginSettings.getState().setOption("perf.status", "limit", index);
+  const optionMs = performance.now() - optionStarted;
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  const statusWrites = calls.filter((command) => command === "ui_plugins_write_support").length;
+  useUiPluginSettings.getState().resetOptions("perf.status");
+
   await reportScenario("ui-plugins-bounds", {
     publishedTabs: 1_000,
     retainedSelections: retained,
     frozenRows: 50_000,
     retainedBytes,
+    retainedObjects,
     boardItemsOffered: 40 * items.length,
     renderedItems,
     idleMs: 600,
     idleCalls,
+    optionChanges: 200,
+    optionMs,
+    statusWrites,
   });
   expect(retained).toBe(20);
   expect(retainedBytes).toBeLessThan(8 * 1024 * 1024);
+  expect(retainedObjects).toBeLessThan(5_000);
   expect(renderedItems).toBe(20 * 50);
   expect(idleCalls).toBe(0);
+  expect(statusWrites).toBe(1);
+  expect(optionMs).toBeLessThan(500);
 });
