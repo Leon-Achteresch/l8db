@@ -142,7 +142,7 @@ Details zu den Vorlagen:
 ## Netzwerk
 
 - `permissions.http` listet höchstens 20 erlaubte Ziele: `host` oder `*.host` (nur Subdomains), optional mit `:port` und einem Pfad, z. B. `"hooks.example.com/hooks"`. Nur `https`, ohne `?` und `#`.
-- Ein Pfad gilt als Präfix ab Segmentgrenzen: `/hooks` erlaubt `/hooks` selbst und `/hooks/a`, aber nicht `/hooksx`. Query-Parameter sind immer erlaubt. Adressen mit `%2e`, `%2f` oder `%5c` im Pfad lehnt l8db ab.
+- Ein Pfad gilt als Präfix ab Segmentgrenzen: `/hooks` erlaubt `/hooks` selbst und `/hooks/a`, aber nicht `/hooksx`. Query-Parameter sind immer erlaubt. Bei Zielen mit Pfad lehnt l8db Adressen mit `%2e`, `%2f` oder `%5c` im Pfad ab.
 - Die Ziele stehen fest im Code und hängen nicht von Optionen ab. Wähle das engste Ziel; aus Optionen dürfen nur Unterpfade und Query-Parameter kommen.
 - Die Person gibt die Ziele in den Einstellungen frei. Ohne Freigabe, bei fremden Zielen oder bei abgeschaltetem Plugin wirft `ctx.http`.
 - `ctx.http(url, { method?, headers?, body?, timeoutMs? })`:
@@ -150,7 +150,7 @@ Details zu den Vorlagen:
   - Höchstens 20 Header.
   - `body` ist Text bis 256 KB. Für JSON baust du ihn mit `JSON.stringify` und setzt `Content-Type` selbst.
   - `timeoutMs` ist standardmäßig 15000, höchstens 30000.
-- Die Antwort ist `{ ok, status, text(), json() }`. Ein Status außerhalb von 200–299 ergibt `ok: false` und wirft nicht. Netzwerkfehler, Zeitüberschreitung, Weiterleitungen und Antworten über 1 MB werfen.
+- Die Antwort ist `{ ok, status, text(), json() }`. Ein Status außerhalb von 200–299 ergibt `ok: false` und wirft nicht. Netzwerkfehler, Zeitüberschreitung, Weiterleitungen und Antworten mit mehr als 1.048.576 Zeichen werfen.
 - Die Anfrage läuft im Fenster von l8db, der Server muss also CORS erlauben.
 
 ## Grenzen
@@ -177,7 +177,7 @@ Hilfen:
 
 - `asText`: aus `null` wird `""`, Objekte werden JSON.
 - `asNumber`: Zahlen, Zahltexte wie `"12.5"` oder `"1e3"`, `bigint` und Booleans werden Zahlen. `""`, `"12abc"`, `NaN` und `Infinity` ergeben `null`.
-- `asDate`: akzeptiert `Date`, Millisekunden und ISO-Texte. Was es nicht lesen kann, ergibt `null`.
+- `asDate`: akzeptiert `Date`, Millisekunden und ISO-Texte. Ein reines Datum wie `2026-10-29` gilt als Mitternacht in lokaler Zeit. Was es nicht lesen kann, ergibt `null`.
 - `daysFromToday`: Kalendertage in lokaler Zeit, heute ist 0, negativ heißt Vergangenheit.
 - `formatNumber(value, { decimals?, currency? })` formatiert deutsch. Was keine Zahl ist, kommt als Text zurück.
 - `formatDate(value, { time? })`.
@@ -186,7 +186,7 @@ Eigenes JSX mit HTML-Elementen, `style` und Ereignissen wie `onClick` oder `onCh
 
 ## Mehrere Plugins
 
-l8db lädt die Dateien nach Dateinamen sortiert. Aus der Galerie installierte Plugins heißen `<id>.tsx`.
+l8db lädt die Dateien nach Dateinamen sortiert. Aus der Galerie installierte Plugins heißen `<id>` mit der Endung der Datei im Katalog, meist `<id>.tsx`.
 
 - Bei `grid.cell`, `grid.rowTone`, `tabs.group`, `tabs.item` und `split.layout` gewinnt die spätere Datei. Liefert sie `undefined`, ist die frühere dran.
 - `grid.columns` wird je Spalte und Feld zusammengeführt, die spätere Datei gewinnt. Nicht gesetzte Felder zählen nicht.

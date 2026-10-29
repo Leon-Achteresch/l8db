@@ -52,7 +52,9 @@ const { buildRegistry } = await import("../src/lib/ui-plugins/registry");
 const { SlotGuard } = await import("../src/lib/ui-plugins/guard");
 const { validatePlugin } = await import("../src/lib/ui-plugins/api");
 const { arrangeNewTabs } = await import("../src/lib/ui-plugins/tabs-policy");
-const { columnDefaults, createPluginGrid } = await import("../src/lib/ui-plugins/grid");
+const { columnDefaults, createPluginGrid, pluginCellState } = await import(
+  "../src/lib/ui-plugins/grid"
+);
 const { evaluatePlugin } = await import("../packages/ui-plugin-api/src/evaluate");
 const { createPluginTimers } = await import("../src/lib/ui-plugins/timers");
 const { uiPluginStatuses } = await import("../src/lib/ui-plugins/status");
@@ -186,6 +188,29 @@ describe("plugin host", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("active");
     useUiPluginSettings.setState({ disabled: ["test.status"] });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("disabled");
+  });
+
+  test("rewrites the status file when a plugin without working slots is switched off", async () => {
+    files.set(
+      "broken-slots.tsx",
+      `import { definePlugin } from "@l8db/ui";
+export default definePlugin({
+  id: "test.broken-slots",
+  name: "Kaputte Slots",
+  slots: () => {
+    throw new Error("kaputt");
+  },
+});
+`,
+    );
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const before = JSON.parse(support.get(".status.json") ?? "{}").plugins[0];
+    expect(before.state).toBe("active");
+    expect(before.slotErrors).toBeDefined();
+    useUiPluginSettings.setState({ disabled: ["test.broken-slots"] });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("disabled");
   });
@@ -555,6 +580,21 @@ describe("slot guard", () => {
     }
   });
 
+  test("records calls without sorting the window", () => {
+    const guard = new SlotGuard("a.sort", "grid.cell", {
+      error: () => undefined,
+      trip: () => undefined,
+    });
+    const sort = spyOn(Array.prototype, "sort");
+    try {
+      for (let index = 0; index < 1000; index++) guard.run(() => null, null);
+      expect(sort).not.toHaveBeenCalled();
+      expect(guard.tripped).toBe(false);
+    } finally {
+      sort.mockRestore();
+    }
+  });
+
   test("trips after repeated errors and reports only the first", () => {
     const errors: string[] = [];
     const trips: string[] = [];
@@ -701,6 +741,43 @@ describe("grid integration", () => {
     expect(() => payload.nested.push(3)).toThrow();
     expect(tags).toEqual(["b", "a"]);
   });
+
+  test("keeps one cell state per row and column and skips plain columns", () => {
+    const original = { status: "offen", total: 12, note: "x" };
+    let calls = 0;
+    const grid = createPluginGrid(
+      {
+        cell: (props) => {
+          calls++;
+          return props.column.id === "status" ? { plugin: "test.status", node: "pill" } : undefined;
+        },
+        rowTone: null,
+      },
+      TABLE,
+      [COLUMN, { ...COLUMN, id: "total" }, { ...COLUMN, id: "note" }],
+      [original],
+      columnDefaults([{ id: "total", align: "end" }]),
+    );
+    const cells = {
+      row: { original, index: 0, getValue: (id: string) => original[id as keyof typeof original] },
+      states: new Map(),
+    };
+    const status = pluginCellState(grid, cells, "status");
+    expect(status).toEqual({
+      output: { plugin: "test.status", node: "pill" },
+      align: undefined,
+      resetKey: grid,
+    });
+    expect(pluginCellState(grid, cells, "status")).toBe(status);
+    expect(pluginCellState(grid, cells, "total")).toMatchObject({
+      output: undefined,
+      align: "end",
+    });
+    expect(pluginCellState(grid, cells, "note")).toBeUndefined();
+    expect(pluginCellState(grid, cells, "note")).toBeUndefined();
+    expect(calls).toBe(3);
+  });
+
   test("returns only selected rows that are still loaded", () => {
     const first = Object.freeze({ id: 1 });
     const second = Object.freeze({ id: 2 });
@@ -877,5 +954,28 @@ describe("sdk helpers", () => {
     expect(helpers.formatNumber(1234.5, { decimals: 2 })).toBe("1.234,50");
     expect(helpers.formatNumber(3, { currency: "EUR" })).toContain("€");
     expect(helpers.formatDate("2026-01-02")).toContain("2026");
+  });
+
+  test("count calendar days in local time for date-only values", () => {
+    const zone = process.env.TZ;
+    try {
+      for (const name of ["America/New_York", "Pacific/Auckland", "UTC"]) {
+        process.env.TZ = name;
+        const today = new Date();
+        const iso = [
+          today.getFullYear(),
+          String(today.getMonth() + 1).padStart(2, "0"),
+          String(today.getDate()).padStart(2, "0"),
+        ].join("-");
+        expect(helpers.daysFromToday(iso)).toBe(0);
+        expect(helpers.asDate(iso)?.getHours()).toBe(0);
+        expect(helpers.asDate("2026-10-29T10:00:00Z")?.toISOString()).toBe(
+          "2026-10-29T10:00:00.000Z",
+        );
+      }
+    } finally {
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   });
 });

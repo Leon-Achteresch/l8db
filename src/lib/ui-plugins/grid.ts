@@ -23,6 +23,32 @@ export type UiPluginGrid = {
 
 export const UiPluginGridContext = createContext<UiPluginGrid | null>(null);
 
+export type PluginCellState = {
+  output: PluginNode | undefined;
+  align: ColumnPatch["align"];
+  resetKey: UiPluginGrid;
+};
+
+export type PluginRowCells = {
+  row: { original: Row; index: number; getValue: (columnId: string) => unknown };
+  states: Map<string, PluginCellState | null>;
+};
+
+export function pluginCellState(
+  grid: UiPluginGrid,
+  { row, states }: PluginRowCells,
+  columnId: string,
+): PluginCellState | undefined {
+  let state = states.get(columnId);
+  if (state === undefined) {
+    const align = grid.align?.[columnId];
+    const output = grid.cell?.(row.getValue(columnId), row.original, columnId, row.index);
+    state = output === undefined && !align ? null : { output, align, resetKey: grid };
+    states.set(columnId, state);
+  }
+  return state ?? undefined;
+}
+
 export function columnDefaults(patches: readonly ColumnPatch[]) {
   if (patches.length === 0) return {};
   const ordered = patches

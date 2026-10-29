@@ -12,6 +12,7 @@ import sdkTypes from "../../../packages/ui-plugin-api/l8db-ui.d.ts?raw";
 import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
 import { errorMessage } from "./guard";
+import { useUiPluginSettings } from "./settings";
 import { uiPluginStatusReport } from "./status";
 import {
   type LoadedUiPlugin,
@@ -227,6 +228,7 @@ export async function startUiPluginHost(sdkModules: Readonly<Record<string, unkn
     )
       scheduleStatus();
   });
+  useUiPluginSettings.subscribe(() => scheduleStatus());
   await listen(UI_PLUGINS_CHANGED_EVENT, () => void reloadUiPlugins()).catch(() => undefined);
   await reloadUiPlugins();
   void watchUiPlugins().catch((error) =>

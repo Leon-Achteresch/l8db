@@ -26,7 +26,7 @@ Signaturen, Regeln, Grenzen und das Zusammenspiel mehrerer Plugins stehen in `pa
 
 Ohne Plugins verhält sich l8db wie vorher. Die Registry-Felder sind dann `null`, und der Grid-Kontext fehlt. Split-Layouts, automatische „Ansicht N“-Gruppen und der Schließen-Knopf behalten ihre Standardwerte.
 
-Die Tabellenzeilen rendern ohne Plugins die normale `DataTableCell` ohne zusätzliche Hooks. Erst `grid.cell` oder eine Spaltenausrichtung schaltet auf `DataTablePluginCell` (`src/features/table/data-table-plugin-cell.tsx`). Das Datengrid importiert weder den Plugin-Host noch den Erweiterungs-Host: `runFetch` liegt in `src/lib/extensions/fetch.ts`, `tabInfo` in `src/lib/ui-plugins/tab-info.ts`.
+Ohne Plugins bekommen die Zellen kein Plugin-Prop und keine zusätzlichen Hooks. Mit `grid.cell` oder einer Spaltenausrichtung hält jede sichtbare Zeile einen kleinen Cache je Spalte (`pluginCellState` in `src/lib/ui-plugins/grid.ts`). Der Speicher bleibt dadurch auf die gerenderten Zeilen begrenzt. Der Zelltyp bleibt immer `DataTableCell`, deshalb baut das Ein- oder Ausschalten eines Plugins keine Zelle neu auf, und eine laufende Bearbeitung bleibt erhalten. Das Datengrid importiert weder den Plugin-Host noch den Erweiterungs-Host: `runFetch` liegt in `src/lib/extensions/fetch.ts`, `tabInfo` in `src/lib/ui-plugins/tab-info.ts`.
 
 ## Ablauf
 
@@ -39,7 +39,7 @@ Die Tabellenzeilen rendern ohne Plugins die normale `DataTableCell` ohne zusätz
 3. **Übersetzen**: `packages/ui-plugin-api/src/compile.ts` prüft den Quelltext statisch und übersetzt ihn mit sucrase nach CommonJS. sucrase liegt in einem eigenen Chunk und wird erst geladen, wenn es etwas zu übersetzen gibt.
 4. **Ausführen**: `evaluatePlugin` führt den Code mit `new Function` aus. Dabei sind gefährliche Globals verschattet und die Timer gezählt. `validatePlugin` prüft die Definition. Unveränderte Dateien (gleicher Hash) werden nicht neu übersetzt.
 5. **Registry** (`src/lib/ui-plugins/registry.ts`): Sie fasst alle aktiven Plugins zu je einer Funktion pro Slot zusammen. Jeder Aufruf läuft durch einen `SlotGuard`.
-6. **Live-Reload**: Hat eine neue Version einen Fehler, läuft die letzte funktionierende weiter (Status `stale`). `.status.json` meldet Fehler mit Zeile, Slot-Fehler und abgeschaltete Slots. Das Hauptfenster schreibt die Datei neu, sobald sich Dateien, Schalter, Optionen oder Freigaben ändern, entprellt auf 250 ms.
+6. **Live-Reload**: Hat eine neue Version einen Fehler, läuft die letzte funktionierende weiter (Status `stale`). `.status.json` meldet Fehler mit Zeile, Slot-Fehler und abgeschaltete Slots. Das Hauptfenster schreibt die Datei neu, sobald sich Dateien, Schalter, Optionen oder Freigaben ändern. Änderungen innerhalb von 250 ms nach der ersten ergeben einen Schreibvorgang.
 
 ## Leitplanken
 
@@ -56,7 +56,7 @@ UI-Plugins laufen im Fenster von l8db. Die Leitplanken verhindern Versehen und o
   - `split.layout`: 10 ms
   - Toolbar, Detail-Tabs und Spalten: 50 ms
 
-  Ein Slot, der sein Budget überschreitet oder 20-mal fehlschlägt, wird abgeschaltet. Der `SlotGuard` betrachtet die letzten 200 Aufrufe und prüft alle 25 Aufrufe. Das p95 liegt über dem Budget, sobald mehr als 5 % der Aufrufe im Fenster darüber liegen. Ein Zähler erfasst diese Aufrufe, deshalb muss der Guard nicht sortieren.
+  Ein Slot, der sein Budget überschreitet oder 20-mal fehlschlägt, wird abgeschaltet. Der `SlotGuard` betrachtet die letzten 200 Aufrufe und prüft alle 25 Aufrufe. Das p95 liegt über dem Budget, sobald mindestens 5 % der Aufrufe im Fenster darüber liegen, aufgerundet auf ganze Aufrufe. Ein Zähler erfasst diese Aufrufe, deshalb muss der Guard nicht sortieren.
 - **Fehler in Plugin-Komponenten:** `PluginBoundary` fängt sie ab und zeigt den normalen Inhalt.
   - Die JSX-Laufzeit des SDK markiert diese Fehler (`markPluginError`).
   - `src/main.tsx` leitet markierte Fehler in `onCaughtError` und `onRecoverableError` auf `console.warn` um, damit sie nicht in Diagnose oder Absturzberichten landen.
@@ -75,7 +75,7 @@ Die statische Prüfung arbeitet mit Tokens. Sie findet versehentliche Verstöße
 - **Installation:**
   - Vor der Installation prüft die Galerie den SHA-256 jeder Plugin-Datei (höchstens 256 KB) gegen den Katalog.
   - Danach prüft sie das Plugin wie beim Laden.
-  - Zuletzt schreibt sie es als `<id>.tsx` in den Ordner.
+  - Zuletzt schreibt sie es als `<id>` mit der Endung der Katalogdatei (meist `.tsx`) in den Ordner.
   - Ändert sich der Hash oder steigt die Version, bietet sie „Aktualisieren“ an.
 
 ## Öffentliches Repo
@@ -111,9 +111,9 @@ Für ein neues Plugin gehört eine Szene in `SCENES`. Das Format ist 1440×860 b
 | Test | Inhalt |
 |---|---|
 | `tests/ui-plugins-compile.test.ts` | statische Prüfung, Übersetzen, Definition, Katalog |
-| `tests/ui-plugins-runtime.test.ts` | Host, Live-Reload, `.status.json` nach Schaltern, Registry (auch Rückfall bei `tabs.item`), Guard gegen ein sortiertes p95-Orakel, Tab-Policy, Grid (Reihenfolge angehefteter Spalten), Auswahl, Netzwerk, Vorlagen, Katalog, Fehlermarkierung |
-| `tests/perf-ui-plugins.test.ts` | Zellkosten, Ladezeiten, Speicher- und Leerlaufgrenzen (Teil von `bun run test:perf:core`) |
-| `tests/ui-plugins-browser.test.ts` | alle Slots in der gebauten App mit CSP, Live-Reload, defektes Plugin, Hook in einem Slot, Zahlenoption per Tastatur, Einstellungen, Installation und Entfernen aus der Galerie; ohne Seiten- oder Konsolenfehler |
+| `tests/ui-plugins-runtime.test.ts` | Host, Live-Reload, `.status.json` nach Schaltern (auch bei Plugins ohne funktionierende Slots), Registry (auch Rückfall bei `tabs.item`), Guard gegen ein sortiertes p95-Orakel und ohne Sortieren, Tab-Policy, Grid (Reihenfolge angehefteter Spalten, Zell-Cache je Zeile), Auswahl, Netzwerk, Vorlagen, Katalog, Datumswerte in mehreren Zeitzonen, Fehlermarkierung |
+| `tests/perf-ui-plugins.test.ts` | Zellkosten, Ladezeiten, Speicher- und Leerlaufgrenzen, Modulgraph des Datengrids ohne Plugin- und Erweiterungs-Host (Teil von `bun run test:perf:core`) |
+| `tests/ui-plugins-browser.test.ts` | alle Slots in der gebauten App mit CSP, Live-Reload, defektes Plugin, Hook in einem Slot, Bearbeitungsentwurf beim Entfernen von Zell-Plugins, Zahlenoption per Tastatur, Einstellungen, Installation und Entfernen aus der Galerie; ohne Seiten- oder Konsolenfehler |
 | `src-tauri/src/ui_plugins.rs` | Rust-Tests für Ordner, Grenzen und Dateinamen |
 
 Der Browser-Test läuft nach `bun run build`:
@@ -139,7 +139,8 @@ Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64; Bun 1.4.3 und Bun
   - `Board` rendert 1.000 von 400.000 angebotenen Einträgen.
   - Im Leerlauf gibt es keine Backend-Aufrufe.
 - **Tabellen-Scroll ohne Plugins:** Gebaute App, 5.000 × 120 Zellen, 601 Frames, Chromium ohne Drosselung, Median aus 5 Läufen.
-  - Script je Frame 1,53 ms, vor dem Feature 1,56 ms.
-  - Solange jede Zelle die Plugin-Hooks hatte, lag die Script-Zeit im selben Lauf 4–6 % über dem Stand vor dem Feature. Der Wechsel auf `DataTablePluginCell` hat das behoben.
+  - Script je Frame 1,50 ms, vor dem Feature 1,48 ms. Die Basis streut zwischen 1,44 und 1,57 ms.
+  - Solange jede Zelle die Plugin-Hooks hatte, lag die Script-Zeit im selben Lauf 4–6 % darüber. Der Cache je Zeile hat das behoben.
+- **Modulgraph:** Vom Datengrid aus sind 442 Module erreichbar, mit dynamischen Imports und ohne Router. Den Plugin-Host, den Erweiterungs-Host und die Einstellungen erreicht es nicht. Der Scan dauert 52 ms.
 
 Windows läuft nur in CI: `.github/workflows/performance.yml` führt `test:perf:core` samt `tests/perf-ui-plugins.test.ts` auf windows-2025 aus. Bedient wurde die App unter Windows nicht. Die Messungen mit gedrosselter CPU laufen ebenfalls nur dort.
