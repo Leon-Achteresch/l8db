@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { startTransition, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
+import { useShallow } from "zustand/shallow";
 
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
@@ -30,6 +31,7 @@ import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
 import { SelectRowLimit } from "./query-view/select-row-limit";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
+import type { QueryWorkspaceState, QueryWorkspaceStore } from "./query-view/types";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
 import { useAutoAssessment } from "./query-view/use-auto-assessment";
 import { useDmlPreview } from "./query-view/use-dml-preview";
@@ -58,8 +60,16 @@ interface QueryViewProps {
   tabId: string;
 }
 
+function withoutNavigator({
+  navigatorVisible: _visible,
+  navigatorShare: _share,
+  ...workspace
+}: QueryWorkspaceStore): QueryWorkspaceState {
+  return workspace;
+}
+
 export function QueryView({ tabId }: QueryViewProps) {
-  const workspace = useQueryWorkspace();
+  const workspace = useQueryWorkspace(useShallow(withoutNavigator));
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   const [resultFocus, setResultFocus] = useState(false);
@@ -255,7 +265,6 @@ export function QueryView({ tabId }: QueryViewProps) {
             {isSql && <SelectRowLimit />}
           </div>
           <ToolbarViewControls
-            workspace={workspace}
             isSql={isSql}
             analysisOpen={analysis.open}
             onOpenAnalysis={() => analysis.openAnalysis(caps.explain ? "plan" : "perf")}
@@ -310,7 +319,6 @@ export function QueryView({ tabId }: QueryViewProps) {
           editorFocus={editorFocus}
           resultFocus={resultFocus && !editorFocus}
           navigator={
-            workspace.navigatorVisible &&
             isSql &&
             connection && (
               <QuerySchemaBrowser

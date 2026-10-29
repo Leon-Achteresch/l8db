@@ -5,13 +5,9 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
-import { afterPaint } from "@/lib/after-paint";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 
-import type { QueryWorkspaceState } from "./types";
-
 interface ToolbarViewControlsProps {
-  workspace: QueryWorkspaceState;
   isSql: boolean;
   analysisOpen: boolean;
   onOpenAnalysis: () => void;
@@ -23,7 +19,6 @@ interface ToolbarViewControlsProps {
 }
 
 export function ToolbarViewControls({
-  workspace,
   isSql,
   analysisOpen,
   onOpenAnalysis,
@@ -33,21 +28,20 @@ export function ToolbarViewControls({
   onResultFocusChange,
   toolsMenu,
 }: ToolbarViewControlsProps) {
+  const navigatorVisible = useQueryWorkspace((state) => state.navigatorVisible);
   return (
     <div className="flex shrink-0 items-center gap-1">
       {isSql && (
         <Button
           size="icon-sm"
-          variant={workspace.navigatorVisible ? "secondary" : "ghost"}
+          variant={navigatorVisible ? "secondary" : "ghost"}
           aria-label="Schema-Navigator umschalten"
           title="Schema und Statement-Navigator"
-          aria-pressed={workspace.navigatorVisible}
-          onClick={() =>
-            afterPaint(() => {
-              const current = useQueryWorkspace.getState();
-              current.update({ navigatorVisible: !current.navigatorVisible });
-            })
-          }
+          aria-pressed={navigatorVisible}
+          onClick={() => {
+            const current = useQueryWorkspace.getState();
+            current.update({ navigatorVisible: !current.navigatorVisible });
+          }}
         >
           <PanelLeftIcon className="size-3.5" />
         </Button>

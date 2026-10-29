@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { useGroupRef } from "react-resizable-panels";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { useQueryWorkspace } from "@/lib/query-workspace";
 
 import type { QueryWorkspaceState } from "./types";
 
@@ -24,20 +25,22 @@ export function QueryWorkspacePanels({
   editor,
   results,
 }: QueryWorkspacePanelsProps) {
+  const navigatorVisible = useQueryWorkspace((state) => state.navigatorVisible);
+  const navigatorShare = useQueryWorkspace((state) => state.navigatorShare);
   return (
     <ResizablePanelGroup
       orientation="horizontal"
       className="min-h-0 flex-1"
       onLayoutChanged={(layout) => {
-        if (layout.navigator && Math.abs(layout.navigator - workspace.navigatorShare) > 0.1)
+        if (layout.navigator && Math.abs(layout.navigator - navigatorShare) > 0.1)
           workspace.update({ navigatorShare: layout.navigator });
       }}
     >
-      {navigator && (
+      {navigatorVisible && navigator && (
         <>
           <ResizablePanel
             id="navigator"
-            defaultSize={`${workspace.navigatorShare}%`}
+            defaultSize={`${navigatorShare}%`}
             minSize="180px"
             maxSize="40%"
           >
