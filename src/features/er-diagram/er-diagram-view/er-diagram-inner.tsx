@@ -22,6 +22,7 @@ import { nodeTypes } from "@/features/er-diagram/er-diagram-view/node-types";
 import { TextExportMenu } from "@/features/er-diagram/er-diagram-view/text-export-menu";
 import type { ErNodeType } from "@/features/er-diagram/er-diagram-view/types";
 import { useClusterGraph } from "@/features/er-diagram/er-diagram-view/use-cluster-graph";
+import { afterPaint } from "@/lib/after-paint";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
@@ -88,8 +89,11 @@ export function ERDiagramInner() {
     `viewport:${focusKey}:${focus?.depth}`,
   );
   const restoredKey = useRef<string | null>(null);
+  const [graphReady, setGraphReady] = useState(false);
+  useEffect(() => afterPaint(() => setGraphReady(true)), []);
+  const graphSchema = useDeferredValue(graphReady ? erSchema : null);
   const { nodes, edges, clusters, onNodesChange, onVisibilityChange, prepareExport } =
-    useClusterGraph(useDeferredValue(erSchema, null) ?? undefined, exporting);
+    useClusterGraph(graphSchema ?? undefined, exporting);
   const showOverview = useCallback(() => {
     void fitView({
       nodes: clusters.map((cluster) => ({ id: cluster.id })),
@@ -232,56 +236,58 @@ export function ERDiagramInner() {
         </Popover>
       </div>
       <div className="relative min-h-0 flex-1 w-full">
-        <ErFullDetailContext value={exporting}>
-          <ReactFlow<ErNodeType>
-            nodes={nodes}
-            edges={edges}
-            onlyRenderVisibleElements={!exporting}
-            onNodesChange={onNodesChange}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultViewport={readTabState<Viewport>(viewportKey) ?? { x: 0, y: 0, zoom: 0.1 }}
-            onMoveEnd={(_, viewport) => writeTabState(viewportKey, viewport)}
-            minZoom={0.02}
-            maxZoom={2}
-            panOnScroll
-            proOptions={{ hideAttribution: true }}
-            nodesConnectable={false}
-            nodesDraggable={false}
-            multiSelectionKeyCode={null}
-            deleteKeyCode={null}
-            onNodeDoubleClick={(_, node) => {
-              if (node.type === "clusterNode")
-                void fitView({
-                  nodes: [{ id: node.id }],
-                  padding: 0.1,
-                  minZoom: CLUSTER_DETAIL_ZOOM + 0.05,
-                  maxZoom: 1,
-                  includeHiddenNodes: true,
-                });
-            }}
-            onNodeClick={(_, node) => {
-              if (node.type === "clusterNode" && !node.data.expanded)
-                void fitView({
-                  nodes: [{ id: node.id }],
-                  padding: 0.1,
-                  minZoom: CLUSTER_DETAIL_ZOOM + 0.05,
-                  maxZoom: 1,
-                  includeHiddenNodes: true,
-                });
-            }}
-            key={`${connection.id}:${activeDatabase}:${activeSchema}:${focusKey}:${focus?.depth}`}
-          >
-            <ErViewportWatcher onChange={onVisibilityChange} />
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <Controls />
-            <MiniMap
-              nodeStrokeColor="var(--color-border)"
-              nodeColor="var(--color-card)"
-              maskColor="rgba(0,0,0,0.1)"
-            />
-          </ReactFlow>
-        </ErFullDetailContext>
+        {graphReady && (
+          <ErFullDetailContext value={exporting}>
+            <ReactFlow<ErNodeType>
+              nodes={nodes}
+              edges={edges}
+              onlyRenderVisibleElements={!exporting}
+              onNodesChange={onNodesChange}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              defaultViewport={readTabState<Viewport>(viewportKey) ?? { x: 0, y: 0, zoom: 0.1 }}
+              onMoveEnd={(_, viewport) => writeTabState(viewportKey, viewport)}
+              minZoom={0.02}
+              maxZoom={2}
+              panOnScroll
+              proOptions={{ hideAttribution: true }}
+              nodesConnectable={false}
+              nodesDraggable={false}
+              multiSelectionKeyCode={null}
+              deleteKeyCode={null}
+              onNodeDoubleClick={(_, node) => {
+                if (node.type === "clusterNode")
+                  void fitView({
+                    nodes: [{ id: node.id }],
+                    padding: 0.1,
+                    minZoom: CLUSTER_DETAIL_ZOOM + 0.05,
+                    maxZoom: 1,
+                    includeHiddenNodes: true,
+                  });
+              }}
+              onNodeClick={(_, node) => {
+                if (node.type === "clusterNode" && !node.data.expanded)
+                  void fitView({
+                    nodes: [{ id: node.id }],
+                    padding: 0.1,
+                    minZoom: CLUSTER_DETAIL_ZOOM + 0.05,
+                    maxZoom: 1,
+                    includeHiddenNodes: true,
+                  });
+              }}
+              key={`${connection.id}:${activeDatabase}:${activeSchema}:${focusKey}:${focus?.depth}`}
+            >
+              <ErViewportWatcher onChange={onVisibilityChange} />
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+              <Controls />
+              <MiniMap
+                nodeStrokeColor="var(--color-border)"
+                nodeColor="var(--color-card)"
+                maskColor="rgba(0,0,0,0.1)"
+              />
+            </ReactFlow>
+          </ErFullDetailContext>
+        )}
       </div>
     </main>
   );
