@@ -68,7 +68,10 @@ export function validateMarketCatalog(value: unknown): MarketCatalog {
   return { schemaVersion: 1, extensions };
 }
 
-async function readLimited(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+export async function readLimited(
+  response: Response,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > limit) throw new Error("Download ist zu groß.");

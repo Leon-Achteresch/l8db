@@ -32,7 +32,7 @@ import { TauriExtensionStorage } from "./tauri-storage";
 
 const FETCH_BODY_LIMIT = 1024 * 1024;
 
-async function runFetch(url: string, options: FetchOptions) {
+export async function runFetch(url: string, options: FetchOptions) {
   const timeoutMs = options.timeoutMs ?? 15000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

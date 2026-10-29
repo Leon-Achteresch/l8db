@@ -232,13 +232,22 @@ export function usePaneSourceKey(tab: string | null): string | null {
     id ? state.databaseByConnection[id] : undefined,
   );
   return tab && connection
-    ? JSON.stringify([
+    ? formatPaneSourceKey(
         activeId,
         tab,
         id,
         database ?? databaseFromConnectionString(connection.connectionString),
-      ])
+      )
     : null;
+}
+
+export function formatPaneSourceKey(
+  activeId: string | null,
+  tab: string,
+  connectionId: string | null,
+  database: string | null | undefined,
+): string {
+  return JSON.stringify([activeId, tab, connectionId, database]);
 }
 
 export function masterDetailKey(master: string | null, detail: string | null): string | null {

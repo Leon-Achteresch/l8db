@@ -20,6 +20,7 @@ import { activateConnectionWithToast, restoreSshTunnel } from "@/lib/ssh";
 import { recordDuration, trackRoute } from "@/lib/telemetry";
 import { initUsageTracking } from "@/lib/usage-tracking";
 import { initWindowIntegration } from "@/lib/window-integration";
+import { isPluginError } from "../packages/ui-plugin-api/src/errors";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
@@ -55,7 +56,11 @@ for (const match of router.matchRoutes(router.state.location))
     .loadRouteChunk(router.routesById[match.routeId as keyof typeof router.routesById])
     ?.catch(() => undefined);
 
-const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
+const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {
+  onCaughtError: (error, info) =>
+    isPluginError(error) ? console.warn(error) : console.error(error, info.componentStack),
+  onRecoverableError: (error) => (isPluginError(error) ? console.warn(error) : reportError(error)),
+});
 root.render(<StartupView />);
 
 function render() {
@@ -74,6 +79,10 @@ function render() {
 }
 
 let startupReady = false;
+
+void import("@/features/ui-plugins/boot")
+  .then(({ bootUiPlugins }) => bootUiPlugins())
+  .catch((error) => console.warn("UI-Plugins konnten nicht starten", error));
 
 Promise.all([
   executionSettings.ready,

@@ -992,6 +992,27 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     ],
   },
   {
+    id: "ui-plugins",
+    tabId: "extensions",
+    title: "UI-Plugins",
+    description:
+      "Tabellen, Tab-Leiste und geteilte Ansichten mit eigenen React-Plugins umbauen, auch per KI.",
+    keywords: [
+      "ui-plugin",
+      "build your own ui",
+      "oberfläche",
+      "anpassen",
+      "react",
+      "tabelle",
+      "zelle",
+      "tab-leiste",
+      "split",
+      "kanban",
+      "ki",
+      "galerie",
+    ],
+  },
+  {
     id: "hotkeys",
     tabId: "hotkeys",
     title: "Tastenkürzel",
