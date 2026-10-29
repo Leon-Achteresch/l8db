@@ -28,6 +28,7 @@ const SUITES = {
     "tests/perf-result-compare.test.ts",
     "tests/supabase-studio-redesign.test.ts",
     "tests/perf-history-modal-boundary.test.ts",
+    "tests/perf-ai-persist.test.ts",
     "tests/perf-virtual-item-measurement.test.ts",
     "tests/observe-virtual-scroll-rect.test.ts",
     "tests/perf-grid-window-range.test.ts",

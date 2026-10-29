@@ -267,6 +267,50 @@ export const useAiStore = create<AiState>((set) => ({
       ]),
     })),
 }));
+const PERSIST_BUDGET = 2_000_000;
+const clip = (value: string, limit: number) =>
+  value.length > limit ? `${value.slice(0, limit)}\n…` : value;
+function lightSession(session: AiSession): AiSession {
+  return {
+    ...session,
+    messages: session.messages.map((message) => ({
+      ...message,
+      ...(message.reasoning ? { reasoning: clip(message.reasoning, 2000) } : {}),
+      ...(message.attachments
+        ? { attachments: message.attachments.map((attachment) => ({ ...attachment, rows: [] })) }
+        : {}),
+      ...(message.rich
+        ? {
+            rich: message.rich.map((block) =>
+              block.type === "tool"
+                ? { ...block, output: clip(block.output, 200) }
+                : block.type === "image"
+                  ? { ...block, src: undefined }
+                  : block.type === "diff"
+                    ? { ...block, diff: clip(block.diff, 4000) }
+                    : block,
+            ),
+          }
+        : {}),
+    })),
+  };
+}
+export function serializeAiData(data: AiData, budget = PERSIST_BUDGET): string {
+  const value = JSON.stringify(data);
+  if (value.length <= budget) return value;
+  const sessions = [...data.sessions];
+  let total = value.length;
+  const order = sessions
+    .map((session, index) => ({ index, updatedAt: session.updatedAt }))
+    .sort((a, b) => a.updatedAt - b.updatedAt);
+  for (const { index } of order) {
+    if (total <= budget) break;
+    const light = lightSession(sessions[index]);
+    total += JSON.stringify(light).length - JSON.stringify(sessions[index]).length;
+    sessions[index] = light;
+  }
+  return JSON.stringify({ ...data, sessions });
+}
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
 function persistData() {
   if (persistTimer) clearTimeout(persistTimer);
@@ -279,8 +323,22 @@ function persistData() {
       sessions: mergeAiRecords(state.sessions, other.sessions),
       servers: mergeAiRecords(state.servers, other.servers),
     };
-    const value = JSON.stringify(data);
-    if (localStorage.getItem(KEY) !== value) localStorage.setItem(KEY, value);
+    const value = serializeAiData(data);
+    if (localStorage.getItem(KEY) !== value) {
+      let budget = Math.min(value.length, PERSIST_BUDGET);
+      for (;;) {
+        try {
+          localStorage.setItem(
+            KEY,
+            budget === value.length ? value : serializeAiData(data, budget),
+          );
+          break;
+        } catch (error) {
+          if (budget === 0) throw error;
+          budget = budget < 50_000 ? 0 : Math.floor(budget / 2);
+        }
+      }
+    }
     if (state.persistenceError) useAiStore.setState({ persistenceError: "" });
   } catch {
     useAiStore.setState({
