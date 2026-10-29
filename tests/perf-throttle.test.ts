@@ -670,10 +670,8 @@ test.skipIf(!ENABLED)(
     await navigate("/query");
     await page.locator(".monaco-editor .view-lines").first().click();
     await page.keyboard.type("select perf wide", { delay: 5 });
-    await page
-      .getByRole("button", { name: /Ausführen/ })
-      .first()
-      .click();
+    await page.locator('[data-tour="query-run"]').click();
+    await page.getByRole("button", { name: "Klassische Ergebnisansicht" }).click();
     await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("ControlOrMeta+f");
