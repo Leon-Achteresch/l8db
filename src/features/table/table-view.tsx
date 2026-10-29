@@ -10,6 +10,7 @@ import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
 import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel } from "./table-view/lazy-panels";
@@ -41,6 +42,8 @@ export function TableView(props: TableViewProps) {
     stateKey,
     caps,
     availableTabs,
+    pluginTable,
+    pluginTabs,
     viewTab,
     tableTab,
     tableRows,
@@ -156,8 +159,14 @@ export function TableView(props: TableViewProps) {
         extensionActions={extensionActions}
         caps={caps}
         availableTabs={availableTabs}
+        pluginTable={pluginTable}
+        pluginTabs={pluginTabs}
+        stateKey={stateKey}
+        columnDetails={columnDetails}
+        refetch={refetch}
         viewTab={viewTab}
         data={data}
+        tableRows={tableRows}
         exporting={exporting}
         csvExportOpen={csvExportOpen}
         setCsvExportOpen={setCsvExportOpen}
@@ -198,6 +207,8 @@ export function TableView(props: TableViewProps) {
           tableTab={tableTab}
           insertRowMutation={insertRowMutation}
           data={data}
+          tableRows={tableRows}
+          columnDetails={columnDetails}
           refetch={refetch}
           exporting={exporting}
           setCsvExportOpen={setCsvExportOpen}
@@ -205,6 +216,7 @@ export function TableView(props: TableViewProps) {
           setDataExportFormat={setDataExportFormat}
           handleExport={handleExport}
           requestAddRow={requestAddRow}
+          pluginTable={pluginTable}
           schema={schema}
           table={table}
         />
@@ -268,6 +280,15 @@ export function TableView(props: TableViewProps) {
       <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="table" />}
       </TabsContent>
+
+      <PluginDetailTabsContent
+        entries={pluginTabs}
+        info={pluginTable}
+        stateKey={stateKey}
+        rows={tableRows}
+        columnNames={data?.columns}
+        columnDetails={columnDetails}
+      />
 
       <TableExportDialogs
         table={table}

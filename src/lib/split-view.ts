@@ -12,6 +12,7 @@ import {
 } from "@/lib/split-links";
 import { remoteTab, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { storeFor } from "@/lib/table-tabs/helpers";
+import { uiPluginRegistry } from "@/lib/ui-plugins/store";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export const MAX_SPLIT_PANES = 4;
@@ -120,6 +121,8 @@ function ensureGroup(
     (group) => group.tabs.map((tab) => (tab ? tabKey(tab) : "")).join("\0") === keys,
   );
   if (same) return { groups: state.groups, activeGroup: same.id, adopted: same };
+  if (!uiPluginRegistry().autoSaveGroups)
+    return { groups: state.groups, activeGroup: null, adopted: null };
   const stale =
     existing.length >= MAX_SPLIT_GROUPS
       ? existing.find((group) => DEFAULT_GROUP_NAME.test(group.name))

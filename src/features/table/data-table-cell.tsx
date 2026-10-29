@@ -4,8 +4,10 @@ import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
+import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
+import { PluginCell } from "../ui-plugins/plugin-cell";
 import { GridStyleContext } from "./data-table/grid-style-context";
 import { DataTableCellBadge } from "./data-table-cell/data-table-cell-badge";
 import { DataTableEditingCell } from "./data-table-cell/data-table-editing-cell";
@@ -81,15 +83,24 @@ export const DataTableCell = memo(function DataTableCell({
   isActiveMatch,
   hasOutgoingFk,
 }: DataTableCellProps) {
-  const cell = useMemo(
-    () => (hasCustomContent ? createCell(table, row, column, column.id) : null),
-    [table, row, column, hasCustomContent],
-  );
   const rowIndex = row.index;
   const rowCtid = row.original.__ctid__ as string | undefined;
   const columnId = column.id;
   const editable = canSave && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
+  const pluginGrid = useContext(UiPluginGridContext);
+  const pluginOutput = useMemo(
+    () =>
+      cellIndex > 0 && pluginGrid?.cell
+        ? pluginGrid.cell(value, row.original, columnId, rowIndex)
+        : undefined,
+    [pluginGrid, value, row, columnId, rowIndex, cellIndex],
+  );
+  const pluginAlign = cellIndex > 0 ? pluginGrid?.align?.[columnId] : undefined;
+  const cell = useMemo(
+    () => (hasCustomContent && !pluginOutput ? createCell(table, row, column, column.id) : null),
+    [table, row, column, hasCustomContent, pluginOutput],
+  );
   const dataType = column.columnDef.meta?.dataType;
   const badge = useMemo(
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
@@ -210,6 +221,8 @@ export const DataTableCell = memo(function DataTableCell({
           "font-sans",
         tableStyle === "semantic" && hasCustomContent && "text-blue-600 dark:text-blue-400",
         tableStyle !== "classic" && columnStyle?.numeric && "text-right tabular-nums",
+        pluginAlign === "end" && "text-right",
+        pluginAlign === "center" && "text-center",
         cellIndex === 0 &&
           "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none",
         cellIndex === 0 && tableStyle !== "classic" && "px-1",
@@ -255,6 +268,13 @@ export const DataTableCell = memo(function DataTableCell({
         >
           {rowIndex + 1 + pageOffset}
         </button>
+      ) : pluginOutput ? (
+        <PluginCell
+          output={pluginOutput}
+          align={pluginAlign}
+          fallback={preview.text}
+          resetKey={pluginGrid}
+        />
       ) : cell ? (
         flexRender(cell.column.columnDef.cell, cell.getContext())
       ) : badge ? (

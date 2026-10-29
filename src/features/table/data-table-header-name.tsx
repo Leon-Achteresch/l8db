@@ -1,11 +1,13 @@
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 
 export function DataTableHeaderName({ name, isFk = false }: { name: string; isFk?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
+  const label = useContext(UiPluginGridContext)?.labels?.[name];
 
   return (
     <Popover open={open}>
@@ -22,7 +24,7 @@ export function DataTableHeaderName({ name, isFk = false }: { name: string; isFk
           }}
           onPointerLeave={() => setOpen(false)}
         >
-          {name}
+          {label ?? name}
         </span>
       </PopoverAnchor>
       <PopoverContent
@@ -33,7 +35,7 @@ export function DataTableHeaderName({ name, isFk = false }: { name: string; isFk
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        {name}
+        {label ? `${label} (${name})` : name}
       </PopoverContent>
     </Popover>
   );

@@ -93,6 +93,7 @@ chrono-tz = "0.10"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-native-tls", "hostname"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 notify-rust = "4"
+notify = "8"
 clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.6.11"
 comfy-table = { version = "7.1", default-features = false }

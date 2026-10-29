@@ -1,0 +1,28 @@
+{
+  "name": "@l8db/ui-plugin-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Types, compiler and checks for l8db UI plugins (Build Your Own UI).",
+  "author": "Leon Achteresch",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Leon-Achteresch/l8db",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Leon-Achteresch/l8db.git",
+    "directory": "packages/ui-plugin-api"
+  },
+  "types": "l8db-ui.d.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./l8db-ui": {
+      "types": "./l8db-ui.d.ts"
+    }
+  },
+  "files": [
+    "src",
+    "l8db-ui.d.ts"
+  ],
+  "dependencies": {
+    "sucrase": "^3.35.0"
+  }
+}

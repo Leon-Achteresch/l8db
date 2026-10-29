@@ -1,8 +1,10 @@
+import { useContext } from "react";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
 import { rowRuleColor } from "@/lib/row-rules";
 import { useSettingsStore } from "@/lib/settings";
+import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { DataTableRow } from "../data-table-row";
 import type { DataTableProps } from "../data-table-types";
 import { copyCellValue } from "./copy-cell-value";
@@ -118,6 +120,7 @@ export function DataTableBody({
 }: Props) {
   const monochromeCells = useSettingsStore((state) => state.monochromeCells);
   const [rules] = useTableViewState(stateKey, "rowRules", []);
+  const pluginGrid = useContext(UiPluginGridContext);
 
   return (
     <ContextMenu eager onOpenChange={(open) => !open && setMenuRow(null)}>
@@ -164,7 +167,10 @@ export function DataTableBody({
                     customCellColumns={customCellColumns}
                     monochromeCells={monochromeCells}
                     isMarked={markedRows.has(row.original)}
-                    ruleColor={rules.length ? rowRuleColor(row.original, rules) : undefined}
+                    ruleColor={
+                      (rules.length ? rowRuleColor(row.original, rules) : undefined) ??
+                      pluginGrid?.rowColor?.(row.original)
+                    }
                     isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}

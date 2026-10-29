@@ -5,6 +5,7 @@ import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { noteActiveTab } from "@/lib/ui-plugins/tabs-policy";
 import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
 
 const tabHistory: string[] = [];
@@ -72,6 +73,7 @@ export function useTabClose({ tabs, activeTab, isTabActive, navigate }: UseTabCl
     if (at !== -1) tabHistory.splice(at, 1);
     tabHistory.unshift(key);
     tabHistory.length = Math.min(tabHistory.length, 50);
+    noteActiveTab(key);
   }, [activeTab]);
 
   const [savingClose, setSavingClose] = useState(false);

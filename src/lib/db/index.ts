@@ -39,6 +39,7 @@ export * from "./team";
 export * from "./transactions";
 export * from "./transfer";
 export * from "./types";
+export * from "./ui-plugins";
 export * from "./updates";
 export * from "./versioning";
 export * from "./windows";

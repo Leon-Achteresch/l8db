@@ -4,18 +4,20 @@ import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from 
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
+import { TabGroupLabel } from "@/features/shell/table-tabs/tab-group-label";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
+import { useConnectionsStore } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
@@ -25,6 +27,10 @@ import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, type SplitGroup, useSplitGroups, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { tabInfo } from "@/lib/ui-plugins/info";
+import type { TemplateEntry } from "@/lib/ui-plugins/registry";
+import { openTemplate } from "@/lib/ui-plugins/split-templates";
+import { useUiPluginRegistry } from "@/lib/ui-plugins/store";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
@@ -35,6 +41,20 @@ export function TableTabs() {
     return shownTabs.current;
   });
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+  const tabGroup = useUiPluginRegistry((registry) => registry.tabGroup);
+  const templates = useUiPluginRegistry((registry) => registry.templates);
+  const tabGroups = useMemo(() => {
+    if (!tabGroup) return null;
+    const { connections, activeId } = useConnectionsStore.getState();
+    return allTabs.map((tab) =>
+      tabGroup(
+        tabInfo(
+          tab,
+          connections.find((entry) => entry.id === (tab.connectionId ?? activeId)),
+        ),
+      ),
+    );
+  }, [tabGroup, allTabs]);
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
   const setOrientation = useSplitView((state) => state.setOrientation);
@@ -108,6 +128,11 @@ export function TableTabs() {
     if (tab) navigateToTab(navigate, tab);
   };
 
+  const handleOpenTemplate = (entry: TemplateEntry) => {
+    const tab = openTemplate(entry);
+    if (tab) navigateToTab(navigate, tab);
+  };
+
   const handleNewQueryTab = () => {
     const id = openQueryTab();
     void navigate({ to: "/query/$id", params: { id } });
@@ -153,20 +178,27 @@ export function TableTabs() {
                 onDelete={() => deleteGroup(openGroup.id)}
               />
             )}
-            {tabs.map((tab, index) => (
-              <TableTabsSortableTab
-                key={tabKey(tab)}
-                tab={tab}
-                index={allTabs.indexOf(tab)}
-                isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}
-                isPending={Boolean(pendingTab && tabKey(pendingTab) === tabKey(tab))}
-                isInPane={split && panes.includes(tabKey(tab))}
-                hasTabsToRight={index < tabs.length - 1}
-                tabsCount={tabs.length}
-                canSplit={!easyMode && panes.length < MAX_SPLIT_PANES}
-                actions={actions}
-              />
-            ))}
+            {tabs.map((tab, index) => {
+              const group = tabGroups?.[allTabs.indexOf(tab)];
+              const previous =
+                index > 0 ? tabGroups?.[allTabs.indexOf(tabs[index - 1])] : undefined;
+              return (
+                <Fragment key={tabKey(tab)}>
+                  {group && group.id !== previous?.id && <TabGroupLabel group={group} />}
+                  <TableTabsSortableTab
+                    tab={tab}
+                    index={allTabs.indexOf(tab)}
+                    isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}
+                    isPending={Boolean(pendingTab && tabKey(pendingTab) === tabKey(tab))}
+                    isInPane={split && panes.includes(tabKey(tab))}
+                    hasTabsToRight={index < tabs.length - 1}
+                    tabsCount={tabs.length}
+                    canSplit={!easyMode && panes.length < MAX_SPLIT_PANES}
+                    actions={actions}
+                  />
+                </Fragment>
+              );
+            })}
           </div>
         </motion.nav>
         {overflow && (
@@ -218,7 +250,7 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {!easyMode && groups.length > 0 && (
+      {!easyMode && (groups.length > 0 || templates.length > 0) && (
         <SplitGroupsMenu
           groups={groups}
           activeGroup={split ? activeGroup : null}
@@ -226,6 +258,8 @@ export function TableTabs() {
           triggerRef={groupFeature.ref}
           onOpen={handleOpenGroup}
           onDelete={(group) => deleteGroup(group.id)}
+          templates={templates}
+          onOpenTemplate={handleOpenTemplate}
         />
       )}
       {split && (

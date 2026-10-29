@@ -1,9 +1,11 @@
 import { useReactTable } from "@tanstack/react-table";
-import { useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
 import { useTableColumnLayout } from "@/lib/table-column-prefs";
+import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
+import { publishPluginSelection } from "@/lib/ui-plugins/table-slots";
 import { getVirtualRowModel } from "@/lib/virtual-row-model";
 import type { DataTableProps, FkPickerCell, InspectCell } from "../data-table-types";
 import type { MenuRow } from "./data-table-row-menu";
@@ -58,6 +60,7 @@ export function useDataTableModel({
   )
     sample.current = { identity: scrollIdentity, rows: data };
   const sampleRows = sample.current.rows;
+  const pluginGrid = useContext(UiPluginGridContext);
   const layout = useTableColumnLayout(
     connection?.id,
     currentSchema,
@@ -65,6 +68,7 @@ export function useDataTableModel({
     columnNames,
     database,
     layoutKey,
+    pluginGrid?.layout,
   );
   const { order, hidden, pinned, setOrder } = layout;
   const markerKeys = useMemo(
@@ -81,6 +85,14 @@ export function useDataTableModel({
     !infinite,
   );
   const [activeCell, setActiveCell] = useGridActiveCell(data, columnNames, autoSelectFirstCell);
+  const activeRow = activeCell ? data[activeCell.rowIndex] : undefined;
+  useEffect(() => {
+    if (!pluginGrid || !stateKey) return;
+    publishPluginSelection(
+      stateKey,
+      markedRows.size ? [...markedRows] : activeRow ? [activeRow] : [],
+    );
+  }, [pluginGrid, stateKey, markedRows, activeRow]);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const drafts = useDraftRow(onInsertRow, tableKey);
@@ -120,6 +132,7 @@ export function useDataTableModel({
     typeInfoByColumn,
     sampleRows,
     gridStyle,
+    pluginGrid?.widths,
   );
   const table = useReactTable({
     data,
