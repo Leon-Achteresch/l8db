@@ -326,7 +326,7 @@ test("plugin state stays bounded and the host stays idle", async () => {
   expect(optionMs).toBeLessThan(500);
 });
 
-test("the data grid imports neither the plugin host nor the extension host", async () => {
+async function importedModules(starts: readonly string[], dynamic: boolean) {
   const root = resolve(import.meta.dir, "..");
   const classic = { compilerOptions: { jsx: "react" as const } };
   const transpilers = {
@@ -345,6 +345,7 @@ test("the data grid imports neither the plugin host nor the extension host", asy
     for (const entry of transpiler.scanImports(await Bun.file(file).text())) {
       if (entry.kind === "require-call" || entry.path.includes("?") || entry.path === "@/router")
         continue;
+      if (!dynamic && entry.kind === "dynamic-import") continue;
       const target = entry.path.startsWith("@/")
         ? resolve(root, "src", entry.path.slice(2))
         : entry.path.startsWith(".")
@@ -353,9 +354,38 @@ test("the data grid imports neither the plugin host nor the extension host", asy
       if (target) await visit(Bun.resolveSync(target, root));
     }
   };
+  for (const start of starts) await visit(resolve(root, start));
+  return [...reached].map((file) => relative(root, file).replaceAll("\\", "/"));
+}
+
+test("the workspace shell loads the plugin registry, validators and compiler only with the host", async () => {
   const started = performance.now();
-  await visit(resolve(root, "src/features/table/data-table.tsx"));
-  const modules = [...reached].map((file) => relative(root, file).replaceAll("\\", "/"));
+  const modules = await importedModules(
+    ["src/features/shell/app-layout.tsx", "src/features/shell/workspace-layout.tsx"],
+    false,
+  );
+  await reportScenario("ui-plugins-shell-imports", {
+    modules: modules.length,
+    scanMs: performance.now() - started,
+  });
+  expect(modules).toContain("src/features/shell/table-tabs.tsx");
+  expect(modules).toContain("src/lib/ui-plugins/store.ts");
+  for (const heavy of [
+    "src/lib/ui-plugins/host.ts",
+    "src/lib/ui-plugins/registry.ts",
+    "src/lib/ui-plugins/guard.ts",
+    "packages/ui-plugin-api/src/definition.ts",
+    "packages/ui-plugin-api/src/modules.ts",
+    "packages/ui-plugin-api/src/compile.ts",
+  ]) {
+    expect(await Bun.file(resolve(import.meta.dir, "..", heavy)).exists()).toBe(true);
+    expect(modules).not.toContain(heavy);
+  }
+});
+
+test("the data grid imports neither the plugin host nor the extension host", async () => {
+  const started = performance.now();
+  const modules = await importedModules(["src/features/table/data-table.tsx"], true);
   await reportScenario("ui-plugins-grid-imports", {
     modules: modules.length,
     scanMs: performance.now() - started,

@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { isMainWindow } from "@/lib/connections";
 import {
   scanUiPlugins,
@@ -11,12 +12,14 @@ import agentsGuide from "../../../packages/ui-plugin-api/folder-agents.md?raw";
 import sdkTypes from "../../../packages/ui-plugin-api/l8db-ui.d.ts?raw";
 import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
-import { errorMessage } from "./guard";
+import type { SlotName } from "./guard";
+import { buildRegistry, slotKey } from "./registry";
 import { useUiPluginSettings } from "./settings";
 import { uiPluginStatusReport } from "./status";
 import {
+  deferUiPluginUpdate,
+  errorMessage,
   type LoadedUiPlugin,
-  refreshUiPluginRegistry,
   reportUiPluginRuntimeError,
   resetUiPluginFaults,
   type UiPluginError,
@@ -24,6 +27,61 @@ import {
 } from "./store";
 import { startTabPolicy } from "./tabs-policy";
 import { createPluginTimers } from "./timers";
+
+function recordSlotError(key: string, message: string) {
+  deferUiPluginUpdate(() =>
+    useUiPluginRuntime.setState((state) =>
+      state.slotErrors[key] === message
+        ? state
+        : { slotErrors: { ...state.slotErrors, [key]: message } },
+    ),
+  );
+}
+
+const events = {
+  error(plugin: string, slot: SlotName, message: string) {
+    recordSlotError(slotKey(plugin, slot), message);
+  },
+  trip(plugin: string, slot: SlotName, reason: string) {
+    deferUiPluginUpdate(() => {
+      useUiPluginRuntime.setState((state) => ({
+        tripped: { ...state.tripped, [slotKey(plugin, slot)]: reason },
+      }));
+      refreshUiPluginRegistry();
+      toast.warning(`UI-Plugin ${plugin}: ${slot} wurde abgeschaltet`, { description: reason });
+    });
+  },
+  slotsError(plugin: string, message: string) {
+    recordSlotError(`${plugin}:slots`, message);
+  },
+};
+
+export function refreshUiPluginRegistry() {
+  const state = useUiPluginRuntime.getState();
+  const settings = useUiPluginSettings.getState();
+  const plugins = Object.values(state.loaded).sort((a, b) => (a.file < b.file ? -1 : 1));
+  useUiPluginRuntime.setState({
+    registry: buildRegistry({
+      plugins,
+      disabled: settings.disabled,
+      options: settings.options,
+      grants: settings.httpGrants,
+      tripped: state.tripped,
+      events,
+    }),
+  });
+}
+
+useUiPluginSettings.subscribe((state, previous) => {
+  if (
+    state.disabled === previous.disabled &&
+    state.options === previous.options &&
+    state.httpGrants === previous.httpGrants
+  )
+    return;
+  for (const id of previous.disabled) if (!state.disabled.includes(id)) resetUiPluginFaults(id);
+  refreshUiPluginRegistry();
+});
 
 type Compiler = typeof import("../../../packages/ui-plugin-api/src/compile");
 

@@ -35,7 +35,10 @@ Ohne Plugins bekommen die Zellen kein Plugin-Prop und keine zusätzlichen Hooks.
    - Nur `.tsx`, `.ts`, `.jsx` und `.js` zählen, `.d.ts` nicht.
    - `ui_plugins_watch` meldet Änderungen mit 120 ms Entprellung als `ui-plugins-changed`.
    - `ui_plugins_write`, `ui_plugins_remove` und `ui_plugins_write_support` schreiben Plugins und die Hilfsdateien: `AGENTS.md`, `CLAUDE.md`, `l8db-ui.d.ts`, `tsconfig.json` und `.status.json`.
-2. **Start**: `src/features/ui-plugins/boot.ts` lädt den Host als eigenen Chunk erst nach dem ersten Render. Das Startpaket wächst dadurch um rund 9 KB.
+2. **Start**: `src/features/ui-plugins/boot.ts` lädt den Host als eigenen Chunk erst nach dem ersten Render.
+   - Die Shell importiert nur den Store (`store.ts` mit leerer Registry und `errorMessage`) sowie die Anbindung von Tabs und Split-Ansicht.
+   - Registry, Validatoren, `SlotGuard`, SDK-Module und der Neuaufbau bei geänderten Einstellungen kommen erst mit dem Host.
+   - Die statischen Startimporte wachsen dadurch um rund 11 KB.
 3. **Übersetzen**: `packages/ui-plugin-api/src/compile.ts` prüft den Quelltext statisch und übersetzt ihn mit sucrase nach CommonJS. sucrase liegt in einem eigenen Chunk und wird erst geladen, wenn es etwas zu übersetzen gibt.
 4. **Ausführen**: `evaluatePlugin` führt den Code mit `new Function` aus. Dabei sind gefährliche Globals verschattet und die Timer gezählt. `validatePlugin` prüft die Definition. Unveränderte Dateien (gleicher Hash) werden nicht neu übersetzt.
 5. **Registry** (`src/lib/ui-plugins/registry.ts`): Sie fasst alle aktiven Plugins zu je einer Funktion pro Slot zusammen. Jeder Aufruf läuft durch einen `SlotGuard`.
@@ -112,7 +115,7 @@ Für ein neues Plugin gehört eine Szene in `SCENES`. Das Format ist 1440×860 b
 |---|---|
 | `tests/ui-plugins-compile.test.ts` | statische Prüfung, Übersetzen, Definition, Katalog |
 | `tests/ui-plugins-runtime.test.ts` | Host, Live-Reload, `.status.json` nach Schaltern (auch bei Plugins ohne funktionierende Slots), Registry (auch Rückfall bei `tabs.item`), Guard gegen ein sortiertes p95-Orakel und ohne Sortieren, Tab-Policy, Grid (Reihenfolge angehefteter Spalten, Zell-Cache je Zeile), Auswahl, Netzwerk, Vorlagen, Katalog, Datumswerte in mehreren Zeitzonen, Fehlermarkierung |
-| `tests/perf-ui-plugins.test.ts` | Zellkosten, Ladezeiten, Speicher- und Leerlaufgrenzen, Modulgraph des Datengrids ohne Plugin- und Erweiterungs-Host (Teil von `bun run test:perf:core`) |
+| `tests/perf-ui-plugins.test.ts` | Zellkosten, Ladezeiten, Speicher- und Leerlaufgrenzen, Modulgraph des Datengrids ohne Plugin- und Erweiterungs-Host, statische Importe der Workspace-Shell ohne Registry, Validatoren, Guard, Host und Compiler (Teil von `bun run test:perf:core`) |
 | `tests/ui-plugins-browser.test.ts` | alle Slots in der gebauten App mit CSP, Live-Reload, defektes Plugin, Hook in einem Slot, Bearbeitungsentwurf beim Entfernen von Zell-Plugins, Zahlenoption per Tastatur, Einstellungen, Installation und Entfernen aus der Galerie; ohne Seiten- oder Konsolenfehler |
 | `src-tauri/src/ui_plugins.rs` | Rust-Tests für Ordner, Grenzen und Dateinamen |
 
@@ -141,6 +144,10 @@ Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64; Bun 1.4.3 und Bun
 - **Tabellen-Scroll ohne Plugins:** Gebaute App, 5.000 × 120 Zellen, 601 Frames, Chromium ohne Drosselung, Median aus 5 Läufen.
   - Script je Frame 1,50 ms, vor dem Feature 1,48 ms. Die Basis streut zwischen 1,44 und 1,57 ms.
   - Solange jede Zelle die Plugin-Hooks hatte, lag die Script-Zeit im selben Lauf 4–6 % darüber. Der Cache je Zeile hat das behoben.
-- **Modulgraph:** Vom Datengrid aus sind 442 Module erreichbar, mit dynamischen Imports und ohne Router. Den Plugin-Host, den Erweiterungs-Host und die Einstellungen erreicht es nicht. Der Scan dauert 52 ms.
+- **Modulgraph:** Vom Datengrid aus sind 436 Module erreichbar, mit dynamischen Imports und ohne Router. Den Plugin-Host, den Erweiterungs-Host und die Einstellungen erreicht es nicht. Der Scan dauert 25 ms. Die statischen Importe beider Shell-Layouts umfassen 528 Module ohne Registry, Validatoren, Guard, Host und Compiler.
+- **Startpaket** (`tests/perf-bundle.test.ts`, Budget 1.800.000 Byte):
+  - Vor dem Feature: 1.806.831 Byte. Das Budget war damit schon überschritten.
+  - Erste Fassung des Features: 1.836.281 Byte. Der Store zog Registry, Validatoren und Guard in die Shell.
+  - Jetzt: 1.818.483 Byte. Davon stammen 860 Byte aus einer fremden Änderung an `src/lib/ai/store.ts`.
 
 Windows läuft nur in CI: `.github/workflows/performance.yml` führt `test:perf:core` samt `tests/perf-ui-plugins.test.ts` auf windows-2025 aus. Bedient wurde die App unter Windows nicht. Die Messungen mit gedrosselter CPU laufen ebenfalls nur dort.
