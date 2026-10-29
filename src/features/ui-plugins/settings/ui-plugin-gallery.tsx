@@ -75,7 +75,8 @@ export function UiPluginGallery() {
           </h4>
           <p className="text-xs text-pretty text-muted-foreground">
             Öffentliche UI-Plugins mit Screenshot, per Pull Request geprüft und vor der Installation
-            per SHA-256 verifiziert.
+            per SHA-256 verifiziert. Plugins laufen mit den Rechten von l8db, installiere nur
+            Plugins, denen du vertraust.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">

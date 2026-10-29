@@ -80,7 +80,13 @@ useUiPluginSettings.subscribe((state, previous) => {
   )
     return;
   for (const id of previous.disabled) if (!state.disabled.includes(id)) resetUiPluginFaults(id);
+  let reload = false;
+  for (const plugin of Object.values(useUiPluginRuntime.getState().loaded)) {
+    if (state.disabled.includes(plugin.definition.id)) plugin.timers.dispose();
+    else if (plugin.timers.disposed) reload = true;
+  }
   refreshUiPluginRegistry();
+  if (reload) void reloadUiPlugins();
 });
 
 type Compiler = typeof import("../../../packages/ui-plugin-api/src/compile");
@@ -149,8 +155,10 @@ export function applyUiPluginFiles(
   files: readonly UiPluginFile[],
 ): { loaded: Record<string, LoadedUiPlugin>; errors: Record<string, UiPluginError> } {
   const state = useUiPluginRuntime.getState();
+  const { disabled } = useUiPluginSettings.getState();
   const loaded = { ...state.loaded };
   const errors: Record<string, UiPluginError> = {};
+  const fresh = new Set<string>();
   const present = new Set(files.map((file) => file.name));
   for (const name of Object.keys(loaded)) {
     if (present.has(name)) continue;
@@ -159,7 +167,12 @@ export function applyUiPluginFiles(
   }
   for (const file of files) {
     const hash = hashSource(file.source);
-    if (loaded[file.name]?.hash === hash) continue;
+    const current = loaded[file.name];
+    if (
+      current?.hash === hash &&
+      !(current.timers.disposed && !disabled.includes(current.definition.id))
+    )
+      continue;
     const previous = state.errors[file.name];
     if (previous?.hash === hash) {
       errors[file.name] = previous;
@@ -174,7 +187,8 @@ export function applyUiPluginFiles(
     const replaced = loaded[file.name];
     replaced?.timers.dispose();
     loaded[file.name] = result.plugin;
-    resetUiPluginFaults(result.plugin.definition.id);
+    fresh.add(file.name);
+    if (disabled.includes(result.plugin.definition.id)) result.plugin.timers.dispose();
     if (replaced && replaced.definition.id !== result.plugin.definition.id)
       resetUiPluginFaults(replaced.definition.id);
   }
@@ -190,6 +204,7 @@ export function applyUiPluginFiles(
     errors[name] = { message: `id "${id}" wird schon in ${owner} verwendet.`, hash: "" };
     delete loaded[name];
   }
+  for (const name of fresh) if (loaded[name]) resetUiPluginFaults(loaded[name].definition.id);
   return { loaded, errors };
 }
 

@@ -5,10 +5,8 @@ import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
-import { noteActiveTab } from "@/lib/ui-plugins/tabs-policy";
+import { noteActiveTab, recentTabKeys } from "@/lib/ui-plugins/tabs-policy";
 import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
-
-const tabHistory: string[] = [];
 
 export type PendingClose =
   | { type: "tab" | "others" | "right"; key: string }
@@ -53,7 +51,7 @@ export function useTabClose({ tabs, activeTab, isTabActive, navigate }: UseTabCl
       return;
     }
     const index = tabs.findIndex((t) => tabKey(t) === key);
-    const recent = tabHistory.find(
+    const recent = recentTabKeys().find(
       (entry) => entry !== key && tabs.some((t) => tabKey(t) === entry),
     );
     const next = tabs.find((t) => tabKey(t) === recent) ?? tabs[index + 1] ?? tabs[index - 1];
@@ -68,12 +66,7 @@ export function useTabClose({ tabs, activeTab, isTabActive, navigate }: UseTabCl
 
   useEffect(() => {
     if (!activeTab) return;
-    const key = tabKey(activeTab);
-    const at = tabHistory.indexOf(key);
-    if (at !== -1) tabHistory.splice(at, 1);
-    tabHistory.unshift(key);
-    tabHistory.length = Math.min(tabHistory.length, 50);
-    noteActiveTab(key);
+    noteActiveTab(tabKey(activeTab));
   }, [activeTab]);
 
   const [savingClose, setSavingClose] = useState(false);

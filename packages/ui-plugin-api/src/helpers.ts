@@ -23,6 +23,15 @@ export function asNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseDateText(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T00:00`);
+  if (/^\d{4}-\d{2}-\d{2} \d/.test(value)) {
+    const local = new Date(value.replace(" ", "T"));
+    if (!Number.isNaN(local.getTime())) return local;
+  }
+  return new Date(value);
+}
+
 export function asDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") return null;
   const date =
@@ -31,13 +40,7 @@ export function asDate(value: unknown): Date | null {
       : typeof value === "number"
         ? new Date(value)
         : typeof value === "string"
-          ? new Date(
-              /^\d{4}-\d{2}-\d{2}$/.test(value)
-                ? `${value}T00:00`
-                : /^\d{4}-\d{2}-\d{2} \d/.test(value)
-                  ? value.replace(" ", "T")
-                  : value,
-            )
+          ? parseDateText(value)
           : null;
   return date && !Number.isNaN(date.getTime()) ? date : null;
 }

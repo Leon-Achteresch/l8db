@@ -108,6 +108,7 @@ export function createPluginGrid(
   const byId = new Map(infos.map((info) => [info.id, info]));
   let all: readonly Row[] | null = null;
   const lazyRows = () => (all ??= freezeRows(rows));
+  const tones = new WeakMap<object, string | undefined>();
   return {
     table,
     cell: cell
@@ -121,8 +122,11 @@ export function createPluginGrid(
       : null,
     rowColor: rowTone
       ? (row) => {
+          if (tones.has(row)) return tones.get(row);
           const tone = rowTone(freezeRow(row), table);
-          return tone ? TONE_COLORS[tone] : undefined;
+          const color = tone ? TONE_COLORS[tone] : undefined;
+          tones.set(row, color);
+          return color;
         }
       : null,
     layout: defaults.layout,
