@@ -1,4 +1,4 @@
-import { runFetch } from "@/lib/extensions/host";
+import { runFetch } from "@/lib/extensions/fetch";
 import { type HttpInit, type HttpResponse, httpPatternMatches } from "./api";
 import type { ActivePlugin } from "./registry";
 import { uiPluginRegistry } from "./store";

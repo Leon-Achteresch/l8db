@@ -30,7 +30,11 @@ export function columnDefaults(patches: readonly ColumnPatch[]) {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map((patch) => patch.id);
   const hidden = patches.filter((patch) => patch.hidden).map((patch) => patch.id);
-  const pinned = patches.filter((patch) => patch.pinned).map((patch) => patch.id);
+  const pinnedIds = patches.filter((patch) => patch.pinned).map((patch) => patch.id);
+  const pinned = [
+    ...ordered.filter((id) => pinnedIds.includes(id)),
+    ...pinnedIds.filter((id) => !ordered.includes(id)),
+  ];
   const pick = <K extends "width" | "label" | "align">(key: K) => {
     const entries = patches.flatMap((patch) =>
       patch[key] === undefined ? [] : [[patch.id, patch[key]] as const],

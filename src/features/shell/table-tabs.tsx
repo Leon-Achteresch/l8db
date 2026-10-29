@@ -27,10 +27,10 @@ import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, type SplitGroup, useSplitGroups, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
-import { tabInfo } from "@/lib/ui-plugins/info";
 import type { TemplateEntry } from "@/lib/ui-plugins/registry";
 import { openTemplate } from "@/lib/ui-plugins/split-templates";
 import { useUiPluginRegistry } from "@/lib/ui-plugins/store";
+import { tabInfo } from "@/lib/ui-plugins/tab-info";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {

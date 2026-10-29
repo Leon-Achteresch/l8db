@@ -39,6 +39,7 @@ export function errorMessage(error: unknown): string {
 export class SlotGuard {
   private readonly samples = new Float64Array(WINDOW);
   private count = 0;
+  private slow = 0;
   private errors = 0;
   tripped = false;
 
@@ -77,12 +78,15 @@ export class SlotGuard {
   }
 
   private record(duration: number) {
-    this.samples[this.count % WINDOW] = duration;
+    const index = this.count % WINDOW;
+    if (this.count >= WINDOW && this.samples[index] > this.budget) this.slow--;
+    if (duration > this.budget) this.slow++;
+    this.samples[index] = duration;
     this.count++;
     if (this.count < MIN_SAMPLES || this.count % CHECK_EVERY !== 0) return;
-    const p95 = this.p95();
-    if (p95 > this.budget)
-      this.trip(`zu langsam: p95 ${p95.toFixed(1)} ms bei erlaubten ${this.budget} ms`);
+    const size = Math.min(this.count, WINDOW);
+    if (this.slow >= size - Math.min(size - 1, Math.floor(size * 0.95)))
+      this.trip(`zu langsam: p95 ${this.p95().toFixed(1)} ms bei erlaubten ${this.budget} ms`);
   }
 
   private trip(reason: string) {
