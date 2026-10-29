@@ -9,7 +9,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { KeyRound, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CLUSTER_DETAIL_ZOOM } from "@/features/er-diagram/er-diagram-view/constants";
 import { edgeTypes } from "@/features/er-diagram/er-diagram-view/edge-types";
@@ -89,7 +89,7 @@ export function ERDiagramInner() {
   );
   const restoredKey = useRef<string | null>(null);
   const { nodes, edges, clusters, onNodesChange, onVisibilityChange, prepareExport } =
-    useClusterGraph(erSchema, exporting);
+    useClusterGraph(useDeferredValue(erSchema, null) ?? undefined, exporting);
   const showOverview = useCallback(() => {
     void fitView({
       nodes: clusters.map((cluster) => ({ id: cluster.id })),
