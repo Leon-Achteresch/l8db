@@ -1,8 +1,8 @@
 import { useConnectionsStore } from "@/lib/connections";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { storeFor } from "@/lib/table-tabs/helpers";
-import { tabInfo } from "./info";
 import { uiPluginRegistry } from "./store";
+import { tabInfo } from "./tab-info";
 
 const history: string[] = [];
 

@@ -185,8 +185,6 @@ export function buildRegistry(input: RegistryInput): UiPluginRegistry {
       templates.push({ plugin, template, key: `${plugin.id}:${template.id}` });
   }
 
-  const item = items[items.length - 1];
-
   return {
     plugins: entries.map((entry) => entry.plugin),
     cell: cells.length
@@ -244,10 +242,14 @@ export function buildRegistry(input: RegistryInput): UiPluginRegistry {
           return undefined;
         }
       : null,
-    tabItem: item
+    tabItem: items.length
       ? (props) => {
-          const node = item.guard.run(() => item.fn(props), undefined);
-          return node === undefined ? undefined : { plugin: item.plugin.id, node };
+          for (let index = items.length - 1; index >= 0; index--) {
+            const { plugin, fn, guard } = items[index];
+            const node = guard.run(() => fn(props), undefined);
+            if (node !== undefined) return { plugin: plugin.id, node };
+          }
+          return undefined;
         }
       : null,
     closeButton,

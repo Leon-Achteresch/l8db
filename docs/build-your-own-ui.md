@@ -26,6 +26,8 @@ Signaturen, Regeln, Grenzen und das Zusammenspiel mehrerer Plugins stehen in `pa
 
 Ohne Plugins verhält sich l8db wie vorher. Die Registry-Felder sind dann `null`, und der Grid-Kontext fehlt. Split-Layouts, automatische „Ansicht N“-Gruppen und der Schließen-Knopf behalten ihre Standardwerte.
 
+Die Tabellenzeilen rendern ohne Plugins die normale `DataTableCell` ohne zusätzliche Hooks. Erst `grid.cell` oder eine Spaltenausrichtung schaltet auf `DataTablePluginCell` (`src/features/table/data-table-plugin-cell.tsx`). Das Datengrid importiert weder den Plugin-Host noch den Erweiterungs-Host: `runFetch` liegt in `src/lib/extensions/fetch.ts`, `tabInfo` in `src/lib/ui-plugins/tab-info.ts`.
+
 ## Ablauf
 
 1. **Ordner** (`src-tauri/src/ui_plugins.rs`): `ui_plugins_scan` liest Dateien direkt im Ordner, nicht rekursiv.
@@ -37,7 +39,7 @@ Ohne Plugins verhält sich l8db wie vorher. Die Registry-Felder sind dann `null`
 3. **Übersetzen**: `packages/ui-plugin-api/src/compile.ts` prüft den Quelltext statisch und übersetzt ihn mit sucrase nach CommonJS. sucrase liegt in einem eigenen Chunk und wird erst geladen, wenn es etwas zu übersetzen gibt.
 4. **Ausführen**: `evaluatePlugin` führt den Code mit `new Function` aus. Dabei sind gefährliche Globals verschattet und die Timer gezählt. `validatePlugin` prüft die Definition. Unveränderte Dateien (gleicher Hash) werden nicht neu übersetzt.
 5. **Registry** (`src/lib/ui-plugins/registry.ts`): Sie fasst alle aktiven Plugins zu je einer Funktion pro Slot zusammen. Jeder Aufruf läuft durch einen `SlotGuard`.
-6. **Live-Reload**: Hat eine neue Version einen Fehler, läuft die letzte funktionierende weiter (Status `stale`). `.status.json` meldet Fehler mit Zeile, Slot-Fehler und abgeschaltete Slots.
+6. **Live-Reload**: Hat eine neue Version einen Fehler, läuft die letzte funktionierende weiter (Status `stale`). `.status.json` meldet Fehler mit Zeile, Slot-Fehler und abgeschaltete Slots. Das Hauptfenster schreibt die Datei neu, sobald sich Dateien, Schalter, Optionen oder Freigaben ändern, entprellt auf 250 ms.
 
 ## Leitplanken
 
@@ -54,7 +56,7 @@ UI-Plugins laufen im Fenster von l8db. Die Leitplanken verhindern Versehen und o
   - `split.layout`: 10 ms
   - Toolbar, Detail-Tabs und Spalten: 50 ms
 
-  Ein Slot, der sein Budget überschreitet oder 20-mal fehlschlägt, wird abgeschaltet.
+  Ein Slot, der sein Budget überschreitet oder 20-mal fehlschlägt, wird abgeschaltet. Der `SlotGuard` betrachtet die letzten 200 Aufrufe und prüft alle 25 Aufrufe. Das p95 liegt über dem Budget, sobald mehr als 5 % der Aufrufe im Fenster darüber liegen. Ein Zähler erfasst diese Aufrufe, deshalb muss der Guard nicht sortieren.
 - **Fehler in Plugin-Komponenten:** `PluginBoundary` fängt sie ab und zeigt den normalen Inhalt.
   - Die JSX-Laufzeit des SDK markiert diese Fehler (`markPluginError`).
   - `src/main.tsx` leitet markierte Fehler in `onCaughtError` und `onRecoverableError` auf `console.warn` um, damit sie nicht in Diagnose oder Absturzberichten landen.
@@ -84,7 +86,7 @@ Die statische Prüfung arbeitet mit Tokens. Sie findet versehentliche Verstöße
 
 - **Übersetzen:** Jedes Plugin wird mit denselben Modulen wie in l8db übersetzt und ausgeführt.
 - **Slots:** Jeder Slot läuft mit den Beispieldaten aus `scripts/samples.ts` und jeder Optionsvariante, und jede Ausgabe wird gerendert.
-- **Budget:** Für `grid.cell` gilt p95 < 2 ms.
+- **Budgets:** Jeder Slot muss im p95 die Hälfte seines Budgets in l8db einhalten, z. B. `grid.cell` 2 ms und `table.toolbar` 25 ms. Hooks direkt in Slot-Funktionen lehnt die Prüfung ab, wie l8db.
 - **Abdeckung:** Jeder Slot muss mit den Beispieldaten mindestens einmal etwas liefern.
 - **Dateien:** Metadaten, Ordnername gleich `id` und ein eigener Screenshot, also keine Kopie eines anderen Plugins.
 - **README:** Die generierte Plugin-Liste in `README.md` ist aktuell.
@@ -109,9 +111,9 @@ Für ein neues Plugin gehört eine Szene in `SCENES`. Das Format ist 1440×860 b
 | Test | Inhalt |
 |---|---|
 | `tests/ui-plugins-compile.test.ts` | statische Prüfung, Übersetzen, Definition, Katalog |
-| `tests/ui-plugins-runtime.test.ts` | Host, Live-Reload, Registry, Guard, Tab-Policy, Grid, Netzwerk, Vorlagen, Katalog, Fehlermarkierung |
+| `tests/ui-plugins-runtime.test.ts` | Host, Live-Reload, `.status.json` nach Schaltern, Registry (auch Rückfall bei `tabs.item`), Guard gegen ein sortiertes p95-Orakel, Tab-Policy, Grid (Reihenfolge angehefteter Spalten), Auswahl, Netzwerk, Vorlagen, Katalog, Fehlermarkierung |
 | `tests/perf-ui-plugins.test.ts` | Zellkosten, Ladezeiten, Speicher- und Leerlaufgrenzen (Teil von `bun run test:perf:core`) |
-| `tests/ui-plugins-browser.test.ts` | alle Slots in der gebauten App mit CSP, Live-Reload, defektes Plugin, Einstellungen, Installation aus der Galerie; ohne Seiten- oder Konsolenfehler |
+| `tests/ui-plugins-browser.test.ts` | alle Slots in der gebauten App mit CSP, Live-Reload, defektes Plugin, Hook in einem Slot, Zahlenoption per Tastatur, Einstellungen, Installation und Entfernen aus der Galerie; ohne Seiten- oder Konsolenfehler |
 | `src-tauri/src/ui_plugins.rs` | Rust-Tests für Ordner, Grenzen und Dateinamen |
 
 Der Browser-Test läuft nach `bun run build`:
@@ -121,19 +123,23 @@ L8DB_UI_PLUGINS_BROWSER=1 bun test tests/ui-plugins-browser.test.ts
 L8DB_UI_PLUGINS_BROWSER=webkit bun test tests/ui-plugins-browser.test.ts
 ```
 
-Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64, Bun 1.4.3):
+Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64; Bun 1.4.3 und Bun 1.3.10 wie in CI):
 
 - **Zellen:** 5 Plugins auf 2.000 Zeilen × 24 Spalten.
-  - Je Zelle p95 1,9 µs, Budget 5 µs.
-  - Sichtbares Fenster mit 480 Zellen: p95 1,0 ms, Budget 3 ms.
+  - Je Zelle p95 0,33 µs (Bun 1.3.10: 0,36 µs), Budget 5 µs. Vor dem Zähler im `SlotGuard` waren es 1,9 µs.
+  - Sichtbares Fenster mit 480 Zellen: p95 0,17 ms (0,20 ms), Budget 3 ms.
 - **Laden:** 30 Plugins (118 KB).
-  - Kaltstart p95 26–36 ms, Budget 150 ms.
-  - Unverändertes Neuladen p95 0,2 ms, Budget 2 ms.
-  - Eine geänderte Datei p95 1,0 ms, Budget 15 ms.
+  - Kaltstart p95 28 ms (33 ms), Budget 150 ms.
+  - Unverändertes Neuladen p95 0,2 ms (0,4 ms), Budget 2 ms.
+  - Eine geänderte Datei p95 1,0 ms (2,6 ms), Budget 15 ms.
 - **Grenzen:**
   - Gespeicherte Auswahl: 20 von 1.000 Tabs.
-  - 50.000 eingefrorene Zeilen behalten etwa 1,1 MB (Budget 8 MB).
+  - 50.000 eingefrorene Zeilen behalten nach `gc` 0,12 MB und 73 Objekte (Bun 1.3.10: 0 Byte, 88 Objekte). Budget 8 MB und 5.000 Objekte.
+  - 200 Optionsänderungen dauern 4 ms (13 ms) und schreiben `.status.json` einmal.
   - `Board` rendert 1.000 von 400.000 angebotenen Einträgen.
   - Im Leerlauf gibt es keine Backend-Aufrufe.
+- **Tabellen-Scroll ohne Plugins:** Gebaute App, 5.000 × 120 Zellen, 601 Frames, Chromium ohne Drosselung, Median aus 5 Läufen.
+  - Script je Frame 1,53 ms, vor dem Feature 1,56 ms.
+  - Solange jede Zelle die Plugin-Hooks hatte, lag die Script-Zeit im selben Lauf 4–6 % über dem Stand vor dem Feature. Der Wechsel auf `DataTablePluginCell` hat das behoben.
 
-Windows ist nicht getestet. Die Laufzeitmessungen mit gedrosselter CPU laufen in `.github/workflows/performance.yml`.
+Windows läuft nur in CI: `.github/workflows/performance.yml` führt `test:perf:core` samt `tests/perf-ui-plugins.test.ts` auf windows-2025 aus. Bedient wurde die App unter Windows nicht. Die Messungen mit gedrosselter CPU laufen ebenfalls nur dort.

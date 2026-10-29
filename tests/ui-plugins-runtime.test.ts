@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createElement, isValidElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { isPluginError } from "../packages/ui-plugin-api/src/errors";
@@ -57,7 +57,12 @@ const { evaluatePlugin } = await import("../packages/ui-plugin-api/src/evaluate"
 const { createPluginTimers } = await import("../src/lib/ui-plugins/timers");
 const { uiPluginStatuses } = await import("../src/lib/ui-plugins/status");
 const { pluginHttp } = await import("../src/lib/ui-plugins/http");
-const { templateMatches } = await import("../src/lib/ui-plugins/split-templates");
+const { openTemplate, templateMatches } = await import("../src/lib/ui-plugins/split-templates");
+const { publishPluginSelection, pluginSelection } = await import(
+  "../src/lib/ui-plugins/table-slots"
+);
+const { useConnectionsStore } = await import("../src/lib/connections");
+const { useMasterDetail } = await import("../src/lib/master-detail");
 const { downloadUiPlugin, loadUiPluginCatalog, catalogPluginFileName } = await import(
   "../src/lib/ui-plugins/catalog"
 );
@@ -173,6 +178,16 @@ describe("plugin host", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     const report = JSON.parse(support.get(".status.json") ?? "{}");
     expect(report.plugins[0]).toMatchObject({ file: "status.tsx", state: "stale" });
+  });
+
+  test("rewrites the status file when a plugin is switched off", async () => {
+    files.set("status.tsx", STATUS);
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("active");
+    useUiPluginSettings.setState({ disabled: ["test.status"] });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("disabled");
   });
 
   test("does not recompile unchanged files and disposes removed ones", async () => {
@@ -365,6 +380,34 @@ describe("registry", () => {
     expect(registry.cell?.({ ...props, value: 2 })).toEqual({ plugin: "b.two", node: "zwei" });
   });
 
+  test("later files win for tab items and fall back to earlier plugins", () => {
+    const tab = {
+      key: "t",
+      kind: "table" as const,
+      title: "orders",
+      connection: null,
+      table: null,
+    };
+    const Default = () => null;
+    const registry = buildRegistry({
+      ...base,
+      plugins: [
+        plugin("a.one", { tabs: { item: () => "eins" } }),
+        plugin("b.two", {
+          tabs: { item: ({ active }: { active: boolean }) => (active ? "zwei" : undefined) },
+        }),
+      ],
+    });
+    expect(registry.tabItem?.({ tab, active: false, Default })).toEqual({
+      plugin: "a.one",
+      node: "eins",
+    });
+    expect(registry.tabItem?.({ tab, active: true, Default })).toEqual({
+      plugin: "b.two",
+      node: "zwei",
+    });
+  });
+
   test("merges column patches and concatenates toolbar actions", () => {
     const run = () => undefined;
     const registry = buildRegistry({
@@ -473,6 +516,45 @@ describe("slot guard", () => {
     expect(calls).toBe(50);
   });
 
+  test("trips exactly when the p95 of the last 200 calls exceeds the budget", () => {
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const clock: number[] = [];
+    const now = spyOn(performance, "now").mockImplementation(() => clock.shift() ?? 0);
+    try {
+      for (let round = 0; round < 60; round++) {
+        const share = random() * 0.1;
+        const durations = Array.from({ length: 600 }, () => (random() < share ? 5 : 1));
+        let expected = -1;
+        for (let count = 50; count <= durations.length && expected < 0; count += 25) {
+          const window = durations.slice(Math.max(0, count - 200), count).sort((a, b) => a - b);
+          const p95 = window[Math.min(window.length - 1, Math.floor(window.length * 0.95))];
+          if (p95 > 4) expected = count;
+        }
+        const guard = new SlotGuard("a.p95", "grid.cell", {
+          error: () => undefined,
+          trip: () => undefined,
+        });
+        let tripped = -1;
+        for (const [index, duration] of durations.entries()) {
+          clock.push(0, duration);
+          guard.run(() => null, null);
+          if (guard.tripped) {
+            tripped = index + 1;
+            break;
+          }
+        }
+        clock.length = 0;
+        expect(tripped).toBe(expected);
+      }
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   test("trips after repeated errors and reports only the first", () => {
     const errors: string[] = [];
     const trips: string[] = [];
@@ -560,6 +642,16 @@ describe("grid integration", () => {
     });
   });
 
+  test("orders pinned columns by order, then by position", () => {
+    expect(
+      columnDefaults([
+        { id: "free", pinned: true },
+        { id: "due", pinned: true, order: 1 },
+        { id: "id", pinned: true, order: 0 },
+      ]).layout?.pinned,
+    ).toEqual(["id", "due", "free"]);
+  });
+
   test("hands frozen copies of rows to plugins", () => {
     const original = { __ctid__: "(0,1)", id: 1, status: "offen" };
     const seen: unknown[] = [];
@@ -608,6 +700,14 @@ describe("grid integration", () => {
     expect(() => value.sort()).toThrow();
     expect(() => payload.nested.push(3)).toThrow();
     expect(tags).toEqual(["b", "a"]);
+  });
+  test("returns only selected rows that are still loaded", () => {
+    const first = Object.freeze({ id: 1 });
+    const second = Object.freeze({ id: 2 });
+    publishPluginSelection("tab", [first]);
+    expect(pluginSelection("tab", [first, second])).toEqual([first]);
+    expect(pluginSelection("tab", [Object.freeze({ id: 1 }), second])).toEqual([]);
+    expect(pluginSelection(null, [first])).toEqual([]);
   });
 });
 
@@ -688,6 +788,41 @@ describe("split templates", () => {
     expect(templateMatches(template({ connectionName: "Prod*" }), connection("Staging", []))).toBe(
       false,
     );
+  });
+
+  test("keeps an edited relation script when the template opens again", () => {
+    useConnectionsStore.setState({
+      activeId: "c1",
+      connections: [
+        {
+          id: "c1",
+          name: "Prod",
+          kind: "postgres",
+          connectionString: "postgres://u@localhost/shop",
+          tags: [],
+        } as never,
+      ],
+    });
+    const entry = {
+      plugin: {} as never,
+      key: "p:t",
+      template: {
+        id: "t",
+        name: "Kunden",
+        panes: [
+          { table: "crm.customers" },
+          { table: "sales.orders", master: 0, link: { column: "customer_id", masterColumn: "id" } },
+        ],
+      },
+    };
+    openTemplate(entry);
+    const scripts = useMasterDetail.getState().scripts;
+    const key = Object.keys(scripts).find((name) => scripts[name].includes("customer_id"));
+    expect(key).toBeDefined();
+    const edited = "SELECT * FROM sales.orders WHERE customer_id = :master.id AND status = 'offen'";
+    useMasterDetail.getState().saveScript(key as string, edited);
+    openTemplate(entry);
+    expect(useMasterDetail.getState().scripts[key as string]).toBe(edited);
   });
 });
 
