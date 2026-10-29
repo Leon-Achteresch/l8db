@@ -1,4 +1,4 @@
-import { heapStats } from "bun:jsc";
+import { heapSize } from "bun:jsc";
 import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -100,12 +100,12 @@ test("50 targets × 1000 rows stay within the concurrency limit with bounded out
   }, 7);
 
   Bun.gc(true);
-  const before = heapStats().heapSize;
+  const before = heapSize();
   const retained = mergeResults(
     items.map((item, index) => ({ label: item.label, result: RESULTS[index] })),
   );
   Bun.gc(true);
-  const mergedHeapBytes = heapStats().heapSize - before;
+  const mergedHeapBytes = heapSize() - before;
   expect(retained.ok && retained.result.rows.length).toBe(TARGETS * ROWS);
 
   const runs = Object.fromEntries(last.runs);
