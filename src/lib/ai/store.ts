@@ -296,17 +296,20 @@ function lightSession(session: AiSession): AiSession {
   };
 }
 export function serializeAiData(data: AiData, budget = PERSIST_BUDGET): string {
-  const value = JSON.stringify(data);
-  if (value.length <= budget) return value;
   const sessions = [...data.sessions];
-  let total = value.length;
+  const sizes = sessions.map((session) => JSON.stringify(session).length);
+  let total =
+    JSON.stringify({ ...data, sessions: [] }).length +
+    sizes.reduce((sum, size) => sum + size, 0) +
+    Math.max(0, sizes.length - 1);
+  if (total <= budget) return JSON.stringify(data);
   const order = sessions
     .map((session, index) => ({ index, updatedAt: session.updatedAt }))
     .sort((a, b) => a.updatedAt - b.updatedAt);
   for (const { index } of order) {
     if (total <= budget) break;
     const light = lightSession(sessions[index]);
-    total += JSON.stringify(light).length - JSON.stringify(sessions[index]).length;
+    total += JSON.stringify(light).length - sizes[index];
     sessions[index] = light;
   }
   return JSON.stringify({ ...data, sessions });
