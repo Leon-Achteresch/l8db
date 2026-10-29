@@ -24,6 +24,7 @@ import { isPluginError } from "../packages/ui-plugin-api/src/errors";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
+if (!("registerProperty" in CSS)) document.documentElement.classList.add("tw-no-property");
 const disposeNativeGuards = installNativeGuards();
 if (import.meta.hot) import.meta.hot.dispose(disposeNativeGuards);
 const disposeAppearance = initAppearance();
