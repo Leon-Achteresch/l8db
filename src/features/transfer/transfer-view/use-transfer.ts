@@ -19,8 +19,8 @@ import {
   type TransferSchemaPair,
 } from "@/lib/db";
 import { databaseFromConnectionString, useActiveDatabase } from "@/lib/db-selection";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { defaultCompareTypes } from "@/lib/schema-compare/types";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { readTabState, tabStateKey, useTabState, writeTabState } from "@/lib/tab-state";
