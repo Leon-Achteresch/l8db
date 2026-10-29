@@ -295,14 +295,26 @@ function lightSession(session: AiSession): AiSession {
     })),
   };
 }
+function sessionSlot(data: AiData) {
+  const empty = JSON.stringify({ ...data, sessions: [] });
+  const probe = JSON.stringify({ ...data, sessions: [0] });
+  let at = 0;
+  while (empty[at] === probe[at]) at++;
+  return [empty.slice(0, at), empty.slice(at)];
+}
+
 export function serializeAiData(data: AiData, budget = PERSIST_BUDGET): string {
   const sessions = [...data.sessions];
-  const sizes = sessions.map((session) => JSON.stringify(session).length);
-  let total =
-    JSON.stringify({ ...data, sessions: [] }).length +
-    sizes.reduce((sum, size) => sum + size, 0) +
-    Math.max(0, sizes.length - 1);
-  if (total <= budget) return JSON.stringify(data);
+  const [start, end] = sessionSlot(data);
+  let total = start.length + end.length + Math.max(0, sessions.length - 1);
+  const parts: string[] = [];
+  const sizes = sessions.map((session) => {
+    const text = JSON.stringify(session);
+    total += text.length;
+    if (total <= budget) parts.push(text);
+    return text.length;
+  });
+  if (total <= budget) return start + parts.join(",") + end;
   const order = sessions
     .map((session, index) => ({ index, updatedAt: session.updatedAt }))
     .sort((a, b) => a.updatedAt - b.updatedAt);

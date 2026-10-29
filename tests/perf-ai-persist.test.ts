@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { type AiSession, serializeAiData } from "@/lib/ai/store";
-import { reportScenario } from "../scripts/performance-report";
+import { measureScenario, reportScenario } from "../scripts/performance-report";
 
 const output = "x".repeat(16_000);
 
-function session(index: number): AiSession {
+function session(index: number, text = output): AiSession {
   return {
     id: `s${index}`,
     title: `Chat ${index}`,
@@ -22,7 +22,7 @@ function session(index: number): AiSession {
         id: `t${tool}`,
         name: "l8db_ai_search",
         status: "success",
-        output,
+        output: text,
       })),
     })),
   };
@@ -59,5 +59,39 @@ test("AI persistence stays inside the storage budget for heavy tool histories", 
     storedChars: value.length,
     medianMs,
     p95Ms,
+  });
+});
+
+test("AI persistence serializes an in-budget history in one pass", async () => {
+  const data = {
+    profiles: [],
+    sessions: Array.from({ length: 12 }, (_, index) => session(index, "x".repeat(400))),
+    servers: [],
+  };
+  const stringify = JSON.stringify;
+  let serializedChars = 0;
+  JSON.stringify = ((value: unknown) => {
+    const text = stringify(value);
+    serializedChars += text.length;
+    return text;
+  }) as typeof JSON.stringify;
+  let value = "";
+  try {
+    value = serializeAiData(data);
+  } finally {
+    JSON.stringify = stringify;
+  }
+  const timing = await measureScenario(() => {
+    serializeAiData(data);
+  });
+  expect(value).toBe(stringify(data));
+  expect(value.length).toBeGreaterThan(1_500_000);
+  expect(value.length).toBeLessThanOrEqual(2_000_000);
+  expect(serializedChars).toBeLessThan(value.length * 1.01);
+  await reportScenario("ai-persist-in-budget", {
+    sessions: 12,
+    storedChars: value.length,
+    serializedChars,
+    ...timing,
   });
 });
