@@ -1,18 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
-import {
-  Activity,
-  lazy,
-  Suspense,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-} from "react";
+import { Activity, lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
+import { afterPaint } from "@/lib/after-paint";
 import { type DashboardDesign, DEFAULT_DASHBOARD_DESIGN } from "@/lib/dashboard-design";
 import {
   addPage,
@@ -136,8 +127,7 @@ export function DashboardEditor({
     [allTabs, dashboard.id],
   );
   const activeTabId = useChartTabsStore((s) => s.active[dashboard.id] ?? null);
-  const shownTabId = useDeferredValue(activeTabId);
-  const activeTab = chartTabs.find((t) => t.id === shownTabId) ?? null;
+  const activeTab = chartTabs.find((t) => t.id === activeTabId) ?? null;
 
   const variableValues = useVariableValuesStore((s) => s.values[dashboard.id]);
   const variables = dashboard.variables ?? [];
@@ -183,7 +173,11 @@ export function DashboardEditor({
       },
       widgetsOnPage(dashboard.widgets, pages, activePage),
     );
-    useChartTabsStore.getState().open({ dashboardId: dashboard.id, widget, dataset, isNew: true });
+    afterPaint(() =>
+      useChartTabsStore
+        .getState()
+        .open({ dashboardId: dashboard.id, widget, dataset, isNew: true }),
+    );
   }, [dashboard.datasets, dashboard.widgets, dashboard.id, dashboard.pages, pages, activePage]);
 
   const addBlock = (type: BlockKind) =>
