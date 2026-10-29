@@ -289,14 +289,14 @@ test("one request per question, cancellation stops it and idle bars send nothing
   expect(render.medianMs).toBeLessThan(40);
 });
 
-test("filter value inputs load the date picker only when a date value is edited", () => {
+test("date filter inputs load the date picker only when the calendar opens", () => {
   const imports = new Bun.Transpiler({ loader: "tsx" }).scanImports(
-    readFileSync(
-      resolve(import.meta.dir, "../src/features/filters/filter-value-input.tsx"),
-      "utf8",
-    ),
+    readFileSync(resolve(import.meta.dir, "../src/features/filters/date-filter-input.tsx"), "utf8"),
   );
-  expect(imports.find((entry) => entry.path === "./date-filter-input")?.kind).toBe(
+  expect(imports.find((entry) => entry.path === "./date-filter-panel")?.kind).toBe(
     "dynamic-import",
+  );
+  expect(imports.filter((entry) => /date-fns|react-day-picker|calendar/.test(entry.path))).toEqual(
+    [],
   );
 });
