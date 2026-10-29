@@ -1,12 +1,9 @@
 import { PlusIcon, XIcon } from "lucide-react";
-import { type ComponentProps, lazy, Suspense, useRef, useState } from "react";
+import { type ComponentProps, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { operatorNeedsList, parseFilterList } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
-
-const DateFilterInput = lazy(() =>
-  import("./date-filter-input").then((module) => ({ default: module.DateFilterInput })),
-);
+import { DateFilterInput } from "./date-filter-input";
 
 function splitPasted(text: string): string[] {
   return text
@@ -32,27 +29,26 @@ export function FilterValueInput({
 }: FilterValueInputProps) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const single = (
-    <Input
-      {...props}
-      value={value}
-      onChange={(event) => onValueChange(event.target.value)}
-      className={className}
-    />
-  );
   if (date && !operatorNeedsList(operator)) {
     return (
-      <Suspense fallback={single}>
-        <DateFilterInput
-          {...props}
-          value={value}
-          onValueChange={onValueChange}
-          className={className}
-        />
-      </Suspense>
+      <DateFilterInput
+        {...props}
+        value={value}
+        onValueChange={onValueChange}
+        className={className}
+      />
     );
   }
-  if (!operatorNeedsList(operator)) return single;
+  if (!operatorNeedsList(operator)) {
+    return (
+      <Input
+        {...props}
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+        className={className}
+      />
+    );
+  }
 
   const values = [...new Set(parseFilterList(value))];
   const addValue = () => {
