@@ -285,6 +285,7 @@ export function CommandPalette({
     }
   };
 
+  const hasItems = items.length > 0;
   useLayoutEffect(() => {
     const list = listRef.current;
     const frame = listFrameRef.current;
@@ -292,7 +293,7 @@ export function CommandPalette({
     let measured = false;
     const observer = new ResizeObserver(([entry]) => {
       const height = Math.round(entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height);
-      if (measured && !reduce) {
+      if (measured && hasItems && !reduce) {
         listHeight.set(height);
         return;
       }
@@ -302,7 +303,7 @@ export function CommandPalette({
     });
     observer.observe(list);
     return () => observer.disconnect();
-  }, [mounted, open, reduce, listHeight]);
+  }, [mounted, open, reduce, listHeight, hasItems]);
 
   useEffect(() => {
     if (!open) {
