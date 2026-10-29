@@ -1,6 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+  Activity,
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import { type DashboardDesign, DEFAULT_DASHBOARD_DESIGN } from "@/lib/dashboard-design";
@@ -126,7 +136,8 @@ export function DashboardEditor({
     [allTabs, dashboard.id],
   );
   const activeTabId = useChartTabsStore((s) => s.active[dashboard.id] ?? null);
-  const activeTab = chartTabs.find((t) => t.id === activeTabId) ?? null;
+  const shownTabId = useDeferredValue(activeTabId);
+  const activeTab = chartTabs.find((t) => t.id === shownTabId) ?? null;
 
   const variableValues = useVariableValuesStore((s) => s.values[dashboard.id]);
   const variables = dashboard.variables ?? [];
@@ -412,7 +423,7 @@ export function DashboardEditor({
                   startEdit(id);
                 }}
               />
-              {activeTab ? (
+              {activeTab && (
                 <Suspense fallback={null}>
                   <ChartStudio
                     key={activeTab.id}
@@ -431,7 +442,8 @@ export function DashboardEditor({
                     onClose={() => useChartTabsStore.getState().close(activeTab.id)}
                   />
                 </Suspense>
-              ) : (
+              )}
+              <Activity mode={activeTab ? "hidden" : "visible"}>
                 <div className="flex min-h-0 flex-1">
                   {sidebarNav && pageNav}
                   <DashboardCanvas
@@ -443,7 +455,7 @@ export function DashboardEditor({
                     onOpenCharts={editing ? openCharts : undefined}
                   />
                 </div>
-              )}
+              </Activity>
             </div>
             {designDraft && !presentation.presenting && (
               <Suspense fallback={null}>
