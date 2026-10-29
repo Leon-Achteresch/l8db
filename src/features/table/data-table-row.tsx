@@ -7,12 +7,21 @@ import type {
   Table,
   VisibilityState,
 } from "@tanstack/react-table";
-import { type CSSProperties, type Dispatch, memo, type SetStateAction, useCallback } from "react";
+import {
+  type CSSProperties,
+  type Dispatch,
+  memo,
+  type SetStateAction,
+  useCallback,
+  useContext,
+} from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
+import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { DataTableCell } from "./data-table-cell";
+import { DataTablePluginCell } from "./data-table-plugin-cell";
 import type {
   DataTableProps,
   EditingCell,
@@ -104,6 +113,8 @@ export const DataTableRow = memo(function DataTableRow({
     (element: HTMLTableRowElement | null) => measureElement(element, dynamicHeight),
     [measureElement, dynamicHeight],
   );
+  const pluginGrid = useContext(UiPluginGridContext);
+  const Cell = pluginGrid?.cell || pluginGrid?.align ? DataTablePluginCell : DataTableCell;
   const ruleBackground =
     ruleColor && !isMarked && !isRowEditing
       ? `color-mix(in oklab, ${ruleColor} 18%, var(--background))`
@@ -155,7 +166,7 @@ export const DataTableRow = memo(function DataTableRow({
           activeMatch?.rowIndex === rowIndex && activeMatch.columnId === columnId;
 
         return (
-          <DataTableCell
+          <Cell
             key={columnId}
             row={row}
             isMarked={isMarked}

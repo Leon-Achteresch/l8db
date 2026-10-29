@@ -42,6 +42,7 @@ const TOOLS = `import { Board, definePlugin, Text } from "@l8db/ui";
 export default definePlugin({
   id: "test.tools",
   name: "Werkzeuge",
+  options: { limit: { type: "number", label: "Limit", min: 10, max: 500, default: 100 } },
   slots: {
     table: {
       toolbar: (table) =>
@@ -155,6 +156,23 @@ export default definePlugin({
 });
 `;
 
+const HOOKS = `import { definePlugin } from "@l8db/ui";
+import { useState } from "react";
+
+export default definePlugin({
+  id: "test.hooks",
+  name: "Hooks",
+  slots: {
+    grid: {
+      rowTone: (row) => {
+        const [tone] = useState("info");
+        return row.status === "offen" ? tone : undefined;
+      },
+    },
+  },
+});
+`;
+
 const GALLERY = `import { definePlugin, Text } from "@l8db/ui";
 
 export default definePlugin({
@@ -200,6 +218,7 @@ test.skipIf(!process.env.L8DB_UI_PLUGINS_BROWSER)(
           "c-tabs.tsx": TABS,
           "d-split.tsx": SPLIT,
           "e-boom.jsx": BOOM,
+          "f-hooks.tsx": HOOKS,
         },
         {
           tabs: [
@@ -234,6 +253,21 @@ test.skipIf(!process.env.L8DB_UI_PLUGINS_BROWSER)(
       const cancelled = page.locator("tbody tr").filter({ hasText: "storniert" }).first();
       expect(await cancelled.getAttribute("style")).toContain("#ef4444");
 
+      const status = async () =>
+        JSON.parse(
+          (await page.evaluate(
+            () => (window as unknown as Demo).__uiPluginDemo.written[".status.json"],
+          )) ?? '{"plugins":[]}',
+        ).plugins as { file: string; id?: string; state: string }[];
+      await page.waitForFunction(() =>
+        (window as unknown as Demo).__uiPluginDemo.written[".status.json"]?.includes(
+          "useState ist direkt in Slot-Funktionen nicht erlaubt",
+        ),
+      );
+      expect((await status()).find((plugin) => plugin.file === "f-hooks.tsx")?.state).toBe(
+        "active",
+      );
+
       const boom = page.locator('[data-ui-plugin="test.boom"]');
       await boom.locator("b").first().waitFor();
       await page.locator("tbody td").filter({ hasText: "Nordlicht Media" }).first().waitFor();
@@ -241,6 +275,11 @@ test.skipIf(!process.env.L8DB_UI_PLUGINS_BROWSER)(
       await page.locator("[data-tab-group]").filter({ hasText: "sales" }).waitFor();
       await page.locator("[data-tab-group]").filter({ hasText: "crm" }).waitFor();
       expect(await page.locator('[data-ui-plugin="test.tabs"]').getByText("PROD").count()).toBe(3);
+      expect(
+        await page
+          .locator('[data-tab-key="table:sales.orders"] [data-ui-plugin="test.tabs"]')
+          .textContent(),
+      ).toContain("orders");
       expect(
         await page
           .getByRole("button", { name: "orders schließen" })
@@ -316,6 +355,19 @@ test.skipIf(!process.env.L8DB_UI_PLUGINS_BROWSER)(
       await page.waitForFunction(() => document.querySelectorAll("[data-tab-group]").length === 0);
       expect(await page.locator('[data-ui-plugin="test.tabs"]').count()).toBe(0);
 
+      const limit = section.getByRole("article", { name: "Werkzeuge" }).getByLabel("Limit");
+      await limit.fill("");
+      await limit.pressSequentially("45");
+      await limit.blur();
+      expect(await limit.inputValue()).toBe("45");
+      expect(
+        await page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("l8db.ui-plugins") ?? "{}").state.options["test.tools"]
+              .limit,
+        ),
+      ).toBe(45);
+
       const card = section.getByRole("article", { name: "Galerie-Test" });
       await card.getByRole("button", { name: "Installieren" }).click();
       await card.getByRole("button", { name: "Installiert" }).waitFor();
@@ -332,13 +384,11 @@ test.skipIf(!process.env.L8DB_UI_PLUGINS_BROWSER)(
           '"test.gallery"',
         ),
       );
-      expect(
-        JSON.parse(
-          await page.evaluate(
-            () => (window as unknown as Demo).__uiPluginDemo.written[".status.json"],
-          ),
-        ).plugins.find((plugin: { id: string }) => plugin.id === "test.gallery").state,
-      ).toBe("active");
+      expect((await status()).find((plugin) => plugin.id === "test.gallery")?.state).toBe("active");
+      await page.evaluate(() =>
+        (window as unknown as Demo).__uiPluginDemo.setPlugin("test.gallery.tsx", null),
+      );
+      await card.getByRole("button", { name: "Installieren" }).waitFor();
 
       expect(errors).toEqual([]);
       expect(await page.evaluate(() => (window as unknown as Demo).uiPluginViolations)).toEqual([]);
