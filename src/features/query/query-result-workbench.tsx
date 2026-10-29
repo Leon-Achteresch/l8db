@@ -40,6 +40,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { CreateViewDialog, isViewableSelect } from "@/features/query/create-view-dialog";
 import { ResultTitle } from "@/features/query/query-view/result-title";
+import { afterPaint } from "@/lib/after-paint";
 import { copyText } from "@/lib/clipboard";
 import { useConnectionsStore } from "@/lib/connections/store";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
@@ -226,7 +227,7 @@ export function QueryResultWorkbench({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <IconMenu>
+          <IconMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button size="icon" className="size-7" variant="ghost" aria-label="Ergebnisoptionen">
                 <MoreHorizontal className="size-4" />
@@ -236,9 +237,11 @@ export function QueryResultWorkbench({
               <DropdownMenuRadioGroup
                 value={chartView ? "chart" : workspace.resultView}
                 onValueChange={(value) =>
-                  value === "chart" && chart
-                    ? chart.onChange({ ...chart.state, view: "chart" })
-                    : showGrid(value as "table" | "json")
+                  afterPaint(() =>
+                    value === "chart" && chart
+                      ? chart.onChange({ ...chart.state, view: "chart" })
+                      : showGrid(value as "table" | "json"),
+                  )
                 }
               >
                 <IconMenuRadioItem icon={<TableIcon />} label="Tabelle" value="table" />
