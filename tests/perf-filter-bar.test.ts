@@ -86,12 +86,17 @@ function measure(run: () => void, runs = 40) {
   return percentiles(durations);
 }
 
-function retainedBytes(run: () => void): number {
+async function settledHeap() {
   Bun.gc(true);
-  const before = process.memoryUsage().heapUsed;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  Bun.gc(true);
+  return process.memoryUsage().heapUsed;
+}
+
+async function retainedBytes(run: () => void): Promise<number> {
+  const before = await settledHeap();
   run();
-  Bun.gc(true);
-  return process.memoryUsage().heapUsed - before;
+  return (await settledHeap()) - before;
 }
 
 const conditions: FilterCondition[] = Array.from({ length: 25 }, (_, index) => ({
@@ -174,10 +179,10 @@ test("AI prompt and response handling are bounded for huge schemas and answers",
   const changes = measure(() => {
     filterAiChanges(context(), proposal);
   });
-  retainedBytes(() => {
+  await retainedBytes(() => {
     for (let index = 0; index < 50; index++) parseFilterAiResponse(answer, context());
   });
-  const retained = retainedBytes(() => {
+  const retained = await retainedBytes(() => {
     for (let index = 0; index < 50; index++) parseFilterAiResponse(answer, context());
   });
   await reportScenario("filter-bar-ai-bounds", {
