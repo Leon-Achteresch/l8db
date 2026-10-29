@@ -1,4 +1,5 @@
 import { withoutHooks } from "../../../packages/ui-plugin-api/src/modules";
+import { errorMessage } from "./store";
 
 export type SlotName =
   | "grid.columns"
@@ -30,11 +31,6 @@ export type GuardEvents = {
   error(plugin: string, slot: SlotName, message: string): void;
   trip(plugin: string, slot: SlotName, reason: string): void;
 };
-
-export function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message || error.name;
-  return String(error);
-}
 
 export class SlotGuard {
   private readonly samples = new Float64Array(WINDOW);

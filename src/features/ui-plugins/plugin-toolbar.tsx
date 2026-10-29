@@ -5,11 +5,10 @@ import type { DetailedColumnInfo } from "@/lib/db";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { useTableTabs } from "@/lib/table-tabs";
 import type { Row, TableInfo } from "@/lib/ui-plugins/api";
-import { errorMessage } from "@/lib/ui-plugins/guard";
 import { columnInfos } from "@/lib/ui-plugins/info";
 import type { ToolbarEntry } from "@/lib/ui-plugins/registry";
 import { freezeRows } from "@/lib/ui-plugins/rows";
-import { reportUiPluginError } from "@/lib/ui-plugins/store";
+import { errorMessage, reportUiPluginError } from "@/lib/ui-plugins/store";
 import {
   pluginCopy,
   pluginSelection,
