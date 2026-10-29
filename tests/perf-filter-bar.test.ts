@@ -1,4 +1,6 @@
 import { expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { reportScenario } from "../scripts/performance-report";
@@ -289,4 +291,16 @@ test("one request per question, cancellation stops it and idle bars send nothing
   expect(tokens.chip.length + tokens.pill.length).toBeLessThan(120_000);
   expect(bars.medianMs).toBeLessThan(20);
   expect(render.medianMs).toBeLessThan(40);
+});
+
+test("filter value inputs load the date picker only when a date value is edited", () => {
+  const imports = new Bun.Transpiler({ loader: "tsx" }).scanImports(
+    readFileSync(
+      resolve(import.meta.dir, "../src/features/filters/filter-value-input.tsx"),
+      "utf8",
+    ),
+  );
+  expect(imports.find((entry) => entry.path === "./date-filter-input")?.kind).toBe(
+    "dynamic-import",
+  );
 });
