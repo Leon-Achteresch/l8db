@@ -1,3 +1,4 @@
+import { heapSize } from "bun:jsc";
 import { afterAll, beforeEach, expect, mock, setSystemTime, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -54,7 +55,7 @@ const feed = (count: number) => ({
 
 function heap() {
   Bun.gc(true);
-  return process.memoryUsage().heapUsed;
+  return heapSize();
 }
 
 beforeEach(() => {

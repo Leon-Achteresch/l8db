@@ -11,6 +11,7 @@ import {
   persistImportedSecrets,
   resolveExternalImport,
 } from "../src/lib/connection-import";
+import { decryptNavicatPasswords } from "../src/lib/connection-import/crypto";
 import { parseXml } from "../src/lib/connection-import/xml";
 import type { SavedConnection } from "../src/lib/connections";
 import { fixtureEndpoints } from "./fixtures/endpoint-fixtures";
@@ -440,6 +441,16 @@ test("decrypts Navicat 12 passwords with self-generated vectors", async () => {
   expect(await decryptNavicatPassword("F7CD9A953A6DFF06206844")).toBeNull();
   expect(await decryptNavicatPassword("zz")).toBeNull();
   expect(await decryptNavicatPassword("")).toBeNull();
+  expect(
+    await decryptNavicatPasswords([
+      "ADA9737C507CA947503CEDA494B02B42",
+      "F7CD9A953A6DFF06206844",
+      "00FF99DD211D0C515ECB698A20709847",
+      "00FF99DD211D0C515ECB698A20709848",
+      "272cabc0647049b3f51e87ed530aa0d9",
+      "00FF99DD211D0C515ECB698A20709847",
+    ]),
+  ).toEqual(["ümlaut€", null, "s3cr3t!Pass", null, "ssh-Key-Phrase", "s3cr3t!Pass"]);
 });
 
 test("maps Navicat connections with SSH, legacy fallback and unsupported types", async () => {
