@@ -1,3 +1,4 @@
+import { heapSize } from "bun:jsc";
 import { expect, test } from "bun:test";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 import {
@@ -189,10 +190,10 @@ test("substituting 5000 statements stays within budget without retained state", 
   };
   const timing = await measureScenario(runOnce);
   Bun.gc(true);
-  const before = process.memoryUsage().heapUsed;
+  const before = heapSize();
   for (let run = 0; run < 5; run++) runOnce();
   Bun.gc(true);
-  const retainedBytes = process.memoryUsage().heapUsed - before;
+  const retainedBytes = heapSize() - before;
   await reportScenario("query-oracle-script-substitution", {
     statements: texts.length,
     timing,

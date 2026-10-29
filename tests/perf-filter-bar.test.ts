@@ -1,3 +1,4 @@
+import { heapSize } from "bun:jsc";
 import { expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -90,10 +91,10 @@ function measure(run: () => void, runs = 40) {
 
 function retainedBytes(run: () => void): number {
   Bun.gc(true);
-  const before = process.memoryUsage().heapUsed;
+  const before = heapSize();
   run();
   Bun.gc(true);
-  return process.memoryUsage().heapUsed - before;
+  return heapSize() - before;
 }
 
 const conditions: FilterCondition[] = Array.from({ length: 25 }, (_, index) => ({
