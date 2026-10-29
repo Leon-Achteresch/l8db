@@ -9,8 +9,8 @@ import type { SavedConnection } from "@/lib/connections";
 import { listDatabases } from "@/lib/db/catalog";
 import { useConnectionEnvironment } from "@/lib/environments";
 import { type MultiTarget, multiTarget } from "@/lib/multi-target";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { useCapabilities } from "@/lib/providers";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 
