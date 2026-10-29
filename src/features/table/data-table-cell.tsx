@@ -4,8 +4,7 @@ import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
-import type { ColumnPatch } from "@/lib/ui-plugins/api";
-import type { PluginNode } from "@/lib/ui-plugins/registry";
+import type { PluginCellState } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
 import { PluginCell } from "../ui-plugins/plugin-cell";
@@ -50,11 +49,7 @@ export type DataTableCellProps = Pick<
   isMatch: boolean;
   isActiveMatch: boolean;
   hasOutgoingFk: boolean;
-  plugin?: {
-    output: PluginNode | undefined;
-    align: ColumnPatch["align"];
-    resetKey: unknown;
-  };
+  plugin?: PluginCellState;
 };
 
 export const DataTableCell = memo(function DataTableCell({

@@ -31,7 +31,13 @@ export function asDate(value: unknown): Date | null {
       : typeof value === "number"
         ? new Date(value)
         : typeof value === "string"
-          ? new Date(/^\d{4}-\d{2}-\d{2} \d/.test(value) ? value.replace(" ", "T") : value)
+          ? new Date(
+              /^\d{4}-\d{2}-\d{2}$/.test(value)
+                ? `${value}T00:00`
+                : /^\d{4}-\d{2}-\d{2} \d/.test(value)
+                  ? value.replace(" ", "T")
+                  : value,
+            )
           : null;
   return date && !Number.isNaN(date.getTime()) ? date : null;
 }

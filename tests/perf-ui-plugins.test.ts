@@ -1,5 +1,6 @@
 import { heapStats } from "bun:jsc";
 import { expect, mock, test } from "bun:test";
+import { dirname, relative, resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
@@ -323,4 +324,44 @@ test("plugin state stays bounded and the host stays idle", async () => {
   expect(idleCalls).toBe(0);
   expect(statusWrites).toBe(1);
   expect(optionMs).toBeLessThan(500);
+});
+
+test("the data grid imports neither the plugin host nor the extension host", async () => {
+  const root = resolve(import.meta.dir, "..");
+  const classic = { compilerOptions: { jsx: "react" as const } };
+  const transpilers = {
+    ts: new Bun.Transpiler({ loader: "ts" }),
+    tsx: new Bun.Transpiler({ loader: "tsx", tsconfig: classic }),
+    js: new Bun.Transpiler({ loader: "jsx", tsconfig: classic }),
+  };
+  const reached = new Set<string>();
+  const visit = async (file: string) => {
+    if (reached.has(file)) return;
+    reached.add(file);
+    const extension = file.match(/\.[cm]?([jt]sx?)$/)?.[1];
+    if (!extension) return;
+    const transpiler =
+      extension === "ts" ? transpilers.ts : extension === "tsx" ? transpilers.tsx : transpilers.js;
+    for (const entry of transpiler.scanImports(await Bun.file(file).text())) {
+      if (entry.kind === "require-call" || entry.path.includes("?") || entry.path === "@/router")
+        continue;
+      const target = entry.path.startsWith("@/")
+        ? resolve(root, "src", entry.path.slice(2))
+        : entry.path.startsWith(".")
+          ? resolve(dirname(file), entry.path)
+          : null;
+      if (target) await visit(Bun.resolveSync(target, root));
+    }
+  };
+  const started = performance.now();
+  await visit(resolve(root, "src/features/table/data-table.tsx"));
+  const modules = [...reached].map((file) => relative(root, file).replaceAll("\\", "/"));
+  await reportScenario("ui-plugins-grid-imports", {
+    modules: modules.length,
+    scanMs: performance.now() - started,
+  });
+  expect(modules).toContain("src/lib/ui-plugins/grid.ts");
+  expect(modules).not.toContain("src/lib/ui-plugins/host.ts");
+  expect(modules).not.toContain("src/lib/extensions/host.ts");
+  expect(modules.some((file) => file.startsWith("src/features/settings/"))).toBe(false);
 });
