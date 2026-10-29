@@ -122,6 +122,13 @@
         "@l8db/extension-api": "^1.0.0",
       },
     },
+    "packages/ui-plugin-api": {
+      "name": "@l8db/ui-plugin-api",
+      "version": "1.0.0",
+      "dependencies": {
+        "sucrase": "^3.35.0",
+      },
+    },
   },
   "patchedDependencies": {
     "sonner@2.0.8": "patches/sonner@2.0.8.patch",
@@ -297,6 +304,8 @@
     "@l8db/extension-api": ["@l8db/extension-api@workspace:packages/extension-api"],
 
     "@l8db/extension-sdk": ["@l8db/extension-sdk@workspace:packages/extension-sdk"],
+
+    "@l8db/ui-plugin-api": ["@l8db/ui-plugin-api@workspace:packages/ui-plugin-api"],
 
     "@lezer/common": ["@lezer/common@1.5.3", "", {}, "sha512-H0iErY4e43LpXbYDyBci5W4v/RwTgGV3YzYOlJPiGZ8RY8w51kVE+xLn1tg3Z6UmSfyETvtsUK3r7YsgDQEI7Q=="],
 

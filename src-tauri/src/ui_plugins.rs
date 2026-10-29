@@ -57,7 +57,10 @@ fn is_plugin_name(name: &str) -> bool {
     let valid_chars = name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
-    let first = name.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+    let first = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric());
     let extension = [".tsx", ".ts", ".jsx", ".js"]
         .iter()
         .any(|ext| name.ends_with(ext));
@@ -94,7 +97,13 @@ fn scan(dir: &Path) -> Result<PluginScan, String> {
     let mut entries = fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .filter_map(Result::ok)
-        .filter_map(|entry| entry.file_name().into_string().ok().map(|name| (name, entry)))
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .into_string()
+                .ok()
+                .map(|name| (name, entry))
+        })
         .collect::<Vec<_>>();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     let mut files = Vec::new();
