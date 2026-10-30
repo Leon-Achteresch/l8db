@@ -1,5 +1,5 @@
 import { SearchIcon, SquareTerminal, TerminalIcon } from "lucide-react";
-import { useDeferredValue, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,6 @@ export function LogsTab({
   const [historyPage, setHistoryPage] = useState(0);
   const [outputPage, setOutputPage] = useState(0);
   const historyListRef = useRef<HTMLDivElement>(null);
-  const rowsReady = useDeferredValue(m.tab === "logs");
   const outputListRef = useRef<HTMLDivElement>(null);
   const {
     capabilities,
@@ -141,29 +140,25 @@ export function LogsTab({
                 </p>
               ) : (
                 <ul className="divide-y divide-border/60">
-                  {rowsReady &&
-                    visibleOutput.map((entry: ServerOutputEntry) => (
-                      <li
-                        key={entry.id}
-                        className="flex items-start gap-2 px-4 py-2.5 text-xs [contain-intrinsic-size:auto_16px] [content-visibility:auto]"
+                  {visibleOutput.map((entry: ServerOutputEntry) => (
+                    <li key={entry.id} className="flex items-start gap-2 px-4 py-2.5 text-xs">
+                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                        {formatTime(entry.at)}
+                      </span>
+                      <Badge
+                        variant={levelVariant(entry.level)}
+                        className="shrink-0 px-1.5 py-0 text-[10px]"
                       >
-                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                          {formatTime(entry.at)}
-                        </span>
-                        <Badge
-                          variant={levelVariant(entry.level)}
-                          className="shrink-0 px-1.5 py-0 text-[10px]"
-                        >
-                          {entry.level}
-                        </Badge>
-                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-                          {entry.message}
-                          {entry.detail && (
-                            <span className="mt-1 block text-muted-foreground">{entry.detail}</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
+                        {entry.level}
+                      </Badge>
+                      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                        {entry.message}
+                        {entry.detail && (
+                          <span className="mt-1 block text-muted-foreground">{entry.detail}</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -253,63 +248,59 @@ export function LogsTab({
               </p>
             ) : (
               <div ref={historyListRef} className="divide-y divide-border/60">
-                {rowsReady &&
-                  visibleHistory.map((entry) => {
-                    const expanded = expandedHistoryId === entry.id;
-                    return (
-                      <div
-                        key={entry.id}
-                        className="text-xs [contain-intrinsic-size:auto_40px] [content-visibility:auto]"
+                {visibleHistory.map((entry) => {
+                  const expanded = expandedHistoryId === entry.id;
+                  return (
+                    <div key={entry.id} className="text-xs">
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/35"
+                        onClick={() => setExpandedHistoryId(expanded ? null : entry.id)}
+                        aria-expanded={expanded}
                       >
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/35"
-                          onClick={() => setExpandedHistoryId(expanded ? null : entry.id)}
-                          aria-expanded={expanded}
+                        <span className="w-16 shrink-0 font-mono text-[10px] text-muted-foreground">
+                          {formatTime(entry.ranAt)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate font-mono" title={entry.sql}>
+                          {firstLine(entry.sql)}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                          {formatMs(entry.durationMs)}
+                        </span>
+                        <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
+                          {entry.rowCount == null ? "—" : `${formatCount(entry.rowCount)} Zeilen`}
+                        </span>
+                        <Badge
+                          variant={entry.error ? "destructive" : "secondary"}
+                          className="shrink-0 px-1.5 py-0 text-[10px]"
                         >
-                          <span className="w-16 shrink-0 font-mono text-[10px] text-muted-foreground">
-                            {formatTime(entry.ranAt)}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-mono" title={entry.sql}>
-                            {firstLine(entry.sql)}
-                          </span>
-                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-                            {formatMs(entry.durationMs)}
-                          </span>
-                          <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
-                            {entry.rowCount == null ? "—" : `${formatCount(entry.rowCount)} Zeilen`}
-                          </span>
-                          <Badge
-                            variant={entry.error ? "destructive" : "secondary"}
-                            className="shrink-0 px-1.5 py-0 text-[10px]"
-                          >
-                            {entry.error ? "Fehler" : "OK"}
-                          </Badge>
-                        </button>
-                        {expanded && (
-                          <div className="space-y-2 border-t bg-muted/20 px-4 py-3">
-                            <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-background p-3 font-mono text-[11px] leading-relaxed">
-                              {entry.sql}
-                            </pre>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
-                              <span>{formatDateTime(entry.ranAt)}</span>
-                              <span>Laufzeit {formatMs(entry.durationMs)}</span>
-                              <span>
-                                {entry.rowCount == null
-                                  ? "Keine Zeilenangabe"
-                                  : `${formatCount(entry.rowCount)} Zeilen`}
-                              </span>
-                            </div>
-                            {entry.error && (
-                              <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-[11px] text-destructive">
-                                {entry.error}
-                              </p>
-                            )}
+                          {entry.error ? "Fehler" : "OK"}
+                        </Badge>
+                      </button>
+                      {expanded && (
+                        <div className="space-y-2 border-t bg-muted/20 px-4 py-3">
+                          <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-background p-3 font-mono text-[11px] leading-relaxed">
+                            {entry.sql}
+                          </pre>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+                            <span>{formatDateTime(entry.ranAt)}</span>
+                            <span>Laufzeit {formatMs(entry.durationMs)}</span>
+                            <span>
+                              {entry.rowCount == null
+                                ? "Keine Zeilenangabe"
+                                : `${formatCount(entry.rowCount)} Zeilen`}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {entry.error && (
+                            <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-[11px] text-destructive">
+                              {entry.error}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             <LogPagination

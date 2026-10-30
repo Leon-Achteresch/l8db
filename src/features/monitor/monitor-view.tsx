@@ -12,7 +12,7 @@ import {
   ScrollTextIcon,
   UsersIcon,
 } from "lucide-react";
-import { startTransition } from "react";
+import { startTransition, useDeferredValue } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,7 +54,8 @@ export function MonitorView() {
   const live = useLiveMonitor();
   const { ref: liveTabRef, isNew: liveTabIsNew } =
     useNewFeatureVisibility<HTMLButtonElement>("monitor.live");
-  const { connection, tab, setTab, scopedServerOutput } = m;
+  const { connection, setTab, scopedServerOutput } = m;
+  const tab = useDeferredValue(m.tab);
 
   if (!connection) {
     return (
