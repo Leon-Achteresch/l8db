@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { isMainWindow } from "@/lib/connections";
 import {
   scanUiPlugins,
@@ -11,11 +12,14 @@ import agentsGuide from "../../../packages/ui-plugin-api/folder-agents.md?raw";
 import sdkTypes from "../../../packages/ui-plugin-api/l8db-ui.d.ts?raw";
 import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
-import { errorMessage } from "./guard";
+import type { SlotName } from "./guard";
+import { buildRegistry, slotKey } from "./registry";
+import { useUiPluginSettings } from "./settings";
 import { uiPluginStatusReport } from "./status";
 import {
+  deferUiPluginUpdate,
+  errorMessage,
   type LoadedUiPlugin,
-  refreshUiPluginRegistry,
   reportUiPluginRuntimeError,
   resetUiPluginFaults,
   type UiPluginError,
@@ -23,6 +27,67 @@ import {
 } from "./store";
 import { startTabPolicy } from "./tabs-policy";
 import { createPluginTimers } from "./timers";
+
+function recordSlotError(key: string, message: string) {
+  deferUiPluginUpdate(() =>
+    useUiPluginRuntime.setState((state) =>
+      state.slotErrors[key] === message
+        ? state
+        : { slotErrors: { ...state.slotErrors, [key]: message } },
+    ),
+  );
+}
+
+const events = {
+  error(plugin: string, slot: SlotName, message: string) {
+    recordSlotError(slotKey(plugin, slot), message);
+  },
+  trip(plugin: string, slot: SlotName, reason: string) {
+    deferUiPluginUpdate(() => {
+      useUiPluginRuntime.setState((state) => ({
+        tripped: { ...state.tripped, [slotKey(plugin, slot)]: reason },
+      }));
+      refreshUiPluginRegistry();
+      toast.warning(`UI-Plugin ${plugin}: ${slot} wurde abgeschaltet`, { description: reason });
+    });
+  },
+  slotsError(plugin: string, message: string) {
+    recordSlotError(`${plugin}:slots`, message);
+  },
+};
+
+export function refreshUiPluginRegistry() {
+  const state = useUiPluginRuntime.getState();
+  const settings = useUiPluginSettings.getState();
+  const plugins = Object.values(state.loaded).sort((a, b) => (a.file < b.file ? -1 : 1));
+  useUiPluginRuntime.setState({
+    registry: buildRegistry({
+      plugins,
+      disabled: settings.disabled,
+      options: settings.options,
+      grants: settings.httpGrants,
+      tripped: state.tripped,
+      events,
+    }),
+  });
+}
+
+useUiPluginSettings.subscribe((state, previous) => {
+  if (
+    state.disabled === previous.disabled &&
+    state.options === previous.options &&
+    state.httpGrants === previous.httpGrants
+  )
+    return;
+  for (const id of previous.disabled) if (!state.disabled.includes(id)) resetUiPluginFaults(id);
+  let reload = false;
+  for (const plugin of Object.values(useUiPluginRuntime.getState().loaded)) {
+    if (state.disabled.includes(plugin.definition.id)) plugin.timers.dispose();
+    else if (plugin.timers.disposed) reload = true;
+  }
+  refreshUiPluginRegistry();
+  if (reload) void reloadUiPlugins();
+});
 
 type Compiler = typeof import("../../../packages/ui-plugin-api/src/compile");
 
@@ -90,8 +155,10 @@ export function applyUiPluginFiles(
   files: readonly UiPluginFile[],
 ): { loaded: Record<string, LoadedUiPlugin>; errors: Record<string, UiPluginError> } {
   const state = useUiPluginRuntime.getState();
+  const { disabled } = useUiPluginSettings.getState();
   const loaded = { ...state.loaded };
   const errors: Record<string, UiPluginError> = {};
+  const fresh = new Set<string>();
   const present = new Set(files.map((file) => file.name));
   for (const name of Object.keys(loaded)) {
     if (present.has(name)) continue;
@@ -100,7 +167,12 @@ export function applyUiPluginFiles(
   }
   for (const file of files) {
     const hash = hashSource(file.source);
-    if (loaded[file.name]?.hash === hash) continue;
+    const current = loaded[file.name];
+    if (
+      current?.hash === hash &&
+      !(current.timers.disposed && !disabled.includes(current.definition.id))
+    )
+      continue;
     const previous = state.errors[file.name];
     if (previous?.hash === hash) {
       errors[file.name] = previous;
@@ -115,7 +187,8 @@ export function applyUiPluginFiles(
     const replaced = loaded[file.name];
     replaced?.timers.dispose();
     loaded[file.name] = result.plugin;
-    resetUiPluginFaults(result.plugin.definition.id);
+    fresh.add(file.name);
+    if (disabled.includes(result.plugin.definition.id)) result.plugin.timers.dispose();
     if (replaced && replaced.definition.id !== result.plugin.definition.id)
       resetUiPluginFaults(replaced.definition.id);
   }
@@ -131,6 +204,7 @@ export function applyUiPluginFiles(
     errors[name] = { message: `id "${id}" wird schon in ${owner} verwendet.`, hash: "" };
     delete loaded[name];
   }
+  for (const name of fresh) if (loaded[name]) resetUiPluginFaults(loaded[name].definition.id);
   return { loaded, errors };
 }
 
@@ -227,6 +301,7 @@ export async function startUiPluginHost(sdkModules: Readonly<Record<string, unkn
     )
       scheduleStatus();
   });
+  useUiPluginSettings.subscribe(() => scheduleStatus());
   await listen(UI_PLUGINS_CHANGED_EVENT, () => void reloadUiPlugins()).catch(() => undefined);
   await reloadUiPlugins();
   void watchUiPlugins().catch((error) =>

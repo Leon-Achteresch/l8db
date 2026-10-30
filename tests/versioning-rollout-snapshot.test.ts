@@ -6,11 +6,11 @@ const started: { url: string; database: string; label?: string }[] = [];
 let failure: string | null = null;
 const db = { ...(await import("../src/lib/db")) };
 const jobs = { ...(await import("../src/lib/branching/jobs")) };
-const store = { ...(await import("../src/lib/schema-compare/store")) };
+const prepare = { ...(await import("../src/lib/prepare-connection")) };
 afterAll(() => {
   mock.module("../src/lib/db", () => db);
   mock.module("../src/lib/branching/jobs", () => jobs);
-  mock.module("../src/lib/schema-compare/store", () => store);
+  mock.module("../src/lib/prepare-connection", () => prepare);
 });
 mock.module("../src/lib/db", () => ({
   ...db,
@@ -27,8 +27,7 @@ mock.module("../src/lib/branching/jobs", () => ({
     return { id, result: { snapshot: `snap-${id}` } };
   },
 }));
-mock.module("../src/lib/schema-compare/store", () => ({
-  ...store,
+mock.module("../src/lib/prepare-connection", () => ({
   prepareConnection: async (id: string) => connections.find((entry) => entry.id === id),
 }));
 

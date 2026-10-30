@@ -1,9 +1,6 @@
-import { toast } from "sonner";
 import { create } from "zustand";
 import type { PluginDefinition } from "./api";
-import { errorMessage, type SlotName } from "./guard";
-import { buildRegistry, EMPTY_REGISTRY, slotKey, type UiPluginRegistry } from "./registry";
-import { useUiPluginSettings } from "./settings";
+import type { UiPluginRegistry } from "./registry";
 import type { PluginTimers } from "./timers";
 
 export type LoadedUiPlugin = {
@@ -27,6 +24,28 @@ interface UiPluginRuntimeState {
   registry: UiPluginRegistry;
 }
 
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  return String(error);
+}
+
+export const EMPTY_REGISTRY: UiPluginRegistry = {
+  plugins: [],
+  cell: null,
+  rowTone: null,
+  columns: null,
+  toolbar: null,
+  detailTabs: null,
+  tabGroup: null,
+  tabItem: null,
+  closeButton: "auto",
+  newTabPosition: "end",
+  splitLayout: null,
+  autoSaveGroups: true,
+  templates: [],
+  guards: [],
+};
+
 export const useUiPluginRuntime = create<UiPluginRuntimeState>()(() => ({
   ready: false,
   dir: null,
@@ -48,7 +67,7 @@ export function onUiPluginFault(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function defer(apply: () => void) {
+export function deferUiPluginUpdate(apply: () => void) {
   queue.push(apply);
   if (scheduled) return;
   scheduled = true;
@@ -59,36 +78,8 @@ function defer(apply: () => void) {
   });
 }
 
-function recordSlotError(key: string, message: string) {
-  defer(() =>
-    useUiPluginRuntime.setState((state) =>
-      state.slotErrors[key] === message
-        ? state
-        : { slotErrors: { ...state.slotErrors, [key]: message } },
-    ),
-  );
-}
-
-const events = {
-  error(plugin: string, slot: SlotName, message: string) {
-    recordSlotError(slotKey(plugin, slot), message);
-  },
-  trip(plugin: string, slot: SlotName, reason: string) {
-    defer(() => {
-      useUiPluginRuntime.setState((state) => ({
-        tripped: { ...state.tripped, [slotKey(plugin, slot)]: reason },
-      }));
-      refreshUiPluginRegistry();
-      toast.warning(`UI-Plugin ${plugin}: ${slot} wurde abgeschaltet`, { description: reason });
-    });
-  },
-  slotsError(plugin: string, message: string) {
-    recordSlotError(`${plugin}:slots`, message);
-  },
-};
-
 export function reportUiPluginRuntimeError(file: string, message: string) {
-  defer(() =>
+  deferUiPluginUpdate(() =>
     useUiPluginRuntime.setState((state) =>
       state.runtimeErrors[file] === message
         ? state
@@ -111,33 +102,6 @@ export function resetUiPluginFaults(id: string) {
     slotErrors: keep(state.slotErrors),
   }));
 }
-
-export function refreshUiPluginRegistry() {
-  const state = useUiPluginRuntime.getState();
-  const settings = useUiPluginSettings.getState();
-  const plugins = Object.values(state.loaded).sort((a, b) => (a.file < b.file ? -1 : 1));
-  useUiPluginRuntime.setState({
-    registry: buildRegistry({
-      plugins,
-      disabled: settings.disabled,
-      options: settings.options,
-      grants: settings.httpGrants,
-      tripped: state.tripped,
-      events,
-    }),
-  });
-}
-
-useUiPluginSettings.subscribe((state, previous) => {
-  if (
-    state.disabled === previous.disabled &&
-    state.options === previous.options &&
-    state.httpGrants === previous.httpGrants
-  )
-    return;
-  for (const id of previous.disabled) if (!state.disabled.includes(id)) resetUiPluginFaults(id);
-  refreshUiPluginRegistry();
-});
 
 export function useUiPluginRegistry<T>(select: (registry: UiPluginRegistry) => T): T {
   return useUiPluginRuntime((state) => select(state.registry));
