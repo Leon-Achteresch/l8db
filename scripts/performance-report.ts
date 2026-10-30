@@ -14,18 +14,31 @@ export function normalizeProcessResources(usage: ProcessResources, platform: str
   };
 }
 
+type Resources = ReturnType<typeof normalizeProcessResources>;
+
+const cpuTotal = (resources: Resources | null) =>
+  resources ? resources.userCpuMs + resources.systemCpuMs : 0;
+
 export function resourceViolations(
-  resources: ReturnType<typeof normalizeProcessResources>,
+  resources: Resources,
   limits: { peakRssBytes: number; cpuMs: number },
+  startup: Resources | null = null,
 ) {
   const violations: string[] = [];
+  const mib = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
   if (!Number.isFinite(resources.peakRssBytes) || resources.peakRssBytes <= 0)
     violations.push("Peak RSS was not measured");
   else if (resources.peakRssBytes > limits.peakRssBytes)
-    violations.push("Peak RSS budget exceeded");
-  const cpuMs = resources.userCpuMs + resources.systemCpuMs;
+    violations.push(
+      `Peak RSS budget exceeded: ${mib(resources.peakRssBytes)} > ${mib(limits.peakRssBytes)}`,
+    );
+  const cpuMs = cpuTotal(resources);
+  const budgetedCpuMs = cpuTotal(workloadResources(resources, startup));
   if (!Number.isFinite(cpuMs) || cpuMs <= 0) violations.push("CPU time was not measured");
-  else if (cpuMs > limits.cpuMs) violations.push("CPU budget exceeded");
+  else if (budgetedCpuMs > limits.cpuMs)
+    violations.push(
+      `CPU budget exceeded: ${(budgetedCpuMs / 1000).toFixed(2)} s > ${(limits.cpuMs / 1000).toFixed(2)} s`,
+    );
   return violations;
 }
 
@@ -64,16 +77,38 @@ export function medianResources(samples: (ReturnType<typeof normalizeProcessReso
   return measured[Math.floor(measured.length / 2)] ?? null;
 }
 
-export function workloadResources(
-  total: ReturnType<typeof normalizeProcessResources>,
-  startup: ReturnType<typeof normalizeProcessResources> | null,
-  processes: number,
-) {
-  const extra = Math.max(0, processes - 1);
+export function workloadResources(resources: Resources, startup: Resources | null) {
   return {
-    peakRssBytes: total.peakRssBytes,
-    userCpuMs: Math.max(0, total.userCpuMs - (startup?.userCpuMs ?? 0) * extra),
-    systemCpuMs: Math.max(0, total.systemCpuMs - (startup?.systemCpuMs ?? 0) * extra),
+    peakRssBytes: resources.peakRssBytes,
+    userCpuMs: Math.max(0, resources.userCpuMs - (startup?.userCpuMs ?? 0)),
+    systemCpuMs: Math.max(0, resources.systemCpuMs - (startup?.systemCpuMs ?? 0)),
+  };
+}
+
+export function fileBudgets(
+  runs: FileRun[],
+  limits: { peakRssBytes: number; cpuMs: number },
+  startup: Resources | null,
+) {
+  const files = runs.map(({ outcomes: _outcomes, ...run }) => ({
+    ...run,
+    budgetedResources: run.resources && workloadResources(run.resources, startup),
+  }));
+  const largest = files.reduce((max, run) =>
+    cpuTotal(run.budgetedResources) > cpuTotal(max.budgetedResources) ? run : max,
+  );
+  return {
+    files,
+    budgetedResources: combineFileRuns(
+      files.map((run) => ({ ...run, resources: run.budgetedResources })),
+    ).resources,
+    mostExpensiveFile: { file: largest.file, budgetedCpuMs: cpuTotal(largest.budgetedResources) },
+    violations: files.flatMap(({ file, resources }) =>
+      (resources
+        ? resourceViolations(resources, limits, startup)
+        : ["Resource usage unavailable"]
+      ).map((violation) => `${file}: ${violation}`),
+    ),
   };
 }
 
