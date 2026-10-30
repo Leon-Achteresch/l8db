@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import type { useGroupRef } from "react-resizable-panels";
+import { type ReactNode, useLayoutEffect, useState } from "react";
+import { type useGroupRef, usePanelRef } from "react-resizable-panels";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useQueryWorkspace } from "@/lib/query-workspace";
@@ -27,6 +27,23 @@ export function QueryWorkspacePanels({
 }: QueryWorkspacePanelsProps) {
   const navigatorVisible = useQueryWorkspace((state) => state.navigatorVisible);
   const navigatorShare = useQueryWorkspace((state) => state.navigatorShare);
+  const navigatorPanel = usePanelRef();
+  const hasNavigator = Boolean(navigator);
+  const showNavigator = navigatorVisible && hasNavigator;
+  const [navigatorDefaultSize] = useState(() => (showNavigator ? `${navigatorShare}%` : "0%"));
+
+  useLayoutEffect(() => {
+    const sync = (state: { navigatorVisible: boolean; navigatorShare: number }) => {
+      const panel = navigatorPanel.current;
+      const show = state.navigatorVisible && hasNavigator;
+      if (!panel || show !== panel.isCollapsed()) return;
+      if (show) panel.resize(`${state.navigatorShare}%`);
+      else panel.collapse();
+    };
+    sync(useQueryWorkspace.getState());
+    return useQueryWorkspace.subscribe(sync);
+  }, [hasNavigator, navigatorPanel]);
+
   return (
     <ResizablePanelGroup
       orientation="horizontal"
@@ -36,19 +53,26 @@ export function QueryWorkspacePanels({
           workspace.update({ navigatorShare: layout.navigator });
       }}
     >
-      {navigatorVisible && navigator && (
-        <>
-          <ResizablePanel
-            id="navigator"
-            defaultSize={`${navigatorShare}%`}
-            minSize="180px"
-            maxSize="40%"
-          >
-            {navigator}
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-        </>
-      )}
+      <ResizablePanel
+        id="navigator"
+        panelRef={navigatorPanel}
+        collapsible
+        collapsedThreshold="180px"
+        defaultSize={navigatorDefaultSize}
+        minSize="180px"
+        maxSize="40%"
+        onResize={(size) => {
+          if (showNavigator && size.asPercentage === 0)
+            workspace.update({ navigatorVisible: false });
+        }}
+      >
+        {showNavigator && navigator}
+      </ResizablePanel>
+      <ResizableHandle
+        withHandle
+        disabled={!showNavigator}
+        className={showNavigator ? undefined : "hidden"}
+      />
       <ResizablePanel id="query-workspace" minSize="50%" className="min-w-0">
         <ResizablePanelGroup
           groupRef={workspaceGroup}
