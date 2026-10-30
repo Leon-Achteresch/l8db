@@ -9,7 +9,7 @@ import {
   safeEndpoint,
   thoughtLevel,
 } from "@/lib/ai/context";
-import { readAiSessions } from "@/lib/ai/session-db";
+import { readAiSessions, writeAiSessions } from "@/lib/ai/session-db";
 import {
   AI_PROVIDERS,
   type AiSession,
@@ -429,6 +429,32 @@ test("AI storage imports chats left unsaved when a window closed", () =>
       "pending-chat",
     );
     expect(localStorage.getItem("l8db.ai.pending")).toBeNull();
+  }));
+
+test("AI storage retries a failed history load on the next save", () =>
+  withStorage(async () => {
+    await writeAiSessions([storedSession("retry-history", "Loaded after retry", { updatedAt: 9 })]);
+    const getAll = IDBObjectStore.prototype.getAll;
+    IDBObjectStore.prototype.getAll = () => {
+      throw new DOMException("Read failed", "UnknownError");
+    };
+    let fresh: typeof import("@/lib/ai/store");
+    try {
+      fresh = (await import("@/lib/ai/store?retry")) as typeof import("@/lib/ai/store");
+      await fresh.aiSessionsLoaded;
+    } finally {
+      IDBObjectStore.prototype.getAll = getAll;
+    }
+    expect(fresh.useAiStore.getState().persistenceError).toContain("nicht lokal gespeichert");
+    expect(fresh.useAiStore.getState().sessions.some((entry) => entry.id === "retry-history")).toBe(
+      false,
+    );
+    fresh.useAiStore.getState().saveSession(storedSession("retry-trigger", "Triggers a save"));
+    await Bun.sleep(300);
+    expect(fresh.useAiStore.getState().persistenceError).toBe("");
+    expect(fresh.useAiStore.getState().sessions.some((entry) => entry.id === "retry-history")).toBe(
+      true,
+    );
   }));
 
 test("AI storage keeps saving other chats when one chat cannot be stored", () =>
