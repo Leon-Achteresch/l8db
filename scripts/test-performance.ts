@@ -7,12 +7,11 @@ import {
   confirmedFailures,
   executedTestCount,
   type FileRun,
+  fileBudgets,
   medianResources,
   normalizeProcessResources,
-  resourceViolations,
   testNamePattern,
   testOutcomes,
-  workloadResources,
 } from "./performance-report";
 
 const SUITES = {
@@ -164,7 +163,7 @@ async function run() {
   ];
   const limits = {
     peakRssBytes: (suite === "core" ? 512 : 1024) * 1024 * 1024,
-    cpuMs: (suite === "core" ? 30 : 600) * 1000,
+    cpuMs: (suite === "core" ? 8 : 600) * 1000,
   };
   const cpuRate = profile === "constrained" ? 4 : 1;
   const heapLimitMb = profile === "constrained" ? 256 : 512;
@@ -282,11 +281,8 @@ async function run() {
   const combined = combineFileRuns(fileRuns);
   const { exitCode, executedTests, resources } = combined;
   const wallMs = performance.now() - started;
-  const budgeted =
-    resources && suite === "core" ? workloadResources(resources, startup, files.length) : resources;
-  const violations = budgeted
-    ? resourceViolations(budgeted, limits)
-    : ["Resource usage unavailable"];
+  const budgets = fileBudgets(fileRuns, limits, startup);
+  const violations = budgets.violations;
   if (executedTests === null) violations.push("Executed test count was not reported");
   else if (executedTests === 0) violations.push("No tests executed");
   for (const file of combined.failedFiles) violations.push(`Test run failed: ${file}`);
@@ -317,16 +313,17 @@ async function run() {
     wallMs,
     resources,
     startupResources: startup,
-    budgetedResources: budgeted,
+    budgetedResources: budgets.budgetedResources,
+    mostExpensiveFile: budgets.mostExpensiveFile,
     resourceScope:
       suite === "core"
-        ? "OS resource usage per test file subprocess: peak RSS is the largest file, CPU time is summed"
+        ? "OS resource usage per test file subprocess: each file's peak RSS and CPU time minus the start-up cost must stay within the limits; resources and budgetedResources sum CPU time over all files as information"
         : "OS resource usage for the test subprocess; not a summed application process tree",
     limits,
     exitCode,
     executedTests,
     signal,
-    files: fileRuns.map(({ outcomes: _outcomes, ...run }) => run),
+    files: budgets.files,
     retries,
     violations,
   };
