@@ -1,5 +1,7 @@
 import type { Locator, Page } from "playwright";
 
+export const TAB_KEY = process.env.L8DB_PERF_ENGINE === "webkit" ? "Alt+Tab" : "Tab";
+
 export async function measureAppClick(page: Page, target: Locator, readySelector: string) {
   const measurement = page.evaluate(
     (selector) =>

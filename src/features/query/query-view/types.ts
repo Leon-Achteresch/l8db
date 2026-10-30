@@ -4,5 +4,9 @@ import type { useQueryWorkspace } from "@/lib/query-workspace";
 
 export type QueryViewConnection = SavedConnection | null;
 export type QueryViewCapabilities = ReturnType<typeof useCapabilities>;
-export type QueryWorkspaceState = Omit<ReturnType<typeof useQueryWorkspace.getState>, "resultView">;
+export type QueryWorkspaceStore = ReturnType<typeof useQueryWorkspace.getState>;
+export type QueryWorkspaceState = Omit<
+  QueryWorkspaceStore,
+  "navigatorVisible" | "navigatorShare" | "resultView"
+>;
 export type AnalysisSection = "plan" | "perf";
