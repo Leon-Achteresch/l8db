@@ -9,7 +9,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { KeyRound, Loader2 } from "lucide-react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CLUSTER_DETAIL_ZOOM } from "@/features/er-diagram/er-diagram-view/constants";
 import { edgeTypes } from "@/features/er-diagram/er-diagram-view/edge-types";
@@ -22,7 +22,6 @@ import { nodeTypes } from "@/features/er-diagram/er-diagram-view/node-types";
 import { TextExportMenu } from "@/features/er-diagram/er-diagram-view/text-export-menu";
 import type { ErNodeType } from "@/features/er-diagram/er-diagram-view/types";
 import { useClusterGraph } from "@/features/er-diagram/er-diagram-view/use-cluster-graph";
-import { afterPaint } from "@/lib/after-paint";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
@@ -89,11 +88,16 @@ export function ERDiagramInner() {
     `viewport:${focusKey}:${focus?.depth}`,
   );
   const restoredKey = useRef<string | null>(null);
-  const [graphReady, setGraphReady] = useState(false);
-  useEffect(() => afterPaint(() => setGraphReady(true)), []);
-  const graphSchema = useDeferredValue(graphReady ? erSchema : null);
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (stage > 1) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setStage(stage + 1));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [stage]);
   const { nodes, edges, clusters, onNodesChange, onVisibilityChange, prepareExport } =
-    useClusterGraph(graphSchema ?? undefined, exporting);
+    useClusterGraph(stage > 1 ? erSchema : undefined, exporting);
   const showOverview = useCallback(() => {
     void fitView({
       nodes: clusters.map((cluster) => ({ id: cluster.id })),
@@ -236,7 +240,7 @@ export function ERDiagramInner() {
         </Popover>
       </div>
       <div className="relative min-h-0 flex-1 w-full">
-        {graphReady && (
+        {stage > 0 && (
           <ErFullDetailContext value={exporting}>
             <ReactFlow<ErNodeType>
               nodes={nodes}
