@@ -1,4 +1,4 @@
-import { heapStats } from "bun:jsc";
+import { heapSize, heapStats } from "bun:jsc";
 import { expect, mock, test } from "bun:test";
 import { dirname, relative, resolve } from "node:path";
 import { createElement } from "react";
@@ -161,7 +161,7 @@ async function settledHeap() {
   Bun.gc(true);
   await new Promise((resolve) => setTimeout(resolve, 0));
   Bun.gc(true);
-  return { bytes: process.memoryUsage().heapUsed, objects: heapStats().objectCount };
+  return { bytes: heapSize(), objects: heapStats().objectCount };
 }
 
 function gridFor(rows: Record<string, unknown>[]) {

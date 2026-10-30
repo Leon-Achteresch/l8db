@@ -47,9 +47,9 @@ export function useColumnDragPreview({
     const id = state.ids[state.from];
     const pinned = state.groups[state.from] !== "center";
     const lifted = `translate:var(${OFFSET}) 0;transition:${transition};box-shadow:-1px 0 0 0 var(--border),1px 0 0 0 var(--border)`;
-    return `${headerCell(id)}{${lifted};z-index:${pinned ? 35 : 25}}${bodyCells(id)}{${lifted};z-index:${
-      pinned ? 11 : 5
-    };background-color:var(--background)}`;
+    return `${headerCell(id)}{${lifted};z-index:${pinned ? 35 : 25}}${bodyCells(id)}{${lifted};${
+      pinned ? "" : "position:relative;"
+    }z-index:${pinned ? 11 : 5};background-color:var(--background)}`;
   };
 
   const slotLeft = (state: DragState, scroller: HTMLElement, index: number) =>
