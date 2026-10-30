@@ -2,11 +2,11 @@ import { mkdir } from "node:fs/promises";
 import { cpus } from "node:os";
 import { resolve } from "node:path";
 
-export const CPU_REFERENCE_MS: number | null = null;
+export const CPU_REFERENCE_MS = 59.4;
 
 export interface CpuCalibration {
   benchmarkMs: number;
-  referenceMs: number | null;
+  referenceMs: number;
   samplesMs: number[];
   cpu: string | null;
 }
@@ -166,7 +166,7 @@ export async function measureScenario(run: () => void | Promise<void>, runs = 9)
 }
 
 export function calibratedCpuRate(nominal: number, calibration: CpuCalibration | null) {
-  if (!calibration?.referenceMs) return nominal;
+  if (!calibration) return nominal;
   return Math.max(
     1,
     Math.round((nominal * calibration.referenceMs * 100) / calibration.benchmarkMs) / 100,
