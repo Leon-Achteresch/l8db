@@ -641,15 +641,6 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       columns: 120,
     });
     try {
-      const cdp =
-        process.env.L8DB_PERF_ENGINE === "webkit"
-          ? null
-          : await app.page.context().newCDPSession(app.page);
-      await cdp?.send("Tracing.start", {
-        categories:
-          "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.frame,toplevel,v8.execute,blink.user_timing",
-        transferMode: "ReturnAsStream",
-      });
       const sample = await measure("workspace-table-scroll", app.page, async () => {
         await app.page.evaluate(async () => {
           let scroller = document.querySelector("tbody")?.parentElement ?? null;
@@ -670,23 +661,6 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           });
         });
       });
-      if (cdp) {
-        const completed = new Promise<{ stream: string }>((done) =>
-          cdp.once("Tracing.tracingComplete", done),
-        );
-        await cdp.send("Tracing.end");
-        const { stream } = await completed;
-        const chunks: string[] = [];
-        for (;;) {
-          const chunk = await cdp.send("IO.read", { handle: stream });
-          chunks.push(chunk.data);
-          if (chunk.eof) break;
-        }
-        await Bun.write(
-          resolve(process.env.L8DB_PERF_REPORT_DIR ?? "/tmp", "workspace-table-scroll.trace.json"),
-          chunks.join(""),
-        );
-      }
       expectFrame(sample.fps).toBeGreaterThan(59);
       expectFrame(sample.p95).toBeLessThan(21);
       expectFrame(sample.worst).toBeLessThan(50);
