@@ -3,12 +3,12 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
+  type CpuCalibration,
   calibratedCpuRate,
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
   type FileRun,
-  measureCpuCalibration,
   medianResources,
   normalizeProcessResources,
   resourceViolations,
@@ -112,6 +112,15 @@ function windowsCpuTime() {
   };
 }
 
+function calibrateCpu(): CpuCalibration {
+  const measured = Bun.spawnSync(
+    [process.execPath, resolve(import.meta.dir, "performance-report.ts")],
+    { stderr: "inherit" },
+  );
+  if (!measured.success) throw new Error("CPU calibration failed");
+  return JSON.parse(measured.stdout.toString());
+}
+
 export function parsePerformanceArgs(args: string[]) {
   let suite: keyof typeof SUITES = "core";
   let engine: "chromium" | "webkit" = "chromium";
@@ -157,8 +166,7 @@ async function run() {
       return;
     }
   }
-  const calibration =
-    suite !== "core" && engine === "chromium" ? await measureCpuCalibration() : null;
+  const calibration = suite !== "core" && engine === "chromium" ? calibrateCpu() : null;
   if (calibration) console.log(`CPU calibration: ${JSON.stringify(calibration)}`);
   const files: readonly string[] = SUITES[suite];
   const command = [
