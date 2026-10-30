@@ -253,6 +253,35 @@ async function run() {
   let signal: string | null = null;
   let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
   let startup: FileRun["resources"] = null;
+  const confirmRun = async (
+    selected: readonly string[],
+    result: Awaited<ReturnType<typeof runFiles>>,
+  ) => {
+    const failed = [...result.outcomes]
+      .filter(([, outcome]) => outcome === "fail")
+      .map(([name]) => name);
+    if (result.exitCode === 0 || result.signal !== null || failed.length === 0) return;
+    const reruns = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const rerun = await runFiles(selected, testNamePattern(failed));
+      reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
+    }
+    const confirmed = confirmedFailures(failed, reruns);
+    retries = {
+      failed: [...(retries?.failed ?? []), ...failed],
+      confirmed: [...(retries?.confirmed ?? []), ...confirmed],
+      attempts: [
+        ...(retries?.attempts ?? []),
+        ...reruns.map((rerun) => ({
+          executedTests: rerun.executedTests,
+          failed: [...rerun.outcomes]
+            .filter(([, outcome]) => outcome === "fail")
+            .map(([name]) => name),
+        })),
+      ],
+    };
+    if (confirmed.length === 0) result.exitCode = 0;
+  };
   if (suite === "core") {
     const samples = [];
     for (let sample = 0; sample < 5; sample++)
@@ -263,33 +292,13 @@ async function run() {
     for (const file of files) {
       const result = await runFiles([file]);
       signal ??= result.signal;
+      await confirmRun([file], result);
       fileRuns.push({ file, ...result });
     }
   } else {
     const result = await runFiles(files);
     signal = result.signal;
-    const failed = [...result.outcomes]
-      .filter(([, outcome]) => outcome === "fail")
-      .map(([name]) => name);
-    if (result.exitCode !== 0 && result.signal === null && failed.length > 0) {
-      const reruns = [];
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const rerun = await runFiles(files, testNamePattern(failed));
-        reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
-      }
-      const confirmed = confirmedFailures(failed, reruns);
-      retries = {
-        failed,
-        confirmed,
-        attempts: reruns.map((rerun) => ({
-          executedTests: rerun.executedTests,
-          failed: [...rerun.outcomes]
-            .filter(([, outcome]) => outcome === "fail")
-            .map(([name]) => name),
-        })),
-      };
-      if (confirmed.length === 0) result.exitCode = 0;
-    }
+    await confirmRun(files, result);
     fileRuns.push({ file: files.join(" "), ...result });
   }
   const combined = combineFileRuns(fileRuns);
