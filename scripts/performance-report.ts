@@ -57,6 +57,13 @@ export function combineFileRuns(runs: FileRun[]) {
   };
 }
 
+export function medianResources(samples: (ReturnType<typeof normalizeProcessResources> | null)[]) {
+  const measured = samples
+    .filter((sample) => sample !== null)
+    .sort((a, b) => a.userCpuMs + a.systemCpuMs - (b.userCpuMs + b.systemCpuMs));
+  return measured[Math.floor(measured.length / 2)] ?? null;
+}
+
 export function workloadResources(
   total: ReturnType<typeof normalizeProcessResources>,
   startup: ReturnType<typeof normalizeProcessResources> | null,

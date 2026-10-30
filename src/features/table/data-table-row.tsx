@@ -14,14 +14,14 @@ import {
   type SetStateAction,
   useCallback,
   useContext,
+  useMemo,
 } from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
-import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
+import { type PluginRowCells, pluginCellState, UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { DataTableCell } from "./data-table-cell";
-import { DataTablePluginCell } from "./data-table-plugin-cell";
 import type {
   DataTableProps,
   EditingCell,
@@ -114,7 +114,10 @@ export const DataTableRow = memo(function DataTableRow({
     [measureElement, dynamicHeight],
   );
   const pluginGrid = useContext(UiPluginGridContext);
-  const Cell = pluginGrid?.cell || pluginGrid?.align ? DataTablePluginCell : DataTableCell;
+  const pluginCells = useMemo<PluginRowCells | null>(
+    () => (pluginGrid?.cell || pluginGrid?.align ? { row, states: new Map() } : null),
+    [pluginGrid, row],
+  );
   const ruleBackground =
     ruleColor && !isMarked && !isRowEditing
       ? `color-mix(in oklab, ${ruleColor} 18%, var(--background))`
@@ -166,7 +169,7 @@ export const DataTableRow = memo(function DataTableRow({
           activeMatch?.rowIndex === rowIndex && activeMatch.columnId === columnId;
 
         return (
-          <Cell
+          <DataTableCell
             key={columnId}
             row={row}
             isMarked={isMarked}
@@ -198,6 +201,11 @@ export const DataTableRow = memo(function DataTableRow({
             isMatch={isMatch}
             isActiveMatch={isActiveMatch}
             hasOutgoingFk={outgoingFkByColumn.has(columnId)}
+            plugin={
+              pluginGrid && pluginCells && cellIndex > 0
+                ? pluginCellState(pluginGrid, pluginCells, columnId)
+                : undefined
+            }
           />
         );
       })}

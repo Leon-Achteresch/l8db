@@ -1,5 +1,6 @@
-import { heapStats } from "bun:jsc";
+import { heapSize, heapStats } from "bun:jsc";
 import { expect, mock, test } from "bun:test";
+import { dirname, relative, resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
@@ -160,7 +161,7 @@ async function settledHeap() {
   Bun.gc(true);
   await new Promise((resolve) => setTimeout(resolve, 0));
   Bun.gc(true);
-  return { bytes: process.memoryUsage().heapUsed, objects: heapStats().objectCount };
+  return { bytes: heapSize(), objects: heapStats().objectCount };
 }
 
 function gridFor(rows: Record<string, unknown>[]) {
@@ -208,6 +209,32 @@ test("plugin cells stay cheap on a wide grid and in the visible window", async (
   expect(produced).toBe(ROWS * 3);
   expect((all.p95Ms / cells) * 1000).toBeLessThan(5);
   expect(visible.p95Ms).toBeLessThan(3);
+});
+
+test("row tones run once per row while the visible window scrolls", () => {
+  let calls = 0;
+  const rows = makeRows(ROWS);
+  const table = tableInfo(CONNECTION, "perf", "sales", "orders", false);
+  const grid = createPluginGrid(
+    {
+      cell: null,
+      rowTone: () => {
+        calls++;
+        return "danger";
+      },
+    },
+    table,
+    columnInfos(columnNames, details),
+    rows,
+    columnDefaults([]),
+  );
+  const seen = new Set<number>();
+  for (let pass = 0; pass < 40; pass++)
+    for (let row = pass * 7; row < pass * 7 + VISIBLE_ROWS; row++) {
+      seen.add(row);
+      expect(grid.rowColor?.(rows[row])).toBeDefined();
+    }
+  expect(calls).toBe(seen.size);
 });
 
 test("loading many plugins compiles once and unchanged reloads are nearly free", async () => {
@@ -323,4 +350,74 @@ test("plugin state stays bounded and the host stays idle", async () => {
   expect(idleCalls).toBe(0);
   expect(statusWrites).toBe(1);
   expect(optionMs).toBeLessThan(500);
+});
+
+async function importedModules(starts: readonly string[], dynamic: boolean) {
+  const root = resolve(import.meta.dir, "..");
+  const classic = { compilerOptions: { jsx: "react" as const } };
+  const transpilers = {
+    ts: new Bun.Transpiler({ loader: "ts" }),
+    tsx: new Bun.Transpiler({ loader: "tsx", tsconfig: classic }),
+    js: new Bun.Transpiler({ loader: "jsx", tsconfig: classic }),
+  };
+  const reached = new Set<string>();
+  const visit = async (file: string) => {
+    if (reached.has(file)) return;
+    reached.add(file);
+    const extension = file.match(/\.[cm]?([jt]sx?)$/)?.[1];
+    if (!extension) return;
+    const transpiler =
+      extension === "ts" ? transpilers.ts : extension === "tsx" ? transpilers.tsx : transpilers.js;
+    for (const entry of transpiler.scanImports(await Bun.file(file).text())) {
+      if (entry.kind === "require-call" || entry.path.includes("?") || entry.path === "@/router")
+        continue;
+      if (!dynamic && entry.kind === "dynamic-import") continue;
+      const target = entry.path.startsWith("@/")
+        ? resolve(root, "src", entry.path.slice(2))
+        : entry.path.startsWith(".")
+          ? resolve(dirname(file), entry.path)
+          : null;
+      if (target) await visit(Bun.resolveSync(target, root));
+    }
+  };
+  for (const start of starts) await visit(resolve(root, start));
+  return [...reached].map((file) => relative(root, file).replaceAll("\\", "/"));
+}
+
+test("the workspace shell loads the plugin registry, validators and compiler only with the host", async () => {
+  const started = performance.now();
+  const modules = await importedModules(
+    ["src/features/shell/app-layout.tsx", "src/features/shell/workspace-layout.tsx"],
+    false,
+  );
+  await reportScenario("ui-plugins-shell-imports", {
+    modules: modules.length,
+    scanMs: performance.now() - started,
+  });
+  expect(modules).toContain("src/features/shell/table-tabs.tsx");
+  expect(modules).toContain("src/lib/ui-plugins/store.ts");
+  for (const heavy of [
+    "src/lib/ui-plugins/host.ts",
+    "src/lib/ui-plugins/registry.ts",
+    "src/lib/ui-plugins/guard.ts",
+    "packages/ui-plugin-api/src/definition.ts",
+    "packages/ui-plugin-api/src/modules.ts",
+    "packages/ui-plugin-api/src/compile.ts",
+  ]) {
+    expect(await Bun.file(resolve(import.meta.dir, "..", heavy)).exists()).toBe(true);
+    expect(modules).not.toContain(heavy);
+  }
+});
+
+test("the data grid imports neither the plugin host nor the extension host", async () => {
+  const started = performance.now();
+  const modules = await importedModules(["src/features/table/data-table.tsx"], true);
+  await reportScenario("ui-plugins-grid-imports", {
+    modules: modules.length,
+    scanMs: performance.now() - started,
+  });
+  expect(modules).toContain("src/lib/ui-plugins/grid.ts");
+  expect(modules).not.toContain("src/lib/ui-plugins/host.ts");
+  expect(modules).not.toContain("src/lib/extensions/host.ts");
+  expect(modules.some((file) => file.startsWith("src/features/settings/"))).toBe(false);
 });

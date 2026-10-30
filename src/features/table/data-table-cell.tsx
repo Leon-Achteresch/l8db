@@ -4,8 +4,7 @@ import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
-import type { ColumnPatch } from "@/lib/ui-plugins/api";
-import type { PluginNode } from "@/lib/ui-plugins/registry";
+import type { PluginCellState } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
 import { PluginCell } from "../ui-plugins/plugin-cell";
@@ -50,11 +49,7 @@ export type DataTableCellProps = Pick<
   isMatch: boolean;
   isActiveMatch: boolean;
   hasOutgoingFk: boolean;
-  plugin?: {
-    output: PluginNode | undefined;
-    align: ColumnPatch["align"];
-    resetKey: unknown;
-  };
+  plugin?: PluginCellState;
 };
 
 export const DataTableCell = memo(function DataTableCell({
@@ -189,7 +184,7 @@ export const DataTableCell = memo(function DataTableCell({
           : undefined
       }
       className={cn(
-        "align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden whitespace-nowrap text-ellipsis font-mono text-xs leading-5",
+        "align-middle border-b border-r border-border/30 select-text cursor-default text-left overflow-hidden whitespace-nowrap text-ellipsis font-mono text-xs leading-5",
         tableStyle === "classic"
           ? "px-3 py-[var(--ui-cell-padding)]"
           : tableStyle === "semantic"
@@ -239,12 +234,12 @@ export const DataTableCell = memo(function DataTableCell({
         isActiveMatch &&
           cn(
             "outline outline-2 -outline-offset-2 outline-amber-500",
-            !isSticky && "z-2 bg-amber-400/30",
+            !isSticky && "relative z-2 bg-amber-400/30",
           ),
         isActive &&
           cn(
             "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)]",
-            !isSticky && "z-1 bg-primary/[0.03]",
+            !isSticky && "relative z-1 bg-primary/[0.03]",
           ),
         !isActive && cellIndex > 0 && !isSticky && "hover:bg-muted/10",
       )}

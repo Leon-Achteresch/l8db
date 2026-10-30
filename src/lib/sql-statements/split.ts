@@ -307,9 +307,10 @@ export function splitSqlStatements(
           if (leadingWords.length >= 8) continue;
           leadingWords.push(word);
           const first = leadingWords[0];
-          const objectIndex = leadingWords.findIndex(
-            (w, i) => i > 0 && !ORACLE_CREATE_MODIFIERS.includes(w),
-          );
+          const objectIndex =
+            first === "CREATE"
+              ? leadingWords.findIndex((w, i) => i > 0 && !ORACLE_CREATE_MODIFIERS.includes(w))
+              : -1;
           const object = objectIndex > 0 ? leadingWords[objectIndex] : undefined;
           const inline =
             first === "WITH" && (leadingWords[1] === "FUNCTION" || leadingWords[1] === "PROCEDURE");
@@ -411,11 +412,10 @@ export function splitSqlStatements(
       }
       const first = leadingWords[0];
       if (dialect === "mssql") {
-        const object = leadingWords.slice(1).find((w) => w !== "OR" && w !== "ALTER");
-        batch ||=
-          (first === "CREATE" || first === "ALTER") &&
-          object !== undefined &&
-          MSSQL_BATCH_OBJECTS.includes(object);
+        if (!batch && (first === "CREATE" || first === "ALTER")) {
+          const object = leadingWords.slice(1).find((w) => w !== "OR" && w !== "ALTER");
+          batch = object !== undefined && MSSQL_BATCH_OBJECTS.includes(object);
+        }
         continue;
       }
       const prev = sql[start - 1];

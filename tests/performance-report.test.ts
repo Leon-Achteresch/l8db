@@ -6,6 +6,7 @@ import {
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
+  medianResources,
   normalizeProcessResources,
   resourceViolations,
   testNamePattern,
@@ -190,4 +191,13 @@ test("per-file CPU budgets subtract the start-up cost of every extra test proces
   });
   expect(workloadResources(total, null, 29)).toEqual(total);
   expect(workloadResources(total, startup, 1)).toEqual(total);
+  const sample = (userCpuMs: number, systemCpuMs: number) => ({
+    peakRssBytes: 60,
+    userCpuMs,
+    systemCpuMs,
+  });
+  expect(
+    medianResources([sample(469, 625), sample(16, 31), null, sample(31, 16), sample(47, 31)]),
+  ).toEqual(sample(47, 31));
+  expect(medianResources([null, null])).toBeNull();
 });

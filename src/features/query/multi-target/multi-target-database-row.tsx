@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { SavedConnection } from "@/lib/connections";
 import { listSchemas } from "@/lib/db/catalog";
 import { type MultiTarget, multiTarget } from "@/lib/multi-target";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 

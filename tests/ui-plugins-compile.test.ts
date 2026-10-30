@@ -91,6 +91,10 @@ describe("compilePlugin", () => {
     "el.innerHTML = '<b>x</b>';",
     "React.createElement('style');",
     "node.closest('body');",
+    "__TAURI_INTERNALS__.invoke('load_secret');",
+    "event.view.__TAURI__.core.invoke('x');",
+    'Reflect.get(view, "__TAURI_INTERNALS__");',
+    "view[`__TAURI_EVENT_PLUGIN_INTERNALS__`];",
   ])("rejects escape property: %s", (source) => {
     expect(errorOf(source)?.message).toContain("nicht erlaubt");
   });
