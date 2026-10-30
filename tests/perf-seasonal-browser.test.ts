@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { chromium, type Page, webkit } from "playwright";
 import { reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
+import { expectFrame, FRAME_BUDGETS } from "./fixtures/perf-webkit-profile";
 
 const IN_SEASON = "2026-10-28T19:40:00";
 const OFF_SEASON = "2026-09-30T19:40:00";
@@ -165,8 +166,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(nodes).toBeGreaterThan(0);
       expect(nodes).toBeLessThan(40);
       expect(quip).toMatch(/120 Spalten|Keine einzige NULL|5\.000 Zeilen|Alles durchgesehen/);
-      expect(frames.fps).toBeGreaterThan(MIN_FPS);
-      expect(frames.p95).toBeLessThan(MAX_P95_MS);
+      expectFrame(frames.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(frames.p95).toBeLessThan(MAX_P95_MS);
       const databaseRequests = afterVisit.commands
         .slice(atVisit.commands.length)
         .filter((command) => /rows|query|list_|count|fetch/.test(command));
@@ -189,6 +190,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         fps: frames.fps,
         p95Ms: frames.p95,
         worstMs: frames.worst,
+        frameBudgets: FRAME_BUDGETS,
         databaseRequestsDuringVisit: databaseRequests.length,
         timersScheduled: afterVisit.scheduled,
       });

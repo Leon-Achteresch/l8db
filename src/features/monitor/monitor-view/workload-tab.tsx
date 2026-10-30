@@ -4,14 +4,14 @@ import type { MonitorViewState } from "@/features/monitor/monitor-view/use-monit
 import { useWorkloadReplay } from "@/features/monitor/monitor-view/use-workload-replay";
 import { WorkloadReplayCard } from "@/features/monitor/monitor-view/workload-replay-card";
 
-export function WorkloadTab({ m }: { m: MonitorViewState }) {
+export function WorkloadTab({ m, active }: { m: MonitorViewState; active: boolean }) {
   const replay = useWorkloadReplay();
   if (!m.connection) return null;
   return (
     <TabsContent value="workload" className="mt-5 space-y-5">
       <QueryStatsCard
         kind={m.connection.kind}
-        supported={m.capabilities.query_stats && m.tab === "workload"}
+        supported={m.capabilities.query_stats && active}
         replay={replay}
       />
       <WorkloadReplayCard replay={replay} />

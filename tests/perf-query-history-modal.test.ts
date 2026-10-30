@@ -7,6 +7,7 @@ import {
   closeWithEscape,
   interactionPercentiles,
   measureAppClick,
+  TAB_KEY,
 } from "./fixtures/perf-app-interactions";
 import {
   appRequestSnapshot,
@@ -88,7 +89,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         true,
       );
       for (let index = 0; index < 25; index++) {
-        await page.keyboard.press("Tab");
+        await page.keyboard.press(TAB_KEY);
         expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
           true,
         );
@@ -169,7 +170,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         await exportDialog.evaluate((element) => element.contains(document.activeElement)),
       ).toBe(true);
       for (let index = 0; index < 10; index++) {
-        await page.keyboard.press("Tab");
+        await page.keyboard.press(TAB_KEY);
         expect(
           await exportDialog.evaluate((element) => element.contains(document.activeElement)),
         ).toBe(true);
