@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type Browser, chromium, type Page, webkit } from "playwright";
+import { type Browser, type CDPSession, chromium, type Page, webkit } from "playwright";
 import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
@@ -56,6 +57,35 @@ const WARMUP_VIEWS = process.env.L8DB_PERF_WARMUP_VIEWS?.split(",") ?? VIEWS;
 type Sample = { frames: number; p95: number; worst: number; dropped: number };
 
 let browser: Browser;
+let tracer: CDPSession | null = null;
+const TRACE_VIEWS = /^\/(er-diagram|settings|release-notes)$/;
+
+async function traced(name: string, run: () => Promise<Sample>): Promise<Sample> {
+  const cdp = tracer;
+  if (!cdp || !TRACE_VIEWS.test(name)) return run();
+  const events: unknown[] = [];
+  const onData = ({ value }: { value: unknown[] }) => events.push(...value);
+  cdp.on("Tracing.dataCollected", onData);
+  await cdp.send("Tracing.start", {
+    categories:
+      "toplevel,devtools.timeline,disabled-by-default-devtools.timeline,blink.user_timing,v8.execute,disabled-by-default-v8.cpu_profiler",
+    transferMode: "ReportEvents",
+  });
+  const result = await run();
+  const done = new Promise<void>((resolveDone) =>
+    cdp.once("Tracing.tracingComplete", () => resolveDone()),
+  );
+  await cdp.send("Tracing.end");
+  await done;
+  cdp.off("Tracing.dataCollected", onData);
+  const dir = resolve(import.meta.dir, "../test-artifacts/performance/traces");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    resolve(dir, `${name.replace(/\W+/g, "_")}-${Math.round(result.worst)}-${Date.now()}.json`),
+    JSON.stringify({ traceEvents: events, sample: result }),
+  );
+  return result;
+}
 let page: Page;
 let server: ReturnType<typeof Bun.serve>;
 const errors: string[] = [];
@@ -107,6 +137,7 @@ function expectStep(name: string, result: Sample) {
 
 async function navigate(path: string) {
   await page.evaluate((target) => {
+    performance.mark("switch-start");
     history.pushState({}, "", target);
     dispatchEvent(new PopStateEvent("popstate"));
   }, path);
@@ -161,6 +192,7 @@ beforeAll(async () => {
   if (!WEBKIT) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
+    tracer = cdp;
   }
 }, 300000);
 
@@ -173,10 +205,12 @@ for (const view of VIEWS) {
   test.skipIf(!ENABLED)(
     `${view}: Wechsel, Leerlauf und Scrollen mit ${RATE}× CPU-Drosselung`,
     async () => {
-      const step = await sample(async () => {
-        await navigate(view);
-        await page.waitForTimeout(2500);
-      });
+      const step = await traced(view, () =>
+        sample(async () => {
+          await navigate(view);
+          await page.waitForTimeout(2500);
+        }),
+      );
       expect(await page.getByText("ROUTE_ERROR").count()).toBe(0);
       expectStep(`${view} wechseln`, step);
       expectSmooth(`${view} Leerlauf`, await sample(() => page.waitForTimeout(1500)));
