@@ -18,15 +18,18 @@ export function useTransitionOpen(
   useEffect(() => {
     if (!pending) return;
     const cancel = (event: KeyboardEvent | PointerEvent) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+      }
       if (open === undefined) setUncontrolled(false);
       onOpenChange?.(false);
     };
-    document.addEventListener("keydown", cancel, true);
-    document.addEventListener("pointerdown", cancel, true);
+    window.addEventListener("keydown", cancel, true);
+    window.addEventListener("pointerdown", cancel, true);
     return () => {
-      document.removeEventListener("keydown", cancel, true);
-      document.removeEventListener("pointerdown", cancel, true);
+      window.removeEventListener("keydown", cancel, true);
+      window.removeEventListener("pointerdown", cancel, true);
     };
   }, [pending, open, onOpenChange]);
   return [open ?? uncontrolled, change] as const;

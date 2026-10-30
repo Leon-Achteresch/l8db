@@ -12,7 +12,8 @@ export function DropdownMenuTrigger({
       data-slot="dropdown-menu-trigger"
       onPointerDown={(event) => {
         onPointerDown?.(event);
-        if (!event.defaultPrevented) event.currentTarget.focus({ preventScroll: true });
+        if (!event.defaultPrevented && event.button === 0 && !event.ctrlKey)
+          event.currentTarget.focus({ preventScroll: true });
       }}
       {...props}
     />
