@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ChatContextItem } from "@/lib/ai/chat-context";
 import { sanitizeAiRich } from "@/lib/ai/rich-core";
+import { readAiSessions, writeAiSessions } from "@/lib/ai/session-db";
 import type { AiMessage, AiProfile, AiProvider, AiServer } from "@/lib/db/ai";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
@@ -267,119 +268,157 @@ export const useAiStore = create<AiState>((set) => ({
       ]),
     })),
 }));
-const PERSIST_BUDGET = 2_000_000;
-const clip = (value: string, limit: number) =>
-  value.length > limit ? `${value.slice(0, limit)}\n…` : value;
-function lightSession(session: AiSession): AiSession {
-  return {
-    ...session,
-    messages: session.messages.map((message) => ({
-      ...message,
-      ...(message.reasoning ? { reasoning: clip(message.reasoning, 2000) } : {}),
-      ...(message.attachments
-        ? { attachments: message.attachments.map((attachment) => ({ ...attachment, rows: [] })) }
-        : {}),
-      ...(message.rich
-        ? {
-            rich: message.rich.map((block) =>
-              block.type === "tool"
-                ? { ...block, output: clip(block.output, 200) }
-                : block.type === "image"
-                  ? { ...block, src: undefined }
-                  : block.type === "diff"
-                    ? { ...block, diff: clip(block.diff, 4000) }
-                    : block,
-            ),
-          }
-        : {}),
-    })),
-  };
-}
-function sessionSlot(data: AiData) {
-  const empty = JSON.stringify({ ...data, sessions: [] });
-  const probe = JSON.stringify({ ...data, sessions: [0] });
-  let at = 0;
-  while (empty[at] === probe[at]) at++;
-  return [empty.slice(0, at), empty.slice(at)];
-}
-
-export function serializeAiData(data: AiData, budget = PERSIST_BUDGET): string {
-  const sessions = [...data.sessions];
-  const [start, end] = sessionSlot(data);
-  let total = start.length + end.length + Math.max(0, sessions.length - 1);
-  const parts: string[] = [];
-  const sizes = sessions.map((session) => {
-    const text = JSON.stringify(session);
-    total += text.length;
-    if (total <= budget) parts.push(text);
-    return text.length;
-  });
-  if (total <= budget) return start + parts.join(",") + end;
-  const order = sessions
-    .map((session, index) => ({ index, updatedAt: session.updatedAt }))
-    .sort((a, b) => a.updatedAt - b.updatedAt);
-  for (const { index } of order) {
-    if (total <= budget) break;
-    const light = lightSession(sessions[index]);
-    total += JSON.stringify(light).length - sizes[index];
-    sessions[index] = light;
-  }
-  return JSON.stringify({ ...data, sessions });
-}
+const SESSIONS_KEY = "l8db.ai.sessions";
+const PENDING_KEY = "l8db.ai.pending";
+const STORAGE_ERROR =
+  "AI-Daten konnten nicht lokal gespeichert werden. Lösche bei vollem Speicher ein altes Gespräch.";
+const dirty = new Set<string>();
+const writing = new Set<string>();
+let legacySessions = initial.sessions.length > 0;
+let applyingRemote = false;
+let localFailed = false;
+let sessionsFailed = false;
+let loadFailed = false;
+let flushing: Promise<void> = Promise.resolve();
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
+function report() {
+  const persistenceError = localFailed || sessionsFailed || loadFailed ? STORAGE_ERROR : "";
+  if (useAiStore.getState().persistenceError !== persistenceError)
+    useAiStore.setState({ persistenceError });
+}
+function applySessions(incoming: AiSession[]) {
+  const sessions = incoming.flatMap((session) => {
+    try {
+      return [sanitizeSession(session)];
+    } catch {
+      return [];
+    }
+  });
+  if (!sessions.length) return;
+  applyingRemote = true;
+  try {
+    useAiStore.setState((state) => ({ sessions: mergeAiRecords(state.sessions, sessions) }));
+  } finally {
+    applyingRemote = false;
+  }
+}
+function readPending(): AiSession[] {
+  try {
+    return readData(localStorage.getItem(PENDING_KEY)).sessions;
+  } catch {
+    return [];
+  }
+}
+async function loadSessions() {
+  const pending = readPending();
+  if (legacySessions || pending.length) {
+    const failed = await writeAiSessions([...initial.sessions, ...pending]);
+    if (failed.length) throw new Error("AI-Verlauf konnte nicht übernommen werden");
+    localStorage.removeItem(PENDING_KEY);
+    legacySessions = false;
+    persistData();
+  }
+  applySessions(await readAiSessions());
+  loadFailed = false;
+}
+function flushSessions(): Promise<void> {
+  flushing = flushing.then(async () => {
+    if (loadFailed) await loadSessions().catch(() => undefined);
+    if (dirty.size) {
+      for (const id of dirty) writing.add(id);
+      dirty.clear();
+      let failed: string[];
+      try {
+        failed = await writeAiSessions(
+          useAiStore.getState().sessions.filter((entry) => writing.has(entry.id)),
+        );
+      } catch {
+        failed = [...writing];
+      }
+      for (const id of failed) dirty.add(id);
+      const saved = [...writing].filter((id) => !dirty.has(id));
+      writing.clear();
+      sessionsFailed = failed.length > 0;
+      if (saved.length) notifyWindows(saved);
+    }
+    report();
+  });
+  return flushing;
+}
+function notifyWindows(ids: string[]) {
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify({ ids, at: Math.random() }));
+  } catch {
+    return;
+  }
+}
+function persistOnHide() {
+  const ids = new Set([...dirty, ...writing]);
+  persistData();
+  if (!ids.size) return;
+  try {
+    localStorage.setItem(
+      PENDING_KEY,
+      JSON.stringify({
+        sessions: useAiStore.getState().sessions.filter((entry) => ids.has(entry.id)),
+      }),
+    );
+  } catch {
+    return;
+  }
+}
 function persistData() {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = undefined;
+  void flushSessions();
   try {
     const state = useAiStore.getState();
     const other = readStorage();
-    const data = {
+    const value = JSON.stringify({
       profiles: mergeAiRecords(state.profiles, other.profiles),
-      sessions: mergeAiRecords(state.sessions, other.sessions),
       servers: mergeAiRecords(state.servers, other.servers),
-    };
-    const value = serializeAiData(data);
-    if (localStorage.getItem(KEY) !== value) {
-      let budget = Math.min(value.length, PERSIST_BUDGET);
-      for (;;) {
-        try {
-          localStorage.setItem(
-            KEY,
-            budget === value.length ? value : serializeAiData(data, budget),
-          );
-          break;
-        } catch (error) {
-          if (budget === 0) throw error;
-          budget = budget < 50_000 ? 0 : Math.floor(budget / 2);
-        }
-      }
-    }
-    if (state.persistenceError) useAiStore.setState({ persistenceError: "" });
-  } catch {
-    useAiStore.setState({
-      persistenceError:
-        "AI-Daten konnten nicht lokal gespeichert werden. Lösche bei vollem Speicher ein altes Gespräch.",
+      ...(legacySessions ? { sessions: other.sessions } : {}),
     });
+    if (localStorage.getItem(KEY) !== value) localStorage.setItem(KEY, value);
+    localFailed = false;
+  } catch {
+    localFailed = true;
   }
+  report();
 }
 useAiStore.subscribe((state, previous) => {
-  if (
-    state.profiles === previous.profiles &&
-    state.sessions === previous.sessions &&
-    state.servers === previous.servers
-  )
+  if (state.sessions !== previous.sessions && !applyingRemote) {
+    const before = new Map(previous.sessions.map((entry) => [entry.id, entry]));
+    for (const entry of state.sessions) if (before.get(entry.id) !== entry) dirty.add(entry.id);
+  }
+  if (state.profiles === previous.profiles && state.servers === previous.servers && !dirty.size)
     return;
   if (!persistTimer) persistTimer = setTimeout(persistData, 150);
 });
+export const aiSessionsLoaded = loadSessions().catch(() => {
+  loadFailed = true;
+  report();
+});
 if (typeof window !== "undefined" && typeof window.addEventListener === "function")
-  window.addEventListener("pagehide", persistData);
+  window.addEventListener("pagehide", persistOnHide);
 syncAcrossWindows(KEY, (value) => {
   const incoming = readData(value);
   useAiStore.setState((state) => ({
     profiles: mergeAiRecords(state.profiles, incoming.profiles),
-    sessions: mergeAiRecords(state.sessions, incoming.sessions),
     servers: mergeAiRecords(state.servers, incoming.servers),
   }));
+  applySessions(incoming.sessions);
+});
+syncAcrossWindows(SESSIONS_KEY, (value) => {
+  try {
+    const ids: unknown = JSON.parse(value ?? "{}").ids;
+    if (Array.isArray(ids))
+      void readAiSessions(ids.filter((id) => typeof id === "string"))
+        .then(applySessions)
+        .catch(() => undefined);
+  } catch {
+    return;
+  }
 });
 
 syncAcrossWindows(WIDTH_KEY, () => useAiStore.setState({ width: readWidth() }));

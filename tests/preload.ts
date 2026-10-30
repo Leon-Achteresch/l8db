@@ -1,5 +1,6 @@
-import childProcess from "node:child_process";
+import "fake-indexeddb/auto";
 import { mock } from "bun:test";
+import childProcess from "node:child_process";
 import * as tauriCore from "@tauri-apps/api/core";
 
 if (typeof window === "undefined") {

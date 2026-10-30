@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -164,6 +166,9 @@ pub fn timeout_message() -> String {
     )
 }
 
+const PANIC_MESSAGE: &str =
+    "Interner Fehler bei der Ausführung. Details stehen im App-Log; vor erneutem Schreiben den Serverzustand prüfen.";
+
 pub fn cancel(id: &str) -> Result<bool, String> {
     let entries = registry()
         .lock()
@@ -208,9 +213,10 @@ where
                 cancel,
                 interrupted: Arc::new(AtomicBool::new(false)),
             },
-            future,
+            AssertUnwindSafe(future).catch_unwind(),
         )
         .await
+        .unwrap_or_else(|_| Err(PANIC_MESSAGE.into()))
 }
 
 pub async fn run_query<T, F>(
@@ -481,5 +487,20 @@ mod tests {
         .await
         .unwrap();
         assert!(!cancel("execution-test").unwrap());
+    }
+
+    #[tokio::test]
+    async fn panicking_job_returns_error_and_unregisters() {
+        let result: Result<(), String> = run(
+            Some(ExecutionOptions {
+                job_id: Some("execution-panic".into()),
+                ..Default::default()
+            }),
+            true,
+            async { panic!("adapter bug") },
+        )
+        .await;
+        assert_eq!(result.unwrap_err(), PANIC_MESSAGE);
+        assert!(!cancel("execution-panic").unwrap());
     }
 }

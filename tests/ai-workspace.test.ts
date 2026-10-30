@@ -9,12 +9,13 @@ import {
   safeEndpoint,
   thoughtLevel,
 } from "@/lib/ai/context";
+import { readAiSessions } from "@/lib/ai/session-db";
 import {
   AI_PROVIDERS,
   type AiSession,
   aiSessionConnection,
+  aiSessionsLoaded,
   mergeAiRecords,
-  serializeAiData,
   useAiStore,
 } from "@/lib/ai/store";
 import type { SavedConnection } from "@/lib/connections";
@@ -299,159 +300,160 @@ test("approval summary exposes native arguments, changed files and permissions b
   ).toContainEqual({ label: "Datenregeln", value: "Versand braucht Datum: 3 Verletzungen" });
 });
 
-test("AI storage quota failures preserve saved history and recover after explicit deletion", async () => {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-  const previous = useAiStore.getState();
-  const stored = new Map<string, string>();
-  let full = false;
-  Object.defineProperty(globalThis, "localStorage", {
-    configurable: true,
-    value: {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        if (full) throw new DOMException("Quota exceeded", "QuotaExceededError");
-        stored.set(key, value);
-      },
-    },
-  });
-  const saved = {
-    id: "quota-history",
-    title: "Saved history",
-    profileId: "codex",
-    nativeId: null,
-    cwd: "/tmp",
-    connectionIds: [],
-    updatedAt: Date.now(),
-    messages: [{ role: "assistant" as const, text: "Keep this conversation" }],
-  };
-  try {
-    useAiStore.getState().saveSession(saved);
-    await Bun.sleep(200);
-    const before = stored.get("l8db.ai");
-    expect(before).toContain("Keep this conversation");
-    full = true;
-    useAiStore.getState().saveSession({
-      ...saved,
-      id: "quota-new",
-      title: "Unsaved conversation",
-      messages: [{ role: "assistant", text: "Unsaved response" }],
-    });
-    await Bun.sleep(200);
-    expect(stored.get("l8db.ai")).toBe(before);
-    expect(useAiStore.getState().persistenceError).toContain("nicht lokal gespeichert");
-    expect(
-      useAiStore.getState().sessions.find((session) => session.id === "quota-new")?.messages[0]
-        .text,
-    ).toBe("Unsaved response");
-    full = false;
-    useAiStore.getState().saveSession({
-      ...saved,
-      id: "quota-new",
-      deleted: true,
-      messages: [],
-      updatedAt: Date.now(),
-    });
-    await Bun.sleep(200);
-    expect(useAiStore.getState().persistenceError).toBe("");
-    expect(stored.get("l8db.ai")).toContain("Keep this conversation");
-    expect(stored.get("l8db.ai")).not.toContain("Unsaved response");
-    expect(stored.get("l8db.ai")).not.toContain("persistenceError");
-  } finally {
-    useAiStore.setState(previous);
-    await Bun.sleep(200);
-    if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
-    else Reflect.deleteProperty(globalThis, "localStorage");
-  }
+const storedSession = (id: string, text: string, extra: Partial<AiSession> = {}): AiSession => ({
+  id,
+  title: id,
+  profileId: "codex",
+  nativeId: null,
+  cwd: "/tmp",
+  connectionIds: [],
+  updatedAt: Date.now(),
+  messages: [{ role: "assistant", text }],
+  ...extra,
 });
 
-test("AI storage compacts the oldest sessions first and keeps the newest intact", () => {
-  const output = "o".repeat(10_000);
-  const session = (id: string, updatedAt: number): AiSession => ({
-    id,
-    title: id,
-    profileId: "codex",
-    nativeId: null,
-    cwd: "/tmp",
-    connectionIds: [],
-    updatedAt,
-    messages: [
-      {
-        role: "assistant",
-        text: `answer ${id}`,
-        rich: [{ type: "tool", id: "t", name: "search", status: "success", output }],
-      },
-    ],
-  });
-  const data = {
-    profiles: [],
-    servers: [],
-    sessions: [session("new", 3), session("old", 1), session("mid", 2)],
-  };
-  const stored = JSON.parse(serializeAiData(data, 15_000)) as { sessions: AiSession[] };
-  const outputOf = (id: string) =>
-    stored.sessions.find((entry) => entry.id === id)?.messages[0].rich?.[0];
-  expect(outputOf("new")).toMatchObject({ output });
-  expect(outputOf("old")).toMatchObject({ output: `${"o".repeat(200)}\n…` });
-  expect(outputOf("mid")).toMatchObject({ output: `${"o".repeat(200)}\n…` });
-  expect(stored.sessions.map((entry) => entry.messages[0].text)).toEqual([
-    "answer new",
-    "answer old",
-    "answer mid",
-  ]);
-  expect(serializeAiData(data)).toBe(JSON.stringify(data));
-});
-
-test("AI storage drops heavy tool output instead of failing when the quota is tight", async () => {
+async function withStorage(run: (stored: Map<string, string>) => Promise<void>) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-  const previous = useAiStore.getState();
   const stored = new Map<string, string>();
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     value: {
       getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        if (value.length > 20_000) throw new DOMException("Quota exceeded", "QuotaExceededError");
-        stored.set(key, value);
-      },
+      setItem: (key: string, value: string) => void stored.set(key, value),
+      removeItem: (key: string) => void stored.delete(key),
     },
   });
-  const output = "row ".repeat(4_000);
   try {
-    useAiStore.getState().saveSession({
-      id: "quota-tools",
-      title: "Tool heavy",
-      profileId: "copilot",
-      nativeId: null,
-      cwd: "/tmp",
-      connectionIds: [],
-      updatedAt: Date.now(),
-      messages: [
-        {
-          role: "assistant",
-          text: "Final answer",
-          rich: [
-            { type: "tool", id: "a", name: "l8db_ai_search", status: "success", output },
-            { type: "tool", id: "b", name: "l8db_ai_code", status: "success", output },
-          ],
-        },
-      ],
-    });
-    await Bun.sleep(200);
-    const saved = stored.get("l8db.ai") ?? "";
-    expect(useAiStore.getState().persistenceError).toBe("");
-    expect(saved).toContain("Final answer");
-    expect(saved).toContain("l8db_ai_code");
-    expect(saved).not.toContain(output);
-    const rich = useAiStore.getState().sessions.find((session) => session.id === "quota-tools")
-      ?.messages[0].rich;
-    expect(rich?.[0]).toMatchObject({ output });
+    await aiSessionsLoaded;
+    await run(stored);
   } finally {
-    useAiStore.setState(previous);
-    await Bun.sleep(200);
     if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
     else Reflect.deleteProperty(globalThis, "localStorage");
   }
-});
+}
+
+test("AI storage quota failures preserve saved history and recover after explicit deletion", () =>
+  withStorage(async () => {
+    const previous = useAiStore.getState();
+    const put = IDBObjectStore.prototype.put;
+    let full = false;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore["put"]>) {
+      if (full) throw new DOMException("Quota exceeded", "QuotaExceededError");
+      return put.apply(this, args);
+    };
+    try {
+      useAiStore.getState().saveSession(storedSession("quota-history", "Keep this conversation"));
+      await Bun.sleep(200);
+      expect(JSON.stringify(await readAiSessions(["quota-history"]))).toContain(
+        "Keep this conversation",
+      );
+      full = true;
+      useAiStore.getState().saveSession(storedSession("quota-new", "Unsaved response"));
+      await Bun.sleep(200);
+      expect(await readAiSessions(["quota-new"])).toEqual([]);
+      expect(useAiStore.getState().persistenceError).toContain("nicht lokal gespeichert");
+      expect(
+        useAiStore.getState().sessions.find((session) => session.id === "quota-new")?.messages[0]
+          .text,
+      ).toBe("Unsaved response");
+      full = false;
+      useAiStore
+        .getState()
+        .saveSession(storedSession("quota-new", "", { deleted: true, messages: [] }));
+      await Bun.sleep(200);
+      expect(useAiStore.getState().persistenceError).toBe("");
+      const saved = JSON.stringify(await readAiSessions(["quota-history", "quota-new"]));
+      expect(saved).toContain("Keep this conversation");
+      expect(saved).toContain('"deleted":true');
+      expect(saved).not.toContain("Unsaved response");
+      expect(saved).not.toContain("persistenceError");
+      expect(localStorage.getItem("l8db.ai")).not.toContain("quota-history");
+    } finally {
+      IDBObjectStore.prototype.put = put;
+      useAiStore.setState(previous);
+      await Bun.sleep(200);
+    }
+  }));
+
+test("AI storage keeps large tool histories complete beyond the localStorage quota", () =>
+  withStorage(async () => {
+    const output = "row ".repeat(4_000);
+    const rich = Array.from({ length: 80 }, (_, index) => ({
+      type: "tool" as const,
+      id: `t${index}`,
+      name: "l8db_ai_search",
+      status: "success",
+      output,
+    }));
+    const messages = Array.from({ length: 20 }, (_, index) => ({
+      id: `m${index}`,
+      role: "assistant" as const,
+      text: `answer ${index}`,
+      rich,
+    }));
+    useAiStore.getState().saveSession(storedSession("large-tools", "", { messages }));
+    await Bun.sleep(300);
+    const [saved] = await readAiSessions(["large-tools"]);
+    expect(JSON.stringify(saved).length).toBeGreaterThan(20_000_000);
+    expect(saved.messages).toHaveLength(20);
+    expect(saved.messages[19].rich?.[79]).toMatchObject({ output });
+    expect(useAiStore.getState().persistenceError).toBe("");
+  }));
+
+test("AI storage migrates legacy localStorage chats into IndexedDB once", () =>
+  withStorage(async () => {
+    const legacy = storedSession("legacy-chat", "Legacy answer", { updatedAt: 5 });
+    const profiles = [{ ...useAiStore.getState().profiles[0], model: "legacy-model" }];
+    localStorage.setItem("l8db.ai", JSON.stringify({ profiles, sessions: [legacy], servers: [] }));
+    const fresh = (await import("@/lib/ai/store?legacy")) as typeof import("@/lib/ai/store");
+    await fresh.aiSessionsLoaded;
+    expect(fresh.useAiStore.getState().sessions.map((session) => session.id)).toContain(
+      "legacy-chat",
+    );
+    expect(JSON.stringify(await readAiSessions(["legacy-chat"]))).toContain("Legacy answer");
+    const remaining = JSON.parse(localStorage.getItem("l8db.ai") ?? "{}");
+    expect(remaining.sessions).toBeUndefined();
+    expect(remaining.profiles[0].model).toBe("legacy-model");
+  }));
+
+test("AI storage imports chats left unsaved when a window closed", () =>
+  withStorage(async () => {
+    const pending = storedSession("pending-chat", "Written during pagehide", { updatedAt: 7 });
+    localStorage.setItem("l8db.ai.pending", JSON.stringify({ sessions: [pending] }));
+    const fresh = (await import("@/lib/ai/store?pending")) as typeof import("@/lib/ai/store");
+    await fresh.aiSessionsLoaded;
+    expect(JSON.stringify(await readAiSessions(["pending-chat"]))).toContain(
+      "Written during pagehide",
+    );
+    expect(fresh.useAiStore.getState().sessions.map((session) => session.id)).toContain(
+      "pending-chat",
+    );
+    expect(localStorage.getItem("l8db.ai.pending")).toBeNull();
+  }));
+
+test("AI storage keeps saving other chats when one chat cannot be stored", () =>
+  withStorage(async () => {
+    const previous = useAiStore.getState();
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore["put"]>) {
+      if ((args[0] as AiSession).id === "broken-chat")
+        throw new DOMException("Quota exceeded", "QuotaExceededError");
+      return put.apply(this, args);
+    };
+    try {
+      useAiStore.getState().saveSession(storedSession("broken-chat", "Too large"));
+      await Bun.sleep(200);
+      useAiStore.getState().saveSession(storedSession("healthy-chat", "Still saved"));
+      await Bun.sleep(200);
+      expect(JSON.stringify(await readAiSessions(["healthy-chat"]))).toContain("Still saved");
+      expect(await readAiSessions(["broken-chat"])).toEqual([]);
+      expect(useAiStore.getState().persistenceError).toContain("nicht lokal gespeichert");
+    } finally {
+      IDBObjectStore.prototype.put = put;
+      useAiStore.setState(previous);
+      await Bun.sleep(200);
+    }
+  }));
 
 test("AI sessions belong to the connection they were started on", () => {
   const base = {
