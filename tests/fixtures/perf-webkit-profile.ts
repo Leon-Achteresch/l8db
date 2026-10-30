@@ -38,8 +38,11 @@ export const FRAME_BUDGETS =
   process.env.L8DB_PERF_ENGINE === "webkit" ? "informational" : "enforced";
 
 function reportFrame(value: number) {
+  expect(value).toBeGreaterThan(0);
+  const site = new Error().stack?.split("\n").find((line) => line.includes(".test.ts"));
   const report = (met: boolean, limit: string) => {
-    if (!met) console.log(`WebKit frame budget missed (informational): ${value} ${limit}`);
+    if (!met)
+      console.log(`WebKit frame budget missed (informational): ${value} ${limit} ${site?.trim()}`);
   };
   return {
     toBeGreaterThan: (limit: number) => report(value > limit, `<= ${limit}`),
