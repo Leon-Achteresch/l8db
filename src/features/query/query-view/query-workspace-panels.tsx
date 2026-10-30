@@ -37,8 +37,10 @@ export function QueryWorkspacePanels({
       const panel = navigatorPanel.current;
       const show = state.navigatorVisible && hasNavigator;
       if (!panel || show !== panel.isCollapsed()) return;
-      if (show) panel.resize(`${state.navigatorShare}%`);
-      else panel.collapse();
+      if (show) {
+        panel.resize(`${state.navigatorShare}%`);
+        if (panel.isCollapsed()) panel.resize("180px");
+      } else panel.collapse();
     };
     sync(useQueryWorkspace.getState());
     return useQueryWorkspace.subscribe(sync);
@@ -62,14 +64,17 @@ export function QueryWorkspacePanels({
         minSize="180px"
         maxSize="40%"
         onResize={(size) => {
-          if (showNavigator && size.asPercentage === 0)
-            workspace.update({ navigatorVisible: false });
+          if (!hasNavigator || Number.isNaN(size.asPercentage)) return;
+          const open = size.asPercentage > 0;
+          if (open !== useQueryWorkspace.getState().navigatorVisible)
+            workspace.update({ navigatorVisible: open });
         }}
       >
         {showNavigator && navigator}
       </ResizablePanel>
       <ResizableHandle
         withHandle
+        disableDoubleClick
         disabled={!showNavigator}
         className={showNavigator ? undefined : "hidden"}
       />

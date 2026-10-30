@@ -39,10 +39,12 @@ export function ToolbarViewControls({
           aria-label="Schema-Navigator umschalten"
           title="Schema und Statement-Navigator"
           aria-pressed={navigatorVisible}
-          onClick={() => {
-            const next = !navigatorVisible;
-            afterPaint(() => useQueryWorkspace.getState().update({ navigatorVisible: next }));
-          }}
+          onClick={() =>
+            afterPaint(() => {
+              const workspace = useQueryWorkspace.getState();
+              workspace.update({ navigatorVisible: !workspace.navigatorVisible });
+            })
+          }
         >
           <PanelLeftIcon className="size-3.5" />
         </Button>
