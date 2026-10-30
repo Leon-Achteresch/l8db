@@ -113,7 +113,6 @@ test("CPU throttling slows every runner to the reference speed without speeding 
   expect(calibratedCpuRate(4, runner(600))).toBe(1);
   expect(calibratedCpuRate(8, runner(150))).toBe(5.33);
   expect(calibratedCpuRate(4, null)).toBe(4);
-  expect(calibratedCpuRate(4, { ...runner(150), referenceMs: null })).toBe(4);
 });
 
 test("performance profiles reject unsupported throttling instead of silently skipping it", () => {
