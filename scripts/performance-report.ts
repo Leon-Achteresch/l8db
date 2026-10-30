@@ -9,6 +9,7 @@ export interface CpuCalibration {
   referenceMs: number;
   samplesMs: number[];
   cpu: string | null;
+  chromium: string;
 }
 
 export interface ProcessResources {
@@ -237,6 +238,7 @@ export async function measureCpuCalibration(): Promise<CpuCalibration> {
       referenceMs: CPU_REFERENCE_MS,
       samplesMs: samples.map((sample) => Math.round(sample * 10) / 10),
       cpu: cpus()[0]?.model ?? null,
+      chromium: browser.version(),
     };
   } finally {
     await browser.close();
@@ -250,3 +252,5 @@ export async function cpuThrottleRate(nominal: number) {
   console.log(`performance cpu-throttle: ${JSON.stringify({ nominal, applied, ...calibration })}`);
   return applied;
 }
+
+if (import.meta.main) console.log(JSON.stringify(await measureCpuCalibration()));

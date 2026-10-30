@@ -58,7 +58,13 @@ test("empty selections and skipped tests cannot establish a successful performan
 test("scenario artifacts identify their current run instead of reusing stale measurement metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "l8db-performance-provenance-"));
   const started = Date.now();
-  const calibration = { benchmarkMs: 200, referenceMs: 100, samplesMs: [200], cpu: "Runner" };
+  const calibration = {
+    benchmarkMs: 200,
+    referenceMs: 100,
+    samplesMs: [200],
+    cpu: "Runner",
+    chromium: "153.0.8010.12",
+  };
   try {
     const source = resolve(import.meta.dir, "../scripts/performance-report.ts");
     const child = Bun.spawn(
@@ -106,6 +112,7 @@ test("CPU throttling slows every runner to the reference speed without speeding 
     referenceMs: 100,
     samplesMs: [benchmarkMs],
     cpu: "Runner",
+    chromium: "153.0.8010.12",
   });
   expect(calibratedCpuRate(4, runner(100))).toBe(4);
   expect(calibratedCpuRate(4, runner(150))).toBe(2.67);
