@@ -408,6 +408,22 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         rows: document.querySelectorAll('[role="tabpanel"][data-state="active"] tbody tr').length,
         nodes: document.querySelectorAll("*").length,
       }));
+      await app.page.evaluate(() => {
+        const state = window as unknown as { __styleWrites: number };
+        state.__styleWrites = 0;
+        new MutationObserver((records) => {
+          for (const record of records)
+            if (
+              [
+                record.target,
+                record.target.parentNode,
+                ...record.addedNodes,
+                ...record.removedNodes,
+              ].some((node) => node?.nodeName === "STYLE")
+            )
+              state.__styleWrites++;
+        }).observe(document, { childList: true, characterData: true, subtree: true });
+      });
       const durations: number[] = [];
       for (let index = 0; index < 9; index++) {
         const clickStarted = performance.now();
@@ -422,6 +438,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         durations.push(performance.now() - clickStarted);
       }
       durations.sort((a, b) => a - b);
+      const styleWrites = await app.page.evaluate(
+        () => (window as unknown as { __styleWrites: number }).__styleWrites,
+      );
       await app.page.getByRole("button", { name: "Aktualisierung pausieren" }).click();
       const paused = await app.page.evaluate(
         () => (window as unknown as { __liveMetricsCalls?: number }).__liveMetricsCalls ?? 0,
@@ -437,6 +456,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         requestsPer10s: 3,
         selectMedianMs: 250,
         selectP95Ms: 600,
+        styleWrites: 0,
         requestsWhilePaused: 0,
       };
       console.log(
@@ -448,6 +468,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           requestsPer10s: after - before,
           selectMedianMs: durations[4],
           selectP95Ms: durations[8],
+          styleWrites,
           requestsWhilePaused: idle - paused,
           limits,
         })}`,
@@ -459,6 +480,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(after - before).toBeGreaterThanOrEqual(1);
       expect(durations[4]).toBeLessThan(limits.selectMedianMs);
       expect(durations[8]).toBeLessThan(limits.selectP95Ms);
+      expect(styleWrites).toBe(limits.styleWrites);
       expect(idle - paused).toBe(limits.requestsWhilePaused);
       expect(app.errors).toEqual([]);
     } finally {
