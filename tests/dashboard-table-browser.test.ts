@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 test.skipIf(!process.env.L8DB_DASHBOARD_TABLE_BROWSER)(
@@ -34,7 +35,7 @@ test.skipIf(!process.env.L8DB_DASHBOARD_TABLE_BROWSER)(
       expect(await list.getByRole("link").count()).toBeLessThanOrEqual(20);
       if (!webkitEngine) {
         const cdp = await page.context().newCDPSession(page);
-        await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
       }
       await list.hover();
       await page.evaluate(() => {

@@ -3,10 +3,12 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
+  calibratedCpuRate,
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
   type FileRun,
+  measureCpuCalibration,
   medianResources,
   normalizeProcessResources,
   resourceViolations,
@@ -155,6 +157,9 @@ async function run() {
       return;
     }
   }
+  const calibration =
+    suite !== "core" && engine === "chromium" ? await measureCpuCalibration() : null;
+  if (calibration) console.log(`CPU calibration: ${JSON.stringify(calibration)}`);
   const files: readonly string[] = SUITES[suite];
   const command = [
     process.execPath,
@@ -182,6 +187,7 @@ async function run() {
     L8DB_PERF_STYLED: "1",
     L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
     L8DB_PERF_CPU_RATE: String(cpuRate),
+    L8DB_PERF_CPU_CALIBRATION: calibration ? JSON.stringify(calibration) : "",
     L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
   const trackCpuTime = process.platform === "win32" ? windowsCpuTime() : null;
@@ -313,6 +319,8 @@ async function run() {
     runtime: Bun.version,
     command,
     cpuRate: suite === "throttle" ? cpuRate : null,
+    appliedCpuRate: suite === "throttle" ? calibratedCpuRate(cpuRate, calibration) : null,
+    cpuCalibration: calibration,
     heapLimitMb: suite === "throttle" ? heapLimitMb : null,
     wallMs,
     resources,

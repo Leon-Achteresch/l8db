@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { type Browser, chromium } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 const ENABLED = Boolean(process.env.L8DB_STARTUP_PERF);
@@ -84,7 +85,7 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
       }).observe({ type: "longtask", buffered: true });
     });
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
     await page.goto(`http://localhost:${port}/`);
     await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
     const readyAt = await page.evaluate(() => performance.now());
