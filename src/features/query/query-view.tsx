@@ -1,12 +1,14 @@
 import { motion } from "motion/react";
-import { startTransition, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
+
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
+import { afterPaint } from "@/lib/after-paint";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -30,6 +32,7 @@ import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
 import { SelectRowLimit } from "./query-view/select-row-limit";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
+import type { QueryWorkspaceState, QueryWorkspaceStore } from "./query-view/types";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
 import { useAutoAssessment } from "./query-view/use-auto-assessment";
 import { useDmlPreview } from "./query-view/use-dml-preview";
@@ -58,8 +61,17 @@ interface QueryViewProps {
   tabId: string;
 }
 
+function viewWorkspace({
+  navigatorVisible: _visible,
+  navigatorShare: _share,
+  resultView: _resultView,
+  ...workspace
+}: QueryWorkspaceStore): QueryWorkspaceState {
+  return workspace;
+}
+
 export function QueryView({ tabId }: QueryViewProps) {
-  const workspace = useQueryWorkspace(useShallow(({ resultView: _resultView, ...rest }) => rest));
+  const workspace = useQueryWorkspace(useShallow(viewWorkspace));
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   const [resultFocus, setResultFocus] = useState(false);
@@ -168,7 +180,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     connected: connection !== null,
     editorApiRef,
     handleFileSave: file.handleFileSave,
-    toggleHistory: () => startTransition(() => historyRef.current?.toggle()),
+    toggleHistory: () => afterPaint(() => historyRef.current?.toggle()),
     openCsvExport: exportState.openCsvExport,
   });
 
@@ -255,7 +267,6 @@ export function QueryView({ tabId }: QueryViewProps) {
             {isSql && <SelectRowLimit />}
           </div>
           <ToolbarViewControls
-            workspace={workspace}
             isSql={isSql}
             analysisOpen={analysis.open}
             onOpenAnalysis={() => analysis.openAnalysis(caps.explain ? "plan" : "perf")}
@@ -277,7 +288,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
                 isRunning={exec.isRunning}
-                onOpenHistory={() => startTransition(() => historyRef.current?.open())}
+                onOpenHistory={() => afterPaint(() => historyRef.current?.open())}
                 onOpenOutput={() => output.setOutputOpen(true)}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}
@@ -310,7 +321,6 @@ export function QueryView({ tabId }: QueryViewProps) {
           editorFocus={editorFocus}
           resultFocus={resultFocus && !editorFocus}
           navigator={
-            workspace.navigatorVisible &&
             isSql &&
             connection && (
               <QuerySchemaBrowser
