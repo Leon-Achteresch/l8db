@@ -1,3 +1,5 @@
+import { replaceSchemeUrls } from "@/lib/scheme-urls";
+
 export type AiRichBlock = (
   | {
       type: "tool";
@@ -30,15 +32,18 @@ export type AiRichBlock = (
   | { type: "decision"; id: string; title: string; outcome: "allowed" | "denied" | "answered" }
 ) & { at?: number };
 
+const redactUrls = (value: string) =>
+  replaceSchemeUrls(
+    value,
+    "[^\\s/@:]+:[^\\s/@]+@",
+    (url) => `${url.slice(0, url.indexOf("://") + 3)}[redacted]@`,
+  );
 export const text = (value: unknown, limit = 16000) =>
   typeof value === "string"
-    ? value
-        .slice(0, limit)
-        .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@")
-        .replace(
-          /((?:authorization|api[_-]?key|access[_-]?token|token|password|secret)\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+/gi,
-          "$1[redacted]",
-        )
+    ? redactUrls(value.slice(0, limit)).replace(
+        /((?:authorization|api[_-]?key|access[_-]?token|token|password|secret)\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+/gi,
+        "$1[redacted]",
+      )
     : "";
 export const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)

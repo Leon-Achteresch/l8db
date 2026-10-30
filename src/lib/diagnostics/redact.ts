@@ -2,6 +2,7 @@ import { stripConnectionSecrets } from "@/lib/connection-export";
 import type { SavedConnection } from "@/lib/connections";
 import type { DatabaseKind, ProviderInfo } from "@/lib/db";
 import { DRIVER_FAMILY_TITLES, driverTypeLabel } from "@/lib/drivers";
+import { replaceSchemeUrls } from "@/lib/scheme-urls";
 import type { SettingsState } from "@/lib/settings";
 import type { DiagnosticsConnection, DiagnosticsDriver, DiagnosticsProvider } from "./types";
 
@@ -30,11 +31,10 @@ const SECRET_TEXT =
 const BEARER_TEXT = /\b(bearer)\s+[A-Za-z0-9._~+/=-]+/gi;
 
 export function redactErrorMessage(message: string): string {
-  return message
-    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"']+/gi, (url) => {
-      const parsed = splitConnectionString(stripConnectionSecrets(url));
-      return parsed.host ? `${parsed.scheme}://${maskHost(parsed.host)}` : "<url>";
-    })
+  return replaceSchemeUrls(message, "[^\\s\"']+", (url) => {
+    const parsed = splitConnectionString(stripConnectionSecrets(url));
+    return parsed.host ? `${parsed.scheme}://${maskHost(parsed.host)}` : "<url>";
+  })
     .replace(SECRET_TEXT, (_match, key: string) => `${key}=<redacted>`)
     .replace(BEARER_TEXT, (_match, scheme: string) => `${scheme} <redacted>`)
     .slice(0, 500);

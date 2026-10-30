@@ -1,3 +1,5 @@
+import { replaceSchemeUrls } from "@/lib/scheme-urls";
+
 const AUTH_ERROR_PATTERN =
   /password authentication|28P01|Access denied for user '[^']*'@'[^']*'(?!\s*to database)|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005|Oracle-Passwort fehlt/i;
 
@@ -30,9 +32,11 @@ export function queryErrorMessage(error: unknown): string | null {
 }
 
 export function connectionError(error: unknown): string {
-  const message = errorText(error)
-    .replace(/(password|pwd)(\s*=\s*)("[^"]*"|'[^']*'|[^;\s]*)/gi, "$1$2***")
-    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, "[Verbindungs-URL]");
+  const message = replaceSchemeUrls(
+    errorText(error).replace(/(password|pwd)(\s*=\s*)("[^"]*"|'[^']*'|[^;\s]*)/gi, "$1$2***"),
+    "[^\\s]+",
+    () => "[Verbindungs-URL]",
+  );
   if (/__TAURI|invoke|undefined.*(properties|function)/i.test(message))
     return "Zum Testen und Verbinden öffne l8db als Desktop-App.";
   if (AUTH_ERROR_PATTERN.test(message)) return AUTH_FAILED_MESSAGE;
