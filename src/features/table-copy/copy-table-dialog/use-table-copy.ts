@@ -18,8 +18,8 @@ import {
   type TableCopyProgress,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export interface TableCopySource {

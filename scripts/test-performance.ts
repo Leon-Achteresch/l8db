@@ -1,3 +1,4 @@
+import { dlopen, FFIType } from "bun:ffi";
 import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
@@ -6,6 +7,7 @@ import {
   confirmedFailures,
   executedTestCount,
   type FileRun,
+  medianResources,
   normalizeProcessResources,
   resourceViolations,
   testNamePattern,
@@ -86,6 +88,28 @@ const SUITES = {
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;
 
+function windowsCpuTime() {
+  const { symbols } = dlopen("kernel32.dll", {
+    OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.ptr },
+    GetProcessTimes: {
+      args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+    CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
+  });
+  return (pid: number) => {
+    const handle = symbols.OpenProcess(0x1000, 0, pid);
+    if (!handle) throw new Error(`OpenProcess failed for process ${pid}`);
+    return () => {
+      const [creation, exit, kernel, user] = Array.from({ length: 4 }, () => new BigUint64Array(1));
+      const read = symbols.GetProcessTimes(handle, creation, exit, kernel, user);
+      symbols.CloseHandle(handle);
+      if (!read) throw new Error(`GetProcessTimes failed for process ${pid}`);
+      return { user: user[0] / 10n, system: kernel[0] / 10n };
+    };
+  };
+}
+
 export function parsePerformanceArgs(args: string[]) {
   let suite: keyof typeof SUITES = "core";
   let engine: "chromium" | "webkit" = "chromium";
@@ -160,6 +184,7 @@ async function run() {
     L8DB_PERF_CPU_RATE: String(cpuRate),
     L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
+  const trackCpuTime = process.platform === "win32" ? windowsCpuTime() : null;
   const runFiles = async (selected: readonly string[], pattern = filter) => {
     const child = Bun.spawn(
       [process.execPath, "test", ...selected, ...(pattern ? ["--test-name-pattern", pattern] : [])],
@@ -170,6 +195,7 @@ async function run() {
         timeout: suite === "core" ? 60_000 : 900_000,
       },
     );
+    const readCpuTime = trackCpuTime?.(child.pid);
     let outputTail = "";
     let results = "";
     const capture = async (stream: ReadableStream<Uint8Array>) => {
@@ -194,13 +220,19 @@ async function run() {
       capture(child.stdout),
       capture(child.stderr),
     ]);
+    const cpuTime = readCpuTime?.();
     const usage = child.resourceUsage();
     const unmatched = Boolean(filter) && /matched 0 tests/.test(outputTail);
     return {
       exitCode: unmatched && exitCode !== 0 ? 0 : exitCode,
       signal: child.signalCode,
       executedTests: unmatched ? 0 : executedTestCount(outputTail),
-      resources: usage ? normalizeProcessResources(usage, process.platform) : null,
+      resources: usage
+        ? normalizeProcessResources(
+            cpuTime ? { maxRSS: usage.maxRSS, cpuTime } : usage,
+            process.platform,
+          )
+        : null,
       outcomes: testOutcomes(results),
     };
   };
@@ -209,8 +241,12 @@ async function run() {
   let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
   let startup: FileRun["resources"] = null;
   if (suite === "core") {
-    startup = (await runFiles(["tests/performance-report.test.ts"], "^l8db startup baseline$"))
-      .resources;
+    const samples = [];
+    for (let sample = 0; sample < 5; sample++)
+      samples.push(
+        (await runFiles(["tests/performance-report.test.ts"], "^l8db startup baseline$")).resources,
+      );
+    startup = medianResources(samples);
     for (const file of files) {
       const result = await runFiles([file]);
       signal ??= result.signal;

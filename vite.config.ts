@@ -30,6 +30,25 @@ export default defineConfig(async () => ({
         });
       },
     } satisfies Plugin,
+    {
+      name: "scope-tailwind-property-fallback",
+      apply: "build",
+      enforce: "post",
+      generateBundle(_, bundle) {
+        for (const asset of Object.values(bundle)) {
+          if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) continue;
+          const css = String(asset.source);
+          if (!css.includes("@layer properties")) continue;
+          const scoped = css.replace(
+            "*,:before,:after,::backdrop{--tw-",
+            ".tw-no-property,.tw-no-property *,.tw-no-property :before,.tw-no-property :after,.tw-no-property ::backdrop{--tw-",
+          );
+          if (scoped === css)
+            throw new Error(`Tailwind property fallback not found in ${asset.fileName}`);
+          asset.source = scoped;
+        }
+      },
+    } satisfies Plugin,
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
     tailwindcss(),

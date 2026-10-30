@@ -25,7 +25,8 @@ import {
   validateTone,
   validateToolbarActions,
 } from "./api";
-import { errorMessage, type GuardEvents, SlotGuard, type SlotName } from "./guard";
+import { type GuardEvents, SlotGuard, type SlotName } from "./guard";
+import { EMPTY_REGISTRY, errorMessage } from "./store";
 
 export type ActivePlugin = {
   id: string;
@@ -70,23 +71,6 @@ export type RegistryInput = {
   grants: Readonly<Record<string, readonly string[]>>;
   tripped: Readonly<Record<string, string>>;
   events: GuardEvents & { slotsError(plugin: string, message: string): void };
-};
-
-export const EMPTY_REGISTRY: UiPluginRegistry = {
-  plugins: [],
-  cell: null,
-  rowTone: null,
-  columns: null,
-  toolbar: null,
-  detailTabs: null,
-  tabGroup: null,
-  tabItem: null,
-  closeButton: "auto",
-  newTabPosition: "end",
-  splitLayout: null,
-  autoSaveGroups: true,
-  templates: [],
-  guards: [],
 };
 
 export function slotKey(plugin: string, slot: SlotName) {

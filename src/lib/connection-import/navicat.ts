@@ -1,6 +1,6 @@
 import type { SshAuth } from "@/lib/connections";
 import type { SslMode } from "@/lib/db";
-import { decryptNavicatPassword } from "./crypto";
+import { decryptNavicatPasswords } from "./crypto";
 import { parsePort } from "./jdbc";
 import {
   FILE_KINDS,
@@ -142,7 +142,7 @@ function readConnection(element: XmlElement, index: number, pending: PendingSecr
 }
 
 async function resolveSecrets(pending: PendingSecret[], legacy?: LegacyDecryptor) {
-  const modern = await Promise.all(pending.map((entry) => decryptNavicatPassword(entry.cipher)));
+  const modern = await decryptNavicatPasswords(pending.map((entry) => entry.cipher));
   const fallback: PendingSecret[] = [];
   pending.forEach((entry, index) => {
     const value = modern[index];

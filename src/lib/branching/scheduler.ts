@@ -3,7 +3,7 @@ import { useBackupToolPaths } from "@/lib/backup-runner";
 import { isMainWindow, useConnectionsStore } from "@/lib/connections";
 import { branchingSchedules, branchingSnapshot, type ScheduleEntry } from "@/lib/db";
 import { needsPassword } from "@/lib/password-prompt";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { runBranchingJob } from "./jobs";
 

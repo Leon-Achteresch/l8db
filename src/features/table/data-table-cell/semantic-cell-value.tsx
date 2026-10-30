@@ -22,7 +22,7 @@ type Props = {
 export function SemanticCellValue({ value, preview, column, now }: Props) {
   if (value === null || value === undefined)
     return (
-      <span className="rounded bg-muted px-1 font-mono text-[10.5px] text-muted-foreground/70">
+      <span className="rounded bg-muted px-1 font-mono text-[10.5px] leading-none text-muted-foreground/70">
         null
       </span>
     );
@@ -31,7 +31,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     return truthy ? (
       <CheckIcon
         aria-label="true"
-        className="inline size-3.5 text-emerald-600 dark:text-emerald-400"
+        className="inline size-3.5 align-top text-emerald-600 dark:text-emerald-400"
       />
     ) : (
       <span title="false" className="text-muted-foreground/50">
@@ -43,7 +43,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     return (
       <span
         className={cn(
-          "inline-block max-w-full truncate rounded-full px-2 align-middle font-sans text-[11px] leading-[18px] font-medium before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-current before:align-middle before:opacity-80",
+          "my-[0.0625rem] inline-block max-w-full truncate rounded-full px-2 align-top font-sans text-[11px] leading-[1.125rem] font-medium before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-current before:align-middle before:opacity-80",
           CATEGORY_PILL_CLASSES[categoryColorIndex(value)],
         )}
       >
@@ -52,7 +52,9 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     );
   if (column?.primaryKey || column?.numeric) return preview.text;
   if (preview.kind === "number")
-    return <span className="font-mono tabular-nums text-foreground">{preview.text}</span>;
+    return (
+      <span className="font-mono leading-none tabular-nums text-foreground">{preview.text}</span>
+    );
   if (preview.kind === "uuid") {
     const short = shortUuid(String(value));
     const parts = (
@@ -61,7 +63,11 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
         <span className="text-muted-foreground/60">{short.slice(8)}</span>
       </>
     );
-    return column?.kind === "uuid" ? parts : <span className="font-mono">{parts}</span>;
+    return column?.kind === "uuid" ? (
+      parts
+    ) : (
+      <span className="font-mono leading-none">{parts}</span>
+    );
   }
   if (column?.kind === "date" && typeof value === "string") {
     const display = timestampDisplay(value, now);

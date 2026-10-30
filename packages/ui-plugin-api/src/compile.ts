@@ -84,6 +84,10 @@ function isPunct(token: Token | undefined, ...values: string[]) {
   return token?.kind === "punct" && values.includes(token.value);
 }
 
+function isTauriName(value: string) {
+  return value.includes("__TAURI");
+}
+
 function checkTokens(tokens: Token[]): CompileError | null {
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
@@ -102,7 +106,7 @@ function checkTokens(tokens: Token[]): CompileError | null {
           message: `Import "${after.value}" ist nicht erlaubt. Erlaubt sind: react, @l8db/ui. Ein Plugin besteht aus genau einer Datei.`,
           line: after.line,
         };
-      if (BLOCKED_PROPERTIES.has(token.value))
+      if (BLOCKED_PROPERTIES.has(token.value) || isTauriName(token.value))
         return { message: `"${token.value}" ist in Plugins nicht erlaubt.`, line: token.line };
       const member = isPunct(before, ".", "?.");
       const key = isPunct(before, "{", ",") && isPunct(after, ":");
@@ -114,9 +118,10 @@ function checkTokens(tokens: Token[]): CompileError | null {
     }
     if (
       (token.kind === "string" || token.kind === "template") &&
-      isPunct(before, "[") &&
-      isPunct(after, "]") &&
-      (BLOCKED_PROPERTIES.has(token.value) || BLOCKED_GLOBALS.has(token.value))
+      (isTauriName(token.value) ||
+        (isPunct(before, "[") &&
+          isPunct(after, "]") &&
+          (BLOCKED_PROPERTIES.has(token.value) || BLOCKED_GLOBALS.has(token.value))))
     )
       return { message: `"${token.value}" ist in Plugins nicht erlaubt.`, line: token.line };
   }
