@@ -51,26 +51,8 @@ function RootComponent() {
   const [backgroundReady, setBackgroundReady] = useState(false);
 
   useEffect(() => {
-    const activity = ["pointerdown", "keydown", "wheel", "scroll"] as const;
-    let timer = 0;
-    const deadline = window.setTimeout(ready, 10000);
-    const stop = () => {
-      window.clearTimeout(timer);
-      window.clearTimeout(deadline);
-      for (const type of activity) window.removeEventListener(type, wait, true);
-    };
-    function ready() {
-      stop();
-      startTransition(() => setBackgroundReady(true));
-    }
-    function wait() {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(ready, 3000);
-    }
-    for (const type of activity)
-      window.addEventListener(type, wait, { capture: true, passive: true });
-    wait();
-    return stop;
+    const timer = window.setTimeout(() => startTransition(() => setBackgroundReady(true)), 1000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
