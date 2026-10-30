@@ -190,7 +190,7 @@ export const QueryResultTable = memo(function QueryResultTable({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
-    overscan: IS_CHROMIUM ? 0 : Math.ceil(256 / estimatedRowHeight),
+    overscan: IS_CHROMIUM ? 0 : Math.min(16, Math.ceil(256 / estimatedRowHeight)),
     rangeExtractor: rowRangeExtractor,
     measureElement: (element, entry, instance) => {
       const size = measureVirtualItem(element, entry, instance);
