@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
-import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { finishTask, isTaskActive, startTask, updateTask, useTasksStore } from "@/lib/tasks";
 import {
   recordDatabaseOperation,
   traceCommand,
@@ -260,7 +260,21 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
           title: command === "execute_script" ? "SQL-Skript" : "SQL-Abfrage",
           ...context,
         },
-        cancellable ? () => cancelExecution(jobId) : undefined,
+        cancellable
+          ? async () => {
+              const accepted = await cancelExecution(jobId);
+              const task = useTasksStore.getState().tasks.find((entry) => entry.id === jobId);
+              if (!accepted && task && isTaskActive(task))
+                finishTask(
+                  jobId,
+                  undefined,
+                  new Error(
+                    "Der Server führt diese Abfrage nicht mehr aus; das Ergebnis ist nicht angekommen.",
+                  ),
+                );
+              return accepted;
+            }
+          : undefined,
       );
     options.onJob?.(jobId);
   }
