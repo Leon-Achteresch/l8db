@@ -48,14 +48,16 @@ function RootComponent() {
   useEffect(() => {
     const activity = ["pointerdown", "keydown", "wheel", "scroll"] as const;
     let timer = 0;
+    const deadline = window.setTimeout(ready, 10000);
     const stop = () => {
       window.clearTimeout(timer);
+      window.clearTimeout(deadline);
       for (const type of activity) window.removeEventListener(type, wait, true);
     };
-    const ready = () => {
+    function ready() {
       stop();
       startTransition(() => setBackgroundReady(true));
-    };
+    }
     function wait() {
       window.clearTimeout(timer);
       timer = window.setTimeout(ready, 3000);

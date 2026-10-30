@@ -144,7 +144,7 @@ export function MonitorView() {
           <LiveReplicationTab m={live} />
           <LogsTab m={m} connection={connection} />
           <PerformanceTab m={m} />
-          <WorkloadTab m={m} />
+          <WorkloadTab m={m} active={tab === "workload"} />
         </div>
       </Tabs>
       <LiveMonitorFooter m={live} connectionName={connection.name} tabLabel={tabLabel} />
