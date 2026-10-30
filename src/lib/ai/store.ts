@@ -109,6 +109,14 @@ export function mergeAiRecords<T extends { id: string; updatedAt: number }>(
   }
   return [...entries.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
+const sanitizedRich = new WeakSet<object>();
+function sanitizeRich(rich: NonNullable<AiMessage["rich"]>) {
+  if (sanitizedRich.has(rich)) return rich;
+  const result = sanitizeAiRich(rich);
+  for (const block of result) Object.freeze(block);
+  sanitizedRich.add(Object.freeze(result));
+  return result;
+}
 function sanitizeSession(session: AiSession): AiSession {
   return {
     ...session,
@@ -135,7 +143,7 @@ function sanitizeSession(session: AiSession): AiSession {
         ...(parentId !== undefined ? { parentId } : {}),
         role,
         text,
-        ...(rich ? { rich: sanitizeAiRich(rich) } : {}),
+        ...(rich ? { rich: sanitizeRich(rich) } : {}),
         ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
         ...(typeof error === "string" && error ? { error } : {}),
         ...(stopped ? { stopped: true } : {}),
@@ -415,7 +423,10 @@ syncAcrossWindows(SESSIONS_KEY, (value) => {
     if (Array.isArray(ids))
       void readAiSessions(ids.filter((id) => typeof id === "string"))
         .then(applySessions)
-        .catch(() => undefined);
+        .catch(() => {
+          loadFailed = true;
+          if (!persistTimer) persistTimer = setTimeout(persistData, 150);
+        });
   } catch {
     return;
   }

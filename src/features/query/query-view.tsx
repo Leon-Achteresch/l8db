@@ -60,16 +60,17 @@ interface QueryViewProps {
   tabId: string;
 }
 
-function withoutNavigator({
+function viewWorkspace({
   navigatorVisible: _visible,
   navigatorShare: _share,
+  resultView: _resultView,
   ...workspace
 }: QueryWorkspaceStore): QueryWorkspaceState {
   return workspace;
 }
 
 export function QueryView({ tabId }: QueryViewProps) {
-  const workspace = useQueryWorkspace(useShallow(withoutNavigator));
+  const workspace = useQueryWorkspace(useShallow(viewWorkspace));
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   const [resultFocus, setResultFocus] = useState(false);

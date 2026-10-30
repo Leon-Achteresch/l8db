@@ -1,6 +1,13 @@
 import { Dialog as SheetPrimitive } from "radix-ui";
-import * as React from "react";
+import type * as React from "react";
+import { useTransitionOpen } from "@/lib/hooks/use-transition-open";
 
-export function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />;
+export function Sheet({
+  open,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  const [isOpen, setOpen] = useTransitionOpen(open, defaultOpen, onOpenChange);
+  return <SheetPrimitive.Root data-slot="sheet" {...props} open={isOpen} onOpenChange={setOpen} />;
 }
