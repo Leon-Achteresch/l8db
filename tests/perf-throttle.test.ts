@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { type Browser, chromium, type Page, webkit } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 const ENABLED = Boolean(process.env.L8DB_PERF_THROTTLE);
@@ -159,7 +160,7 @@ beforeAll(async () => {
   await page.waitForTimeout(1500);
   if (!WEBKIT) {
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
   }
 }, 300000);
 
