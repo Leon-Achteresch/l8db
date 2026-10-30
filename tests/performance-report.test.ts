@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  calibratedCpuRate,
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
@@ -61,19 +62,27 @@ test("empty selections and skipped tests cannot establish a successful performan
 test("scenario artifacts identify their current run instead of reusing stale measurement metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "l8db-performance-provenance-"));
   const started = Date.now();
+  const calibration = {
+    benchmarkMs: 200,
+    referenceMs: 100,
+    samplesMs: [200],
+    cpu: "Runner",
+    chromium: "153.0.8010.12",
+  };
   try {
     const source = resolve(import.meta.dir, "../scripts/performance-report.ts");
     const child = Bun.spawn(
       [
         process.execPath,
         "--eval",
-        `import { reportScenario } from ${JSON.stringify(source)}; await reportScenario("provenance", { rows: 5000, name: "stale", runId: "stale", capturedAt: "stale" });`,
+        `import { reportScenario } from ${JSON.stringify(source)}; await reportScenario("provenance", { rows: 5000, cpuRate: 4, name: "stale", runId: "stale", capturedAt: "stale" });`,
       ],
       {
         env: {
           ...process.env,
           L8DB_PERF_REPORT_DIR: directory,
           L8DB_PERF_RUN_ID: "current-run",
+          L8DB_PERF_CPU_CALIBRATION: JSON.stringify(calibration),
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -90,12 +99,31 @@ test("scenario artifacts identify their current run instead of reusing stale mea
     expect(report.name).toBe("provenance");
     expect(report.runId).toBe("current-run");
     expect(report.rows).toBe(5000);
+    expect(report.cpuRate).toBe(4);
+    expect(report.appliedCpuRate).toBe(2);
+    expect(report.cpuCalibration).toEqual(calibration);
     expect(Date.parse(report.capturedAt)).toBeGreaterThanOrEqual(started);
     expect(Date.parse(report.capturedAt)).toBeLessThanOrEqual(Date.now());
     expect(output).toContain(JSON.stringify(report));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("CPU throttling slows every runner to the reference speed without speeding slow runners up", () => {
+  const runner = (benchmarkMs: number) => ({
+    benchmarkMs,
+    referenceMs: 100,
+    samplesMs: [benchmarkMs],
+    cpu: "Runner",
+    chromium: "153.0.8010.12",
+  });
+  expect(calibratedCpuRate(4, runner(100))).toBe(4);
+  expect(calibratedCpuRate(4, runner(150))).toBe(2.67);
+  expect(calibratedCpuRate(4, runner(80))).toBe(5);
+  expect(calibratedCpuRate(4, runner(600))).toBe(1);
+  expect(calibratedCpuRate(8, runner(150))).toBe(5.33);
+  expect(calibratedCpuRate(4, null)).toBe(4);
 });
 
 test("performance profiles reject unsupported throttling instead of silently skipping it", () => {

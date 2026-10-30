@@ -3,6 +3,8 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
+  type CpuCalibration,
+  calibratedCpuRate,
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
@@ -109,6 +111,15 @@ function windowsCpuTime() {
   };
 }
 
+function calibrateCpu(): CpuCalibration {
+  const measured = Bun.spawnSync(
+    [process.execPath, resolve(import.meta.dir, "performance-report.ts")],
+    { stderr: "inherit" },
+  );
+  if (!measured.success) throw new Error("CPU calibration failed");
+  return JSON.parse(measured.stdout.toString());
+}
+
 export function parsePerformanceArgs(args: string[]) {
   let suite: keyof typeof SUITES = "core";
   let engine: "chromium" | "webkit" = "chromium";
@@ -154,6 +165,8 @@ async function run() {
       return;
     }
   }
+  const calibration = suite !== "core" && engine === "chromium" ? calibrateCpu() : null;
+  if (calibration) console.log(`CPU calibration: ${JSON.stringify(calibration)}`);
   const files: readonly string[] = SUITES[suite];
   const command = [
     process.execPath,
@@ -181,6 +194,7 @@ async function run() {
     L8DB_PERF_STYLED: "1",
     L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
     L8DB_PERF_CPU_RATE: String(cpuRate),
+    L8DB_PERF_CPU_CALIBRATION: calibration ? JSON.stringify(calibration) : "",
     L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
   const trackCpuTime = process.platform === "win32" ? windowsCpuTime() : null;
@@ -239,6 +253,35 @@ async function run() {
   let signal: string | null = null;
   let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
   let startup: FileRun["resources"] = null;
+  const confirmRun = async (
+    selected: readonly string[],
+    result: Awaited<ReturnType<typeof runFiles>>,
+  ) => {
+    const failed = [...result.outcomes]
+      .filter(([, outcome]) => outcome === "fail")
+      .map(([name]) => name);
+    if (result.exitCode === 0 || result.signal !== null || failed.length === 0) return;
+    const reruns = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const rerun = await runFiles(selected, testNamePattern(failed));
+      reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
+    }
+    const confirmed = confirmedFailures(failed, reruns);
+    retries = {
+      failed: [...(retries?.failed ?? []), ...failed],
+      confirmed: [...(retries?.confirmed ?? []), ...confirmed],
+      attempts: [
+        ...(retries?.attempts ?? []),
+        ...reruns.map((rerun) => ({
+          executedTests: rerun.executedTests,
+          failed: [...rerun.outcomes]
+            .filter(([, outcome]) => outcome === "fail")
+            .map(([name]) => name),
+        })),
+      ],
+    };
+    if (confirmed.length === 0) result.exitCode = 0;
+  };
   if (suite === "core") {
     const samples = [];
     for (let sample = 0; sample < 5; sample++)
@@ -249,33 +292,13 @@ async function run() {
     for (const file of files) {
       const result = await runFiles([file]);
       signal ??= result.signal;
+      await confirmRun([file], result);
       fileRuns.push({ file, ...result });
     }
   } else {
     const result = await runFiles(files);
     signal = result.signal;
-    const failed = [...result.outcomes]
-      .filter(([, outcome]) => outcome === "fail")
-      .map(([name]) => name);
-    if (result.exitCode !== 0 && result.signal === null && failed.length > 0) {
-      const reruns = [];
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const rerun = await runFiles(files, testNamePattern(failed));
-        reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
-      }
-      const confirmed = confirmedFailures(failed, reruns);
-      retries = {
-        failed,
-        confirmed,
-        attempts: reruns.map((rerun) => ({
-          executedTests: rerun.executedTests,
-          failed: [...rerun.outcomes]
-            .filter(([, outcome]) => outcome === "fail")
-            .map(([name]) => name),
-        })),
-      };
-      if (confirmed.length === 0) result.exitCode = 0;
-    }
+    await confirmRun(files, result);
     fileRuns.push({ file: files.join(" "), ...result });
   }
   const combined = combineFileRuns(fileRuns);
@@ -309,6 +332,8 @@ async function run() {
     runtime: Bun.version,
     command,
     cpuRate: suite === "throttle" ? cpuRate : null,
+    appliedCpuRate: suite === "throttle" ? calibratedCpuRate(cpuRate, calibration) : null,
+    cpuCalibration: calibration,
     heapLimitMb: suite === "throttle" ? heapLimitMb : null,
     wallMs,
     resources,
