@@ -15,17 +15,28 @@ import { useSettingsStore } from "@/lib/settings";
 import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 
 const sortedTableCache = new WeakMap<TableInfo[], TableInfo[]>();
+const tableKeyCache = new WeakMap<TableInfo, string>();
+const collator = new Intl.Collator();
 const columnIndexCache = new WeakMap<ColumnInfo[], Map<string, Map<string, ColumnInfo[]>>>();
 
 function sortedTablesFor(tables: TableInfo[]) {
   let sorted = sortedTableCache.get(tables);
   if (!sorted) {
     sorted = [...tables].sort(
-      (a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name),
+      (a, b) => collator.compare(a.schema, b.schema) || collator.compare(a.name, b.name),
     );
     sortedTableCache.set(tables, sorted);
   }
   return sorted;
+}
+
+function tableKey(table: TableInfo) {
+  let key = tableKeyCache.get(table);
+  if (key === undefined) {
+    key = JSON.stringify([table.schema, table.name]);
+    tableKeyCache.set(table, key);
+  }
+  return key;
 }
 
 function columnsFor(columns: ColumnInfo[]) {
@@ -140,15 +151,12 @@ export function QuerySchemaBrowser({
     count: visible.length,
     getScrollElement: () => schemaScrollRef.current,
     scrollToFn,
-    estimateSize: () => 40,
+    estimateSize: () => 36,
     measureElement: measureVirtualItem,
     observeElementRect: observeVirtualScrollRect,
     useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
-    getItemKey: useCallback(
-      (index: number) => JSON.stringify([visible[index].schema, visible[index].name]),
-      [visible],
-    ),
+    getItemKey: useCallback((index: number) => tableKey(visible[index]), [visible]),
     overscan: 3,
     initialRect: { width: 300, height: 600 },
   });
@@ -354,7 +362,7 @@ export function QuerySchemaBrowser({
             <div className="relative" style={{ height: schemaVirtualizer.getTotalSize() }}>
               {schemaVirtualizer.getVirtualItems().map((virtualRow) => {
                 const table = visible[virtualRow.index];
-                const key = JSON.stringify([table.schema, table.name]);
+                const key = tableKey(table);
                 const isOpen = Boolean(term) || expanded.has(key);
                 const qualified = [table.schema, table.name].filter(Boolean).map(quote).join(".");
                 const fields = columnMap?.get(table.schema)?.get(table.name) ?? [];

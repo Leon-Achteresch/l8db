@@ -82,15 +82,12 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
 
   const visibleEntries = tab === "history" ? history : saved;
   const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
-  const getItemKey = useCallback(
-    (index: number) => `${tab}:${visibleEntries[index].id}`,
-    [tab, visibleEntries],
-  );
+  const getItemKey = useCallback((index: number) => visibleEntries[index].id, [visibleEntries]);
   const virtualizer = useVirtualizer({
     count: visibleEntries.length,
     getScrollElement: () => scrollRef.current,
     scrollToFn,
-    estimateSize: () => 64,
+    estimateSize: () => 49,
     measureElement: measureVirtualItem,
     observeElementRect: observeVirtualScrollRect,
     useAnimationFrameWithResizeObserver: true,
