@@ -13,6 +13,10 @@ export function noteActiveTab(key: string) {
   history.length = Math.min(history.length, 50);
 }
 
+export function recentTabKeys(): readonly string[] {
+  return history;
+}
+
 export function arrangeNewTabs(
   previous: readonly Tab[],
   next: readonly Tab[],

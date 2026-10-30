@@ -1,3 +1,4 @@
+import { heapSize } from "bun:jsc";
 import { expect, test } from "bun:test";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 import type { CatalogObject } from "../src/lib/db";
@@ -95,10 +96,10 @@ test("5k-object catalogs compare, order and round-trip within budget", async () 
   const source = catalog("DEV", true, 7);
   const target = catalog("PROD", true, 11);
   for (let pass = 0; pass < 3; pass++) Bun.gc(true);
-  const before = process.memoryUsage().heapUsed;
+  const before = heapSize();
   const kept = result(source, target);
   for (let pass = 0; pass < 3; pass++) Bun.gc(true);
-  const retainedBytes = process.memoryUsage().heapUsed - before;
+  const retainedBytes = heapSize() - before;
   const compare = await measureScenario(() => {
     result(source, target);
   });

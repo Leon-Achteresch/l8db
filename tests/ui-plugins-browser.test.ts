@@ -299,6 +299,28 @@ test.skipIf(!process.env.L8DB_UI_PLUGINS_BROWSER)(
       );
       expect(copied.join("")).toContain("| 10480 |");
 
+      await page.locator('tbody tr[data-index="0"] td[data-col="customer"]').dblclick();
+      const draft = page.locator('tbody tr[data-index="0"] input').first();
+      await draft.fill("Entwurf");
+      await page.evaluate(() => {
+        const demo = (window as unknown as Demo).__uiPluginDemo;
+        demo.setPlugin("a-status.tsx", null);
+        demo.setPlugin("e-boom.jsx", null);
+      });
+      await page.waitForFunction(() => !document.querySelector("tbody [data-ui-plugin]"));
+      await draft.pressSequentially("y");
+      expect(await draft.inputValue()).toBe("Entwurfy");
+      await draft.press("Escape");
+      await page.evaluate(
+        ([status, boom]) => {
+          const demo = (window as unknown as Demo).__uiPluginDemo;
+          demo.setPlugin("a-status.tsx", status);
+          demo.setPlugin("e-boom.jsx", boom);
+        },
+        [STATUS, BOOM],
+      );
+      await page.locator('[data-ui-plugin="test.status"]').first().waitFor();
+
       await page.locator('[data-tab-key="table:crm.tickets"] button').first().click();
       await page.getByRole("tab", { name: "Kanban" }).click();
       const lanes = page.locator('[data-ui-plugin="test.tools"] [data-board-column]');

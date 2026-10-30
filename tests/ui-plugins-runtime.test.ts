@@ -52,7 +52,9 @@ const { buildRegistry } = await import("../src/lib/ui-plugins/registry");
 const { SlotGuard } = await import("../src/lib/ui-plugins/guard");
 const { validatePlugin } = await import("../src/lib/ui-plugins/api");
 const { arrangeNewTabs } = await import("../src/lib/ui-plugins/tabs-policy");
-const { columnDefaults, createPluginGrid } = await import("../src/lib/ui-plugins/grid");
+const { columnDefaults, createPluginGrid, pluginCellState } = await import(
+  "../src/lib/ui-plugins/grid"
+);
 const { evaluatePlugin } = await import("../packages/ui-plugin-api/src/evaluate");
 const { createPluginTimers } = await import("../src/lib/ui-plugins/timers");
 const { uiPluginStatuses } = await import("../src/lib/ui-plugins/status");
@@ -190,6 +192,29 @@ describe("plugin host", () => {
     expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("disabled");
   });
 
+  test("rewrites the status file when a plugin without working slots is switched off", async () => {
+    files.set(
+      "broken-slots.tsx",
+      `import { definePlugin } from "@l8db/ui";
+export default definePlugin({
+  id: "test.broken-slots",
+  name: "Kaputte Slots",
+  slots: () => {
+    throw new Error("kaputt");
+  },
+});
+`,
+    );
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const before = JSON.parse(support.get(".status.json") ?? "{}").plugins[0];
+    expect(before.state).toBe("active");
+    expect(before.slotErrors).toBeDefined();
+    useUiPluginSettings.setState({ disabled: ["test.broken-slots"] });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(JSON.parse(support.get(".status.json") ?? "{}").plugins[0].state).toBe("disabled");
+  });
+
   test("does not recompile unchanged files and disposes removed ones", async () => {
     files.set("status.tsx", STATUS);
     await settle();
@@ -200,6 +225,38 @@ describe("plugin host", () => {
     await settle();
     expect(useUiPluginRuntime.getState().loaded["status.tsx"]).toBeUndefined();
     expect(uiPluginRegistry().plugins).toEqual([]);
+  });
+
+  test("keeps the owner's faults when a file with a duplicate id appears", async () => {
+    files.set("a.tsx", STATUS);
+    await settle();
+    const tripped = { "test.status:grid.cell": "zu langsam" };
+    useUiPluginRuntime.setState({ tripped });
+    files.set("b.tsx", STATUS);
+    await settle();
+    expect(useUiPluginRuntime.getState().errors["b.tsx"].message).toContain("a.tsx");
+    expect(useUiPluginRuntime.getState().tripped).toEqual(tripped);
+    useUiPluginRuntime.setState({ tripped: {} });
+  });
+
+  test("stops timers of disabled plugins and restarts them when enabled again", async () => {
+    const ticker = `import { definePlugin } from "@l8db/ui";
+setInterval(() => undefined, 1000);
+export default definePlugin({ id: "test.ticker", slots: { grid: { cell: () => undefined } } });
+`;
+    useUiPluginSettings.setState({ disabled: ["test.ticker"] });
+    files.set("ticker.tsx", ticker);
+    await settle();
+    const off = useUiPluginRuntime.getState().loaded["ticker.tsx"];
+    expect(off.timers.active).toBe(0);
+    useUiPluginSettings.getState().setEnabled("test.ticker", true);
+    await settle();
+    const on = useUiPluginRuntime.getState().loaded["ticker.tsx"];
+    expect(on).not.toBe(off);
+    expect(on.timers.active).toBe(1);
+    useUiPluginSettings.getState().setEnabled("test.ticker", false);
+    expect(on.timers.active).toBe(0);
+    expect(useUiPluginRuntime.getState().loaded["ticker.tsx"]).toBe(on);
   });
 
   test("rejects duplicate ids and reports blocked APIs with lines", async () => {
@@ -273,6 +330,43 @@ describe("runtime isolation", () => {
     expect(isValidElement(runtime.jsx("div", { children: "ok" }))).toBe(true);
     expect(Object.isFrozen(UI_PLUGIN_MODULES.react)).toBe(true);
     expect("createElement" in (UI_PLUGIN_MODULES.react as object)).toBe(false);
+  });
+
+  test("shadows Tauri and webview IPC globals", () => {
+    const names = [
+      "__TAURI__",
+      "__TAURI_INTERNALS__",
+      "__TAURI_EVENT_PLUGIN_INTERNALS__",
+      "ipc",
+      "webkit",
+      "chrome",
+    ];
+    const scope = globalThis as Record<string, unknown>;
+    for (const name of names) scope[name] = {};
+    try {
+      const source = `module.exports = [${names.map((name) => `typeof ${name}`).join(", ")}];`;
+      expect(evaluatePlugin(source, {})).toEqual(names.map(() => "undefined"));
+    } finally {
+      for (const name of names) delete scope[name];
+    }
+  });
+
+  test("plugin timers only clear their own ids", async () => {
+    const timers = createPluginTimers(() => undefined);
+    let fired = false;
+    const host = setTimeout(() => {
+      fired = true;
+    }, 1);
+    timers.globals.clearTimeout(host);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fired).toBe(true);
+    let hostTicks = 0;
+    const interval = setInterval(() => hostTicks++, 1);
+    timers.globals.clearInterval(interval);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    clearInterval(interval);
+    expect(hostTicks).toBeGreaterThan(0);
+    timers.dispose();
   });
 
   test("shadows eval at runtime", () => {
@@ -555,6 +649,21 @@ describe("slot guard", () => {
     }
   });
 
+  test("records calls without sorting the window", () => {
+    const guard = new SlotGuard("a.sort", "grid.cell", {
+      error: () => undefined,
+      trip: () => undefined,
+    });
+    const sort = spyOn(Array.prototype, "sort");
+    try {
+      for (let index = 0; index < 1000; index++) guard.run(() => null, null);
+      expect(sort).not.toHaveBeenCalled();
+      expect(guard.tripped).toBe(false);
+    } finally {
+      sort.mockRestore();
+    }
+  });
+
   test("trips after repeated errors and reports only the first", () => {
     const errors: string[] = [];
     const trips: string[] = [];
@@ -701,6 +810,43 @@ describe("grid integration", () => {
     expect(() => payload.nested.push(3)).toThrow();
     expect(tags).toEqual(["b", "a"]);
   });
+
+  test("keeps one cell state per row and column and skips plain columns", () => {
+    const original = { status: "offen", total: 12, note: "x" };
+    let calls = 0;
+    const grid = createPluginGrid(
+      {
+        cell: (props) => {
+          calls++;
+          return props.column.id === "status" ? { plugin: "test.status", node: "pill" } : undefined;
+        },
+        rowTone: null,
+      },
+      TABLE,
+      [COLUMN, { ...COLUMN, id: "total" }, { ...COLUMN, id: "note" }],
+      [original],
+      columnDefaults([{ id: "total", align: "end" }]),
+    );
+    const cells = {
+      row: { original, index: 0, getValue: (id: string) => original[id as keyof typeof original] },
+      states: new Map(),
+    };
+    const status = pluginCellState(grid, cells, "status");
+    expect(status).toEqual({
+      output: { plugin: "test.status", node: "pill" },
+      align: undefined,
+      resetKey: grid,
+    });
+    expect(pluginCellState(grid, cells, "status")).toBe(status);
+    expect(pluginCellState(grid, cells, "total")).toMatchObject({
+      output: undefined,
+      align: "end",
+    });
+    expect(pluginCellState(grid, cells, "note")).toBeUndefined();
+    expect(pluginCellState(grid, cells, "note")).toBeUndefined();
+    expect(calls).toBe(3);
+  });
+
   test("returns only selected rows that are still loaded", () => {
     const first = Object.freeze({ id: 1 });
     const second = Object.freeze({ id: 2 });
@@ -872,10 +1018,39 @@ describe("sdk helpers", () => {
     expect(helpers.asNumber(10n)).toBe(10);
     expect(helpers.asDate("2026-10-29 12:00:00")?.getFullYear()).toBe(2026);
     expect(helpers.asDate("kein Datum")).toBeNull();
+    expect(helpers.asDate("2026-10-29 10:30:00+00")?.toISOString()).toBe(
+      "2026-10-29T10:30:00.000Z",
+    );
+    expect(helpers.asDate("2026-10-29 10:30:00.5+01")?.toISOString()).toBe(
+      "2026-10-29T09:30:00.500Z",
+    );
     const today = new Date();
     expect(helpers.daysFromToday(today)).toBe(0);
     expect(helpers.formatNumber(1234.5, { decimals: 2 })).toBe("1.234,50");
     expect(helpers.formatNumber(3, { currency: "EUR" })).toContain("€");
     expect(helpers.formatDate("2026-01-02")).toContain("2026");
+  });
+
+  test("count calendar days in local time for date-only values", () => {
+    const zone = process.env.TZ;
+    try {
+      for (const name of ["America/New_York", "Pacific/Auckland", "UTC"]) {
+        process.env.TZ = name;
+        const today = new Date();
+        const iso = [
+          today.getFullYear(),
+          String(today.getMonth() + 1).padStart(2, "0"),
+          String(today.getDate()).padStart(2, "0"),
+        ].join("-");
+        expect(helpers.daysFromToday(iso)).toBe(0);
+        expect(helpers.asDate(iso)?.getHours()).toBe(0);
+        expect(helpers.asDate("2026-10-29T10:00:00Z")?.toISOString()).toBe(
+          "2026-10-29T10:00:00.000Z",
+        );
+      }
+    } finally {
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   });
 });

@@ -23,6 +23,32 @@ export type UiPluginGrid = {
 
 export const UiPluginGridContext = createContext<UiPluginGrid | null>(null);
 
+export type PluginCellState = {
+  output: PluginNode | undefined;
+  align: ColumnPatch["align"];
+  resetKey: UiPluginGrid;
+};
+
+export type PluginRowCells = {
+  row: { original: Row; index: number; getValue: (columnId: string) => unknown };
+  states: Map<string, PluginCellState | null>;
+};
+
+export function pluginCellState(
+  grid: UiPluginGrid,
+  { row, states }: PluginRowCells,
+  columnId: string,
+): PluginCellState | undefined {
+  let state = states.get(columnId);
+  if (state === undefined) {
+    const align = grid.align?.[columnId];
+    const output = grid.cell?.(row.getValue(columnId), row.original, columnId, row.index);
+    state = output === undefined && !align ? null : { output, align, resetKey: grid };
+    states.set(columnId, state);
+  }
+  return state ?? undefined;
+}
+
 export function columnDefaults(patches: readonly ColumnPatch[]) {
   if (patches.length === 0) return {};
   const ordered = patches
@@ -82,6 +108,7 @@ export function createPluginGrid(
   const byId = new Map(infos.map((info) => [info.id, info]));
   let all: readonly Row[] | null = null;
   const lazyRows = () => (all ??= freezeRows(rows));
+  const tones = new WeakMap<object, string | undefined>();
   return {
     table,
     cell: cell
@@ -95,8 +122,11 @@ export function createPluginGrid(
       : null,
     rowColor: rowTone
       ? (row) => {
+          if (tones.has(row)) return tones.get(row);
           const tone = rowTone(freezeRow(row), table);
-          return tone ? TONE_COLORS[tone] : undefined;
+          const color = tone ? TONE_COLORS[tone] : undefined;
+          tones.set(row, color);
+          return color;
         }
       : null,
     layout: defaults.layout,

@@ -28,8 +28,7 @@ export function createPluginTimers(report: (error: unknown) => void) {
       return id;
     },
     clearTimeout: (id: ReturnType<typeof setTimeout>) => {
-      timeouts.delete(id);
-      clearTimeout(id);
+      if (timeouts.delete(id)) clearTimeout(id);
     },
     setInterval: (callback: unknown, delay?: number, ...args: unknown[]) => {
       if (disposed) return 0 as unknown as ReturnType<typeof setInterval>;
@@ -38,8 +37,7 @@ export function createPluginTimers(report: (error: unknown) => void) {
       return id;
     },
     clearInterval: (id: ReturnType<typeof setInterval>) => {
-      intervals.delete(id);
-      clearInterval(id);
+      if (intervals.delete(id)) clearInterval(id);
     },
     requestAnimationFrame: (callback: unknown) => {
       if (disposed) return 0;
@@ -48,12 +46,14 @@ export function createPluginTimers(report: (error: unknown) => void) {
       return id;
     },
     cancelAnimationFrame: (id: number) => {
-      frames.delete(id);
-      cancelAnimationFrame(id);
+      if (frames.delete(id)) cancelAnimationFrame(id);
     },
   };
   return {
     globals,
+    get disposed() {
+      return disposed;
+    },
     get active() {
       return timeouts.size + intervals.size + frames.size;
     },

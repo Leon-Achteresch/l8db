@@ -43,9 +43,10 @@ export function TableTabs() {
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
   const tabGroup = useUiPluginRegistry((registry) => registry.tabGroup);
   const templates = useUiPluginRegistry((registry) => registry.templates);
+  const connections = useConnectionsStore((state) => (tabGroup ? state.connections : null));
+  const activeId = useConnectionsStore((state) => (tabGroup ? state.activeId : null));
   const tabGroups = useMemo(() => {
-    if (!tabGroup) return null;
-    const { connections, activeId } = useConnectionsStore.getState();
+    if (!tabGroup || !connections) return null;
     return allTabs.map((tab) =>
       tabGroup(
         tabInfo(
@@ -54,7 +55,7 @@ export function TableTabs() {
         ),
       ),
     );
-  }, [tabGroup, allTabs]);
+  }, [tabGroup, allTabs, connections, activeId]);
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
   const setOrientation = useSplitView((state) => state.setOrientation);

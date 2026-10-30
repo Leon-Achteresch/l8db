@@ -14,9 +14,9 @@ Alle Typen, Signaturen und Props der Bausteine stehen in `l8db-ui.d.ts`. Für ei
 
 - Ein Plugin ist genau eine Datei. Imports sind nur aus `react` und `@l8db/ui` erlaubt. Aus `react` gibt es nur `Children`, `Fragment`, `createContext`, `isValidElement`, `memo`, `startTransition`, `useCallback`, `useContext`, `useDeferredValue`, `useEffect`, `useId`, `useMemo`, `useReducer`, `useRef`, `useState` und `useTransition`.
 - Gesperrte globale Namen, auch als eigene Variablen oder Parameter: `window`, `document`, `globalThis`, `frames`, `opener`, `navigator`, `localStorage`, `sessionStorage`, `indexedDB`, `caches`, `cookieStore`, `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `Worker`, `SharedWorker`, `ServiceWorker`, `BroadcastChannel`, `importScripts`, `eval`, `Function`, `require`, `process`, `module` und `exports`. Nach einem Punkt (`row.document`) und als Objektschlüssel (`{ fetch: 1 }`) sind sie erlaubt.
-- Überall gesperrt, auch als Schlüssel oder eigener Name: `constructor`, `prototype`, `__proto__`, `__defineGetter__` und Verwandte, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `insertAdjacentElement`, `dangerouslySetInnerHTML`, `createElement`, `createPortal`, `ownerDocument`, `defaultView`, `parentNode`, `parentElement`, `getRootNode`, `offsetParent`, `closest`, `contentWindow`, `contentDocument` und `srcdoc`.
-- `self`, `top`, `parent`, `location`, `history`, `open`, `alert`, `confirm`, `prompt` und `postMessage` sind im Plugin `undefined`. Als eigene Namen darfst du sie verwenden.
-- Verbotene Elemente: `<script>`, `<style>`, `<iframe>`, `<frame>`, `<frameset>`, `<object>`, `<embed>`, `<link>`, `<meta>`, `<base>`, `<portal>` und `<template>`, außerdem `ref` auf HTML-Elementen. Netzwerk geht nur über `ctx.http`, siehe „Netzwerk“.
+- Überall gesperrt, auch als Schlüssel oder eigener Name: `constructor`, `prototype`, `__proto__`, `__defineGetter__` und Verwandte, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `insertAdjacentElement`, `dangerouslySetInnerHTML`, `createElement`, `createPortal`, `ownerDocument`, `defaultView`, `parentNode`, `parentElement`, `getRootNode`, `offsetParent`, `closest`, `contentWindow`, `contentDocument`, `srcdoc` und alles, was `__TAURI` enthält, auch in Texten.
+- `self`, `top`, `parent`, `location`, `history`, `open`, `alert`, `confirm`, `prompt`, `postMessage`, `ipc`, `webkit` und `chrome` sind im Plugin `undefined`. Als eigene Namen darfst du sie verwenden.
+- Verbotene Elemente: `<script>`, `<style>`, `<iframe>`, `<frame>`, `<frameset>`, `<object>`, `<embed>`, `<link>`, `<meta>`, `<base>`, `<portal>` und `<template>`, außerdem `ref` auf HTML-Elementen. Für Netzwerkzugriffe nutze `ctx.http`, siehe „Netzwerk“.
 - Slot-Funktionen sind reine Funktionen, also keine Hooks direkt in `cell`, `rowTone`, `columns`, `toolbar`, `detailTabs`, `group`, `item`, `layout` oder `run`. Hooks gehören in eigene Komponenten, die du als JSX zurückgibst, etwa `render: (props) => <Stats {...props} />`.
 - Laufzeitbudgets im p95: `cell` und `item` 4 ms, `rowTone` und `group` 2 ms, `layout` 10 ms, alle anderen 50 ms. Ein Slot, der sein Budget überschreitet oder 20-mal wirft, wird abgeschaltet (`tripped`).
 - `cell` läuft für jede sichtbare Zelle jeder Tabelle. Gib früh `undefined` zurück, wenn Tabelle oder Spalte nicht passen. Werte können Tausende Zeichen lang sein, daher keine verschachtelten Regex-Wiederholungen.
@@ -142,7 +142,7 @@ Details zu den Vorlagen:
 ## Netzwerk
 
 - `permissions.http` listet höchstens 20 erlaubte Ziele: `host` oder `*.host` (nur Subdomains), optional mit `:port` und einem Pfad, z. B. `"hooks.example.com/hooks"`. Nur `https`, ohne `?` und `#`.
-- Ein Pfad gilt als Präfix ab Segmentgrenzen: `/hooks` erlaubt `/hooks` selbst und `/hooks/a`, aber nicht `/hooksx`. Query-Parameter sind immer erlaubt. Adressen mit `%2e`, `%2f` oder `%5c` im Pfad lehnt l8db ab.
+- Ein Pfad gilt als Präfix ab Segmentgrenzen: `/hooks` erlaubt `/hooks` selbst und `/hooks/a`, aber nicht `/hooksx`. Query-Parameter sind immer erlaubt. Bei Zielen mit Pfad lehnt l8db Adressen mit `%2e`, `%2f` oder `%5c` im Pfad ab.
 - Die Ziele stehen fest im Code und hängen nicht von Optionen ab. Wähle das engste Ziel; aus Optionen dürfen nur Unterpfade und Query-Parameter kommen.
 - Die Person gibt die Ziele in den Einstellungen frei. Ohne Freigabe, bei fremden Zielen oder bei abgeschaltetem Plugin wirft `ctx.http`.
 - `ctx.http(url, { method?, headers?, body?, timeoutMs? })`:
@@ -150,7 +150,7 @@ Details zu den Vorlagen:
   - Höchstens 20 Header.
   - `body` ist Text bis 256 KB. Für JSON baust du ihn mit `JSON.stringify` und setzt `Content-Type` selbst.
   - `timeoutMs` ist standardmäßig 15000, höchstens 30000.
-- Die Antwort ist `{ ok, status, text(), json() }`. Ein Status außerhalb von 200–299 ergibt `ok: false` und wirft nicht. Netzwerkfehler, Zeitüberschreitung, Weiterleitungen und Antworten über 1 MB werfen.
+- Die Antwort ist `{ ok, status, text(), json() }`. Ein Status außerhalb von 200–299 ergibt `ok: false` und wirft nicht. Netzwerkfehler, Zeitüberschreitung, Weiterleitungen und Antworten mit mehr als 1.048.576 Zeichen werfen.
 - Die Anfrage läuft im Fenster von l8db, der Server muss also CORS erlauben.
 
 ## Grenzen
@@ -177,7 +177,7 @@ Hilfen:
 
 - `asText`: aus `null` wird `""`, Objekte werden JSON.
 - `asNumber`: Zahlen, Zahltexte wie `"12.5"` oder `"1e3"`, `bigint` und Booleans werden Zahlen. `""`, `"12abc"`, `NaN` und `Infinity` ergeben `null`.
-- `asDate`: akzeptiert `Date`, Millisekunden und ISO-Texte. Was es nicht lesen kann, ergibt `null`.
+- `asDate`: akzeptiert `Date`, Millisekunden und ISO-Texte. Ein reines Datum wie `2026-10-29` gilt als Mitternacht in lokaler Zeit. Was es nicht lesen kann, ergibt `null`.
 - `daysFromToday`: Kalendertage in lokaler Zeit, heute ist 0, negativ heißt Vergangenheit.
 - `formatNumber(value, { decimals?, currency? })` formatiert deutsch. Was keine Zahl ist, kommt als Text zurück.
 - `formatDate(value, { time? })`.
@@ -186,7 +186,7 @@ Eigenes JSX mit HTML-Elementen, `style` und Ereignissen wie `onClick` oder `onCh
 
 ## Mehrere Plugins
 
-l8db lädt die Dateien nach Dateinamen sortiert. Aus der Galerie installierte Plugins heißen `<id>.tsx`.
+l8db lädt die Dateien nach Dateinamen sortiert. Aus der Galerie installierte Plugins heißen `<id>` mit der Endung der Datei im Katalog, meist `<id>.tsx`.
 
 - Bei `grid.cell`, `grid.rowTone`, `tabs.group`, `tabs.item` und `split.layout` gewinnt die spätere Datei. Liefert sie `undefined`, ist die frühere dran.
 - `grid.columns` wird je Spalte und Feld zusammengeführt, die spätere Datei gewinnt. Nicht gesetzte Felder zählen nicht.

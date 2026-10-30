@@ -1,3 +1,4 @@
+import { heapSize } from "bun:jsc";
 import { expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
@@ -130,10 +131,10 @@ test("completion stays fast on a 5,000-line script with nested CTEs and 20,000 f
   const cteColumns = complete(registry, cteSql.sql, cteSql.offset).items.map((item) => item.label);
 
   Bun.gc(true);
-  const heapBefore = process.memoryUsage().heapUsed;
+  const heapBefore = heapSize();
   for (let index = 0; index < 200; index++) complete(registry, sql, offset);
   Bun.gc(true);
-  const retainedBytes = process.memoryUsage().heapUsed - heapBefore;
+  const retainedBytes = heapSize() - heapBefore;
 
   await reportScenario("sql-intellisense-completion", {
     lines,
