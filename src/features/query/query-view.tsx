@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { startTransition, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
 
@@ -8,6 +8,7 @@ import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-she
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
+import { afterPaint } from "@/lib/after-paint";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -179,7 +180,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     connected: connection !== null,
     editorApiRef,
     handleFileSave: file.handleFileSave,
-    toggleHistory: () => startTransition(() => historyRef.current?.toggle()),
+    toggleHistory: () => afterPaint(() => historyRef.current?.toggle()),
     openCsvExport: exportState.openCsvExport,
   });
 
@@ -287,7 +288,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
                 isRunning={exec.isRunning}
-                onOpenHistory={() => startTransition(() => historyRef.current?.open())}
+                onOpenHistory={() => afterPaint(() => historyRef.current?.open())}
                 onOpenOutput={() => output.setOutputOpen(true)}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}
