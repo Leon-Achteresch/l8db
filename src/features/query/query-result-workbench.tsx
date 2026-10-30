@@ -1,4 +1,3 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   BracesIcon,
   ChartColumnIcon,
@@ -17,7 +16,6 @@ import {
   useCallback,
   useDeferredValue,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
@@ -52,6 +50,7 @@ import { temporaryViewMode } from "@/lib/session-views";
 import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
 import { QueryCellInspector } from "./query-cell-inspector";
+import { QueryJsonRows } from "./query-json-rows";
 import { useMaskedQueryResult } from "./query-result-masking";
 import { QueryResultTable } from "./query-result-table";
 import type { ResultChartBinding } from "./result-chart/types";
@@ -99,7 +98,6 @@ export function QueryResultWorkbench({
     viewsSupported &&
     Boolean(chart?.sqlCapable && viewConnection && !viewConnection.readOnly) &&
     isViewableSelect(chart?.sql ?? "");
-  const jsonScrollRef = useRef<HTMLPreElement>(null);
   const inspectCell = useCallback(
     (column: string, value: unknown, row: number) => setCell({ column, value, row }),
     [],
@@ -129,17 +127,6 @@ export function QueryResultWorkbench({
           },
     [masked, term],
   );
-  const visibleRows = filtered?.rows ?? [];
-  const jsonVirtualizer = useVirtualizer({
-    count: workspace.resultView === "json" && filtered ? visibleRows.length + 2 : 0,
-    getScrollElement: () => jsonScrollRef.current,
-    estimateSize: (index) =>
-      (index === 0 || index === visibleRows.length + 1 ? 1 : (filtered?.columns.length ?? 0) + 3) *
-      workspace.resultFontSize *
-      1.5,
-    overscan: 3,
-    initialRect: { width: 700, height: 700 },
-  });
   const handleCopy = async (format: CopyFormat) => {
     try {
       await copyText(serializeRows(result?.columns ?? [], filtered?.rows ?? [], format));
@@ -302,44 +289,11 @@ export function QueryResultWorkbench({
           </Suspense>
         </div>
       ) : workspace.resultView === "json" ? (
-        <pre
-          ref={jsonScrollRef}
-          className="min-h-0 flex-1 overflow-auto bg-muted/10 p-4 font-mono"
-          style={{
-            fontSize: `${workspace.resultFontSize / 16}rem`,
-            lineHeight: 1.5,
-            contain: "strict",
-          }}
-          data-slot="query-json-rows"
-          tabIndex={-1}
-        >
-          <div className="relative" style={{ height: jsonVirtualizer.getTotalSize() }}>
-            {jsonVirtualizer.getVirtualItems().map((virtualRow) => {
-              const index = virtualRow.index;
-              const row = visibleRows[index - 1];
-              const text =
-                index === 0
-                  ? "[\n"
-                  : index === visibleRows.length + 1
-                    ? "]"
-                    : `${JSON.stringify(row, null, 2)
-                        .split("\n")
-                        .map((line) => `  ${line}`)
-                        .join("\n")}${index < visibleRows.length ? ",\n" : "\n"}`;
-              return (
-                <div
-                  key={virtualRow.key}
-                  data-index={index}
-                  ref={jsonVirtualizer.measureElement}
-                  className="absolute top-0 left-0"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                >
-                  {text}
-                </div>
-              );
-            })}
-          </div>
-        </pre>
+        <QueryJsonRows
+          rows={filtered?.rows}
+          columnCount={filtered?.columns.length ?? 0}
+          fontSize={workspace.resultFontSize}
+        />
       ) : (
         <div className="min-h-0 flex-1">
           <QueryResultTable
