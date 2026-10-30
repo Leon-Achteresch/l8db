@@ -34,7 +34,7 @@ export const text = (value: unknown, limit = 16000) =>
   typeof value === "string"
     ? value
         .slice(0, limit)
-        .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@")
+        .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@")
         .replace(
           /((?:authorization|api[_-]?key|access[_-]?token|token|password|secret)\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+/gi,
           "$1[redacted]",
