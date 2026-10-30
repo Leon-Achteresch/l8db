@@ -7,6 +7,7 @@ import {
   closeWithEscape,
   interactionPercentiles,
   measureAppClick,
+  TAB_KEY,
 } from "./fixtures/perf-app-interactions";
 import {
   appRequestSnapshot,
@@ -155,13 +156,13 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const entry = list.locator('[data-index="0"]');
       await entry.getByTitle("In neuem SQL-Tab öffnen").focus();
       await entry.getByRole("button", { name: "Neuer Tab", exact: true }).waitFor();
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB_KEY);
       expect(
         await entry
           .getByRole("button", { name: "Neuer Tab", exact: true })
           .evaluate((element) => element === document.activeElement),
       ).toBe(true);
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB_KEY);
       expect(
         await entry
           .getByRole("button", { name: "Editor ersetzen", exact: true })
