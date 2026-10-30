@@ -109,7 +109,8 @@ test("AI tool output redaction stays linear for long unbroken output", async () 
     id: `t${index}`,
     name: "l8db_ai_search",
     status: "success",
-    output: "x".repeat(16_000),
+    output:
+      index % 2 ? `see postgres://user:pw@host ${"a1".repeat(7_980)}` : `a://${"a:".repeat(7_990)}`,
   }));
   const durations: number[] = [];
   for (let run = 0; run < 10; run++) {
@@ -118,7 +119,55 @@ test("AI tool output redaction stays linear for long unbroken output", async () 
     durations.push(performance.now() - start);
   }
   const timing = percentiles(durations);
-  expect(text("postgres://user:secret@host/db")).toBe("postgres://[redacted]@host/db");
+  expect(text("1postgres://user:secret@host/db")).toBe("1postgres://[redacted]@host/db");
   expect(timing.p95Ms).toBeLessThan(100);
   await reportScenario("ai-rich-redaction", { blocks: 80, outputChars: 16_000, ...timing });
+});
+
+test("AI streaming saves re-sanitize only the message that changed", async () => {
+  const previous = useAiStore.getState();
+  const rich = Array.from({ length: 80 }, (_, index) => ({
+    type: "tool" as const,
+    id: `t${index}`,
+    name: "l8db_ai_search",
+    status: "success",
+    output: `see postgres://user:pw@host ${"a1".repeat(7_980)}`,
+  }));
+  const base: AiSession = {
+    ...session(90, Date.now()),
+    id: "perf-streaming",
+    messages: Array.from({ length: 20 }, (_, index) => ({
+      id: `m${index}`,
+      role: "assistant" as const,
+      text: `answer ${index}`,
+      rich,
+    })),
+  };
+  try {
+    useAiStore.getState().saveSession(base);
+    const durations: number[] = [];
+    for (let chunk = 0; chunk < 20; chunk++) {
+      const stored = useAiStore.getState().sessions.find((entry) => entry.id === base.id);
+      if (!stored) throw new Error("streaming session missing");
+      const start = performance.now();
+      useAiStore.getState().saveSession({
+        ...stored,
+        messages: [
+          ...stored.messages.slice(0, -1),
+          {
+            ...stored.messages[19],
+            text: `answer ${chunk}`,
+            rich: [...(stored.messages[19].rich ?? [])],
+          },
+        ],
+      });
+      durations.push(performance.now() - start);
+    }
+    const timing = percentiles(durations);
+    expect(timing.p95Ms).toBeLessThan(100);
+    await reportScenario("ai-streaming-save", { messages: 20, toolBlocks: 20 * 80, ...timing });
+  } finally {
+    useAiStore.setState(previous);
+    await Bun.sleep(200);
+  }
 });

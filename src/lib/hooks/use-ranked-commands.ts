@@ -12,12 +12,15 @@ export function useRankedCommands<T extends { label: string; group?: string; key
   query: string,
   max: number | undefined,
 ) {
-  const [result, setResult] = useState(() => ({ query: "", list: limit(items, max) }));
+  const [result, setResult] = useState<{ query: string; list: T[] } | null>(null);
   const immediate = useMemo(() => ({ query, list: limit(items, max) }), [items, query, max]);
 
   useEffect(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return;
+    if (!needle) {
+      setResult(null);
+      return;
+    }
     const scored: { item: T; score: number }[] = [];
     let index = 0;
     let timer = 0;
@@ -37,5 +40,6 @@ export function useRankedCommands<T extends { label: string; group?: string; key
     return () => window.clearTimeout(timer);
   }, [items, query, max]);
 
-  return query.trim() ? result : immediate;
+  if (!query.trim()) return immediate;
+  return result ?? { query: "", list: immediate.list };
 }

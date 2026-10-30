@@ -18,10 +18,10 @@ import { AppHotkeys } from "@/features/shell/app-hotkeys";
 import { RouteErrorView } from "@/features/shell/route-error-view";
 import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { SqlFileDrop } from "@/features/shell/sql-file-drop";
-import { TasksDialog } from "@/features/shell/tasks-dialog";
 import { AppTourHost } from "@/features/tour/app-tour-host";
 import { UpdateAvailableGate } from "@/features/updates/update-available-gate";
 import { useFeatureVideoStore } from "@/lib/feature-videos/store";
+import { useTasksStore } from "@/lib/tasks";
 
 const FeatureVideoHost = lazy(() =>
   import("@/features/updates/feature-video-host").then(({ FeatureVideoHost }) => ({
@@ -35,6 +35,10 @@ const BlogSuggestionHost = lazy(() =>
   })),
 );
 
+const TasksDialog = lazy(() =>
+  import("@/features/shell/tasks-dialog").then(({ TasksDialog }) => ({ default: TasksDialog })),
+);
+
 const AutoSyncHost = lazy(() =>
   import("@/features/shell/auto-sync-host").then(({ AutoSyncHost }) => ({
     default: AutoSyncHost,
@@ -43,6 +47,7 @@ const AutoSyncHost = lazy(() =>
 
 function RootComponent() {
   const activeFeatureVideo = useFeatureVideoStore((state) => state.activeId);
+  const tasksOpen = useTasksStore((state) => state.open);
   const [backgroundReady, setBackgroundReady] = useState(false);
 
   useEffect(() => {
@@ -82,7 +87,11 @@ function RootComponent() {
         <UpdateAvailableGate />
         <PasswordPromptDialog />
         <SqlConfirmationDialog />
-        <TasksDialog />
+        {(backgroundReady || tasksOpen) && (
+          <Suspense fallback={null}>
+            <TasksDialog />
+          </Suspense>
+        )}
         <WindowCloseGuard />
         <AppTourHost />
         <OnboardingHost />

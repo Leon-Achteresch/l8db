@@ -6,6 +6,8 @@ import { useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { SOURCE_TABLE_MIME } from "./studio-model";
 
+const MAX_VISIBLE_SOURCES = 100;
+
 export interface SourceTable {
   schema: string;
   table: string;
@@ -46,6 +48,7 @@ export function StudioSourceList({
     ? found.filter((s) => related.has(key(s)) && !onCanvas.has(key(s)))
     : [];
   const rest = found.filter((s) => !suggested.includes(s));
+  const hidden = Math.max(0, rest.length - MAX_VISIBLE_SOURCES);
   const loading = tables.isLoading || views.isLoading;
 
   const row = (source: SourceTable, hint?: boolean) => {
@@ -134,8 +137,13 @@ export function StudioSourceList({
               [0, 1, 2, 3, 4].map((i) => (
                 <li key={i} className="mx-2 my-1.5 h-4 animate-pulse rounded bg-muted" />
               ))}
-            {rest.map((s) => row(s))}
+            {rest.slice(0, MAX_VISIBLE_SOURCES).map((s) => row(s))}
           </ul>
+          {hidden > 0 && (
+            <p className="px-2 py-2 text-xs text-muted-foreground">
+              … und {hidden} weitere. Suche eingrenzen.
+            </p>
+          )}
           {!loading && found.length === 0 && (
             <p className="px-2 py-6 text-center text-xs text-muted-foreground">
               Keine Tabelle gefunden.

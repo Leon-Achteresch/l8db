@@ -1,5 +1,5 @@
 import { Settings2Icon } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -12,13 +12,25 @@ import {
 import { QueryWorkspaceSettings } from "@/features/query/query-workspace-settings";
 import { EditorSettingsControls } from "@/features/settings/editor-settings-controls";
 import { SettingsHotkeysTab } from "@/features/settings/settings-hotkeys-tab";
+import { afterPaint } from "@/lib/after-paint";
 import { useSettingsStore } from "@/lib/settings";
 
 export function QueryEditorSettingsPopover() {
   const store = useSettingsStore();
   const [tab, setTab] = useState("workspace");
   const [open, setOpen] = useState(false);
-  const contentReady = useDeferredValue(open, false);
+  const [contentReady, setContentReady] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    afterPaint(() => {
+      if (active) setContentReady(true);
+    });
+    return () => {
+      active = false;
+      setContentReady(false);
+    };
+  }, [open]);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>

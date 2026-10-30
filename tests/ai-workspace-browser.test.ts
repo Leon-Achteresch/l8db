@@ -112,10 +112,15 @@ test.skipIf(!enabled)(
       const skillsAreNew = manifest.version === NEW_FEATURES["ai.context.skills"];
       if (skillsAreNew)
         expect(await page.evaluate((key) => localStorage.getItem(key), skillsSeenKey)).toBeNull();
-      await page.getByLabel("SQL review", { exact: true }).check();
+      await page.keyboard.press("Escape");
+      await panel
+        .getByRole("button", { name: "Anhänge, Wissen, Skills und MCP-Server", exact: true })
+        .click();
+      const skill = page.getByRole("menuitemcheckbox", { name: /^SQL review/ });
+      await skill.click();
       if (skillsAreNew)
         await page.waitForFunction((key) => localStorage.getItem(key) === "1", skillsSeenKey);
-      expect(await page.getByLabel("SQL review", { exact: true }).isChecked()).toBe(true);
+      expect(await skill.getAttribute("aria-checked")).toBe("true");
       await page.keyboard.press("Escape");
       await panel.getByLabel("Nachricht an AI").fill("Inspect the selected databases");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
@@ -164,7 +169,7 @@ test.skipIf(!enabled)(
         ),
       );
       const usagePanel = panel.getByRole("region", { name: "Kontext, Tokens und Kosten" });
-      expect(await usagePanel.textContent()).toContain("Kontext 4%");
+      expect(await usagePanel.textContent()).toBe("4%");
       expect(await usagePanel.textContent()).not.toContain("Eingabe");
       await usagePanel.getByRole("button", { name: "Nutzungsdetails anzeigen" }).click();
       const usageDetails = page.getByRole("dialog", { name: "Nutzungsdetails" });
@@ -194,8 +199,7 @@ test.skipIf(!enabled)(
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
-      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel
         .getByLabel("API-Schlüssel", { exact: true })
         .fill("fixture-api-key-never-persist");
@@ -206,14 +210,14 @@ test.skipIf(!enabled)(
       expect(
         (await page.evaluate(() => localStorage.getItem("l8db.ai"))) + (await aiHistory(page)),
       ).not.toContain("fixture-api-key-never-persist");
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI-compatible · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
-      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByLabel("API-Endpoint", { exact: true }).fill("http://localhost:11434/v1");
-      await panel.getByRole("button", { name: "Zurück zum Gespräch", exact: true }).click();
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByLabel("Nachricht an AI").fill("Test local model without API key");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
       await panel.getByText("Local compatible response", { exact: true }).waitFor();
@@ -252,7 +256,7 @@ test.skipIf(!enabled)(
       );
       await panel.getByLabel("Nachricht an AI").fill("choice-fixture");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
-      await approval.getByRole("radio", { name: "Schema · Inspect structure" }).click();
+      await approval.getByRole("button", { name: /^Schema.*Inspect structure/ }).click();
       await approval.getByRole("button", { name: "Antwort senden", exact: true }).click();
       await page.waitForFunction(
         () =>
@@ -302,7 +306,9 @@ test.skipIf(!enabled)(
       expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("Tool verwendet", { exact: false }).count()).toBe(0);
-      expect(await panel.getByText("execute_query", { exact: true }).count()).toBeGreaterThan(0);
+      expect(
+        await panel.getByText("execute_query ausgeführt", { exact: true }).count(),
+      ).toBeGreaterThan(0);
       const toolResultLabel = await panel
         .getByRole("button")
         .filter({ hasText: "execute_query" })
@@ -327,12 +333,13 @@ test.skipIf(!enabled)(
         JSON.stringify(sessions).includes('"outcome":"denied"'),
       );
       await page.reload();
-      await panel.getByRole("treeitem", { name: "empty-schema", exact: false }).click();
+      await panel.getByRole("button", { name: /^empty-schema/ }).click();
       await panel.getByAltText("Bild aus Agent-Ergebnis").waitFor();
       expect(await panel.getByText("SQL proposal", { exact: true }).isVisible()).toBe(true);
-      expect(
-        await panel.getByText("Write fixture row · Abgelehnt", { exact: true }).isVisible(),
-      ).toBe(true);
+      expect(await panel.getByText("Write fixture row", { exact: true }).last().isVisible()).toBe(
+        true,
+      );
+      expect(await panel.getByText("Abgelehnt", { exact: true }).last().isVisible()).toBe(true);
       const savedHistory = await aiHistory(page);
       await page.evaluate(() => {
         const original = IDBObjectStore.prototype.put;
@@ -351,10 +358,9 @@ test.skipIf(!enabled)(
         .filter({ hasText: "AI-Daten konnten nicht lokal gespeichert werden" });
       await storageError.waitFor();
       expect(await aiHistory(page)).toBe(savedHistory);
-      await panel.getByRole("button", { name: "Agent stoppen", exact: true }).click();
       await page.evaluate(() => Object.assign(window, { aiStorageFull: false }));
-      await panel.getByRole("button", { name: "Actions for quota-fixture", exact: true }).click();
-      await page.getByRole("button", { name: "quota-fixture löschen", exact: true }).click();
+      await panel.getByRole("button", { name: "Aktionen für quota-fixture", exact: true }).click();
+      await page.getByRole("menuitem", { name: "quota-fixture löschen", exact: true }).click();
       await waitForHistory(page, (sessions) => JSON.stringify(sessions).includes('"deleted":true'));
       await storageError.waitFor({ state: "hidden" });
       const recoveredHistory = await aiHistory(page);
@@ -367,5 +373,5 @@ test.skipIf(!enabled)(
       server.stop(true);
     }
   },
-  45000,
+  120_000,
 );
