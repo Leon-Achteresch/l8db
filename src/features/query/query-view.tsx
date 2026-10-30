@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { startTransition, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
-
+import { useShallow } from "zustand/shallow";
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
@@ -59,7 +59,7 @@ interface QueryViewProps {
 }
 
 export function QueryView({ tabId }: QueryViewProps) {
-  const workspace = useQueryWorkspace();
+  const workspace = useQueryWorkspace(useShallow(({ resultView: _resultView, ...rest }) => rest));
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   const [resultFocus, setResultFocus] = useState(false);
