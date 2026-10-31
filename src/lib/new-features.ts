@@ -210,6 +210,7 @@ export const NEW_FEATURES = {
   "split.scroll-sync": "0.8.0",
   "split.saved-views": NEXT_FEATURE_VERSION,
   "split.pane-tabs": NEXT_FEATURE_VERSION,
+  "split.master-tabs": NEXT_FEATURE_VERSION,
   "settings.extensions.extensions.openbao": "0.8.0",
   "settings.extensions.community-market": "0.8.0",
 } as const;

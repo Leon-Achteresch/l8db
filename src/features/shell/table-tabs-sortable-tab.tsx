@@ -29,6 +29,7 @@ import { PluginTabItem } from "@/features/shell/table-tabs/plugin-tab-item";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import type { SplitEdge } from "@/lib/split-layout";
+import { isBoundToSplit, useSplitView } from "@/lib/split-view";
 import { underPointer } from "@/lib/tab-drop";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
@@ -45,6 +46,7 @@ export interface TableTabActions {
   closeAll: () => void;
   split: (tab: Tab, edge: SplitEdge) => void;
   moveTo?: (tab: Tab, pane: number) => void;
+  detach?: (tab: Tab) => void;
 }
 
 export interface TableTabsSortableTabProps {
@@ -117,6 +119,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   const easyMode = useSettingsStore((state) => state.easyMode);
   const closeButton = useUiPluginRegistry((registry) => registry.closeButton);
   const tabItem = useUiPluginRegistry((registry) => registry.tabItem);
+  const detachable = useSplitView((state) => pane !== null && !isBoundToSplit(state, tabKey(tab)));
   const { ref, handleRef, isDragging } = useSortable({
     id: `${group}:${tabKey(tab)}`,
     index,
@@ -291,6 +294,11 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
                     In Bereich {target + 1} verschieben
                   </ContextMenuItem>
                 ))}
+            {detachable && (
+              <ContextMenuItem onSelect={() => actions.current.detach?.(tab)}>
+                Aus geteilter Ansicht lösen
+              </ContextMenuItem>
+            )}
           </>
         )}
         {tab.kind === "table" && (

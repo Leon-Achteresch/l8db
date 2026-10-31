@@ -18,12 +18,19 @@ import { NewPaneDropZone } from "@/features/shell/split-workspace/new-pane-drop-
 import { TableTabs } from "@/features/shell/table-tabs";
 import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
 import { useActiveConnection } from "@/lib/connections";
+import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { useConnectionEnvironment } from "@/lib/environments";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
-import { useSplitView } from "@/lib/split-view";
+import {
+  isBoundToSplit,
+  placeOpenTab,
+  standaloneTabs,
+  useSplitShown,
+  useSplitView,
+} from "@/lib/split-view";
 import {
   type DropSource,
   type DropTarget,
@@ -67,9 +74,11 @@ function dropTarget(operation: Operation, point: { x: number; y: number }): Drop
     if (point.x < rect.left || point.x > rect.right || point.y < rect.top || point.y > rect.bottom)
       continue;
     const id = element.dataset.dropZone ?? "";
-    if (id.startsWith("strip:")) {
-      const pane = Number(id.slice(6));
-      if (source?.type !== "tab" || tabDragData(source.data)?.group === `pane-${pane}`) return null;
+    if (id === "master" || id.startsWith("strip:")) {
+      const pane = id === "master" ? "master" : Number(id.slice(6));
+      const tab = source?.type === "tab" ? tabDragData(source.data) : null;
+      if (!tab || tab.group === (pane === "master" ? "main" : `pane-${pane}`)) return null;
+      if (pane === "master" && isBoundToSplit(useSplitView.getState(), tab.key)) return null;
       return {
         type: "strip",
         pane,
@@ -113,12 +122,13 @@ export function WorkspaceLayout() {
   const switchingTab = pendingTab && (!activeTab || tabKey(pendingTab) !== tabKey(activeTab));
   const navigate = useNavigate();
   const split = useSplitView((state) => state.panes.length > 1);
+  const routeKey = activeTab ? tabKey(activeTab) : "";
+  const shown = useSplitShown(routeKey || null);
   const hasFkDrawer = useFkDrawerStack((state) => state.stack.length > 0);
   const fkDrawerUsed = useRef(false);
   if (hasFkDrawer) fkDrawerUsed.current = true;
   const monacoReady = useSyncExternalStore(subscribeMonacoReady, isMonacoReady);
   const reveal = useSplitView((state) => state.reveal);
-  const routeKey = activeTab ? tabKey(activeTab) : "";
   const selectionKey = usePaneSourceKey(routeKey || null);
   const previousKey = useRef("");
   const dropped = useRef(false);
@@ -141,9 +151,15 @@ export function WorkspaceLayout() {
   };
   const preview = (operation: Operation, to?: { x: number; y: number }) =>
     showDropPreview(resolve(operation, to)?.preview ?? null);
-  const followFocus = (fallback: string | null) => {
+  const masterKeys = () =>
+    standaloneTabs(
+      useTableTabs.getState().tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode)),
+      easyMode ? [] : useSplitView.getState().paneTabs,
+    ).map(tabKey);
+  const followFocus = (fallback: string | null, standalone = false) => {
     const state = useSplitView.getState();
-    const key = state.panes.length > 1 ? state.panes[state.focusedPane] : fallback;
+    if (standalone && fallback) state.reveal(fallback);
+    const key = !standalone && state.panes.length > 1 ? state.panes[state.focusedPane] : fallback;
     const tab = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === key);
     if (tab && key !== routeKey) navigateToTab(navigate, tab);
   };
@@ -173,10 +189,13 @@ export function WorkspaceLayout() {
         void manager.renderer.rendering.then(() => {
           const key = tabDragData(source.data)?.key ?? null;
           const sorted = isSortable(source) && source.initialIndex !== source.index;
+          const group = isSortable(source) ? String(source.group ?? "") : "";
           if (key && sorted) {
-            const group = String(source.group ?? "");
             if (group === "main")
-              useTableTabs.getState().reorderTabs(source.initialIndex, source.index);
+              placeOpenTab(
+                key,
+                masterKeys().filter((entry) => entry !== key)[source.index] ?? null,
+              );
             else if (group.startsWith("pane-"))
               useSplitView.getState().moveTab(key, Number(group.slice(5)), source.index);
           }
@@ -184,6 +203,8 @@ export function WorkspaceLayout() {
           const store = useSplitView.getState();
           if (action?.type === "swap") store.swapPanes(action.from, action.to);
           else if (action?.type === "move") store.moveTab(action.key, action.pane, action.at);
+          else if (action?.type === "detach")
+            store.detach(action.key, masterKeys()[action.at] ?? null);
           else if (action?.type === "split")
             store.split({
               activeKey: routeKey || null,
@@ -191,7 +212,8 @@ export function WorkspaceLayout() {
               target: action.pane === "single" ? undefined : action.pane,
               edge: action.edge,
             });
-          if (action || (key && sorted)) followFocus(key);
+          if (action || (key && sorted))
+            followFocus(key, action?.type === "detach" || (!action && group === "main"));
         });
       }}
     >
@@ -214,7 +236,7 @@ export function WorkspaceLayout() {
             inert={Boolean(switchingTab)}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           >
-            {!easyMode && split && activeTab ? (
+            {!easyMode && shown ? (
               <SplitWorkspace />
             ) : (
               <>
@@ -225,7 +247,7 @@ export function WorkspaceLayout() {
                     </MasterSelectionScope>
                   )}
                 </DeferredOutlet>
-                {!easyMode && activeTab && <NewPaneDropZone />}
+                {!easyMode && activeTab && !split && <NewPaneDropZone />}
               </>
             )}
           </div>

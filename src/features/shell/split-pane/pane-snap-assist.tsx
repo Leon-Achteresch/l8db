@@ -3,7 +3,7 @@ import { PlusIcon } from "lucide-react";
 import { tabVisual } from "@/features/shell/table-tabs-sortable-tab";
 import { useConnectionsStore } from "@/lib/connections";
 import { recentTabKeys } from "@/lib/recent-tabs";
-import { usePaneTabs, useSplitView } from "@/lib/split-view";
+import { standaloneTabs, usePaneTabs, useSplitView } from "@/lib/split-view";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { remoteTab, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
@@ -20,20 +20,23 @@ export function PaneSnapAssist({ index, override }: { index: number; override: s
   const visible = usePaneTabs();
   const recent = recentTabKeys();
   const byKey = new Map(tabs.map((tab) => [tabKey(tab), tab]));
-  const candidates = paneTabs
-    .flatMap((keys, pane) =>
+  const size = (pane: number | null) => (pane === null ? 0 : paneTabs[pane].length === 1 ? 2 : 1);
+  const candidates = [
+    ...standaloneTabs(tabs, paneTabs).map((tab) => ({
+      key: tabKey(tab),
+      tab,
+      pane: null as number | null,
+    })),
+    ...paneTabs.flatMap((keys, pane) =>
       pane === index
         ? []
         : keys.flatMap((key) => {
             const tab = byKey.get(key) ?? remoteTab(key);
             return tab ? [{ key, tab, pane }] : [];
           }),
-    )
-    .sort(
-      (a, b) =>
-        Number(paneTabs[a.pane].length === 1) - Number(paneTabs[b.pane].length === 1) ||
-        rank(recent, a.key) - rank(recent, b.key),
-    )
+    ),
+  ]
+    .sort((a, b) => size(a.pane) - size(b.pane) || rank(recent, a.key) - rank(recent, b.key))
     .slice(0, LIMIT);
 
   const take = (key: string, tab: Tab) => {
@@ -72,7 +75,10 @@ export function PaneSnapAssist({ index, override }: { index: number; override: s
                     onClick={() => take(key, tab)}
                     className={cn(
                       "flex h-9 w-full items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 text-left text-xs transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      visible[pane] && tabKey(visible[pane]) === key && "font-medium",
+                      pane !== null &&
+                        visible[pane] &&
+                        tabKey(visible[pane]) === key &&
+                        "font-medium",
                     )}
                   >
                     <Icon className={cn("size-3.5 shrink-0", iconColor)} />
@@ -84,7 +90,7 @@ export function PaneSnapAssist({ index, override }: { index: number; override: s
                         style={{ backgroundColor: color }}
                       />
                     )}
-                    <PaneNumber index={pane} />
+                    {pane !== null && <PaneNumber index={pane} />}
                   </button>
                 </li>
               );

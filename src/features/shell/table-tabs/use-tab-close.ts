@@ -2,7 +2,7 @@ import type { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
-import { tabAfterClose, useSplitView } from "@/lib/split-view";
+import { standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import {
   queryNeedsCloseConfirmation,
@@ -58,13 +58,16 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
     }
     const all = useTableTabs.getState().tabs;
     const splitNext = tabAfterClose(closing);
+    const splitTab = splitNext ? all.find((tab) => tabKey(tab) === splitNext) : undefined;
+    const inSplit = useSplitView.getState().paneTabs.some((keys) => keys.includes(route));
     const next =
       (pending.keep && !closing.has(pending.keep)
         ? all.find((tab) => tabKey(tab) === pending.keep)
         : undefined) ??
-      (useSplitView.getState().panes.length > 1
-        ? all.find((tab) => tabKey(tab) === splitNext)
-        : nextInList(tabs, route, closing));
+      (inSplit
+        ? (splitTab ??
+          nextInList(standaloneTabs(all, useSplitView.getState().paneTabs), route, closing))
+        : nextInList(splitTab ? [splitTab, ...tabs] : tabs, route, closing));
     const returnTo =
       activeTab.kind === "tool" && activeTab.tool === "workbench"
         ? useWorkbenchTabs.getState().entries.find((entry) => entry.id === activeTab.id)?.returnTo

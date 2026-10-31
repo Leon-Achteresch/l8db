@@ -25,6 +25,7 @@ import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isFunctionInvalid, isPackageInvalid } from "@/lib/invalid-objects";
+import { middleClick } from "@/lib/middle-click";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { packageOid } from "@/lib/plsql";
 import { useInvalidObjectsQuery } from "@/lib/queries";
@@ -166,7 +167,21 @@ export function SidebarFunctionList({
                     asChild
                     onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
                   >
-                    <SidebarMenuButton onClick={() => open(item)}>
+                    <SidebarMenuButton
+                      onClick={() => open(item)}
+                      {...middleClick(
+                        target
+                          ? undefined
+                          : () =>
+                              item.return_type === "PACKAGE"
+                                ? openPackageTab({ schema: item.schema, name: item.name })
+                                : openFunctionTab({
+                                    schema: item.schema,
+                                    name: item.name,
+                                    oid: item.oid,
+                                  }),
+                      )}
+                    >
                       {item.return_type === "PACKAGE" ? (
                         <PackageIcon className="text-muted-foreground" />
                       ) : (

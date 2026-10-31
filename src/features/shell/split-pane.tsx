@@ -190,10 +190,12 @@ export function SplitPane({ index, focused }: { index: number; focused: boolean 
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
-              closePane(index);
+              const next = closePane(index);
+              const shown = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === next);
+              if (shown) navigateToTab(navigate, shown);
             }}
             aria-label="Bereich schließen"
-            title="Bereich schließen – Tabs wandern in den Nachbarbereich"
+            title="Bereich schließen – die Tabs bleiben oben in der Tab-Leiste geöffnet"
             className="grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground"
           >
             <XIcon className="size-3.5" />

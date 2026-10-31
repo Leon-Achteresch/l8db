@@ -92,6 +92,11 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
       useSplitView.getState().moveTab(tabKey(tab), pane);
       showFocused();
     },
+    detach: (tab) => {
+      const key = tabKey(tab);
+      useSplitView.getState().detach(key);
+      if (key === (routeTab ? tabKey(routeTab) : null)) useSplitView.getState().reveal(key);
+    },
   };
   const actions = useRef(tabActions);
   actions.current = tabActions;

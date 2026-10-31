@@ -12,6 +12,7 @@ import {
   splitPane,
   swapPanes,
 } from "../src/lib/split-panes";
+import { resolveDrop } from "../src/lib/tab-drop";
 
 const row = (...children: SplitTree[]): SplitTree => ({ dir: "row", children });
 const column = (...children: SplitTree[]): SplitTree => ({ dir: "column", children });
@@ -96,11 +97,12 @@ describe("Bereiche mit eigenen Tabs", () => {
     expect(moveTab(middle, "b", 0).paneTabs[0]).toEqual(["a", "b", "x"]);
   });
 
-  test("Bereich schließen übergibt seine Tabs an den Nachbarn", () => {
+  test("Bereich schließen entfernt nur den Bereich, seine Tabs gehören keinem Bereich mehr", () => {
     const ws = { ...two(), focusedPane: 1 };
     const closed = closePane(ws, 1);
-    expect(closed.paneTabs).toEqual([["a", "b", "c"]]);
-    expect(closed.panes).toEqual(["c"]);
+    expect(closed.paneTabs).toEqual([["a", "b"]]);
+    expect(closed.panes).toEqual(["a"]);
+    expect(closed.focusedPane).toBe(0);
     const three = splitPane(two(), { key: null, target: 1, edge: "bottom" });
     const kept = closePane({ ...three, focusedPane: 0 }, 2);
     expect(kept.panes).toEqual(["a", "c"]);
@@ -146,6 +148,17 @@ describe("Bereiche mit eigenen Tabs", () => {
     expect(added.panes[1]).toBe("d");
   });
 
+  test("ein Tab ohne Bereich wird beim Teilen zum neuen Bereich", () => {
+    const ws = splitPane(two(), { key: "d", target: 1, edge: "right" });
+    expect(ws.paneTabs).toEqual([["a", "b"], ["c"], ["d"]]);
+    expect(ws.panes).toEqual(["a", "c", "d"]);
+    expect(ws.focusedPane).toBe(2);
+    expect(moveTab(two(), "d", 1).paneTabs).toEqual([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+  });
+
   test("Bereiche tauschen samt Master", () => {
     const ws = swapPanes(two(), 0, 1);
     expect(ws.paneTabs).toEqual([["c"], ["a", "b"]]);
@@ -161,7 +174,7 @@ describe("Bereiche mit eigenen Tabs", () => {
       () => false,
       fallback,
     );
-    expect(old?.paneTabs).toEqual([["a"], ["c", "b"]]);
+    expect(old?.paneTabs).toEqual([["a"], ["c"]]);
     expect(old?.layout).toEqual(row(null, null));
     const closed = normalizeWorkspace(
       { panes: ["a", "x"], paneTabs: [["a"], ["x"]], focusedPane: 0 },
@@ -193,5 +206,22 @@ describe("Bereiche mit eigenen Tabs", () => {
     );
     expect(empty?.panes).toEqual(["a", null]);
     expect(empty?.layout).toEqual(column(null, null));
+  });
+});
+
+describe("Ablegen auf der oberen Tab-Leiste", () => {
+  test("ein Bereichs-Tab wird an der Einfügemarke gelöst", () => {
+    const tabs = [
+      { left: 0, right: 100 },
+      { left: 104, right: 200 },
+    ];
+    const result = resolveDrop(
+      { type: "tab", key: "c" },
+      { type: "strip", pane: "master", left: 10, tabs },
+      { x: 120, y: 5 },
+      { paneTabs: two().paneTabs, single: [], active: null },
+    );
+    expect(result?.action).toEqual({ type: "detach", key: "c", at: 1 });
+    expect(result?.preview).toEqual({ pane: "master", at: 1, x: 92 });
   });
 });

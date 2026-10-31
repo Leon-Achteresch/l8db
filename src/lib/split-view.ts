@@ -59,6 +59,7 @@ export type SplitSnapshot = {
   masters?: PaneMasters;
   focusedPane: number;
   group?: string | null;
+  version?: number;
 };
 
 export type SplitGroup = {
@@ -74,7 +75,9 @@ export type SplitGroup = {
 type Live = Pick<SplitState, "panes" | "paneTabs" | "layout" | "masters" | "focusedPane">;
 
 const SINGLE: Live = { panes: [], paneTabs: [], layout: null, masters: [], focusedPane: 0 };
+const SNAPSHOT_VERSION = 2;
 const groupTabs = new Map<string, string[][]>();
+let detaching = false;
 
 function liveOf(state: Live): Live {
   return {
@@ -95,6 +98,8 @@ interface SplitState {
   masters: PaneMasters;
   setMaster: (detail: number, master: number | null) => void;
   focusedPane: number;
+  away: boolean;
+  showSplit: () => void;
   activeGroup: string | null;
   groups: Record<string, SplitGroup[]>;
   openGroup: (id: string) => Tab | null;
@@ -110,15 +115,16 @@ interface SplitState {
     edge?: SplitEdge;
   }) => void;
   moveTab: (key: string, to: number, at?: number) => void;
+  detach: (key: string, before?: string | null) => void;
   removeTab: (key: string) => void;
-  closePane: (index: number) => void;
+  closePane: (index: number) => string | null;
   collapse: () => void;
   focusPane: (index: number) => void;
   reveal: (key: string) => void;
   setPane: (index: number, key: string) => void;
   setPaneTab: (index: number, connectionId: string | null, tab: Tab | null) => void;
   swapPanes: (from: number, to: number) => void;
-  syncTabs: (open: string[]) => void;
+  syncTabs: (open: string[], added?: string[]) => void;
   clearForConnection: (connectionId: string) => void;
 }
 
@@ -128,6 +134,14 @@ function openKeys(): string[] {
 
 function keepKey(key: string): boolean {
   return remoteTab(key) !== null;
+}
+
+export function isBoundToSplit(state: Pick<SplitState, "paneConnections">, key: string): boolean {
+  return keepKey(key) || Boolean(state.paneConnections[`${scopeKey()}|${key}`]);
+}
+
+function placeable(ws: PaneWorkspace, key: string): boolean {
+  return paneOf(ws, key) !== -1 || openKeys().includes(key);
 }
 
 function pluginLayout(count: number, orientation: SplitOrientation): SplitTree {
@@ -245,6 +259,7 @@ function snapshot(
         focusedPane: next.focusedPane,
         orientation,
         group: grouped.activeGroup,
+        version: SNAPSHOT_VERSION,
       },
     },
   };
@@ -252,17 +267,31 @@ function snapshot(
 
 function restore(
   entry: SplitSnapshot | undefined,
-): Live & Pick<SplitState, "orientation" | "activeGroup"> {
+  paneConnections: Record<string, string>,
+): Live & Pick<SplitState, "orientation" | "activeGroup" | "away"> {
   const orientation = entry?.orientation ?? "horizontal";
-  const ws = entry
-    ? normalizeWorkspace(entry, openKeys(), keepKey, (count) => pluginLayout(count, orientation))
+  const current =
+    entry?.version === SNAPSHOT_VERSION
+      ? entry
+      : entry && {
+          ...entry,
+          paneTabs:
+            entry.paneTabs?.map((tabs, index) =>
+              tabs.filter(
+                (key) => key === entry.panes[index] || isBoundToSplit({ paneConnections }, key),
+              ),
+            ) ?? [],
+        };
+  const ws = current
+    ? normalizeWorkspace(current, openKeys(), keepKey, (count) => pluginLayout(count, orientation))
     : null;
-  if (!ws) return { ...SINGLE, orientation, activeGroup: null };
+  if (!ws) return { ...SINGLE, orientation, activeGroup: null, away: true };
   return {
     ...ws,
     layout: storedLayout(entry?.layout, ws.panes.length) ? ws.layout : null,
     orientation,
     activeGroup: entry?.group ?? null,
+    away: true,
   };
 }
 
@@ -274,6 +303,18 @@ function workspace(state: SplitState): PaneWorkspace {
     layout: state.layout ?? pluginLayout(state.panes.length, state.orientation),
     focusedPane: state.focusedPane,
   };
+}
+
+export function placeOpenTab(key: string, before: string | null) {
+  const { tabs } = useTableTabs.getState();
+  const tab = tabs.find((entry) => tabKey(entry) === key);
+  if (!tab) return;
+  const rest = tabs.filter((entry) => entry !== tab);
+  const found = before === null ? -1 : rest.findIndex((entry) => tabKey(entry) === before);
+  const at = found === -1 ? rest.length : found;
+  const next = [...rest.slice(0, at), tab, ...rest.slice(at)];
+  if (next.every((entry, index) => entry === tabs[index])) return;
+  useTableTabs.setState((state) => storeFor(next, state));
 }
 
 function reorderOpenTabs(order: string[]) {
@@ -317,11 +358,16 @@ export const useSplitView = create<SplitState>()(
         layout: null,
         masters: [],
         focusedPane: 0,
+        away: true,
         orientation: "horizontal",
         activeGroup: null,
         groups: {},
         byConnection: {},
         paneConnections: {},
+
+        showSplit: () => {
+          if (get().away) set({ away: false });
+        },
 
         openGroup: (id) => {
           const scope = scopeKey();
@@ -332,7 +378,9 @@ export const useSplitView = create<SplitState>()(
             (tab): tab is Tab => tab != null && !tab.connectionId && !open.has(tabKey(tab)),
           );
           if (missing.length > 0)
-            useTableTabs.setState((tabs) => storeFor([...tabs.tabs, ...missing], tabs));
+            openDetached(() =>
+              useTableTabs.setState((tabs) => storeFor([...tabs.tabs, ...missing], tabs)),
+            );
           const panes = group.tabs.map((tab) => (tab ? tabKey(tab) : null));
           const ws = normalizeWorkspace(
             {
@@ -347,12 +395,13 @@ export const useSplitView = create<SplitState>()(
             (count) => pluginLayout(count, group.orientation),
           );
           if (!ws) return null;
-          set((current) =>
-            snapshot(
+          set((current) => ({
+            ...snapshot(
               { ...ws, layout: storedLayout(group.layout, ws.panes.length) ? ws.layout : null },
               { ...current, orientation: group.orientation, activeGroup: id },
             ),
-          );
+            away: false,
+          }));
           const local = group.tabs.filter((tab): tab is Tab => tab != null && !tab.connectionId);
           const focused = group.tabs[ws.focusedPane];
           return focused && !focused.connectionId ? focused : (local[0] ?? null);
@@ -428,7 +477,9 @@ export const useSplitView = create<SplitState>()(
         split: ({ activeKey, key = null, target, edge }) => {
           const state = get();
           const single = state.panes.length < 2;
-          const ws = single ? singlePane(openKeys(), activeKey) : workspace(state);
+          const seed = activeKey && activeKey !== key ? activeKey : null;
+          const ws = single ? singlePane(seed ? [seed] : [], seed) : workspace(state);
+          if (key && !placeable(ws, key)) return;
           const orientation =
             single && edge
               ? edgeAxis(edge) === "row"
@@ -445,15 +496,36 @@ export const useSplitView = create<SplitState>()(
           });
           if (next === ws || next.panes.length < 2) return;
           apply(next, { explicit: !auto, orientation });
+          set({ away: false });
         },
 
         moveTab: (key, to, at) =>
-          change((ws) => (paneOf(ws, key) === -1 ? ws : moveTab(ws, key, to, at, recentTabKeys()))),
+          change((ws) => (placeable(ws, key) ? moveTab(ws, key, to, at, recentTabKeys()) : ws)),
+
+        detach: (key, before) => {
+          const state = get();
+          if (isBoundToSplit(state, key) || !openKeys().includes(key)) return;
+          if (state.panes.length > 1)
+            change((ws) =>
+              paneOf(ws, key) === -1
+                ? ws
+                : removeTabs(ws, (entry) => entry === key, recentTabKeys()),
+            );
+          if (before === undefined) reorderOpenTabs([key]);
+          else placeOpenTab(key, before);
+        },
 
         removeTab: (key) =>
           change((ws) => removeTabs(ws, (entry) => entry === key, recentTabKeys())),
 
-        closePane: (index) => change((ws) => closePane(ws, index)),
+        closePane: (index) => {
+          const state = get();
+          if (state.panes.length < 2 || !state.paneTabs[index]) return null;
+          const next = closePane(workspace(state), index, (key) => isBoundToSplit(state, key));
+          reorderOpenTabs(state.paneTabs[index]);
+          apply(next);
+          return next.panes[next.focusedPane] ?? null;
+        },
 
         collapse: () => {
           const state = get();
@@ -468,12 +540,13 @@ export const useSplitView = create<SplitState>()(
             return snapshot({ ...liveOf(state), focusedPane: index }, state);
           }),
 
-        reveal: (key) =>
-          change((ws) =>
-            paneOf(ws, key) !== -1 || keepKey(key) || openKeys().includes(key)
-              ? revealTab(ws, key)
-              : ws,
-          ),
+        reveal: (key) => {
+          const state = get();
+          if (!key || state.panes.length < 2) return;
+          const away = !state.paneTabs.some((tabs) => tabs.includes(key)) && !keepKey(key);
+          if (!away) change((ws) => revealTab(ws, key));
+          if (get().away !== away && (!away || openKeys().includes(key))) set({ away });
+        },
 
         setPane: (index, key) =>
           change((ws) => moveTab(ws, key, index, undefined, recentTabKeys())),
@@ -506,14 +579,15 @@ export const useSplitView = create<SplitState>()(
 
         swapPanes: (from, to) => change((ws) => swapPanes(ws, from, to)),
 
-        syncTabs: (open) =>
+        syncTabs: (open, added = []) =>
           change((ws) => {
             const keys = new Set(open);
             const gone = (key: string) => !keys.has(key) && !keepKey(key);
             const kept = ws.paneTabs.some((list) => list.some(gone))
               ? removeTabs(ws, gone, recentTabKeys())
               : ws;
-            return addTabs(kept, open, uiPluginRegistry().newTabPosition === "afterActive");
+            if (get().away || detaching) return kept;
+            return addTabs(kept, added, uiPluginRegistry().newTabPosition === "afterActive");
           }),
 
         clearForConnection: (connectionId) =>
@@ -530,6 +604,7 @@ export const useSplitView = create<SplitState>()(
             if (scopeKey() === connectionId) {
               return {
                 ...SINGLE,
+                away: true,
                 orientation: "horizontal",
                 activeGroup: null,
                 byConnection,
@@ -557,12 +632,40 @@ export const useSplitView = create<SplitState>()(
           byConnection,
           paneConnections: stored?.paneConnections ?? {},
           groups: stored?.groups ?? {},
-          ...restore(byConnection[scopeKey()]),
+          ...restore(byConnection[scopeKey()], stored?.paneConnections ?? {}),
         };
       },
     },
   ),
 );
+
+export function openDetached<T>(open: () => T): T {
+  const previous = detaching;
+  detaching = true;
+  try {
+    return open();
+  } finally {
+    detaching = previous;
+  }
+}
+
+export function isSplitShown(
+  state: Pick<SplitState, "panes" | "paneTabs" | "away">,
+  routeKey: string | null,
+): boolean {
+  if (state.panes.length < 2 || !routeKey) return false;
+  return !state.away || state.paneTabs.some((tabs) => tabs.includes(routeKey));
+}
+
+export function useSplitShown(routeKey: string | null): boolean {
+  return useSplitView((state) => isSplitShown(state, routeKey));
+}
+
+export function standaloneTabs<T extends Tab>(tabs: T[], paneTabs: string[][]): T[] {
+  if (paneTabs.length < 2) return tabs;
+  const inSplit = new Set(paneTabs.flat());
+  return tabs.filter((tab) => !inSplit.has(tabKey(tab)));
+}
 
 export function tabAfterClose(closing: Set<string>): string | null {
   const state = useSplitView.getState();
@@ -659,7 +762,10 @@ useConnectionsStore.subscribe((state, previous) => {
   if (state.activeId === previous.activeId) return;
   splitConnectionId = state.activeId;
   useSplitView.setState(
-    restore(useSplitView.getState().byConnection[keyForConnection(state.activeId)]),
+    restore(
+      useSplitView.getState().byConnection[keyForConnection(state.activeId)],
+      useSplitView.getState().paneConnections,
+    ),
   );
 });
 
@@ -668,7 +774,12 @@ useTableTabs.subscribe((state, previous) => {
   if (splitConnectionId !== useConnectionsStore.getState().activeId) return;
   rememberClosedGroupTabs(previous.tabs, state.tabs);
   if (sameKeys(previous.tabs, state.tabs)) return;
-  useSplitView.getState().syncTabs(state.tabs.map(tabKey));
+  const before = new Set(previous.tabs.map(tabKey));
+  const open = state.tabs.map(tabKey);
+  useSplitView.getState().syncTabs(
+    open,
+    open.filter((key) => !before.has(key)),
+  );
 });
 
 function sameKeys(previous: Tab[], current: Tab[]) {
