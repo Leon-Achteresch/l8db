@@ -102,7 +102,6 @@ export function splitPane(
   if (!into) return ws;
   const wanted = options.key;
   const found = wanted ? model.panes.find((pane) => pane.tabs.includes(wanted)) : null;
-  if (wanted && !found) return ws;
   const key = found === into && into.tabs.length === 1 ? null : options.key;
   const source = key ? found : null;
   const emptied = Boolean(source && source !== into && source.tabs.length === 1);
@@ -139,16 +138,19 @@ export function moveTab(
   return toWorkspace(model);
 }
 
-export function closePane(ws: PaneWorkspace, index: number): PaneWorkspace {
+export function closePane(
+  ws: PaneWorkspace,
+  index: number,
+  keep: (key: string) => boolean = () => false,
+): PaneWorkspace {
   const model = toModel(ws);
   const pane = model.panes[index];
   if (!pane) return ws;
   const neighbor = model.panes[index - 1] ?? model.panes[index + 1];
-  if (neighbor) {
-    neighbor.tabs.push(...pane.tabs.filter((key) => !neighbor.tabs.includes(key)));
-    if (model.focused === pane || !neighbor.active)
-      neighbor.active = pane.active ?? neighbor.active ?? neighbor.tabs[0] ?? null;
-    if (model.focused === pane) model.focused = neighbor;
+  const kept = pane.tabs.filter((key) => keep(key) && !neighbor?.tabs.includes(key));
+  if (neighbor && kept.length > 0) {
+    neighbor.tabs.push(...kept);
+    neighbor.active ??= kept[0];
   }
   removePane(model, pane);
   return toWorkspace(model);
@@ -261,6 +263,5 @@ export function normalizeWorkspace(
     },
     (key) => !openKeys.has(key) && !keep(key),
   );
-  if (ws.panes.length < 2) return null;
-  return addTabs(ws, open);
+  return ws.panes.length < 2 ? null : ws;
 }

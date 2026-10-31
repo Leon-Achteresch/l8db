@@ -12,7 +12,7 @@ import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
 import { UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
-import { useSplitView } from "@/lib/split-view";
+import { isSplitShown, standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { checkForUpdates, presentUpdate } from "@/lib/updater";
@@ -47,11 +47,23 @@ export function AppHotkeys() {
 
   const focusedPaneTabs = useCallback(() => {
     const split = useSplitView.getState();
-    if (easyMode || split.panes.length < 2) return null;
+    if (easyMode || !isSplitShown(split, activeKey)) return null;
     return {
       keys: split.paneTabs[split.focusedPane] ?? [],
       active: split.panes[split.focusedPane],
     };
+  }, [easyMode, activeKey]);
+
+  const masterTabs = useCallback(() => {
+    const visible = useTableTabs
+      .getState()
+      .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+    const split = useSplitView.getState();
+    if (easyMode || split.panes.length < 2) return visible;
+    const key = tabAfterClose(new Set());
+    const entry = visible.find((tab) => tabKey(tab) === key);
+    const tabs = standaloneTabs(visible, split.paneTabs);
+    return entry ? [entry, ...tabs] : tabs;
   }, [easyMode]);
 
   const showKey = useCallback(
@@ -71,14 +83,12 @@ export function AppHotkeys() {
         showKey(last ? pane.keys.at(-1) : pane.keys[index]);
         return;
       }
-      const tabs = useTableTabs
-        .getState()
-        .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+      const tabs = masterTabs();
       if (tabs.length === 0) return;
       const target = last ? tabs[tabs.length - 1] : tabs[index];
       if (target) navigateToTab(navigate, target);
     },
-    [navigate, easyMode, focusedPaneTabs, showKey],
+    [navigate, masterTabs, focusedPaneTabs, showKey],
   );
 
   const stepTab = useCallback(
@@ -94,16 +104,14 @@ export function AppHotkeys() {
         );
         return;
       }
-      const tabs = useTableTabs
-        .getState()
-        .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+      const tabs = masterTabs();
       if (tabs.length < 2) return;
       const current = activeKey ? tabs.findIndex((tab) => tabKey(tab) === activeKey) : -1;
       const next = current === -1 ? 0 : (current + direction + tabs.length) % tabs.length;
       const target = tabs[next];
       if (target) navigateToTab(navigate, target);
     },
-    [activeKey, navigate, easyMode, focusedPaneTabs, showKey],
+    [activeKey, navigate, masterTabs, focusedPaneTabs, showKey],
   );
 
   const closeActiveTab = useCallback(() => {
@@ -111,6 +119,11 @@ export function AppHotkeys() {
     if (pane) {
       if (pane.active)
         window.dispatchEvent(new CustomEvent("l8db:request-close-tab", { detail: pane.active }));
+      return;
+    }
+    if (!easyMode && useSplitView.getState().panes.length > 1) {
+      if (activeKey)
+        window.dispatchEvent(new CustomEvent("l8db:request-close-tab", { detail: activeKey }));
       return;
     }
     const tabs = useTableTabs.getState().tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));

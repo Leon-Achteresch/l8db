@@ -15,7 +15,9 @@ Object.defineProperty(globalThis, "window", {
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { tabKey, useTableTabs } = await import("../src/lib/table-tabs");
-const { MAX_SPLIT_GROUPS, useSplitView } = await import("../src/lib/split-view");
+const { MAX_SPLIT_GROUPS, openDetached, standaloneTabs, useSplitView } = await import(
+  "../src/lib/split-view"
+);
 const { resolveDrop } = await import("../src/lib/tab-drop");
 
 test("saved split views stay cheap with many tabs and groups", async () => {
@@ -80,6 +82,42 @@ test("saved split views stay cheap with many tabs and groups", async () => {
       if (key) useSplitView.getState().split({ activeKey: null, key, target: 2, edge: "bottom" });
     }
   });
+  const tableTab = (index: number) => ({
+    kind: "table" as const,
+    schema: "public",
+    table: `t${index}`,
+    entityType: "table" as const,
+  });
+  useSplitView.getState().reveal(useSplitView.getState().panes[0] ?? "");
+  let background = 0;
+  const backgroundOpen = await measureScenario(() => {
+    for (let index = 0; index < 100; index++)
+      openDetached(() =>
+        useTableTabs.getState().openTab({ schema: "public", table: `t${background++}` }),
+      );
+  });
+  const backgroundKeys = Array.from({ length: background }, (_, index) => tabKey(tableTab(index)));
+  const inPanes = new Set(useSplitView.getState().paneTabs.flat());
+  const backgroundInPanes = backgroundKeys.filter((key) => inPanes.has(key)).length;
+  const masterList = await measureScenario(() => {
+    for (let index = 0; index < 100; index++)
+      standaloneTabs(useTableTabs.getState().tabs, useSplitView.getState().paneTabs);
+  });
+  let revealed = 0;
+  const switchView = await measureScenario(() => {
+    for (let index = 0; index < 100; index++) {
+      const state = useSplitView.getState();
+      state.reveal(revealed++ % 2 ? backgroundKeys[index] : (state.panes[0] ?? ""));
+    }
+  });
+  let detached = 0;
+  const detach = await measureScenario(() => {
+    for (let index = 0; index < 100; index++) {
+      const key = backgroundKeys[detached++ % backgroundKeys.length];
+      useSplitView.getState().moveTab(key, index % 3);
+      useSplitView.getState().detach(key, backgroundKeys[(index * 7) % backgroundKeys.length]);
+    }
+  });
   const stripTabs = Array.from({ length: 60 }, (_, index) => ({
     left: index * 100,
     right: index * 100 + 96,
@@ -89,9 +127,11 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     for (let index = 0; index < 1_000; index++)
       resolveDrop(
         { type: "tab", key: tabKey(tabs[index]) },
-        index % 2
+        index % 3 === 0
           ? { type: "strip", pane: 1, left: 0, tabs: stripTabs }
-          : { type: "pane", pane: 2, rect: { left: 0, top: 0, width: 800, height: 600 } },
+          : index % 3 === 1
+            ? { type: "strip", pane: "master", left: 0, tabs: stripTabs }
+            : { type: "pane", pane: 2, rect: { left: 0, top: 0, width: 800, height: 600 } },
         { x: index % 800, y: index % 600 },
         { paneTabs, single: [], active: null },
       );
@@ -108,6 +148,10 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     move,
     reorder,
     cycle,
+    backgroundOpen,
+    masterList,
+    switchView,
+    detach,
     drop,
     bytes,
   });
@@ -120,6 +164,17 @@ test("saved split views stay cheap with many tabs and groups", async () => {
   expect(move.p95Ms / 100).toBeLessThan(1);
   expect(reorder.p95Ms / 100).toBeLessThan(1);
   expect(cycle.p95Ms / 20).toBeLessThan(2);
+  expect(backgroundInPanes).toBe(0);
+  expect(backgroundOpen.p95Ms / 100).toBeLessThan(1);
+  expect(masterList.p95Ms / 100).toBeLessThan(0.5);
+  expect(switchView.p95Ms / 100).toBeLessThan(1);
+  expect(detach.p95Ms / 100).toBeLessThan(2);
+  expect(
+    useSplitView
+      .getState()
+      .paneTabs.flat()
+      .filter((key) => backgroundKeys.includes(key)),
+  ).toEqual([]);
   expect(drop.p95Ms / 1_000).toBeLessThan(0.05);
   expect(bytes).toBeLessThan(50 * 4 * 512);
 });

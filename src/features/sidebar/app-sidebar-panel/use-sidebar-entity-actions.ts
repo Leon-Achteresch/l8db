@@ -8,6 +8,7 @@ import { dropTable, getTableDdl, listTableColumnsDetailed, truncateTable } from 
 import { useActiveCapabilities, useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
 import { EMPTY_CSV_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
+import { openDetached } from "@/lib/split-view";
 import { quoteIdent } from "@/lib/sql-filter/quote";
 import { SQL_TEMPLATE_LABELS, type SqlTemplate, templateSql } from "@/lib/sql-templates";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -141,9 +142,11 @@ export function useSidebarEntityActions(type: "table" | "view") {
   };
 
   const openInNewTab = (itemSchema: string, itemName: string) =>
-    type === "view"
-      ? openViewEditorTab({ schema: itemSchema, view: itemName })
-      : openTab({ schema: itemSchema, table: itemName, entityType: "table" });
+    openDetached(() =>
+      type === "view"
+        ? openViewEditorTab({ schema: itemSchema, view: itemName })
+        : openTab({ schema: itemSchema, table: itemName, entityType: "table" }),
+    );
 
   const handleExport = (itemSchema: string, itemName: string) => {
     useTableExportRequest.setState({ request: { schema: itemSchema, table: itemName } });

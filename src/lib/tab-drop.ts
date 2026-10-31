@@ -6,7 +6,7 @@ import { MAX_SPLIT_PANES } from "@/lib/split-panes";
 export type TabDragData = { key: string; group: string; pane: number | null };
 
 export type DropPreview = {
-  pane: number | "single";
+  pane: number | "single" | "master";
   zone?: SplitZone;
   swap?: boolean;
   at?: number;
@@ -18,11 +18,17 @@ type Rect = { left: number; top: number; width: number; height: number };
 export type DropSource = { type: "tab"; key: string } | { type: "pane"; index: number };
 
 export type DropTarget =
-  | { type: "strip"; pane: number; left: number; tabs: { left: number; right: number }[] }
+  | {
+      type: "strip";
+      pane: number | "master";
+      left: number;
+      tabs: { left: number; right: number }[];
+    }
   | { type: "pane"; pane: number | "single"; rect: Rect };
 
 export type DropAction =
   | { type: "move"; key: string; pane: number; at?: number }
+  | { type: "detach"; key: string; at: number }
   | { type: "split"; key: string; pane: number | "single"; edge: SplitEdge }
   | { type: "show"; key: string }
   | { type: "swap"; from: number; to: number };
@@ -47,10 +53,10 @@ export function resolveDrop(
     const { tabs } = target;
     const at = tabs.filter((tab) => (tab.left + tab.right) / 2 < point.x).length;
     const x = at < tabs.length ? tabs[at].left - 2 : (tabs.at(-1)?.right ?? target.left + 2) + 1;
-    return {
-      action: { type: "move", key, pane: target.pane, at },
-      preview: { pane: target.pane, at, x: x - target.left },
-    };
+    const preview = { pane: target.pane, at, x: x - target.left };
+    return target.pane === "master"
+      ? { action: { type: "detach", key, at }, preview }
+      : { action: { type: "move", key, pane: target.pane, at }, preview };
   }
   if (target.pane === "single") {
     const edges = state.single.length > 1 && state.single.includes(key);

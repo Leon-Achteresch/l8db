@@ -14,7 +14,9 @@ Object.defineProperty(globalThis, "window", {
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { remoteTab, remoteTableTab, tabKey, useTableTabs } = await import("../src/lib/table-tabs");
-const { MAX_SPLIT_PANES, useSplitView } = await import("../src/lib/split-view");
+const { MAX_SPLIT_PANES, isSplitShown, openDetached, standaloneTabs, useSplitView } = await import(
+  "../src/lib/split-view"
+);
 
 await useConnectionsStore.persist.rehydrate();
 await useTableTabs.persist.rehydrate();
@@ -57,7 +59,12 @@ function reset() {
     orientation: "horizontal",
     activeGroup: null,
     groups: {},
+    away: true,
   });
+}
+
+function standalone() {
+  return standaloneTabs(useTableTabs.getState().tabs, state().paneTabs).map(tabKey);
 }
 
 beforeEach(() => {
@@ -71,7 +78,8 @@ describe("split view", () => {
 
     state().split({ activeKey: users });
     expect(state().panes).toEqual([users, null]);
-    expect(state().paneTabs).toEqual([[users, orders], []]);
+    expect(state().paneTabs).toEqual([[users], []]);
+    expect(standalone()).toEqual([orders]);
     expect(state().focusedPane).toBe(1);
     expect(state().masters).toEqual([null, 0]);
     expect(state().layout).toBeNull();
@@ -84,7 +92,50 @@ describe("split view", () => {
 
     const [items] = open("items");
     expect(state().panes).toEqual([users, items]);
-    expect(state().paneTabs).toEqual([[users, orders], [items]]);
+    expect(state().paneTabs).toEqual([[users], [items]]);
+    expect(standalone()).toEqual([orders]);
+  });
+
+  test("Hintergrund-Tabs und Tabs bei ausgeblendetem Split bleiben eigenständig", () => {
+    connect();
+    const [users, orders] = open("users", "orders");
+    state().split({ activeKey: users });
+
+    const [items] = openDetached(() => open("items"));
+    expect(state().paneTabs).toEqual([[users], []]);
+    expect(standalone()).toEqual([orders, items]);
+
+    state().reveal(orders);
+    expect(state().away).toBe(true);
+    expect(isSplitShown(state(), orders)).toBe(false);
+    const [logs] = open("logs");
+    expect(state().paneTabs).toEqual([[users], []]);
+    expect(standalone()).toEqual([orders, items, logs]);
+
+    state().reveal(users);
+    expect(state().away).toBe(false);
+    expect(isSplitShown(state(), users)).toBe(true);
+    const [notes] = open("notes");
+    expect(state().paneTabs).toEqual([[users, notes], []]);
+    expect(state().panes).toEqual([users, null]);
+  });
+
+  test("Lösen holt einen Tab aus seinem Bereich in die Tab-Leiste", () => {
+    connect();
+    const [users, orders, items] = open("users", "orders", "items");
+    state().split({ activeKey: users, key: orders, edge: "right" });
+    state().moveTab(items, 1);
+    expect(state().paneTabs).toEqual([[users], [orders, items]]);
+
+    state().detach(items, null);
+    expect(state().paneTabs).toEqual([[users], [orders]]);
+    expect(standalone()).toEqual([items]);
+    expect(useTableTabs.getState().tabs.map(tabKey)).toEqual([users, orders, items]);
+
+    state().detach(orders, items);
+    expect(state().panes).toEqual([]);
+    expect(useTableTabs.getState().tabs.map(tabKey)).toEqual([users, orders, items]);
+    expect(standalone()).toEqual([users, orders, items]);
   });
 
   test("Tab an den Rand ziehen verschiebt ihn in einen neuen Bereich", () => {
@@ -93,7 +144,8 @@ describe("split view", () => {
 
     state().split({ activeKey: users, key: orders, edge: "left" });
     expect(state().panes).toEqual([orders, users]);
-    expect(state().paneTabs).toEqual([[orders], [users, items]]);
+    expect(state().paneTabs).toEqual([[orders], [users]]);
+    expect(standalone()).toEqual([items]);
     expect(state().focusedPane).toBe(0);
     expect(state().masters).toEqual([1, null]);
     expect(state().layout).toEqual({ dir: "row", children: [null, null] });
@@ -106,6 +158,20 @@ describe("split view", () => {
       dir: "row",
       children: [null, { dir: "column", children: [null, null] }],
     });
+  });
+
+  test("den angezeigten Tab an den Rand ziehen legt ihn dorthin und lässt die andere Seite leer", () => {
+    connect();
+    const [users, orders] = open("users", "orders");
+
+    state().split({ activeKey: orders, key: orders, edge: "left" });
+    expect(state().panes).toEqual([orders, null]);
+    expect(standalone()).toEqual([users]);
+
+    state().collapse();
+    state().split({ activeKey: orders, key: orders, edge: "right" });
+    expect(state().panes).toEqual([null, orders]);
+    expect(state().focusedPane).toBe(1);
   });
 
   test("unten teilen aus der Einzelansicht ordnet die Bereiche untereinander an", () => {
@@ -129,30 +195,37 @@ describe("split view", () => {
     const [users, orders, items] = open("users", "orders", "items");
     state().split({ activeKey: users, key: items, edge: "right" });
 
+    state().moveTab(orders, 0);
+    state().reveal(users);
+    expect(state().panes).toEqual([users, items]);
+    expect(state().focusedPane).toBe(0);
+
     state().reveal(orders);
     expect(state().panes).toEqual([orders, items]);
     expect(state().focusedPane).toBe(0);
 
     state().reveal(tabKey({ kind: "table", schema: "public", table: "missing" }));
     expect(state().panes).toEqual([orders, items]);
+    expect(state().away).toBe(false);
   });
 
-  test("Bereich schließen gibt die Tabs an den Nachbarn, ein Bereich beendet den Split", () => {
+  test("Bereich schließen lässt seine Tabs eigenständig offen, ein Bereich beendet den Split", () => {
     connect();
     const [users, orders, items] = open("users", "orders", "items");
     state().split({ activeKey: users, key: orders, edge: "right" });
     state().split({ activeKey: orders, key: items, target: 0, edge: "bottom" });
     expect(state().panes).toEqual([users, items, orders]);
 
-    state().closePane(1);
-    expect(state().panes).toEqual([items, orders]);
-    expect(state().paneTabs).toEqual([[users, items], [orders]]);
+    expect(state().closePane(1)).toBe(users);
+    expect(state().panes).toEqual([users, orders]);
+    expect(state().paneTabs).toEqual([[users], [orders]]);
+    expect(standalone()).toEqual([items]);
     expect(state().focusedPane).toBe(0);
     expect(state().layout).toEqual({ dir: "row", children: [null, null] });
 
-    state().closePane(1);
+    expect(state().closePane(1)).toBe(users);
     expect(state().panes).toEqual([]);
-    expect(useTableTabs.getState().tabs.map(tabKey)).toEqual([users, items, orders]);
+    expect(useTableTabs.getState().tabs.map(tabKey)).toEqual([users, orders, items]);
   });
 
   test("letzter geschlossener Tab eines Bereichs schließt den Bereich, die Gruppe bleibt", () => {
@@ -202,9 +275,10 @@ describe("split view", () => {
     connect();
     const [users, orders, items] = open("users", "orders", "items");
     state().split({ activeKey: users });
+    state().moveTab(orders, 0);
 
     state().moveTab(items, 1);
-    expect(state().panes).toEqual([users, items]);
+    expect(state().panes).toEqual([orders, items]);
     expect(state().paneTabs).toEqual([[users, orders], [items]]);
     expect(state().focusedPane).toBe(1);
 
@@ -269,23 +343,95 @@ describe("split view", () => {
     expect(state().layout).toEqual(layout);
   });
 
-  test("alte Splits ohne Tab-Listen verteilen offene Tabs auf den fokussierten Bereich", async () => {
+  test("alte Splits behalten nur die angezeigten Tabs, alle anderen werden eigenständig", async () => {
     const a = connect();
-    const [users, orders, items] = open("users", "orders", "items");
+    const [users, orders, items, logs] = open("users", "orders", "items", "logs");
     await useSplitView.persist.getOptions().storage?.setItem("l8db.split-view", {
-      state: { byConnection: { [a.id]: { panes: [users, orders], focusedPane: 1 } } },
+      state: {
+        byConnection: {
+          [a.id]: {
+            panes: [users, orders],
+            paneTabs: [
+              [users, logs],
+              [orders, items],
+            ],
+            focusedPane: 1,
+          },
+        },
+      },
       version: 0,
     } as never);
 
     await useSplitView.persist.rehydrate();
     expect(state().panes).toEqual([users, orders]);
-    expect(state().paneTabs).toEqual([[users], [orders, items]]);
+    expect(state().paneTabs).toEqual([[users], [orders]]);
+    expect(standalone()).toEqual([items, logs]);
     expect(state().focusedPane).toBe(1);
     expect(state().layout).toBeNull();
+    expect(state().away).toBe(true);
+
+    state().moveTab(items, 1);
+    await useSplitView.persist.rehydrate();
+    expect(state().paneTabs).toEqual([[users], [orders, items]]);
   });
 });
 
 describe("Verbindung pro Bereich", () => {
+  test("Tabs mit eigener Verbindung bleiben beim Lösen und Bereich schließen in der geteilten Ansicht", () => {
+    const a = connect("A");
+    const b = addConnection("B");
+    const [users, orders, items, logs] = open("users", "orders", "items", "logs");
+    state().split({ activeKey: users, key: orders, edge: "right" });
+    state().split({ activeKey: orders, key: items, target: 1, edge: "right" });
+    state().moveTab(logs, 2);
+    state().setPaneConnection(logs, b.id);
+    const remoteUsers = tabKey({
+      kind: "table",
+      schema: "public",
+      table: "users",
+      connectionId: b.id,
+    });
+    state().focusPane(2);
+    state().setPaneTab(2, b.id, { kind: "table", schema: "public", table: "users" });
+    expect(state().paneTabs).toEqual([[users], [orders], [items, logs, remoteUsers]]);
+    expect(state().paneConnections).toEqual({ [`${a.id}|${logs}`]: b.id });
+
+    state().detach(logs, null);
+    state().detach(remoteUsers, null);
+    expect(state().paneTabs[2]).toEqual([items, logs, remoteUsers]);
+
+    state().closePane(2);
+    expect(state().paneTabs).toEqual([[users], [orders, logs, remoteUsers]]);
+    expect(state().panes).toEqual([users, orders]);
+    expect(standalone()).toEqual([items]);
+  });
+
+  test("alte Splits behalten Tabs mit eigener Verbindung in ihrem Bereich", async () => {
+    const a = connect("A");
+    const b = addConnection("B");
+    const [users, orders, items, logs] = open("users", "orders", "items", "logs");
+    await useSplitView.persist.getOptions().storage?.setItem("l8db.split-view", {
+      state: {
+        byConnection: {
+          [a.id]: {
+            panes: [users, orders],
+            paneTabs: [
+              [users, logs],
+              [orders, items],
+            ],
+            focusedPane: 1,
+          },
+        },
+        paneConnections: { [`${a.id}|${logs}`]: b.id },
+      },
+      version: 0,
+    } as never);
+
+    await useSplitView.persist.rehydrate();
+    expect(state().paneTabs).toEqual([[users, logs], [orders]]);
+    expect(standalone()).toEqual([items]);
+  });
+
   test("override is scoped to the active connection and cleared with it", () => {
     const a = addConnection("A");
     const b = addConnection("B");
@@ -329,7 +475,7 @@ describe("Verbindung pro Bereich", () => {
     state().setPaneConnection("split-detail:1", b.id);
     state().setPaneTab(1, b.id, { kind: "table", schema: "public", table: "users" });
     expect(state().panes).toEqual([users, remoteUsers]);
-    expect(state().paneTabs).toEqual([[users, orders], [remoteUsers]]);
+    expect(state().paneTabs).toEqual([[users], [remoteUsers]]);
     expect(state().paneConnections).toEqual({});
 
     useTableTabs.getState().closeTab(orders);
@@ -447,7 +593,7 @@ describe("Master pro Bereich", () => {
     expect(state().masters).toEqual([3, 3, 1, null]);
     state().closePane(1);
     expect(state().masters).toEqual([2, null, null]);
-    expect(state().paneTabs).toEqual([[keys[3], keys[1]], [keys[2]], [keys[0]]]);
+    expect(state().paneTabs).toEqual([[keys[3]], [keys[2]], [keys[0]]]);
   });
 
   test("gespeicherte Splits ohne Master starten als Kette", async () => {
@@ -493,7 +639,8 @@ describe("Gespeicherte Ansichten", () => {
     const tab = state().openGroup(group.id);
     expect(tab && tabKey(tab)).toBe(orders);
     expect(state().panes).toEqual([users, orders]);
-    expect(state().paneTabs).toEqual([[users, items], [orders]]);
+    expect(state().paneTabs).toEqual([[users], [orders]]);
+    expect(standalone()).toEqual([items]);
     expect(state().orientation).toBe("vertical");
     expect(state().layout).toEqual({ dir: "column", children: [null, null] });
     expect(state().activeGroup).toBe(group.id);
@@ -503,12 +650,14 @@ describe("Gespeicherte Ansichten", () => {
     const { a, users, orders, items, group } = savedSplit();
     state().collapse();
     state().split({ activeKey: users, key: items, edge: "right" });
+    state().moveTab(orders, 0);
     const other = state().groups[a.id][1];
     const otherTabs = state().paneTabs;
     expect(otherTabs).toEqual([[users, orders], [items]]);
 
     state().openGroup(group.id);
-    expect(state().paneTabs).toEqual([[users, items], [orders]]);
+    expect(state().paneTabs).toEqual([[users], [orders]]);
+    expect(standalone()).toEqual([items]);
     state().openGroup(other.id);
     expect(state().paneTabs).toEqual(otherTabs);
   });

@@ -16,6 +16,8 @@ import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-it
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { copyNameActions } from "@/lib/clipboard";
 import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
+import { middleClick } from "@/lib/middle-click";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import type { PackagePart } from "@/lib/plsql";
 import { useTableTabs } from "@/lib/table-tabs";
 import { PackageMatchingMembers } from "./package-matching-members";
@@ -48,6 +50,8 @@ export function PackageNode({
   onDrop,
 }: PackageNodeProps) {
   const go = usePackageNavigate(schema, name);
+  const target = usePaneTabTarget();
+  const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const navigate = useNavigate();
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const [open, setOpen] = useState(false);
@@ -69,7 +73,10 @@ export function PackageNode({
             drop: () => onDrop("package"),
           })}
         >
-          <SidebarMenuButton onClick={() => go()}>
+          <SidebarMenuButton
+            onClick={() => go()}
+            {...middleClick(target ? undefined : () => openPackageTab({ schema, name }))}
+          >
             <ChevronRightIcon
               aria-expanded={open}
               className={open ? "rotate-90 transition-transform" : "transition-transform"}
