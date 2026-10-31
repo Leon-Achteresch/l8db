@@ -45,7 +45,7 @@ export function SplitGroupTab({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group relative flex h-7 min-w-0 shrink items-center rounded-full pl-1 pr-0.5 text-xs ring-1 ring-inset transition-[background-color,color] duration-200",
+            "group relative flex h-7 shrink-0 items-center rounded-full pl-1 pr-0.5 text-xs ring-1 ring-inset transition-[background-color,color] duration-200",
             active
               ? "bg-primary/12 text-foreground ring-primary/40"
               : "text-muted-foreground ring-border/80 hover:bg-card/70 hover:text-foreground",
