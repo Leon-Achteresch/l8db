@@ -294,11 +294,14 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {split && (
+      {hasSplit && (
         <Tooltip content={rotateLabel} side="bottom" wrapperClassName="shrink-0">
           <button
             type="button"
-            onClick={() => setOrientation(orientation === "horizontal" ? "vertical" : "horizontal")}
+            onClick={() => {
+              setOrientation(orientation === "horizontal" ? "vertical" : "horizontal");
+              if (!split) handleShowSplit();
+            }}
             aria-label={rotateLabel}
             className={iconButton}
           >
@@ -321,7 +324,7 @@ export function TableTabs() {
           onOpenTemplate={handleOpenTemplate}
         />
       )}
-      {split && (
+      {hasSplit && (
         <Tooltip content="Einzelansicht" side="bottom" wrapperClassName="shrink-0">
           <button
             type="button"
