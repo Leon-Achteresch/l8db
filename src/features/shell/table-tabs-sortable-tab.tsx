@@ -28,6 +28,8 @@ import { AiFlash } from "@/features/automation/ai-flash";
 import { PluginTabItem } from "@/features/shell/table-tabs/plugin-tab-item";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
+import type { SplitEdge } from "@/lib/split-layout";
+import { underPointer } from "@/lib/tab-drop";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
@@ -41,7 +43,8 @@ export interface TableTabActions {
   closeOthers: (tab: Tab) => void;
   closeToRight: (tab: Tab) => void;
   closeAll: () => void;
-  split: (tab: Tab) => void;
+  split: (tab: Tab, edge: SplitEdge) => void;
+  moveTo?: (tab: Tab, pane: number) => void;
 }
 
 export interface TableTabsSortableTabProps {
@@ -49,14 +52,18 @@ export interface TableTabsSortableTabProps {
   index: number;
   isActive: boolean;
   isPending?: boolean;
-  isInPane?: boolean;
+  dimmed?: boolean;
+  group?: string;
+  pane?: number | null;
+  paneCount?: number;
+  color?: string | null;
   canSplit?: boolean;
   hasTabsToRight: boolean;
   tabsCount: number;
   actions: RefObject<TableTabActions>;
 }
 
-function tabVisual(tab: Tab) {
+export function tabVisual(tab: Tab) {
   switch (tab.kind) {
     case "query":
       return { Icon: SquareTerminalIcon, iconColor: "text-sky-500" };
@@ -96,7 +103,11 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   index,
   isActive,
   isPending = false,
-  isInPane = false,
+  dimmed = false,
+  group = "main",
+  pane = null,
+  paneCount = 0,
+  color = null,
   canSplit = true,
   hasTabsToRight,
   tabsCount,
@@ -107,11 +118,14 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   const closeButton = useUiPluginRegistry((registry) => registry.closeButton);
   const tabItem = useUiPluginRegistry((registry) => registry.tabItem);
   const { ref, handleRef, isDragging } = useSortable({
-    id: tabKey(tab),
+    id: `${group}:${tabKey(tab)}`,
     index,
+    group,
     type: "tab",
-    accept: ["tab"],
-    data: { key: tabKey(tab) },
+    accept: (source) =>
+      source.type === "tab" && (source.data as { group?: string } | undefined)?.group === group,
+    collisionDetector: underPointer,
+    data: { key: tabKey(tab), group, pane },
   });
 
   const { Icon, iconColor } = tabVisual(tab);
@@ -132,6 +146,13 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
         )}
       </span>
       <span className="truncate font-medium">{label}</span>
+      {color && (
+        <span
+          aria-hidden="true"
+          className="size-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+      )}
     </>
   );
   const onPreload = () => actions.current.preload(tab);
@@ -155,13 +176,12 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           onMouseDown={(event) => {
             if (event.button === 1) event.preventDefault();
           }}
+          onDoubleClick={(event) => event.stopPropagation()}
           className={cn(
             "group relative isolate flex h-7 shrink-0 cursor-grab items-center rounded-full pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
             isActive
               ? "text-foreground"
-              : isInPane
-                ? "bg-accent/40 text-foreground ring-1 ring-inset ring-border/70"
-                : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
+              : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
@@ -169,7 +189,12 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           {isActive && (
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-card shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10"
+              className={cn(
+                "pointer-events-none absolute inset-0 -z-10 rounded-full bg-card",
+                dimmed
+                  ? "ring-1 ring-inset ring-border/80"
+                  : "shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10",
+              )}
             />
           )}
           <motion.button
@@ -182,7 +207,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             onClick={() => actions.current.navigate(tab)}
             aria-busy={isPending || undefined}
             title={label}
-            aria-current={isActive ? "page" : undefined}
+            aria-current={isActive ? (dimmed ? "true" : "page") : undefined}
             className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             {tabItem ? (
@@ -243,10 +268,29 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
         {!easyMode && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem disabled={!canSplit} onSelect={() => actions.current.split(tab)}>
+            <ContextMenuItem
+              disabled={!canSplit}
+              onSelect={() => actions.current.split(tab, "right")}
+            >
               Rechts teilen
-              <HotkeyMenuShortcut command="view.split" />
             </ContextMenuItem>
+            <ContextMenuItem
+              disabled={!canSplit}
+              onSelect={() => actions.current.split(tab, "bottom")}
+            >
+              Unten teilen
+            </ContextMenuItem>
+            {paneCount > 1 &&
+              Array.from({ length: paneCount }, (_, target) => target)
+                .filter((target) => target !== pane)
+                .map((target) => (
+                  <ContextMenuItem
+                    key={target}
+                    onSelect={() => actions.current.moveTo?.(tab, target)}
+                  >
+                    In Bereich {target + 1} verschieben
+                  </ContextMenuItem>
+                ))}
           </>
         )}
         {tab.kind === "table" && (

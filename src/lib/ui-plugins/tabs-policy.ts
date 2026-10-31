@@ -1,21 +1,11 @@
 import { useConnectionsStore } from "@/lib/connections";
+import { recentTabKeys } from "@/lib/recent-tabs";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { storeFor } from "@/lib/table-tabs/helpers";
 import { uiPluginRegistry } from "./store";
 import { tabInfo } from "./tab-info";
 
-const history: string[] = [];
-
-export function noteActiveTab(key: string) {
-  const at = history.indexOf(key);
-  if (at !== -1) history.splice(at, 1);
-  history.unshift(key);
-  history.length = Math.min(history.length, 50);
-}
-
-export function recentTabKeys(): readonly string[] {
-  return history;
-}
+export { noteActiveTab, recentTabKeys } from "@/lib/recent-tabs";
 
 export function arrangeNewTabs(
   previous: readonly Tab[],
@@ -78,7 +68,7 @@ export function startTabPolicy() {
               ),
             )?.id
         : null,
-      anchor: history,
+      anchor: recentTabKeys(),
     });
     if (arranged) useTableTabs.setState((current) => storeFor(arranged, current));
   });
