@@ -42,9 +42,9 @@ export function MasterSelect({ index }: { index: number }) {
         ) : (
           <span className="flex min-w-0 items-center gap-1 text-primary">
             <CornerDownRightIcon className="size-3" />
-            <span className="hidden shrink-0 @xl:inline">Detail von</span>
+            <span className="hidden shrink-0 @3xl:inline">Detail von</span>
             <PaneNumber index={master} className="bg-primary/15 text-primary" />
-            <span className="truncate">{label(master)}</span>
+            <span className="hidden truncate @2xl:inline">{label(master)}</span>
           </span>
         )}
       </SelectTrigger>

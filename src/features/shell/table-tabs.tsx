@@ -1,11 +1,12 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { Columns2, Rows2 } from "lucide";
+import { Columns2, RotateCwSquare, Rows2 } from "lucide";
 import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
+import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
@@ -13,24 +14,26 @@ import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
 import { TabGroupLabel } from "@/features/shell/table-tabs/tab-group-label";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
+import { useTabGroups } from "@/features/shell/table-tabs/use-tab-groups";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
-import { useConnectionsStore } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
+import type { SplitEdge } from "@/lib/split-layout";
 import { MAX_SPLIT_PANES, type SplitGroup, useSplitGroups, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import type { TemplateEntry } from "@/lib/ui-plugins/registry";
+import { useSplitLayout } from "@/lib/ui-plugins/split-layout";
 import { openTemplate } from "@/lib/ui-plugins/split-templates";
 import { useUiPluginRegistry } from "@/lib/ui-plugins/store";
-import { tabInfo } from "@/lib/ui-plugins/tab-info";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
@@ -41,42 +44,33 @@ export function TableTabs() {
     return shownTabs.current;
   });
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
-  const tabGroup = useUiPluginRegistry((registry) => registry.tabGroup);
   const templates = useUiPluginRegistry((registry) => registry.templates);
-  const connections = useConnectionsStore((state) => (tabGroup ? state.connections : null));
-  const activeId = useConnectionsStore((state) => (tabGroup ? state.activeId : null));
-  const tabGroups = useMemo(() => {
-    if (!tabGroup || !connections) return null;
-    return allTabs.map((tab) =>
-      tabGroup(
-        tabInfo(
-          tab,
-          connections.find((entry) => entry.id === (tab.connectionId ?? activeId)),
-        ),
-      ),
-    );
-  }, [tabGroup, allTabs, connections, activeId]);
+  const tabGroups = useTabGroups(allTabs);
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
   const setOrientation = useSplitView((state) => state.setOrientation);
-  const panes = useSplitView((state) => state.panes);
-  const focusedPane = useSplitView((state) => state.focusedPane);
-  const addPane = useSplitView((state) => state.addPane);
+  const paneCount = useSplitView((state) => state.panes.length);
   const collapse = useSplitView((state) => state.collapse);
-  const reveal = useSplitView((state) => state.reveal);
+  const layout = useSplitLayout();
   const activeGroup = useSplitView((state) => state.activeGroup);
   const groups = useSplitGroups();
   const renameGroup = useSplitView((state) => state.renameGroup);
   const deleteGroup = useSplitView((state) => state.deleteGroup);
   const openGroup = groups.find((group) => group.id === activeGroup);
   const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
+  const paneTabsNew = useHasNewFeatures("split.pane-tabs");
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
   const router = useRouter();
   const navigate = useNavigate();
-  const split = !easyMode && panes.length > 1;
-  const orientationLabel =
-    orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander";
+  const split = !easyMode && paneCount > 1 && Boolean(activeWorkspaceTab);
+  const sideBySide = layout?.dir === "row";
+  const rotateLabel =
+    paneCount > 2
+      ? "Anordnung drehen"
+      : sideBySide
+        ? "Bereiche untereinander"
+        : "Bereiche nebeneinander";
 
   const handleWheel = (event: React.WheelEvent<HTMLElement>) => {
     const el = navRef.current;
@@ -85,15 +79,11 @@ export function TableTabs() {
     el.scrollLeft += event.deltaY;
   };
 
-  const isTabActive = (tab: Tab) =>
-    split
-      ? panes[focusedPane] === tabKey(tab)
-      : activeWorkspaceTab !== undefined && tabKey(tab) === tabKey(activeWorkspaceTab);
-
-  const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
+  const activeTab = activeWorkspaceTab;
+  const isTabActive = (tab: Tab) => activeTab !== undefined && tabKey(tab) === tabKey(activeTab);
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
     pendingTab ? tabKey(pendingTab) : activeTab ? tabKey(activeTab) : undefined,
-    tabs.map(tabKey).join("\0"),
+    split ? "" : tabs.map(tabKey).join("\0"),
   );
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
 
@@ -107,24 +97,26 @@ export function TableTabs() {
     handleCloseOthers,
     handleCloseToRight,
     handleCloseAll,
-  } = useTabClose({ tabs, activeTab, isTabActive, navigate });
+  } = useTabClose({ tabs, activeTab: pendingTab ?? activeTab, navigate });
 
   const handleSplit = useCallback(() => {
-    if (easyMode) return;
-    const key = activeTab ? tabKey(activeTab) : tabs[0] ? tabKey(tabs[0]) : null;
-    addPane(key);
-    if (!activeTab && tabs[0]) navigateToTab(navigate, tabs[0]);
-  }, [activeTab, addPane, navigate, tabs, easyMode]);
+    if (easyMode || tabs.length === 0 || !activeTab) return;
+    useSplitView.getState().split({ activeKey: activeTab ? tabKey(activeTab) : null });
+  }, [activeTab, tabs.length, easyMode]);
 
   useEffect(() => onHotkeyAction("view.split", handleSplit), [handleSplit]);
 
-  const handleSplitTab = (tab: Tab) => {
+  const handleSplitTab = (tab: Tab, edge: SplitEdge) => {
     if (easyMode) return;
-    addPane(activeTab ? tabKey(activeTab) : null, tabKey(tab));
-    navigateToTab(navigate, tab);
+    useSplitView
+      .getState()
+      .split({ activeKey: activeTab ? tabKey(activeTab) : null, key: tabKey(tab), edge });
+    const state = useSplitView.getState();
+    if (state.panes[state.focusedPane] === tabKey(tab)) navigateToTab(navigate, tab);
   };
 
   const handleOpenGroup = (group: SplitGroup) => {
+    if (split && group.id === activeGroup) return;
     const tab = useSplitView.getState().openGroup(group.id);
     if (tab) navigateToTab(navigate, tab);
   };
@@ -146,10 +138,7 @@ export function TableTabs() {
 
   const tabActions: TableTabActions = {
     preload: (tab) => preloadTab(router, tab),
-    navigate: (tab) => {
-      if (split) reveal(tabKey(tab));
-      navigateToTab(navigate, tab);
-    },
+    navigate: (tab) => navigateToTab(navigate, tab),
     close: handleClose,
     closeOthers: handleCloseOthers,
     closeToRight: handleCloseToRight,
@@ -161,66 +150,73 @@ export function TableTabs() {
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      <div ref={containerRef} className="flex min-w-0 items-center">
-        <motion.nav
-          layoutScroll
-          ref={navRef}
-          onWheel={handleWheel}
-          aria-label="Geöffnete Objekte"
-          className="no-scrollbar min-w-0 overflow-x-auto py-1"
-        >
-          <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
-            {split && openGroup && (
-              <SplitGroupTab
-                group={openGroup}
-                onOpen={() => handleOpenGroup(openGroup)}
-                onRename={(name) => renameGroup(openGroup.id, name)}
-                onClose={collapse}
-                onDelete={() => deleteGroup(openGroup.id)}
+      {split ? (
+        openGroup && (
+          <SplitGroupTab
+            group={openGroup}
+            onOpen={() => handleOpenGroup(openGroup)}
+            onRename={(name) => renameGroup(openGroup.id, name)}
+            onClose={collapse}
+            onDelete={() => deleteGroup(openGroup.id)}
+          />
+        )
+      ) : (
+        <>
+          <div ref={containerRef} className="flex min-w-0 items-center">
+            <motion.nav
+              layoutScroll
+              ref={navRef}
+              onWheel={handleWheel}
+              aria-label="Geöffnete Objekte"
+              className="no-scrollbar min-w-0 overflow-x-auto py-1"
+            >
+              <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
+                {tabs.map((tab, index) => {
+                  const group = tabGroups?.[allTabs.indexOf(tab)];
+                  const previous =
+                    index > 0 ? tabGroups?.[allTabs.indexOf(tabs[index - 1])] : undefined;
+                  return (
+                    <Fragment key={tabKey(tab)}>
+                      {group && group.id !== previous?.id && <TabGroupLabel group={group} />}
+                      <TableTabsSortableTab
+                        tab={tab}
+                        index={allTabs.indexOf(tab)}
+                        isActive={
+                          pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)
+                        }
+                        isPending={Boolean(pendingTab && tabKey(pendingTab) === tabKey(tab))}
+                        hasTabsToRight={index < tabs.length - 1}
+                        tabsCount={tabs.length}
+                        canSplit={!easyMode}
+                        actions={actions}
+                      />
+                    </Fragment>
+                  );
+                })}
+              </div>
+            </motion.nav>
+            {overflow && (
+              <HiddenTabsMenu
+                hiddenTabs={hiddenTabs}
+                onSelect={(tab) => {
+                  revealTab(tabKey(tab));
+                  navigateToTab(navigate, tab);
+                }}
               />
             )}
-            {tabs.map((tab, index) => {
-              const group = tabGroups?.[allTabs.indexOf(tab)];
-              const previous =
-                index > 0 ? tabGroups?.[allTabs.indexOf(tabs[index - 1])] : undefined;
-              return (
-                <Fragment key={tabKey(tab)}>
-                  {group && group.id !== previous?.id && <TabGroupLabel group={group} />}
-                  <TableTabsSortableTab
-                    tab={tab}
-                    index={allTabs.indexOf(tab)}
-                    isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}
-                    isPending={Boolean(pendingTab && tabKey(pendingTab) === tabKey(tab))}
-                    isInPane={split && panes.includes(tabKey(tab))}
-                    hasTabsToRight={index < tabs.length - 1}
-                    tabsCount={tabs.length}
-                    canSplit={!easyMode && panes.length < MAX_SPLIT_PANES}
-                    actions={actions}
-                  />
-                </Fragment>
-              );
-            })}
           </div>
-        </motion.nav>
-        {overflow && (
-          <HiddenTabsMenu
-            hiddenTabs={hiddenTabs}
-            split={split}
-            revealTab={revealTab}
-            navigate={navigate}
-          />
-        )}
-      </div>
-      <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
-        <button
-          type="button"
-          onClick={handleNewQueryTab}
-          aria-label="Neue Abfrage öffnen"
-          className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
-        >
-          <PlusIcon className="size-3.5" />
-        </button>
-      </Tooltip>
+          <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
+            <button
+              type="button"
+              onClick={handleNewQueryTab}
+              aria-label="Neue Abfrage öffnen"
+              className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
+            >
+              <PlusIcon className="size-3.5" />
+            </button>
+          </Tooltip>
+        </>
+      )}
       <div className="min-w-0 flex-1" />
 
       {!easyMode && (
@@ -228,24 +224,25 @@ export function TableTabs() {
           <button
             type="button"
             onClick={handleSplit}
-            disabled={tabs.length === 0 || panes.length >= MAX_SPLIT_PANES}
+            disabled={tabs.length === 0 || !activeTab || paneCount >= MAX_SPLIT_PANES}
             aria-label="Ansicht teilen"
-            className={iconButton}
+            className={`${iconButton} relative`}
           >
             <SquareSplitHorizontalIcon className="size-3.5" />
+            {paneTabsNew && !split && <NewBadge className="absolute -top-1.5 left-4" />}
           </button>
         </Tooltip>
       )}
-      {!easyMode && panes.length === 2 && (
-        <Tooltip content={orientationLabel} side="bottom" wrapperClassName="shrink-0">
+      {split && (
+        <Tooltip content={rotateLabel} side="bottom" wrapperClassName="shrink-0">
           <button
             type="button"
             onClick={() => setOrientation(orientation === "horizontal" ? "vertical" : "horizontal")}
-            aria-label={orientationLabel}
+            aria-label={rotateLabel}
             className={iconButton}
           >
             <MorphIcon
-              icon={orientation === "horizontal" ? Rows2 : Columns2}
+              icon={paneCount > 2 ? RotateCwSquare : sideBySide ? Rows2 : Columns2}
               className="size-3.5"
             />
           </button>
