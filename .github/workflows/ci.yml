@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: true
+  workflow_dispatch:
   push:
     branches: [development]
   pull_request:
@@ -20,6 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24.14.0
@@ -32,22 +39,29 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
       - run: bun install --frozen-lockfile
-      - run: bun audit
+      - if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
+        run: bun audit
       - run: bunx biome check ./src
       - run: bun run build
       - run: bun run test
       - uses: ./.github/actions/setup-browsers
+        if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
       - name: Install video test encoder
+        if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Feature video playback
+        if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
         run: |
           L8DB_FEATURE_VIDEO_BROWSER=1 bun test tests/feature-video-browser.test.ts
           L8DB_FEATURE_VIDEO_BROWSER=webkit bun test tests/feature-video-browser.test.ts
       - name: Production CSP and extension isolation
+        if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
         run: |
           bun run extension build extention/password-manager
           L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts
@@ -57,9 +71,12 @@ jobs:
 
   browser-smoke:
     name: Browser regressions
+    if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
@@ -80,29 +97,41 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/install-linux-dependencies
       - uses: ./.github/actions/setup-rust
         with:
           cache: checks
           components: rustfmt,clippy
+      - if: ${{ !(inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main') }}
+        run: cargo check --locked
+        working-directory: src-tauri
       - run: cargo fmt --check
         working-directory: src-tauri
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177
+      - if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
+        uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177
         with:
           tool: cargo-audit
       - name: RustSec audit
+        if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
         run: cargo audit
         working-directory: src-tauri
-      - run: cargo clippy --all-targets --locked
+      - if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
+        run: cargo clippy --all-targets --locked
         working-directory: src-tauri
-      - run: cargo clippy --all-targets --locked --no-default-features
+      - if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
+        run: cargo clippy --all-targets --locked --no-default-features
         working-directory: src-tauri
 
   rust-test:
     name: Rust tests
+    if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/install-linux-dependencies
       - uses: ./.github/actions/setup-rust
         with:
@@ -112,20 +141,27 @@ jobs:
 
   rust-integration:
     name: PostgreSQL and SSH integration
+    if: inputs.full || github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/install-linux-dependencies
       - uses: ./.github/actions/setup-rust
         with:
           cache: integration
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.10
+      - run: bun install --frozen-lockfile
       - run: bash scripts/test-postgres-ssh.sh
         env:
           L8DB_CLI_CHECKS: "1"
 
   platform-build:
     name: Build (${{ matrix.platform }})
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     strategy:
       fail-fast: false
       matrix:
@@ -133,6 +169,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10

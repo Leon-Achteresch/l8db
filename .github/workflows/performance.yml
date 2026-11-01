@@ -1,6 +1,7 @@
 name: Performance budgets
 
 on:
+  workflow_call:
   push:
     branches: [development]
   pull_request:
@@ -21,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: performance-${{ github.ref }}-${{ inputs.job }}-${{ inputs.filter }}
+  group: performance-${{ github.workflow }}-${{ github.ref }}-${{ inputs.job }}-${{ inputs.filter }}
   cancel-in-progress: true
 
 jobs:
@@ -31,11 +32,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-24.04, macos-15, windows-2025]
+        platform: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main') && '["ubuntu-24.04","macos-15","windows-2025"]' || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
@@ -52,7 +55,7 @@ jobs:
 
   browser:
     name: UI budgets (${{ matrix.platform }}, ${{ matrix.engine }})
-    if: ${{ !inputs.job || inputs.job == 'all' || inputs.job == 'chromium' || inputs.job == 'webkit' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main') && (!inputs.job || inputs.job == 'all' || inputs.job == 'chromium' || inputs.job == 'webkit') }}
     strategy:
       fail-fast: false
       matrix:
@@ -61,6 +64,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
@@ -78,11 +83,13 @@ jobs:
 
   constrained:
     name: UI budgets (4x slower CPU, 256 MiB JS heap limit)
-    if: ${{ !inputs.job || inputs.job == 'all' || inputs.job == 'throttle' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main') && (!inputs.job || inputs.job == 'all' || inputs.job == 'throttle') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.10
@@ -100,11 +107,13 @@ jobs:
 
   database:
     name: SQLite metadata and PostgreSQL server load guards
-    if: ${{ !inputs.job || inputs.job == 'all' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main') && (!inputs.job || inputs.job == 'all') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/install-linux-dependencies
       - uses: ./.github/actions/setup-rust
         with:
