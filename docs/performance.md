@@ -252,3 +252,48 @@ The shared-checkout TypeScript check is blocked by the parallel organization-pol
 The initial default-feature Rust module test was stopped during the unrelated DuckDB native rebuild. The scoped fallback is `cargo test --no-default-features query_notification --lib`; optional DuckDB/ODBC behavior is outside this change.
 
 The no-default-features Cargo test could not start because another process held the shared build-directory lock; the waiting process was stopped. The notification message/threshold unit test was run directly with `rustc --test` from the unchanged helper and test sections of `src-tauri/src/query_notification.rs`: 1 passed. This verifies that pure helper only, not Tauri command integration or OS delivery.
+
+
+## RSA and configuration merge security fixes (2026-11-01)
+
+Measured on macOS 27.0.1 arm64, Apple M3 (8 cores), 16 GiB RAM, Rust 1.99.0,
+Bun 1.3.10. OpenSSL 4.0.3 is statically built from openssl-src 400.0.2.
+These are native results on this machine. No Windows/Linux desktop execution,
+CPU/heap simulation or coverage of every database family is claimed for this change.
+
+The initial OpenSSL adaptation repeated complete key validation for each SSH
+signature: 2048-bit median/p95 27.44/27.84 ms, 4096-bit 173.21/181.52 ms. It failed
+the unchanged 100 ms median budget. The final implementation validates once using
+an initializing OnceLock. Exactly one native key (or a failed validation state) is
+retained per SSH keypair, with no global cache or history. Clones share the native
+OpenSSL allocation; dropping the owning keypairs releases it. Concurrent first use
+is initialized once; an eight-thread functional case verifies signatures independently.
+
+| Final workload (21 signatures each) | Median | p95 | Limits |
+| --- | --- | --- | --- |
+| RSA 2048 JWT | 0.44 ms | 0.44 ms | median <100 ms, p95 <250 ms |
+| RSA 2048 SSH | 0.47 ms | 0.47 ms | median <100 ms, p95 <250 ms |
+| RSA 4096 JWT | 2.81 ms | 2.82 ms | median <100 ms, p95 <250 ms |
+| RSA 4096 SSH | 2.95 ms | 2.96 ms | median <100 ms, p95 <250 ms |
+| Deepmerge, 5,000 nested components, 21 merges | 10.22 ms | 15.57 ms | median <100 ms, p95 <250 ms |
+
+Cold SSH imports took 28.18 ms (2048 bit) and 177.40 ms (4096 bit), each below
+1,000 ms. Five additional private-key loads stay below 3 seconds per key size.
+JWTs remain below 1,024 bytes; raw signatures are exactly modulus_bits/8 bytes.
+Merge output is 507,781 bytes (budget <1 MB), with 5,000 output entries. Inputs
+remain unchanged after an idle interval. These synchronous operations create no
+requests, timers, polling or background tasks; cancellation has no pending work to
+clean up. SSH integration separately checks tunnel teardown, closed local ports,
+wrong passphrases and absence of retained tunnel entries.
+
+The first cold-import run exceeded its 1,000 ms budget while native checks and
+other CPU work ran concurrently. No budget was raised. Native performance tests
+now run separately from parallel unit tests in the performance workflow; the
+results above are from that isolated run. They are not a constrained-CPU result.
+
+Reproduce with `cargo test --locked --lib rsa_security_perf -- --ignored --test-threads=1 --nocapture`
+in src-tauri and `bun test tests/secure-deepmerge.test.ts tests/dependency-cli.test.ts`
+at the root. The Rust suite rejects an outdated native OpenSSL release, verifies
+RSA signatures independently with ring, and covers malformed keys and encrypted
+PKCS#8 exports. Deepmerge tests exercise the actual Shadcn/registry resolution,
+null-prototype objects, source/target poisoning, nested arrays and option compatibility.
