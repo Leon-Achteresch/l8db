@@ -22,6 +22,7 @@ mod index_advisor;
 mod mcp;
 mod pocketbase;
 mod process;
+mod query_notification;
 mod supabase;
 mod supabase_studio;
 mod sync;
@@ -155,6 +156,7 @@ pub fn run() {
         .manage(db::ssh::create_ssh_state())
         .manage(automation::AutomationState::default())
         .invoke_handler(tauri::generate_handler![
+            query_notification::notify_query_completion,
             ai::ai_environment,
             ai::ai_status,
             ai::ai_set_key,

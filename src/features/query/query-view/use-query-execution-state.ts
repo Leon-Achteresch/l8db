@@ -75,9 +75,23 @@ export function useQueryExecutionState(tabId: string) {
   );
   const [scriptNote, setScriptNote] = useTabState(key("scriptNote"), "");
   const [runs, setRuns] = useTabState<ResultRuns>(key("runs"), EMPTY_RESULT_RUNS);
+  const [resultOrigin, setResultOrigin] = useTabState<{
+    sql: string;
+    at: number;
+    connectionId: string;
+    database: string | null;
+  } | null>(key("resultOrigin"), null);
   const recordRun = useCallback(
-    (run: ResultRun) => setRuns((current) => nextResultRuns(current, run)),
-    [setRuns],
+    (run: ResultRun) => {
+      setResultOrigin({
+        sql: run.sql,
+        at: run.at,
+        connectionId: run.connectionId,
+        database: run.database,
+      });
+      setRuns((current) => nextResultRuns(current, run));
+    },
+    [setRuns, setResultOrigin],
   );
 
   return {
@@ -113,6 +127,8 @@ export function useQueryExecutionState(tabId: string) {
     runs,
     setRuns,
     recordRun,
+    resultOrigin,
+    setResultOrigin,
   };
 }
 

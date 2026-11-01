@@ -75,6 +75,7 @@ export function QueryResultWorkbench({
   statusText,
   actions,
   chart,
+  previous = false,
 }: {
   stateKey?: string;
   result: QueryResult | null;
@@ -84,6 +85,7 @@ export function QueryResultWorkbench({
   statusText?: string | null;
   actions?: ReactNode;
   chart?: ResultChartBinding;
+  previous?: boolean;
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
@@ -185,7 +187,13 @@ export function QueryResultWorkbench({
           )}
         >
           <span className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")} />
-          {isLoading ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
+          {isLoading
+            ? "Wird ausgeführt"
+            : error
+              ? "Fehlgeschlagen"
+              : previous
+                ? "Vorheriger Lauf"
+                : "Abgeschlossen"}
         </span>
         {statusText && (
           <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">

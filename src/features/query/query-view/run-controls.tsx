@@ -10,6 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { QueryNotificationToggle } from "@/features/query/query-notification-toggle";
 import { cn } from "@/lib/utils";
 import type { QueryExecutionState } from "./use-query-execution-state";
 import type { RunActions } from "./use-run-actions";
@@ -118,6 +119,7 @@ export function RunControls({
           {isChecking ? "Prüfe…" : "Prüfen"}
         </span>
       </Button>
+      <QueryNotificationToggle />
       {isRunning && (
         <Button
           size="sm"
