@@ -4,18 +4,30 @@ updates:
     directory: /
     target-branch: development
     labels: [dependencies, github_actions, "area:ci"]
+    open-pull-requests-limit: 2
+    groups:
+      non-breaking:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
   - package-ecosystem: bun
     directory: /
     target-branch: development
     labels: [dependencies, javascript, "area:frontend"]
+    open-pull-requests-limit: 2
+    groups:
+      non-breaking:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
   - package-ecosystem: cargo
     directory: /src-tauri
     target-branch: development
     labels: [dependencies, rust, "area:backend"]
+    open-pull-requests-limit: 2
+    groups:
+      non-breaking:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
     ignore:

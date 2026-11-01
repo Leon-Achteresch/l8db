@@ -62,3 +62,7 @@ Für dringende Fehler in der stabilen Version, ohne den Stand von `canary` mitzu
 3. Sofort danach `main` nach `development` holen: Worktree von `origin/development`, `git merge --no-ff origin/main -m "Merge branch 'main' into development"`, Konflikte lösen, pushen. Anschließend `/canary` ausführen.
 
 Schritt 3 ist Pflicht. Bis dahin fehlt der Fix im Canary-Kanal, und der Canary-Lauf bricht mit `… has commits missing on canary` ab, solange `main` Commits enthält, die auf `canary` fehlen. Temporäre Worktrees und den `fix/*`-Branch danach entfernen.
+
+## Freigegebenes Nacht-Release
+
+Wünscht der Nutzer eine Veröffentlichung über Nacht, den PR nach den obigen Prüfungen offen lassen. Erst nach ausdrücklicher Freigabe `NIGHTLY_RELEASE_SHA` auf die vollständige SHA des veröffentlichten Canary setzen (`gh variable set NIGHTLY_RELEASE_SHA --body <sha>`). **Nightly stable release** versucht ab 01:17 UTC den Merge mit exakt dieser Head-SHA und ohne Admin-Bypass. Neue Canary-Pushes erfordern eine neue Freigabe. Widerruf: `gh variable delete NIGHTLY_RELEASE_SHA`. Der manuelle Start des Workflows ist standardmäßig ein Dry Run. Details und einmalige Token-Rechte: `.github/RELEASING.md`. Keine Freigabe allein aus dem Wunsch nach einer schnelleren Pipeline ableiten.

@@ -1,0 +1,35 @@
+name: Nightly stable release
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Validate approval without merging or publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-stable-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.repository == 'Leon-Achteresch/l8db' && vars.NIGHTLY_RELEASE_SHA != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24.14.0
+      - name: Validate the exact approved Canary and merge its release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          NIGHTLY_RELEASE_SHA: ${{ vars.NIGHTLY_RELEASE_SHA }}
+          NIGHTLY_RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: node .github/scripts/nightly-release.mjs
