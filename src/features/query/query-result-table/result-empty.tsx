@@ -1,11 +1,11 @@
-import { Cobweb } from "@/components/seasonal/cobweb";
+import { SeasonalCorner } from "@/components/seasonal/seasonal-corner";
 import type { QueryResult } from "@/lib/db";
 
 export function ResultEmpty({ result }: { result: QueryResult | null }) {
   if (!result) {
     return (
       <div className="relative flex h-full items-center justify-center bg-card/30">
-        <Cobweb className="size-20 text-foreground/20" />
+        <SeasonalCorner className="size-20 text-foreground/20" />
         <p className="text-sm text-muted-foreground">
           Drücke{" "}
           <kbd className="rounded-full border bg-muted px-2 py-0.5 font-mono text-xs">⌘ Enter</kbd>{" "}
@@ -16,7 +16,7 @@ export function ResultEmpty({ result }: { result: QueryResult | null }) {
   }
   return (
     <div className="relative flex h-full items-center justify-center bg-card/30">
-      <Cobweb className="size-20 text-foreground/20" />
+      <SeasonalCorner className="size-20 text-foreground/20" />
       <p className="text-sm text-muted-foreground">
         {result.notice
           ? result.notice
