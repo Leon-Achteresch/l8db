@@ -2,7 +2,7 @@
 
 Die Release-Konfiguration verlangt für macOS Developer-ID-Signierung und
 Apple-Notarisierung; fehlende Apple-Secrets blockieren die Veröffentlichung.
-Windows bleibt ohne Plattformzertifikat. Lokale Developer-ID-Builds und die
+Windows-Releases verlangen jetzt ein Authenticode-Zertifikat und einen gültigen Zeitstempel; fehlende Windows-Secrets blockieren die Veröffentlichung. Lokale Developer-ID-Builds und die
 Einrichtung der Produktions-Secrets sind in [RELEASING.md](RELEASING.md)
 beschrieben. Signierte Auto-Updates
 bleiben aktiv. Einrichtung, Release-Gates und CSP-Ausnahmen stehen in
@@ -16,6 +16,16 @@ aus. Das DOMPurify-Override aktualisiert insbesondere Monacos fest gepinnte alte
 Sanitizer-Version innerhalb derselben Major-Version. Der Produktions-Browsertest
 prüft den Editor nach diesem Update. Der nicht verwendete Monaco-Vite-Plugin und
 das Browserpaket `path` wurden entfernt; Shadcn gehört zu den Entwicklungswerkzeugen.
+Das `minimatch`-Override auf 11.0.1 oder neuer schließt
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+im transitiven Shadcn/ts-morph-Werkzeugpfad. Es wird mit dem Shadcn-CLI und
+einem ts-morph-Dateimuster-Smoke geprüft.
+
+Der ungefilterte Bun-Audit meldet weiterhin
+[GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)
+für `deepmerge` 4.3.1 im Shadcn-Entwicklungswerkzeugpfad. Upstream veröffentlicht
+bislang keine gepatchte Version. Die vorhandene CI-Ausnahme bleibt ausdrücklich
+ein offener Befund; sie bedeutet keinen vollständig sauberen Roh-Audit.
 
 Rust-Builds verwenden `Cargo.lock` mit `--locked`. PostgreSQL-Protokoll und -Treiber,
 plist/quick-xml, anyhow, event-listener und chacha20 wurden aktualisiert. SQL Server
@@ -42,6 +52,18 @@ Zusätzlich bestehen Wartungshinweise zu `paste`, `proc-macro-error` und den
 `unic-*`-Paketen aus transitiven Abhängigkeiten. Neue Upstream-Versionen erneut mit
 `cargo audit` prüfen. Diese Liste ist keine pauschale Risikoakzeptanz und kein
 vollständiger Sicherheitsnachweis.
+
+Die früheren ZIP-Advisories RUSTSEC-2026-0367/0368/0369 werden nicht mehr ignoriert.
+Calamine 0.37, DuckDB/libduckdb-sys 1.20000.1 und tauri-plugin-updater 2.14.1
+ersetzen die betroffenen ZIP-Versionen durch ZIP 9. Tokio wurde auf 1.54.1 aktualisiert.
+DuckDB 1.20000.1 benötigt den dokumentierten lokalen
+[NULL-Konvertierungspatch](../src-tauri/vendor/duckdb/L8DB-PATCH.md), damit Arrow-60-Nullspalten
+und verschachtelte NULL-Werte keine Panic und vergiftete Pool-Verbindungen auslösen.
+Die RSA-Ausnahme bleibt offen: russh 0.64 und selbst 0.65 verlangen exakt
+rsa 0.10.0-rc.18, und RustSec nennt weiterhin keine gepatchte Version.
+Diese Ausnahme bedeutet ausdrücklich keinen vollständig grünen unkonfigurierten `cargo audit`.
+
+Maschinenrichtlinie, Team-Einweisung und Abnahmematrix: [Unternehmensrollout](../docs/enterprise-rollout.md).
 
 ## Grenzen der lokalen Verifikation
 

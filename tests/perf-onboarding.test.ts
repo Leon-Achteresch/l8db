@@ -160,6 +160,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.goto(`http://localhost:${server.port}/`);
       await page.getByRole("dialog", { name: "Willkommen bei l8db" }).waitFor();
       await page.keyboard.press("Escape");
+      await page.getByRole("heading", { name: "Sicher mit Datenbanken arbeiten" }).waitFor();
+      await page.getByRole("button", { name: "Weiter", exact: true }).click();
       await page.getByRole("button", { name: "Weiter", exact: true }).click();
       await page.getByRole("heading", { name: "Wie sollen deine Tabellen aussehen?" }).waitFor();
       if (engine === "chromium")

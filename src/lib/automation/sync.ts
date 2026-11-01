@@ -22,16 +22,13 @@ import { initAutomationTaskBridge } from "./task-bridge";
 export const AUTOMATION_SYNC_DEBOUNCE_MS = 500;
 
 function serverReadOnly(connection: SavedConnection): boolean {
-  return (
-    isReadOnlyConnection(connection) ||
-    (isProductionLocked(connection) && capabilitiesFor(connection.kind).read_only_mode)
-  );
+  return isReadOnlyConnection(connection) || isProductionLocked(connection);
 }
 
 function cleanConnectionString(connection: SavedConnection, readOnly: boolean): string {
   const raw = stripConnectionSecrets(connection.connectionString);
   let value = raw;
-  if (readOnly && raw.includes("://")) {
+  if (readOnly && capabilitiesFor(connection.kind).read_only_mode && raw.includes("://")) {
     try {
       value = readOnlyConnectionString(raw);
     } catch {

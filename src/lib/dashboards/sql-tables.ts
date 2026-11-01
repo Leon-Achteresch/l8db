@@ -76,7 +76,11 @@ const NUMBER = /^\d*\.?\d*(?:[eE][+-]?\d+)?/;
 const ESCAPED_IDENTIFIER_KINDS = new Set<DatabaseKind>(["clickhouse", "bigquery"]);
 const BRACKET_KINDS = new Set<DatabaseKind>(["mssql", "sqlite", "sqlite_http", "odbc"]);
 const CACHE_LIMIT = 64;
+const CACHE_TEXT_LIMIT = 256 * 1024;
+const CACHE_TOKEN_LIMIT = 32_000;
 const cache = new Map<string, TableToken[]>();
+let cachedText = 0;
+let cachedTokens = 0;
 
 const ODBC_DIALECTS: [RegExp, DatabaseKind][] = [
   [/postgres|psql|redshift/i, "postgres"],
@@ -265,16 +269,30 @@ function tokensOf(sql: string, kind: DatabaseKind | null): TableToken[] {
     return cached;
   }
   const tokens = tokenize(sql, kind);
-  if (cache.size >= CACHE_LIMIT) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
+  if (key.length > CACHE_TEXT_LIMIT || tokens.length > CACHE_TOKEN_LIMIT) return tokens;
+  while (
+    cache.size >= CACHE_LIMIT ||
+    cachedText + key.length > CACHE_TEXT_LIMIT ||
+    cachedTokens + tokens.length > CACHE_TOKEN_LIMIT
+  ) {
+    const oldest = cache.entries().next().value;
+    if (!oldest) break;
+    cache.delete(oldest[0]);
+    cachedText -= oldest[0].length;
+    cachedTokens -= oldest[1].length;
   }
   cache.set(key, tokens);
+  cachedText += key.length;
+  cachedTokens += tokens.length;
   return tokens;
 }
 
 export function tableTokenCacheKeys(): string[] {
   return [...cache.keys()];
+}
+
+export function tableTokenCacheUsage() {
+  return { statements: cache.size, textChars: cachedText, tokens: cachedTokens };
 }
 
 export interface TableRef {

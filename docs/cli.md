@@ -14,6 +14,7 @@ Aufbau nach dem Muster von `gh`/`kubectl`: `l8db <nomen> <verb>`, kurze Aliase f
 | `table list` / `describe` / `rows` / `count` | Tabellen; Name oder `schema.name`, Groß-/Kleinschreibung egal |
 | `open [name]` | Verbindung in der App öffnen (`--menu=dock.connection:<id>`) |
 | `task list` / `run`, `check`, `mcp` | Bestehende Modi `--run-task`, `--check`, `--mcp` unter neuen Namen; die alten Flags bleiben |
+| `doctor [--test-keychain] [--strict]` | Arbeitsplatz, IT-Richtlinie und Team-Datei ohne Zugangsdaten prüfen |
 | `completions <shell>` | bash, zsh, fish, PowerShell |
 
 Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).
@@ -49,3 +50,5 @@ Einstellungen → Kommandozeile: „Installieren“ legt `/usr/local/bin/l8db` a
 
 - `cargo test cli::` und `cargo test automation::connection` (Parser, Routing, Fehlermeldungen, Beispiele, Schreib-Erkennung, Befehls-Tunnel).
 - `L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts` mit gebautem Debug-Binary: SQLite-Datei, gespeicherte Verbindungen in einer temporären `automation.db`, TTY über `script`. Mit `L8DB_CLI_E2E_PG=postgres://…` zusätzlich Postgres (Rollback, Ctrl+C), mit `L8DB_CLI_E2E_PG_PERF=postgres://…/l8db_perf` die Performance-Messung auf der 2-Mio.-Zeilen-Tabelle `big`.
+
+Unternehmensrichtlinien und vollständige CLI-Abnahme: [enterprise-rollout.md](enterprise-rollout.md).

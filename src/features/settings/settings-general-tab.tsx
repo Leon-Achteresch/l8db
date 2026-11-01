@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { OrganizationPanel } from "@/features/settings/organization-panel";
 import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-panel";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
@@ -43,6 +44,7 @@ export function SettingsGeneralTab() {
       </div>
 
       <div className="space-y-3">
+        <OrganizationPanel />
         <SettingsRow settingId="easy-mode">
           <Switch checked={easyMode} onCheckedChange={setEasyMode} aria-label="Easy Mode" />
         </SettingsRow>

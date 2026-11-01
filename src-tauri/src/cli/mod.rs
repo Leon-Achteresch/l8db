@@ -1,4 +1,5 @@
 mod connect;
+mod doctor;
 pub mod install;
 mod output;
 mod run;
@@ -35,6 +36,7 @@ Automatisierung
   task run <name>          Aufgabe ausführen
   check                    SQL-Prüfungen für CI ausführen
   mcp                      MCP-Server für KI-Clients starten
+  doctor                   Arbeitsplatz und Team-Konfiguration prüfen
 
 Shell
   completions <shell>      Tab-Vervollständigung (bash, zsh, fish, powershell)
@@ -45,6 +47,7 @@ Globale Optionen
 
 Beispiele
   l8db conn list
+  l8db doctor -o json
   l8db conn use prod
   l8db q \"select count(*) from users\"
   l8db table rows users --where \"active\" --limit 20
@@ -127,6 +130,17 @@ pub struct Global {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    #[command(about = "Arbeitsplatz, IT-Richtlinie, Team-Datei und Treiber prüfen", help_template = SUB_HELP,
+        after_help = "Es werden keine Verbindungsadressen oder Passwörter ausgegeben.\nBeispiele:\n  l8db doctor -o json\n  l8db doctor --test-keychain --strict")]
+    Doctor {
+        #[arg(
+            long,
+            help = "Schlüsselbund mit einem kurzlebigen Testeintrag prüfen und aufräumen"
+        )]
+        test_keychain: bool,
+        #[arg(long, help = "Auch bei ungeprüften Schritten mit Fehlercode beenden")]
+        strict: bool,
+    },
     #[command(
         about = "Gespeicherte Verbindungen anzeigen, prüfen und als Standard festlegen",
         alias = "connection",
@@ -438,6 +452,7 @@ enum TaskCommand {
 }
 
 const COMMANDS: &[&str] = &[
+    "doctor",
     "conn",
     "connection",
     "query",

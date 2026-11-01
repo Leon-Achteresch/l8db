@@ -60,3 +60,14 @@ if [ "${L8DB_BENCHMARK:-0}" = 1 ]; then
     /usr/bin/time -v cargo test --manifest-path src-tauri/Cargo.toml --locked --lib export_cursor_benchmark -- --ignored --test-threads=1 --nocapture
   fi
 fi
+
+"${compose[@]}" exec -T postgres psql -U postgres -d testdb < tests/lab/production-controls.sql
+"${compose[@]}" exec -T postgres psql -U postgres -d testdb -v control_schema=l8db_control -v control_owner=l8db_control_owner -v deployer=l8db_deployer -v reviewer=l8db_reviewer -v administrator=l8db_administrator < docs/postgres-production-controls.sql
+"${compose[@]}" exec -T postgres psql -U postgres -d testdb < tests/lab/production-controls-assert.sql
+cargo test --manifest-path src-tauri/Cargo.toml --locked --lib production_controls_separate_deployer -- --ignored --test-threads=1 --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml --locked --lib enterprise_committed_release_preserves -- --ignored --test-threads=1 --nocapture
+
+if [ "${L8DB_CLI_CHECKS:-0}" = 1 ]; then
+  cargo build --manifest-path src-tauri/Cargo.toml --locked
+  L8DB_CLI_TEST_PG_URL="$L8DB_E2E_PG_URL" bun run test:cli
+fi

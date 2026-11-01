@@ -156,6 +156,16 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     expect(missing.err).toContain("Es fehlt: <TABELLE>");
   });
 
+  test("doctor reports readiness without exposing connection strings", () => {
+    const result = cli(["doctor", "-o", "json"]);
+    expect(result.code).toBe(0);
+    const rows = JSON.parse(result.out) as { check: string; status: string }[];
+    expect(rows.some((row) => row.check === "Schlüsselbund" && row.status === "warn")).toBe(true);
+    expect(result.out).not.toContain(sqlitePath);
+    expect(cli(["doctor", "--strict", "-o", "json"]).code).toBe(1);
+    expect(cli(["doctor", "--test-keychain", "--strict", "-o", "json"]).code).toBe(0);
+  });
+
   test("empty store explains how to get connections", () => {
     const result = cli(["q", "select 1"]);
     expect(result.code).toBe(1);
@@ -438,6 +448,9 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
 
   test.skipIf(!PG_PERF)("performance: limits bound the fetch on a 2M-row table", () => {
     const url = ["--url", PG_PERF];
+    const count = cli([...url, "q", "select count(*) as n from big"]);
+    expect(count.code, count.err).toBe(0);
+    expect(count.out).toBe("n\n2000000\n");
     const timings: number[] = [];
     for (let run = 0; run < 7; run++) {
       const started = performance.now();

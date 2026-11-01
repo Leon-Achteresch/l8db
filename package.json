@@ -25,7 +25,8 @@
     "lint": "biome lint ./src",
     "format": "biome format --write ./src",
     "check": "biome check ./src",
-    "test": "bun test tests",
+    "test": "bun scripts/test-tests.ts",
+    "test:cli": "bun scripts/test-cli.ts",
     "test:release": "bun test tests/release-artifacts.test.ts tests/release-integrity.test.ts tests/release-plan.test.ts tests/release-signing.test.ts tests/release-workflows.test.ts tests/packaging-update.test.ts tests/changelog.test.ts tests/version.test.ts",
     "test:browser": "bun scripts/test-browser.ts",
     "test:integration": "bash scripts/test-postgres-ssh.sh",
@@ -151,6 +152,7 @@
     "examples/*"
   ],
   "overrides": {
+    "minimatch": "^11.0.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "dompurify": "^3.4.17",
