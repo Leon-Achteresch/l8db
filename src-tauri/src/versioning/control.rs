@@ -487,13 +487,20 @@ pub async fn handle(
                 return Err("Mindestens ein Regeladministrator ist erforderlich".into());
             }
             if next.track.is_empty()
+                || next.operators.len() > 1000
+                || next.reviewers.len() > 1000
+                || next.administrators.len() > 1000
                 || next
                     .operators
                     .iter()
                     .chain(&next.reviewers)
                     .chain(&next.administrators)
-                    .any(|s| s.trim().is_empty())
+                    .any(|s| s.trim().is_empty() || s.len() > 256)
                 || (next.require_approval && next.reviewers.is_empty())
+                || (next.production
+                    && (!next.require_approval
+                        || next.operators.is_empty()
+                        || next.reviewers.is_empty()))
             {
                 return Err("Ungültige Kundenregeln".into());
             }
@@ -566,7 +573,7 @@ pub async fn handle(
                 } else {
                     "INTERVAL '15 minutes'"
                 };
-                let result = adapter.execute_query(&format!("SELECT \"ACTOR\" FROM {} WHERE \"PROJECT_ID\" = {} AND \"ARTIFACT\" = {} AND \"CREATED_AT\" >= {} - {age}", table(&c.schema,"APPROVALS"), literal(&c.project_id),literal(artifact),c.now_sql())).await?;
+                let result = adapter.execute_query(&format!("SELECT \"ACTOR\" FROM {} WHERE \"PROJECT_ID\" = {} AND \"ARTIFACT\" = {} AND \"CREATED_AT\" BETWEEN {} - {age} AND {}", table(&c.schema,"APPROVALS"), literal(&c.project_id),literal(artifact),c.now_sql(),c.now_sql())).await?;
                 if !result.rows.iter().any(|r| {
                     r["ACTOR"].as_str().is_some_and(|a| {
                         a != user
@@ -614,7 +621,7 @@ pub async fn handle(
             } else {
                 "INTERVAL '15 minutes'"
             };
-            let reviews = adapter.execute_query(&format!("SELECT \"BODY\", \"ACTOR\" FROM {} WHERE \"PROJECT_ID\" = {} AND \"RUN_ID\" = {} AND \"EVENT\" = 'review_requested' AND \"CREATED_AT\" >= {} - {age} ORDER BY \"CREATED_AT\" DESC", table(&c.schema,"JOURNAL"),literal(&c.project_id),literal(&artifact),c.now_sql())).await?;
+            let reviews = adapter.execute_query(&format!("SELECT \"BODY\", \"ACTOR\" FROM {} WHERE \"PROJECT_ID\" = {} AND \"RUN_ID\" = {} AND \"EVENT\" = 'review_requested' AND \"CREATED_AT\" BETWEEN {} - {age} AND {} ORDER BY \"CREATED_AT\" DESC", table(&c.schema,"JOURNAL"),literal(&c.project_id),literal(&artifact),c.now_sql(),c.now_sql())).await?;
             let row = reviews
                 .rows
                 .first()

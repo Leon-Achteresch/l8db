@@ -23,21 +23,24 @@ Eine Liste oder ein Objekt mit `connections`:
 ```
 
 - Pflicht: `id` (`A-Z a-z 0-9 _ -`, stabil halten: eine neue `id` ist eine neue Verbindung), `name`, `kind`, `connectionString` **ohne Passwort oder Token**. Ist ein Benutzer eingetragen, fragt l8db nur nach dem Passwort; das Passwort landet im OS-Schlüsselbund.
-- Optional: `sslMode`, `ssh`, `proxy`, `tags`, `color`, `readOnly`, `environment`, `schemas`. Andere Felder werden ignoriert. Bei `ssh` werden Schlüsseldatei und Agent-Socket nicht übernommen.
-- Erlaubte Typen: `postgres`, `mysql`, `mssql`, `oracle`, `clickhouse`, `mongodb`, `redis`, `cassandra`, `elasticsearch`, `influxdb`, `snowflake`.
-- Abgelehnt werden Einträge mit Passwort, Steuerzeichen oder Parametern für lokale Anmeldedaten, Sockets oder Schlüsseldateien (z. B. `integratedSecurity`, `sslkey`, `tlsCAFile`). Abgelehnte Einträge erscheinen als *Hinweise für die IT*, der Rest bleibt nutzbar.
+- Optional: `sslMode`, `ssh`, `proxy`, `cloudAuth`, `tags`, `color`, `readOnly`, `environment`, `schemas`, `description`, `owner`, `contact`, `runbook` (HTTPS). Andere Felder werden ignoriert. Bei `ssh` werden Schlüsseldatei und Agent-Socket nicht übernommen.
+- Erlaubte Typen: `postgres`, `mysql`, `mssql`, `oracle`, `clickhouse`, `mongodb`, `redis`, `cassandra`, `elasticsearch`, `influxdb`, `snowflake`, `bigquery`, `athena`, `dynamodb`, `s3`, `sqlite_http`, `odbc`. Lokale SQLite-/DuckDB-Dateien werden weiterhin gerätelokal eingerichtet.
+- Abgelehnt werden Einträge mit Passwort, Steuerzeichen oder Parametern für lokale Anmeldedaten, Sockets oder Schlüsseldateien (z. B. `sslkey`, `tlsCAFile`). Integrierte Windows-Anmeldung ist mit gültigen booleschen Werten erlaubt; die tatsächliche Unterstützung hängt vom Betriebssystem und Treiber ab. ODBC erlaubt installierte Treibernamen, keine lokalen Treiberdateien oder File-DSNs. Abgelehnte Einträge erscheinen als *Hinweise für die IT*, der Rest bleibt nutzbar.
 - Höchstens 4 MB. Eine UTF-8-BOM ist erlaubt.
 
 ## Verhalten
 
-- Neue Einträge werden ergänzt, entfernte gelöscht. Lokale Änderungen (Name, Farbe, Benutzer) bleiben, solange die IT dasselbe Feld nicht ändert.
+- Neue Einträge werden ergänzt, entfernte gelöscht. Lokale Änderungen an Name, Farbe und Benutzer bleiben, solange die IT dasselbe Feld nicht ändert. Sicherheitsrelevante Felder einschließlich Adresse, Typ, TLS, Umgebung, Schema-Auswahl und Lesemodus bleiben durch die IT vorgegeben.
 - Ändert die IT Typ, Adresse, SSL-Modus, SSH oder Proxy, löscht l8db die gespeicherten Passwörter und fragt neu.
 - Fehlt die Datei, verschwinden alle Team-Verbindungen. Ist sie unlesbar oder kein gültiges JSON, bleibt alles unverändert und der Fehler steht in den Einstellungen.
 - Team-Verbindungen werden nicht über die persönliche Synchronisation übertragen.
 - Rechte in der Datenbank regelt ausschließlich der Datenbank-Benutzer.
+- Der Lesemodus blockiert Schreibaktionen in l8db für jede Datenbankfamilie. PostgreSQL und S3 ergänzen ihren nativen Schutz. Leserechte müssen trotzdem serverseitig vergeben werden; Clientkontrollen sind keine Datenbankberechtigungen.
 - Verbindungen aus dem früheren Team-Hub oder aus Microsoft 365 entfernt l8db beim ersten Lesen.
 
 ## Tests
+
+Verbindliche Maschinenrichtlinien und der vollständige Ablauf für IT, DBA und Anwender: [enterprise-rollout.md](enterprise-rollout.md).
 
 - `bun test tests/team-sync.test.ts`: Merge, Abgleich, Altbestand, Performance.
 - `cargo test team` (in `src-tauri/`): Lesen der Datei.

@@ -98,8 +98,8 @@ export function effectiveConnectionString(connection: SavedConnection): string {
       ? injectUrlPassword(connection.connectionString, cached)
       : connection.connectionString;
   const serverReadOnly =
-    isReadOnlyConnection(connection) ||
-    (isProductionLocked(connection) && capabilitiesFor(connection.kind).read_only_mode);
+    capabilitiesFor(connection.kind).read_only_mode &&
+    (isReadOnlyConnection(connection) || isProductionLocked(connection));
   const base = cloudAuthConnectionString(
     proxyUserConnectionString(serverReadOnly ? readOnlyConnectionString(raw) : raw, connection),
     connection,

@@ -121,7 +121,7 @@ export function ConnectionAdvancedOptions({
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const hasNew = useHasNewFeatures(caps.ssh ? "connections.editor" : undefined);
-  const showSecurity = caps.ssl || caps.ssh || caps.read_only_mode;
+  const showSecurity = true;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-xl border">
@@ -193,19 +193,19 @@ export function ConnectionAdvancedOptions({
               </label>
             )}
             {caps.ssh && <CommandTunnelToggle network={network} />}
-            {caps.read_only_mode && (
+            {
               <label className="flex items-center justify-between gap-3 text-xs font-medium sm:col-span-2">
                 <span className="flex flex-col gap-0.5">
                   <span className="flex items-center gap-2">
                     <Eye className="size-4 text-muted-foreground" /> Lesemodus
                   </span>
                   <span className="font-normal text-muted-foreground">
-                    Schreibzugriffe werden serverseitig blockiert.
+                    l8db blockiert Schreibzugriffe. Datenbankrechte vergibt deine Administration.
                   </span>
                 </span>
                 <Switch checked={readOnly} onCheckedChange={onReadOnly} aria-label="Lesemodus" />
               </label>
-            )}
+            }
           </div>
         )}
         {caps.ssh && sshEnabled && (

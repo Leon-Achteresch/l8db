@@ -15,6 +15,8 @@ const credentials = {
   APPLE_CERTIFICATE_PASSWORD: "test-export-password",
   APPLE_ID: "test@example.invalid",
   APPLE_PASSWORD: "test-app-specific-password",
+  WINDOWS_CERTIFICATE: "test-windows-certificate",
+  WINDOWS_CERTIFICATE_PASSWORD: "test-windows-password",
 };
 
 describe("production release credentials", () => {

@@ -62,6 +62,8 @@ const SUITES = {
     "tests/perf-transfer-cinematic.test.ts",
     "tests/perf-seasonal.test.ts",
     "tests/perf-secret-save.test.ts",
+    "tests/perf-organization-policy.test.ts",
+    "tests/organization-extension-rpc.test.ts",
     "tests/perf-connection-import.test.ts",
     "tests/perf-connection-import-datagrip.test.ts",
     "tests/abandoned-jobs.test.ts",

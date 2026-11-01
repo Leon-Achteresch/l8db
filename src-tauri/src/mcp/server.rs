@@ -302,6 +302,9 @@ impl Server {
         let method = request.get("method").and_then(Value::as_str).unwrap_or("");
         let params = request.get("params").cloned().unwrap_or(Value::Null);
         let id = id?;
+        if let Err(error) = crate::organization::authorize("mcp_serve") {
+            return Some(rpc_error(id, -32000, error));
+        }
         let version = params["_meta"]["io.modelcontextprotocol/protocolVersion"].as_str();
         if let Some(requested) = version.filter(|version| !VERSIONS.contains(version)) {
             return Some(json!({"jsonrpc": "2.0", "id": id, "error": {
@@ -826,6 +829,48 @@ fn row_values(kind: DatabaseKind) -> bool {
             | DatabaseKind::Sqlite
             | DatabaseKind::SqliteHttp
     )
+}
+
+#[tauri::command]
+pub fn validate_read_query(kind: DatabaseKind, sql: String) -> Result<(), String> {
+    if sql.trim().is_empty() || sql.len() > 4 * 1024 * 1024 {
+        return Err("Lesemodus erwartet eine Anweisung mit höchstens 4 MB.".into());
+    }
+    let redaction = super::config::Redaction {
+        columns: Vec::new(),
+        values: Vec::new(),
+        replacement: "[redacted]".into(),
+    };
+    let redactor = Redactor::new(&redaction, &[]);
+    let index = redact::SchemaIndex::new(&[], &redactor, &[]);
+    let connection = McpConnection {
+        id: String::new(),
+        name: "Lesemodus".into(),
+        kind,
+        connection_string: String::new(),
+        schemas: Vec::new(),
+        ssh: false,
+        exposed: false,
+        read_only: true,
+        allow_ddl: false,
+        allow_scripts: false,
+        redact_columns: Vec::new(),
+        mask_rules: Vec::new(),
+        environment: None,
+        allow_production_writes: false,
+        database: None,
+    };
+    match kind {
+        DatabaseKind::Mongodb => nosql::mongo_check(
+            &nosql::mongo_command(&sql)?,
+            false,
+            false,
+            &redactor,
+            &index,
+        ),
+        DatabaseKind::Redis => nosql::redis_check(&sql, false),
+        _ => check_read_sql(&sql, &connection, &index),
+    }
 }
 
 pub(super) fn check_read_sql(
@@ -1393,6 +1438,57 @@ mod tests {
     use super::*;
 
     use crate::mcp::TEST_ENV_LOCK as ENV_LOCK;
+
+    #[test]
+    fn desktop_read_guard_covers_sql_and_nosql_without_database_requests() {
+        for kind in [
+            DatabaseKind::Postgres,
+            DatabaseKind::Mysql,
+            DatabaseKind::Mssql,
+            DatabaseKind::Oracle,
+        ] {
+            assert!(
+                validate_read_query(kind, "SELECT id FROM example".into()).is_ok(),
+                "{kind:?}"
+            );
+            for sql in [
+                "DELETE FROM example",
+                "SELECT id FROM example; DROP TABLE example",
+                "WITH removed AS (DELETE FROM example RETURNING id) SELECT id FROM removed",
+            ] {
+                assert!(
+                    validate_read_query(kind, sql.into()).is_err(),
+                    "{kind:?}: {sql}"
+                );
+            }
+        }
+        assert!(validate_read_query(DatabaseKind::Redis, "GET example".into()).is_ok());
+        assert!(validate_read_query(DatabaseKind::Redis, "SET example value".into()).is_err());
+        assert!(validate_read_query(DatabaseKind::Postgres, " ".into()).is_err());
+        assert!(
+            validate_read_query(DatabaseKind::Postgres, "x".repeat(4 * 1024 * 1024 + 1)).is_err()
+        );
+    }
+
+    #[test]
+    fn desktop_read_guard_large_query_performance_is_bounded() {
+        let sql = format!(
+            "SELECT {} FROM example",
+            (0..2000)
+                .map(|index| format!("column_{index}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let mut samples = Vec::new();
+        for _ in 0..25 {
+            let start = std::time::Instant::now();
+            validate_read_query(DatabaseKind::Postgres, sql.clone()).unwrap();
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        eprintln!("desktop read guard: 2000 columns, {} bytes, median {:?}, p95 {:?}, database requests 0, maximum input 4 MiB, no background tasks", sql.len(), samples[12], samples[23]);
+        assert!(samples[23] < std::time::Duration::from_millis(150));
+    }
 
     fn temp_config(enabled: bool) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(

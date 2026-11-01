@@ -137,7 +137,9 @@ Team-ID, Hardened Runtime, Ticket und Gatekeeper geprüft. Schlägt eine Prüfun
 fehl, bleibt der Release ein Entwurf. Der temporäre Schlüsselbund wird auch nach
 Fehlern entfernt. Es gibt keinen unsignierten Fallback.
 
-Windows bleibt ohne Plattformzertifikat; Windows kann deshalb beim Installieren
+Windows benötigt die Repository-Secrets `WINDOWS_CERTIFICATE` (Base64-kodiertes exportierbares PFX mit privatem Codesigning-Key) und `WINDOWS_CERTIFICATE_PASSWORD`. Die Pipeline importiert den Schlüssel ausschließlich im Paketierjob, aktiviert SHA-256-Authenticode und Zeitstempel und prüft Binary, MSI und NSIS gegen denselben Herausgeber. Temporäre PFX-Datei und Zertifikat werden anschließend entfernt. Hardwaregebundene Schlüssel benötigen stattdessen einen passenden externen Signierdienst; dafür ist diese PFX-Konfiguration nicht geeignet. Ohne gültiges Zertifikat bleibt die Veröffentlichung gesperrt.
+
+Eine gültige Signatur verhindert nicht jede zusätzliche Reputationsprüfung; Windows kann beim Installieren
 oder ersten Start warnen. macOS wird ab Version 12 mit aktuellem WebKit
 (Safari 16.4 oder neuer) unterstützt.
 Der Windows-Installer fordert mindestens WebView2 111 an. Diese Laufzeitgrenzen

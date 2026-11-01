@@ -2,6 +2,7 @@ import { KeyRound, Lock, ShieldCheck } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { SecretStorageNotice } from "@/features/connections/secret-storage-notice";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { DML_PREVIEW_MODES, type DmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type SslDefaultMode, useSettingsStore } from "@/lib/settings";
@@ -34,6 +35,7 @@ export function SettingsSecurityTab() {
 
   return (
     <div className="space-y-4">
+      <SecretStorageNotice />
       <div>
         <h2 className="text-base font-semibold tracking-tight">Sicherheit & Netzwerk</h2>
         <p className="text-xs text-muted-foreground">
@@ -186,6 +188,7 @@ export function SettingsSecurityTab() {
               { value: "prefer", label: "Bevorzugen" },
               { value: "require", label: "Erzwingen" },
               { value: "disable", label: "Deaktiviert" },
+              { value: "verify-ca", label: "CA prüfen" },
               { value: "verify-full", label: "Zertifikat prüfen" },
             ]}
           />

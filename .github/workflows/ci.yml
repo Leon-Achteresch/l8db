@@ -52,6 +52,8 @@ jobs:
           bun run extension build extention/password-manager
           L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts
           L8DB_PRODUCTION_BROWSER=webkit L8DB_EXTENSION_BROWSER=webkit bun test tests/production-browser.test.ts tests/extension-browser.test.ts
+          L8DB_ENTERPRISE_BROWSER=1 bun test tests/enterprise-policy-browser.test.ts
+          L8DB_ENTERPRISE_BROWSER=webkit bun test tests/enterprise-policy-browser.test.ts
 
   browser-smoke:
     name: Browser regressions
@@ -89,7 +91,7 @@ jobs:
         with:
           tool: cargo-audit
       - name: RustSec audit
-        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369
+        run: cargo audit --ignore RUSTSEC-2023-0071
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
         working-directory: src-tauri
@@ -118,6 +120,8 @@ jobs:
         with:
           cache: integration
       - run: bash scripts/test-postgres-ssh.sh
+        env:
+          L8DB_CLI_CHECKS: "1"
 
   platform-build:
     name: Build (${{ matrix.platform }})

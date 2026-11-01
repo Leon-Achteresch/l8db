@@ -100,8 +100,15 @@ pub async fn verify_request(request: &super::runner::Request) -> Result<Option<V
         .cloned()
         .ok_or("Rollout-Ziel fehlt in der Git-Teamkonfiguration")?;
     let c = &request.connection;
-    let physical = super::seeds::physical_key(c.kind, &c.schema, &artifact["execution"]["context"]);
+    let physical =
+        super::seeds::physical_key(c.kind, &target.schema, &artifact["execution"]["context"]);
     if team.project_id != c.project_id
+        || artifact["schema"]
+            != if target.schema.is_empty() {
+                Value::Null
+            } else {
+                json!(target.schema)
+            }
         || target.database != c.database
         || target.ledger_schema.as_deref().unwrap_or(&target.schema) != c.schema
         || artifact["teamHash"]
