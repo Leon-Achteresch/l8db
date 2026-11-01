@@ -206,3 +206,49 @@ It prints the JSON report on stdout. The report covers each statement's runs, er
 - Unit tests: `bun test tests/perf-test.test.ts tests/perf-load.test.ts tests/workload.test.ts` and `cargo test --lib mcp::benchmark` (includes SQLite end-to-end cases).
 - Live database check: `L8DB_WORKLOAD_LIVE=1 bun test tests/workload-live.test.ts` builds the SQL in TypeScript, runs it through the real adapters via the ignored Rust test `live_plan`, and asserts statistics, timed runs and replay. `L8DB_WORKLOAD_LIVE_KINDS` selects families, and `L8DB_LIVE_<NAME>_URL` overrides each lab URL. `bun run test:workload-live` starts the lab containers in batches (light families together, then Oracle, Cassandra and SQL Server each alone so SQL Server keeps its plan cache) and removes them afterwards; `L8DB_WORKLOAD_BATCHES` selects batches.
 - Binary check: after `cargo build`, `L8DB_BENCHMARK_E2E=1 bun test tests/benchmark-cli-e2e.test.ts` exercises `--mcp` and `--benchmark` on the debug binary.
+
+
+## SQL result quality of life
+
+Implemented result retention after a failed manual query or script, raw/UTC/local timestamp display, optional background completion notifications, sampled content widths and named local result snapshots.
+
+### Limits and behavior
+
+- Failed execution retains the existing result object, without copying rows or querying again. The error and the previous successful SQL/time remain visible. Copy/export continue to use raw values and active masks.
+- Time conversion applies only to timestamp strings with an explicit offset. Values without a time zone and date-only values stay unchanged. UTC/local displays support seconds or milliseconds; the original value is retained for editing, copy and export.
+- Content sizing examines at most 200 evenly distributed loaded rows and 8,000 cells in total. Each measurement is capped at 256 characters and each column at 600 px. Large object values use a short placeholder. Sizing runs only on request.
+- Notifications default to off. They are checked once when execution finishes, only after 10 seconds and when the window is in the background. The backend checks window focus again. Cancelled runs are silent. Messages contain only generic status and duration. No polling, timers or extra database requests are introduced.
+- Snapshot writes use serialized IndexedDB transactions. Global limits: 10 snapshots, 500,000 serialized characters each, 2,000,000 total; each result must be complete and contain at most 999 rows and 200 columns. Nested values have depth/node bounds. Exhaustion reports an error and never evicts a saved result. Active masks are applied before saving. Snapshots are device-local and survive restarts; connection/database identity gates comparisons. Open dialogs refresh across windows.
+
+### Measured platform and workload
+
+2026-11-01: macOS (Darwin arm64), Apple M3, 16 GiB RAM, Bun 1.3.10. Native CPU; no CPU/heap simulation. Other work was running concurrently in the shared checkout. An initial diagnostic run used the installed Bun 1.4.3; the feature suite was then run with the required Bun 1.3.10. The measurements below use 1.3.10.
+
+`bun test tests/query-qol.test.ts tests/perf-query-qol.test.ts`
+
+Browser fixture: `L8DB_PERF_BROWSER=1 bun test tests/query-qol-browser.test.ts`. Both suites are registered in `scripts/test-performance.ts`; the browser fixture honors `L8DB_PERF_ENGINE` (only Chromium was run locally).
+
+| Scenario | Workload | Median | p95 | Regression budget |
+| --- | --- | ---: | ---: | --- |
+| Existing header-only sizing baseline | 80 columns | 0.012 ms | 0.041 ms | Reference |
+| New content sizing | 100,000 rows × 80 columns; ≤8,000 cell reads | 6.11 ms | 12.31 ms | p95 <50 ms |
+| Local timestamp display | 10,000 timestamp values | 12.88 ms | 23.33 ms | p95 <80 ms |
+| Snapshot encoding | 999 rows × 20 columns | 2.39 ms | 13.31 ms | p95 <100 ms |
+
+Twelve concurrent snapshot writes retained four snapshots within the aggregate quota and rejected the rest. Storage/read/delete workload took 94.33 ms (budget <2,000 ms); retained heap delta after explicit GC was 756,798 bytes (budget <32 MiB, includes test fixtures). IndexedDB here uses fake-indexeddb; real browser persistence is covered separately. One thousand cancelled completion callbacks performed zero preference/focus checks, sent zero notifications and scheduled zero timers. The pure display/snapshot scenarios made zero database requests.
+
+Header-only sizing remains available; content sizing intentionally does more bounded work. This is a new capability, not a claim that content sizing is faster than header sizing.
+
+### Coverage
+
+Scoped functional tests cover offsets/DST, precision, raw-value preservation, width bounds, snapshot masks/limits/atomic concurrent writes, restart reads, deletion, opt-in/background/threshold notification gates and cancellation. The browser fixture exercises the real query execution hook with mocked Tauri transport, virtualized result rendering, retaining data across repeated errors, timestamp conversion, content sizing, snapshot save/compare/reload/delete and 1440/390 px screenshots.
+
+Native OS notification delivery and permission UX have not been exercised on macOS, Windows or Linux. No live database family was exercised for these display-only changes. Browser transport tests verify database request counts; they do not establish native Tauri webview or real database performance.
+
+Browser measurement (Chromium, same machine and Bun version): 999 loaded rows kept 45 mounted table rows. Five consecutive failed queries retained the successful data, with 94.30 ms median / 456.00 ms p95 from the click handler through completion and the next animation frame (budget p95 <1,000 ms). An earlier measurement included Playwright actionability waits (440.11/570.33 ms median/p95); a repeat under concurrent load reached 1,266.05 ms. The final test measures inside the browser after the actual click, preserving the 1,000 ms budget and excluding automation wait time. Seven explicit query executions produced seven database execution requests; all timestamp, sizing, snapshot and reload actions introduced zero additional execution requests. Screenshots at 1440 and 390 px had no horizontal document overflow. No browser runtime errors were captured.
+
+The shared-checkout TypeScript check is blocked by the parallel organization-policy change in `src/lib/organization-state.ts:35`. `cargo check` is blocked by the parallel `invoke_handler` wrapper in `src-tauri/src/lib.rs` (`E0282` at `generate_handler!`). These unrelated changes were preserved.
+
+The initial default-feature Rust module test was stopped during the unrelated DuckDB native rebuild. The scoped fallback is `cargo test --no-default-features query_notification --lib`; optional DuckDB/ODBC behavior is outside this change.
+
+The no-default-features Cargo test could not start because another process held the shared build-directory lock; the waiting process was stopped. The notification message/threshold unit test was run directly with `rustc --test` from the unchanged helper and test sections of `src-tauri/src/query_notification.rs`: 1 passed. This verifies that pure helper only, not Tauri command integration or OS delivery.

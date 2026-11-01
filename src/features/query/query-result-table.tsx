@@ -20,7 +20,9 @@ import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
 import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { IS_CHROMIUM } from "@/lib/platform";
+import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { useQueryWorkspace } from "@/lib/query-workspace";
+import { resultColumnWidths } from "@/lib/result-column-sizing";
 import {
   activeFilterCount,
   applyResultView,
@@ -240,13 +242,18 @@ export const QueryResultTable = memo(function QueryResultTable({
     setFilters({});
   };
 
-  const autoSizeColumns = () => {
+  const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const autoSizeColumns = (content = false) => {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.font = `${(workspace.resultFontSize * uiScale) / 100}px ${getComputedStyle(document.body).fontFamily}`;
-    const nextWidths = Object.fromEntries(
-      columns.map((column) => [column, Math.ceil(context.measureText(column).width) + 48]),
+    context.font = `${(workspace.resultFontSize * uiScale) / 100}px ${getComputedStyle(scrollRef.current?.querySelector("td[data-col]") ?? document.body).fontFamily}`;
+    const nextWidths = resultColumnWidths(
+      columns,
+      visibleRows,
+      (text) => context.measureText(text).width,
+      content,
+      timestamps,
     );
     setAutoColumnWidths(nextWidths);
   };
@@ -266,7 +273,8 @@ export const QueryResultTable = memo(function QueryResultTable({
         filterCount={filterCount}
         filterRowOpen={filterRowOpen}
         viewActive={viewActive}
-        onAutoSize={autoSizeColumns}
+        onAutoSize={() => autoSizeColumns(false)}
+        onContentSize={() => autoSizeColumns(true)}
         onToggleFilterRow={() => setFilterRowOpen((open) => !open)}
         onReset={resetView}
       />

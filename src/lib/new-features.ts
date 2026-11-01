@@ -4,6 +4,11 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.16.0";
 
 export const NEW_FEATURES = {
+  "query.results.keep-on-error": NEXT_FEATURE_VERSION,
+  "query.results.timestamps": NEXT_FEATURE_VERSION,
+  "query.results.content-width": NEXT_FEATURE_VERSION,
+  "query.results.snapshots": NEXT_FEATURE_VERSION,
+  "query.notifications": NEXT_FEATURE_VERSION,
   "settings.general.workspace-tab": "0.9.1",
   "settings.general.sync": "0.14.0",
   "settings.general.team": NEXT_FEATURE_VERSION,

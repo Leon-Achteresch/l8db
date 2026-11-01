@@ -29,6 +29,7 @@ const SUITES = {
     "tests/perf-query-history-format.test.ts",
     "tests/perf-home-activity.test.ts",
     "tests/perf-result-compare.test.ts",
+    "tests/perf-query-qol.test.ts",
     "tests/supabase-studio-redesign.test.ts",
     "tests/perf-history-modal-boundary.test.ts",
     "tests/perf-ai-persist.test.ts",
@@ -85,6 +86,7 @@ const SUITES = {
     "tests/perf-palette-loading.test.ts",
     "tests/perf-onboarding.test.ts",
     "tests/perf-seasonal-browser.test.ts",
+    "tests/query-qol-browser.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;
