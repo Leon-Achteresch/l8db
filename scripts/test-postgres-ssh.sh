@@ -16,6 +16,13 @@ cleanup() {
 }
 trap cleanup EXIT
 ssh-keygen -q -t ed25519 -N '' -f "$L8DB_LAB_DIR/client"
+ssh-keygen -q -t rsa -b 3072 -N '' -f "$L8DB_LAB_DIR/rsa-client"
+cp "$L8DB_LAB_DIR/rsa-client" "$L8DB_LAB_DIR/rsa-encrypted"
+ssh-keygen -q -p -P '' -N 'lab-rsa-passphrase' -f "$L8DB_LAB_DIR/rsa-encrypted"
+cp "$L8DB_LAB_DIR/rsa-client" "$L8DB_LAB_DIR/rsa-pkcs1"
+ssh-keygen -q -p -m PEM -P '' -N '' -f "$L8DB_LAB_DIR/rsa-pkcs1"
+cat "$L8DB_LAB_DIR/rsa-client.pub" >> "$L8DB_LAB_DIR/client.pub"
+export L8DB_E2E_RSA_KEY_FILE="$L8DB_LAB_DIR/rsa-client"
 chmod 644 "$L8DB_LAB_DIR/client.pub"
 "${compose[@]}" up --build --wait --wait-timeout 120
 pg_address=$("${compose[@]}" port postgres 5432)

@@ -5,11 +5,10 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use rsa::pkcs1::DecodeRsaPrivateKey;
-use rsa::pkcs1v15::SigningKey;
-use rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
-use rsa::signature::{SignatureEncoding, Signer};
-use rsa::RsaPrivateKey;
+use openssl::hash::MessageDigest;
+use openssl::pkey::{Id, PKey, Private};
+use openssl::rsa::Padding;
+use openssl::sign::Signer;
 use sha2::{Digest, Sha256};
 
 pub(crate) const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
@@ -155,58 +154,63 @@ pub(crate) fn split_key_secret(secret: &str) -> (String, Option<String>) {
     )
 }
 
-pub(crate) fn load_rsa_key(text: &str, passphrase: Option<&str>) -> Result<RsaPrivateKey, String> {
+pub(crate) fn load_rsa_key(text: &str, passphrase: Option<&str>) -> Result<PKey<Private>, String> {
     let (label, pem) = normalize_pem(text).ok_or("Kein PEM-Schlüssel gefunden (-----BEGIN …).")?;
-    match label.as_str() {
+    let key = match label.as_str() {
         "ENCRYPTED PRIVATE KEY" => {
             let passphrase = passphrase
                 .filter(|p| !p.is_empty())
                 .ok_or("Der private Schlüssel ist verschlüsselt, die Passphrase fehlt.")?;
-            RsaPrivateKey::from_pkcs8_encrypted_pem(&pem, passphrase).map_err(|e| {
-                format!("Verschlüsselter Schlüssel konnte nicht entschlüsselt werden: {e}")
-            })
+            PKey::private_key_from_pem_passphrase(pem.as_bytes(), passphrase.as_bytes())
+                .map_err(|_| "Verschlüsselter RSA-Schlüssel konnte nicht entschlüsselt werden.")?
         }
-        "RSA PRIVATE KEY" => {
+        "RSA PRIVATE KEY" | "PRIVATE KEY" => {
             if pem.contains("ENCRYPTED") {
                 return Err("Legacy-verschlüsselte PKCS#1-Schlüssel werden nicht unterstützt. Konvertiere mit: openssl pkcs8 -topk8 -v2 aes-256-cbc -in key.pem -out key.p8".into());
             }
-            RsaPrivateKey::from_pkcs1_pem(&pem)
-                .map_err(|e| format!("PKCS#1-Schlüssel ist ungültig: {e}"))
+            PKey::private_key_from_pem(pem.as_bytes())
+                .map_err(|_| "Privater RSA-Schlüssel ist ungültig.")?
         }
-        "PRIVATE KEY" => RsaPrivateKey::from_pkcs8_pem(&pem)
-            .map_err(|e| format!("PKCS#8-Schlüssel ist ungültig: {e}")),
-        other => Err(format!(
-            "Nicht unterstützter Schlüsseltyp \"{other}\". Erwartet wird ein RSA-Schlüssel."
-        )),
+        other => {
+            return Err(format!(
+                "Nicht unterstützter Schlüsseltyp \"{other}\". Erwartet wird ein RSA-Schlüssel."
+            ))
+        }
+    };
+    if key.id() != Id::RSA || !key.rsa().and_then(|rsa| rsa.check_key()).unwrap_or(false) {
+        return Err("Erwartet wird ein gültiger privater RSA-Schlüssel.".into());
     }
+    Ok(key)
 }
 
-pub(crate) fn public_key_fingerprint(key: &RsaPrivateKey) -> Result<String, String> {
+pub(crate) fn public_key_fingerprint(key: &PKey<Private>) -> Result<String, String> {
     let der = key
-        .to_public_key()
-        .to_public_key_der()
+        .public_key_to_der()
         .map_err(|e| format!("Öffentlicher Schlüssel konnte nicht kodiert werden: {e}"))?;
     Ok(format!(
         "SHA256:{}",
-        base64::engine::general_purpose::STANDARD.encode(Sha256::digest(der.as_bytes()))
+        base64::engine::general_purpose::STANDARD.encode(Sha256::digest(&der))
     ))
 }
 
 pub(crate) fn sign_rs256(
-    key: &RsaPrivateKey,
+    key: &PKey<Private>,
     claims: &serde_json::Value,
 ) -> Result<String, String> {
     let header = b64url(br#"{"alg":"RS256","typ":"JWT"}"#);
     let payload = b64url(claims.to_string().as_bytes());
     let input = format!("{header}.{payload}");
-    let signature = SigningKey::<Sha256>::new(key.clone())
-        .try_sign(input.as_bytes())
-        .map_err(|e| format!("JWT konnte nicht signiert werden: {e}"))?;
-    Ok(format!("{input}.{}", b64url(&signature.to_bytes())))
+    let signature = (|| {
+        let mut signer = Signer::new(MessageDigest::sha256(), key)?;
+        signer.set_rsa_padding(Padding::PKCS1)?;
+        signer.sign_oneshot_to_vec(input.as_bytes())
+    })()
+    .map_err(|_| "JWT konnte nicht signiert werden.".to_string())?;
+    Ok(format!("{input}.{}", b64url(&signature)))
 }
 
 pub(crate) fn snowflake_jwt(
-    key: &RsaPrivateKey,
+    key: &PKey<Private>,
     account: &str,
     user: &str,
     now: u64,
@@ -437,16 +441,16 @@ pub(crate) async fn credentials_token(json: &str) -> Result<GoogleToken, String>
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use rsa::pkcs8::{EncodePrivateKey, LineEnding};
-    use rsa::signature::Verifier;
+    use openssl::rsa::Rsa;
+    use openssl::symm::Cipher;
 
-    pub(crate) fn test_key() -> &'static RsaPrivateKey {
-        static KEY: OnceLock<RsaPrivateKey> = OnceLock::new();
-        KEY.get_or_init(|| RsaPrivateKey::new(&mut rand::rng(), 1024).expect("RSA-Schlüssel"))
+    pub(crate) fn test_key() -> &'static PKey<Private> {
+        static KEY: OnceLock<PKey<Private>> = OnceLock::new();
+        KEY.get_or_init(|| PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap())
     }
 
     pub(crate) fn test_key_pem() -> String {
-        test_key().to_pkcs8_pem(LineEnding::LF).unwrap().to_string()
+        String::from_utf8(test_key().private_key_to_pem_pkcs8().unwrap()).unwrap()
     }
 
     fn decode_part(part: &str) -> serde_json::Value {
@@ -466,56 +470,54 @@ pub(crate) mod tests {
         assert_eq!(parts.len(), 3);
         assert_eq!(decode_part(parts[0])["alg"], "RS256");
         assert_eq!(decode_part(parts[1])["a"], 1);
-        let signature = rsa::pkcs1v15::Signature::try_from(
-            base64::engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(parts[2])
-                .unwrap()
-                .as_slice(),
-        )
-        .unwrap();
-        rsa::pkcs1v15::VerifyingKey::<Sha256>::new(key.to_public_key())
-            .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &signature)
+        let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[2])
             .unwrap();
+        let public = key.rsa().unwrap().public_key_to_der_pkcs1().unwrap();
+        let input = format!("{}.{}", parts[0], parts[1]);
+        let verifier = ring::signature::UnparsedPublicKey::new(
+            &ring::signature::RSA_PKCS1_2048_8192_SHA256,
+            &public,
+        );
+        verifier.verify(input.as_bytes(), &signature).unwrap();
+        assert!(verifier.verify(b"tampered", &signature).is_err());
     }
 
     #[test]
     fn loads_pkcs1_pkcs8_and_flattened_pem() {
         let key = test_key();
         let pkcs8 = test_key_pem();
-        assert_eq!(&load_rsa_key(&pkcs8, None).unwrap(), key);
-        let pkcs1 = rsa::pkcs1::EncodeRsaPrivateKey::to_pkcs1_pem(key, LineEnding::LF)
-            .unwrap()
-            .to_string();
-        assert_eq!(&load_rsa_key(&pkcs1, None).unwrap(), key);
-        let flattened = pkcs8.replace('\n', " ");
-        assert_eq!(&load_rsa_key(&flattened, None).unwrap(), key);
-        let escaped = pkcs8.replace('\n', "\\n");
-        assert_eq!(&load_rsa_key(&escaped, None).unwrap(), key);
+        let pkcs1 = String::from_utf8(key.rsa().unwrap().private_key_to_pem().unwrap()).unwrap();
+        for pem in [
+            pkcs8.clone(),
+            pkcs1,
+            pkcs8.replace('\n', " "),
+            pkcs8.replace('\n', "\\n"),
+        ] {
+            assert!(load_rsa_key(&pem, None).unwrap().public_eq(key));
+        }
         assert!(load_rsa_key("kein schluessel", None).is_err());
+        let ec = openssl::ec::EcKey::generate(
+            &openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1).unwrap(),
+        )
+        .unwrap();
+        let ec = PKey::from_ec_key(ec)
+            .unwrap()
+            .private_key_to_pem_pkcs8()
+            .unwrap();
+        assert!(load_rsa_key(std::str::from_utf8(&ec).unwrap(), None).is_err());
     }
 
     #[test]
     fn loads_encrypted_pkcs8_aes_and_des3() {
-        use pkcs8::pkcs5::pbes2;
         let key = test_key();
-        let der = key.to_pkcs8_der().unwrap();
-        let info = pkcs8::PrivateKeyInfoRef::try_from(der.as_bytes()).unwrap();
-        let aes = pbes2::Parameters::generate_pbkdf2_sha256_aes256cbc(2048, &[7u8; 16], [3u8; 16])
+        for cipher in [Cipher::aes_256_cbc(), Cipher::des_ede3_cbc()] {
+            let pem = String::from_utf8(
+                key.private_key_to_pem_pkcs8_passphrase(cipher, b"geheim")
+                    .unwrap(),
+            )
             .unwrap();
-        let des3 = pbes2::Parameters {
-            kdf: pbes2::Pbkdf2Params::hmac_sha256(2048, &[9u8; 8])
-                .unwrap()
-                .into(),
-            encryption: pbes2::EncryptionScheme::DesEde3Cbc { iv: [5u8; 8] },
-        };
-        for params in [aes, des3] {
-            let pem = info
-                .encrypt_with_params(params, "geheim")
-                .unwrap()
-                .to_pem("ENCRYPTED PRIVATE KEY", LineEnding::LF)
-                .unwrap()
-                .to_string();
-            assert_eq!(&load_rsa_key(&pem, Some("geheim")).unwrap(), key);
+            assert!(load_rsa_key(&pem, Some("geheim")).unwrap().public_eq(key));
             assert!(load_rsa_key(&pem, None).unwrap_err().contains("Passphrase"));
             assert!(load_rsa_key(&pem, Some("falsch")).is_err());
         }
@@ -524,10 +526,10 @@ pub(crate) mod tests {
     #[test]
     fn fingerprint_matches_openssl_format() {
         let key = test_key();
-        let der = key.to_public_key().to_public_key_der().unwrap();
+        let der = key.public_key_to_der().unwrap();
         let expected = format!(
             "SHA256:{}",
-            base64::engine::general_purpose::STANDARD.encode(Sha256::digest(der.as_bytes()))
+            base64::engine::general_purpose::STANDARD.encode(Sha256::digest(&der))
         );
         let fingerprint = public_key_fingerprint(key).unwrap();
         assert_eq!(fingerprint, expected);
@@ -665,3 +667,7 @@ pub(crate) mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "rsa_security_tests.rs"]
+mod rsa_security_tests;

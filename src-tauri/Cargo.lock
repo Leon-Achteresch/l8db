@@ -1531,16 +1531,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crypto-primes"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3633a51a39c69ebbaa4feaa694bd83d241e4093901c84a0963b19d9bb3f0cf8f"
-dependencies = [
- "crypto-bigint",
- "rand_core 0.10.1",
-]
-
-[[package]]
 name = "cssparser"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3904,6 +3894,7 @@ dependencies = [
  "notify-rust",
  "objc2",
  "odbc-api",
+ "openssl",
  "oracle",
  "parquet",
  "percent-encoding",
@@ -3917,7 +3908,6 @@ dependencies = [
  "reqwest",
  "ring",
  "rquickjs",
- "rsa",
  "rusqlite",
  "russh",
  "rustls",
@@ -5173,13 +5163,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openssl-src"
+version = "400.0.2+4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2093956673b8dbda85c87fa4fb78e70698ce6c5978a2837d1613f661d3bef76"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.117"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -6341,25 +6339,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsa"
-version = "0.10.0-rc.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b2aa4ba0d89f73d1e332df05be0eeab8840351c36ca5654341dfdb57bb3caf"
-dependencies = [
- "const-oid",
- "crypto-bigint",
- "crypto-primes",
- "digest 0.11.3",
- "pkcs1",
- "pkcs8",
- "rand_core 0.10.1",
- "sha2 0.11.0",
- "signature",
- "spki",
- "zeroize",
-]
-
-[[package]]
 name = "rusqlite"
 version = "0.40.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6375,8 +6354,6 @@ dependencies = [
 [[package]]
 name = "russh"
 version = "0.64.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba61e87b9ec9a39a59a6bbed4c0b8ff7fb07073405b24a767a1f2c8560ac8f58"
 dependencies = [
  "aes 0.9.3",
  "aws-lc-rs",
@@ -6411,6 +6388,7 @@ dependencies = [
  "ml-kem",
  "module-lattice",
  "num-bigint 0.5.1",
+ "openssl",
  "p256",
  "p384",
  "p521",
@@ -6422,7 +6400,6 @@ dependencies = [
  "polyval",
  "rand 0.10.3",
  "rand_core 0.10.1",
- "rsa",
  "russh-cryptovec",
  "russh-util",
  "salsa20",
@@ -7474,8 +7451,6 @@ dependencies = [
 [[package]]
 name = "ssh-key"
 version = "0.7.0-rc.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9a32fae177b74a22aa9c5b01bf7e68b33545be32d9e381e248058d2adc15ce3"
 dependencies = [
  "argon2",
  "bcrypt-pbkdf",
@@ -7483,11 +7458,11 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hmac 0.13.0",
+ "openssl",
  "p256",
  "p384",
  "p521",
  "rand_core 0.10.1",
- "rsa",
  "sec1",
  "sha1 0.11.0",
  "sha2 0.11.0",
@@ -8189,7 +8164,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
