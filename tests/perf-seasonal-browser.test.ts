@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, type Page, webkit } from "playwright";
 import { reportScenario } from "../scripts/performance-report";
+import { HOLIDAYS } from "../src/lib/seasonal-calendar";
 import { seedApp } from "./fixtures/perf-app";
 import { expectFrame, FRAME_BUDGETS } from "./fixtures/perf-webkit-profile";
 
@@ -11,6 +12,7 @@ const GRID = { rows: 5000, columns: 120 };
 const TABLE = "/tables/public/table_0000";
 const READY = 'tbody tr[data-index="0"]';
 const SPIDER = '[data-seasonal="spider"]';
+const VISITOR = '[data-seasonal="visitor"]';
 const MIN_FPS = Number(process.env.L8DB_PERF_MIN_FPS ?? 55);
 const MAX_P95_MS = Number(process.env.L8DB_PERF_MAX_P95 ?? 28);
 
@@ -22,19 +24,22 @@ type SpiderLog = {
 };
 
 async function open(path: string, now: string, settings: Record<string, unknown> = {}) {
-  if (!(await Bun.file("dist/index.html").exists()))
+  const devUrl = process.env.L8DB_SEASONAL_DEV_URL;
+  if (!devUrl && !(await Bun.file("dist/index.html").exists()))
     throw new Error("dist fehlt – vor dem Perf-Test 'bun run build' ausführen.");
-  const server = Bun.serve({
-    port: 0,
-    fetch: async (request) => {
-      const pathname = new URL(request.url).pathname;
-      const file = Bun.file(resolve("dist", pathname.replace(/^\//, "")));
-      if (pathname !== "/" && (await file.exists())) return new Response(file);
-      return new Response(Bun.file("dist/index.html"), {
-        headers: { "Content-Type": "text/html" },
+  const server = devUrl
+    ? null
+    : Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          const pathname = new URL(request.url).pathname;
+          const file = Bun.file(resolve("dist", pathname.replace(/^\//, "")));
+          if (pathname !== "/" && (await file.exists())) return new Response(file);
+          return new Response(Bun.file("dist/index.html"), {
+            headers: { "Content-Type": "text/html" },
+          });
+        },
       });
-    },
-  });
   const engine = process.env.L8DB_PERF_ENGINE === "webkit" ? webkit : chromium;
   const browser = await engine.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
@@ -100,16 +105,17 @@ async function open(path: string, now: string, settings: Record<string, unknown>
     },
     { now, settings, rowLimit: GRID.rows },
   );
-  await page.goto(`http://localhost:${server.port}${path}`);
+  await page.goto(`${devUrl ?? `http://localhost:${server?.port}`}${path}`);
   await page.waitForSelector(READY, { timeout: 60000 });
   return {
     page,
     errors,
     spider: () => page.evaluate(() => (window as unknown as { __spider: SpiderLog }).__spider),
-    claim: () => page.evaluate(() => localStorage.getItem("l8db.seasonal.spider")),
+    claim: (holiday = "spider") =>
+      page.evaluate((holiday) => localStorage.getItem(`l8db.seasonal.${holiday}`), holiday),
     close: async () => {
       await browser.close();
-      server.stop(true);
+      server?.stop(true);
     },
   };
 }
@@ -234,6 +240,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     for (const [now, settings] of [
       [OFF_SEASON, {}],
       [IN_SEASON, { seasonalAccents: false }],
+      ["2026-12-24T12:00:00", { seasonalAccents: false }],
     ] as const) {
       const app = await open(TABLE, now, settings);
       try {
@@ -248,4 +255,155 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     }
   },
   120000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Weihnachtsgast besucht 5.000 × 120 Zellen flüssig, räumt auf und erzeugt keine Abfragen",
+  async () => {
+    const app = await open(TABLE, "2026-12-24T12:00:00");
+    try {
+      await sampleFrames(app.page);
+      await app.page.waitForSelector(`${VISITOR} [role="status"]`, { timeout: 15000 });
+      const atVisit = await app.spider();
+      const nodes = await app.page.locator(`${VISITOR} *`).count();
+      expect(await app.page.locator(`${VISITOR} p`).last().innerText()).toContain("B-Tree");
+      await app.page.waitForSelector(VISITOR, { state: "detached", timeout: 15000 });
+      const frames = await stopFrames(app.page);
+      const after = await app.spider();
+      const requests = after.commands
+        .slice(atVisit.commands.length)
+        .filter((command) => /rows|query|list_|count|fetch/.test(command));
+      expect(nodes).toBeLessThan(40);
+      expect(requests).toEqual([]);
+      expectFrame(frames.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(frames.p95).toBeLessThan(MAX_P95_MS);
+      expect(await app.claim("christmas")).toBe("2026-12-24");
+      await app.page.locator('a[data-name="table_0001"]').first().click();
+      await app.page.waitForSelector(READY);
+      await app.page.waitForTimeout(2500);
+      expect((await app.spider()).scheduled).toBe(after.scheduled);
+      expect(await app.page.locator(VISITOR).count()).toBe(0);
+      expect(app.errors).toEqual([]);
+      console.log(
+        `seasonal Christmas: ${nodes} nodes, ${frames.fps.toFixed(1)} fps, p95 ${frames.p95.toFixed(1)} ms, ${requests.length} requests`,
+      );
+      await reportScenario("seasonal-holiday-visitor", {
+        rows: GRID.rows,
+        columns: GRID.columns,
+        nodes,
+        ...frames,
+        databaseRequestsDuringVisit: requests.length,
+        frameBudgets: FRAME_BUDGETS,
+      });
+    } finally {
+      await app.close();
+    }
+  },
+  90000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Alle 19 Vorschauen bleiben bei 57 Wechseln begrenzt, abschaltbar und im Leerlauf ohne Arbeit",
+  async () => {
+    const app = await open(TABLE, OFF_SEASON);
+    try {
+      await app.page.getByRole("link", { name: /^Einstellungen/ }).click();
+      await app.page.getByRole("button", { name: "Darstellung", exact: true }).click();
+      await app.page.getByRole("button", { name: "Feiertage ansehen" }).click();
+      const preview = app.page.locator("[data-seasonal-preview]");
+      await preview.waitFor();
+      const galleryNodes = await preview.locator("*").count();
+      const beforePreviews = await app.spider();
+      const timings: number[] = [];
+      let maxVisitNodes = 0;
+      for (let cycle = 0; cycle < 3; cycle++) {
+        for (const holiday of HOLIDAYS) {
+          const start = performance.now();
+          await app.page.locator(`[data-holiday-option="${holiday.id}"]`).click();
+          expect(await preview.getAttribute("data-seasonal-preview")).toBe(holiday.id);
+          timings.push(performance.now() - start);
+          await app.page.getByRole("button", { name: "Besuch starten", exact: true }).click();
+          const selector = holiday.id === "halloween" ? SPIDER : VISITOR;
+          await app.page.waitForSelector(selector);
+          maxVisitNodes = Math.max(maxVisitNodes, await app.page.locator(`${selector} *`).count());
+          await app.page.getByRole("button", { name: "Verabschieden", exact: true }).click();
+          expect(await app.page.locator(`${VISITOR},${SPIDER}`).count()).toBe(0);
+        }
+      }
+      const sorted = timings.sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length * 0.5)];
+      const p95 = sorted[Math.floor(sorted.length * 0.95)];
+      expect(galleryNodes).toBeLessThan(800);
+      expect(await preview.locator("*").count()).toBe(galleryNodes);
+      expect(maxVisitNodes).toBeLessThan(40);
+      expect(median).toBeLessThan(150);
+      expect(p95).toBeLessThan(300);
+      const before = await app.spider();
+      const previewRequests = before.commands
+        .slice(beforePreviews.commands.length)
+        .filter(
+          (command) => command !== "list_providers" && /rows|query|list_|count|fetch/.test(command),
+        );
+      expect(previewRequests).toEqual([]);
+      await app.page.waitForTimeout(2500);
+      const after = await app.spider();
+      expect(after.scheduled).toBe(before.scheduled);
+      expect(
+        after.commands
+          .slice(before.commands.length)
+          .filter((command) => /rows|query|list_|count|fetch/.test(command)),
+      ).toEqual([]);
+      expect(
+        await app.page.evaluate(() =>
+          Object.keys(localStorage).filter((key) => key.startsWith("l8db.seasonal.")),
+        ),
+      ).toEqual([]);
+      await app.page.getByRole("button", { name: "Besuch starten", exact: true }).click();
+      await app.page.waitForSelector(VISITOR);
+      await app.page.getByRole("switch", { name: "Saisonale Akzente", exact: true }).click();
+      await app.page.waitForSelector(VISITOR, { state: "detached" });
+      expect(await preview.count()).toBe(0);
+      expect(await app.page.locator("[data-seasonal]").count()).toBe(0);
+      expect(app.errors).toEqual([]);
+      console.log(
+        `seasonal gallery: 57 switches, median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, ${galleryNodes} retained gallery nodes, max ${maxVisitNodes} guest nodes`,
+      );
+      await reportScenario("seasonal-calendar-previews", {
+        switches: timings.length,
+        medianMs: median,
+        p95Ms: p95,
+        galleryNodes,
+        maxVisitNodes,
+        retainedVisitorNodes: 0,
+        previewDatabaseRequests: previewRequests.length,
+      });
+    } finally {
+      await app.close();
+    }
+  },
+  120000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Abgebrochene Feiertagsbesuche werden vor und nach dem Erscheinen aufgeräumt",
+  async () => {
+    const app = await open(TABLE, "2026-04-05T12:00:00");
+    try {
+      await app.page.getByRole("button", { name: "table_0000 schließen" }).first().click();
+      await app.page.waitForSelector(READY, { state: "detached" });
+      await app.page.waitForTimeout(2500);
+      const before = await app.spider();
+      expect(before.cleared).toBe(before.scheduled);
+      expect(before.fired).toBe(0);
+      expect(await app.claim("easter")).toBeNull();
+      await app.page.locator('a[data-name="table_0001"]').first().click();
+      await app.page.waitForSelector(VISITOR, { timeout: 15000 });
+      await app.page.getByRole("button", { name: "table_0001 schließen" }).first().click();
+      await app.page.waitForSelector(VISITOR, { state: "detached", timeout: 2000 });
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
 );

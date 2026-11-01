@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { cn } from "@/lib/utils";
 
 const LEGS = [
   "M16 21L9 13L5 18",
@@ -7,9 +8,19 @@ const LEGS = [
   "M16.5 33L10.5 38.5L8 44",
 ];
 
-export function SpiderGlyph({ gaze }: { gaze: "scan" | "left" | "right" | "ahead" }) {
+export function SpiderGlyph({
+  gaze,
+  className,
+}: {
+  gaze: "scan" | "left" | "right" | "ahead";
+  className?: string;
+}) {
   return (
-    <svg viewBox="0 0 48 48" aria-hidden className="size-11 overflow-visible text-foreground">
+    <svg
+      viewBox="0 0 48 48"
+      aria-hidden
+      className={cn("size-11 overflow-visible text-foreground", className)}
+    >
       <path d="M24 -1V18" className="stroke-muted-foreground/70" strokeWidth={1.1} />
       <g
         fill="none"
