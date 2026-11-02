@@ -15,7 +15,7 @@ import { useConnectionsStore } from "@/lib/connections";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { type Tab, useTableTabs } from "@/lib/table-tabs";
 import { dirtyQueryFiles } from "@/lib/table-tabs-dirty-files";
-import { isTaskActive, useTasksStore } from "@/lib/tasks";
+import { isOwnTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
 
 const NO_TABS: Tab[] = [];
@@ -30,7 +30,7 @@ function hasCloseBlockers() {
       useConnectionsStore.getState().activeId ?? null,
     ).length > 0 ||
     useTransactionStore.getState().transactions.length > 0 ||
-    useTasksStore.getState().tasks.some(isTaskActive)
+    useTasksStore.getState().tasks.some((task) => isOwnTask(task) && isTaskActive(task))
   );
 }
 
@@ -48,7 +48,7 @@ export function WindowCloseGuard() {
     connections.find((connection) => connection.id === id)?.name ?? "Ohne Verbindung";
   const transactions = useTransactionStore((state) => state.transactions);
   const activeTasks = useTasksStore((state) =>
-    open ? state.tasks.filter(isTaskActive).length : 0,
+    open ? state.tasks.filter((task) => isOwnTask(task) && isTaskActive(task)).length : 0,
   );
   useEffect(() => {
     if (!isTauri()) return;

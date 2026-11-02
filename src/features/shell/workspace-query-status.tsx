@@ -5,7 +5,7 @@ import { useShallow } from "zustand/shallow";
 import { useActiveConnection } from "@/lib/connections";
 import { formatIslandDuration, ISLAND_TASK_DELAY } from "@/lib/dynamic-island";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { cancelTask, isQueryTask, isTaskActive, useTasksStore } from "@/lib/tasks";
+import { cancelTask, isOwnTask, isQueryTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import {
   formatQueryElapsed,
   showWorkspaceMessage,
@@ -35,7 +35,8 @@ export function WorkspaceQueryStatus() {
       useTasksStore.subscribe((state, previous) => {
         const active = new Set(previous.tasks.filter(isTaskActive).map((entry) => entry.id));
         const finished = state.tasks.find(
-          (entry) => isQueryTask(entry) && active.has(entry.id) && !isTaskActive(entry),
+          (entry) =>
+            isOwnTask(entry) && isQueryTask(entry) && active.has(entry.id) && !isTaskActive(entry),
         );
         if (!finished || finished.status === "interrupted") return;
         const elapsed = (finished.finishedAt ?? Date.now()) - finished.startedAt;
