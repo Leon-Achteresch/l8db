@@ -26,6 +26,7 @@ export function sanitizeExportOptions(options: CsvOptions): CsvOptions {
     nullText: options.nullText,
     lineEnding: options.lineEnding,
     bom: options.bom,
+    escapeFormulas: options.escapeFormulas !== false,
   };
 }
 

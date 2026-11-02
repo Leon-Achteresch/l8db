@@ -252,3 +252,10 @@ describe("detection regressions", () => {
     ]);
   });
 });
+
+describe("German CSV conventions", () => {
+  test("maps the configured NULL text to NULL but keeps quoted values", () => {
+    const result = parseCsv('a;b\nNULL;"NULL"\n', { nullText: "NULL" });
+    expect(result.rows).toEqual([[null, "NULL"]]);
+  });
+});

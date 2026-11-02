@@ -35,3 +35,13 @@ describe("import type inference", () => {
     expect(detectImportFormat("x.tsv")).toBe("csv");
   });
 });
+
+test("decimal comma values infer as decimals", () => {
+  expect(
+    inferColumnTypes(2, [
+      ["1,5", "1,234,5"],
+      ["-2,25", "x"],
+      ["3", "y"],
+    ]),
+  ).toEqual(["decimal", "text"]);
+});

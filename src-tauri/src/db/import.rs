@@ -228,6 +228,17 @@ fn is_number(value: &str) -> bool {
         && trimmed.parse::<f64>().is_ok_and(f64::is_finite)
 }
 
+fn decimal_comma(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let (whole, fraction) = trimmed.split_once(',')?;
+    let digits = whole.strip_prefix(['+', '-']).unwrap_or(whole);
+    (!digits.is_empty()
+        && !fraction.is_empty()
+        && digits.bytes().all(|byte| byte.is_ascii_digit())
+        && fraction.bytes().all(|byte| byte.is_ascii_digit()))
+    .then(|| format!("{whole}.{fraction}"))
+}
+
 pub fn parse_bool(value: &str) -> Option<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "t" | "yes" | "y" | "1" | "ja" | "wahr" | "on" => Some(true),
@@ -274,6 +285,10 @@ pub fn literal(dialect: Dialect, data_type: &str, value: Option<&str>) -> String
         return "NULL".into();
     };
     let class = classify(data_type);
+    let decimal = (class == TypeClass::Decimal)
+        .then(|| decimal_comma(value))
+        .flatten();
+    let value = decimal.as_deref().unwrap_or(value);
     if dialect == Dialect::Postgres {
         return match (class, parse_bool(value)) {
             (TypeClass::Bool, Some(flag)) => if flag { "'true'" } else { "'false'" }.into(),
@@ -1459,6 +1474,19 @@ mod tests {
         );
         assert_eq!(literal(Dialect::Postgres, "integer", Some("7")), "'7'");
         assert_eq!(literal(Dialect::Postgres, "boolean", Some("ja")), "'true'");
+        assert_eq!(
+            literal(Dialect::Postgres, "numeric(10,2)", Some("-1,5")),
+            "'-1.5'"
+        );
+        assert_eq!(
+            literal(Dialect::Mysql, "decimal(10,2)", Some(" 12,25 ")),
+            "12.25"
+        );
+        assert_eq!(
+            literal(Dialect::Mysql, "decimal(10,2)", Some("1,234,5")),
+            "'1,234,5'"
+        );
+        assert_eq!(literal(Dialect::Postgres, "text", Some("1,5")), "'1,5'");
         assert_eq!(literal(Dialect::Postgres, "bool", Some("Nein")), "'false'");
         assert_eq!(
             literal(Dialect::Postgres, "boolean", Some("vielleicht")),

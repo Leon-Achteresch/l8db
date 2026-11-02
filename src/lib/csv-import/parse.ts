@@ -21,6 +21,7 @@ function parseRecords(
   emptyField: CsvEmptyFieldMode,
   maxRecords: number,
   partial = false,
+  nullText = "",
 ): RawParse {
   const records: CsvCell[][] = [];
   let record: CsvCell[] = [];
@@ -33,7 +34,11 @@ function parseRecords(
   const errors: CsvParseError[] = [];
 
   const pushField = () => {
-    if (!quoted && field === "" && emptyField === "null") record.push(null);
+    if (
+      !quoted &&
+      ((field === "" && emptyField === "null") || (nullText !== "" && field === nullText))
+    )
+      record.push(null);
     else record.push(field);
     field = "";
     quoted = false;
@@ -129,6 +134,7 @@ export function parseCsv(text: string, options: CsvParseOptions = {}): CsvParseR
     emptyField,
     limit,
     options.partial,
+    options.nullText,
   );
   const hasHeader = options.hasHeader ?? detectHeader(records);
 

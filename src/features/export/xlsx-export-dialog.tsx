@@ -23,6 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import type { FullTableExportSource } from "@/features/export/csv-export-dialog";
 import { useActiveConnection } from "@/lib/connections";
+import { isNumericType } from "@/lib/dashboards/sql";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { applyMasks, type ColumnMask, DEFAULT_MASK_TEXT, type MaskMode } from "@/lib/export";
 import { MASK_MODES } from "@/lib/masking";
@@ -40,6 +41,7 @@ type XlsxExportDialogProps = {
   defaultFileName: string;
   defaultSheetName?: string;
   fullExport?: FullTableExportSource;
+  columnTypes?: { name: string; data_type: string }[];
 };
 
 export function XlsxExportDialog({
@@ -50,6 +52,7 @@ export function XlsxExportDialog({
   defaultFileName,
   defaultSheetName,
   fullExport,
+  columnTypes,
 }: XlsxExportDialogProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -133,7 +136,14 @@ export function XlsxExportDialog({
       if (!filePath) return;
       await runXlsxExport({
         path: filePath,
-        input: { columns: exportColumns, rows, options: { sheetName, header, nullText } },
+        input: {
+          columns: exportColumns,
+          rows,
+          options: { sheetName, header, nullText },
+          textColumns: columnTypes
+            ?.filter((column) => !isNumericType(column.data_type))
+            .map((column) => column.name),
+        },
         masks,
         source: fullMode && fullSupported ? fullExport : undefined,
         connection,

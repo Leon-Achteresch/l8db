@@ -301,6 +301,7 @@ export function TableView(props: TableViewProps) {
         exportColumns={exportColumns}
         exportRows={exportRows}
         fullExportSource={fullExportSource}
+        columnTypes={columnDetails}
       />
     </Tabs>
   );

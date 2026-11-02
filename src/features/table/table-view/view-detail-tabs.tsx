@@ -183,6 +183,7 @@ export function ViewDetailTabs({
         exportColumns={exportColumns}
         exportRows={exportRows}
         fullExportSource={fullExportSource}
+        columnTypes={columnDetails}
       />
     </Tabs>
   );

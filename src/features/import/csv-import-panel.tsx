@@ -55,6 +55,8 @@ export function CsvImportPanel({
     connection,
     database,
     emptyField,
+    nullText,
+    setNullText,
     fileError,
     fileName,
     filePath,
@@ -153,6 +155,8 @@ export function CsvImportPanel({
               changeHasHeader={changeHasHeader}
               emptyField={emptyField}
               setEmptyField={setEmptyField}
+              nullText={nullText}
+              setNullText={setNullText}
             />
           )}
         </div>

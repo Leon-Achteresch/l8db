@@ -925,17 +925,29 @@ pub(crate) fn table_page_sql(
     where_clause: &str,
     order: Option<(&str, bool)>,
     with_ctid: bool,
+    primary_key: &[String],
 ) -> String {
-    let (inner_order, outer_order) = match order {
-        Some((column, desc)) => {
-            let direction = if desc { "DESC" } else { "ASC" };
-            let column = quote_ident(column);
-            (
-                format!(" ORDER BY t.{column} {direction}"),
-                format!(" ORDER BY p.{column} {direction}"),
-            )
-        }
-        None => (String::new(), String::new()),
+    let keys: Vec<String> = match order {
+        Some((column, desc)) => vec![format!(
+            "{} {}",
+            quote_ident(column),
+            if desc { "DESC" } else { "ASC" }
+        )],
+        None => primary_key.iter().map(|key| quote_ident(key)).collect(),
+    };
+    let (inner_order, outer_order) = if keys.is_empty() {
+        (String::new(), String::new())
+    } else {
+        let list = |alias: &str| {
+            keys.iter()
+                .map(|key| format!("{alias}.{key}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        (
+            format!(" ORDER BY {}", list("t")),
+            format!(" ORDER BY {}", list("p")),
+        )
     };
     let (projection, ctid) = if with_ctid {
         (
@@ -952,14 +964,23 @@ pub(crate) fn table_page_sql(
     )
 }
 
-const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
-            format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL) \
+pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
+            format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL), \
+            COALESCE(a.attnum = ANY(pk.indkey), false) \
      FROM pg_catalog.pg_attribute a \
      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
      JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
+     LEFT JOIN pg_catalog.pg_index pk ON pk.indrelid = c.oid AND pk.indisprimary \
      WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
      ORDER BY a.attnum";
+
+pub(crate) fn primary_key_columns(rows: &[tokio_postgres::Row]) -> Vec<String> {
+    rows.iter()
+        .filter(|row| row.get::<_, bool>(2))
+        .map(|row| row.get(0))
+        .collect()
+}
 
 pub(crate) const LOCK_GUARD: &str = "lock_timeout = '5s'";
 pub(crate) const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
@@ -1558,6 +1579,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 .await
                 .map_err(map_pg_err)?;
             let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+            let primary_key = primary_key_columns(&column_rows);
 
             let where_clause = match filter {
                 Some(expression) if !expression.trim().is_empty() => {
@@ -1568,14 +1590,15 @@ impl DatabaseAdapter for PostgresAdapter {
             let order = order_by
                 .filter(|column| columns.iter().any(|name| name == column))
                 .map(|column| (column, order_desc));
-            let sql = table_page_sql(schema, table, &where_clause, order, !is_view);
+            let sql = table_page_sql(schema, table, &where_clause, order, !is_view, &primary_key);
             let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
                 Ok(rows) => rows,
                 Err(e)
                     if !is_view
                         && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
                 {
-                    let sql = table_page_sql(schema, table, &where_clause, order, false);
+                    let sql =
+                        table_page_sql(schema, table, &where_clause, order, false, &primary_key);
                     conn.query(&sql, &[&limit, &offset])
                         .await
                         .map_err(map_pg_err)?
@@ -6073,6 +6096,7 @@ mod tests {
                 null_text: String::new(),
                 line_ending: "\n".into(),
                 bom: false,
+                escape_formulas: true,
             },
         };
         for limit in [1, 1000, 1001] {
@@ -6244,6 +6268,7 @@ mod tests {
             null_text: String::new(),
             line_ending: "\n".into(),
             bom: false,
+            escape_formulas: true,
         };
         for count in [100_000, 1_000_000] {
             adapter.execute_query(&format!("DROP TABLE IF EXISTS export_benchmark; CREATE TABLE export_benchmark AS SELECT n AS id, repeat('x',64) AS value FROM generate_series(1,{count}) n; CREATE UNIQUE INDEX ON export_benchmark(id); ANALYZE export_benchmark")).await.unwrap();
