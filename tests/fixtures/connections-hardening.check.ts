@@ -6,6 +6,24 @@ const calls: { command: string; args: Record<string, unknown> }[] = [];
 const keychain = new Map<string, string>();
 const otherWindowConnections = new Set<string>();
 let tunnelGate: Promise<unknown> | null = null;
+const toasts: { message: string; options?: { action?: { onClick: () => void } } }[] = [];
+const notify = (message: string, options?: (typeof toasts)[number]["options"]) => {
+  toasts.push({ message, options });
+  return toasts.length;
+};
+
+mock.module("sonner", () => ({
+  toast: Object.assign(notify, {
+    success: notify,
+    error: notify,
+    warning: notify,
+    info: notify,
+    message: notify,
+    loading: notify,
+    dismiss: () => undefined,
+    promise: () => undefined,
+  }),
+}));
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
@@ -59,10 +77,10 @@ const { databasePasswordToSave, closeUnsharedTunnel, endpointChanged } = await i
 const { createConnectionUrlActions } = await import(
   "../../src/features/connections/connection-editor/connection-url-actions"
 );
-const { schemaForUser } = await import(
+const { schemaForUser, setSchemasToUser } = await import(
   "../../src/features/connections/connections-view/set-schemas-to-user"
 );
-const { connectionRemovalBlocker, unsavedQueryTabCount } = await import(
+const { connectionRemovalBlocker, removableConnectionIds, unsavedQueryTabCount } = await import(
   "../../src/features/connections/connections-view/connection-removal"
 );
 const { useTableTabs } = await import("../../src/lib/table-tabs");
@@ -374,6 +392,38 @@ describe("cancelling an editor connection test", () => {
   });
 });
 
+describe("editor fields mode", () => {
+  test("host mistakes get German messages", () => {
+    const info = {
+      kind: "postgres",
+      file_based: false,
+      default_port: 5432,
+      url_schemes: ["postgresql"],
+      capabilities: { ssh: true, ssl: false },
+    };
+    const makeUrl = (host: string) =>
+      createConnectionUrlActions({
+        mode: "fields",
+        value: "",
+        kind: "postgres",
+        providers: [info],
+        info,
+        host,
+        port: "5432",
+        user: "app",
+        password: "",
+        database: "app",
+        extraParams: "",
+        windowsAuth: false,
+        withSsl: (url: string) => url,
+      } as never).makeUrl();
+    expect(() => makeUrl("db.example.com:5432")).toThrow("Feld „Port“");
+    expect(() => makeUrl("my host")).toThrow("ungültige Zeichen");
+    expect(makeUrl("::1")).toBe("postgresql://app@[::1]:5432/app");
+    expect(makeUrl("db.example.com")).toBe("postgresql://app@db.example.com:5432/app");
+  });
+});
+
 describe("tunnels shared with other windows", () => {
   test("saving keeps a tunnel that another window still uses", async () => {
     otherWindowConnections.add("shared");
@@ -422,6 +472,31 @@ describe("tunnels shared with other windows", () => {
     expect(await connectionRemovalBlocker(["free"])).toContain("Transaktion");
     useTransactionStore.setState({ transactions: [] });
   });
+
+  test("team connections cannot be removed because the next sync restores them", async () => {
+    useConnectionsStore.setState({
+      connections: [
+        {
+          id: "own",
+          name: "o",
+          kind: "postgres",
+          connectionString: "postgresql://u@h/db",
+          sslMode: "prefer",
+        },
+        {
+          id: "team-1",
+          name: "t",
+          kind: "postgres",
+          connectionString: "postgresql://u@h/db",
+          sslMode: "prefer",
+          team: { hub: "file", id: "1", base: {} },
+        },
+      ],
+    });
+    expect(removableConnectionIds(["own", "team-1"])).toEqual(["own"]);
+    expect(await connectionRemovalBlocker(["team-1"])).toContain("Team-Datei");
+    expect(await connectionRemovalBlocker(["own"])).toBeNull();
+  });
 });
 
 describe("removing connections warns about unsaved query tabs", () => {
@@ -462,6 +537,32 @@ describe("schema filter set to the username", () => {
     expect(schemaForUser({ kind: "postgres", connectionString: "postgresql://Alice@db/app" })).toBe(
       "Alice",
     );
+  });
+
+  test("setting schemas to the user skips team connections and can be undone", () => {
+    const own = {
+      id: "ora-own",
+      name: "o",
+      kind: "oracle" as const,
+      connectionString: "oracle://hr@db:1521/ORCL",
+      sslMode: "prefer" as const,
+      schemas: ["OLD"],
+    };
+    const team = {
+      ...own,
+      id: "ora-team",
+      schemas: null,
+      team: { hub: "file", id: "t", base: {} },
+    };
+    useConnectionsStore.setState({ connections: [own, team] });
+    toasts.length = 0;
+    setSchemasToUser({ connections: [own, team] } as never);
+    const schemas = () =>
+      useConnectionsStore.getState().connections.map((connection) => connection.schemas ?? null);
+    expect(schemas()).toEqual([["HR"], null]);
+    expect(toasts[0]?.message).toContain("Verbindungen");
+    toasts[0]?.options?.action?.onClick();
+    expect(schemas()).toEqual([["OLD"], null]);
   });
 
   test("schema filters match case-insensitively only when no exact match exists", () => {

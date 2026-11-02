@@ -14,6 +14,8 @@ import { useConnectionsStore } from "@/lib/connections";
 import { useTableTabs } from "@/lib/table-tabs";
 import {
   connectionRemovalBlocker,
+  removableConnectionIds,
+  TEAM_REMOVAL_NOTICE,
   unsavedQueryTabCount,
   unsavedQueryTabsNotice,
 } from "./connection-removal";
@@ -47,7 +49,11 @@ export function DeleteServerGroupDialog({
           <AlertDialogDescription>
             Alle {deleteGroup?.connections.length} Verbindungen auf „{deleteGroup?.label}“ und die
             gespeicherten Zugangsdaten werden aus l8db entfernt. Die Datenbank selbst bleibt
-            erhalten.{tabsNotice}
+            erhalten.
+            {deleteGroup?.connections.some((connection) => connection.team)
+              ? " Team-Verbindungen bleiben erhalten, weil sie aus der Team-Datei kommen."
+              : ""}
+            {tabsNotice}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -55,7 +61,13 @@ export function DeleteServerGroupDialog({
           <AlertDialogAction
             onClick={async () => {
               if (!deleteGroup) return;
-              const ids = deleteGroup.connections.map((connection) => connection.id);
+              const ids = removableConnectionIds(
+                deleteGroup.connections.map((connection) => connection.id),
+              );
+              if (!ids.length) {
+                toast.error(TEAM_REMOVAL_NOTICE);
+                return;
+              }
               const blocker = await connectionRemovalBlocker(ids);
               if (blocker) {
                 toast.error(blocker);

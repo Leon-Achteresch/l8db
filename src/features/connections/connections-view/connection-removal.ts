@@ -3,7 +3,21 @@ import { connectionInOtherWindow } from "@/lib/db";
 import { queryNeedsCloseConfirmation, type Tab, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
 
+export const TEAM_REMOVAL_NOTICE =
+  "Team-Verbindungen kommen aus der Team-Datei und erscheinen beim nächsten Abgleich wieder. Bitte den Admin, sie aus connections.json zu entfernen.";
+
+export function removableConnectionIds(ids: string[]): string[] {
+  const team = new Set(
+    useConnectionsStore
+      .getState()
+      .connections.filter((connection) => connection.team)
+      .map((connection) => connection.id),
+  );
+  return ids.filter((id) => !team.has(id));
+}
+
 export async function connectionRemovalBlocker(ids: string[]): Promise<string | null> {
+  if (removableConnectionIds(ids).length < ids.length) return TEAM_REMOVAL_NOTICE;
   if (ids.some((id) => getTransactionForConnection(id)))
     return ids.length > 1
       ? "Schließe zuerst die offenen Transaktionen ab."

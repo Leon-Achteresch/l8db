@@ -9,22 +9,34 @@ export function schemaForUser(connection: Pick<SavedConnection, "connectionStrin
   return quoted ? quoted[1] : user.toUpperCase();
 }
 
+function applySchemas(schemas: Map<string, string[] | null>) {
+  useConnectionsStore.setState((state) => ({
+    connections: state.connections.map((connection) =>
+      schemas.has(connection.id)
+        ? { ...connection, schemas: schemas.get(connection.id) ?? null }
+        : connection,
+    ),
+  }));
+}
+
 export function setSchemasToUser(group: ServerGroup) {
-  const ids = new Set(group.connections.map((connection) => connection.id));
-  const users = new Map(
-    group.connections
-      .map((connection) => [connection.id, schemaForUser(connection)] as const)
-      .filter((entry) => entry[1]),
-  );
+  const users = new Map<string, string[] | null>();
+  for (const connection of group.connections) {
+    const user = connection.team ? "" : schemaForUser(connection);
+    if (user) users.set(connection.id, [user]);
+  }
   if (users.size === 0) {
-    toast.error("Für diese Connections wurde kein Username gefunden.");
+    toast.error("Für diese Verbindungen wurde kein Benutzer gefunden.");
     return;
   }
-  useConnectionsStore.setState((state) => ({
-    connections: state.connections.map((connection) => {
-      const user = users.get(connection.id);
-      return ids.has(connection.id) && user ? { ...connection, schemas: [user] } : connection;
-    }),
-  }));
-  toast.success(`Schema-Filter für ${users.size} Connections auf Username gesetzt`);
+  const previous = new Map(
+    useConnectionsStore
+      .getState()
+      .connections.filter((connection) => users.has(connection.id))
+      .map((connection) => [connection.id, connection.schemas ?? null] as const),
+  );
+  applySchemas(users);
+  toast.success(`Schema-Filter für ${users.size} Verbindungen auf den Benutzer gesetzt`, {
+    action: { label: "Rückgängig", onClick: () => applySchemas(previous) },
+  });
 }
