@@ -8,6 +8,7 @@ import {
   joinSuggestions,
   joinTables,
   limitMatches,
+  prepareCompletions,
   type SqlObjectRegistry,
   scopeAt,
   statementBounds,
@@ -157,6 +158,63 @@ test("completion stays fast on a 5,000-line script with nested CTEs and 20,000 f
   expect(columnCompletion.p95Ms).toBeLessThan(40);
   expect(retainedBytes).toBeLessThan(8 * 1024 * 1024);
 }, 120_000);
+
+test("typing a statement keeps every keystroke's completion cheap after the index is prepared", async () => {
+  const { registry: base } = fixture();
+  const typed = "select id, owner_id from table_0001 where status = 1";
+  const keystroke = (registry: SqlObjectRegistry, length: number) => {
+    const before = typed.slice(0, length);
+    const word = /[\w$#]*$/.exec(before)?.[0] ?? "";
+    const scope = scopeAt(before, before.length, registry.dialect);
+    const items = suggestCompletions(registry, before, before, [], scope);
+    return limitMatches(items, word, 300).items.length;
+  };
+  const prepared = { ...base };
+  const prepareStart = performance.now();
+  prepareCompletions(prepared);
+  const prepareMs = performance.now() - prepareStart;
+  const firstStart = performance.now();
+  keystroke(prepared, 1);
+  const firstKeystrokeMs = performance.now() - firstStart;
+
+  const durations: number[] = [];
+  let shown = 0;
+  for (let round = 0; round < 6; round++) {
+    for (let length = 1; length <= typed.length; length++) {
+      const start = performance.now();
+      shown = keystroke(prepared, length);
+      if (round > 0) durations.push(performance.now() - start);
+    }
+  }
+  durations.sort((left, right) => left - right);
+  const keystrokes = {
+    runs: durations.length,
+    medianMs: durations[Math.floor(durations.length / 2)],
+    p95Ms: durations[Math.ceil(durations.length * 0.95) - 1],
+    maxMs: durations.at(-1),
+  };
+
+  Bun.gc(true);
+  const heapBefore = heapSize();
+  for (let round = 0; round < 20; round++)
+    for (let length = 1; length <= typed.length; length++) keystroke(prepared, length);
+  Bun.gc(true);
+  const retainedBytes = heapSize() - heapBefore;
+
+  await reportScenario("sql-intellisense-typing", {
+    tables: TABLES,
+    columns: base.columns.length,
+    characters: typed.length,
+    prepareMs,
+    firstKeystrokeMs,
+    keystrokes,
+    retainedBytes,
+  });
+  expect(shown).toBeGreaterThan(0);
+  expect(firstKeystrokeMs).toBeLessThan(4);
+  expect(keystrokes.p95Ms).toBeLessThan(1.5);
+  expect(retainedBytes).toBeLessThan(2 * 1024 * 1024);
+});
 
 test("foreign keys load once per table per cache period with bounded concurrency", async () => {
   const { registry, byTable } = fixture();
