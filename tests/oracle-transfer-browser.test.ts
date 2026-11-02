@@ -519,6 +519,7 @@ async function openTransfer(page: Page) {
 
 async function startAndWait(page: Page) {
   await page.getByRole("button", { name: "Übertragung starten" }).click();
+  await page.getByRole("dialog", { name: "Transfer läuft" }).waitFor();
   await page
     .getByText(/Zeilen in \d+ Tabellen übertragen und verifiziert|Transfer fehlgeschlagen/)
     .first()
@@ -546,6 +547,12 @@ afterAll(async () => {
 test.skipIf(!enabled)(
   "Oracle → Oracle copies every object, every value and keeps it usable",
   async () => {
+    const overview = (await bridge("get_database_overview", {
+      kind: "oracle",
+      connectionString: lab("tr_src"),
+      database: null,
+    })) as { schemas: { schema: string; size_bytes: number }[] };
+    expect(overview.schemas.find((s) => s.schema === "TR_SRC")?.size_bytes).toBeGreaterThan(0);
     await withPage("transfer-copy", async (page) => {
       await openTransfer(page);
       await page.getByText(/\d+ Tabellen bereit/).waitFor({ timeout: 120_000 });
@@ -653,6 +660,7 @@ test.skipIf(!enabled)(
     expect(Number(await count("TR_DST"))).toBe(Number(targetBefore) + 1);
     await script("tr_dst", "DROP TABLE nachzuegler PURGE");
   },
+  120_000,
 );
 
 test.skipIf(!enabled)(
