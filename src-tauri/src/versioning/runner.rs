@@ -202,6 +202,7 @@ async fn authorize(
     pool: db::pool::PoolState,
     transactions: db::transaction::TransactionState,
 ) -> Result<(), String> {
+    super::artifact::verify(request).await?;
     let shared = super::team::verify_request(request).await?;
     let control = control::Request {
         connection: request.connection.clone(),
@@ -216,6 +217,17 @@ async fn authorize(
         tx_id: None,
     };
     let current = control::handle(control, pool.clone(), transactions).await?;
+    let policy: control::Policy = serde_json::from_value(current["policy"].clone())
+        .map_err(|_| "Produktionsrichtlinie ist ungültig")?;
+    let artifact: Value =
+        serde_json::from_str(&request.artifact).map_err(|_| "Freigabeartefakt ist ungültig")?;
+    super::production::verify(
+        request.connection.adapter(pool.clone())?.as_ref(),
+        &request.connection,
+        &policy,
+        &artifact["execution"],
+    )
+    .await?;
     if let Some(shared) = &shared {
         super::team::verify_policy(&shared.target, &current["policy"])?;
     }

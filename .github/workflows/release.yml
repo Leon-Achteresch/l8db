@@ -54,10 +54,12 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD; do
+          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD; do
             if [ -z "${!name}" ]; then
               echo "::error::Repository-Secret ${name} fehlt. Einrichtung siehe .github/RELEASING.md."
               exit 1
@@ -68,6 +70,15 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.mode == 'publish'
     uses: ./.github/workflows/ci.yml
+    with:
+      full: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+
+  performance:
+    needs: prepare
+    if: needs.prepare.outputs.mode == 'publish' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/performance.yml
     permissions:
       contents: read
 
@@ -120,12 +131,15 @@ jobs:
       - uses: ./.github/actions/install-linux-dependencies
       - uses: ./.github/actions/setup-rust
         with:
-          cache: release
+          cache: ${{ github.ref_name == 'canary' && 'release-canary' || 'release-stable' }}
           targets: ${{ matrix.rust_targets }}
       - run: bun install --frozen-lockfile
       - name: Compile without signing credentials
         env:
           RELEASE_TARGET: ${{ matrix.target }}
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ github.ref_name == 'canary' && '2' || '3' }}
+          CARGO_PROFILE_RELEASE_LTO: ${{ github.ref_name == 'canary' && 'false' || 'thin' }}
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.ref_name == 'canary' && '16' || '1' }}
         shell: bash
         run: bun run tauri build --ci --no-bundle --target "$RELEASE_TARGET" -- --locked
       - run: node .github/scripts/build-snapshot.mjs record
@@ -142,8 +156,8 @@ jobs:
           if-no-files-found: error
 
   draft:
-    needs: [prepare, checks, build]
-    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
+    needs: [prepare, checks, performance, build]
+    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.performance.result == 'success' || (github.ref == 'refs/heads/canary' && needs.performance.result == 'skipped')) && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -269,6 +283,28 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" > /dev/null
           security list-keychains -d user -s "$keychain_path" "$HOME/Library/Keychains/login.keychain-db"
           security find-identity -v -p codesigning "$keychain_path" | grep -F 'Developer ID Application: LEON ACHTERESCH (R4LQCWA594)'
+      - name: Importiere Windows-Signierzertifikat
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pfx = Join-Path $env:RUNNER_TEMP 'l8db-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            $thumbprint = $certificate.Thumbprint
+            "WINDOWS_SIGNING_THUMBPRINT=$thumbprint" >> $env:GITHUB_ENV
+            if (!$certificate.HasPrivateKey -or $certificate.NotAfter -lt (Get-Date)) { throw 'Ungültiges Windows-Signierzertifikat' }
+            $config = Join-Path $env:RUNNER_TEMP 'l8db-windows-signing.json'
+            @{ bundle = @{ windows = @{ certificateThumbprint = $thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Depth 4 | Set-Content -Path $config -Encoding utf8
+            "WINDOWS_SIGNING_CONFIG=$config" >> $env:GITHUB_ENV
+          } finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
       - name: Sign and bundle the compiled application
         shell: bash
         env:
@@ -285,9 +321,22 @@ jobs:
             rpm_config="$(printf '{"version":"%s","bundle":{"linux":{"rpm":{"release":"0.canary.%s"}}}}' "${RELEASE_VERSION%-canary.*}" "${RELEASE_VERSION##*-canary.}")"
             bun run tauri bundle --ci --target "$RELEASE_TARGET" --bundles appimage,deb
             bun run tauri bundle --ci --target "$RELEASE_TARGET" --bundles rpm --config "$rpm_config"
+          elif [ "$RUNNER_OS" = Windows ]; then
+            bun run tauri bundle --ci --target "$RELEASE_TARGET" --config "$WINDOWS_SIGNING_CONFIG"
           else
             bun run tauri bundle --ci --target "$RELEASE_TARGET"
           fi
+      - name: Prüfe Windows-Authenticode
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-Item -LiteralPath $env:RELEASE_BINARY) + @(Get-ChildItem -LiteralPath $env:RELEASE_BUNDLE -Recurse -File | Where-Object { $_.Extension -in '.exe', '.msi' })
+          if ($files.Count -lt 3) { throw 'Windows-Binärdatei oder Installer fehlen' }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:WINDOWS_SIGNING_THUMBPRINT -or !$signature.TimeStamperCertificate) { throw "Authenticode-Prüfung fehlgeschlagen: $($file.Name)" }
+          }
       - name: Prüfe macOS-Signatur und Notarisierung
         if: runner.os == 'macOS'
         run: |
@@ -334,6 +383,15 @@ jobs:
             security delete-keychain "$keychain_path"
           fi
           rm -f "$RUNNER_TEMP/l8db-signing.p12"
+      - name: Entferne temporäres Windows-Zertifikat
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_SIGNING_THUMBPRINT -match '^[A-Fa-f0-9]{40}$') {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$env:WINDOWS_SIGNING_THUMBPRINT" -Force -ErrorAction SilentlyContinue
+          }
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'l8db-signing.pfx') -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'l8db-windows-signing.json') -Force -ErrorAction SilentlyContinue
 
   finalize:
     needs: [prepare, checks, build, package]

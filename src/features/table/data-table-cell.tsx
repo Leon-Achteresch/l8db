@@ -3,7 +3,9 @@ import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
+import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
+import { timestampCellText } from "@/lib/timestamp-display";
 import type { PluginCellState } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
@@ -94,6 +96,8 @@ export const DataTableCell = memo(function DataTableCell({
   const columnId = column.id;
   const editable = canSave && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
+  const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const timestamp = useMemo(() => timestampCellText(value, timestamps), [value, timestamps]);
   const dataType = column.columnDef.meta?.dataType;
   const badge = useMemo(
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
@@ -275,6 +279,8 @@ export const DataTableCell = memo(function DataTableCell({
           <DataTableCellBadge badge={badge} />
           {preview.text}
         </>
+      ) : timestamp !== null ? (
+        <span title={String(value)}>{truncateCellPreview(timestamp, previewLimit)}</span>
       ) : tableStyle === "semantic" ? (
         <SemanticCellValue
           value={value}

@@ -1,6 +1,8 @@
 import { FilterIcon, FilterXIcon, Maximize2Icon } from "lucide-react";
-
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { describeResultCount } from "@/lib/result-grid";
 
 interface ResultToolbarProps {
@@ -10,6 +12,7 @@ interface ResultToolbarProps {
   filterRowOpen: boolean;
   viewActive: boolean;
   onAutoSize: () => void;
+  onContentSize: () => void;
   onToggleFilterRow: () => void;
   onReset: () => void;
 }
@@ -21,9 +24,11 @@ export function ResultToolbar({
   filterRowOpen,
   viewActive,
   onAutoSize,
+  onContentSize,
   onToggleFilterRow,
   onReset,
 }: ResultToolbarProps) {
+  const feature = useNewFeatureVisibility<HTMLButtonElement>("query.results.content-width");
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
       <span className="text-xs font-medium tabular-nums text-foreground">
@@ -32,7 +37,19 @@ export function ResultToolbar({
       <span className="text-xs text-muted-foreground">
         Sortierung und Filter gelten nur für die geladenen Zeilen (lokal, keine neue Abfrage).
       </span>
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex flex-wrap items-center gap-1">
+        <TimestampDisplayMenu />
+        <Button
+          ref={feature.ref}
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 px-2 text-xs"
+          onClick={onContentSize}
+          title="Spaltenbreite an eine Stichprobe geladener Werte anpassen"
+        >
+          <Maximize2Icon className="size-3" />
+          Inhaltsbreite{feature.isNew && <NewBadge />}
+        </Button>
         <Button
           size="sm"
           variant="ghost"

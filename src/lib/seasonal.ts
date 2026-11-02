@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { type HolidayId, holidayForDate } from "@/lib/seasonal-calendar";
 import { useSettingsStore } from "@/lib/settings";
 
 export interface SpiderSpot {
@@ -11,6 +12,7 @@ export interface SpiderVisit extends SpiderSpot {
   id: number;
   quip: string;
   leaving?: boolean;
+  holiday?: HolidayId;
 }
 
 type DayStorage = Pick<Storage, "getItem" | "setItem">;
@@ -19,7 +21,6 @@ export const SPIDER_DELAY_MS = 2200;
 export const SPIDER_PREVIEW_QUIP =
   "Probelauf! Vom 18. bis 31. Oktober schaue ich einmal am Tag in deine Ergebnisse.";
 
-const VISIT_KEY = "l8db.seasonal.spider";
 let visits = 0;
 const AUTOMATED = typeof navigator !== "undefined" && navigator.webdriver === true;
 
@@ -33,9 +34,19 @@ export function isHalloween(date: Date): boolean {
 }
 
 export function useHalloween(): boolean {
+  return useHoliday() === "halloween";
+}
+
+export function currentHoliday(date = new Date()): HolidayId | null {
+  return AUTOMATED ? null : holidayForDate(date);
+}
+
+export function useHoliday(): HolidayId | null {
   const enabled = useSettingsStore((state) => state.seasonalAccents);
-  const preview = useSeasonalStore((state) => state.preview);
-  return enabled && (preview || isHalloween(new Date()));
+  const previewHoliday = useSeasonalStore((state) =>
+    state.preview ? (state.visit?.holiday ?? "halloween") : null,
+  );
+  return enabled ? (previewHoliday ?? currentHoliday()) : null;
 }
 
 function dayKey(date: Date): string {
@@ -51,17 +62,37 @@ function defaultStorage(): DayStorage | null {
 }
 
 export function spiderVisitedToday(date = new Date(), storage = defaultStorage()): boolean {
+  return holidayVisitedToday("halloween", date, storage);
+}
+
+function visitKey(holiday: HolidayId): string {
+  return `l8db.seasonal.${holiday === "halloween" ? "spider" : holiday}`;
+}
+
+export function holidayVisitedToday(
+  holiday: HolidayId,
+  date = new Date(),
+  storage = defaultStorage(),
+): boolean {
   try {
-    return !storage || storage.getItem(VISIT_KEY) === dayKey(date);
+    return !storage || storage.getItem(visitKey(holiday)) === dayKey(date);
   } catch {
     return true;
   }
 }
 
 export function claimSpiderVisit(date = new Date(), storage = defaultStorage()): boolean {
-  if (!storage || spiderVisitedToday(date, storage)) return false;
+  return claimHolidayVisit("halloween", date, storage);
+}
+
+export function claimHolidayVisit(
+  holiday: HolidayId,
+  date = new Date(),
+  storage = defaultStorage(),
+): boolean {
+  if (!storage || holidayVisitedToday(holiday, date, storage)) return false;
   try {
-    storage.setItem(VISIT_KEY, dayKey(date));
+    storage.setItem(visitKey(holiday), dayKey(date));
     return true;
   } catch {
     return false;
@@ -71,6 +102,17 @@ export function claimSpiderVisit(date = new Date(), storage = defaultStorage()):
 export function visitSpider(spot: SpiderSpot, quip: string, preview = false): number {
   const id = ++visits;
   useSeasonalStore.setState({ preview, visit: { ...spot, id, quip } });
+  return id;
+}
+
+export function visitHoliday(
+  holiday: HolidayId,
+  spot: SpiderSpot,
+  quip: string,
+  preview = false,
+): number {
+  const id = ++visits;
+  useSeasonalStore.setState({ preview, visit: { ...spot, id, quip, holiday } });
   return id;
 }
 

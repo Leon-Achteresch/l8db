@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+base=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git rev-parse 'HEAD~1')
+changed=$(git diff --name-only --diff-filter=ACMR "$base" HEAD)
+web=$(grep -E '^src/.*\.(ts|tsx|js|jsx|json|css)$' <<<"$changed" || true)
+if [ -n "$web" ]; then
+  xargs bunx biome check --no-errors-on-unmatched <<<"$web"
+  bunx tsc -p tsconfig.app.json --noEmit
+fi
+if grep -qE '^src-tauri/.*\.rs$' <<<"$changed"; then
+  (cd src-tauri && cargo fmt --check && cargo check --quiet)
+fi

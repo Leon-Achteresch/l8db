@@ -1,15 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-
 import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type FilterBarStyle, normalizeFilterBarStyle } from "@/lib/filter-bar-style";
+import { applyOrganizationSettings, withOrganizationSettings } from "@/lib/organization-state";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type SqlKeywordCase = "upper" | "lower" | "preserve";
 export type UiDensity = "compact" | "normal" | "spacious";
-export type SslDefaultMode = "prefer" | "require" | "disable" | "verify-full";
+export type SslDefaultMode = "prefer" | "require" | "disable" | "verify-ca" | "verify-full";
 export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | "all";
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
@@ -291,7 +291,7 @@ export const DEFAULT_SETTINGS = {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set) => ({
+    withOrganizationSettings<SettingsState>((set) => ({
       ...DEFAULT_SETTINGS,
       setEasyMode: (easyMode) => set({ easyMode }),
       setTableDetailTabVisible: (tab, visible) =>
@@ -415,7 +415,7 @@ export const useSettingsStore = create<SettingsState>()(
           tourFinished: state.tourFinished,
           onboardingDone: state.onboardingDone,
         })),
-    }),
+    })),
     {
       name: "l8db.settings",
       version: 1,
@@ -425,7 +425,7 @@ export const useSettingsStore = create<SettingsState>()(
           : persisted,
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
-        return {
+        return applyOrganizationSettings({
           ...current,
           ...saved,
           easyMode: saved?.easyMode === true,
@@ -450,7 +450,7 @@ export const useSettingsStore = create<SettingsState>()(
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
-        };
+        });
       },
     },
   ),

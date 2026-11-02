@@ -132,7 +132,7 @@ export const TAB_COMMANDS: HotkeyCommand[] = [
   {
     id: "view.split",
     label: "Ansicht teilen",
-    description: "Aktiven Tab in Split-Ansicht öffnen",
+    description: "Leeren Bereich neben dem aktiven Bereich öffnen",
     area: "Tabs",
     defaultHotkey: "Mod+\\",
     origin: "VS Code",

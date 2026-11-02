@@ -31,6 +31,7 @@ import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { cn } from "@/lib/utils";
 import { OpenInWindowMenuItem } from "./open-in-window-menu-item";
+import { TeamConnectionHelp } from "./team-connection-help";
 
 interface Props {
   connection: SavedConnection;
@@ -311,6 +312,7 @@ function ConnectionCardShell({
           {actions}
         </div>
 
+        <TeamConnectionHelp connection={connection} />
         <div className="mt-3 text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Database className="size-3 shrink-0 text-muted-foreground/70" />

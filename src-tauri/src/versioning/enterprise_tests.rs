@@ -122,7 +122,7 @@ async fn enterprise_controls_and_executor_locks() {
             track: "main".into(),
             pinned_release: None,
             paused: false,
-            production: true,
+            production: false,
             require_approval: false,
             operators: vec![],
             administrators: vec![],
@@ -502,6 +502,61 @@ async fn enterprise_controls_and_executor_locks() {
     }
 }
 
+#[tokio::test]
+#[ignore = "disposable PostgreSQL lab"]
+async fn enterprise_committed_release_preserves_uncertain_commit_recovery() {
+    let raw = std::env::var("L8DB_E2E_PG_URL").expect("disposable PostgreSQL lab required");
+    let root = tempfile::tempdir().unwrap();
+    let pool = db::pool::create_pool_state();
+    let transactions = db::transaction::create_transaction_state();
+    let schema = format!("l8db_committed_{}", std::process::id());
+    let connection = Connection {
+        kind: DatabaseKind::Postgres,
+        connection_string: raw,
+        database: None,
+        schema: schema.clone(),
+        project_id: "committed-release-test".into(),
+        read_only: false,
+    };
+    let adapter = connection.adapter(pool.clone()).unwrap();
+    adapter
+        .execute_query(&format!("CREATE SCHEMA {}", control::quote(&schema)))
+        .await
+        .unwrap();
+    adapter
+        .execute_query(&format!(
+            "CREATE TABLE {schema}.snapshot_probe (id integer NOT NULL)"
+        ))
+        .await
+        .unwrap();
+    let policy = Policy {
+        track: "main".into(),
+        pinned_release: None,
+        paused: false,
+        production: false,
+        require_approval: false,
+        operators: vec![],
+        administrators: vec![],
+        reviewers: vec![],
+        delivery: None,
+    };
+    control::initialize(adapter.as_ref(), &connection, &policy)
+        .await
+        .unwrap();
+    lost_commit_reply(
+        &connection,
+        adapter.as_ref(),
+        pool,
+        transactions,
+        root.path().to_str().unwrap(),
+    )
+    .await;
+    adapter
+        .execute_query(&format!("DROP SCHEMA {} CASCADE", control::quote(&schema)))
+        .await
+        .unwrap();
+}
+
 async fn lost_commit_reply(
     connection: &Connection,
     adapter: &dyn db::DatabaseAdapter,
@@ -519,17 +574,6 @@ async fn lost_commit_reply(
         .await
         .unwrap();
     adapter.execute_query(&format!("CREATE TABLE {} (\"PROJECT_ID\" VARCHAR(100) PRIMARY KEY, \"RELEASE_ID\" VARCHAR(100), \"RELEASE_HASH\" VARCHAR(64), \"LEASE\" VARCHAR(64), \"STATUS\" VARCHAR(20))",control::table(schema,"STATE"))).await.unwrap();
-    let from_hash = control::hash("v1");
-    let to_hash = control::hash("v2");
-    adapter
-        .execute_query(&format!(
-            "INSERT INTO {} VALUES ({},'v1',{},NULL,'ready')",
-            control::table(schema, "STATE"),
-            control::literal(&connection.project_id),
-            control::literal(&from_hash)
-        ))
-        .await
-        .unwrap();
     let object = snapshot::Snapshot {
         schema: schema.clone(),
         source_schema: schema.clone(),
@@ -541,10 +585,25 @@ async fn lost_commit_reply(
     let definition = snapshot::definition(adapter, connection.kind, &object)
         .await
         .unwrap();
+    let from = json!({"format":1,"id":"v1","kind":"postgres","projectId":connection.project_id,"parent":null,"objects":[{"object":{"selection":{"schema":schema,"objectName":"snapshot_probe","objectType":"table"}},"definition":definition,"checksum":control::hash(&definition)}],"migrations":[]});
+    let sql = format!("INSERT INTO {schema}.snapshot_probe VALUES (9)");
+    let mut next = from.clone();
+    next["id"] = json!("v2");
+    next["parent"] = json!("v1");
+    next["migrations"] = json!([{"id":"m","sql":sql,"checksum":control::hash(&sql)}]);
+    let from_hash = control::hash(&from.to_string());
+    let to_hash = control::hash(&next.to_string());
+    adapter
+        .execute_query(&format!(
+            "INSERT INTO {} VALUES ({},'v1',{},NULL,'ready')",
+            control::table(schema, "STATE"),
+            control::literal(&connection.project_id),
+            control::literal(&from_hash)
+        ))
+        .await
+        .unwrap();
     let objects = json!([{"schema":schema,"sourceSchema":schema,"name":"snapshot_probe","kind":"table","definition":definition}]);
     let context=adapter.execute_query("SELECT current_database() AS \"database\", current_user AS \"user\", COALESCE(inet_server_addr()::text,'local') AS \"server\", inet_server_port()::text AS \"port\", NULL::text AS \"edition\"").await.unwrap().rows[0].clone();
-    let reference = json!({"id":"v2","commit":"0000000000000000000000000000000000000000","path":"database/releases/v2.json"});
-    let artifact=json!({"policyRevision":policy["revision"],"execution":{"context":context,"fromId":"v1","fromHash":from_hash,"fromObjects":objects,"reference":reference,"releases":[{"id":"v2","hash":to_hash,"objects":objects,"statements":[{"id":"v2:m:1","migration":"m","sql":format!("INSERT INTO {schema}.snapshot_probe VALUES (9)")}],"preconditions":[],"postconditions":[],"settings":["SET LOCAL statement_timeout='3000ms'"],"oracleTimeout":3000}]}}).to_string();
     let id = format!("lost-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap());
     let repo = std::path::Path::new(root).join(&id);
     std::fs::create_dir(&repo).unwrap();
@@ -554,6 +613,41 @@ async fn lost_commit_reply(
         .status()
         .unwrap()
         .success());
+    super::git(&repo, &["config", "user.name", "Versioning Test"])
+        .await
+        .unwrap();
+    super::git(&repo, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    std::fs::create_dir_all(repo.join("database/releases")).unwrap();
+    for release in [&from, &next] {
+        std::fs::write(
+            repo.join(format!(
+                "database/releases/{}.json",
+                release["id"].as_str().unwrap()
+            )),
+            release.to_string(),
+        )
+        .unwrap();
+    }
+    super::git(&repo, &["add", "database/releases"])
+        .await
+        .unwrap();
+    super::git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "Release fixture",
+        ],
+    )
+    .await
+    .unwrap();
+    let commit = super::git(&repo, &["rev-parse", "HEAD"]).await.unwrap();
+    let reference = json!({"id":"v2","commit":commit.trim(),"path":"database/releases/v2.json"});
+    let artifact=json!({"schema":null,"policyRevision":policy["revision"],"execution":{"context":context,"fromId":"v1","fromHash":from_hash,"fromObjects":objects,"reference":reference,"releases":[{"id":"v2","hash":to_hash,"objects":objects,"statements":[{"id":"v2:m:1","migration":"m","sql":sql}],"preconditions":[],"postconditions":[],"settings":["SET LOCAL lock_timeout = '5000ms'","SET LOCAL statement_timeout = '60000ms'","SET LOCAL idle_in_transaction_session_timeout = '60000ms'",format!("SET LOCAL search_path = {}, pg_temp",control::quote(schema)),"SET LOCAL row_security = off"],"oracleTimeout":60000}]}}).to_string();
     std::fs::write(repo.join(".git/l8db-targets.json"),json!({"format":1,"projectId":connection.project_id,"targets":[{"id":"edge","history":[],"release":{"id":"v1"}}]}).to_string()).unwrap();
     *super::runner::LOST_COMMIT.lock().unwrap() = Some(id.clone());
     let run = super::runner::Request {

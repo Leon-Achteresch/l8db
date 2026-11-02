@@ -59,6 +59,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [connectionId, setConnectionId] = useState("");
   const [database, setDatabase] = useState("");
   const [schema, setSchema] = useState("");
+  const [ledgerSchema, setLedgerSchema] = useState("l8db_control");
   const [setupOpen, setSetupOpen] = useState(false);
   const [availableSchemas, setAvailableSchemas] = useState<string[]>([]);
   const [schemaError, setSchemaError] = useState("");
@@ -156,6 +157,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       connectionId,
       database,
       schema,
+      ledgerSchema: production ? ledgerSchema : undefined,
       production,
     });
     await refresh();
@@ -317,6 +319,19 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             <p role="alert" className="text-xs text-destructive">
               {schemaError}
             </p>
+          )}
+          {production && (
+            <label className="space-y-1.5 text-xs font-medium" htmlFor="vcs-control-schema">
+              Getrenntes Kontrollschema
+              <Input
+                id="vcs-control-schema"
+                value={ledgerSchema}
+                onChange={(event) => setLedgerSchema(event.target.value)}
+              />
+              <span className="block text-muted-foreground">
+                Von der DBA eingerichtet, mit getrenntem Eigentümer und geschütztem Journal.
+              </span>
+            </label>
           )}
           {sourceSchema.length === 1 && schema && (
             <p className="text-[11px] text-muted-foreground">

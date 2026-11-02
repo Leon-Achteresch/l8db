@@ -12,6 +12,7 @@ import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
 import { UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
+import { isSplitShown, standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { checkForUpdates, presentUpdate } from "@/lib/updater";
@@ -44,33 +45,87 @@ export function AppHotkeys() {
 
   const activeKey = activeTab ? tabKey(activeTab) : null;
 
+  const focusedPaneTabs = useCallback(() => {
+    const split = useSplitView.getState();
+    if (easyMode || !isSplitShown(split, activeKey)) return null;
+    return {
+      keys: split.paneTabs[split.focusedPane] ?? [],
+      active: split.panes[split.focusedPane],
+    };
+  }, [easyMode, activeKey]);
+
+  const masterTabs = useCallback(() => {
+    const visible = useTableTabs
+      .getState()
+      .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+    const split = useSplitView.getState();
+    if (easyMode || split.panes.length < 2) return visible;
+    const key = tabAfterClose(new Set());
+    const entry = visible.find((tab) => tabKey(tab) === key);
+    const tabs = standaloneTabs(visible, split.paneTabs);
+    return entry ? [entry, ...tabs] : tabs;
+  }, [easyMode]);
+
+  const showKey = useCallback(
+    (key: string | undefined) => {
+      if (!key) return;
+      const tab = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === key);
+      if (tab) navigateToTab(navigate, tab);
+      else useSplitView.getState().reveal(key);
+    },
+    [navigate],
+  );
+
   const goToTabIndex = useCallback(
     (index: number, last = false) => {
-      const tabs = useTableTabs
-        .getState()
-        .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+      const pane = focusedPaneTabs();
+      if (pane) {
+        showKey(last ? pane.keys.at(-1) : pane.keys[index]);
+        return;
+      }
+      const tabs = masterTabs();
       if (tabs.length === 0) return;
       const target = last ? tabs[tabs.length - 1] : tabs[index];
       if (target) navigateToTab(navigate, target);
     },
-    [navigate, easyMode],
+    [navigate, masterTabs, focusedPaneTabs, showKey],
   );
 
   const stepTab = useCallback(
     (direction: 1 | -1) => {
-      const tabs = useTableTabs
-        .getState()
-        .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
+      const pane = focusedPaneTabs();
+      if (pane) {
+        if (pane.keys.length < 2) return;
+        const current = pane.active ? pane.keys.indexOf(pane.active) : -1;
+        showKey(
+          pane.keys[
+            current === -1 ? 0 : (current + direction + pane.keys.length) % pane.keys.length
+          ],
+        );
+        return;
+      }
+      const tabs = masterTabs();
       if (tabs.length < 2) return;
       const current = activeKey ? tabs.findIndex((tab) => tabKey(tab) === activeKey) : -1;
       const next = current === -1 ? 0 : (current + direction + tabs.length) % tabs.length;
       const target = tabs[next];
       if (target) navigateToTab(navigate, target);
     },
-    [activeKey, navigate, easyMode],
+    [activeKey, navigate, masterTabs, focusedPaneTabs, showKey],
   );
 
   const closeActiveTab = useCallback(() => {
+    const pane = focusedPaneTabs();
+    if (pane) {
+      if (pane.active)
+        window.dispatchEvent(new CustomEvent("l8db:request-close-tab", { detail: pane.active }));
+      return;
+    }
+    if (!easyMode && useSplitView.getState().panes.length > 1) {
+      if (activeKey)
+        window.dispatchEvent(new CustomEvent("l8db:request-close-tab", { detail: activeKey }));
+      return;
+    }
     const tabs = useTableTabs.getState().tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
     if (tabs.length === 0) return;
     const key = activeKey ?? (tabs.length > 0 ? tabKey(tabs[tabs.length - 1]) : null);
@@ -92,7 +147,7 @@ export function AppHotkeys() {
       return;
     }
     void Promise.resolve(navigateToTab(navigate, next)).finally(close);
-  }, [activeKey, navigate, easyMode]);
+  }, [activeKey, navigate, easyMode, focusedPaneTabs]);
 
   const reopenTab = useCallback(() => {
     const restored = useTableTabs.getState().reopenLastTab();
@@ -166,12 +221,14 @@ export function AppHotkeys() {
     { id: "menu.updates", action: () => void checkUpdatesFromMenu() },
     {
       id: "view.split",
+      relay: true,
       action: () => {
         if (!easyMode) emitHotkeyAction("view.split");
       },
     },
     {
       id: "objects.search",
+      relay: true,
       action: () => emitHotkeyAction("objects.search"),
       requiresConnection: true,
     },
@@ -181,10 +238,12 @@ export function AppHotkeys() {
     },
     {
       id: "query.saveAs",
+      relay: true,
       action: () => emitHotkeyAction("query.saveAs"),
     },
     {
       id: "app.focusSearch",
+      relay: true,
       action: () => emitHotkeyAction("app.focusSearch"),
     },
   ];
@@ -194,12 +253,14 @@ export function AppHotkeys() {
   const [bindings] = useState(() =>
     definitions.map(({ id, requiresConnection }) => ({ id, requiresConnection })),
   );
-  const run = useCallback((id: string) => {
-    definitionsRef.current.find((definition) => definition.id === id)?.action();
+  const run = useCallback((id: string, relayed = false) => {
+    const definition = definitionsRef.current.find((entry) => entry.id === id);
+    if (!definition || (relayed && definition.relay)) return;
+    definition.action();
   }, []);
 
   useEffect(() => {
-    const listener = (event: Event) => run((event as CustomEvent<string>).detail);
+    const listener = (event: Event) => run((event as CustomEvent<string>).detail, true);
     window.addEventListener(HOTKEY_ACTION_EVENT, listener);
     return () => window.removeEventListener(HOTKEY_ACTION_EVENT, listener);
   }, [run]);

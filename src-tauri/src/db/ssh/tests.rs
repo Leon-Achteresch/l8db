@@ -985,3 +985,49 @@ fn ssh_reconnect_backoff_grows_and_is_capped() {
     assert_eq!(super::reconnect_backoff(3), super::RECONNECT_BACKOFF * 4);
     assert_eq!(super::reconnect_backoff(40), super::RECONNECT_BACKOFF_MAX);
 }
+
+#[tokio::test]
+#[ignore]
+async fn tunnel_rsa_key_formats_end_to_end() {
+    std::env::set_var("L8DB_KNOWN_HOSTS", lab_known_hosts());
+    let path = std::path::PathBuf::from(lab_env("L8DB_E2E_RSA_KEY_FILE"));
+    let dir = path.parent().unwrap();
+    let manager = manager();
+    for (file, passphrase) in [
+        ("rsa-client", None),
+        ("rsa-encrypted", Some("lab-rsa-passphrase".to_string())),
+        ("rsa-pkcs1", None),
+    ] {
+        let start = std::time::Instant::now();
+        let info = manager
+            .open(request(
+                "e2e-rsa",
+                SshAuthRequest::Key {
+                    key_file: dir.join(file).to_string_lossy().into_owned(),
+                    passphrase,
+                },
+            ))
+            .await
+            .expect("RSA authentication against OpenSSH");
+        assert_eq!(query_through_tunnel(info.local_port).await.unwrap(), 42);
+        manager.close("e2e-rsa").await.unwrap();
+        assert!(manager.list().await.is_empty());
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", info.local_port))
+                .await
+                .is_err()
+        );
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    }
+    assert!(manager
+        .open(request(
+            "e2e-rsa-wrong",
+            SshAuthRequest::Key {
+                key_file: dir.join("rsa-encrypted").to_string_lossy().into_owned(),
+                passphrase: Some("wrong-passphrase".into()),
+            }
+        ))
+        .await
+        .is_err());
+    assert!(manager.list().await.is_empty());
+}

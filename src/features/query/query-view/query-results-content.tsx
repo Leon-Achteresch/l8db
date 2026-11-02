@@ -8,10 +8,11 @@ import { QueryResultView } from "@/features/query/query-result-view/query-result
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import type { ResultChartBinding } from "@/features/query/result-chart/types";
 import { ResultCompareView } from "@/features/query/result-compare/result-compare-view";
+import { ResultSnapshotsButton } from "@/features/query/result-snapshots-button";
 import type { DatabaseKind, TableInfo } from "@/lib/db";
 import type { SqlMarker } from "@/lib/sql-diagnostics";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
-
+import { PreviousResultNotice } from "./previous-result-notice";
 import { ResultHeader } from "./result-header";
 import type { QueryExecutionState } from "./use-query-execution-state";
 
@@ -54,12 +55,44 @@ export function QueryResultsContent({
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError, viewSource, scriptEntries } = exec;
   const [classic, setClassic] = useTabState(tabStateKey(exec.scope, "classic"), false);
+  const [snapshotCompare, setSnapshotCompare] = useTabState<string | null>(
+    tabStateKey(exec.scope, "snapshotCompare"),
+    null,
+  );
   const viewable =
     viewSource !== null && !scriptEntries && !error && result !== null && result.columns.length > 0;
   const showView = viewable && !classic && !isRunning;
   const showCompare =
-    compareOpen && !isRunning && !error && result !== null && result.columns.length > 0;
-  const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
+    (compareOpen || snapshotCompare) &&
+    !isRunning &&
+    !error &&
+    result !== null &&
+    result.columns.length > 0;
+  const snapshotRun =
+    !isRunning &&
+    !error &&
+    result?.columns.length &&
+    exec.resultOrigin?.connectionId === connectionId &&
+    exec.resultOrigin.database === database
+      ? { ...exec.resultOrigin, result }
+      : null;
+  const resultActions = (
+    <>
+      <ResultSnapshotsButton
+        run={snapshotRun}
+        connectionId={connectionId}
+        database={database}
+        onCompare={(baseline, name) => {
+          exec.setRuns({ baseline, latest: snapshotRun, pinned: true });
+          setClassic(true);
+          setSnapshotCompare(name);
+        }}
+      />
+      {actions}
+    </>
+  );
+  const previousResult = Boolean(error && result?.columns.length);
+  const showResultHeader = !result || isRunning || result.columns.length === 0;
   return (
     <>
       {showResultHeader && (
@@ -68,7 +101,7 @@ export function QueryResultsContent({
           error={error}
           result={result}
           statusText={statusText}
-          actions={actions}
+          actions={resultActions}
         />
       )}
 
@@ -80,8 +113,37 @@ export function QueryResultsContent({
         )}
       </Collapse>
 
+      {error && !isRunning && previousResult && (
+        <div className="max-h-48 shrink-0 overflow-auto border-b">
+          <ResultError
+            error={error}
+            kind={kind}
+            source={exec.editorError}
+            sql={sql}
+            columns={names?.columns}
+            tables={names?.tables}
+            onReveal={onRevealError}
+            onReplace={onReplaceSql}
+            onFixWithAi={onFixWithAi}
+          />
+        </div>
+      )}
+      {previousResult && !isRunning && (
+        <PreviousResultNotice sql={exec.executedSql} at={exec.resultOrigin?.at ?? null} />
+      )}
+      {snapshotCompare && !isRunning && !error && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 self-start text-xs"
+          aria-label="Ergebnisstand-Vergleich schließen"
+          onClick={() => setSnapshotCompare(null)}
+        >
+          Vergleich „{snapshotCompare}“ schließen
+        </Button>
+      )}
       <div className="min-h-0 flex-1">
-        {error && !isRunning ? (
+        {error && !isRunning && !previousResult ? (
           <ResultError
             error={error}
             kind={kind}
@@ -101,7 +163,7 @@ export function QueryResultsContent({
             onRunsChange={exec.setRuns}
             connectionId={connectionId}
             database={database}
-            actions={actions}
+            actions={resultActions}
             maximized={maximized}
             onToggleMaximized={onToggleMaximized}
           />
@@ -113,7 +175,7 @@ export function QueryResultsContent({
             result={result}
             tables={tables}
             statusText={statusText}
-            actions={actions}
+            actions={resultActions}
             maximized={maximized}
             onToggleMaximized={onToggleMaximized}
             onShowClassic={() => setClassic(true)}
@@ -124,7 +186,7 @@ export function QueryResultsContent({
             stateKey={tabStateKey(exec.scope, "resultView")}
             result={result}
             isLoading={isRunning}
-            error={error}
+            error={previousResult ? null : error}
             kind={kind}
             statusText={statusText}
             actions={
@@ -140,13 +202,14 @@ export function QueryResultsContent({
                     <EyeIcon className="size-3.5" />
                     Als View
                   </Button>
-                  {actions}
+                  {resultActions}
                 </>
               ) : (
-                actions
+                resultActions
               )
             }
-            chart={chart}
+            chart={previousResult ? undefined : chart}
+            previous={previousResult}
           />
         )}
       </div>

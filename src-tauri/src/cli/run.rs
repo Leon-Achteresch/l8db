@@ -18,6 +18,24 @@ pub fn dispatch(cli: Cli) -> i32 {
         global, command, ..
     } = cli;
     match command {
+        Command::Doctor {
+            test_keychain,
+            strict,
+        } => {
+            let rows = super::doctor::report(test_keychain);
+            let failed = rows
+                .iter()
+                .any(|row| row["status"] == "error" || (strict && row["status"] != "ok"));
+            match output::write_rows(
+                &mut std::io::stdout(),
+                Format::resolve(global.output),
+                &["check".into(), "status".into(), "detail".into()],
+                &rows,
+            ) {
+                Ok(()) => i32::from(failed),
+                Err(_) => 1,
+            }
+        }
         Command::Help { command } => super::help_for(&command),
         Command::Completions { shell } => super::completions(shell),
         Command::Mcp => {

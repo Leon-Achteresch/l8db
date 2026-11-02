@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import {
+  createJSONStorage,
+  persist,
+  type StateStorage,
+  type StorageValue,
+} from "zustand/middleware";
 
 export type TaskStatus =
   | "running"
@@ -39,10 +44,57 @@ export function isQueryTask(task: Pick<AppTask, "title">): boolean {
   return task.title === "SQL-Abfrage" || task.title === "SQL-Skript";
 }
 
+const PERSISTED_TEXT_LIMIT = 2000;
+
+function clip(text: string | undefined) {
+  return text && text.length > PERSISTED_TEXT_LIMIT
+    ? `${text.slice(0, PERSISTED_TEXT_LIMIT)}…`
+    : text;
+}
+
+const quotaSafeStorage: StateStorage = {
+  getItem: (name) => window.localStorage.getItem(name),
+  removeItem: (name) => window.localStorage.removeItem(name),
+  setItem: (name, value) => {
+    let payload = value;
+    let parsed: StorageValue<{ tasks: AppTask[] }> | undefined;
+    for (;;) {
+      try {
+        window.localStorage.setItem(name, payload);
+        return;
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "QuotaExceededError")) {
+          console.warn("Aufgabenverlauf konnte nicht gespeichert werden.", error);
+          return;
+        }
+        parsed ??= JSON.parse(payload) as StorageValue<{ tasks: AppTask[] }>;
+        const tasks = parsed.state.tasks;
+        if (tasks.length === 0) {
+          window.localStorage.removeItem(name);
+          console.warn("Aufgabenverlauf konnte nicht gespeichert werden.", error);
+          return;
+        }
+        parsed = {
+          ...parsed,
+          state: { ...parsed.state, tasks: tasks.slice(0, Math.floor(tasks.length / 2)) },
+        };
+        payload = JSON.stringify(parsed);
+      }
+    }
+  },
+};
+
 export const useTasksStore = create<TasksState>()(
   persist((): TasksState => ({ tasks: [], open: false }), {
     name: "l8db.tasks",
-    partialize: (state) => ({ tasks: state.tasks.map(({ result: _result, ...task }) => task) }),
+    storage: createJSONStorage(() => quotaSafeStorage),
+    partialize: (state) => ({
+      tasks: state.tasks.map(({ result: _result, ...task }) => ({
+        ...task,
+        detail: clip(task.detail),
+        error: clip(task.error),
+      })),
+    }),
     merge: (saved, current) => ({
       ...current,
       tasks: ((saved as Partial<TasksState>)?.tasks ?? []).map((task) =>

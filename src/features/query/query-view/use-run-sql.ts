@@ -11,6 +11,7 @@ import {
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
 import { invalidateAfterSql } from "@/lib/query-client";
+import { beginQueryCompletion } from "@/lib/query-completion";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
 import { locateText } from "@/lib/sql-diagnostics";
@@ -162,6 +163,7 @@ export function useRunSql({
       };
       const setResult = (res: QueryResult | null) => setResultState(withCreateNotice(res, sql));
       let executionStarted = false;
+      let finishNotification: ReturnType<typeof beginQueryCompletion> | undefined;
       try {
         await confirmSqlExecution(
           connection.kind,
@@ -170,6 +172,7 @@ export function useRunSql({
           database ?? undefined,
         );
         executionStarted = true;
+        finishNotification = beginQueryCompletion();
         const res = await executeSqlWithTransactions({
           connection,
           database,
@@ -192,13 +195,16 @@ export function useRunSql({
             database: database ?? null,
           });
         finishHistory({ rowCount: rowCountOf(res), error: null });
+        finishNotification("success");
       } catch (err) {
         const message = String(err);
         setError(message);
         const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
         setErrorSource(base === null ? null : { text: sql, base });
         setViewSource(null);
-        setResult(null);
+        finishNotification?.(
+          /abgebrochen|cancelled|canceled/i.test(message) ? "cancelled" : "error",
+        );
         finishHistory({ rowCount: null, error: message });
       } finally {
         if (executionStarted) await invalidateAfterSql(queryClient, connection.id, database, sql);

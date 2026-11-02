@@ -23,6 +23,7 @@ import { copyNameActions } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
+import { middleClick } from "@/lib/middle-click";
 import {
   favoriteId,
   favoritesFor,
@@ -30,6 +31,7 @@ import {
   useObjectFavoritesStore,
 } from "@/lib/object-favorites";
 import { useAllSchemaObjectsQuery, useMaterializedViewsQuery } from "@/lib/queries";
+import { openDetached } from "@/lib/split-view";
 import { useTableTabs } from "@/lib/table-tabs";
 
 function iconFor(type: ObjectFavorite["type"]) {
@@ -99,9 +101,13 @@ export function SidebarFavorites() {
             };
             const openInNewTab =
               favorite.type === "table"
-                ? () => openTab({ schema: favorite.schema, table: favorite.name })
+                ? () =>
+                    openDetached(() => openTab({ schema: favorite.schema, table: favorite.name }))
                 : favorite.type === "view"
-                  ? () => openViewEditorTab({ schema: favorite.schema, view: favorite.name })
+                  ? () =>
+                      openDetached(() =>
+                        openViewEditorTab({ schema: favorite.schema, view: favorite.name }),
+                      )
                   : undefined;
             const qualifiedName = `${favorite.schema}.${favorite.name}`;
             return (
@@ -116,6 +122,7 @@ export function SidebarFavorites() {
                   >
                     <SidebarMenuButton
                       onClick={open}
+                      {...middleClick(openInNewTab)}
                       title={
                         missing
                           ? `${favorite.schema}.${favorite.name} (nicht gefunden)`

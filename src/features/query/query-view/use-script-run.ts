@@ -5,6 +5,7 @@ import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import { invalidateAfterSql } from "@/lib/query-client";
+import { beginQueryCompletion } from "@/lib/query-completion";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
@@ -61,6 +62,8 @@ export function useScriptRun({
     setActiveJobId,
     setScriptEntries,
     setResultState,
+    setExecutedSql,
+    setResultOrigin,
   } = exec;
 
   const scriptSplit = useMemo(
@@ -112,6 +115,7 @@ export function useScriptRun({
         base ? items.map((e) => ({ ...e, start: e.start + base, end: e.end + base })) : items;
       const startedAt = performance.now();
       let executed = text;
+      const finishNotification = beginQueryCompletion();
       try {
         const outcome = await runSqlScript({
           connection,
@@ -129,8 +133,23 @@ export function useScriptRun({
         const entries = shift(outcome.entries);
         recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
         setScriptEntries(entries);
-        setResultState(
-          outcome.error ? null : withCreateNotice(outcome.lastResult, entries.at(-1)?.sql ?? text),
+        if (!outcome.error) {
+          const successfulSql = entries.at(-1)?.sql ?? text;
+          setResultState(withCreateNotice(outcome.lastResult, successfulSql));
+          setExecutedSql(successfulSql);
+          setResultOrigin({
+            sql: successfulSql,
+            at: Date.now(),
+            connectionId: connection.id,
+            database,
+          });
+        }
+        finishNotification(
+          outcome.error && /abgebrochen|cancel/i.test(outcome.error)
+            ? "cancelled"
+            : outcome.error
+              ? "error"
+              : "success",
         );
         setError(outcome.error);
         executed = entries.map((entry) => entry.sql).join("\n");
@@ -146,6 +165,9 @@ export function useScriptRun({
         } else setScriptActiveIndex(entries.length - 1);
       } catch (failure) {
         recordUserQueryOutcome(connection.kind, failure, performance.now() - startedAt);
+        finishNotification(
+          /abgebrochen|cancelled|canceled/i.test(String(failure)) ? "cancelled" : "error",
+        );
         setError(String(failure));
         setErrorSource(null);
       } finally {
@@ -175,6 +197,8 @@ export function useScriptRun({
       setActiveJobId,
       setScriptEntries,
       setResultState,
+      setExecutedSql,
+      setResultOrigin,
       setEditorFocus,
     ],
   );
@@ -183,7 +207,17 @@ export function useScriptRun({
     (entry: ScriptRunEntry) => {
       setScriptActiveIndex(entry.index);
       if (!runningRef.current) {
-        setResultState(withCreateNotice(entry.result ?? null, entry.sql));
+        if (!entry.error) {
+          setResultState(withCreateNotice(entry.result ?? null, entry.sql));
+          setExecutedSql(entry.sql);
+          if (connection)
+            setResultOrigin({
+              sql: entry.sql,
+              at: Date.now(),
+              connectionId: connection.id,
+              database,
+            });
+        }
         setError(entry.error);
         setErrorSource(
           entry.source ? null : { text: sql.slice(entry.start, entry.end), base: entry.start },
@@ -197,6 +231,10 @@ export function useScriptRun({
       sql,
       runningRef,
       setScriptActiveIndex,
+      connection,
+      database,
+      setExecutedSql,
+      setResultOrigin,
       setResultState,
       setError,
       setErrorSource,

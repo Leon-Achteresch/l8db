@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
@@ -24,7 +25,13 @@ fn read_team_file(path: &Path) -> Result<Value, String> {
     if size > MAX_BYTES {
         return Err(format!("{shown}: Datei ist größer als 4 MB"));
     }
-    let bytes = std::fs::read(path).map_err(|e| format!("{shown}: {e}"))?;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(MAX_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|e| format!("{shown}: {e}"))?;
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(format!("{shown}: Datei ist größer als 4 MB"));
+    }
     let raw = match bytes.strip_prefix(&[0xff, 0xfe]) {
         Some(utf16) => String::from_utf16(
             &utf16
@@ -55,12 +62,61 @@ fn read_team_file(path: &Path) -> Result<Value, String> {
 #[tauri::command(async)]
 pub fn team_connections() -> Result<Value, String> {
     let path = team_file().ok_or("Benutzerordner konnte nicht ermittelt werden.")?;
-    read_team_file(&path)
+    let organization = crate::organization::current(true)?;
+    combine(read_team_file(&path), organization.as_ref())
+}
+
+fn combine(
+    user: Result<Value, String>,
+    organization: &crate::organization::Status,
+) -> Result<Value, String> {
+    let mut file = match user {
+        Ok(file) => file,
+        Err(error) if !organization.policy.connections.is_empty() => {
+            json!({"path": organization.path, "exists": true, "connections": [], "warnings": [error]})
+        }
+        Err(error) => return Err(error),
+    };
+    if !organization.policy.connections.is_empty() {
+        if file["exists"] == false {
+            file["path"] = json!(organization.path);
+        }
+        file["exists"] = json!(true);
+        file["connections"]
+            .as_array_mut()
+            .ok_or("Team-Datei ungültig")?
+            .extend(organization.policy.connections.iter().cloned());
+    }
+    file["organization"] = serde_json::to_value(organization).map_err(|e| e.to_string())?;
+    Ok(file)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protected_connections_survive_an_invalid_personal_team_file() {
+        let status = crate::organization::Status {
+            path: "policy.json".into(),
+            managed: true,
+            policy: crate::organization::Policy {
+                connections: vec![json!({"id":"protected"})],
+                ..Default::default()
+            },
+        };
+        let file = combine(Err("Ungültige Benutzerdatei".into()), &status).unwrap();
+        assert_eq!(file["connections"][0]["id"], "protected");
+        assert_eq!(file["warnings"][0], "Ungültige Benutzerdatei");
+        assert!(combine(
+            Err("Ungültige Benutzerdatei".into()),
+            &crate::organization::Status {
+                policy: Default::default(),
+                ..status
+            }
+        )
+        .is_err());
+    }
 
     #[test]
     fn the_team_file_is_read_as_list_or_object_and_rejects_garbage() {

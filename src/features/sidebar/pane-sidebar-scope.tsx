@@ -3,12 +3,14 @@ import { type ReactNode, useEffect } from "react";
 import { PaneSidebarPanel } from "@/features/sidebar/pane-sidebar-panel";
 import { ConnectionScopeContext } from "@/lib/connections";
 import { useSettingsStore } from "@/lib/settings";
-import { useFocusedPaneScope, useSplitView } from "@/lib/split-view";
+import { useFocusedPaneScope, useSplitShown, useSplitView } from "@/lib/split-view";
+import { tabKey } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function PaneSidebarScope({ children }: { children: ReactNode }) {
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const splitVisible = Boolean(useActiveWorkspaceTab());
+  const routeTab = useActiveWorkspaceTab();
+  const splitVisible = useSplitShown(routeTab ? tabKey(routeTab) : null);
   const focused = useFocusedPaneScope();
   const scope = !easyMode && splitVisible ? focused : null;
   const panes = useSplitView((state) => state.panes);

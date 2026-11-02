@@ -18,6 +18,14 @@ runs:
         toolchain: 1.99.0
         targets: ${{ inputs.targets }}
         components: ${{ inputs.components }}
+    - name: Select Strawberry Perl for vendored OpenSSL
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $perl = 'C:\Strawberry\perl\bin\perl.exe'
+        if (!(Test-Path $perl)) { throw 'Strawberry Perl is required to build vendored OpenSSL.' }
+        "PERL=$perl" >> $env:GITHUB_ENV
+        'C:\Strawberry\perl\bin' >> $env:GITHUB_PATH
     - id: key
       shell: bash
       env:

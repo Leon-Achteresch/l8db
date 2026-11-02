@@ -205,7 +205,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         commandTunnel: config.commandTunnel,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
-        readOnly: readOnly && configInfo.capabilities.read_only_mode,
+        readOnly,
         cloudAuth,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,

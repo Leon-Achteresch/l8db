@@ -233,7 +233,7 @@ describe("secret query parameters", () => {
     expect(keychain.has(`${connection.id}:params`)).toBe(false);
   });
 
-  test("a token stays persisted while the keychain cannot store it", async () => {
+  test("a token stays only in memory while the keychain cannot store it", async () => {
     keychainUnavailable = true;
     try {
       const connection = useConnectionsStore.getState().addConnection({
@@ -242,13 +242,23 @@ describe("secret query parameters", () => {
         connectionString: "influxdb://offline.example.com:8086/db?token=offline-secret",
         sslMode: "prefer",
       });
+      expect(persisted()).not.toContain("offline-secret");
       await flush();
-      expect(persisted()).toContain("offline-secret");
+      expect(persisted()).not.toContain("offline-secret");
+      expect(
+        useConnectionsStore.getState().connections.find((entry) => entry.id === connection.id)
+          ?.connectionString,
+      ).toContain("offline-secret");
+      const { useSecretStorageStatus } = await import("../../src/lib/secret-storage-status");
+      expect(useSecretStorageStatus.getState().failedAccounts).toContain(`${connection.id}:params`);
       keychainUnavailable = false;
       useConnectionsStore.getState().setServerOrder([]);
       await flush();
       expect(keychain.get(`${connection.id}:params`)).toBe("token=offline-secret");
       expect(persisted()).not.toContain("offline-secret");
+      expect(useSecretStorageStatus.getState().failedAccounts).not.toContain(
+        `${connection.id}:params`,
+      );
     } finally {
       keychainUnavailable = false;
     }

@@ -44,6 +44,7 @@ import { ConnectionServerGroupSection } from "./connections-view/server-group-se
 import { setSchemasToUser } from "./connections-view/set-schemas-to-user";
 import { ConnectionsToolbar } from "./connections-view/toolbar";
 import { HostGroupRulesDialog } from "./host-group-rules-dialog";
+import { SecretStorageNotice } from "./secret-storage-notice";
 
 export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
@@ -230,6 +231,7 @@ export function ConnectionsView() {
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
       <div className="relative flex h-full min-h-0 w-full flex-col p-4 md:p-6">
+        <SecretStorageNotice />
         {(editorId || totalConnections > 0) && (
           <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
             <div className="min-w-0">

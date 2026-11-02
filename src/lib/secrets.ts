@@ -4,6 +4,7 @@ import {
   deleteSecret as removeSecret,
 } from "@/lib/db";
 import { isTrackedSecret, recordSecretEdit } from "@/lib/secret-edits";
+import { reportSecretStorage } from "@/lib/secret-storage-status";
 
 const sessionSecrets = new Map<string, string>();
 const generations = new Map<string, number>();
@@ -25,7 +26,13 @@ export async function storeSecret(account: string, secret: string): Promise<void
   bump(account);
   sessionSecrets.set(account, secret);
   const previous = await storedValue(account);
-  await persistSecret(account, secret);
+  try {
+    await persistSecret(account, secret);
+    reportSecretStorage(account, true);
+  } catch (error) {
+    reportSecretStorage(account, false);
+    throw error;
+  }
   if (isTrackedSecret(account) && previous !== secret) recordSecretEdit(account);
 }
 
@@ -60,6 +67,7 @@ export async function loadSecret(account: string): Promise<string | null> {
 export async function deleteSecret(account: string): Promise<void> {
   bump(account);
   sessionSecrets.delete(account);
+  reportSecretStorage(account, true);
   if (!isTrackedSecret(account)) return removeSecret(account);
   const previous = await storedValue(account);
   await removeSecret(account);

@@ -28,7 +28,7 @@ import {
   IconMenuSubContent,
   IconMenuSubTrigger,
 } from "@/components/icon-menu";
-import { Cobweb } from "@/components/seasonal/cobweb";
+import { SeasonalCorner } from "@/components/seasonal/seasonal-corner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenuRadioGroup,
@@ -75,6 +75,7 @@ export function QueryResultWorkbench({
   statusText,
   actions,
   chart,
+  previous = false,
 }: {
   stateKey?: string;
   result: QueryResult | null;
@@ -84,6 +85,7 @@ export function QueryResultWorkbench({
   statusText?: string | null;
   actions?: ReactNode;
   chart?: ResultChartBinding;
+  previous?: boolean;
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
@@ -140,7 +142,7 @@ export function QueryResultWorkbench({
   if (!result)
     return (
       <div className="relative flex h-full items-center justify-center bg-muted/10 p-8">
-        <Cobweb className="size-24 text-foreground/20" />
+        <SeasonalCorner className="size-24 text-foreground/20" />
         <div className="max-w-sm space-y-3 text-center">
           <div className="mx-auto flex size-10 items-center justify-center rounded-lg border bg-background font-mono text-lg text-muted-foreground">
             ↳
@@ -185,7 +187,13 @@ export function QueryResultWorkbench({
           )}
         >
           <span className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")} />
-          {isLoading ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
+          {isLoading
+            ? "Wird ausgeführt"
+            : error
+              ? "Fehlgeschlagen"
+              : previous
+                ? "Vorheriger Lauf"
+                : "Abgeschlossen"}
         </span>
         {statusText && (
           <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">

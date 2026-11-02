@@ -210,3 +210,136 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
   },
   60000,
 );
+
+test.skipIf(!process.env.L8DB_TAB_BROWSER)(
+  "master tab bar keeps its layout when the split is shown, hidden or near the overflow edge",
+  async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const pathname = new URL(request.url).pathname;
+        const file = Bun.file(resolve("dist", pathname.replace(/^\//, "")));
+        return new Response(
+          pathname !== "/" && (await file.exists()) ? file : Bun.file("dist/index.html"),
+        );
+      },
+    });
+    const engine = process.env.L8DB_TAB_BROWSER === "webkit" ? webkit : chromium;
+    const browser = await engine.launch({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 2200, height: 900 } });
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await seedApp(page, 10, { rows: 20, columns: 4 });
+      await page.addInitScript(() => {
+        const keys = Array.from({ length: 8 }, (_, i) => `table_${String(i).padStart(4, "0")}`);
+        localStorage.setItem(
+          "l8db.table-tabs",
+          JSON.stringify({
+            version: 4,
+            state: {
+              tabsByConnection: {
+                perf: keys.map((table) => ({ kind: "table", schema: "public", table })),
+              },
+            },
+          }),
+        );
+        const [first, second] = keys.map((table) => `table:public.${table}`);
+        localStorage.setItem(
+          "l8db.split-view",
+          JSON.stringify({
+            version: 0,
+            state: {
+              byConnection: {
+                perf: { version: 2, panes: [first, second], paneTabs: [[first], [second]] },
+              },
+            },
+          }),
+        );
+      });
+      await page.goto(`http://localhost:${server.port}/tables/public/table_0000`);
+      await page.locator("[data-pane-strip='1'] [data-tab-key]").first().waitFor();
+      await page.waitForTimeout(500);
+      const bar = () =>
+        page.evaluate(() => {
+          const box = (selector: string) => {
+            const rect = document.querySelector(selector)?.getBoundingClientRect();
+            return rect ? [Math.round(rect.left), Math.round(rect.width)] : null;
+          };
+          return {
+            chip: box("button[aria-label^='Geteilte Ansicht']"),
+            tab: box("nav[aria-label='Geöffnete Objekte'] [data-tab-key]"),
+            nav: box("nav[aria-label='Geöffnete Objekte']"),
+            menu: box("button[aria-label^='Weitere geöffnete Objekte']"),
+          };
+        });
+      const shown = await bar();
+      await page
+        .locator(
+          "nav[aria-label='Geöffnete Objekte'] [data-tab-key='table:public.table_0003'] > button[title]",
+        )
+        .click();
+      await page.waitForFunction(() => !document.querySelector("[data-pane-strip]"));
+      await page.waitForTimeout(300);
+      expect(await bar()).toEqual(shown);
+      await page
+        .locator("button[aria-label^='Geteilte Ansicht']")
+        .locator("xpath=..")
+        .locator("button")
+        .first()
+        .click();
+      await page.locator("[data-pane-strip='1']").waitFor();
+      await page.waitForTimeout(300);
+      expect(await bar()).toEqual(shown);
+
+      const slack = await page.evaluate(() => {
+        const plus = document.querySelector("button[aria-label='Neue Abfrage öffnen']");
+        const split = document.querySelector("button[aria-label='Ansicht teilen']");
+        return Math.round(
+          (split?.getBoundingClientRect().left ?? 0) - (plus?.getBoundingClientRect().right ?? 0),
+        );
+      });
+      expect(slack).toBeGreaterThan(40);
+      const flicker: string[] = [];
+      const chipWidths = new Set<number>();
+      for (let width = 2200 - slack + 8; width >= 2200 - slack - 40; width -= 1) {
+        await page.setViewportSize({ width, height: 900 });
+        const sample = await page.evaluate(
+          () =>
+            new Promise<{ toggles: number; chip: number }>((resolve) => {
+              let frames = 0;
+              let toggles = 0;
+              let last: boolean | null = null;
+              const tick = () => {
+                const menu = Boolean(
+                  document.querySelector("button[aria-label^='Weitere geöffnete Objekte']"),
+                );
+                if (frames > 3 && last !== null && menu !== last) toggles++;
+                last = menu;
+                if (++frames < 20) requestAnimationFrame(tick);
+                else
+                  resolve({
+                    toggles,
+                    chip: Math.round(
+                      document
+                        .querySelector("button[aria-label^='Geteilte Ansicht']")
+                        ?.parentElement?.getBoundingClientRect().width ?? 0,
+                    ),
+                  });
+              };
+              requestAnimationFrame(tick);
+            }),
+        );
+        chipWidths.add(sample.chip);
+        if (sample.toggles > 0) flicker.push(`${width}px: ${sample.toggles}`);
+      }
+      expect(flicker).toEqual([]);
+      expect([...chipWidths]).toHaveLength(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+      server.stop(true);
+    }
+  },
+  90000,
+);

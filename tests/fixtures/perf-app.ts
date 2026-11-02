@@ -44,6 +44,19 @@ export async function seedApp(
         rowCount <= 10_000 ? Array.from({ length: rowCount }, (_, row) => rowAt(row)) : [];
       const invoke = async (command: string, args: Record<string, unknown> | undefined) => {
         switch (command) {
+          case "organization_policy":
+            return {
+              managed: false,
+              path: "/etc/l8db/policy.json",
+              organization: "",
+              support: "",
+              settings: {},
+              allowAi: true,
+              allowExtensions: true,
+              allowPersonalSync: true,
+              allowMcp: true,
+              connections: [],
+            };
           case "list_databases":
             return ["l8db_perf"];
           case "list_schemas":
