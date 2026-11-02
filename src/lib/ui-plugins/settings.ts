@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type UiPluginOptionValue = string | number | boolean;
@@ -59,6 +60,7 @@ export const useUiPluginSettings = create<UiPluginSettingsState>()(
     }),
     {
       name: "l8db.ui-plugins",
+      storage: createSafeJsonStorage(),
       version: 1,
       partialize: (state) => ({
         disabled: state.disabled,

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 export const SIDEBAR_PANEL_MIN_WIDTH = 240;
 export const SIDEBAR_PANEL_MAX_WIDTH = 512;
@@ -26,6 +27,7 @@ export const useSidebarPanel = create<SidebarPanelState>()(
     }),
     {
       name: "l8db.sidebarPanel",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({ width: state.width }),
     },
   ),

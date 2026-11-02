@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import { type MultiTarget, multiTarget } from "./run";
 
@@ -87,6 +88,7 @@ export const useMultiTargetGroups = create<MultiTargetGroupsState>()(
     }),
     {
       name: "l8db.multi-target-groups",
+      storage: createSafeJsonStorage(),
       version: 1,
       partialize: (state) => ({ groups: state.groups }),
       merge: (persisted, current) => ({

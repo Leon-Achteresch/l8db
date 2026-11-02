@@ -29,7 +29,7 @@ interface QueryHistoryState {
 
 export const DEFAULT_HISTORY_LIMIT = 500;
 export const MAX_HISTORY_SQL_LENGTH = 200000;
-export const MAX_HISTORY_TOTAL_SQL_LENGTH = 2_000_000;
+export const MAX_HISTORY_TOTAL_SQL_LENGTH = 500_000;
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

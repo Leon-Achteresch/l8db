@@ -16,6 +16,7 @@ import { VersioningGit } from "./versioning-git";
 import { VersioningHeader } from "./versioning-header";
 import { VersioningRepositoryPopover } from "./versioning-repository-popover";
 import "./versioning.css";
+import { safeSetItem } from "@/lib/buffered-storage";
 
 const AREA_KEY = "l8db.versioning.area";
 
@@ -35,7 +36,7 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
     if (next === area) return;
     if (workspace.dirty) blocked();
     else {
-      localStorage.setItem(AREA_KEY, next);
+      safeSetItem(localStorage, AREA_KEY, next);
       setArea(next);
     }
   };

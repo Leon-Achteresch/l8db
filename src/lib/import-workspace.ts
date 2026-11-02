@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { CsvColumnMapping, CsvEmptyFieldMode, ImportTargetColumn } from "@/lib/csv-import";
 import type { CsvImportOutcome, ImportFormat, ImportPreview } from "@/lib/db";
 
@@ -87,6 +88,7 @@ export const useImportWorkspace = create<ImportWorkspace>()(
     }),
     {
       name: "l8db.import-workspace",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         sql: Object.fromEntries(
           Object.entries(state.sql).map(([key, draft]) => [

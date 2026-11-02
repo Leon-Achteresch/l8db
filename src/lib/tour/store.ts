@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { useSettingsStore } from "@/lib/settings";
 
 interface TourState {
@@ -117,6 +118,7 @@ export const useTourStore = create<TourState>()(
     }),
     {
       name: "l8db.tour",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         active: state.active,
         chapterIndex: state.chapterIndex,

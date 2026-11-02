@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface Snippet {
@@ -169,6 +170,7 @@ export const useSnippetsStore = create<SnippetsState>()(
     }),
     {
       name: "l8db.snippets",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({ snippets: state.snippets }),
     },
   ),

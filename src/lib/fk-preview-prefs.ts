@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 interface FkPreviewPrefsState {
   pinned: Record<string, string[]>;
@@ -22,7 +23,7 @@ export const useFkPreviewPrefs = create<FkPreviewPrefsState>()(
           return { pinned };
         }),
     }),
-    { name: "l8db.fk-preview" },
+    { name: "l8db.fk-preview", storage: createSafeJsonStorage() },
   ),
 );
 

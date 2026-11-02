@@ -32,6 +32,13 @@ Object.defineProperty(globalThis, "localStorage", { configurable: true, value: s
 
 const { finishTask, startTask, updateTask, useTasksStore } = await import("../src/lib/tasks");
 const { useQueryHistoryStore } = await import("../src/lib/query-history");
+const { createChangedOnlyJsonStorage, createSafeJsonStorage } = await import(
+  "../src/lib/buffered-storage"
+);
+const { create } = await import("zustand");
+const { persist } = await import("zustand/middleware");
+const { toast } = await import("sonner");
+const toastError = spyOn(toast, "error").mockImplementation(() => "");
 const warn = spyOn(console, "warn").mockImplementation(() => {});
 
 function seed(count: number) {
@@ -57,6 +64,7 @@ beforeEach(() => {
 
 afterAll(() => {
   warn.mockRestore();
+  toastError.mockRestore();
   Object.defineProperty(window, "localStorage", { configurable: true, value: originalWindow });
   if (originalGlobal) Object.defineProperty(globalThis, "localStorage", originalGlobal);
   else Reflect.deleteProperty(globalThis, "localStorage");
@@ -147,4 +155,28 @@ test("recording query history on a full localStorage does not fail the query", (
   expect(useQueryHistoryStore.getState().entries.length).toBe(before + 1);
   expect(backing.data.get("l8db.query-history")).toBe("previous");
   expect(warn).toHaveBeenCalled();
+});
+
+test("plain persisted stores keep writing normally and survive a full localStorage", () => {
+  const safe = create<{ n: number }>()(
+    persist(() => ({ n: 0 }), { name: "qa.safe", storage: createSafeJsonStorage() }),
+  );
+  const changed = create<{ n: number }>()(
+    persist(() => ({ n: 0 }), { name: "qa.changed", storage: createChangedOnlyJsonStorage() }),
+  );
+  safe.setState({ n: 1 });
+  changed.setState({ n: 1 });
+  expect(backing.data.get("qa.safe")).toBe(JSON.stringify({ state: { n: 1 }, version: 0 }));
+  expect(backing.data.get("qa.changed")).toBe(JSON.stringify({ state: { n: 1 }, version: 0 }));
+
+  backing = quotaStorage(0);
+  for (let n = 2; n <= 50; n++) {
+    expect(() => safe.setState({ n })).not.toThrow();
+    expect(() => changed.setState({ n })).not.toThrow();
+  }
+
+  expect(safe.getState().n).toBe(50);
+  expect(changed.getState().n).toBe(50);
+  expect(warn).toHaveBeenCalled();
+  expect(toastError.mock.calls.length).toBeLessThanOrEqual(1);
 });
