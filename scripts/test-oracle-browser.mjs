@@ -89,6 +89,7 @@ try {
     "tests/oracle-query-browser.test.ts",
     "tests/oracle-objects-browser.test.ts",
     "tests/oracle-compare-browser.test.ts",
+    "tests/oracle-transfer-browser.test.ts",
   ]);
   const [code] = await once(tests, "exit");
   if (code !== 0) process.exitCode = code ?? 1;

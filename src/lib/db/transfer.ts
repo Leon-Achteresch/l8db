@@ -64,6 +64,7 @@ export interface TransferStatement {
   objectType?: string | null;
   schema?: string | null;
   name?: string | null;
+  optional?: boolean;
 }
 
 export interface TransferColumn {
@@ -111,6 +112,8 @@ export interface TransferPlan {
   manual: TransferManualObject[];
   warnings: string[];
   conflicts: string[];
+  replace: boolean;
+  replaced: string[];
 }
 
 export interface TransferOutcome {
@@ -141,7 +144,12 @@ export interface TransferProgress {
 export async function planTransfer(
   kind: DatabaseKind,
   connectionString: string,
-  request: { source: TransferEndpoint; schemas: TransferSchemaPair[]; foldNames: boolean },
+  request: {
+    source: TransferEndpoint;
+    schemas: TransferSchemaPair[];
+    foldNames: boolean;
+    replace: boolean;
+  },
   database?: string,
 ): Promise<TransferPlan> {
   return invoke("plan_transfer", { kind, connectionString, database, request });
