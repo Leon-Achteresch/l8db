@@ -210,7 +210,16 @@ function registryIndex(registry: SqlObjectRegistry): RegistryIndex {
   return index;
 }
 
+const generalColumns = new WeakMap<RegistryIndex, { key: string; items: Suggestion[] }>();
+
+export function prepareCompletions(registry: SqlObjectRegistry): void {
+  registryIndex(registry);
+}
+
 function generalColumnSuggestions(index: RegistryIndex, referenced: Set<string>): Suggestion[] {
+  const key = [...referenced].join("\0");
+  const cached = generalColumns.get(index);
+  if (cached?.key === key) return cached.items;
   const out: Suggestion[] = [];
   const touched = new Set<string>();
   for (const table of referenced) {
@@ -227,6 +236,7 @@ function generalColumnSuggestions(index: RegistryIndex, referenced: Set<string>)
     const rest = group.columns.filter((column) => !referenced.has(column.table.toLowerCase()));
     if (rest.length > 0) out.push(sharedColumnSuggestion(rest, index.dialect));
   }
+  generalColumns.set(index, { key, items: out });
   return out;
 }
 

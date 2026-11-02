@@ -1,12 +1,18 @@
 import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { afterPaint } from "@/lib/after-paint";
 import { type SavedConnection, useActiveConnection } from "@/lib/connections";
 import { listAllColumns } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { monaco } from "@/lib/monaco";
 import { useAllSchemaObjectsQuery, useSchemasQuery } from "@/lib/queries";
-import { EMPTY_REGISTRY, type SqlObjectRegistry, type SymbolTarget } from "@/lib/sql-intellisense";
+import {
+  EMPTY_REGISTRY,
+  prepareCompletions,
+  type SqlObjectRegistry,
+  type SymbolTarget,
+} from "@/lib/sql-intellisense";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { symbolAt } from "./providers";
 import { openSymbolTarget } from "./symbols";
@@ -34,6 +40,14 @@ export const attached = new WeakSet<monaco.editor.ITextModel>();
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 
 let gotoModel: monaco.editor.ITextModel | null = null;
+let attachedEditors = 0;
+
+function prepareAfterPaint() {
+  if (attachedEditors === 0) return;
+  afterPaint(() => {
+    if (attachedEditors > 0) prepareCompletions(ctx.registry);
+  });
+}
 
 export function gotoUri(target: SymbolTarget): monaco.Uri {
   const uri = monaco.Uri.from({ scheme: "l8db", path: "/goto", query: JSON.stringify(target) });
@@ -49,6 +63,8 @@ export function attachSqlIntellisense(
 ): monaco.IDisposable {
   const model = editor.getModel();
   if (model) attached.add(model);
+  attachedEditors++;
+  prepareAfterPaint();
   const mouse = editor.onMouseUp((e) => {
     if (!(e.event.ctrlKey || e.event.metaKey)) return;
     const ctrlOnMac = IS_MAC && e.event.ctrlKey && !e.event.metaKey;
@@ -71,6 +87,7 @@ export function attachSqlIntellisense(
     dispose() {
       mouse.dispose();
       menu.dispose();
+      attachedEditors--;
       if (model) attached.delete(model);
     },
   };
@@ -111,5 +128,6 @@ export function useSqlIntellisenseSync(): void {
       queryClient,
       navigate,
     };
+    prepareAfterPaint();
   }, [connection, database, queryClient, navigate, objects, schemas, columns]);
 }
