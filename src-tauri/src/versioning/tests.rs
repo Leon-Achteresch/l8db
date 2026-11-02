@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn separator_banner_is_not_a_conflict_marker() {
+    assert!(!has_conflict_markers("/*\n=======\n*/\nSELECT 1"));
+    assert!(has_conflict_markers("<<<<<<< a\nx\n=======\ny\n>>>>>>> b"));
+}
+
+#[test]
+fn git_errors_get_german_hints() {
+    assert!(
+        git_spawn_error(std::io::Error::from(std::io::ErrorKind::NotFound))
+            .starts_with("Git wurde nicht gefunden")
+    );
+    let auth =
+        git_error("fatal: could not read Username for 'https://x': terminal prompts disabled\n");
+    assert!(auth.starts_with("Anmeldung am Remote fehlgeschlagen"));
+    assert!(auth.ends_with("terminal prompts disabled"));
+    assert!(
+        git_error(" ! [rejected] main -> main (non-fast-forward)").starts_with("Der Remote-Branch")
+    );
+    assert_eq!(git_error("fatal: other\n"), "fatal: other");
+}
+
+#[test]
 fn oracle_identity_metadata_is_portable_and_preserves_semantics() {
     let row = serde_json::json!({"generation":"BY DEFAULT","onNull":"NO","options":"START WITH: 1, INCREMENT BY: 1, CACHE_SIZE: 20","sequence":"ISEQ$$_123"});
     let expected = "IDENTITY BY DEFAULT (CACHE_SIZE: 20, INCREMENT BY: 1, START WITH: 1)";
@@ -138,6 +160,7 @@ fn request(repo: &Path, action: &str) -> Request {
         paths: None,
         base: None,
         incoming: None,
+        limit: None,
     }
 }
 
@@ -226,7 +249,8 @@ async fn reads_many_files_and_keeps_the_drift_cache_outside_the_worktree() {
 fn detects_incomplete_merge_markers() {
     assert!(has_conflict_markers("<<<<<<< Aktueller Branch\nours\n"));
     assert!(has_conflict_markers(">>>>>>> Quell-Branch\n"));
-    assert!(has_conflict_markers("=======\r\n"));
+    assert!(has_conflict_markers("||||||| Gemeinsame Basis\r\n"));
+    assert!(!has_conflict_markers("=======\r\n"));
     assert!(!has_conflict_markers("SELECT '<<<<<<<' AS sample;\n"));
 }
 

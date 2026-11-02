@@ -1,4 +1,4 @@
-import { CopyIcon, RocketIcon, TagIcon, TicketIcon, Undo2Icon } from "lucide-react";
+import { CopyIcon, EllipsisIcon, RocketIcon, TagIcon, TicketIcon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -7,6 +7,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { relativeTime } from "@/lib/branching/model";
 import { cn } from "@/lib/utils";
 import { STAGE_LABELS } from "@/lib/versioning/delivery";
@@ -56,15 +62,18 @@ export function VersioningHistoryRow({
       .writeText(commit.id)
       .then(() => toast.success("Commit-Hash kopiert"))
       .catch((cause) => toast.error(String(cause)));
+  const releaseActions = releases.filter(
+    (release) => onRollout || (onOpen && canRollback(release)),
+  );
   return (
-    <li>
+    <li className="flex items-center">
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <button
             type="button"
             onClick={releases[0] && onOpen ? () => onOpen(releases[0]) : undefined}
             className={cn(
-              "flex w-full items-center gap-3 pr-4 pl-2 text-left hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:outline-none data-[state=open]:bg-muted/60",
+              "flex min-w-0 flex-1 items-center gap-3 pr-4 pl-2 text-left hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:outline-none data-[state=open]:bg-muted/60",
               !releases.length && "cursor-default",
             )}
             style={{ height: ROW }}
@@ -225,6 +234,36 @@ export function VersioningHistoryRow({
             ))}
         </ContextMenuContent>
       </ContextMenu>
+      {releaseActions.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="mr-2 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+            aria-label={`Aktionen für ${releaseActions.map((release) => release.id).join(", ")}`}
+          >
+            <EllipsisIcon className="size-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {releaseActions.map((release) => (
+              <div key={release.id}>
+                {onRollout && (
+                  <DropdownMenuItem onSelect={() => onRollout(release)}>
+                    <RocketIcon />
+                    {release.id} ausrollen…
+                  </DropdownMenuItem>
+                )}
+                {onOpen && canRollback(release) && (
+                  <DropdownMenuItem onSelect={() => onOpen(release)}>
+                    <Undo2Icon />
+                    Auf {release.id} zurücknehmen…
+                  </DropdownMenuItem>
+                )}
+              </div>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <span className="mr-2 size-6 shrink-0" />
+      )}
     </li>
   );
 }

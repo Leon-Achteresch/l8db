@@ -8,7 +8,7 @@ export interface MergeConflict {
 
 const conflictPattern =
   /^<<<<<<< [^\r\n]*\r?\n([\s\S]*?)^\|\|\|\|\|\|\| [^\r\n]*\r?\n([\s\S]*?)^=======\r?\n([\s\S]*?)^>>>>>>> [^\r\n]*(?:\r?\n|$)/gm;
-const markerPattern = /^(?:<<<<<<< |\|\|\|\|\|\|\| |=======\r?$|>>>>>>> )/m;
+const markerPattern = /^(?:<<<<<<< |\|\|\|\|\|\|\| |>>>>>>> )/m;
 
 export function hasMergeMarkers(content: string): boolean {
   return markerPattern.test(content);

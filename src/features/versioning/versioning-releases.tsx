@@ -118,7 +118,10 @@ export function VersioningReleases({
     await refresh();
     setParent(tip.id);
     setTrack(releaseTrack(tip));
-    setId(`${tip.id}-revert`);
+    let revertId = `${tip.id}-revert`;
+    for (let index = 2; releases.some((entry) => entry.id === revertId); index++)
+      revertId = `${tip.id}-revert-${index}`;
+    setId(revertId);
     setCreating(true);
     await generate(tip.id, restored.objects);
   };

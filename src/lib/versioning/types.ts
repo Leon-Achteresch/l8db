@@ -220,6 +220,7 @@ export interface RepositoryRequest {
   paths?: string[];
   base?: string;
   incoming?: string;
+  limit?: number;
 }
 
 export interface RemoteStatus {

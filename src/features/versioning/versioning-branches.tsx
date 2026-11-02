@@ -4,6 +4,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { versioningRepository } from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { type GitGraphCommit, graphLanes, parseGitGraph } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
@@ -28,7 +29,7 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
         if (active) setCommits(parseGitGraph(text));
       })
       .catch((cause) => {
-        if (active) setError(String(cause));
+        if (active) setError(errorMessageOf(cause));
       })
       .finally(() => {
         if (active) setLoading(false);

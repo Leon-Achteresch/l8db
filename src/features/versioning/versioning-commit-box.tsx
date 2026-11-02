@@ -33,7 +33,16 @@ export function VersioningCommitBox({
     (ticket) => !message.includes(ticket.key),
   );
   const count = selected.filter((file) => !exclude.includes(file)).length + pending;
-  const canCommit = count > 0 && Boolean(message.trim()) && !workspace.dirty && !workspace.busy;
+  const blockedReason = workspace.busy
+    ? "Vorgang läuft"
+    : workspace.dirty
+      ? "Ungespeicherten Entwurf zuerst speichern oder verwerfen"
+      : count === 0
+        ? "Keine Dateien ausgewählt"
+        : !message.trim()
+          ? "Commit-Nachricht fehlt"
+          : undefined;
+  const canCommit = !blockedReason;
   const committed = `${count} ${count === 1 ? "Änderung" : "Änderungen"} committet`;
   const commit = async (push = false) => {
     const written = prepare ? await prepare() : [];
@@ -108,6 +117,9 @@ export function VersioningCommitBox({
           </DropdownMenuContent>
         </DropdownMenu>
       </ButtonGroup>
+      {open && blockedReason && Boolean(message.trim()) && (
+        <p className="text-[11px] text-muted-foreground">{blockedReason}</p>
+      )}
     </div>
   );
 }
