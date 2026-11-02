@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useActiveConnection, visibleSchemas } from "@/lib/connections";
 import {
   cancelExecution,
+  getSchemaMap,
   getViewDefinition,
   listAllColumns,
   listDatabases,
@@ -88,6 +89,23 @@ export function useTablesQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useSchemaMapQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["schema-map", connection?.id, database, schema],
+    queryFn: () =>
+      getSchemaMap(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        database ?? undefined,
       ),
     enabled: Boolean(connection),
   });

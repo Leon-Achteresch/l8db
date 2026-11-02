@@ -1,13 +1,8 @@
 import { lazy, Suspense } from "react";
 import type { HomeWidget } from "@/lib/home-layout";
-import { ErDiagramWidget } from "./widgets/er-diagram-widget";
-import { MetricsWidget } from "./widgets/metrics-widget";
 import { NoteWidget } from "./widgets/note-widget";
 import { PerformanceWidget } from "./widgets/performance-widget";
 import { QueryWidget } from "./widgets/query-widget";
-import { RecentWidget } from "./widgets/recent-widget";
-import { StorageWidget } from "./widgets/storage-widget";
-import { TablesWidget } from "./widgets/tables-widget";
 
 const ChartWidget = lazy(() =>
   import("./widgets/chart-widget").then(({ ChartWidget }) => ({ default: ChartWidget })),
@@ -23,16 +18,6 @@ export function HomeWidgetContent({
   onChange: (patch: Partial<HomeWidget>) => void;
 }) {
   switch (widget.kind) {
-    case "metrics":
-      return <MetricsWidget />;
-    case "tables":
-      return <TablesWidget />;
-    case "recent":
-      return <RecentWidget connectionId={connectionId} />;
-    case "storage":
-      return <StorageWidget connectionId={connectionId} />;
-    case "er-diagram":
-      return <ErDiagramWidget />;
     case "performance":
       return <PerformanceWidget connectionId={connectionId} />;
     case "chart":

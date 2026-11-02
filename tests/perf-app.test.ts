@@ -122,18 +122,14 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
   async () => {
     const app = await open("/", 'a[data-name="table_0000"]', undefined, 1000);
     try {
-      const schemas = app.page.locator('section[aria-label="Schemas"]');
-      await schemas.locator("button").first().waitFor();
+      const schemas = app.page.locator('nav[aria-label="Schemas"]');
+      await schemas.locator("button[aria-pressed]").first().waitFor();
       expect(await schemas.locator("button").count()).toBeLessThan(30);
-      await schemas.locator("button").first().focus();
-      await app.page.keyboard.press("End");
-      await app.page.waitForFunction(() =>
-        document.activeElement?.textContent?.includes("schema_999"),
-      );
-      await schemas.getByRole("button", { name: /schema_999/ }).click();
+      await schemas.getByRole("combobox", { name: "Weitere Schemas" }).click();
+      await app.page.getByRole("option", { name: "schema_999" }).click();
       await app.page.waitForFunction(() =>
         document
-          .querySelector('section[aria-label="Schemas"] button[aria-current="true"]')
+          .querySelector('nav[aria-label="Schemas"] button[aria-pressed="true"]')
           ?.textContent?.includes("schema_999"),
       );
       expect(app.errors).toEqual([]);
@@ -151,18 +147,16 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       const dom = await app.page.evaluate(() => ({
         sidebarItems: document.querySelectorAll("[data-slot=sidebar-menu-item]").length,
-        overviewRows:
-          document.querySelector('[data-slot="dashboard-table-list"] > div')?.childElementCount ??
-          -1,
+        overviewRows: document.querySelectorAll("[data-atlas-index]").length,
         nodes: document.querySelectorAll("*").length,
       }));
       console.log(
-        `perf dom: ${dom.sidebarItems} Sidebar-Einträge, ${dom.overviewRows} Übersichtszeilen, ${dom.nodes} Knoten`,
+        `perf dom: ${dom.sidebarItems} Sidebar-Einträge, ${dom.overviewRows} Kartenkacheln, ${dom.nodes} Knoten`,
       );
       expect(dom.sidebarItems).toBeGreaterThan(0);
       expect(dom.sidebarItems).toBeLessThan(120);
       expect(dom.overviewRows).toBeGreaterThan(0);
-      expect(dom.overviewRows).toBeLessThan(60);
+      expect(dom.overviewRows).toBeLessThanOrEqual(180);
       expect(dom.nodes).toBeLessThan(6000);
       await app.page
         .locator('button[data-tour="sidebar-connection"] span[aria-hidden] svg')
@@ -174,12 +168,17 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expectFrame(sidebarScroll.fps).toBeGreaterThan(MIN_FPS);
       expectFrame(sidebarScroll.p95).toBeLessThan(MAX_P95_MS);
 
-      const overviewScroll = await measure("overview-scroll", app.page, async () => {
-        await app.page.locator('[data-slot="dashboard-table-list"]').first().hover();
-        for (let step = 0; step < 40; step++) {
-          await app.page.mouse.wheel(0, step % 10 < 5 ? 200 : -200);
-          await app.page.waitForTimeout(16);
-        }
+      const overviewScroll = await measure("overview-atlas-hover", app.page, async () => {
+        const box = await app.page
+          .locator('fieldset[aria-label^="Tabellenkarte"]')
+          .boundingBox();
+        if (!box) throw new Error("Tabellenkarte fehlt");
+        for (let step = 0; step < 40; step++)
+          await app.page.mouse.move(
+            box.x + (((step * 97) % 100) / 100) * box.width,
+            box.y + (((step * 61) % 100) / 100) * box.height,
+            { steps: 2 },
+          );
       });
       expectFrame(overviewScroll.fps).toBeGreaterThan(MIN_FPS);
       expectFrame(overviewScroll.p95).toBeLessThan(MAX_P95_MS);
