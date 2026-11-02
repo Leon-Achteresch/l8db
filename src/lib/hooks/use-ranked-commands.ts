@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
-import { scoreNeedle, sortScored } from "@/lib/command-score";
+import { commandNeedle, scoreNeedle, sortScored } from "@/lib/command-score";
 
 const SLICE_MS = 3;
 
@@ -16,7 +16,7 @@ export function useRankedCommands<T extends { label: string; group?: string; key
   const immediate = useMemo(() => ({ query, list: limit(items, max) }), [items, query, max]);
 
   useEffect(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = commandNeedle(query);
     if (!needle) {
       setResult(null);
       return;

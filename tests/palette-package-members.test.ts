@@ -115,6 +115,22 @@ test("Package-Funktionssuche bleibt bei 40.000 Funktionen schnell und begrenzt",
   console.info(`package member search: median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms`);
   expect(median).toBeLessThan(150);
   expect(p95).toBeLessThan(300);
+  const coldStarted = performance.now();
+  rankCommands(build(), "größe");
+  const cold = performance.now() - coldStarted;
+  const folded: number[] = [];
+  for (let run = 0; run < 15; run++) {
+    const started = performance.now();
+    rankCommands(items, "schließen");
+    folded.push(performance.now() - started);
+  }
+  folded.sort((left, right) => left - right);
+  const foldedMedian = folded[Math.floor(folded.length / 2)];
+  console.info(
+    `package member umlaut search: cold ${cold.toFixed(1)} ms, median ${foldedMedian.toFixed(1)} ms`,
+  );
+  expect(cold).toBeLessThan(300);
+  expect(foldedMedian).toBeLessThan(150);
   expect(results).toHaveLength(8);
   expect(results.filter((item) => item.parentId)).toHaveLength(4);
   expect(search(items, "pkg", 60).length).toBeLessThanOrEqual(120);
