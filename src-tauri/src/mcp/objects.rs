@@ -282,6 +282,93 @@ async fn routines(
     out
 }
 
+fn parse_relations(kind: DatabaseKind, rows: Vec<Vec<String>>) -> Vec<Relation> {
+    rows.into_iter()
+        .filter_map(|row| {
+            let kind = relation_kind(kind, &row[2])?;
+            let comment = Some(row[5].trim())
+                .filter(|text| !text.is_empty() && !(kind == Kind::View && *text == "VIEW"))
+                .map(|text| text.chars().take(500).collect());
+            Some(Relation {
+                schema: row[0].clone(),
+                name: row[1].clone(),
+                kind,
+                rows: int(&row[3]),
+                bytes: int(&row[4]).filter(|bytes| *bytes > 0),
+                comment,
+            })
+        })
+        .collect()
+}
+
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub(crate) struct SchemaMapTable {
+    pub name: String,
+    pub rows: Option<i64>,
+    pub bytes: Option<i64>,
+    pub comment: Option<String>,
+}
+
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub(crate) struct SchemaMapLink {
+    pub from: [String; 2],
+    pub to: [String; 2],
+}
+
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub(crate) struct SchemaMap {
+    pub tables: Vec<SchemaMapTable>,
+    pub links: Vec<SchemaMapLink>,
+}
+
+pub(crate) fn schema_map_supported(kind: DatabaseKind) -> bool {
+    relations_sql(kind, &["x".into()], &["x".into()]).is_some() || bulk_query(kind).is_some()
+}
+
+pub(crate) async fn schema_map(
+    adapter: &dyn DatabaseAdapter,
+    kind: DatabaseKind,
+    schema: &str,
+) -> Result<SchemaMap, String> {
+    let scope = [schema.to_string()];
+    let tables = match relations_sql(kind, &scope, &scope) {
+        Some(sql) => parse_relations(kind, fetch(adapter, &sql).await?)
+            .into_iter()
+            .filter(|relation| relation.kind != Kind::View && relation.schema == schema)
+            .map(|relation| SchemaMapTable {
+                name: relation.name,
+                rows: relation.rows,
+                bytes: relation.bytes,
+                comment: relation.comment,
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    let links = match bulk_query(kind) {
+        Some(sql) => {
+            count();
+            adapter
+                .execute_query(sql)
+                .await
+                .map(|result| schema_links(edges_from(keys_from(&result)), schema))
+                .unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
+    Ok(SchemaMap { tables, links })
+}
+
+fn schema_links(edges: Vec<super::insight::Edge>, schema: &str) -> Vec<SchemaMapLink> {
+    edges
+        .into_iter()
+        .filter(|edge| edge.from.0 == schema || edge.to.0 == schema)
+        .map(|edge| SchemaMapLink {
+            from: [edge.from.0, edge.from.1],
+            to: [edge.to.0, edge.to.1],
+        })
+        .collect()
+}
+
 pub(super) async fn load(
     adapter: &dyn DatabaseAdapter,
     kind: DatabaseKind,
@@ -298,25 +385,7 @@ pub(super) async fn load(
     }
     match relations_sql(kind, schemas, allowlist) {
         Some(sql) => {
-            objects.relations = fetch(adapter, &sql)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|row| {
-                    let kind = relation_kind(kind, &row[2])?;
-                    let comment = Some(row[5].trim())
-                        .filter(|text| !text.is_empty() && !(kind == Kind::View && *text == "VIEW"))
-                        .map(|text| text.chars().take(500).collect());
-                    Some(Relation {
-                        schema: row[0].clone(),
-                        name: row[1].clone(),
-                        kind,
-                        rows: int(&row[3]),
-                        bytes: int(&row[4]).filter(|bytes| *bytes > 0),
-                        comment,
-                    })
-                })
-                .collect();
+            objects.relations = parse_relations(kind, fetch(adapter, &sql).await.unwrap_or_default());
         }
         None => {
             count();

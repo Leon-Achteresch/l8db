@@ -402,6 +402,7 @@ export function SchemaCompareRunDialog({
                 <Button
                   variant="secondary"
                   disabled={statements.length === 0}
+                  disabledReason="Keine Anweisungen im Skript"
                   title={
                     dryRun === "rollback"
                       ? "Skript testweise ausführen und zurückrollen"
@@ -417,6 +418,11 @@ export function SchemaCompareRunDialog({
               <Button
                 variant={dangerous.length > 0 ? "destructive" : "default"}
                 disabled={!confirmed || statements.length === 0}
+                disabledReason={
+                  statements.length === 0
+                    ? "Keine Anweisungen im Skript"
+                    : `Zur Bestätigung den Schemanamen „${result.targetSchema}“ eingeben`
+                }
                 onClick={() => void execute(false)}
               >
                 <PlayIcon className="size-3.5" />

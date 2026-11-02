@@ -247,6 +247,7 @@ export function SchemaCompareView() {
               variant={result ? "outline" : "default"}
               className="h-7 gap-1.5 px-2.5 text-xs"
               disabled={!runnable}
+              disabledReason={problem ?? "Vergleich läuft bereits"}
               onClick={() => void runSchemaCompare()}
             >
               <GitCompareIcon className="size-3.5" />

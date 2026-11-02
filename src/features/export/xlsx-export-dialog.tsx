@@ -264,7 +264,11 @@ export function XlsxExportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Schließen
           </Button>
-          <Button onClick={() => void handleExport()} disabled={busy || Boolean(error)}>
+          <Button
+            onClick={() => void handleExport()}
+            disabled={busy || Boolean(error)}
+            disabledReason={busy ? "Export läuft bereits" : error}
+          >
             {busy && <LoaderIcon className="size-3.5 animate-spin" />}
             Exportieren
           </Button>
