@@ -309,6 +309,42 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
+        "schema_partition_ddl" => crate::db::schema_catalog::schema_partition_ddl(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            a(x, "tables")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "plan_transfer" => crate::db::transfer::plan(
+            &crate::db::transfer::Endpoint {
+                kind: a(x, "kind")?,
+                connection_string: a(x, "connectionString")?,
+                database: a(x, "database")?,
+            },
+            &a(x, "request")?,
+            pool.clone(),
+        )
+        .await
+        .map(|v| json!(v)),
+        "run_transfer" => {
+            let target = crate::db::transfer::Endpoint {
+                kind: a(x, "kind")?,
+                connection_string: a(x, "connectionString")?,
+                database: a(x, "database")?,
+            };
+            let request: crate::db::transfer::RunRequest = a(x, "request")?;
+            crate::db::execution::run(
+                a(x, "options")?,
+                true,
+                crate::db::transfer::run(&target, &request, pool.clone(), &|_| {}),
+            )
+            .await
+            .map(|v| json!(v))
+        }
         "explain_query" => crate::db::commands::explain_query(
             a(x, "kind")?,
             a(x, "connectionString")?,

@@ -7,6 +7,8 @@ use oracle::Row;
 use super::{binds, create_script, fetch, lit, quote, s, view_create_script, OracleAdapter};
 use crate::db::schema_catalog::{attach_dependencies, CatalogObject, DependencyEdge};
 
+const PLAIN_TABLE: &str = "table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' AND table_name NOT IN (SELECT table_name FROM all_nested_tables WHERE owner = :owner)";
+
 const SYSTEM_TYPE_OWNERS: [&str; 6] = ["SYS", "PUBLIC", "MDSYS", "XDB", "CTXSYS", "ORDSYS"];
 
 const DEPENDENT_TYPES: [&str; 10] = [
@@ -345,11 +347,23 @@ impl OracleAdapter {
         if !(tables_wanted || constraints_wanted || indexes_wanted) {
             return Ok(Vec::new());
         }
-        let (meta, (mut constraints, backing), mut columns, mut indexes) = tokio::try_join!(
+        let (meta, (mut constraints, backing), mut columns, mut indexes, nested) = tokio::try_join!(
             self.catalog_table_meta(schema, None),
             self.catalog_constraints(schema, None),
             when(tables_wanted, self.catalog_columns(schema, None)),
             when(indexes_wanted, self.catalog_indexes(schema, None)),
+            async {
+                if !tables_wanted {
+                    return Ok(Vec::new());
+                }
+                self.rows_bound(
+                    "SELECT parent_table_name, parent_table_column, table_name FROM all_nested_tables \
+                     WHERE owner = :owner ORDER BY parent_table_name, table_name"
+                        .to_string(),
+                    scope(schema, None),
+                )
+                .await
+            },
         )?;
         let tables: HashSet<String> = meta.iter().map(|r| s(r, 0)).collect();
         let in_tables = |object: &CatalogObject| {
@@ -372,7 +386,17 @@ impl OracleAdapter {
                     Some((table, c.ddl.strip_prefix(&prefix)?.to_string()))
                 })
                 .collect();
-            out.extend(table_objects(schema, &meta, &columns, &primary_keys));
+            let mut tables = table_objects(schema, &meta, &columns, &primary_keys);
+            for row in &nested {
+                if let Some(table) = tables.iter_mut().find(|t| t.name == s(row, 0)) {
+                    table.ddl.push_str(&format!(
+                        "\nNESTED TABLE {} STORE AS {}",
+                        quote(&s(row, 1)),
+                        quote(&s(row, 2))
+                    ));
+                }
+            }
+            out.extend(tables);
             out.extend(columns);
         }
         if constraints_wanted {
@@ -418,9 +442,14 @@ impl OracleAdapter {
                 format!(
                     "SELECT c.table_name, c.column_name, c.data_type, c.data_type_owner, c.data_length, c.data_precision, \
                         c.data_scale, c.char_length, c.char_used, c.nullable, c.data_default, c.virtual_column, \
-                        c.default_on_null, ic.generation_type, ic.identity_options, c.hidden_column \
+                        c.default_on_null, ic.generation_type, ic.identity_options, c.hidden_column, nn.column_name \
                  FROM all_tab_cols c \
                  LEFT JOIN all_tab_identity_cols ic ON ic.owner = c.owner AND ic.table_name = c.table_name AND ic.column_name = c.column_name \
+                 LEFT JOIN (SELECT DISTINCT k.table_name, kc.column_name FROM all_constraints k \
+                            JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name \
+                            WHERE k.owner = :owner AND k.constraint_type = 'C' \
+                            AND k.search_condition_vc = '\"' || kc.column_name || '\" IS NOT NULL') nn \
+                   ON nn.table_name = c.table_name AND nn.column_name = c.column_name \
                  WHERE c.owner = :owner{} AND c.user_generated = 'YES' AND c.table_name NOT LIKE 'BIN$%' \
                  ORDER BY c.table_name, c.column_id NULLS LAST, c.internal_column_id",
                     only_table("c.table_name", table)
@@ -452,7 +481,7 @@ impl OracleAdapter {
                 let mut object = CatalogObject::new("column", name, Some(s(r, 0)), "")
                     .attr("type", data_type)
                     .attr("nullable", if nullable == "N" { "NO" } else { "YES" });
-                if s(r, 11) == "YES" {
+                if s(r, 11) == "YES" && !default.is_empty() {
                     ddl.push_str(&format!(" GENERATED ALWAYS AS ({default}) VIRTUAL"));
                     object = object.attr("virtual", default);
                 } else if !identity.is_empty() {
@@ -475,7 +504,7 @@ impl OracleAdapter {
                     ddl.push_str(&format!(" DEFAULT {default}"));
                     object = object.attr("default", default);
                 }
-                if nullable == "N" {
+                if nullable == "N" && (!s(r, 16).is_empty() || !s(r, 13).is_empty()) {
                     ddl.push_str(" NOT NULL");
                 }
                 object.ddl = ddl;
@@ -501,7 +530,7 @@ impl OracleAdapter {
                         delete_rule, status, deferrable, deferred, generated, validated, index_owner, index_name \
                  FROM all_constraints \
                  WHERE owner = {owner}{only} AND constraint_type IN ('P', 'U', 'R', 'C') AND table_name NOT LIKE 'BIN$%' \
-                 ORDER BY table_name, constraint_name"
+                 AND {PLAIN_TABLE} ORDER BY table_name, constraint_name"
             ), scope(schema, table)),
         )?;
         let loaded: HashSet<(String, String)> =
@@ -539,6 +568,16 @@ impl OracleAdapter {
             let kind = s(r, 2);
             if matches!(kind.as_str(), "P" | "U") && s(r, 12) == schema {
                 backing.insert(s(r, 13));
+            }
+            if cols
+                .get(&(schema.to_string(), name.clone()))
+                .is_some_and(|(_, columns)| {
+                    columns
+                        .iter()
+                        .any(|c| c.starts_with("SYS_NC") && c.ends_with('$'))
+                })
+            {
+                continue;
             }
             let own = || {
                 columns_list(
@@ -631,11 +670,11 @@ impl OracleAdapter {
             ), scope(schema, table)),
             self.rows_bound(format!(
                 "SELECT index_name, table_name, index_type, uniqueness, generated, ityp_owner, ityp_name, \
-                        parameters, partitioned, tablespace_name \
+                        parameters, partitioned, tablespace_name, visibility \
                  FROM all_indexes \
                  WHERE owner = {owner} AND table_owner = {owner}{only} AND index_type NOT IN ('LOB', 'IOT - TOP', 'CLUSTER') \
                  AND table_name NOT LIKE 'BIN$%' AND index_name NOT LIKE 'BIN$%' AND table_type = 'TABLE' \
-                 AND index_name NOT LIKE 'I\\_SNAP$\\_%' ESCAPE '\\' \
+                 AND index_name NOT LIKE 'I\\_SNAP$\\_%' ESCAPE '\\' AND {PLAIN_TABLE} \
                  ORDER BY index_name"
             ), scope(schema, table)),
         )?;
@@ -683,6 +722,9 @@ impl OracleAdapter {
             }
             if s(r, 8) == "YES" {
                 body.push_str(" LOCAL");
+            }
+            if s(r, 10) == "INVISIBLE" {
+                body.push_str(" INVISIBLE");
             }
             let ddl = format!(
                 "CREATE {kind}INDEX {}.{} {body}",
@@ -923,7 +965,7 @@ impl OracleAdapter {
         let tables = self
             .rows_bound(format!(
                 "SELECT table_name, comments, 'TABLE' FROM all_tab_comments \
-                 WHERE owner = {owner}{only} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' \
+                 WHERE owner = {owner}{only} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' AND {PLAIN_TABLE} \
                  AND table_name NOT IN (SELECT mview_name FROM all_mviews WHERE owner = {owner}) \
                  UNION ALL SELECT mview_name, comments, 'MATERIALIZED VIEW' FROM all_mview_comments \
                  WHERE owner = {owner}{mviews} AND comments IS NOT NULL ORDER BY 1"
@@ -948,7 +990,7 @@ impl OracleAdapter {
         let columns = self
             .rows_bound(format!(
                 "SELECT table_name, column_name, comments FROM all_col_comments \
-                 WHERE owner = {owner}{only} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' ORDER BY table_name, column_name"
+                 WHERE owner = {owner}{only} AND comments IS NOT NULL AND table_name NOT LIKE 'BIN$%' AND {PLAIN_TABLE} ORDER BY table_name, column_name"
             ), scope(schema, table))
             .await?;
         for r in &columns {
