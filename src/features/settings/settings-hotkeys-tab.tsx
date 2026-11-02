@@ -105,7 +105,7 @@ export function SettingsHotkeysTab() {
         </div>
       )}
 
-      <ScrollArea className="max-h-[58vh] w-full overflow-x-clip">
+      <ScrollArea className="max-h-[58vh] w-full overflow-x-clip [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="flex flex-col gap-5 pr-4">
           {groups.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">Keine Treffer</p>
