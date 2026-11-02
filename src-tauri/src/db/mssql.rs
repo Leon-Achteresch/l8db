@@ -810,6 +810,16 @@ fn type_sql(type_name: &str, max_length: i64, precision: i64, scale: i64) -> Str
     }
 }
 
+fn atomic_batch(statements: &[String]) -> Option<String> {
+    if statements.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "SET XACT_ABORT ON; BEGIN TRANSACTION; {}; COMMIT TRANSACTION",
+        statements.join("; ")
+    ))
+}
+
 fn alter_column_type(requested: Option<&str>, current: &str, collation: Option<&str>) -> String {
     let requested = requested.map(str::trim).filter(|t| !t.is_empty());
     let data_type = requested.unwrap_or(current);
@@ -1546,6 +1556,7 @@ impl DatabaseAdapter for MssqlAdapter {
             .into_iter()
             .next()
             .ok_or_else(|| format!("Unbekannte Spalte: {}", changes.old_name))?;
+        let mut statements = Vec::new();
         if changes.data_type.is_some() || changes.set_not_null.is_some() {
             let user_defined = int(&current, 6) == 1;
             let xml_schema = text_opt(&current, 10).map(|name| {
@@ -1594,14 +1605,13 @@ impl DatabaseAdapter for MssqlAdapter {
                 if nullable { "NULL" } else { "NOT NULL" }
             );
             let mask = text_opt(&current, 13).filter(|_| int(&current, 12) == 1);
-            self.exec(&match mask {
-                Some(function) => format!(
-                    "SET XACT_ABORT ON; BEGIN TRANSACTION; {alter}; ALTER TABLE {object} ALTER COLUMN {column} ADD MASKED WITH (FUNCTION = {}); COMMIT TRANSACTION",
+            statements.push(alter);
+            if let Some(function) = mask {
+                statements.push(format!(
+                    "ALTER TABLE {object} ALTER COLUMN {column} ADD MASKED WITH (FUNCTION = {})",
                     lit(&function)
-                ),
-                None => alter,
-            })
-            .await?;
+                ));
+            }
         }
         if changes.drop_default || changes.new_default.is_some() {
             let existing = self
@@ -1612,18 +1622,16 @@ impl DatabaseAdapter for MssqlAdapter {
                 ))
                 .await?;
             for row in existing {
-                self.exec(&format!(
+                statements.push(format!(
                     "ALTER TABLE {object} DROP CONSTRAINT {}",
                     quote(&text(&row, 0))
-                ))
-                .await?;
+                ));
             }
             if let Some(d) = changes.new_default.as_deref().filter(|d| !d.is_empty()) {
-                self.exec(&format!(
+                statements.push(format!(
                     "ALTER TABLE {object} ADD DEFAULT {d} FOR {}",
                     quote(&changes.old_name)
-                ))
-                .await?;
+                ));
             }
         }
         if let Some(new_name) = changes
@@ -1631,12 +1639,14 @@ impl DatabaseAdapter for MssqlAdapter {
             .as_deref()
             .filter(|n| !n.is_empty() && *n != changes.old_name)
         {
-            self.exec(&format!(
+            statements.push(format!(
                 "EXEC sp_rename {}, {}, 'COLUMN'",
                 lit(&format!("{object}.{}", quote(&changes.old_name))),
                 lit(new_name)
-            ))
-            .await?;
+            ));
+        }
+        if let Some(batch) = atomic_batch(&statements) {
+            self.exec(&batch).await?;
         }
         Ok(())
     }
@@ -1996,6 +2006,15 @@ mod catalog;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_changes_run_in_one_transaction() {
+        assert_eq!(super::atomic_batch(&[]), None);
+        assert_eq!(
+            super::atomic_batch(&["A".to_string(), "B".to_string()]).unwrap(),
+            "SET XACT_ABORT ON; BEGIN TRANSACTION; A; B; COMMIT TRANSACTION"
+        );
+    }
 
     #[test]
     fn unreadable_types_are_converted_for_browsing() {
@@ -2535,6 +2554,7 @@ mod tests {
                         set_not_null: Some(false),
                         new_default: None,
                         drop_default: false,
+                        using: None,
                     },
                 )
                 .await
@@ -2552,6 +2572,7 @@ mod tests {
                     set_not_null: None,
                     new_default: None,
                     drop_default: false,
+                    using: None,
                 },
             )
             .await
@@ -2593,6 +2614,7 @@ mod tests {
                         set_not_null: Some(true),
                         new_default: None,
                         drop_default: false,
+                        using: None,
                     },
                 )
                 .await
@@ -2615,6 +2637,7 @@ mod tests {
                     set_not_null: None,
                     new_default: None,
                     drop_default: false,
+                    using: None,
                 },
             )
             .await

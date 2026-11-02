@@ -33,6 +33,17 @@ pub fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+fn new_column_name(name: &str) -> String {
+    let mut chars = name.chars();
+    let plain = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '#'));
+    if plain {
+        name.to_ascii_uppercase()
+    } else {
+        name.to_string()
+    }
+}
+
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
@@ -2989,7 +3000,7 @@ impl DatabaseAdapter for OracleAdapter {
             "ALTER TABLE {}.{} ADD ({} {}",
             quote(schema),
             quote(table),
-            quote(&column.name),
+            quote(&new_column_name(&column.name)),
             column.data_type
         );
         if let Some(d) = column.default_value.as_deref().filter(|d| !d.is_empty()) {
@@ -3021,25 +3032,30 @@ impl DatabaseAdapter for OracleAdapter {
         if let Some(not_null) = changes.set_not_null {
             modify.push(if not_null { "NOT NULL" } else { "NULL" }.to_string());
         }
+        let mut statements = Vec::new();
         if !modify.is_empty() {
-            self.exec(format!(
+            statements.push(format!(
                 "ALTER TABLE {target} MODIFY ({} {})",
                 quote(&changes.old_name),
                 modify.join(" ")
-            ))
-            .await?;
+            ));
         }
         if let Some(new_name) = changes
             .new_name
             .as_deref()
             .filter(|n| !n.is_empty() && *n != changes.old_name)
         {
-            self.exec(format!(
+            statements.push(format!(
                 "ALTER TABLE {target} RENAME COLUMN {} TO {}",
                 quote(&changes.old_name),
-                quote(new_name)
-            ))
-            .await?;
+                quote(&new_column_name(new_name))
+            ));
+        }
+        let total = statements.len();
+        for (applied, sql) in statements.into_iter().enumerate() {
+            self.exec(sql)
+                .await
+                .map_err(|e| super::partially_applied(e, applied, total))?;
         }
         Ok(())
     }
@@ -3940,6 +3956,15 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn plain_new_column_names_follow_oracle_case() {
+        assert_eq!(super::new_column_name("name"), "NAME");
+        assert_eq!(super::new_column_name("order_id$2"), "ORDER_ID$2");
+        assert_eq!(super::new_column_name("Mixed Case"), "Mixed Case");
+        assert_eq!(super::new_column_name("1st"), "1st");
+        assert_eq!(super::new_column_name("größe"), "größe");
+    }
+
     #[test]
     fn script_results_sum_affected_rows_and_report_progress() {
         let dml = |rows| super::QueryResult {
@@ -5202,6 +5227,7 @@ mod tests {
                 set_not_null: Some(false),
                 new_default: Some("'y'".into()),
                 drop_default: false,
+                using: None,
             },
         )
         .await
@@ -5216,6 +5242,7 @@ mod tests {
                 set_not_null: None,
                 new_default: None,
                 drop_default: true,
+                using: None,
             },
         )
         .await

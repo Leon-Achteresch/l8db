@@ -1517,16 +1517,20 @@ pub async fn drop_column(
     schema: String,
     table: String,
     column: String,
+    cascade: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .drop_column(&schema, &table, &column)
-    .await
+    )?;
+    if cascade.unwrap_or(false) {
+        adapter.drop_column_cascade(&schema, &table, &column).await
+    } else {
+        adapter.drop_column(&schema, &table, &column).await
+    }
 }
 
 #[tauri::command]

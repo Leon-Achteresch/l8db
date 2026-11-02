@@ -86,9 +86,11 @@ export function ObjectDropDialog({
     setIsPending(true);
     try {
       await executeObjectDdl(kind, connectionString, request, database ?? undefined);
-      await queryClient.invalidateQueries({ queryKey: ["tables"] });
-      await queryClient.invalidateQueries({ queryKey: ["views"] });
-      await queryClient.invalidateQueries({ queryKey: ["columns"] });
+      await Promise.all(
+        ["tables", "views", "matviews", "columns", "er-schema"].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
       toast.success(`${LABELS[objectType]} ${schema}.${name} wurde gelöscht.`);
       onOpenChange(false);
       onDropped?.();
@@ -110,7 +112,7 @@ export function ObjectDropDialog({
       isLoading={preview.isLoading}
       confirmLabel="Löschen"
       destructive
-      confirmDisabled={confirmName.trim() !== name}
+      confirmDisabled={confirmName !== name}
       isPending={isPending}
       onConfirm={() => void handleConfirm()}
     >

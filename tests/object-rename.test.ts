@@ -52,6 +52,8 @@ test("rename validates empty, unchanged and unsupported names", () => {
   expect(objectRenameIssue("orders", 'bad"name')).not.toBeNull();
   expect(objectRenameIssue("orders", "bad\0name")).not.toBeNull();
   expect(objectRenameIssue("orders", "orders_archiv")).toBeNull();
+  expect(objectRenameIssue("orders", "ä".repeat(31))).toBeNull();
+  expect(objectRenameIssue("orders", "ä".repeat(40))).not.toBeNull();
 });
 
 test("a snippet is delivered once to its original editor after switching tabs", () => {

@@ -71,7 +71,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
         }}
         schema={dropTarget?.schema ?? ""}
         name={dropTarget?.name ?? ""}
-        objectType="view"
+        objectType={type}
         onDropped={() => {
           if (dropTarget && isOpen(dropTarget)) void navigate({ to: "/" });
         }}
@@ -83,14 +83,11 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
           {(index) => {
             const item = filtered[index];
             const rename = caps.object_admin ? () => setRenameTarget(item) : undefined;
-            const drop =
-              type === "view"
-                ? caps.object_admin
-                  ? () => setDropTarget(item)
-                  : undefined
-                : caps.query_language === "redis"
-                  ? undefined
-                  : () => setConfirmAction({ kind: "drop", schema: item.schema, name: item.name });
+            const drop = caps.object_admin
+              ? () => setDropTarget(item)
+              : type === "view" || caps.query_language === "redis"
+                ? undefined
+                : () => setConfirmAction({ kind: "drop", schema: item.schema, name: item.name });
 
             return (
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>

@@ -224,6 +224,8 @@ pub struct AlterColumnRequest {
     pub set_not_null: Option<bool>,
     pub new_default: Option<String>,
     pub drop_default: bool,
+    #[serde(default)]
+    pub using: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -782,6 +784,17 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = table;
         let _ = column;
         Err(unsupported("Spalten löschen"))
+    }
+    async fn drop_column_cascade(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = column;
+        Err(unsupported("DROP COLUMN … CASCADE"))
     }
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {
         let _ = role_name;
@@ -1582,6 +1595,13 @@ pub(crate) fn quote_ident(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+pub(crate) fn partially_applied(error: String, applied: usize, total: usize) -> String {
+    if applied == 0 {
+        return error;
+    }
+    format!("{error}\nTeilweise angewendet: {applied} von {total} Änderungen wurden bereits ausgeführt und nicht zurückgenommen.")
+}
+
 pub(crate) fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
@@ -2105,8 +2125,10 @@ pub fn validate_object_name(name: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Der neue Name darf nicht leer sein.".to_string());
     }
-    if trimmed.chars().count() > 63 {
-        return Err("Der neue Name darf höchstens 63 Zeichen lang sein.".to_string());
+    if trimmed.len() > 63 {
+        return Err(
+            "Der neue Name darf höchstens 63 Bytes lang sein (Umlaute zählen doppelt).".to_string(),
+        );
     }
     if trimmed.contains('"') {
         return Err("Der neue Name darf keine Anführungszeichen enthalten.".to_string());
@@ -2281,6 +2303,8 @@ mod tests {
     fn validate_object_name_trims() {
         assert_eq!(validate_object_name("  neu  ").unwrap(), "neu");
         assert!(validate_object_name(&"x".repeat(64)).is_err());
+        assert!(validate_object_name(&"ä".repeat(31)).is_ok());
+        assert!(validate_object_name(&"ä".repeat(32)).is_err());
     }
 
     #[test]

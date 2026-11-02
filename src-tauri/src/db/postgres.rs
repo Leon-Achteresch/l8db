@@ -276,6 +276,33 @@ impl PostgresAdapter {
         super::execution::guarded(token, &self.ssl, self.session.as_deref(), future).await
     }
 
+    async fn role_password(
+        &self,
+        name: &str,
+        password: Option<&str>,
+    ) -> Result<Option<String>, String> {
+        let Some(password) = password.filter(|p| !p.is_empty()) else {
+            return Ok(None);
+        };
+        let conn = self.get_meta().await?;
+        let row = self
+            .timed(conn.cancel_token(), async {
+                conn.query_one(
+                    "SELECT current_setting('password_encryption'), current_setting('server_version_num')::int",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)
+            })
+            .await?;
+        Ok(Some(hashed_role_password(
+            name,
+            password,
+            row.get::<_, String>(0).as_str(),
+            row.get::<_, i32>(1),
+        )))
+    }
+
     async fn run_ddl(&self, statements: &[String], commit: bool) -> Result<(), String> {
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
@@ -294,6 +321,159 @@ impl PostgresAdapter {
         })
         .await
     }
+}
+
+fn check_pg_identifier(name: &str) -> Result<(), String> {
+    if name.len() > 63 {
+        return Err(format!(
+            "Der Name \"{name}\" ist {} Bytes lang. PostgreSQL erlaubt höchstens 63 Bytes (Umlaute zählen doppelt) und würde ihn sonst kürzen.",
+            name.len()
+        ));
+    }
+    Ok(())
+}
+
+fn hashed_role_password(name: &str, password: &str, encryption: &str, version: i32) -> String {
+    if version >= 100000 && encryption == "scram-sha-256" {
+        postgres_protocol::password::scram_sha_256(password.as_bytes())
+    } else {
+        postgres_protocol::password::md5(password.as_bytes(), name)
+    }
+}
+
+fn create_role_statements(options: &CreateRoleOptions, password: Option<&str>) -> Vec<String> {
+    let mut with_opts = vec![if options.can_login {
+        "LOGIN"
+    } else {
+        "NOLOGIN"
+    }
+    .to_string()];
+    for (enabled, keyword) in [
+        (options.superuser, "SUPERUSER"),
+        (options.create_db, "CREATEDB"),
+        (options.create_role, "CREATEROLE"),
+        (options.replication, "REPLICATION"),
+        (options.bypass_rls, "BYPASSRLS"),
+    ] {
+        if enabled {
+            with_opts.push(keyword.to_string());
+        }
+    }
+    if let Some(limit) = options.conn_limit {
+        with_opts.push(format!("CONNECTION LIMIT {limit}"));
+    }
+    if let Some(password) = password {
+        with_opts.push(format!("PASSWORD {}", quote_literal(password)));
+    }
+    if let Some(valid) = options.valid_until.as_deref().filter(|v| !v.is_empty()) {
+        with_opts.push(format!("VALID UNTIL {}", quote_literal(valid)));
+    }
+    let name = quote_ident(&options.name);
+    let mut statements = vec![format!("CREATE ROLE {name} WITH {}", with_opts.join(" "))];
+    statements.extend(
+        options
+            .member_of
+            .iter()
+            .map(|role| format!("GRANT {} TO {name}", quote_ident(role))),
+    );
+    statements
+}
+
+fn alter_role_statements(options: &AlterRoleOptions, password: Option<&str>) -> Vec<String> {
+    let mut with_opts = Vec::new();
+    for (value, on, off) in [
+        (options.superuser, "SUPERUSER", "NOSUPERUSER"),
+        (options.can_login, "LOGIN", "NOLOGIN"),
+        (options.create_db, "CREATEDB", "NOCREATEDB"),
+        (options.create_role, "CREATEROLE", "NOCREATEROLE"),
+        (options.replication, "REPLICATION", "NOREPLICATION"),
+        (options.bypass_rls, "BYPASSRLS", "NOBYPASSRLS"),
+    ] {
+        if let Some(value) = value {
+            with_opts.push(if value { on } else { off }.to_string());
+        }
+    }
+    if let Some(limit) = options.conn_limit {
+        with_opts.push(format!("CONNECTION LIMIT {limit}"));
+    }
+    if let Some(password) = password {
+        with_opts.push(format!("PASSWORD {}", quote_literal(password)));
+    }
+    if options.clear_valid_until {
+        with_opts.push("VALID UNTIL 'infinity'".to_string());
+    } else if let Some(valid) = options.valid_until.as_deref().filter(|v| !v.is_empty()) {
+        with_opts.push(format!("VALID UNTIL {}", quote_literal(valid)));
+    }
+    let name = quote_ident(&options.name);
+    let mut statements = Vec::new();
+    if !with_opts.is_empty() {
+        statements.push(format!("ALTER ROLE {name} WITH {}", with_opts.join(" ")));
+    }
+    statements.extend(
+        options
+            .grant_roles
+            .iter()
+            .map(|role| format!("GRANT {} TO {name}", quote_ident(role))),
+    );
+    statements.extend(
+        options
+            .revoke_roles
+            .iter()
+            .map(|role| format!("REVOKE {} FROM {name}", quote_ident(role))),
+    );
+    statements
+}
+
+fn alter_column_statements(schema: &str, table: &str, changes: &AlterColumnRequest) -> Vec<String> {
+    let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
+    let col = quote_ident(&changes.old_name);
+    let mut stmts: Vec<String> = Vec::new();
+    if let Some(ref dt) = changes.data_type {
+        let using = changes
+            .using
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty())
+            .map(|u| format!(" USING {u}"))
+            .unwrap_or_default();
+        stmts.push(format!(
+            "ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}{using}"
+        ));
+    }
+    if let Some(not_null) = changes.set_not_null {
+        let action = if not_null { "SET" } else { "DROP" };
+        stmts.push(format!(
+            "ALTER TABLE {tbl} ALTER COLUMN {col} {action} NOT NULL"
+        ));
+    }
+    if changes.drop_default {
+        stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
+    } else if let Some(ref def) = changes.new_default {
+        stmts.push(format!(
+            "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
+        ));
+    }
+    if let Some(ref new_name) = changes.new_name {
+        stmts.push(format!(
+            "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
+            quote_ident(new_name)
+        ));
+    }
+    stmts
+}
+
+fn view_options_clause(options: &[String]) -> String {
+    if options.is_empty() {
+        return String::new();
+    }
+    let options: Vec<String> = options
+        .iter()
+        .map(|option| match option.split_once('=') {
+            Some((key, value)) => format!("{}={}", quote_ident(key), quote_literal(value)),
+            None => quote_ident(option),
+        })
+        .collect();
+    format!(" WITH ({})", options.join(", "))
 }
 
 async fn guarded_transaction(
@@ -1900,10 +2080,26 @@ impl DatabaseAdapter for PostgresAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         self.ensure_writable()?;
+        let conn = self.get_meta().await?;
+        let options: Vec<String> = self
+            .timed(conn.cancel_token(), async {
+                conn.query(
+                    "SELECT unnest(c.reloptions) FROM pg_class c \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'v'",
+                    &[&schema, &view],
+                )
+                .await
+                .map_err(map_pg_err)
+                .map(|rows| rows.iter().map(|r| r.get::<_, String>(0)).collect())
+            })
+            .await?;
+        drop(conn);
         let ddl = format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
+            "CREATE OR REPLACE VIEW {}.{}{} AS {}",
             quote_ident(schema),
             quote_ident(view),
+            view_options_clause(&options),
             body
         );
         self.run_ddl(&[ddl], !dry_run).await
@@ -2232,138 +2428,24 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(conn.cancel_token(), async {
-            let mut parts = vec![format!("CREATE ROLE {}", quote_ident(&options.name))];
-            let mut with_opts = Vec::new();
-
-            if options.can_login {
-                with_opts.push("LOGIN".to_string());
-            } else {
-                with_opts.push("NOLOGIN".to_string());
-            }
-            if options.superuser {
-                with_opts.push("SUPERUSER".to_string());
-            }
-            if options.create_db {
-                with_opts.push("CREATEDB".to_string());
-            }
-            if options.create_role {
-                with_opts.push("CREATEROLE".to_string());
-            }
-            if options.replication {
-                with_opts.push("REPLICATION".to_string());
-            }
-            if options.bypass_rls {
-                with_opts.push("BYPASSRLS".to_string());
-            }
-            if let Some(limit) = options.conn_limit {
-                with_opts.push(format!("CONNECTION LIMIT {limit}"));
-            }
-            if let Some(ref password) = options.password {
-                if !password.is_empty() {
-                    with_opts.push(format!("PASSWORD '{}'", password.replace('\'', "''")));
-                }
-            }
-            if let Some(ref valid) = options.valid_until {
-                if !valid.is_empty() {
-                    with_opts.push(format!("VALID UNTIL '{}'", valid.replace('\'', "''")));
-                }
-            }
-
-            if !with_opts.is_empty() {
-                parts.push(format!("WITH {}", with_opts.join(" ")));
-            }
-
-            let sql = parts.join(" ");
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-
-            for role in &options.member_of {
-                let grant_sql = format!(
-                    "GRANT {} TO {}",
-                    quote_ident(role),
-                    quote_ident(&options.name)
-                );
-                conn.execute(grant_sql.as_str(), &[])
-                    .await
-                    .map_err(map_pg_err)?;
-            }
-
-            Ok(())
-        })
-        .await
+        check_pg_identifier(&options.name)?;
+        let password = self
+            .role_password(&options.name, options.password.as_deref())
+            .await?;
+        self.run_ddl(&create_role_statements(options, password.as_deref()), true)
+            .await
     }
 
     async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(conn.cancel_token(), async {
-            let mut with_opts = Vec::new();
-
-            if let Some(v) = options.superuser {
-                with_opts.push(if v { "SUPERUSER" } else { "NOSUPERUSER" }.to_string());
-            }
-            if let Some(v) = options.can_login {
-                with_opts.push(if v { "LOGIN" } else { "NOLOGIN" }.to_string());
-            }
-            if let Some(v) = options.create_db {
-                with_opts.push(if v { "CREATEDB" } else { "NOCREATEDB" }.to_string());
-            }
-            if let Some(v) = options.create_role {
-                with_opts.push(if v { "CREATEROLE" } else { "NOCREATEROLE" }.to_string());
-            }
-            if let Some(v) = options.replication {
-                with_opts.push(if v { "REPLICATION" } else { "NOREPLICATION" }.to_string());
-            }
-            if let Some(v) = options.bypass_rls {
-                with_opts.push(if v { "BYPASSRLS" } else { "NOBYPASSRLS" }.to_string());
-            }
-            if let Some(limit) = options.conn_limit {
-                with_opts.push(format!("CONNECTION LIMIT {limit}"));
-            }
-            if let Some(ref password) = options.password {
-                if !password.is_empty() {
-                    with_opts.push(format!("PASSWORD '{}'", password.replace('\'', "''")));
-                }
-            }
-            if options.clear_valid_until {
-                with_opts.push("VALID UNTIL 'infinity'".to_string());
-            } else if let Some(ref valid) = options.valid_until {
-                if !valid.is_empty() {
-                    with_opts.push(format!("VALID UNTIL '{}'", valid.replace('\'', "''")));
-                }
-            }
-
-            if !with_opts.is_empty() {
-                let sql = format!(
-                    "ALTER ROLE {} WITH {}",
-                    quote_ident(&options.name),
-                    with_opts.join(" ")
-                );
-                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-
-            for role in &options.grant_roles {
-                let sql = format!(
-                    "GRANT {} TO {}",
-                    quote_ident(role),
-                    quote_ident(&options.name)
-                );
-                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-
-            for role in &options.revoke_roles {
-                let sql = format!(
-                    "REVOKE {} FROM {}",
-                    quote_ident(role),
-                    quote_ident(&options.name)
-                );
-                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-
-            Ok(())
-        })
-        .await
+        let password = self
+            .role_password(&options.name, options.password.as_deref())
+            .await?;
+        let statements = alter_role_statements(options, password.as_deref());
+        if statements.is_empty() {
+            return Ok(());
+        }
+        self.run_ddl(&statements, true).await
     }
 
     async fn drop_role(&self, name: &str) -> Result<(), String> {
@@ -2379,11 +2461,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let sql = format!(
-            "DROP TABLE {}.{} CASCADE",
-            quote_ident(schema),
-            quote_ident(table)
-        );
+        let sql = format!("DROP TABLE {}.{}", quote_ident(schema), quote_ident(table));
         self.run_ddl(&[sql], true).await
     }
 
@@ -2518,6 +2596,7 @@ impl DatabaseAdapter for PostgresAdapter {
         column: &AddColumnRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
+        check_pg_identifier(&column.name)?;
         let mut sql = format!(
             "ALTER TABLE {}.{} ADD COLUMN {} {}",
             quote_ident(schema),
@@ -2541,38 +2620,30 @@ impl DatabaseAdapter for PostgresAdapter {
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
-        let col = quote_ident(&changes.old_name);
-        let mut stmts: Vec<String> = Vec::new();
-        if let Some(ref dt) = changes.data_type {
-            stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}"));
-        }
-        if let Some(not_null) = changes.set_not_null {
-            if not_null {
-                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET NOT NULL"));
-            } else {
-                stmts.push(format!(
-                    "ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"
-                ));
-            }
-        }
-        if changes.drop_default {
-            stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
-        } else if let Some(ref def) = changes.new_default {
-            stmts.push(format!(
-                "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
-            ));
-        }
         if let Some(ref new_name) = changes.new_name {
-            stmts.push(format!(
-                "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
-                quote_ident(new_name)
-            ));
+            check_pg_identifier(new_name)?;
         }
-        self.run_ddl(&stmts, true).await
+        self.run_ddl(&alter_column_statements(schema, table, changes), true)
+            .await
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
+        self.ensure_writable()?;
+        let sql = format!(
+            "ALTER TABLE {}.{} DROP COLUMN {}",
+            quote_ident(schema),
+            quote_ident(table),
+            quote_ident(column)
+        );
+        self.run_ddl(&[sql], true).await
+    }
+
+    async fn drop_column_cascade(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+    ) -> Result<(), String> {
         self.ensure_writable()?;
         let sql = format!(
             "ALTER TABLE {}.{} DROP COLUMN {} CASCADE",
@@ -3058,13 +3129,12 @@ impl DatabaseAdapter for PostgresAdapter {
                      t.tgname, \
                      n.nspname, \
                      c.relname, \
-                     CASE \
-                         WHEN t.tgtype::int & 4 = 4 THEN 'INSERT' \
-                         WHEN t.tgtype::int & 8 = 8 THEN 'DELETE' \
-                         WHEN t.tgtype::int & 16 = 16 THEN 'UPDATE' \
-                         WHEN t.tgtype::int & 32 = 32 THEN 'TRUNCATE' \
-                         ELSE 'UNKNOWN' \
-                     END, \
+                     COALESCE(NULLIF(concat_ws(' OR ', \
+                         CASE WHEN t.tgtype::int & 4 = 4 THEN 'INSERT' END, \
+                         CASE WHEN t.tgtype::int & 16 = 16 THEN 'UPDATE' END, \
+                         CASE WHEN t.tgtype::int & 8 = 8 THEN 'DELETE' END, \
+                         CASE WHEN t.tgtype::int & 32 = 32 THEN 'TRUNCATE' END \
+                     ), ''), 'UNKNOWN'), \
                      CASE \
                          WHEN t.tgtype::int & 2 = 2 THEN 'BEFORE' \
                          WHEN t.tgtype::int & 64 = 64 THEN 'INSTEAD OF' \
@@ -5474,12 +5544,108 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bind_row, bind_wrapped_sql, capped_count, ends_transaction, escape_string_literal,
-        infer_view_foreign_keys, like_pattern, read_only_batch_guard, requalify_outside_literals,
-        routine_ddl_in_pg_temp, session_guards, single_read_statement, source_snippet,
-        PostgresAdapter, SimpleResult,
+        alter_column_statements, alter_role_statements, bind_row, bind_wrapped_sql, capped_count,
+        check_pg_identifier, create_role_statements, ends_transaction, escape_string_literal,
+        hashed_role_password, infer_view_foreign_keys, like_pattern, read_only_batch_guard,
+        requalify_outside_literals, routine_ddl_in_pg_temp, session_guards, single_read_statement,
+        source_snippet, view_options_clause, PostgresAdapter, SimpleResult,
     };
+    use crate::db::{AlterColumnRequest, AlterRoleOptions, CreateRoleOptions};
+
+    #[test]
+    fn identifiers_are_limited_to_63_bytes() {
+        assert!(check_pg_identifier(&"x".repeat(63)).is_ok());
+        assert!(check_pg_identifier(&"ä".repeat(32)).is_err());
+    }
+
+    #[test]
+    fn type_change_uses_optional_using_expression() {
+        let changes = AlterColumnRequest {
+            old_name: "n".into(),
+            new_name: None,
+            data_type: Some("integer".into()),
+            set_not_null: None,
+            new_default: None,
+            drop_default: false,
+            using: Some(" n::integer ".into()),
+        };
+        assert_eq!(
+            alter_column_statements("public", "t", &changes),
+            ["ALTER TABLE \"public\".\"t\" ALTER COLUMN \"n\" TYPE integer USING n::integer"]
+        );
+    }
+
+    #[test]
+    fn role_passwords_are_sent_hashed() {
+        let scram = hashed_role_password("bob", "geheim", "scram-sha-256", 170000);
+        assert!(scram.starts_with("SCRAM-SHA-256$4096:"));
+        assert!(!scram.contains("geheim"));
+        assert_eq!(
+            hashed_role_password("bob", "geheim", "md5", 170000),
+            postgres_protocol::password::md5(b"geheim", "bob")
+        );
+        let create = create_role_statements(
+            &CreateRoleOptions {
+                name: "bob".into(),
+                password: Some("geheim".into()),
+                superuser: false,
+                can_login: true,
+                create_db: false,
+                create_role: false,
+                replication: false,
+                bypass_rls: false,
+                conn_limit: None,
+                valid_until: Some("2030-01-01T00:00:00+01:00".into()),
+                member_of: vec!["readers".into()],
+            },
+            Some("SCRAM-SHA-256$x"),
+        );
+        assert_eq!(
+            create,
+            [
+                "CREATE ROLE \"bob\" WITH LOGIN PASSWORD 'SCRAM-SHA-256$x' VALID UNTIL '2030-01-01T00:00:00+01:00'",
+                "GRANT \"readers\" TO \"bob\"",
+            ]
+        );
+        let alter = alter_role_statements(
+            &AlterRoleOptions {
+                name: "bob".into(),
+                password: None,
+                superuser: None,
+                can_login: Some(false),
+                create_db: None,
+                create_role: None,
+                replication: None,
+                bypass_rls: None,
+                conn_limit: None,
+                valid_until: None,
+                clear_valid_until: false,
+                grant_roles: vec![],
+                revoke_roles: vec!["readers".into()],
+            },
+            None,
+        );
+        assert_eq!(
+            alter,
+            [
+                "ALTER ROLE \"bob\" WITH NOLOGIN",
+                "REVOKE \"readers\" FROM \"bob\"",
+            ]
+        );
+    }
     use crate::db::RowCount;
+
+    #[test]
+    fn view_replace_keeps_reloptions() {
+        assert_eq!(view_options_clause(&[]), "");
+        assert_eq!(
+            view_options_clause(&[
+                "security_invoker=true".to_string(),
+                "check_option=cascaded".to_string()
+            ]),
+            " WITH (\"security_invoker\"='true', \"check_option\"='cascaded')"
+        );
+    }
 
     #[test]
     fn escaped_literal_survives_quotes_and_backslashes_in_any_string_mode() {
