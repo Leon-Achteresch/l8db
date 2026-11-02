@@ -24,12 +24,13 @@ export function parseTableColumns(definition: string): { columns: SnapshotColumn
     .split("\n")
     .filter(Boolean)
     .map((line, index) => {
-      const column = /^\s+(\S+) (.+?) (NOT NULL|NULL)(?: DEFAULT (.*?))?( PRIMARY KEY)?$/.exec(
-        line.trimEnd(),
-      );
+      const column =
+        /^\s+("(?:[^"]|"")+"|\S+) (.+?) (NOT NULL|NULL)(?: DEFAULT (.*?))?( PRIMARY KEY)?$/.exec(
+          line.trimEnd(),
+        );
       if (!column) throw new Error(`Spaltendefinition ist nicht eindeutig: ${line.trim()}`);
       return {
-        name: column[1],
+        name: column[1].startsWith('"') ? column[1].slice(1, -1).replace(/""/g, '"') : column[1],
         data_type: column[2],
         is_nullable: column[3] === "NULL",
         column_default: column[4] ?? null,
@@ -127,6 +128,29 @@ function oracleTablePlan(
   ].filter(Boolean);
 }
 
+function renamedColumns(before: SnapshotColumn[], after: SnapshotColumn[]): Map<string, string> {
+  const renames = new Map<string, string>();
+  for (const column of after) {
+    if (before.some((item) => item.name === column.name)) continue;
+    const old = before.find(
+      (item) =>
+        item.ordinal_position === column.ordinal_position &&
+        !after.some((entry) => entry.name === item.name) &&
+        item.data_type === column.data_type &&
+        item.is_nullable === column.is_nullable &&
+        item.column_default === column.column_default,
+    );
+    if (old) renames.set(old.name, column.name);
+  }
+  return renames;
+}
+
+export function destructiveStatements(statements: string[]): string[] {
+  return statements.filter((statement) =>
+    /^ALTER TABLE\s.*\sDROP\s+(?:COLUMN\s|\()/s.test(statement),
+  );
+}
+
 function tablePlan(
   kind: DatabaseKind,
   baseline: string,
@@ -138,13 +162,29 @@ function tablePlan(
     throw new Error(
       "Tabellenänderungen können hier derzeit nur für PostgreSQL und Oracle sicher erzeugt und geprüft werden.",
     );
-  const before = parseTableColumns(baseline);
+  const original = parseTableColumns(baseline);
   const after = parseTableColumns(draft);
-  const structure = (value: ReturnType<typeof parseTableColumns>) =>
-    kind === "oracle"
-      ? oracleStructure(value.rest)
-      : postgresTableStructure(value.rest, value.columns, table);
-  if (structure(before) !== structure(after))
+  const renames = renamedColumns(original.columns, after.columns);
+  const before = {
+    ...original,
+    columns: original.columns.map((column) => ({
+      ...column,
+      name: renames.get(column.name) ?? column.name,
+    })),
+  };
+  const renameSql = [...renames].map(
+    ([from, to]) =>
+      `ALTER TABLE ${target} RENAME COLUMN ${quoteIdentifier(from, "double")} TO ${quoteIdentifier(to, "double")}${kind === "oracle" ? "" : ";"}`,
+  );
+  const structure = (rest: string, columns: SnapshotColumn[]) =>
+    kind === "oracle" ? oracleStructure(rest) : postgresTableStructure(rest, columns, table);
+  if (
+    structure(original.rest, original.columns) !==
+    structure(after.rest, [
+      ...after.columns,
+      ...original.columns.filter((column) => renames.has(column.name)),
+    ])
+  )
     throw new Error(
       "Änderungen an Constraints, Indizes und Triggern bitte im jeweiligen Objekteditor ausführen. Der Entwurf bleibt erhalten.",
     );
@@ -156,8 +196,9 @@ function tablePlan(
       .join("\n");
   if (primary(before.columns) !== primary(after.columns))
     throw new Error("Primärschlüsseländerungen bitte im Tabelleneditor prüfen und ausführen.");
-  if (kind === "oracle") return oracleTablePlan(target, before.columns, after.columns);
-  const sql: string[] = [];
+  if (kind === "oracle")
+    return [...renameSql, ...oracleTablePlan(target, before.columns, after.columns)];
+  const sql: string[] = [...renameSql];
   for (const column of after.columns) {
     const old = before.columns.find((item) => item.name === column.name);
     if (old)
@@ -217,7 +258,11 @@ export function buildCompareApplyPlan(
     statements = tablePlan(kind, baseline, draft, qualified(side.objectName), side.objectName);
   else if (side.objectType === "view") {
     const body = splitSqlStatements(draft, kind);
-    const text = body.statements[0]?.text.trim().replace(/;\s*$/, "") ?? "";
+    const text =
+      body.statements[0]?.text
+        .replace(/^(?:\s*(?:--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/))*/, "")
+        .trim()
+        .replace(/;\s*$/, "") ?? "";
     const header = VIEW_HEADER.exec(text);
     if (
       body.unterminated ||

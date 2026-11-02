@@ -385,7 +385,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               connection={connections.find((item) => item.id === left.connectionId) ?? null}
               side={left}
               baseline={props.sourceBase ?? leftState.definition}
-              draft={draft}
+              draft={props.draft}
               disabled={blocked}
               targetLabel="Quelle"
               onDiscard={props.onDiscard}
@@ -405,7 +405,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               connection={connections.find((item) => item.id === right.connectionId) ?? null}
               side={right}
               baseline={props.draftBase ?? rightState.definition}
-              draft={draft}
+              draft={props.draft}
               disabled={blocked}
               targetLabel="Ziel"
               onDiscard={props.onDiscard}
