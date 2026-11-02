@@ -114,6 +114,17 @@ export function CompareApplyDialog({
           draft === baseline ||
           busy
         }
+        disabledReason={
+          busy
+            ? "Prüfung läuft bereits"
+            : !connection
+              ? "Keine Zielverbindung ausgewählt"
+              : connection.readOnly
+                ? "Zielverbindung ist schreibgeschützt"
+                : draft === null || draft === baseline
+                  ? "Keine Änderungen im Entwurf"
+                  : undefined
+        }
         onClick={() => void check()}
       >
         <CheckIcon className="size-3" />
@@ -176,6 +187,7 @@ export function CompareApplyDialog({
             )}
             <Button
               disabled={busy || status !== "checked" || checked.current !== fingerprint}
+              disabledReason={busy ? "Wird gerade ausgeführt" : "Entwurf zuerst erfolgreich prüfen"}
               onClick={() => void apply()}
             >
               Bestätigen und ausführen

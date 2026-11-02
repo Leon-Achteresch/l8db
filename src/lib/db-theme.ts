@@ -47,17 +47,6 @@ export function resolveDbTheme(
   return KIND_THEMES[kind ?? "postgres"];
 }
 
-export function themeCssVars(tokens: DbThemeTokens): Record<string, string> {
-  return {
-    "--db-hue": String(tokens.hue),
-    "--db-chroma": String(Math.min(tokens.chroma, 0.045)),
-    "--db-glow": String(Math.min(tokens.glow, 0.05)),
-    "--db-shader-1": tokens.shader[0],
-    "--db-shader-2": tokens.shader[1],
-    "--db-shader-3": tokens.shader[2],
-  };
-}
-
 interface DbThemeState {
   previewKind: DatabaseKind | null;
   previewProvider: string | null;

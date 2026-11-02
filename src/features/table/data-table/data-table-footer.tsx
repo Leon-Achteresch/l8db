@@ -137,6 +137,7 @@ export const DataTableFooter = memo(function DataTableFooter({
               type="button"
               aria-label="Erste Seite"
               title={`Erste Seite (${formatHotkeyDisplay(firstPageHotkey)})`}
+              data-hotkey="grid.firstPage"
               disabled={page === 0}
               onClick={() => onPageChange(0)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -147,6 +148,7 @@ export const DataTableFooter = memo(function DataTableFooter({
               type="button"
               aria-label="Vorherige Seite"
               title={`Vorherige Seite (${formatHotkeyDisplay(prevPageHotkey)})`}
+              data-hotkey="grid.prevPage"
               disabled={page === 0}
               onClick={() => onPageChange(page - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -157,6 +159,7 @@ export const DataTableFooter = memo(function DataTableFooter({
               type="button"
               aria-label="Nächste Seite"
               title={`Nächste Seite (${formatHotkeyDisplay(nextPageHotkey)})`}
+              data-hotkey="grid.nextPage"
               disabled={!hasNextPage}
               onClick={() => onPageChange(page + 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -167,6 +170,7 @@ export const DataTableFooter = memo(function DataTableFooter({
               type="button"
               aria-label="Letzte Seite"
               title={`Letzte Seite (${formatHotkeyDisplay(lastPageHotkey)})`}
+              data-hotkey="grid.lastPage"
               disabled={totalPages == null || page >= totalPages - 1}
               onClick={() => totalPages != null && onPageChange(totalPages - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"

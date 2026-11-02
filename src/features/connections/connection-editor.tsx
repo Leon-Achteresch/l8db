@@ -139,6 +139,9 @@ export function ConnectionEditor({
                 <Button
                   type="button"
                   disabled={busy || !info.driver_status.available}
+                  disabledReason={
+                    busy ? "Vorgang läuft bereits" : "Treiber für diese Datenbank nicht verfügbar"
+                  }
                   onClick={() => {
                     requestAnimationFrame(() => setStep(2));
                   }}

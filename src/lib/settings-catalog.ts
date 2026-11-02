@@ -24,8 +24,35 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     id: "theme",
     tabId: "appearance",
     title: "Erscheinungsbild",
-    description: "Hell, dunkel oder dem System folgen.",
-    keywords: ["theme", "dark", "light", "system", "farbe", "modus", "hell", "dunkel"],
+    description: "Farbschema: hell, dunkel oder dem System folgen.",
+    keywords: [
+      "theme",
+      "dark",
+      "light",
+      "system",
+      "farbe",
+      "modus",
+      "hell",
+      "dunkel",
+      "farbschema",
+    ],
+  },
+  {
+    id: "app-theme",
+    tabId: "appearance",
+    title: "Themes",
+    description:
+      "Je ein Theme für den hellen und den dunklen Modus wählen: linker Kreis hell, rechter Kreis dunkel.",
+    keywords: ["theme", "farbe", "akzent", "rose", "grove", "ocean", "ember", "iris", "graphite"],
+  },
+  {
+    id: "db-themes",
+    tabId: "appearance",
+    title: "Datenbank-Themes",
+    description:
+      "Färbt die Oberfläche passend zur aktiven Datenbank ein. Ausgeschaltet gilt nur das gewählte Theme.",
+    keywords: ["datenbank", "farbe", "akzent", "postgres", "mysql", "theme"],
+    key: "dbThemes",
   },
   {
     id: "filter-operators",
@@ -1026,6 +1053,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     title: "Tastenkürzel",
     description: "Tastenbelegungen für die Befehle der Anwendung anpassen.",
     keywords: ["tastatur", "hotkey", "shortcut"],
+  },
+  {
+    id: "shortcut-hints",
+    tabId: "hotkeys",
+    title: "Tastenkürzel-Tipps",
+    description:
+      "Klickst du öfter auf eine Aktion, die auch ein Tastenkürzel hat, zeigt l8db ab und zu einen kurzen Hinweis. Höchstens alle zehn Minuten und nie für Kürzel, die du schon nutzt.",
+    keywords: ["tipp", "hinweis", "shortcut missed", "key promoter", "lernen", "tastatur"],
+    key: "shortcutHints",
   },
 ];
 

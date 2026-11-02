@@ -211,6 +211,12 @@ export function CsvExportDialog({
               (fullMode && !limitValid) ||
               (needsConfirm && !confirmed)
             }
+            disabledReason={
+              busy
+                ? "Export läuft bereits"
+                : (optionError ??
+                  (fullMode && !limitValid ? "Ungültiges Zeilenlimit" : "Export zuerst bestätigen"))
+            }
           >
             {busy && <LoaderIcon className="size-3.5 animate-spin" />}
             Exportieren

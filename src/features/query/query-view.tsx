@@ -253,6 +253,13 @@ export function QueryView({ tabId }: QueryViewProps) {
             {caps.dml_preview && (
               <DmlPreviewButton
                 disabled={exec.isRunning || !connection || !sql.trim()}
+                disabledReason={
+                  exec.isRunning
+                    ? "Eine Abfrage läuft bereits"
+                    : !connection
+                      ? "Keine Verbindung aktiv"
+                      : "Kein SQL im Editor"
+                }
                 shortcut={shortcutLabel("query.preview")}
                 onPreview={() => void actions.handlePreview()}
               />
@@ -260,6 +267,7 @@ export function QueryView({ tabId }: QueryViewProps) {
             {caps.multi_target_query && (
               <MultiTargetButton
                 disabled={!connection}
+                disabledReason="Keine Verbindung aktiv"
                 running={multiTargetRun.running}
                 onOpen={() => setMultiTargetOpen(true)}
               />

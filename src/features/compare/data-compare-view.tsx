@@ -52,7 +52,12 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" onClick={() => void runCompare()} disabled={!ready || running}>
+        <Button
+          size="sm"
+          onClick={() => void runCompare()}
+          disabled={!ready || running}
+          disabledReason={running ? "Vergleich läuft bereits" : "Quell- und Zieltabelle auswählen"}
+        >
           <MorphIcon
             icon={running ? Loader : Play}
             className={cn("size-3.5", running && "animate-spin")}
@@ -231,7 +236,13 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
                 <ClipboardCopyIcon className="size-3.5" />
                 Kopieren
               </Button>
-              <Button size="sm" variant="outline" onClick={openScript} disabled={!script?.sql}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={openScript}
+                disabled={!script?.sql}
+                disabledReason="Kein Abgleichsskript vorhanden"
+              >
                 <SquareArrowOutUpRightIcon className="size-3.5" />
                 Als Query-Tab
               </Button>

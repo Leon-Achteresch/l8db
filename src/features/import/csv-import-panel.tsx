@@ -51,6 +51,7 @@ export function CsvImportPanel({
     conflict,
     setConflict,
     blocked,
+    blockedReason,
     connection,
     database,
     emptyField,
@@ -378,7 +379,12 @@ export function CsvImportPanel({
                 {targetTable}
               </span>
             )}
-            <Button size="sm" disabled={blocked || running} onClick={() => void handleImport()}>
+            <Button
+              size="sm"
+              disabled={blocked || running}
+              disabledReason={running ? "Import läuft bereits" : blockedReason}
+              onClick={() => void handleImport()}
+            >
               {running ? <Spinner className="size-3.5" /> : <UploadIcon />}
               {running ? "Import läuft…" : "Importieren"}
             </Button>
