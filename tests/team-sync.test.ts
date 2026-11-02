@@ -82,6 +82,12 @@ describe("team connection merge", () => {
     expect(teamConnectionId("https://other.de", "erp")).not.toBe(teamConnectionId(HUB, "erp"));
   });
 
+  test("a duplicate id keeps the first entry and warns", () => {
+    const merge = mergeTeamConnections([], HUB, [erp, { ...erp, name: "ERP doppelt" }]);
+    expect(merge.connections.map((connection) => connection.name)).toEqual(["ERP"]);
+    expect(merge.warnings[0]).toContain("Doppelte id");
+  });
+
   test("keeps local edits and the database user unless the admin changes that field", () => {
     const first = mergeTeamConnections([], HUB, [erp]).connections[0];
     const edited = {

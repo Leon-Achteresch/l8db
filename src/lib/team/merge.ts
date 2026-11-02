@@ -344,8 +344,14 @@ export function mergeTeamConnections(
   const warnings: string[] = [];
   for (const entry of entries) {
     const picked = pick(entry);
-    if (typeof picked === "string") warnings.push(picked);
-    else remote.set(teamConnectionId(hub, picked.id as string), picked);
+    if (typeof picked === "string") {
+      warnings.push(picked);
+      continue;
+    }
+    const key = teamConnectionId(hub, picked.id as string);
+    if (remote.has(key))
+      warnings.push(`Doppelte id „${String(picked.id)}“: späterer Eintrag übersprungen.`);
+    else remote.set(key, picked);
   }
   const removed: string[] = [];
   const retargeted: string[] = [];

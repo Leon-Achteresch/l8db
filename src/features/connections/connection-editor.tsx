@@ -65,6 +65,7 @@ export function ConnectionEditor({
           aria-label="Editor schließen"
           disabled={saving}
           onClick={() => {
+            if (editor.dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
             cancelTest();
             onCancel();
           }}
