@@ -18,7 +18,10 @@ export function ReleaseNotesView() {
           transition={{ layout: SPRING_LAYOUT }}
           className="mt-6 rounded-2xl border border-border/80 bg-card px-5 py-5 shadow-sm"
         >
-          <Markdown source={changelog} />
+          <Markdown
+            source={changelog}
+            className="[&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_3rem]"
+          />
         </motion.div>
       </div>
     </main>
