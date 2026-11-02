@@ -1150,3 +1150,29 @@ tr[data-context-menu-target] > td {
   border-bottom: 2px solid var(--muted-foreground);
   opacity: 0.6;
 }
+
+table[data-grid-layout],
+table[data-grid-layout] > thead,
+table[data-grid-layout] > tbody {
+  display: block;
+}
+
+table[data-grid-layout] > thead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+table[data-grid-layout] > * > tr {
+  display: grid;
+  grid-template-columns: var(--grid-columns);
+}
+
+table[data-grid-layout] > * > tr > :is(td, th) {
+  grid-row: 1;
+  align-content: center;
+}
+
+table[data-grid-layout] > * > tr > :is(td, th)[colspan] {
+  grid-column: 1 / -1;
+}

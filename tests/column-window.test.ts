@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { columnWindowRange } from "../src/lib/column-window";
+import { assignColumnSlots, columnWindowRange } from "../src/lib/column-window";
 
 test("column windows retain only the requested overscan and pinned columns", () => {
   const range = { startIndex: 4, endIndex: 10, overscan: 2, count: 51 };
@@ -22,4 +22,26 @@ test("column windows cover the viewport and retain pinned columns across a wide 
       expect(indices.length).toBeLessThanOrEqual(26);
     }
   }
+});
+
+test("Spalten behalten beim Verschieben ihren Zellplatz und neue Spalten übernehmen freie Plätze", () => {
+  const first = assignColumnSlots([0, 4, 5, 6, 7], new Map());
+  expect([...first]).toEqual([
+    [0, 0],
+    [4, 1],
+    [5, 2],
+    [6, 3],
+    [7, 4],
+  ]);
+  const shifted = assignColumnSlots([0, 6, 7, 8, 9], first);
+  expect([...shifted].sort((a, b) => a[0] - b[0])).toEqual([
+    [0, 0],
+    [6, 3],
+    [7, 4],
+    [8, 1],
+    [9, 2],
+  ]);
+  const grown = assignColumnSlots([0, 6, 7, 8, 9, 10], shifted);
+  expect(grown.get(10)).toBe(5);
+  expect(new Set(grown.values()).size).toBe(grown.size);
 });
