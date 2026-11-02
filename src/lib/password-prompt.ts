@@ -49,28 +49,54 @@ export function needsPassword(connection: SavedConnection): boolean {
   }
 }
 
+interface PasswordRequest {
+  connection: SavedConnection;
+  message: string | null;
+  resolve: (answer: PasswordAnswer | null) => void;
+}
+
+const queue: PasswordRequest[] = [];
+
+function showNext() {
+  usePasswordPrompt.setState(queue[0] ?? { connection: null, message: null, resolve: null });
+}
+
 export function requestPassword(
   connection: SavedConnection,
   message: string | null = null,
+  signal?: AbortSignal,
 ): Promise<PasswordAnswer | null> {
+  if (signal?.aborted) return Promise.resolve(null);
   return new Promise((resolve) => {
-    usePasswordPrompt.setState({
+    const onAbort = () => request.resolve(null);
+    const request: PasswordRequest = {
       connection,
       message,
       resolve: (answer) => {
-        usePasswordPrompt.setState({ connection: null, message: null, resolve: null });
+        const index = queue.indexOf(request);
+        if (index < 0) return;
+        queue.splice(index, 1);
+        signal?.removeEventListener("abort", onAbort);
+        if (index === 0) showNext();
         resolve(answer);
       },
-    });
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    queue.push(request);
+    if (queue.length === 1) showNext();
   });
 }
 
-export async function ensurePassword(id: string, retryMessage?: string): Promise<boolean> {
+export async function ensurePassword(
+  id: string,
+  retryMessage?: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
   const connection = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
   if (!connection) return true;
   if (!retryMessage && !needsPassword(connection)) return true;
   const hadPassword = extractUrlPassword(connection.connectionString) !== null;
-  const answer = await requestPassword(connection, retryMessage ?? null);
+  const answer = await requestPassword(connection, retryMessage ?? null, signal);
   if (!answer) return false;
   const user = answer.user?.trim() ?? "";
   if (user)

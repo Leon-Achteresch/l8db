@@ -4,6 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 import { MultiTargetResults } from "../src/features/query/multi-target/multi-target-results";
+import type { SavedConnection } from "../src/lib/connections";
+import { useConnectionsStore } from "../src/lib/connections/store";
 import type { QueryResult } from "../src/lib/db/types";
 import {
   mergeResults,
@@ -11,6 +13,8 @@ import {
   startMultiTargetRun,
   type TargetRun,
 } from "../src/lib/multi-target";
+import { multiTargetExecutor } from "../src/lib/multi-target/executor";
+import { usePasswordPrompt } from "../src/lib/password-prompt";
 
 const TARGETS = 50;
 const ROWS = 1000;
@@ -202,3 +206,120 @@ test("cancel stops new requests immediately and idle runs leave no background wo
     idleTimers: timers.timeout + timers.interval,
   });
 });
+
+test("password prompts of many connections queue once per connection; cancel withdraws them", async () => {
+  const connectionCount = 200;
+  const databases = 3;
+  const connections: SavedConnection[] = Array.from({ length: connectionCount }, (_, index) => ({
+    id: `pw-${index}`,
+    name: `PW ${index}`,
+    kind: "postgres",
+    connectionString: `postgresql://app@pw-${index}.example.test:5432/app`,
+    sslMode: "prefer",
+  }));
+  const targets = connections.flatMap((connection) =>
+    Array.from({ length: databases }, (_, database) =>
+      multiTarget(connection.id, `db_${database}`),
+    ),
+  );
+  const host = window as unknown as { __TAURI_INTERNALS__?: unknown };
+  const previous = host.__TAURI_INTERNALS__;
+  let queries = 0;
+  let peakQueries = 0;
+  let inFlight = 0;
+  host.__TAURI_INTERNALS__ = {
+    invoke: async (command: string) => {
+      if (command !== "execute_query") return null;
+      queries++;
+      inFlight++;
+      peakQueries = Math.max(peakQueries, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return { columns: ["n"], rows: [{ n: 1 }], rows_affected: null, execution_time_ms: 1 };
+    },
+  };
+  const start = (runs: Map<string, TargetRun>) =>
+    startMultiTargetRun({
+      targets,
+      sql: "SELECT 1",
+      concurrency: 16,
+      perServerLimit: 8,
+      timeoutSeconds: 30,
+      maxRows: 10,
+      executor: multiTargetExecutor(false),
+      onUpdate: (run) => runs.set(run.id, run),
+    });
+  try {
+    useConnectionsStore.setState({ connections });
+    Bun.gc(true);
+    const heapBefore = heapSize();
+    const runs = new Map<string, TargetRun>();
+    const answerMs: number[] = [];
+    const prompted = new Set<string>();
+    let prompts = 0;
+    const started = performance.now();
+    const handle = start(runs);
+    let finished = false;
+    void handle.done.then(() => {
+      finished = true;
+    });
+    while (!finished) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const { connection, resolve } = usePasswordPrompt.getState();
+      if (!connection || !resolve) continue;
+      prompts++;
+      prompted.add(connection.id);
+      const answered = performance.now();
+      resolve({ password: "pw", save: false });
+      answerMs.push(performance.now() - answered);
+    }
+    const totalMs = performance.now() - started;
+    Bun.gc(true);
+    const retainedBytes = heapSize() - heapBefore;
+    answerMs.sort((a, b) => a - b);
+    const median = answerMs[Math.floor(answerMs.length / 2)];
+    const p95 = answerMs[Math.floor(answerMs.length * 0.95)];
+    expect(prompts).toBe(connectionCount);
+    expect(prompted.size).toBe(connectionCount);
+    expect(queries).toBe(connectionCount * databases);
+    expect(peakQueries).toBeLessThanOrEqual(16);
+    expect([...runs.values()].every((run) => run.status === "done")).toBe(true);
+    expect(usePasswordPrompt.getState().connection).toBeNull();
+    expect(p95).toBeLessThan(5);
+    expect(totalMs).toBeLessThan(5_000);
+    expect(retainedBytes).toBeLessThan(16 * 1024 * 1024);
+
+    useConnectionsStore.setState({ connections });
+    queries = 0;
+    const cancelled = new Map<string, TargetRun>();
+    const pending = start(cancelled);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(usePasswordPrompt.getState().connection).not.toBeNull();
+    const cancelStarted = performance.now();
+    pending.cancelAll();
+    await pending.done;
+    const cancelSettleMs = performance.now() - cancelStarted;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(usePasswordPrompt.getState().connection).toBeNull();
+    expect(queries).toBe(0);
+    expect([...cancelled.values()].every((run) => run.status === "cancelled")).toBe(true);
+    expect(pending.stats()).toMatchObject({ active: 0, queued: 0 });
+    expect(cancelSettleMs).toBeLessThan(250);
+
+    await reportScenario("multi-target-password-prompts", {
+      connections: connectionCount,
+      targets: targets.length,
+      prompts,
+      queries: connectionCount * databases,
+      peakQueries,
+      answerToNextPromptMs: { median, p95 },
+      totalMs: Math.round(totalMs),
+      retainedBytes,
+      cancelSettleMs: Math.round(cancelSettleMs),
+      budgets: { answerP95Ms: 5, totalMs: 5_000, retainedBytes: 16 * 1024 * 1024, cancelMs: 250 },
+    });
+  } finally {
+    host.__TAURI_INTERNALS__ = previous;
+    useConnectionsStore.setState({ connections: [] });
+  }
+}, 60_000);
