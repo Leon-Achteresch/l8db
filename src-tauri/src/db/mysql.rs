@@ -29,6 +29,14 @@ pub fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
+pub fn value_lit(value: &str) -> String {
+    if !value.contains('\\') {
+        return lit(value);
+    }
+    let hex: String = value.bytes().map(|b| format!("{b:02X}")).collect();
+    format!("_utf8mb4 X'{hex}'")
+}
+
 struct ColumnDefinition {
     data_type: String,
     nullable: bool,
@@ -1559,6 +1567,12 @@ mod catalog;
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn value_literals_do_not_depend_on_backslash_escapes() {
+        assert_eq!(value_lit("it's"), "'it''s'");
+        assert_eq!(value_lit("a\\b"), "_utf8mb4 X'615C62'");
+    }
 
     #[test]
     fn view_replace_keeps_definer_security_and_check_option() {
