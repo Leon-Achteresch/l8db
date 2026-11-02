@@ -55,7 +55,10 @@ export function formatTableDefinition(input: {
         column.character_maximum_length && !column.data_type.includes("(")
           ? `(${column.character_maximum_length})`
           : "";
-      return `  ${column.name} ${column.data_type}${width} ${nulls}${fallback}${key}`;
+      const name = /^[^\s"]+$/.test(column.name)
+        ? column.name
+        : `"${column.name.replace(/"/g, '""')}"`;
+      return `  ${name} ${column.data_type}${width} ${nulls}${fallback}${key}`;
     }),
   ];
   if (input.constraints.length > 0) {

@@ -5,7 +5,7 @@ export interface DefinitionHunk {
   draftEnd: number;
 }
 
-const MAX_EDITS = 4_000;
+const MAX_EDITS = 1_000;
 
 export function definitionHunks(source: string, draft: string): DefinitionHunk[] {
   const a = source.split("\n");
