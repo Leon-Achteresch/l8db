@@ -1,5 +1,6 @@
 import { Outlet, useChildMatches, useRouterState } from "@tanstack/react-router";
 import { type ReactNode, startTransition, useEffect, useState } from "react";
+import { afterPaint } from "@/lib/after-paint";
 
 export function DeferredOutlet({
   children = (outlet) => outlet,
@@ -10,9 +11,18 @@ export function DeferredOutlet({
   const settled = useRouterState({
     select: (state) => state.status === "idle" && !state.isLoading,
   });
-  const [shown, setShown] = useState(key);
+  const [shown, setShown] = useState<string | null>(null);
 
   useEffect(() => {
+    if (shown === null) {
+      let active = true;
+      afterPaint(() => {
+        if (active) startTransition(() => setShown(key));
+      });
+      return () => {
+        active = false;
+      };
+    }
     if (key !== shown && settled) startTransition(() => setShown(key));
   }, [key, shown, settled]);
 
