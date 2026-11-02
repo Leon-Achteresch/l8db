@@ -1,7 +1,6 @@
 import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
-import { useActiveCapabilities } from "@/lib/db-selection";
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_GRID_COLS,
@@ -12,7 +11,6 @@ import {
   type HomeWidget,
   useHomeLayoutStore,
 } from "@/lib/home-layout";
-import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { HomeWidgetContent } from "./home-widget-content";
 import { HomeWidgetFrame } from "./home-widget-frame";
@@ -20,15 +18,9 @@ import { HomeWidgetFrame } from "./home-widget-frame";
 export function HomeGrid({ connectionId, editing }: { connectionId: string; editing: boolean }) {
   const widgets = useHomeLayoutStore((state) => state.layouts[connectionId] ?? DEFAULT_HOME_LAYOUT);
   const setLayout = useHomeLayoutStore((state) => state.setLayout);
-  const caps = useActiveCapabilities();
-  const easyMode = useSettingsStore((state) => state.easyMode);
   const { width, containerRef, mounted } = useContainerWidth();
   const stacked = width < HOME_STACK_WIDTH;
-  const visible = widgets.filter(
-    (widget) =>
-      (widget.kind !== "storage" || caps.overview) && (widget.kind !== "er-diagram" || !easyMode),
-  );
-  const ordered = stacked ? [...visible].sort((a, b) => a.y - b.y || a.x - b.x) : visible;
+  const ordered = stacked ? [...widgets].sort((a, b) => a.y - b.y || a.x - b.x) : widgets;
   let offset = 0;
   const layout: Layout = ordered.map((widget) => {
     const { minW, minH } = HOME_WIDGETS[widget.kind];
@@ -62,7 +54,7 @@ export function HomeGrid({ connectionId, editing }: { connectionId: string; edit
 
   return (
     <div ref={containerRef}>
-      {mounted && visible.length > 0 && (
+      {mounted && widgets.length > 0 && (
         <GridLayout
           width={width}
           layout={layout}
@@ -113,9 +105,10 @@ export function HomeGrid({ connectionId, editing }: { connectionId: string; edit
           ))}
         </GridLayout>
       )}
-      {visible.length === 0 && (
+      {widgets.length === 0 && (
         <p className="rounded-2xl border border-dashed px-5 py-12 text-center text-sm text-muted-foreground">
-          Die Startseite ist leer. Über „Anpassen“ fügst du Widgets hinzu.
+          Über „Anpassen“ heftest du Abfrage-Ergebnisse, Dashboard-Charts, Notizen oder die
+          Performance-Übersicht dieser Verbindung hier an.
         </p>
       )}
     </div>
