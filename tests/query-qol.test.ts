@@ -140,7 +140,9 @@ test("snapshots round trip after reopening storage, preserve masks and delete at
 
 test("snapshots reject incomplete, giant and deeply nested results without dropping existing data", async () => {
   const saved = await saveResultSnapshot("keep", run);
-  expect(() => encodeSnapshot({ ...run, result: { ...result, truncated: true } })).toThrow();
+  expect(() => encodeSnapshot({ ...run, result: { ...result, truncated: true } })).toThrow(
+    "1.000-Zeilen-Limit",
+  );
   expect(() =>
     encodeSnapshot({ ...run, result: { ...result, rows: Array(1000).fill(result.rows[0]) } }),
   ).toThrow();
