@@ -40,19 +40,20 @@ Ohne Plugins bekommen die Zellen kein Plugin-Prop und keine zusätzlichen Hooks.
    - Registry, Validatoren, `SlotGuard`, SDK-Module und der Neuaufbau bei geänderten Einstellungen kommen erst mit dem Host.
    - Die statischen Startimporte wachsen dadurch um rund 11 KB.
 3. **Übersetzen**: `packages/ui-plugin-api/src/compile.ts` prüft den Quelltext statisch und übersetzt ihn mit sucrase nach CommonJS. sucrase liegt in einem eigenen Chunk und wird erst geladen, wenn es etwas zu übersetzen gibt.
-4. **Ausführen**: `evaluatePlugin` führt den Code mit `new Function` aus. Dabei sind gefährliche Globals verschattet und die Timer gezählt. `validatePlugin` prüft die Definition. Unveränderte Dateien (gleicher Hash) werden nicht neu übersetzt.
+4. **Ausführen**: `evaluatePlugin` härtet beim ersten Aufruf die JavaScript-Umgebung (`lockdown.ts`) und führt den Code dann im Strict Mode mit `new Function` aus. Jeder im Code vorkommende Name, der nicht auf der Liste `PLUGIN_GLOBALS` steht, ist ein Parameter mit dem Wert `undefined`. Die Timer sind gezählt. `validatePlugin` prüft die Definition. Unveränderte Dateien (gleicher Hash) werden nicht neu übersetzt.
 5. **Registry** (`src/lib/ui-plugins/registry.ts`): Sie fasst alle aktiven Plugins zu je einer Funktion pro Slot zusammen. Jeder Aufruf läuft durch einen `SlotGuard`.
 6. **Live-Reload**: Hat eine neue Version einen Fehler, läuft die letzte funktionierende weiter (Status `stale`). `.status.json` meldet Fehler mit Zeile, Slot-Fehler und abgeschaltete Slots. Das Hauptfenster schreibt die Datei neu, sobald sich Dateien, Schalter, Optionen oder Freigaben ändern. Änderungen innerhalb von 250 ms nach der ersten ergeben einen Schreibvorgang.
 
 ## Leitplanken
 
-UI-Plugins laufen im Fenster von l8db und haben damit dieselben Rechte wie die App. Die Leitplanken verhindern Versehen und offensichtlichen Missbrauch, sind aber keine Sandbox:
+UI-Plugins laufen im Fenster von l8db, aber ohne Zugriff auf `window`, das DOM oder die Tauri-IPC:
 
 - **Imports:** nur `react` (kuratierte Liste, kein `createElement` und kein `use`) und `@l8db/ui`.
-- **Gesperrte APIs:** `window`, `document`, `fetch`, `localStorage`, `eval`, `Function` und weitere sind schon bei der statischen Prüfung gesperrt und zur Laufzeit verschattet. Namen und Texte mit `__TAURI` sind überall gesperrt. `__TAURI__`, `__TAURI_INTERNALS__`, `ipc`, `webkit` und `chrome` sind zur Laufzeit `undefined`.
-- **JSX:** Die Laufzeit lehnt `script`, `style`, `iframe`, `object`, `embed`, `link`, `meta`, `base`, `template` und Ähnliches ab, ebenso `dangerouslySetInnerHTML` und `ref`.
+- **Gesperrte APIs:** `window`, `document`, `fetch`, `localStorage`, `eval`, `Function` und weitere sind schon bei der statischen Prüfung gesperrt. Zur Laufzeit sieht ein Plugin nur die Namen aus `PLUGIN_GLOBALS` (JavaScript-Standardobjekte, `queueMicrotask`, `structuredClone`), eine `console`-Hülle und seine Timer; alles andere ist `undefined`, auch globale Namen, die erst später entstehen.
+- **Gehärtete Umgebung:** `lockdownRealm` ersetzt `constructor` von `Function.prototype` und den Async-/Generator-Varianten durch eine Funktion, die wirft, und friert alle von dort erreichbaren eingebauten Objekte ein (Prototypen, Iteratoren, `%TypedArray%`). Damit gibt es weder `Function("return this")` noch Getter oder Ersatzmethoden auf geteilten Prototypen, über die Host-Code `window` oder DOM-Knoten preisgäbe. Damit Host-Code weiter `x.prototype.toString = …`, `this.name = …` in Fehlerklassen oder `Error.stackTraceLimit = …` setzen kann, sind diese Eigenschaften als Accessoren angelegt; eine Zuweisung an den Prototyp selbst wird ignoriert. Die Härtung gilt erst, sobald ein Plugin ausgewertet wird.
+- **JSX:** Die Laufzeit lehnt `script`, `style`, `iframe`, `object`, `embed`, `link`, `meta`, `base`, `template` und Ähnliches ab, ebenso `dangerouslySetInnerHTML`, `ref` und Funktionen in anderen Props als `on…` (etwa `action`). `on…`-Handler auf HTML-Elementen bekommen eine eingefrorene Kopie des Ereignisses ohne `view`, `nativeEvent` und DOM-Knoten; `target`/`currentTarget` enthalten nur Werte wie `value`, `checked` und `dataset`.
 - **Zeilen:** Plugins bekommen eingefrorene Kopien ohne `__ctid__`. Maskierte Spalten sind schon maskiert.
-- **Netzwerk:** Vorgesehen ist `ctx.http`. Das Ziel muss in `permissions.http` stehen und von der Person freigegeben sein, und es gilt nur `https`. Die Freigabe bindet Plugins, die sich an die Regeln halten. Ein Plugin, das die Prüfung absichtlich umgeht, braucht sie nicht.
+- **Netzwerk:** Vorgesehen ist `ctx.http`. Das Ziel muss in `permissions.http` stehen und von der Person freigegeben sein, und es gilt nur `https`. Andere Wege ins Netz hat ein Plugin nicht.
 - **Laufzeitbudgets (p95):**
   - `grid.cell` und `tabs.item`: 4 ms
   - `grid.rowTone` und `tabs.group`: 2 ms
@@ -68,7 +69,7 @@ UI-Plugins laufen im Fenster von l8db und haben damit dieselben Rechte wie die A
 - **Hooks in Slots:** Ein Hook direkt in einer Slot-Funktion wirft einen Plugin-Fehler (`withoutHooks` in `modules.ts`), statt die Host-Komponente zu beschädigen.
 - **Zeilen in Detail-Tabs und Toolbar:** Sie kommen aus dem View-Model, sind also aktuell und maskiert. Die gemeinsame Ablage (`table-slots.ts`) hält nur die Auswahl, höchstens für 20 Tabs. Sie liefert nur Zeilen, die noch in den aktuellen Daten stehen.
 
-Die statische Prüfung arbeitet mit Tokens. Sie findet versehentliche Verstöße, aber keine absichtlichen Umgehungen, etwa über berechnete Eigenschaftsnamen, `Reflect` oder Event-Objekte (`event.view`). Wer so an `window` kommt, kann alles, was l8db kann: Tauri-Befehle aufrufen, Verbindungen und gespeicherte Passwörter lesen und beliebige Server erreichen. Plugins aus der Galerie prüft deshalb vor dem Merge ein Mensch. Die Galerie weist vor der Installation darauf hin. Installiere nur Plugins, deren Code du gelesen hast oder denen du vertraust.
+Die statische Prüfung arbeitet mit Tokens und findet versehentliche Verstöße. Absichtliche Umgehungen über berechnete Eigenschaftsnamen, `Reflect` oder Event-Objekte (`event.view`) fängt die Laufzeit ab; `tests/ui-plugins-runtime.test.ts` („runtime isolation“) prüft diese Wege. Die Isolation läuft im selben Realm wie die App und ist keine Prozessgrenze. In Entwicklungs-Builds hängt React an Elemente zusätzlich `_owner`, darüber wären Fiber-Knoten erreichbar; Release-Builds haben das nicht. Plugins aus der Galerie prüft deshalb weiterhin vor dem Merge ein Mensch. Die Galerie weist vor der Installation darauf hin. Installiere nur Plugins, deren Code du gelesen hast oder denen du vertraust.
 
 ## Einstellungen und Galerie
 
