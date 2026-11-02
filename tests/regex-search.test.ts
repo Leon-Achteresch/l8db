@@ -10,18 +10,38 @@ import {
   REGEX_PATTERN_LIBRARY,
   regexLiteralPrefilter,
   regexSearchFlags,
+  searchMatcher,
   splitSearchPatterns,
 } from "../src/lib/regex-search";
 
 describe("compileSearchPatterns", () => {
   test("trennt mehrere Muster mit Semikolon und verbindet sie mit Oder", () => {
-    const result = compileSearchPatterns("users;orders", { global: false });
+    const result = compileSearchPatterns("^users$;^orders$", { global: false });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.regexes.some((regex) => regex.test("orders"))).toBe(true);
       expect(result.regexes.some((regex) => regex.test("orders_archive"))).toBe(false);
       expect(result.regexes.some((regex) => regex.test("customers"))).toBe(false);
     }
+  });
+
+  test("behandelt Muster mit und ohne Sonderzeichen gleich als Teilstring-Regex", () => {
+    const tables = ["user", "users", "app_user", "orders"];
+    const matching = (raw: string) => {
+      const matches = searchMatcher(raw, compileSearchPatterns(raw, { global: false }));
+      return tables.filter((table) => matches?.(table));
+    };
+    expect(matching("user")).toEqual(["user", "users", "app_user"]);
+    expect(matching("us.r")).toEqual(["user", "users", "app_user"]);
+    expect(matching("^user$")).toEqual(["user"]);
+  });
+
+  test("filtert bei ungültigem Regex oder leerem Muster nicht", () => {
+    const compiled = compileSearchPatterns("user(", { global: false });
+    expect(compiled.ok).toBe(false);
+    expect(searchMatcher("user(", compiled)).toBeNull();
+    expect(searchMatcher(" ; ", null)).toBeNull();
+    expect(searchMatcher("USER", null)?.("app_user")).toBe(true);
   });
 
   test("unterstützt Sternchen als Wildcard", () => {

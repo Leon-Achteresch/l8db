@@ -16,7 +16,7 @@ import { connectionUser, groupByServer, sortServerGroups } from "@/lib/connectio
 import { providerFor } from "@/lib/connection-url";
 import { sortConnectionsByName, useConnectionsStore } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
-import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
+import { compileSearchPatterns, searchMatcher } from "@/lib/regex-search";
 import { useRegexEnabled } from "@/lib/regex-search-prefs";
 
 interface ConnectionPickerProps {
@@ -75,17 +75,8 @@ export function ConnectionPicker({
     [connectionRegexEnabled, connectionSearch],
   );
   const filteredServerGroups = useMemo(() => {
-    const query = connectionSearch.trim().toLowerCase();
-    if (!query) return serverGroups;
-    const patterns = splitSearchPatterns(connectionSearch).map((pattern) => pattern.toLowerCase());
-    const matches = (value: string) => {
-      const lower = value.toLowerCase();
-      if (patterns.some((pattern) => lower.includes(pattern))) return true;
-      return (
-        connectionSearchPatterns?.ok === true &&
-        connectionSearchPatterns.regexes.some((regex) => regex.test(value))
-      );
-    };
+    const matches = searchMatcher(connectionSearch, connectionSearchPatterns);
+    if (!matches) return serverGroups;
 
     return serverGroups
       .map((group) => {

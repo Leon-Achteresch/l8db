@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo } from "react";
 import { useColumnsQuery } from "@/lib/queries";
-import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
+import { compileSearchPatterns, searchMatcher } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSettingsStore } from "@/lib/settings";
 import { useSidebarSearch } from "@/lib/sidebar-search";
@@ -61,15 +61,8 @@ export function useSidebarEntityFilter(
   const regexError = compiled && !compiled.ok ? compiled.error : null;
   const filtered = useMemo<SidebarEntityMatch[] | undefined>(() => {
     if (!items) return undefined;
-    const patterns = splitSearchPatterns(deferredSearch);
-    if (patterns.length === 0 || (compiled && !compiled.ok)) return items;
-    const lowerPatterns = patterns.map((pattern) => pattern.toLowerCase());
-    const matches = compiled?.ok
-      ? (value: string) => compiled.regexes.some((regex) => regex.test(value))
-      : (value: string) => {
-          const lower = value.toLowerCase();
-          return lowerPatterns.some((pattern) => lower.includes(pattern));
-        };
+    const matches = searchMatcher(deferredSearch, compiled);
+    if (!matches) return items;
     const result: SidebarEntityMatch[] = [];
     for (const item of items) {
       const nameMatch = matches(item.name);
