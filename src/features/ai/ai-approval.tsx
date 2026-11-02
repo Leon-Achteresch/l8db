@@ -43,6 +43,15 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
     ? (details.questions as Record<string, unknown>[])
     : [{ id: "answer", question: String(details.message ?? data.title ?? "Deine Antwort") }];
   const required = Array.isArray(schema?.required) ? (schema.required as string[]) : [];
+  const invalidJson = (() => {
+    if (!advanced.trim()) return false;
+    try {
+      JSON.parse(advanced);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
   const missing =
     !advanced.trim() &&
     required.some((key) => {
@@ -105,7 +114,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       <Button size="xs" variant="ghost" disabled={pending} onClick={() => void act(false)}>
         Ablehnen
       </Button>
-      <Button size="xs" disabled={pending || missing} onClick={() => void act(true)}>
+      <Button size="xs" disabled={pending || missing || invalidJson} onClick={() => void act(true)}>
         {schema && Object.keys(properties).length ? "Antwort senden" : "Erlauben"}
       </Button>
     </>
@@ -194,8 +203,10 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
                 value={advanced}
                 disabled={pending}
                 onChange={(event) => setAdvanced(event.target.value)}
+                aria-invalid={invalidJson}
                 className="mt-2 min-h-20 w-full rounded-md border bg-background p-2 font-mono text-xs"
               />
+              {invalidJson && <p className="text-xs text-destructive">Kein gültiges JSON.</p>}
             </details>
           )}
         </RecommendationCard>
