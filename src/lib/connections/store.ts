@@ -18,6 +18,7 @@ import {
   storeSecret,
 } from "@/lib/secrets";
 import { enforceTeamConnection } from "@/lib/team/merge";
+import { isMainWindow, windowConnectionId } from "@/lib/window-role";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import type { ConnectionInput, SavedConnection } from "./types";
 
@@ -48,13 +49,7 @@ export function createConnectionId(): string {
   return createId();
 }
 
-const windowParams = new URLSearchParams(
-  typeof window === "undefined" ? "" : (window.location?.search ?? ""),
-);
-
-export const windowConnectionId: string | null = windowParams.get("connection");
-
-export const isMainWindow = windowConnectionId === null && !windowParams.has("window");
+export { isMainWindow, windowConnectionId };
 
 export const RECENT_CONNECTION_LIMIT = 10;
 
