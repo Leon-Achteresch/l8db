@@ -38,7 +38,7 @@ export function prepareCellSql(
 ): { sql: string; bound?: ParameterizedQuery } {
   const sql = applyTemplates(source, values);
   if (!options.sqlLanguage) return { sql };
-  const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
+  const refs = detectBindParams(sql, options.kind).filter((ref) => !/^(new|old)$/i.test(ref.name));
   if (!refs.length) return { sql };
   const missing = refs.find((ref) => !values[ref.name]);
   if (missing) throw new Error(`Variable „${missing.label}“ ist nicht definiert.`);

@@ -859,8 +859,8 @@ export function dmlKindOf(statement: string, dialect: string): DmlKind | "cte" |
   return kindOfTokens(normalizedStatement(statement, dialect).tokens);
 }
 
-export function hasBindParameters(sql: string): boolean {
-  return editorBindParams(sql).length > 0;
+export function hasBindParameters(sql: string, kind?: DatabaseKind): boolean {
+  return editorBindParams(sql, kind).length > 0;
 }
 
 export function needsDmlPreview(sql: string, dialect: string): boolean {

@@ -102,6 +102,7 @@ export function QueryViewDialogs({
         values={bind.values}
         onValuesChange={bind.onValuesChange}
         onConfirm={bind.onConfirm}
+        onSkip={bind.onSkip}
         inline={!caps.bind_parameters}
         context={connection ? { connectionId: connection.id, database, sql: bind.sql } : undefined}
       />
