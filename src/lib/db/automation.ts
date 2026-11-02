@@ -609,6 +609,7 @@ export interface AlertState {
   lastNotifiedAt: string | null;
   lastValue: string | null;
   mutedUntil: string | null;
+  notifiedStatus?: AlertStatus | null;
 }
 
 export interface TaskSummary {

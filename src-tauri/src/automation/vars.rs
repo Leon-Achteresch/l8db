@@ -544,18 +544,20 @@ pub fn compare(left: &str, op: Comparator, right: &str) -> Result<bool, String> 
         .parse::<f64>()
         .ok()
         .zip(right.trim().parse::<f64>().ok());
-    let ordering = match numbers {
-        Some((a, b)) => a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal),
-        None => left.cmp(right),
+    let ordering = || match numbers {
+        Some((a, b)) => a
+            .partial_cmp(&b)
+            .ok_or_else(|| "NaN lässt sich nicht vergleichen.".to_string()),
+        None => Ok(left.cmp(right)),
     };
     use std::cmp::Ordering::*;
     Ok(match op {
-        Comparator::Eq => ordering == Equal,
-        Comparator::Ne => ordering != Equal,
-        Comparator::Gt => ordering == Greater,
-        Comparator::Gte => ordering != Less,
-        Comparator::Lt => ordering == Less,
-        Comparator::Lte => ordering != Greater,
+        Comparator::Eq => ordering()? == Equal,
+        Comparator::Ne => ordering()? != Equal,
+        Comparator::Gt => ordering()? == Greater,
+        Comparator::Gte => ordering()? != Less,
+        Comparator::Lt => ordering()? == Less,
+        Comparator::Lte => ordering()? != Greater,
         Comparator::Contains => left.contains(right),
         Comparator::NotContains => !left.contains(right),
         Comparator::Matches => Regex::new(right)
@@ -721,6 +723,7 @@ mod tests {
     #[test]
     fn compare_numeric_text_regex_empty() {
         assert!(compare("10", Comparator::Gt, "9").unwrap());
+        assert!(compare("NaN", Comparator::Eq, "100").is_err());
         assert!(!compare("10", Comparator::Gt, "9a").unwrap());
         assert!(compare("1.0", Comparator::Eq, "1").unwrap());
         assert!(compare("abc", Comparator::Lt, "abd").unwrap());

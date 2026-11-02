@@ -1215,6 +1215,8 @@ pub struct AlertState {
     pub last_notified_at: Option<String>,
     pub last_value: Option<String>,
     pub muted_until: Option<String>,
+    #[serde(default)]
+    pub notified_status: Option<AlertStatus>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
