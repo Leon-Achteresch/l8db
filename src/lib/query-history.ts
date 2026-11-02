@@ -28,7 +28,7 @@ interface QueryHistoryState {
 }
 
 export const DEFAULT_HISTORY_LIMIT = 500;
-export const MAX_HISTORY_SQL_LENGTH = 200000;
+export const MAX_HISTORY_SQL_LENGTH = 20_000;
 export const MAX_HISTORY_TOTAL_SQL_LENGTH = 500_000;
 
 function createId(): string {
@@ -52,9 +52,10 @@ export function retainHistory(
       if (seen.has(entry.id)) return false;
       seen.add(entry.id);
       const count = counts.get(entry.connectionId) ?? 0;
+      if (count >= limit || used + entry.sql.length > budget) return false;
       counts.set(entry.connectionId, count + 1);
       used += entry.sql.length;
-      return count < limit && used <= budget;
+      return true;
     });
 }
 
