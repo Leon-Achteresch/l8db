@@ -209,12 +209,10 @@ export function TableDataContent({
               onSortingChange={handleSortingChange}
               isFetching={isFetching}
               onSaveRow={
-                masked
+                masked || connection?.readOnly
                   ? undefined
                   : caps.query_language === "redis"
-                    ? connection?.readOnly
-                      ? undefined
-                      : saveRedisRow
+                    ? saveRedisRow
                     : isView || !caps.row_edit
                       ? undefined
                       : saveRow
@@ -250,7 +248,11 @@ export function TableDataContent({
               onInsertRow={
                 masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
               }
-              onDeleteRow={masked || isView || !caps.row_edit ? undefined : handleDeleteRow}
+              onDeleteRow={
+                masked || isView || !caps.row_edit || connection?.readOnly
+                  ? undefined
+                  : handleDeleteRow
+              }
               columnDetails={columnDetails}
               onRefresh={handleRefresh}
               searchRequiresFocus={inDrawer}
