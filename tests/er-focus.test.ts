@@ -7,7 +7,15 @@ import {
   filterErSchema,
   parseErFocus,
   parseErFocusDepth,
+  parseErTableKey,
 } from "../src/lib/er-focus";
+
+function focusKeys(...args: Parameters<typeof erFocusTableKeys>): string[] {
+  return erFocusTableKeys(...args).map((key) => {
+    const parsed = parseErTableKey(key);
+    return `${parsed?.schema}.${parsed?.table}`;
+  });
+}
 
 function table(schema: string, name: string): ERTable {
   return {
@@ -49,21 +57,27 @@ const schema: ERSchema = {
 };
 
 describe("erFocusTableKeys", () => {
+  test("Schlüssel mit Punkten in Schema- oder Tabellennamen kollidieren nicht", () => {
+    expect(erTableKey("a.b", "c")).not.toBe(erTableKey("a", "b.c"));
+    expect(parseErTableKey(erTableKey("a", "b.c"))).toEqual({ schema: "a", table: "b.c" });
+    expect(parseErTableKey("a.b")).toBeNull();
+  });
+
   test("Tiefe 0 zeigt nur die Starttabelle", () => {
-    expect(erFocusTableKeys(schema, { schema: "public", table: "orders", depth: 0 })).toEqual([
+    expect(focusKeys(schema, { schema: "public", table: "orders", depth: 0 })).toEqual([
       "public.orders",
     ]);
   });
 
   test("Tiefe 1 enthält direkte FK-Nachbarn in beide Richtungen", () => {
-    const keys = erFocusTableKeys(schema, { schema: "public", table: "orders", depth: 1 });
+    const keys = focusKeys(schema, { schema: "public", table: "orders", depth: 1 });
     expect(new Set(keys)).toEqual(
       new Set(["public.orders", "public.customers", "public.order_items"]),
     );
   });
 
   test("Tiefe 2 erweitert um die nächste Ebene", () => {
-    const keys = erFocusTableKeys(schema, { schema: "public", table: "orders", depth: 2 });
+    const keys = focusKeys(schema, { schema: "public", table: "orders", depth: 2 });
     expect(new Set(keys)).toEqual(
       new Set([
         "public.orders",
@@ -86,13 +100,13 @@ describe("erFocusTableKeys", () => {
         fk("public.a", "public.a", "aa"),
       ],
     };
-    const keys = erFocusTableKeys(cyclic, { schema: "public", table: "a", depth: 2 });
+    const keys = focusKeys(cyclic, { schema: "public", table: "a", depth: 2 });
     expect(keys).toEqual([...new Set(keys)]);
     expect(new Set(keys)).toEqual(new Set(["public.a", "public.b", "public.c"]));
   });
 
   test("gleichnamige Tabellen in anderen Schemas bleiben getrennt", () => {
-    const keys = erFocusTableKeys(schema, { schema: "sales", table: "orders", depth: 1 });
+    const keys = focusKeys(schema, { schema: "sales", table: "orders", depth: 1 });
     expect(new Set(keys)).toEqual(new Set(["sales.orders", "public.customers"]));
   });
 
@@ -123,7 +137,7 @@ describe("filterErSchema", () => {
 
   test("Foreign Keys werden auf den Ausschnitt begrenzt", () => {
     const filtered = filterErSchema(schema, { schema: "public", table: "orders", depth: 1 });
-    expect(filtered.tables.map((t) => erTableKey(t.schema, t.name))).toEqual([
+    expect(filtered.tables.map((t) => `${t.schema}.${t.name}`)).toEqual([
       "public.orders",
       "public.customers",
       "public.order_items",
