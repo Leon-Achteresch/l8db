@@ -31,6 +31,7 @@ import {
   erTableKeyOf,
   filterErSchema,
   parseErFocusDepth,
+  parseErTableKey,
 } from "@/lib/er-focus";
 import { useErSchemaQuery } from "@/lib/queries";
 import { readTabState, tabStateKey, writeTabState } from "@/lib/tab-state";
@@ -67,14 +68,11 @@ export function ERDiagramInner() {
         void navigate({ to: "/er-diagram", search: {} });
         return;
       }
-      const separator = key.indexOf(".");
+      const target = parseErTableKey(key);
+      if (!target) return;
       void navigate({
         to: "/er-diagram",
-        search: {
-          focusSchema: key.slice(0, separator),
-          focusTable: key.slice(separator + 1),
-          depth,
-        },
+        search: { focusSchema: target.schema, focusTable: target.table, depth },
       });
     },
     [navigate],
@@ -154,9 +152,7 @@ export function ERDiagramInner() {
   if (error) {
     return (
       <main className="flex flex-1 items-center justify-center">
-        <p className="text-destructive">
-          {error instanceof Error ? error.message : "Fehler beim Laden"}
-        </p>
+        <p className="text-destructive">{String(error)}</p>
       </main>
     );
   }
