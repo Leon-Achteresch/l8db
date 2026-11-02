@@ -75,13 +75,20 @@ export function QueryViewDialogs({
   substitution,
 }: QueryViewDialogsProps) {
   const navigate = useNavigate();
-  const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
+  const { queries: savedQueries, saveQuery, updateQuery } = useSavedQueriesStore();
   return (
     <>
       <SaveQueryDialog
         open={saveDialog.open}
         onOpenChange={saveDialog.onOpenChange}
-        onSave={(name) => saveQuery(name, sql)}
+        existingNames={savedQueries.map((query) => query.name)}
+        onSave={(name) => {
+          const existing = savedQueries.find(
+            (query) => query.name.toLowerCase() === name.toLowerCase(),
+          );
+          if (existing) updateQuery(existing.id, name, sql);
+          else saveQuery(name, sql);
+        }}
       />
 
       <SnippetManagerDialog
