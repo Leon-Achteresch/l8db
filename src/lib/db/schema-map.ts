@@ -16,6 +16,7 @@ export interface SchemaMapLink {
 export interface SchemaMap {
   tables: SchemaMapTable[];
   links: SchemaMapLink[];
+  warning?: string | null;
 }
 
 export async function getSchemaMap(

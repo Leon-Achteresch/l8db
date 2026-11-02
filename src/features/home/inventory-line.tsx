@@ -21,6 +21,7 @@ export function InventoryLine({ database, schema }: { database: string | null; s
   const extensions = useExtensionsQuery();
   const sequences = useSequencesQuery();
   const matviews = useMaterializedViewsQuery();
+  const sized = (overview.data?.size_bytes ?? 0) > 0;
   const items = [
     { one: "Tabelle", many: "Tabellen", query: tables, enabled: true },
     { one: "View", many: "Views", query: views, enabled: caps.views },
@@ -38,10 +39,8 @@ export function InventoryLine({ database, schema }: { database: string | null; s
   return (
     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px] text-muted-foreground">
       {database && <span className="font-mono text-foreground">{database}</span>}
-      {overview.data && (
-        <span className="tabular-nums text-foreground">{overview.data.size_pretty}</span>
-      )}
-      {(database || overview.data) && (
+      {sized && <span className="tabular-nums text-foreground">{overview.data?.size_pretty}</span>}
+      {(database || sized) && (
         <span aria-hidden="true" className="text-border">
           /
         </span>

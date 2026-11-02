@@ -669,6 +669,13 @@ FROM information_schema.KEY_COLUMN_USAGE \
 WHERE REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema'){filter} \
 ORDER BY CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION LIMIT 50000";
 
+const ORACLE_KEYS: &str = "SELECT * FROM (SELECT c.constraint_name AS fk_name, c.owner AS from_owner, c.table_name AS from_table, cc.column_name AS from_column, \
+r.owner AS to_owner, r.table_name AS to_table, rc.column_name AS to_column FROM all_constraints c \
+JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
+JOIN all_constraints r ON r.owner = c.r_owner AND r.constraint_name = c.r_constraint_name \
+JOIN all_cons_columns rc ON rc.owner = r.owner AND rc.constraint_name = r.constraint_name AND rc.position = cc.position \
+WHERE c.constraint_type = 'R'{filter} ORDER BY c.constraint_name, c.owner, c.table_name, cc.position) WHERE ROWNUM <= 50000";
+
 const MSSQL_KEYS: &str = "SELECT TOP 50000 fk.name, SCHEMA_NAME(t1.schema_id), t1.name, c1.name, SCHEMA_NAME(t2.schema_id), t2.name, c2.name \
 FROM sys.foreign_key_columns fkc \
 JOIN sys.foreign_keys fk ON fk.object_id = fkc.constraint_object_id \
@@ -697,6 +704,7 @@ pub(super) fn keys_query(kind: DatabaseKind, schema: Option<&str>) -> Option<Str
             "SCHEMA_NAME(t2.schema_id)",
             " WHERE",
         ),
+        DatabaseKind::Oracle if schema.is_some() => (ORACLE_KEYS, "c.owner", "r.owner", " AND"),
         _ => return None,
     };
     let filter = match schema {

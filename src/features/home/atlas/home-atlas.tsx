@@ -199,6 +199,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
             neighbors={neighbors}
             metric={summary.metric}
             sizesPending={map.isPending}
+            notice={map.isError ? String(map.error) : (map.data?.warning ?? null)}
             hidden={summary.hidden}
             matching={summary.matching}
             showRelations={showRelations && caps.foreign_keys}
