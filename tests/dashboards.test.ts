@@ -323,4 +323,37 @@ describe("series split", () => {
     );
     expect(previous.rows[0].series_7_0).toBe(5);
   });
+
+  test("combines Weitere by aggregation and keeps NULL as a gap", () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({ day: "Mo", group: `G${i}`, n: 10 + i }));
+    const shape = (agg: "avg" | "min") => ({
+      dimension: "day",
+      dimension2: "group",
+      metrics: [{ key: "n", label: "Wert", agg }],
+      hasDate: false,
+    });
+    expect(colorSeries("column", shape("avg"), rows).rows[0].series_7_0).toBeNull();
+    expect(colorSeries("column", shape("min"), rows).rows[0].series_7_0).toBe(10);
+    const gap = colorSeries("line", shape("avg"), [{ day: "Mo", group: "A", n: null }]);
+    expect(gap.rows[0].series_0_0).toBeNull();
+    const plain = {
+      dimension: "d",
+      dimension2: null,
+      metrics: [{ key: "n", label: "" }],
+      hasDate: false,
+    };
+    const sorted = applyOptions(
+      plain,
+      [
+        { d: 1, n: null },
+        { d: 2, n: -3 },
+        { d: 3, n: 5 },
+      ],
+      {
+        ...DEFAULT_OPTIONS,
+        sortBy: "asc",
+      },
+    );
+    expect(sorted.rows.map((row) => row.d)).toEqual([2, 3, 1]);
+  });
 });
