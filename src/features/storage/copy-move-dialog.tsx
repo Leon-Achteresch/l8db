@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { s3CopyObjects, s3ListBuckets } from "@/lib/db";
+import { runStorageJob, withOverwritePrompt } from "@/lib/storage/transfers";
 import { transferItem } from "./use-object-actions";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
@@ -62,13 +63,22 @@ export function CopyMoveDialog({
     setBusy(true);
     setError(null);
     try {
-      const outcome = await s3CopyObjects(
-        url,
+      const outcome = await runStorageJob(
+        connection,
         bucket,
-        request.rows.map(transferItem),
-        target,
-        destination.trim(),
-        request.move,
+        `${request.move ? "Verschieben" : "Kopieren"} · ${request.rows.length} Einträge`,
+        (jobId) =>
+          withOverwritePrompt((overwrite) =>
+            s3CopyObjects(
+              url,
+              bucket,
+              request.rows.map(transferItem),
+              target,
+              destination.trim(),
+              request.move,
+              { overwrite, jobId },
+            ),
+          ),
       );
       await queryClient.invalidateQueries({ queryKey: ["s3", connection?.id] });
       if (outcome.errors.length) {

@@ -73,7 +73,13 @@ export function PresignPanel({
       <div className="grid grid-cols-2 gap-2">
         <div className="grid gap-1">
           <Label className="text-xs">Zweck</Label>
-          <Select value={method} onValueChange={(value) => setMethod(value as "GET" | "PUT")}>
+          <Select
+            value={method}
+            onValueChange={(value) => {
+              setMethod(value as "GET" | "PUT");
+              setLink("");
+            }}
+          >
             <SelectTrigger size="sm">
               <SelectValue />
             </SelectTrigger>
@@ -85,7 +91,13 @@ export function PresignPanel({
         </div>
         <div className="grid gap-1">
           <Label className="text-xs">Gültigkeit</Label>
-          <Select value={expires} onValueChange={setExpires}>
+          <Select
+            value={expires}
+            onValueChange={(value) => {
+              setExpires(value);
+              setLink("");
+            }}
+          >
             <SelectTrigger size="sm">
               <SelectValue />
             </SelectTrigger>
@@ -101,7 +113,13 @@ export function PresignPanel({
       </div>
       {method === "GET" && (
         <label className="flex items-center gap-2 text-xs">
-          <Switch checked={attachment} onCheckedChange={setAttachment} />
+          <Switch
+            checked={attachment}
+            onCheckedChange={(value) => {
+              setAttachment(value);
+              setLink("");
+            }}
+          />
           Als Download erzwingen (Content-Disposition)
         </label>
       )}
