@@ -54,10 +54,24 @@ export async function openOracleApp(page: Page, path = "/", activeId = "oracle-l
       };
       host.oracleCalls = [];
       host.oracleFailures = [];
+      const callbacks = new Map<number, (value: unknown) => void>();
+      const listeners: { event: string; handler: number }[] = [];
+      let nextCallback = 0;
+      const call = async (command: string, args: Record<string, unknown>) => {
+        const response = await fetch(bridge, {
+          method: "POST",
+          body: JSON.stringify({ command, args }),
+        });
+        return response.json();
+      };
       host.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
       host.__TAURI_INTERNALS__ = {
-        transformCallback: () => 1,
-        unregisterCallback: () => {},
+        transformCallback: (callback: (value: unknown) => void) => {
+          nextCallback += 1;
+          callbacks.set(nextCallback, callback);
+          return nextCallback;
+        },
+        unregisterCallback: (id: number) => callbacks.delete(id),
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
         invoke: async (command: string, args: Record<string, unknown> = {}) => {
           if (/^(mcp_|automation_|team_)/.test(command)) return Promise.reject("not available");
@@ -66,6 +80,10 @@ export async function openOracleApp(page: Page, path = "/", activeId = "oracle-l
               ["oracle-lab", "oracle-debug"].includes(String(args.account))
               ? "l8dbtest"
               : null;
+          if (command === "plugin:event|listen") {
+            listeners.push({ event: String(args.event), handler: Number(args.handler) });
+            return listeners.length;
+          }
           if (
             command.startsWith("plugin:") ||
             command.includes("extension") ||
@@ -73,11 +91,26 @@ export async function openOracleApp(page: Page, path = "/", activeId = "oracle-l
           )
             return [];
           host.oracleCalls.push({ command, args });
-          const response = await fetch(bridge, {
-            method: "POST",
-            body: JSON.stringify({ command, args }),
+          const jobId = (args.options as { jobId?: string } | undefined)?.jobId;
+          let running = command === "run_transfer" && jobId !== undefined;
+          const poll = async () => {
+            while (running) {
+              const { result } = await call("transfer_progress", { jobId });
+              if (running && result)
+                for (const listener of listeners)
+                  if (listener.event === "transfer-progress")
+                    callbacks.get(listener.handler)?.({
+                      event: listener.event,
+                      id: 0,
+                      payload: { jobId, progress: result },
+                    });
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+          };
+          void poll();
+          const value = await call(command, args).finally(() => {
+            running = false;
           });
-          const value = await response.json();
           if (value.error !== undefined) {
             host.oracleFailures.push({ command, error: value.error });
             return Promise.reject(value.error);

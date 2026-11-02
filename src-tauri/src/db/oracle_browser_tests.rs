@@ -3,6 +3,9 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+static PROGRESS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Value>>> =
+    std::sync::LazyLock::new(Default::default);
+
 fn a<T: DeserializeOwned>(x: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(x.get(key).cloned().unwrap_or(Value::Null))
         .map_err(|e| format!("{key}: {e}"))
@@ -330,6 +333,12 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
+        "transfer_progress" => Ok(PROGRESS
+            .lock()
+            .unwrap()
+            .get(x["jobId"].as_str().unwrap_or_default())
+            .cloned()
+            .unwrap_or(Value::Null)),
         "run_transfer" => {
             let target = crate::db::transfer::Endpoint {
                 kind: a(x, "kind")?,
@@ -337,10 +346,20 @@ async fn dispatch(
                 database: a(x, "database")?,
             };
             let request: crate::db::transfer::RunRequest = a(x, "request")?;
+            let job = x["options"]["jobId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let report = move |progress: crate::db::transfer::Progress| {
+                PROGRESS
+                    .lock()
+                    .unwrap()
+                    .insert(job.clone(), json!(progress));
+            };
             crate::db::execution::run(
                 a(x, "options")?,
                 true,
-                crate::db::transfer::run(&target, &request, pool.clone(), &|_| {}),
+                crate::db::transfer::run(&target, &request, pool.clone(), &report),
             )
             .await
             .map(|v| json!(v))
