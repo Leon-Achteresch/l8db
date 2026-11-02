@@ -76,11 +76,28 @@ export function TransferView() {
           <span className="truncate tabular-nums">{status}</span>
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" disabled={!plan} onClick={() => setPlanTab("script")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!plan}
+            disabledReason="Noch kein Übertragungsplan"
+            onClick={() => setPlanTab("script")}
+          >
             <FileCodeIcon />
             Skript anzeigen
           </Button>
-          <Button size="sm" onClick={() => void transfer.start()} disabled={!canStart}>
+          <Button
+            size="sm"
+            onClick={() => void transfer.start()}
+            disabled={!canStart}
+            disabledReason={
+              transfer.running
+                ? "Übertragung läuft bereits"
+                : !plan
+                  ? "Noch kein Übertragungsplan – Quelle und Ziel auswählen"
+                  : `${conflicts.length} Konflikt(e) zuerst lösen`
+            }
+          >
             {transfer.running ? <Spinner className="size-3.5" /> : <PlayIcon />}
             Übertragung starten
           </Button>

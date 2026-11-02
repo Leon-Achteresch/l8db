@@ -105,6 +105,9 @@ export function MultiTargetPicker({
             variant="ghost"
             className="h-7 px-2 text-xs"
             disabled={!groupName.trim() || !selected.length}
+            disabledReason={
+              !selected.length ? "Kein Ziel ausgewählt" : "Kein Gruppenname eingegeben"
+            }
             onClick={() => {
               if (saveGroup(groupName, selected)) setGroupName("");
             }}
@@ -119,6 +122,7 @@ export function MultiTargetPicker({
             variant="link"
             className="h-4 px-0 text-[11px]"
             disabled={!selected.length}
+            disabledReason="Kein Ziel ausgewählt"
             onClick={() => onReplace([])}
           >
             Auswahl leeren

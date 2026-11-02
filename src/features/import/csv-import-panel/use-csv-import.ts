@@ -288,7 +288,7 @@ export function useCsvImport() {
   };
 
   const handleImport = async () => {
-    if (!connection || !parsed || blocked || running) return;
+    if (!connection || !parsed || !targetTable || blocked || running) return;
     setRunning(true);
     setOutcome(null);
     try {
@@ -336,17 +336,28 @@ export function useCsvImport() {
 
   const rowCount = parsed?.rows.length ?? 0;
   const tooManyRows = !filePath && (parsed?.truncated === true || rowCount > CSV_MAX_IMPORT_ROWS);
-  const blocked =
-    !parsed ||
-    parsed.errors.length > 0 ||
-    columnsLoading ||
-    !targetTable ||
-    (format !== "csv" && !filePath) ||
-    rowCount === 0 ||
-    tooManyRows ||
-    Boolean(conflict && !conflict.constraint) ||
-    Boolean(openTransaction) ||
-    (issues?.errors.length ?? 1) > 0;
+  const blockedReason = !parsed
+    ? "Keine Datei geladen"
+    : parsed.errors.length > 0
+      ? "Die Datei enthält Fehler"
+      : columnsLoading
+        ? "Spalten der Zieltabelle werden geladen"
+        : !targetTable
+          ? "Keine Zieltabelle ausgewählt"
+          : format !== "csv" && !filePath
+            ? "Keine Datei ausgewählt"
+            : rowCount === 0
+              ? "Die Datei enthält keine Zeilen"
+              : tooManyRows
+                ? "Zu viele Zeilen für den Import aus der Vorschau"
+                : conflict && !conflict.constraint
+                  ? "Kein Konfliktschlüssel für die Konfliktbehandlung gewählt"
+                  : openTransaction
+                    ? "Offene Transaktion zuerst abschließen"
+                    : (issues?.errors.length ?? 1) > 0
+                      ? "Zuordnung der Spalten enthält Fehler"
+                      : null;
+  const blocked = blockedReason !== null;
 
   return {
     format,
@@ -362,6 +373,7 @@ export function useCsvImport() {
     conflict,
     setConflict,
     blocked,
+    blockedReason,
     connection,
     database,
     emptyField,

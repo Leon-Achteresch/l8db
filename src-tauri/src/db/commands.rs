@@ -2292,6 +2292,26 @@ pub async fn drop_schema(
 }
 
 #[tauri::command]
+pub async fn get_schema_map(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<crate::mcp::SchemaMap, String> {
+    if !crate::mcp::schema_map_supported(kind) {
+        return Ok(crate::mcp::SchemaMap::default());
+    }
+    let adapter = create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?;
+    crate::mcp::schema_map(adapter.as_ref(), kind, &schema).await
+}
+
+#[tauri::command]
 pub async fn get_database_overview(
     kind: DatabaseKind,
     connection_string: String,

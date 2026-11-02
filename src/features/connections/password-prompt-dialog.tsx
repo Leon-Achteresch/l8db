@@ -141,7 +141,12 @@ export function PasswordPromptDialog() {
             <Button type="button" tabIndex={0} variant="outline" onClick={() => finish(null)}>
               Abbrechen
             </Button>
-            <Button type="submit" tabIndex={0} disabled={askUser && !user.trim()}>
+            <Button
+              type="submit"
+              tabIndex={0}
+              disabled={askUser && !user.trim()}
+              disabledReason="Kein Benutzername eingegeben"
+            >
               Verbinden
             </Button>
           </DialogFooter>

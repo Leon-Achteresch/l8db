@@ -113,6 +113,13 @@ export function DataExportDialog({
           <Button
             onClick={() => void handleExport()}
             disabled={busy || (fullMode && !limitValid) || (!fullMode && rows.length === 0)}
+            disabledReason={
+              busy
+                ? "Export läuft bereits"
+                : fullMode && !limitValid
+                  ? "Ungültiges Zeilenlimit"
+                  : "Keine Zeilen zum Exportieren"
+            }
           >
             {busy && <LoaderIcon className="size-3.5 animate-spin" />}
             Exportieren

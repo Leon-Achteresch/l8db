@@ -704,6 +704,7 @@ pub fn run() {
             db::commands::create_schema,
             db::commands::drop_schema,
             db::commands::get_database_overview,
+            db::commands::get_schema_map,
         ]))
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

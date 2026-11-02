@@ -208,6 +208,13 @@ export function SqlImportPanel({
             <Button
               size="sm"
               disabled={running || !split.statements.length || split.unterminated}
+              disabledReason={
+                running
+                  ? "Import läuft bereits"
+                  : split.unterminated
+                    ? "Das Skript endet mit einer nicht abgeschlossenen Anweisung"
+                    : "Keine Anweisungen gefunden"
+              }
               onClick={() => void run()}
             >
               {running ? <Spinner className="size-3.5" /> : <PlayIcon />}
