@@ -20,6 +20,7 @@ import { defaultDataType } from "@/features/alter-table/alter-table-view/data-ty
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
 import { TableConstraintsEditor } from "@/features/constraints/table-constraints-editor";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
+import { columnTypeLabel } from "@/lib/column-type";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
@@ -227,8 +228,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                     <span className="truncate">{col.name}</span>
                   </div>
                   <div className="flex items-center bg-background px-4 py-2 font-mono text-xs text-muted-foreground">
-                    {col.data_type}
-                    {col.character_maximum_length !== null && `(${col.character_maximum_length})`}
+                    {columnTypeLabel(col.data_type, col.character_maximum_length)}
                   </div>
                   <div className="flex items-center bg-background px-4 py-2 text-xs text-muted-foreground">
                     {col.is_nullable ? "YES" : "NO"}
@@ -265,10 +265,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
             table={table}
             columns={(columns ?? []).map((col) => ({
               name: col.name,
-              data_type:
-                col.character_maximum_length !== null && !col.data_type.includes("(")
-                  ? `${col.data_type}(${col.character_maximum_length})`
-                  : col.data_type,
+              data_type: columnTypeLabel(col.data_type, col.character_maximum_length),
               is_primary_key: col.is_primary_key,
             }))}
           />
