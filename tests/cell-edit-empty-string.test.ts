@@ -3,7 +3,7 @@ import {
   cellEditCommitValue,
   needsMultilineEditor,
 } from "../src/features/table/data-table/use-cell-editing";
-import { buildRowUpdates, valueToUpdateText } from "../src/lib/cell-editor";
+import { buildRowUpdates, changedRowValues, valueToUpdateText } from "../src/lib/cell-editor";
 
 const cell = (original: unknown, value: string) => ({
   ctid: "(0,1)",
@@ -51,5 +51,16 @@ describe("needsMultilineEditor", () => {
     expect(needsMultilineEditor("einzeilig")).toBe(false);
     expect(needsMultilineEditor(null)).toBe(false);
     expect(needsMultilineEditor({ a: "x\ny" })).toBe(false);
+  });
+});
+
+describe("changedRowValues", () => {
+  test("keeps only edited columns so untouched JSON and numbers stay typed in the cache", () => {
+    const original = { id: 7, meta: { a: 1 }, note: "alt" };
+    const updates = buildRowUpdates(["id", "meta", "note"], original, "note", "neu");
+    expect(changedRowValues(updates, original)).toEqual({
+      updates: { note: "neu" },
+      old: { note: "alt" },
+    });
   });
 });

@@ -144,11 +144,17 @@ export function parseFilterExpression(
   const expected = (value: string) => fail(`${value} erwartet`, current()?.at ?? source.length);
   const literal = (typed = false): { value: string; text: boolean } => {
     if (
-      typed &&
       (keyword("DATE") || keyword("TIME") || keyword("TIMESTAMP")) &&
       tokens[index + 1]?.kind === "string"
-    )
+    ) {
+      if (!typed) {
+        fail(
+          `${current().value.toUpperCase()}-Literale sind im einfachen Filter nur mit >= und < möglich; bitte im SQL-Modus filtern`,
+          current().at,
+        );
+      }
       index++;
+    }
     const token = current();
     const isBool = keyword("TRUE") || keyword("FALSE");
     if (

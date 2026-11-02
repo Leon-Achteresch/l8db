@@ -163,6 +163,9 @@ test("accepts unquoted values, LIKE, BETWEEN, NULL comparisons and case-insensit
   ]) {
     expect(() => parseFilterExpression(source, columns), source).toThrow();
   }
+  expect(() => parseFilterExpression("id = DATE '2025-10-12'", columns)).toThrow(
+    "DATE-Literale sind im einfachen Filter nur mit >= und < möglich",
+  );
 });
 
 test("honors provider restrictions and ambiguous identifiers", () => {
