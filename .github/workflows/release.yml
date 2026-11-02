@@ -54,12 +54,10 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD; do
+          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD; do
             if [ -z "${!name}" ]; then
               echo "::error::Repository-Secret ${name} fehlt. Einrichtung siehe .github/RELEASING.md."
               exit 1
@@ -284,6 +282,7 @@ jobs:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if (!$env:WINDOWS_CERTIFICATE) { exit 0 }
           $pfx = Join-Path $env:RUNNER_TEMP 'l8db-signing.pfx'
           try {
             [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
@@ -314,13 +313,13 @@ jobs:
             rpm_config="$(printf '{"version":"%s","bundle":{"linux":{"rpm":{"release":"0.canary.%s"}}}}' "${RELEASE_VERSION%-canary.*}" "${RELEASE_VERSION##*-canary.}")"
             bun run tauri bundle --ci --target "$RELEASE_TARGET" --bundles appimage,deb
             bun run tauri bundle --ci --target "$RELEASE_TARGET" --bundles rpm --config "$rpm_config"
-          elif [ "$RUNNER_OS" = Windows ]; then
+          elif [ "$RUNNER_OS" = Windows ] && [ -n "${WINDOWS_SIGNING_CONFIG:-}" ]; then
             bun run tauri bundle --ci --target "$RELEASE_TARGET" --config "$WINDOWS_SIGNING_CONFIG"
           else
             bun run tauri bundle --ci --target "$RELEASE_TARGET"
           fi
       - name: Prüfe Windows-Authenticode
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.WINDOWS_SIGNING_THUMBPRINT != ''
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
