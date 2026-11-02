@@ -1,4 +1,41 @@
-import { createJSONStorage, type PersistStorage, type StorageValue } from "zustand/middleware";
+import {
+  createJSONStorage,
+  type PersistStorage,
+  type StateStorage,
+  type StorageValue,
+} from "zustand/middleware";
+
+export function createQuotaSafeStorage(listKey: string): StateStorage {
+  return {
+    getItem: (name) => window.localStorage.getItem(name),
+    removeItem: (name) => window.localStorage.removeItem(name),
+    setItem: (name, value) => {
+      let payload = value;
+      let parsed: StorageValue<Record<string, unknown>> | undefined;
+      for (;;) {
+        try {
+          window.localStorage.setItem(name, payload);
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "QuotaExceededError") {
+            parsed ??= JSON.parse(payload) as StorageValue<Record<string, unknown>>;
+            const list = parsed.state[listKey];
+            if (Array.isArray(list) && list.length > 0) {
+              parsed = {
+                ...parsed,
+                state: { ...parsed.state, [listKey]: list.slice(0, Math.floor(list.length / 2)) },
+              };
+              payload = JSON.stringify(parsed);
+              continue;
+            }
+          }
+          console.warn(`${name} konnte nicht gespeichert werden.`, error);
+          return;
+        }
+      }
+    },
+  };
+}
 
 export function createChangedOnlyJsonStorage<S>(
   getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => window.localStorage,
