@@ -6,9 +6,11 @@ import {
   type DatabaseKind,
   executeInTransaction,
   executeQuery,
+  executeQueryWithParams,
   rollbackTransaction,
 } from "@/lib/db";
 import { productionWriteBlock } from "@/lib/environments";
+import { quoteSqlString } from "@/lib/export";
 import { operationContext } from "@/lib/operation-context";
 
 export interface TriggerReplacement {
@@ -20,6 +22,7 @@ export interface TriggerReplacement {
   trigger: string;
   original: string;
   definition: string;
+  enabled?: string;
 }
 
 export function triggerDropSql(
@@ -52,6 +55,60 @@ const MYSQL_TRIGGER_HEAD = new RegExp(
   String.raw`^(\s*CREATE\s+(?:DEFINER\s*=\s*(?:CURRENT_USER(?:\s*\(\s*\))?|${MYSQL_NAME}(?:\s*@\s*${MYSQL_NAME})?)\s+)?TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?)${MYSQL_QUALIFIED}(\s+(?:BEFORE|AFTER)\s+(?:INSERT|UPDATE|DELETE)\s+ON\s+)${MYSQL_QUALIFIED}(\s+FOR\s+EACH\s+ROW)(?:\s+(?:FOLLOWS|PRECEDES)\s+${MYSQL_NAME})?(?=\s)`,
   "i",
 );
+
+const TRIGGER_NAME_PART = String.raw`(?:"(?:[^"]|"")*"|\`(?:[^\`]|\`\`)*\`|\[[^\]]*\]|[\w$]+)`;
+const TRIGGER_NAME = new RegExp(
+  String.raw`^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:DEFINER\s*=\s*(?:CURRENT_USER(?:\s*\(\s*\))?|${MYSQL_NAME}(?:\s*@\s*${MYSQL_NAME})?)\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:${TRIGGER_NAME_PART}\s*\.\s*)*(${TRIGGER_NAME_PART})`,
+  "i",
+);
+
+export function triggerNameFromDefinition(
+  kind: DatabaseKind | undefined,
+  definition: string,
+): string | null {
+  const name = TRIGGER_NAME.exec(definition)?.[1];
+  if (!name) return null;
+  const quote = name[0];
+  if (quote === '"' || quote === "`")
+    return name.slice(1, -1).split(`${quote}${quote}`).join(quote);
+  if (quote === "[") return name.slice(1, -1);
+  return kind === "postgres" ? name.toLowerCase() : name;
+}
+
+const PG_TRIGGER_STATE: Record<string, string> = {
+  DISABLED: "DISABLE TRIGGER",
+  REPLICA: "ENABLE REPLICA TRIGGER",
+  ALWAYS: "ENABLE ALWAYS TRIGGER",
+};
+
+export function pgTriggerRestoreSql(
+  r: Pick<TriggerReplacement, "schema" | "table" | "trigger" | "definition" | "enabled">,
+  comment: string | null,
+): string {
+  const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const name = q(triggerNameFromDefinition("postgres", r.definition) ?? r.trigger);
+  const table = `${q(r.schema)}.${q(r.table)}`;
+  const state = PG_TRIGGER_STATE[r.enabled?.trim().toUpperCase() ?? ""];
+  const parts = [
+    state ? `ALTER TABLE ${table} ${state} ${name}` : "",
+    comment !== null
+      ? `COMMENT ON TRIGGER ${name} ON ${table} IS ${quoteSqlString(comment, "postgres")}`
+      : "",
+  ].filter(Boolean);
+  return parts.length ? `;\n${parts.join(";\n")}` : "";
+}
+
+async function pgTriggerComment(r: TriggerReplacement): Promise<string | null> {
+  const result = await executeQueryWithParams(
+    r.kind,
+    r.connectionString,
+    "SELECT obj_description(t.oid, 'pg_trigger') AS comment FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2 AND t.tgname = $3",
+    [r.schema, r.table, r.trigger],
+    r.database,
+  );
+  const comment = result.rows[0]?.comment;
+  return typeof comment === "string" ? comment : null;
+}
 
 const mysqlIdent = (value: string) => `\`${value.replace(/`/g, "``")}\``;
 
@@ -113,10 +170,12 @@ export async function replaceTrigger(r: TriggerReplacement): Promise<number> {
   const drop = triggerDropSql(r.kind, r.schema, r.table, r.trigger);
   const started = performance.now();
   if (!drop || r.kind === "postgres") {
+    const restore = r.kind === "postgres" ? pgTriggerRestoreSql(r, await pgTriggerComment(r)) : "";
+    const definition = restore ? r.definition.replace(/[\s;]+$/, "") : r.definition;
     const result = await executeQuery(
       r.kind,
       r.connectionString,
-      `${drop}${r.definition}`,
+      `${drop}${definition}${restore}`,
       r.database,
     );
     return result.execution_time_ms;
