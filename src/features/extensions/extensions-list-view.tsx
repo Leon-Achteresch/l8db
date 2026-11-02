@@ -10,6 +10,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { useAvailableExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { ExtensionRow } from "./extensions-list-view/extension-row";
+import { ExtensionUninstallDialog } from "./extensions-list-view/extension-uninstall-dialog";
 
 export function AvailableExtensionsView() {
   const connection = useActiveConnection();
@@ -17,6 +18,7 @@ export function AvailableExtensionsView() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState<string | null>(null);
+  const [uninstalling, setUninstalling] = useState<string | null>(null);
 
   const { data: extensions, isLoading, isError, error } = useAvailableExtensionsQuery();
 
@@ -57,7 +59,7 @@ export function AvailableExtensionsView() {
       !q || ext.name.toLowerCase().includes(q) || (ext.comment ?? "").toLowerCase().includes(q),
   );
 
-  const handleToggle = async (name: string, installed: boolean) => {
+  const handleToggle = async (name: string, installed: boolean, cascade = false) => {
     setPending(name);
     try {
       if (installed) {
@@ -66,6 +68,7 @@ export function AvailableExtensionsView() {
           effectiveConnectionString(connection),
           name,
           database ?? undefined,
+          cascade,
         );
         toast.success(`Extension "${name}" deinstalliert.`);
       } else {
@@ -131,7 +134,7 @@ export function AvailableExtensionsView() {
                   comment={ext.comment}
                   installed={true}
                   pending={pending === ext.name}
-                  onToggle={() => void handleToggle(ext.name, true)}
+                  onToggle={() => setUninstalling(ext.name)}
                 />
               ))}
             </div>
@@ -167,6 +170,14 @@ export function AvailableExtensionsView() {
           <p className="px-4 py-6 text-sm text-muted-foreground">Keine Treffer.</p>
         )}
       </div>
+      <ExtensionUninstallDialog
+        name={uninstalling}
+        onClose={() => setUninstalling(null)}
+        onConfirm={(name, cascade) => {
+          setUninstalling(null);
+          void handleToggle(name, true, cascade);
+        }}
+      />
     </div>
   );
 }
