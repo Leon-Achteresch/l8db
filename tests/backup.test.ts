@@ -5,7 +5,9 @@ import {
   defaultBackupFileName,
   defaultBackupOptions,
   formatBytes,
+  isPlainSqlRestore,
   parseNameList,
+  plainSqlRestoreOptions,
   progressPercent,
   restoreBlockReason,
   restoreConfirmationPhrase,
@@ -85,5 +87,20 @@ describe("backup helpers", () => {
     expect(progressPercent(50, 200)).toBe(25);
     expect(progressPercent(5, 0)).toBeNull();
     expect(appendLogLines(["a", "b"], ["c", "d"], 3)).toEqual(["b", "c", "d"]);
+  });
+});
+
+describe("PostgreSQL-Wiederherstellung: Optionen passend zum Werkzeug", () => {
+  test("SQL-Dateien verwerfen pg_restore-Optionen und behaupten kein --clean", () => {
+    const options = { ...defaultBackupOptions("postgres", "restore"), clean: true, jobs: 4 };
+    expect(isPlainSqlRestore("postgres", " /tmp/app.SQL ")).toBe(true);
+    expect(isPlainSqlRestore("postgres", "/tmp/app.dump")).toBe(false);
+    expect(restoreEffects("postgres", plainSqlRestoreOptions(options))).toEqual([]);
+    expect(plainSqlRestoreOptions(options).jobs).toBeNull();
+  });
+  test("--clean wird mit Nur Daten nicht angekündigt", () => {
+    const options = { ...defaultBackupOptions("postgres", "restore"), clean: true };
+    expect(restoreEffects("postgres", { ...options, content: "data" })).toEqual([]);
+    expect(restoreEffects("postgres", options)).toHaveLength(1);
   });
 });
