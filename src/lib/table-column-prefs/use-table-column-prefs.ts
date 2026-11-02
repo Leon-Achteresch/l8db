@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import type { TableColumnPrefsState } from "./types";
 
 export const useTableColumnPrefs = create<TableColumnPrefsState>()(
@@ -26,3 +27,5 @@ export const useTableColumnPrefs = create<TableColumnPrefsState>()(
     { name: "l8db.table-column-prefs", storage: createSafeJsonStorage() },
   ),
 );
+
+syncAcrossWindows("l8db.table-column-prefs", () => void useTableColumnPrefs.persist.rehydrate());

@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { createQuotaSafeStorage } from "@/lib/buffered-storage";
+import { isMainWindow } from "@/lib/connections/store";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type TaskStatus =
   | "running"
@@ -25,6 +27,7 @@ export interface AppTask {
   error?: string;
   result?: unknown;
   cancellable: boolean;
+  owner?: string;
 }
 
 interface TasksState {
@@ -48,6 +51,32 @@ function clip(text: string | undefined) {
     : text;
 }
 
+export const TASK_OWNER = crypto.randomUUID();
+
+export function isOwnTask(task: Pick<AppTask, "owner">) {
+  return task.owner === TASK_OWNER;
+}
+
+let hydrated = false;
+
+export function mergeTasks(saved: AppTask[], current: AppTask[], initial: boolean, main: boolean) {
+  const own = current.filter(isOwnTask);
+  const ids = new Set(own.map((task) => task.id));
+  const others = saved
+    .filter((task) => !isOwnTask(task) && !ids.has(task.id))
+    .map((task) =>
+      isTaskActive(task) && (main || task.owner === undefined) && initial
+        ? {
+            ...task,
+            status: "interrupted" as const,
+            cancellable: false,
+            detail: "App wurde beendet. Serverzustand vor erneutem Ausführen prüfen.",
+          }
+        : { ...task, cancellable: false },
+    );
+  return [...own, ...others].sort((a, b) => b.startedAt - a.startedAt);
+}
+
 export const useTasksStore = create<TasksState>()(
   persist((): TasksState => ({ tasks: [], open: false }), {
     name: "l8db.tasks",
@@ -59,21 +88,23 @@ export const useTasksStore = create<TasksState>()(
         error: clip(task.error),
       })),
     }),
-    merge: (saved, current) => ({
-      ...current,
-      tasks: ((saved as Partial<TasksState>)?.tasks ?? []).map((task) =>
-        isTaskActive(task)
-          ? {
-              ...task,
-              status: "interrupted" as const,
-              cancellable: false,
-              detail: "App wurde beendet. Serverzustand vor erneutem Ausführen prüfen.",
-            }
-          : { ...task, cancellable: false },
-      ),
-    }),
+    merge: (saved, current) => {
+      const initial = !hydrated;
+      hydrated = true;
+      return {
+        ...current,
+        tasks: mergeTasks(
+          (saved as Partial<TasksState>)?.tasks ?? [],
+          current.tasks,
+          initial,
+          isMainWindow,
+        ),
+      };
+    },
   }),
 );
+
+syncAcrossWindows("l8db.tasks", () => void useTasksStore.persist.rehydrate());
 
 const cancellations = new Map<string, () => Promise<boolean | void>>();
 
@@ -91,7 +122,14 @@ export function startTask(
   if (cancel) cancellations.set(id, cancel);
   useTasksStore.setState((state) => ({
     tasks: [
-      { ...input, id, startedAt: Date.now(), status: "running", cancellable: Boolean(cancel) },
+      {
+        ...input,
+        id,
+        startedAt: Date.now(),
+        status: "running",
+        cancellable: Boolean(cancel),
+        owner: TASK_OWNER,
+      },
       ...state.tasks.filter((task) => task.id !== id && isTaskActive(task)),
       ...state.tasks.filter((task) => task.id !== id && !isTaskActive(task)).slice(0, 99),
     ],
