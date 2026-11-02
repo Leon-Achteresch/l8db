@@ -62,7 +62,7 @@ export function nativeScript(
     if (owner) described.add(owner.key);
     const entry: TransferStatement = owner
       ? { sql: statement.sql, objectType: owner.type, schema: targetSchema, name: owner.name }
-      : { sql: statement.sql };
+      : { sql: statement.sql, optional: /^\s*GRANT\s/i.test(statement.sql) || undefined };
     (statement.phase < POST_DATA_PHASE ? preData : postData).push(entry);
   }
   return { preData, postData, warnings: script.warnings };

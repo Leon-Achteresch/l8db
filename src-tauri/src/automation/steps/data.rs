@@ -269,6 +269,7 @@ pub async fn run_transfer(
                 })
                 .collect(),
             fold_names,
+            replace: false,
         },
         pool.clone(),
     )

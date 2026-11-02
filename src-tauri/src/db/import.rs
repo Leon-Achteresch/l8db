@@ -622,7 +622,7 @@ fn catalog_sql(dialect: Dialect, schema: &str, table: &str) -> Result<String, St
             lit(table)
         ),
         Dialect::Oracle => format!(
-            "SELECT column_name, data_type, CASE WHEN nullable = 'Y' THEN 1 ELSE 0 END, CASE WHEN default_length > 0 THEN 1 ELSE 0 END, CASE WHEN identity_column = 'YES' THEN 1 ELSE 0 END, CASE WHEN virtual_column = 'YES' THEN 1 ELSE 0 END, column_id FROM all_tab_cols WHERE owner = {} AND table_name = {} AND hidden_column = 'NO' ORDER BY column_id",
+            "SELECT column_name, data_type, CASE WHEN nullable = 'Y' THEN 1 ELSE 0 END, CASE WHEN default_length > 0 THEN 1 ELSE 0 END, CASE WHEN identity_column = 'YES' THEN 1 ELSE 0 END, CASE WHEN virtual_column = 'YES' AND default_length > 0 THEN 1 ELSE 0 END, column_id FROM all_tab_cols WHERE owner = {} AND table_name = {} AND hidden_column = 'NO' ORDER BY column_id",
             lit(schema),
             lit(table)
         ),

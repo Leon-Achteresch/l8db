@@ -33,6 +33,8 @@ pub struct PlanRequest {
     pub schemas: Vec<SchemaPair>,
     #[serde(default = "enabled")]
     pub fold_names: bool,
+    #[serde(default)]
+    pub replace: bool,
 }
 
 fn enabled() -> bool {
@@ -49,6 +51,8 @@ pub struct Statement {
     pub schema: Option<String>,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub optional: bool,
 }
 
 impl Statement {
@@ -65,6 +69,7 @@ impl Statement {
             object_type: Some(object_type.into()),
             schema: Some(schema.into()),
             name: Some(name.into()),
+            optional: false,
         }
     }
 }
@@ -126,6 +131,10 @@ pub struct TransferPlan {
     pub manual: Vec<ManualObject>,
     pub warnings: Vec<String>,
     pub conflicts: Vec<String>,
+    #[serde(default)]
+    pub replace: bool,
+    #[serde(default)]
+    pub replaced: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1343,6 +1352,86 @@ async fn oracle_identity(
     Ok(())
 }
 
+async fn oracle_mviews(
+    plan: &mut TransferPlan,
+    source: &dyn DatabaseAdapter,
+    pair: &SchemaPair,
+) -> Result<(), String> {
+    let owner = super::quote_literal(&pair.source);
+    let mviews: HashSet<String> = source
+        .execute_query(&format!(
+            "SELECT mview_name AS n FROM all_mviews WHERE owner = {owner}"
+        ))
+        .await?
+        .rows
+        .iter()
+        .filter_map(|row| row.get("N").and_then(super::export::value_text))
+        .collect();
+    plan.tables
+        .retain(|t| t.source_schema != pair.source || !mviews.contains(&t.source_name));
+    let result = source
+        .execute_query(&format!(
+            "SELECT l.master AS m, l.rowids AS r, l.primary_key AS p, l.object_id AS o, l.sequence AS s, \
+             l.include_new_values AS n, l.commit_scn_based AS c, \
+             (SELECT LISTAGG('\"' || c.column_name || '\"', ', ') WITHIN GROUP (ORDER BY c.column_id) FROM all_tab_cols c \
+              WHERE c.owner = l.log_owner AND c.table_name = l.log_table AND c.column_name NOT LIKE '%$' \
+              AND (l.primary_key = 'NO' OR c.column_name NOT IN (SELECT k.column_name FROM all_constraints x \
+              JOIN all_cons_columns k ON k.owner = x.owner AND k.constraint_name = x.constraint_name \
+              WHERE x.owner = l.log_owner AND x.table_name = l.master AND x.constraint_type = 'P'))) AS f, \
+             (SELECT COUNT(*) FROM all_mviews v WHERE v.owner = l.log_owner AND v.refresh_method = 'FAST') AS fast \
+             FROM all_mview_logs l WHERE l.log_owner = {owner}"
+        ))
+        .await?;
+    for row in &result.rows {
+        let get = |key: &str| {
+            row.get(key)
+                .and_then(super::export::value_text)
+                .unwrap_or_default()
+        };
+        let master = get("M");
+        if !plan
+            .tables
+            .iter()
+            .any(|t| t.source_schema == pair.source && t.source_name == master)
+        {
+            continue;
+        }
+        let with: Vec<&str> = [
+            ("P", "PRIMARY KEY"),
+            ("R", "ROWID"),
+            ("O", "OBJECT ID"),
+            ("S", "SEQUENCE"),
+            ("C", "COMMIT SCN"),
+        ]
+        .into_iter()
+        .filter(|(key, _)| get(key) == "YES")
+        .map(|(_, option)| option)
+        .collect();
+        let mut options = with.join(", ");
+        let filter = get("F");
+        if !filter.is_empty() {
+            options = format!("{options} ({filter})");
+        }
+        let mut sql = format!(
+            "CREATE MATERIALIZED VIEW LOG ON {}",
+            Dialect::Oracle.target(&pair.target, &master)
+        );
+        if !options.is_empty() {
+            sql.push_str(&format!(" WITH {}", options.trim_start()));
+        }
+        if get("N") == "YES" {
+            sql.push_str(" INCLUDING NEW VALUES");
+        }
+        let fast = get("FAST");
+        if fast.is_empty() || fast == "0" {
+            plan.finalize.push(Statement::plain(sql));
+        } else {
+            plan.before_load.push(Statement::plain(sql));
+        }
+    }
+    Ok(())
+}
+
 async fn plan_sequences(
     plan: &mut TransferPlan,
     source: &dyn DatabaseAdapter,
@@ -1578,10 +1667,18 @@ pub async fn plan(
     let target_adapter = adapter(target, &pool)?;
     let native = native_family(request.source.kind, target.kind);
     let fold_names = request.fold_names && !native;
+    let oracle_native = native && target_dialect == Dialect::Oracle;
+    if request.replace && !oracle_native {
+        return Err("Überschreiben wird nur für Oracle → Oracle unterstützt.".into());
+    }
+    if request.replace {
+        replace_guard(source.as_ref(), target_adapter.as_ref(), &request.schemas).await?;
+    }
     let mut plan = TransferPlan {
         native,
         atomic: atomic(target_dialect),
         schemas: request.schemas.clone(),
+        replace: request.replace,
         ..Default::default()
     };
     let existing = target_adapter.list_schemas().await?;
@@ -1613,9 +1710,31 @@ pub async fn plan(
     let order = load_order(&tables);
     if native {
         native_tables(&mut plan, &tables, &order);
-        if target_dialect == Dialect::Oracle {
+        if oracle_native {
+            let unsupported: Vec<String> = plan
+                .tables
+                .iter()
+                .flat_map(|t| {
+                    t.columns
+                        .iter()
+                        .filter(|c| oracle_copy::unsupported(&c.source_type))
+                        .map(move |c| {
+                            format!(
+                                "{}.{}.{} ({})",
+                                t.source_schema, t.source_name, c.source, c.source_type
+                            )
+                        })
+                })
+                .collect();
+            if !unsupported.is_empty() {
+                return Err(format!(
+                    "Diese Spalten haben Datentypen, deren Inhalt nicht übertragen werden kann: {}",
+                    unsupported.join(", ")
+                ));
+            }
             for pair in &request.schemas {
                 oracle_identity(&mut plan, source.as_ref(), pair).await?;
+                oracle_mviews(&mut plan, source.as_ref(), pair).await?;
             }
         }
     } else {
@@ -1642,8 +1761,85 @@ pub async fn plan(
         .await;
     }
     check_names(target_dialect, &plan)?;
-    plan.conflicts = conflicts(target_adapter.as_ref(), target_dialect, &plan).await;
+    if plan.replace {
+        for pair in &request.schemas {
+            for (kind, name) in oracle_copy::objects(target_adapter.as_ref(), &pair.target).await? {
+                plan.replaced.push(format!("{kind} {}.{name}", pair.target));
+            }
+        }
+    } else {
+        plan.conflicts = conflicts(target_adapter.as_ref(), target_dialect, &plan).await;
+    }
     Ok(plan)
+}
+
+async fn replace_guard(
+    source: &dyn DatabaseAdapter,
+    target: &dyn DatabaseAdapter,
+    pairs: &[SchemaPair],
+) -> Result<(), String> {
+    let targets = pairs
+        .iter()
+        .map(|pair| super::quote_literal(&pair.target))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let names = |sql: String| async move {
+        Ok::<Vec<String>, String>(
+            target
+                .execute_query(&sql)
+                .await?
+                .rows
+                .iter()
+                .filter_map(|row| row.get("N").and_then(super::export::value_text))
+                .collect(),
+        )
+    };
+    let maintained = names(format!(
+        "SELECT username AS n FROM all_users WHERE oracle_maintained = 'Y' AND username IN ({targets})"
+    ))
+    .await?;
+    if !maintained.is_empty() {
+        return Err(format!(
+            "Schema {} wird von Oracle verwaltet und kann nicht überschrieben werden.",
+            maintained.join(", ")
+        ));
+    }
+    if oracle_copy::container_id(source).await? == oracle_copy::container_id(target).await? {
+        if let Some(pair) = pairs
+            .iter()
+            .find(|pair| pairs.iter().any(|other| other.source == pair.target))
+        {
+            return Err(format!(
+                "Schema {} liegt in derselben Datenbank wie die Quelle und würde beim Überschreiben gelöscht.",
+                pair.target
+            ));
+        }
+    }
+    let dependents = |view: &str| {
+        format!(
+            "SELECT n FROM (SELECT owner || '.' || table_name || ' (Fremdschlüssel ' || constraint_name || ')' AS n FROM {view}_constraints \
+             WHERE constraint_type = 'R' AND r_owner IN ({targets}) AND owner NOT IN ({targets}) \
+             UNION SELECT owner || '.' || table_name || '.' || column_name || ' (Typ ' || data_type_owner || '.' || data_type || ')' FROM {view}_tab_cols \
+             WHERE data_type_owner IN ({targets}) AND owner NOT IN ({targets}) AND table_name NOT LIKE 'BIN$%' \
+             UNION SELECT owner || '.' || name || ' (' || type || ')' FROM {view}_dependencies \
+             WHERE referenced_owner IN ({targets}) AND referenced_type = 'TYPE' AND owner NOT IN ({targets}) AND type IN ('TYPE', 'TYPE BODY') \
+             ORDER BY 1) WHERE ROWNUM <= 20"
+        )
+    };
+    let dependents = match names(dependents("dba")).await {
+        Ok(found) => found,
+        Err(error) if error.contains("ORA-00942") || error.contains("ORA-01031") => {
+            names(dependents("all")).await?
+        }
+        Err(error) => return Err(error),
+    };
+    if !dependents.is_empty() {
+        return Err(format!(
+            "Objekte anderer Schemas hängen vom Ziel ab und würden beim Überschreiben verändert: {}",
+            dependents.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 fn exact_numeric(dialect: Dialect, data_type: &str) -> bool {
@@ -2046,10 +2242,17 @@ impl Runner<'_> {
             },
             None => self.adapter.execute_query(sql).await.map(|_| ()),
         };
-        result.map_err(|error| {
-            let head: String = sql.chars().take(300).collect();
-            format!("{error}\nAnweisung: {head}")
-        })?;
+        let deferred = self.dialect == Dialect::Oracle
+            && self.session.is_none()
+            && result
+                .as_ref()
+                .is_err_and(|error| error.contains("ORA-24344"));
+        if !deferred {
+            result.map_err(|error| {
+                let head: String = sql.chars().take(300).collect();
+                format!("{error}\nAnweisung: {head}")
+            })?;
+        }
         if self.session.is_none() && statement.object_type.is_some() {
             self.journal.push(statement.clone());
         }
@@ -2338,6 +2541,41 @@ impl Runner<'_> {
     }
 }
 
+enum Source {
+    Generic(Reader),
+    Oracle(oracle_copy::Copier),
+}
+
+impl Source {
+    async fn close(self) {
+        match self {
+            Source::Generic(reader) => reader.close().await,
+            Source::Oracle(copier) => copier.close().await,
+        }
+    }
+}
+
+async fn refuse_conflicts(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    plan: &TransferPlan,
+    state: &str,
+) -> Result<(), String> {
+    let found = conflicts(adapter, target, plan).await;
+    if found.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "Im Ziel existieren bereits Objekte aus dem Plan; {state}: {}",
+        found
+            .iter()
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
 pub async fn run(
     target: &Endpoint,
     request: &RunRequest,
@@ -2354,26 +2592,76 @@ pub async fn run(
     if plan.atomic != atomic(d) {
         return Err("Der Plan passt nicht zur Zielverbindung. Bitte neu analysieren.".into());
     }
-    let target_adapter = adapter(target, &pool)?;
-    let found = conflicts(target_adapter.as_ref(), d, plan).await;
-    if !found.is_empty() {
-        return Err(format!(
-            "Im Ziel existieren bereits Objekte aus dem Plan; es wurde nichts geschrieben: {}",
-            found
-                .iter()
-                .take(20)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+    let oracle_native = plan.native && d == Dialect::Oracle;
+    if plan.replace && !oracle_native {
+        return Err("Überschreiben wird nur für Oracle → Oracle unterstützt.".into());
     }
+    let target_adapter = adapter(target, &pool)?;
     let source = adapter(&request.source, &pool)?;
-    let (mut reader, warnings) = Reader::open(&request.source, &pool).await?;
+    if plan.replace {
+        replace_guard(source.as_ref(), target_adapter.as_ref(), &plan.schemas).await?;
+        let mut unconfirmed = Vec::new();
+        for pair in &plan.schemas {
+            for (kind, name) in oracle_copy::objects(target_adapter.as_ref(), &pair.target).await? {
+                let label = format!("{kind} {}.{name}", pair.target);
+                if !plan.replaced.contains(&label) {
+                    unconfirmed.push(label);
+                }
+            }
+        }
+        if !unconfirmed.is_empty() {
+            return Err(format!(
+                "Im Ziel sind seit der Planung Objekte hinzugekommen, deren Löschung nicht bestätigt wurde: {}. Plan neu erstellen.",
+                unconfirmed.join(", ")
+            ));
+        }
+    } else {
+        refuse_conflicts(
+            target_adapter.as_ref(),
+            d,
+            plan,
+            "es wurde nichts geschrieben",
+        )
+        .await?;
+    }
+    let (mut reader, warnings) = if oracle_native {
+        (
+            Source::Oracle(oracle_copy::Copier::open(&request.source, target, &pool).await?),
+            Vec::new(),
+        )
+    } else {
+        let (reader, warnings) = Reader::open(&request.source, &pool).await?;
+        (Source::Generic(reader), warnings)
+    };
     let mut outcome = TransferOutcome {
         atomic: plan.atomic,
         warnings,
         ..Default::default()
     };
+    if plan.replace {
+        let cleared = async {
+            for pair in &plan.schemas {
+                let leftovers = oracle_copy::clear(target_adapter.as_ref(), &pair.target).await?;
+                outcome.warnings.extend(
+                    leftovers
+                        .into_iter()
+                        .map(|left| format!("Im Ziel nicht gelöscht: {left}")),
+                );
+            }
+            refuse_conflicts(
+                target_adapter.as_ref(),
+                d,
+                plan,
+                "das Zielschema wurde geleert",
+            )
+            .await
+        }
+        .await;
+        if let Err(error) = cleared {
+            reader.close().await;
+            return Err(error);
+        }
+    }
     let mut runner = Runner {
         target,
         dialect: d,
@@ -2429,7 +2717,10 @@ pub async fn run(
             let base = total;
             let mut report =
                 |rows: u64| emit("data", Some(label.clone()), index, rows, base + rows);
-            let rows = runner.load_table(&mut reader, table, &mut report).await?;
+            let rows = match &mut reader {
+                Source::Generic(reader) => runner.load_table(reader, table, &mut report).await?,
+                Source::Oracle(copier) => copier.copy(table, &mut report).await?,
+            };
             total += rows;
             outcome.tables.push(TableResult {
                 schema: table.target_schema.clone(),
@@ -2443,7 +2734,12 @@ pub async fn run(
             if super::execution::cancellation_token().is_cancelled() {
                 return Err("Transfer vom Benutzer abgebrochen.".into());
             }
-            runner.exec(statement).await?;
+            match runner.exec(statement).await {
+                Err(error) if statement.optional => {
+                    outcome.warnings.push(format!("Nicht übernommen: {error}"))
+                }
+                result => result?,
+            }
         }
         emit("finalize", None, tables, total, total);
         for statement in &plan.finalize {
@@ -2452,6 +2748,19 @@ pub async fn run(
         runner
             .sync_sequences(source.as_ref(), plan, &mut outcome.warnings)
             .await?;
+        if oracle_native {
+            let (broken, inherited) =
+                oracle_copy::recompile(runner.adapter.as_ref(), source.as_ref(), &plan.schemas)
+                    .await?;
+            outcome.warnings.extend(broken.into_iter().map(|object| {
+                format!("Nach dem Transfer ungültig, in der Quelle gültig: {object}")
+            }));
+            outcome.warnings.extend(
+                inherited
+                    .into_iter()
+                    .map(|object| format!("Wie in der Quelle ungültig: {object}")),
+            );
+        }
         Ok(())
     }
     .await;
@@ -2474,7 +2783,7 @@ pub async fn run(
             outcome.rows = 0;
             if plan.atomic {
                 if let Some(mut session) = runner.session.take() {
-                    if let Err(error) = session.rollback().await {
+                    if let Err(error) = super::execution::shielded(session.rollback()).await {
                         let aborted_by_server = d == Dialect::Mssql && error.contains("3903");
                         if !aborted_by_server {
                             outcome
@@ -2485,7 +2794,7 @@ pub async fn run(
                 }
                 outcome.rolled_back = outcome.leftovers.is_empty();
             } else {
-                outcome.leftovers = runner.compensate().await;
+                outcome.leftovers = super::execution::shielded(runner.compensate()).await;
                 outcome.rolled_back = outcome.leftovers.is_empty();
             }
         }
@@ -2539,6 +2848,9 @@ pub async fn run_transfer(
     )
     .await
 }
+
+#[path = "transfer_oracle.rs"]
+mod oracle_copy;
 
 #[cfg(test)]
 #[path = "transfer_tests.rs"]

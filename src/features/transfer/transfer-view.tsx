@@ -9,6 +9,7 @@ import { effectiveConnectionString } from "@/lib/ssh";
 import { TransferCinema } from "./cinema/transfer-cinema";
 import { TransferEndpoint } from "./transfer-endpoint";
 import { TransferPlanDetails } from "./transfer-plan";
+import { TransferReplaceDialog } from "./transfer-replace-dialog";
 import { TransferRunStatus } from "./transfer-run-status";
 import { TransferSchemas } from "./transfer-schemas";
 import { TransferSummary } from "./transfer-summary";
@@ -18,6 +19,7 @@ export function TransferView() {
   const transfer = useTransfer();
   const { plan } = transfer;
   const [planTab, setPlanTab] = useState<string | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const conflicts = plan?.conflicts ?? [];
   const canStart = Boolean(plan) && conflicts.length === 0 && !transfer.running;
   const hint = transfer.readOnly
@@ -49,7 +51,9 @@ export function TransferView() {
     : plan
       ? conflicts.length
         ? `${conflicts.length} Objekte im Ziel bereits vorhanden`
-        : `${plan.tables.length} Tabellen bereit`
+        : plan.replace
+          ? `${plan.tables.length} Tabellen bereit, Ziel wird überschrieben`
+          : `${plan.tables.length} Tabellen bereit`
       : transfer.outcome?.committed
         ? "Abgeschlossen. Für einen weiteren Transfer die Auswahl ändern."
         : "Quelle, Ziel und mindestens ein Schema wählen.";
@@ -88,7 +92,11 @@ export function TransferView() {
           </Button>
           <Button
             size="sm"
-            onClick={() => void transfer.start()}
+            onClick={() =>
+              plan?.replace && plan.replaced.length > 0
+                ? setConfirmReplace(true)
+                : void transfer.start()
+            }
             disabled={!canStart}
             disabledReason={
               transfer.running
@@ -162,10 +170,24 @@ export function TransferView() {
             crossFamily={transfer.crossFamily}
             foldNames={transfer.foldNames}
             onFoldNames={transfer.setFoldNames}
+            canReplace={transfer.canReplace}
+            replace={transfer.replace}
+            onReplace={transfer.setReplace}
             onShowPlan={setPlanTab}
           />
         </div>
       </div>
+      {plan && (
+        <TransferReplaceDialog
+          plan={plan}
+          open={confirmReplace}
+          onOpenChange={setConfirmReplace}
+          onConfirm={() => {
+            setConfirmReplace(false);
+            void transfer.start();
+          }}
+        />
+      )}
       {plan && (
         <TransferPlanDetails
           plan={plan}

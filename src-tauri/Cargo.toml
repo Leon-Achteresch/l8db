@@ -121,6 +121,9 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+[profile.dev.package.oracle]
+overflow-checks = false
+
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
 muda = { version = "0.20", default-features = false }

@@ -5459,7 +5459,7 @@ fn table_columns(
     insertable: bool,
 ) -> Result<Vec<String>, String> {
     let extra = if insertable {
-        " AND virtual_column = 'NO' AND identity_column = 'NO'"
+        " AND (virtual_column = 'NO' OR NVL(default_length, 0) = 0) AND identity_column = 'NO'"
     } else {
         ""
     };
