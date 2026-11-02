@@ -1649,6 +1649,7 @@ pub async fn uninstall_extension(
     connection_string: String,
     database: Option<String>,
     name: String,
+    cascade: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
     create_adapter_from_string(
@@ -1657,7 +1658,7 @@ pub async fn uninstall_extension(
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .uninstall_extension(&name)
+    .uninstall_extension(&name, cascade.unwrap_or(false))
     .await
 }
 

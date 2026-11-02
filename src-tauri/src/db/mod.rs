@@ -883,8 +883,8 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         Err(unsupported("Extensions"))
     }
-    async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
-        let _ = name;
+    async fn uninstall_extension(&self, name: &str, cascade: bool) -> Result<(), String> {
+        let _ = (name, cascade);
         Err(unsupported("Extensions"))
     }
     async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String> {

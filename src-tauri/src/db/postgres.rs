@@ -342,6 +342,29 @@ pub(crate) async fn begin_guarded(
     conn.batch_execute(&format!("ROLLBACK; {begin}")).await
 }
 
+fn drop_extension_sql(name: &str, cascade: bool) -> String {
+    format!(
+        "DROP EXTENSION IF EXISTS {}{}",
+        quote_ident(name),
+        if cascade { " CASCADE" } else { " RESTRICT" }
+    )
+}
+
+#[cfg(test)]
+mod drop_extension_tests {
+    #[test]
+    fn drops_extensions_without_cascade_unless_requested() {
+        assert_eq!(
+            super::drop_extension_sql("postgis", false),
+            "DROP EXTENSION IF EXISTS \"postgis\" RESTRICT"
+        );
+        assert_eq!(
+            super::drop_extension_sql("uuid-ossp", true),
+            "DROP EXTENSION IF EXISTS \"uuid-ossp\" CASCADE"
+        );
+    }
+}
+
 pub(crate) fn ends_transaction(sql: &str) -> bool {
     [false, true].into_iter().any(|backslash_quotes| {
         statement_heads(sql, backslash_quotes)
@@ -3265,11 +3288,11 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
+    async fn uninstall_extension(&self, name: &str, cascade: bool) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
-            let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
+            let sql = drop_extension_sql(name, cascade);
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
         })
