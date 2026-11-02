@@ -1116,9 +1116,16 @@ fn validate_level(
                     error("keyColumns", "Schlüsselspalten fehlen.");
                 }
             }
-            Action::Shell { program, .. } => {
+            Action::Shell { program, args, .. } => {
                 if blank(program) {
                     error("program", "Programm fehlt.");
+                }
+                let words: Vec<String> = std::iter::once(program.clone())
+                    .chain(args.iter().cloned())
+                    .collect();
+                if let Some(message) = crate::automation::steps::shell::script_issue(&words, &words)
+                {
+                    error("args", &message);
                 }
             }
             Action::Http {
@@ -1279,6 +1286,13 @@ pub fn validate(task: &Task, all: &[Task]) -> Vec<ValidationIssue> {
     for schedule in &task.schedules {
         if let Err(message) = crate::automation::schedule::validate(schedule) {
             issues.push(issue(None, "schedules", message, Severity::Error));
+        } else if schedule.enabled && crate::automation::schedule::never_runs(schedule) {
+            issues.push(issue(
+                None,
+                "schedules",
+                "Zeitplan hat in den nächsten 5 Jahren keinen Termin. Zeitfenster, Ausnahmen und Zeitraum prüfen.".into(),
+                Severity::Warning,
+            ));
         }
     }
     let mut seen = HashSet::new();

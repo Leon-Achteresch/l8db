@@ -1197,8 +1197,8 @@ impl Store {
         retention: &Retention,
     ) -> Result<u64, String> {
         let task_id = task_id.to_string();
-        let keep_runs = retention.keep_runs.unwrap_or(200) as i64;
-        let keep_days = retention.keep_days.unwrap_or(30) as i64;
+        let keep_runs = retention.keep_runs.unwrap_or(200).max(1) as i64;
+        let keep_days = retention.keep_days.unwrap_or(30).max(1) as i64;
         self.write(move |conn| {
             let cutoff = rfc3339(Utc::now() - chrono::Duration::days(keep_days));
             let deleted = conn
@@ -1599,6 +1599,17 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(orphan_logs, 0);
+        store
+            .apply_retention(
+                &task.id,
+                &Retention {
+                    keep_days: Some(0),
+                    keep_runs: Some(0),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(store.get_run("r5").await.unwrap().is_some());
     }
 
     #[tokio::test]
