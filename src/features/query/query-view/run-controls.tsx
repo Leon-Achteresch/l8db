@@ -55,6 +55,7 @@ export function RunControls({
           variant="default"
           className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs @min-[42rem]/qtb:px-3"
           data-tour="query-run"
+          data-hotkey={hasSelection ? "query.runSelection" : "query.run"}
           onClick={actions.handleRun}
           disabled={runDisabled}
           disabledReason={runBlockedReason}
@@ -83,6 +84,7 @@ export function RunControls({
             </DropdownMenuLabel>
             <DropdownMenuItem
               data-tour="query-run-statement"
+              data-hotkey="query.runStatement"
               onClick={actions.handleRunStatement}
               disabled={runDisabled}
             >
@@ -92,6 +94,7 @@ export function RunControls({
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem
+              data-hotkey="query.runSelection"
               onClick={actions.handleRunSelection}
               disabled={isRunning || !connected || !hasSelection}
             >
@@ -116,6 +119,7 @@ export function RunControls({
         variant="outline"
         className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
         data-tour="query-check"
+        data-hotkey="query.check"
         onClick={() => void actions.handleCheck()}
         disabled={isRunning || isChecking || !connected || !hasSql}
         disabledReason={isChecking ? "Prüfung läuft bereits" : runBlockedReason}
@@ -141,6 +145,7 @@ export function RunControls({
               ? "Abbruch wurde bereits angefordert"
               : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch"
           }
+          data-hotkey="query.cancel"
           onClick={stopActiveJob}
           title={
             activeJob?.cancellable

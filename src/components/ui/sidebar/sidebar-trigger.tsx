@@ -13,6 +13,7 @@ export function SidebarTrigger({
 
   return (
     <Button
+      data-hotkey="sidebar.toggle"
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"

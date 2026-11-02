@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { HotkeyRecorderInput } from "@/components/ui/hotkey-recorder-input";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { SettingsRow } from "@/features/settings/settings-row";
 import { useActiveConnection } from "@/lib/connections";
 import {
   commandById,
@@ -18,6 +20,7 @@ import {
   useHotkeysStore,
   validateHotkeyInput,
 } from "@/lib/hotkeys";
+import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 export function SettingsHotkeysTab() {
@@ -26,6 +29,8 @@ export function SettingsHotkeysTab() {
   const setOverride = useHotkeysStore((state) => state.setOverride);
   const resetAll = useHotkeysStore((state) => state.resetAll);
   const connection = useActiveConnection();
+  const shortcutHints = useSettingsStore((state) => state.shortcutHints);
+  const setShortcutHints = useSettingsStore((state) => state.setShortcutHints);
 
   const commands = useMemo(() => filterHotkeyCommands(term), [term]);
   const groups = useMemo(() => groupHotkeyCommands(commands), [commands]);
@@ -59,6 +64,14 @@ export function SettingsHotkeysTab() {
           Funktionstasten. Klick auf ein Kürzel, neue Tasten drücken, fertig.
         </p>
       </div>
+
+      <SettingsRow settingId="shortcut-hints" featureId="settings.hotkeys.shortcut-hints">
+        <Switch
+          aria-label="Tastenkürzel-Tipps"
+          checked={shortcutHints}
+          onCheckedChange={setShortcutHints}
+        />
+      </SettingsRow>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">

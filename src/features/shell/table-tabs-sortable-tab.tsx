@@ -236,6 +236,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
               type="button"
               onClick={onClose}
               aria-label={`${label} schließen`}
+              data-hotkey={isActive ? "tab.close" : undefined}
               className={cn(
                 "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground/70 transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 closeButton === "always" || (closeButton === "auto" && isActive)
