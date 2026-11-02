@@ -169,13 +169,21 @@ test("typing a statement keeps every keystroke's completion cheap after the inde
     const items = suggestCompletions(registry, before, before, [], scope);
     return limitMatches(items, word, 300).items.length;
   };
-  const prepared = { ...base };
-  const prepareStart = performance.now();
-  prepareCompletions(prepared);
-  const prepareMs = performance.now() - prepareStart;
-  const firstStart = performance.now();
-  keystroke(prepared, 1);
-  const firstKeystrokeMs = performance.now() - firstStart;
+  let prepared = base;
+  const prepareTimes: number[] = [];
+  const firstTimes: number[] = [];
+  for (let round = 0; round < 5; round++) {
+    prepared = { ...base };
+    const prepareStart = performance.now();
+    prepareCompletions(prepared);
+    prepareTimes.push(performance.now() - prepareStart);
+    const firstStart = performance.now();
+    keystroke(prepared, 1);
+    firstTimes.push(performance.now() - firstStart);
+  }
+  const median = (values: number[]) => [...values].sort((a, b) => a - b)[values.length >> 1];
+  const prepareMs = median(prepareTimes);
+  const firstKeystrokeMs = median(firstTimes);
 
   const durations: number[] = [];
   let shown = 0;
