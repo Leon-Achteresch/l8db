@@ -2,10 +2,14 @@ import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/con
 import { ensurePassword } from "@/lib/password-prompt";
 import { ensureSshTunnel } from "@/lib/ssh";
 
-export async function prepareConnection(id: string): Promise<SavedConnection> {
+export async function prepareConnection(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SavedConnection> {
   const find = () => useConnectionsStore.getState().connections.find((entry) => entry.id === id);
   if (!find()) throw new Error("Die Verbindung existiert nicht mehr.");
-  if (!(await ensurePassword(id))) throw new Error("Ohne Passwort kann nicht verbunden werden.");
+  if (!(await ensurePassword(id, undefined, signal)))
+    throw new Error("Ohne Passwort kann nicht verbunden werden.");
   const fresh = find();
   if (usesTunnel(fresh) && !fresh.tunnelPort) {
     const outcome = await ensureSshTunnel(fresh);
