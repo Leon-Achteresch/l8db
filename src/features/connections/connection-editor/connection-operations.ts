@@ -63,6 +63,7 @@ export interface ConnectionOperationsContext {
   maskRules: MaskRule[];
   tags: string;
   cloudAuth: CloudAuth | null;
+  passwordCleared: boolean;
   vault: { host: ExtensionManager; name: string } | null;
   onSaved: () => void;
 }
@@ -70,9 +71,10 @@ export interface ConnectionOperationsContext {
 export async function databasePasswordToSave(
   connectionString: string,
   connection: Pick<SavedConnection, "id" | "connectionString"> | undefined,
+  cleared = false,
 ): Promise<string | null> {
   const typed = extractUrlPassword(connectionString);
-  if (typed !== null || !connection) return typed;
+  if (typed !== null || !connection || cleared) return typed;
   if (extractUrlPassword(connection.connectionString) !== null) return null;
   return loadSecret(connection.id);
 }
@@ -107,6 +109,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     maskRules,
     tags,
     cloudAuth,
+    passwordCleared,
     vault,
     onSaved,
   } = ctx;
@@ -154,7 +157,11 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
       const config = await configuration();
       const configInfo = providers.find((entry) => entry.kind === config.kind) ?? info;
       const id = connection?.id ?? crypto.randomUUID();
-      const dbPassword = await databasePasswordToSave(config.connectionString, connection);
+      const dbPassword = await databasePasswordToSave(
+        config.connectionString,
+        connection,
+        passwordCleared,
+      );
       if (connection && useConnectionsStore.getState().activeId === id) {
         const outcome = await activateConnection(null);
         if (!outcome.ok) throw new Error(outcome.error);

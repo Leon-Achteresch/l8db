@@ -15,9 +15,11 @@ export {
 export type { OracleKeyValue } from "./oracle-key-value";
 export { isOracleKeyValue, parseOracleKeyValue } from "./oracle-key-value";
 export {
+  connectionUrlString,
   filePath,
   isTrustedConnection,
   kindFromUrl,
+  multiHostUrl,
   parseConnectionUrl,
   sslModeFromUrl,
 } from "./parse";

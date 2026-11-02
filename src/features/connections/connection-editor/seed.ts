@@ -2,6 +2,7 @@ import {
   connectionSummary,
   filePath,
   isTrustedConnection,
+  multiHostUrl,
   oracleConnectString,
   parseConnectionUrl,
 } from "@/lib/connection-url";
@@ -81,6 +82,7 @@ export function seedFields(
 
 export function seedMode(seed: SavedConnection | undefined, info: ProviderInfo): Mode {
   if (!seed || info.file_based) return "fields";
+  if (multiHostUrl(seed.connectionString)) return "string";
   try {
     const url = parseConnectionUrl(seed.connectionString, seed.kind);
     if (seed.kind === "oracle" && oracleConnectString(url)) return "tns";

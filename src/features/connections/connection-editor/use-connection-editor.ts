@@ -64,6 +64,7 @@ export function useConnectionEditor({
   const [database, setDatabase] = useState(initial.database);
   const [user, setUser] = useState(initial.user);
   const [password, setPassword] = useState(initial.password);
+  const [keychainPassword, setKeychainPassword] = useState(false);
   const [file, setFile] = useState(initial.file);
   const [extraParams, setExtraParams] = useState(initial.extraParams);
   const [trusted, setTrusted] = useState(initial.trusted);
@@ -144,7 +145,9 @@ export function useConnectionEditor({
     const id = connection?.id;
     if (!id) return;
     void loadSecret(id).then((secret) => {
-      if (secret) setPassword((current) => current || secret);
+      if (!secret) return;
+      setKeychainPassword(true);
+      setPassword((current) => current || secret);
     });
   }, [connection?.id]);
 
@@ -213,6 +216,7 @@ export function useConnectionEditor({
     maskRules,
     tags,
     cloudAuth: cloudAuthValue,
+    passwordCleared: keychainPassword && !password && mode !== "string" && !cloudAuthValue,
     vault: vault && storeInVault ? { host: extensionHost, name: vault.name } : null,
     onSaved,
   });
