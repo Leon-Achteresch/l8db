@@ -78,7 +78,7 @@ export const QueryResultRow = memo(function QueryResultRow({
         if (item.spacer)
           return (
             <td
-              key={`gap-${item.index}`}
+              key={item.key}
               aria-hidden
               colSpan={item.span}
               style={{ width: item.width, padding: 0 }}
