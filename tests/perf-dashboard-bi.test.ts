@@ -22,7 +22,12 @@ import {
   themeCss,
   useCrossFilterStore,
 } from "../src/lib/dashboards";
-import { readsTable, tableDialect, tableTokenCacheKeys } from "../src/lib/dashboards/sql-tables";
+import {
+  readsTable,
+  tableDialect,
+  tableTokenCacheKeys,
+  tableTokenCacheUsage,
+} from "../src/lib/dashboards/sql-tables";
 
 function dataset(table: string, dimension: string, joined = false): Dataset {
   const base = emptyDataset(table);
@@ -246,6 +251,37 @@ test("table token cache stays bounded and keeps recently used statements", async
   expect(keys.some((key) => key.endsWith(statements[237]))).toBe(false);
   expect(keys.some((key) => key.endsWith(statements[238]))).toBe(true);
   expect(timing.p95Ms).toBeLessThan(50);
+});
+
+test("large dashboard SQL keeps retained text and tokens bounded without background work", async () => {
+  const columns = Array.from({ length: 1000 }, (_, index) => `column_${index}`).join(",");
+  const statements = Array.from(
+    { length: 128 },
+    (_, index) => `SELECT ${columns} FROM enterprise_${index}`,
+  );
+  const timing = await measureScenario(() => {
+    for (const [index, sql] of statements.entries())
+      expect(readsTable(sql, `enterprise_${index}`, "postgres")).toBe(true);
+  });
+  const usage = tableTokenCacheUsage();
+  expect(usage.statements).toBeLessThanOrEqual(64);
+  expect(usage.textChars).toBeLessThanOrEqual(256 * 1024);
+  expect(usage.tokens).toBeLessThanOrEqual(32000);
+  const oversized = `SELECT '${"x".repeat(300000)}' FROM oversized_source`;
+  expect(readsTable(oversized, "oversized_source", "postgres")).toBe(true);
+  expect(tableTokenCacheKeys().some((key) => key.endsWith(oversized))).toBe(false);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(tableTokenCacheUsage()).toEqual(usage);
+  expect(timing.p95Ms).toBeLessThan(250);
+  await reportScenario("dashboard-sql-cache-memory", {
+    statements: 128,
+    columns: 1000,
+    oversizedSqlChars: oversized.length,
+    retained: usage,
+    databaseRequests: 0,
+    idleMutations: 0,
+    ...timing,
+  });
 });
 
 test("bracket identifiers keep table detection linear on SQL Server", async () => {

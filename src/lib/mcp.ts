@@ -115,7 +115,7 @@ export function mergeMcpConnections(
       schemas: connection.kind === "mongodb" ? [] : (connection.schemas ?? []),
       ssh: usesTunnel(connection),
       exposed: previous?.exposed ?? false,
-      readOnly: previous?.readOnly ?? true,
+      readOnly: connection.readOnly || (previous?.readOnly ?? true),
       allowDdl: previous?.allowDdl ?? false,
       allowScripts: previous?.allowScripts ?? false,
       redactColumns: previous?.redactColumns ?? [],

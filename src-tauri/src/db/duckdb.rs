@@ -917,6 +917,42 @@ mod tests {
     }
 
     #[test]
+    fn untyped_nulls_preserve_scalar_and_nested_values_without_poisoning_connections() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (_, rows) = query_all(&conn, "SELECT NULL, [NULL, NULL], {'missing': NULL, 'value': 1}, MAP {'missing': NULL}, array_value(NULL, NULL)").unwrap();
+        assert_eq!(
+            rows[0],
+            vec![
+                json!(null),
+                json!([null, null]),
+                json!({"missing":null,"value":1}),
+                json!({"missing":null}),
+                json!([null, null])
+            ]
+        );
+        assert_eq!(query_all(&conn, "SELECT 42").unwrap().1[0], vec![json!(42)]);
+    }
+
+    #[test]
+    fn null_heavy_results_remain_bounded_and_keep_request_count_constant() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut samples = Vec::new();
+        for _ in 0..15 {
+            let start = std::time::Instant::now();
+            let (_, rows) = query_limited(&conn, "SELECT NULL AS missing, {'missing': NULL, 'value': i} AS record FROM range(1000000) t(i)", 1000).unwrap();
+            assert_eq!(rows.len(), 1000);
+            assert!(rows
+                .iter()
+                .all(|row| row[0].is_null() && row[1]["missing"].is_null()));
+            assert!(serde_json::to_vec(&rows).unwrap().len() < 100000);
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        eprintln!("DuckDB NULL decoding: 1M source rows, retained 1000 rows/<100KB JSON, 1 request/run, median {:?}, p95 {:?}, no background tasks", samples[7], samples[14]);
+        assert!(samples[14] < std::time::Duration::from_millis(500));
+    }
+
+    #[test]
     fn file_views_cover_csv_and_parquet() {
         assert_eq!(
             file_view_sql("/tmp/o'hara.CSV").unwrap(),

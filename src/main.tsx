@@ -13,6 +13,8 @@ import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { installNativeGuards } from "@/lib/native-guards";
+import { initOrganization } from "@/lib/organization";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
 import { useSettingsViewState } from "@/lib/settings-view-state";
@@ -31,8 +33,13 @@ const disposeAppearance = initAppearance();
 const executionSettings = initExecutionSettings();
 if (import.meta.hot) import.meta.hot.dispose(executionSettings.dispose);
 if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
-const disposeCrashReporting = initCrashReporting();
-if (import.meta.hot) import.meta.hot.dispose(disposeCrashReporting);
+const organizationReady = initOrganization();
+void organizationReady
+  .then(() => {
+    const disposeCrashReporting = initCrashReporting();
+    if (import.meta.hot) import.meta.hot.dispose(disposeCrashReporting);
+  })
+  .catch(() => undefined);
 
 const usageTracking = initUsageTracking();
 if (import.meta.hot) import.meta.hot.dispose(usageTracking.dispose);
@@ -82,15 +89,17 @@ function render() {
 let startupReady = false;
 
 void import("@/features/ui-plugins/boot")
-  .then(({ bootUiPlugins }) => bootUiPlugins())
+  .then(async ({ bootUiPlugins }) => {
+    await organizationReady;
+    if (useOrganizationStore.getState().policy?.allowExtensions !== false) await bootUiPlugins();
+  })
   .catch((error) => console.warn("UI-Plugins konnten nicht starten", error));
 
-Promise.all([
-  executionSettings.ready,
-  initConnectionSecrets(),
-  loadProviders().then(restoreSshTunnel),
-])
-  .then(() => {
+Promise.all([organizationReady, executionSettings.ready, initConnectionSecrets(), loadProviders()])
+  .then(async () => {
+    const { initTeam } = await import("@/lib/team/sync");
+    await initTeam(isMainWindow);
+    await restoreSshTunnel();
     startupReady = true;
   })
   .catch(() => undefined)
@@ -112,18 +121,17 @@ Promise.all([
         void import("@/lib/automation/ai-activity")
           .then(({ initAiActivity }) => initAiActivity())
           .catch(() => undefined);
-        void import("@/lib/team/sync")
-          .then(({ initTeam }) => initTeam(isMainWindow))
-          .catch(() => undefined);
         if (isMainWindow)
           void import("@/lib/mcp-open")
             .then(({ initMcpOpen }) => initMcpOpen())
             .catch(() => undefined);
       });
-    void extensionHost
-      .start()
-      .catch((error) => extensionHost.manager.log("host", "error", String(error)));
-    if (!import.meta.env.DEV && isMainWindow) scheduleAutoUpdater();
+    if (startupReady) {
+      void extensionHost
+        .start()
+        .catch((error) => extensionHost.manager.log("host", "error", String(error)));
+      if (!import.meta.env.DEV && isMainWindow) scheduleAutoUpdater();
+    }
   });
 
 function scheduleAutoUpdater() {

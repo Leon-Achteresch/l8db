@@ -1,3 +1,4 @@
+import { useOrganizationStore } from "@/lib/organization-state";
 import type { Disposable, ExtensionDescriptor, Json } from "../contracts";
 import { ExtensionError } from "../contracts";
 import { rpcConnectionsHandlers } from "./rpc-connections";
@@ -24,6 +25,15 @@ export async function dispatchRpc(
   sessions: Map<string, Map<string, Disposable>>,
   deps: RpcDeps,
 ): Promise<Json | void> {
+  const organization = useOrganizationStore.getState();
+  if (
+    (organization.error || organization.policy?.allowExtensions === false) &&
+    method !== "dispose"
+  )
+    throw new ExtensionError(
+      "PermissionDeniedError",
+      "Erweiterungen sind durch die IT-Richtlinie gesperrt.",
+    );
   const id = extension.archive.manifest.id;
   if ((!extension.enabled && method !== "logger" && method !== "dispose") || !sessions.has(id))
     throw new ExtensionError("ExtensionDisabledError", id);

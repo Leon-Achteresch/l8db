@@ -94,7 +94,7 @@ slots: (options) => {
 | `tabs.group` | `(tab) → { id, label, tone? } \| undefined` | Beschriftete Gruppen in der Tab-Leiste |
 | `tabs.item` | `({ tab, active, Default }) → ReactNode \| undefined` | Inhalt eines Tabs. `<Default />` zeigt Icon und Titel. `active` ist `true` beim ausgewählten Tab. Den Schließen-Knopf steuert `tabs.options`. |
 | `tabs.options` | `{ closeButton?, newTabPosition? }` | Verhalten der Tab-Leiste |
-| `split.layout` | `(count, orientation) → SplitLayout \| undefined` | Anordnung bei 2–4 Bereichen |
+| `split.layout` | `(count, orientation) → SplitLayout \| undefined` | Anordnung bei 2–4 Bereichen, wenn über „Ansicht teilen“ oder eine Vorlage geteilt wird. Zieht die Person einen Tab an den Rand eines Bereichs, gilt die gezogene Anordnung, bis sie zur Einzelansicht zurückkehrt. |
 | `split.options` | `{ autoSaveGroups?: boolean }` | Standard `true`: Teilen merkt sich die Anordnung als Gruppe „Ansicht N“. `false` schaltet das ab. |
 | `split.templates` | `{ id, name, when?, orientation?, panes }[]` | Vorlagen im Menü „Tab-Gruppen“ |
 

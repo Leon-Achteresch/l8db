@@ -198,9 +198,17 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "appearance",
     title: "Saisonale Akzente",
     description:
-      "Vom 18. bis 31. Oktober trägt das Logo einen Hexenhut, leere Ergebnisse bekommen Spinnweben und eine kleine Spinne schaut höchstens einmal am Tag in deine Ergebnisse, nie bei Produktionsverbindungen. Ein Klick scheucht sie weg.",
+      "Kleine Logo-Accessoires und 19 süße Feiertagsgäste begleiten dich durchs Jahr: von Hops dem Osterhasen bis Tanni dem Weihnachtsbaum. Höchstens ein kurzer Besuch am Tag, nie bei Produktionsverbindungen. Alle Feiertage lassen sich einzeln vorführen.",
     keywords: [
       "halloween",
+      "feiertage",
+      "ostern",
+      "weihnachten",
+      "nikolaus",
+      "silvester",
+      "valentinstag",
+      "karneval",
+      "advent",
       "saison",
       "spinne",
       "hexenhut",

@@ -64,6 +64,7 @@ export async function addTarget(
     | "customer"
     | "environment"
     | "stage"
+    | "ledgerSchema"
   >,
 ) {
   const connection = connections.find((item) => item.id === input.connectionId);
@@ -97,6 +98,7 @@ export async function addTarget(
     connectionId: connection.id,
     database,
     schema,
+    ...(input.ledgerSchema?.trim() ? { ledgerSchema: input.ledgerSchema.trim() } : {}),
     production: input.production,
     ...(input.stage ? { stage: input.stage } : {}),
     release: null,

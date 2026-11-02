@@ -17,6 +17,7 @@ import {
   scrubUrlPassword,
   storeSecret,
 } from "@/lib/secrets";
+import { enforceTeamConnection } from "@/lib/team/merge";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import type { ConnectionInput, SavedConnection } from "./types";
 
@@ -213,9 +214,8 @@ const scrubbingStorage: StateStorage = {
           if (typeof connection?.connectionString === "string") {
             const scrubbed = scrubUrlPassword(connection.connectionString);
             const { value, secrets } = splitSecretParams(scrubbed);
-            connection.connectionString = querySecretInKeychain(connection, secrets)
-              ? value
-              : scrubbed;
+            querySecretInKeychain(connection, secrets);
+            connection.connectionString = value;
           }
           if ("tunnelPort" in connection) {
             connection.tunnelPort = null;
@@ -272,7 +272,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
               ? connection
               : connection.temporary
                 ? { temporary: true, ...input, id }
-                : { team: connection.team, ...input, id },
+                : enforceTeamConnection({ ...input, id, team: connection.team }),
           ),
         })),
       removeConnection: (id) => {

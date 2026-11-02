@@ -24,6 +24,7 @@ import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
+import { middleClick } from "@/lib/middle-click";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -96,7 +97,19 @@ export function SidebarProcedureList({
                   asChild
                   onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
                 >
-                  <SidebarMenuButton onClick={() => open(item)}>
+                  <SidebarMenuButton
+                    onClick={() => open(item)}
+                    {...middleClick(
+                      target
+                        ? undefined
+                        : () =>
+                            openProcedureTab({
+                              schema: item.schema,
+                              name: item.name,
+                              oid: item.oid,
+                            }),
+                    )}
+                  >
                     <SquareFunctionIcon className="text-muted-foreground" />
                     <span className="truncate">
                       {item.name}

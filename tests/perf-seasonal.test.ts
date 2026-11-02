@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { HOLIDAYS, holidayForDate } from "@/lib/seasonal-calendar";
+import { seasonalQuip } from "@/lib/seasonal-quip";
 import { spiderQuip } from "@/lib/spider-quip";
 
 const EVENING = new Date(2026, 9, 28, 19, 40);
@@ -53,4 +55,31 @@ test("Spinnenspruch bleibt bei 1 Mio. Zeilen × 2.000 Spalten unter einer Millis
   );
   expect(large.p95).toBeLessThan(1);
   expect(large.median).toBeLessThan(0.5);
+});
+
+test("19 Feiertage bleiben auch bei einer Million Zeilen konstant und behalten keine Ergebnisdaten", () => {
+  const huge = table(1_000_000, 2_000);
+  let reads = 0;
+  const guarded = new Proxy(huge.rows, {
+    get(target, key, receiver) {
+      if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  const durations: number[] = [];
+  const months = Array.from({ length: 12 }, (_, month) => new Date(2026, month, 1));
+  for (let run = 0; run < 300; run++) {
+    const start = performance.now();
+    for (const date of months) holidayForDate(date);
+    for (const holiday of HOLIDAYS) seasonalQuip(holiday.id, huge.columns, guarded, 0.75, EVENING);
+    durations.push(performance.now() - start);
+  }
+  const median = percentile(durations, 0.5);
+  const p95 = percentile(durations, 0.95);
+  console.log(
+    `seasonal-calendar: 19 guests × 1M×2000 + 12 dates; median ${median.toFixed(3)} ms, p95 ${p95.toFixed(3)} ms; ${reads / 300} sampled rows per run`,
+  );
+  expect(reads / 300).toBe(100);
+  expect(median).toBeLessThan(0.5);
+  expect(p95).toBeLessThan(1);
 });

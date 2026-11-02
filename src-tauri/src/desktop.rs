@@ -101,6 +101,10 @@ fn scrub_breadcrumb(
 
 #[tauri::command]
 pub async fn set_crash_reporting(enabled: bool) {
+    let enabled = crate::organization::current(false)
+        .ok()
+        .map(|policy| policy.policy.settings.crash_reports.unwrap_or(enabled))
+        .unwrap_or(false);
     let mut guard = SENTRY
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

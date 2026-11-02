@@ -4,9 +4,18 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.16.0";
 
 export const NEW_FEATURES = {
+  "query.results.keep-on-error": NEXT_FEATURE_VERSION,
+  "query.results.timestamps": NEXT_FEATURE_VERSION,
+  "query.results.content-width": NEXT_FEATURE_VERSION,
+  "query.results.snapshots": NEXT_FEATURE_VERSION,
+  "query.notifications": NEXT_FEATURE_VERSION,
   "settings.general.workspace-tab": "0.9.1",
   "settings.general.sync": "0.14.0",
   "settings.general.team": NEXT_FEATURE_VERSION,
+  "settings.general.organization": NEXT_FEATURE_VERSION,
+  "connections.team.help": NEXT_FEATURE_VERSION,
+  "onboarding.team-workflow": NEXT_FEATURE_VERSION,
+  "settings.cli.doctor": NEXT_FEATURE_VERSION,
   "settings.extensions.ui-plugins": "0.17.0",
   "settings.statistics.overview": "0.14.0",
   "settings.cli.install": "0.14.0",
@@ -192,6 +201,7 @@ export const NEW_FEATURES = {
   "settings.appearance.table-style": "0.14.0",
   "settings.appearance.filter-bar": NEXT_FEATURE_VERSION,
   "settings.appearance.seasonal": "0.15.0",
+  "settings.appearance.seasonal.calendar": NEXT_FEATURE_VERSION,
   "query.transaction.changes": "0.7.0",
   "query.transaction.database-diff": "0.14.0",
   "settings.editor.parameter-hints": "0.14.0",
@@ -209,6 +219,8 @@ export const NEW_FEATURES = {
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",
   "split.saved-views": NEXT_FEATURE_VERSION,
+  "split.pane-tabs": NEXT_FEATURE_VERSION,
+  "split.master-tabs": NEXT_FEATURE_VERSION,
   "settings.extensions.extensions.openbao": "0.8.0",
   "settings.extensions.community-market": "0.8.0",
 } as const;

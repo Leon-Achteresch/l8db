@@ -1,7 +1,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
-import { destructiveStatements } from "@/lib/sql-safety";
+import { destructiveStatements, writesData } from "@/lib/sql-safety";
 import { finishTask, isTaskActive, startTask, updateTask, useTasksStore } from "@/lib/tasks";
 import {
   recordDatabaseOperation,
@@ -222,6 +222,19 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
 }
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
+    throw new Error(READ_ONLY_MESSAGE);
+  if (SQL_COMMANDS.has(command)) {
+    const { operationConnections } = await import("@/lib/operation-context");
+    const { isReadOnlyConnection } = await import("@/lib/connections");
+    const connection = operationConnections(args ?? {}, "exact").find(isReadOnlyConnection);
+    if (connection || isReadOnlyActive(args?.connectionString)) {
+      const kind = connection?.kind ?? args?.kind;
+      const sql = String(args?.sql ?? "");
+      if (writesData(sql, String(kind))) throw new Error(READ_ONLY_MESSAGE);
+      await tauriInvoke("validate_read_query", { kind, sql });
+    }
+  }
   if (WRITE_COMMANDS.has(command)) {
     if (isReadOnlyActive(args?.connectionString)) throw new Error(READ_ONLY_MESSAGE);
     await readOnlyGuard(args ?? {});
@@ -309,8 +322,6 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   }
   const kind = typeof args?.kind === "string" ? args.kind : "unknown";
   try {
-    if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
-      throw new Error(READ_ONLY_MESSAGE);
     const result = await traceCommand(command, { kind }, () =>
       tauriInvoke<T>(
         command,

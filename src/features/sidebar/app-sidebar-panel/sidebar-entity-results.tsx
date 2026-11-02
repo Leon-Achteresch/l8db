@@ -11,6 +11,7 @@ import { copyNameActions } from "@/lib/clipboard";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isViewInvalid } from "@/lib/invalid-objects";
+import { middleClick } from "@/lib/middle-click";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { EntityConfirmDialog } from "./entity-confirm-dialog";
 import { EntityMatchingColumns } from "./entity-matching-columns";
@@ -136,6 +137,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                           drop,
                         })}
                         onOpenView={() => openView(item.schema, item.name)}
+                        {...middleClick(() => actions.openInNewTab(item.schema, item.name))}
                       />
                     </ContextMenuTrigger>
                     <ContextMenuContent>

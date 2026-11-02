@@ -11,6 +11,7 @@ import { OnboardingIntro } from "@/features/onboarding/onboarding-intro";
 import { OnboardingThemePreview } from "@/features/onboarding/onboarding-theme-preview";
 import { SettingsAppearance } from "@/features/settings/settings-appearance";
 import { SettingsTableAppearance } from "@/features/settings/settings-table-appearance";
+import { TeamGettingStarted } from "@/features/settings/team-getting-started";
 import { EASE_OUT } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,16 @@ export function Onboarding() {
   }, []);
 
   const steps = [
+    {
+      id: "team-workflow",
+      title: "Sicher mit Datenbanken arbeiten",
+      subtitle: "Verbindungen, persönliche Rechte und der Ablauf für Änderungen.",
+      content: (
+        <div className="mt-8">
+          <TeamGettingStarted />
+        </div>
+      ),
+    },
     {
       id: "theme",
       title: "Wie soll l8db aussehen?",

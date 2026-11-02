@@ -7,6 +7,7 @@ import { MaskingToggle } from "@/features/table/masking-toggle";
 import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
 import { TableExtensionActions } from "@/features/table/table-extension-actions";
+import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
 import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import { useReadOnlyConnection } from "@/lib/connections";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
@@ -81,6 +82,7 @@ export function TableToolbarActions({
         columnDetails={columnDetails}
         refresh={() => void refetch()}
       />
+      {isData && <TimestampDisplayMenu />}
       <ObjectAdminMenu schema={schema} name={table} objectType="table" />
       {isData && caps.query_language === "redis" && (
         <RedisKeyActions key={`${connection?.id}:${database}`} />

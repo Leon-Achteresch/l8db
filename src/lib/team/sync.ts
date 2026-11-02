@@ -1,7 +1,9 @@
 import { useConnectionsStore } from "@/lib/connections";
 import { NETWORK_SECRET_SUFFIXES } from "@/lib/connections/store";
 import { teamConnections } from "@/lib/db/team";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { deleteSecret } from "@/lib/secrets";
+import { useSettingsStore } from "@/lib/settings";
 import { mergeTeamConnections, type TeamMerge } from "./merge";
 import { useTeamStore } from "./store";
 
@@ -27,6 +29,10 @@ async function pull(): Promise<TeamMerge> {
     }
     if (!Array.isArray(file?.connections))
       throw new Error("Ungültige Antwort beim Lesen der Team-Datei.");
+    if (file.organization) {
+      useOrganizationStore.setState({ policy: file.organization, error: null });
+      useSettingsStore.setState({});
+    }
     const store = useConnectionsStore.getState();
     const legacy = store.connections
       .filter((connection) => connection.team && connection.team.hub !== TEAM_HUB)
@@ -46,6 +52,7 @@ async function pull(): Promise<TeamMerge> {
       path: file.path,
       exists: file.exists,
       warnings: [
+        ...(file.warnings ?? []),
         ...(legacy.length
           ? [
               `${legacy.length} Verbindungen aus dem früheren Team-Hub bzw. Microsoft 365 wurden entfernt, samt gespeicherter Passwörter.`,

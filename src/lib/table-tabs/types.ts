@@ -105,6 +105,7 @@ export interface TabsState {
   openToolTab: (tool: ToolId, id?: string) => void;
   updateCompareTab: (id: string, compare: CompareWorkspace, title: string) => void;
   closeTab: (key: string) => void;
+  closeTabs: (keys: string[]) => void;
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
   closeAllTabs: () => void;

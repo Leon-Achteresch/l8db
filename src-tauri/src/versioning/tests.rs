@@ -355,8 +355,7 @@ async fn rollout_review_is_bound_to_committed_team_and_database_identity() {
     git(&root, &["commit", "-m", "Team configuration"])
         .await
         .unwrap();
-    let artifact =
-        json!({"teamHash":control::hash(content.trim_end()),"execution":{"context":context}});
+    let artifact = json!({"schema":"customer_a","teamHash":control::hash(content.trim_end()),"execution":{"context":context}});
     let mut execution: runner::Request = serde_json::from_value(json!({"connection":{"kind":"postgres","connectionString":"postgres://example.invalid/app","database":"app","schema":"customer_a","projectId":"team-project"},"repo":root.to_str().unwrap(),"targetId":"customer-a","runId":"review-test","artifact":artifact.to_string()})).unwrap();
     assert!(team::verify_request(&execution).await.unwrap().is_some());
     execution.connection.schema = "customer_b".into();
