@@ -83,7 +83,8 @@ test("formatSqlWith honors extended formatting options", () => {
   expect(semicolon.sql).toContain("\n;");
 });
 
-test("formatSqlWith keeps text unchanged and reports the reason on failure", () => {  const result = formatSqlWith("select 1", {
+test("formatSqlWith keeps text unchanged and reports the reason on failure", () => {
+  const result = formatSqlWith("select 1", {
     dialect: "not-a-dialect" as never,
     tabWidth: 2,
     keywordCase: "upper",
@@ -91,4 +92,15 @@ test("formatSqlWith keeps text unchanged and reports the reason on failure", () 
   expect(result.ok).toBe(false);
   expect(result.sql).toBe("select 1");
   if (!result.ok) expect(result.reason.length).toBeGreaterThan(0);
+});
+
+test("named bind parameters keep their colon attached", () => {
+  for (const dialect of ["postgresql", "mysql", "transactsql", "duckdb"] as const) {
+    const result = formatSqlWith("SELECT a FROM t WHERE id = :id", {
+      dialect,
+      tabWidth: 2,
+      keywordCase: "upper",
+    });
+    expect(result.ok && result.sql.includes("id = :id")).toBe(true);
+  }
 });
