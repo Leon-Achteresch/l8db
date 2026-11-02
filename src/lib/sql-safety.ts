@@ -108,19 +108,59 @@ export interface SafetyOptions {
   strict?: boolean;
 }
 
+const DROP_REASONS: Record<string, string> = {
+  TABLE: "Tabelle löschen",
+  DATABASE: "Datenbank löschen",
+  SCHEMA: "Schema löschen",
+  KEYSPACE: "Keyspace löschen",
+  VIEW: "View löschen",
+  MATERIALIZED: "View löschen",
+  INDEX: "Index löschen",
+  COLUMN: "Spalte löschen",
+};
+const KEEPS_DATA_DROPS = new Set(["DEFAULT", "NOT", "IDENTITY", "EXPRESSION"]);
+const MONGO_DESTRUCTIVE =
+  /\.(deleteMany|remove|drop|dropDatabase)\s*\(|"(delete|drop|dropDatabase)"\s*:/;
+const MONGO_REASONS: Record<string, string> = {
+  deleteMany: "Dokumente löschen",
+  remove: "Dokumente löschen",
+  delete: "Dokumente löschen",
+  drop: "Collection löschen",
+  dropDatabase: "Datenbank löschen",
+};
+
 export function destructiveStatements(
   sql: string,
   dialect?: string,
   options: SafetyOptions = {},
 ): DestructiveStatement[] {
-  if (dialect === "redis" || dialect === "mongodb") return [];
+  if (dialect === "redis")
+    return sql.split(/\r?\n/).flatMap((line) => {
+      const word = line.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
+      if (word === "FLUSHALL" || word === "FLUSHDB")
+        return [{ sql: line.trim(), reason: "Alle Schlüssel löschen" }];
+      if (options.strict && (word === "DEL" || word === "UNLINK"))
+        return [{ sql: line.trim(), reason: "Schlüssel löschen" }];
+      return [];
+    });
+  if (dialect === "mongodb") {
+    const match = MONGO_DESTRUCTIVE.exec(sql);
+    return match ? [{ sql: sql.trim(), reason: MONGO_REASONS[match[1] ?? match[2]] }] : [];
+  }
   return splitSqlStatements(sql, dialect).statements.flatMap((statement) => {
     const words = sqlTokens(statement.text, dialect);
     let reason: string | null = null;
     if (["GRANT", "REVOKE"].includes(words[0]?.word)) return [];
     for (let i = 0; i < words.length; i++) {
       const token = words[i];
-      if (token.word === "DROP" && words[i + 1]?.word === "TABLE") reason = "Tabelle löschen";
+      const dropped = token.word === "DROP" ? DROP_REASONS[words[i + 1]?.word] : undefined;
+      if (dropped) reason = dropped;
+      else if (
+        token.word === "DROP" &&
+        words[0]?.word === "ALTER" &&
+        !KEEPS_DATA_DROPS.has(words[i + 1]?.word)
+      )
+        reason = "Spalte oder Bestandteil löschen";
       else if (options.strict && token.word === "DROP" && i === 0) reason = "Objekt löschen";
       if (token.word === "TRUNCATE") reason = "Tabelle leeren";
       if (token.word === "DELETE" && withoutWhere(words, i)) reason = "DELETE ohne WHERE";

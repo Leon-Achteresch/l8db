@@ -96,10 +96,12 @@ describe("SQL-Sicherheit für Produktion", () => {
   test("strenger Modus erkennt ALTER, DROP und UPDATE ohne WHERE", () => {
     const sql =
       "ALTER TABLE t ADD c int; DROP VIEW v; UPDATE t SET a = 1; UPDATE t SET a = 2 WHERE id = 1";
-    expect(destructiveStatements(sql, "postgres")).toEqual([]);
+    expect(destructiveStatements(sql, "postgres").map((entry) => entry.reason)).toEqual([
+      "View löschen",
+    ]);
     expect(
       destructiveStatements(sql, "postgres", { strict: true }).map((entry) => entry.reason),
-    ).toEqual(["Struktur ändern", "Objekt löschen", "UPDATE ohne WHERE"]);
+    ).toEqual(["Struktur ändern", "View löschen", "UPDATE ohne WHERE"]);
   });
 
   test("Schreibzugriffe werden je Dialekt erkannt", () => {
