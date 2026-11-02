@@ -64,19 +64,12 @@ function formatKey(row: DataDiffRow, keyColumns: string[]): string {
   return keyColumns.map((column) => `${column}=${String(row.keyValues[column])}`).join(", ");
 }
 
-function quoteText(text: string, kind: DatabaseKind | null | undefined): string {
-  const escaped = text.split("'").join("''");
-  if (kind === "mysql") return `'${escaped.split("\\").join("\\\\")}'`;
-  if (kind === "mssql") return `N'${escaped}'`;
-  return `'${escaped}'`;
-}
-
 function oracleClob(text: string): string {
   const parts: string[] = [];
   for (let start = 0; start < text.length; ) {
     let end = Math.min(start + ORACLE_CLOB_CHUNK, text.length);
     if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
-    parts.push(`TO_CLOB(${quoteText(text.slice(start, end), "oracle")})`);
+    parts.push(`TO_CLOB(${quoteSqlString(text.slice(start, end), "oracle")})`);
     start = end;
   }
   return parts.join(" || ");
@@ -126,7 +119,7 @@ export function dialectLiteral(
       column,
       `Oracle-Typ ${type} lässt sich nicht als SQL-Literal schreiben.`,
     );
-  if (/json/i.test(type)) return quoteText(JSON.stringify(value), kind);
+  if (/json/i.test(type)) return quoteSqlString(JSON.stringify(value), kind);
   if (typeof value === "boolean") return value ? "1" : "0";
   if (typeof value === "string" && BINARY_TYPE.test(type) && /^\\x([0-9a-f]{2})*$/i.test(value)) {
     const hex = value.slice(2).toUpperCase();
@@ -145,19 +138,19 @@ export function dialectLiteral(
     if (kind === "oracle" && /clob/i.test(type) && value.length > ORACLE_CLOB_CHUNK)
       return oracleClob(value);
     if (kind === "mssql" && TEMPORAL_TYPE.test(type)) {
-      return quoteText(
+      return quoteSqlString(
         value.replace(/^(\d{4}-\d{2}-\d{2}) (?=\d)/, "$1T").replace(/(\.\d{7})\d+/, "$1"),
         kind,
       );
     }
-    return quoteText(value, kind);
+    return quoteSqlString(value, kind);
   }
   if (typeof value === "object" && !(value instanceof Date) && !ArrayBuffer.isView(value)) {
-    return quoteText(JSON.stringify(value), kind);
+    return quoteSqlString(JSON.stringify(value), kind);
   }
   const literal = sqlLiteral(value, column);
   return literal.startsWith("'")
-    ? quoteText(literal.slice(1, -1).split("''").join("'"), kind)
+    ? quoteSqlString(literal.slice(1, -1).split("''").join("'"), kind)
     : literal;
 }
 
@@ -190,6 +183,7 @@ export function buildSyncScript(input: SyncScriptInput): SyncScriptResult {
   const keyCondition = (row: Record<string, unknown>) =>
     input.keyColumns.map((column) => `${name(column)} = ${literal(row[column], column)}`);
   const allColumns = [...input.keyColumns, ...input.compareColumns];
+  const guarded = !kind || kind === "postgres";
   const deletes: string[] = [];
   const inserts: string[] = [];
   const updates: string[] = [];
@@ -211,10 +205,15 @@ export function buildSyncScript(input: SyncScriptInput): SyncScriptResult {
           .filter((column) => checkable(kind, typeOf(column)))
           .map((column) => nullSafeEquals(name(column), literal(current[column], column), kind)),
       ];
+      const key = formatKey(row, input.keyColumns);
       updates.push(
-        `UPDATE ${target}${eol}   SET ${assignments.join(`,${eol}       `)}${eol} WHERE ${conditions.join(`${eol}   AND `)};`,
+        `UPDATE ${target}${eol}   SET ${assignments.join(`,${eol}       `)}${eol} WHERE ${conditions.join(`${eol}   AND `)};${
+          guarded
+            ? `${eol}IF NOT FOUND THEN${eol}  RAISE EXCEPTION USING MESSAGE = '${`Zielzeile wurde seit dem Vergleich geändert: ${key}`.split("'").join("''")}';${eol}END IF;`
+            : ""
+        }`,
       );
-      keys.push(formatKey(row, input.keyColumns));
+      keys.push(key);
       continue;
     }
     if (row.category === deleteCategory(input.direction)) {
@@ -241,8 +240,14 @@ export function buildSyncScript(input: SyncScriptInput): SyncScriptResult {
     insertBlock = [`${[identity("ON"), ...inserts, identity("OFF")].join(eol)};`];
   }
   const statements = [...deletes, ...insertBlock, ...updates];
+  let body = statements.join(eol);
+  if (guarded && statements.length > 0) {
+    let tag = "$l8db_sync$";
+    for (let index = 2; body.includes(tag); index++) tag = `$l8db_sync_${index}$`;
+    body = `DO ${tag}${eol}BEGIN${eol}${body}${eol}END${eol}${tag};`;
+  }
   return {
-    sql: statements.length > 0 ? `${statements.join(eol)}${eol}` : "",
+    sql: statements.length > 0 ? `${body}${eol}` : "",
     insertCount,
     updateCount: updates.length,
     deleteCount: deletes.length,
