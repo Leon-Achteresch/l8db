@@ -85,7 +85,7 @@ fn combine(
         file["connections"]
             .as_array_mut()
             .ok_or("Team-Datei ungültig")?
-            .extend(organization.policy.connections.iter().cloned());
+            .splice(0..0, organization.policy.connections.iter().cloned());
     }
     file["organization"] = serde_json::to_value(organization).map_err(|e| e.to_string())?;
     Ok(file)
@@ -94,6 +94,23 @@ fn combine(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn organization_connections_come_first_so_they_win_duplicate_ids() {
+        let status = crate::organization::Status {
+            path: "policy.json".into(),
+            managed: true,
+            policy: crate::organization::Policy {
+                connections: vec![json!({"id":"shared","name":"Policy"})],
+                ..Default::default()
+            },
+        };
+        let user =
+            json!({"path":"c.json","exists":true,"connections":[{"id":"shared","name":"Eigene"}]});
+        let file = combine(Ok(user), &status).unwrap();
+        assert_eq!(file["connections"][0]["name"], "Policy");
+        assert_eq!(file["connections"][1]["name"], "Eigene");
+    }
 
     #[test]
     fn protected_connections_survive_an_invalid_personal_team_file() {

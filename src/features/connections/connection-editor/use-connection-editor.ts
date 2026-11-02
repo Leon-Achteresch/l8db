@@ -65,6 +65,7 @@ export function useConnectionEditor({
   const [user, setUser] = useState(initial.user);
   const [password, setPassword] = useState(initial.password);
   const [keychainPassword, setKeychainPassword] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [file, setFile] = useState(initial.file);
   const [extraParams, setExtraParams] = useState(initial.extraParams);
   const [trusted, setTrusted] = useState(initial.trusted);
@@ -265,6 +266,41 @@ export function useConnectionEditor({
                 ? "Pfad-Präfix (optional)"
                 : "Datenbank";
   const activeInfo = mode === "string" ? quickInfo : info;
+  const snapshot = JSON.stringify(
+    [
+      name,
+      value,
+      provider,
+      host,
+      port,
+      database,
+      user,
+      file,
+      extraParams,
+      trusted,
+      tnsAlias,
+      sshEnabled,
+      sshHost,
+      sshPort,
+      sshUser,
+      sshAuth,
+      sshKey,
+      sshPassword,
+      network,
+      cloudAuth,
+      ssl,
+      tags,
+      color,
+      readOnly,
+      environment,
+      maskRules,
+      schemaFilter,
+      showSingleSchemaSwitcher,
+    ],
+    (key, entry) => (key === "secret" ? undefined : entry),
+  );
+  const [initialSnapshot] = useState(snapshot);
+  const dirty = passwordTouched || snapshot !== initialSnapshot;
 
   return {
     activeInfo,
@@ -278,6 +314,7 @@ export function useConnectionEditor({
     color,
     database,
     databaseLabel,
+    dirty,
     environment,
     maskRules,
     setEnvironment,
@@ -322,7 +359,10 @@ export function useConnectionEditor({
     setFile,
     setHost,
     setName,
-    setPassword,
+    setPassword: (next: string) => {
+      setPasswordTouched(true);
+      setPassword(next);
+    },
     setPort,
     setProvider,
     setReadOnly,
