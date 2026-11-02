@@ -5,11 +5,13 @@ import { resolve } from "node:path";
 const calls: { command: string; args: Record<string, unknown> }[] = [];
 const keychain = new Map<string, string>();
 const otherWindowConnections = new Set<string>();
+let tunnelGate: Promise<unknown> | null = null;
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
     calls.push({ command, args });
     if (command === "list_providers") return [];
+    if (command === "open_command_tunnel" && tunnelGate) return tunnelGate;
     if (command === "connection_in_other_window")
       return otherWindowConnections.has(String(args.id));
     if (command === "store_secret") keychain.set(String(args.account), String(args.secret));
@@ -53,6 +55,9 @@ const { isAuthFailure, connectionError, updateOracleConnectionTarget } = await i
 const { matchingHostRule, groupByServer } = await import("../../src/lib/connection-groups");
 const { databasePasswordToSave, closeUnsharedTunnel, endpointChanged } = await import(
   "../../src/features/connections/connection-editor/connection-operations"
+);
+const { createConnectionUrlActions } = await import(
+  "../../src/features/connections/connection-editor/connection-url-actions"
 );
 const { schemaForUser } = await import(
   "../../src/features/connections/connections-view/set-schemas-to-user"
@@ -317,6 +322,55 @@ describe("saving the active connection", () => {
     );
     expect(endpointChanged(saved, { ...next, readOnly: true })).toBe(true);
     expect(endpointChanged(saved, { ...next, environment: "production" })).toBe(true);
+  });
+});
+
+describe("cancelling an editor connection test", () => {
+  test("rejects at once and closes a tunnel that opens afterwards", async () => {
+    let openTunnel: (value: unknown) => void = () => undefined;
+    tunnelGate = new Promise((done) => {
+      openTunnel = done;
+    });
+    const info = {
+      kind: "postgres",
+      file_based: false,
+      default_port: 5432,
+      url_schemes: ["postgresql"],
+      capabilities: { ssh: true, ssl: false },
+    };
+    const { withLiveUrl } = createConnectionUrlActions({
+      mode: "string",
+      value: "postgresql://app@db:5432/app",
+      kind: "postgres",
+      providers: [info],
+      info,
+      network: {
+        jumpHosts: [],
+        proxyEnabled: false,
+        commandEnabled: true,
+        commandTemplate: "kubectl port-forward svc/db {localPort}:5432",
+        commandLocalPort: "",
+        commandTimeout: "10",
+        proxyUser: "",
+      },
+      sshEnabled: false,
+      connection: undefined,
+      cloudAuth: null,
+    } as never);
+    const controller = new AbortController();
+    let ran = false;
+    const running = withLiveUrl(async () => {
+      ran = true;
+    }, controller.signal);
+    await flush();
+    controller.abort();
+    await expect(running).rejects.toThrow("abgebrochen");
+    openTunnel({ id: "t", local_port: 5555 });
+    await flush();
+    await flush();
+    tunnelGate = null;
+    expect(ran).toBe(false);
+    expect(calls.filter((call) => call.command === "close_ssh_tunnel")).toHaveLength(1);
   });
 });
 
