@@ -61,6 +61,27 @@ export function isTrustedConnection(url: URL): boolean {
   );
 }
 
+const MULTI_HOST_KINDS: DatabaseKind[] = ["mongodb", "postgres"];
+
+export function multiHostUrl(
+  value: string,
+): { hosts: string[]; withHost: (host: string) => string } | null {
+  const match = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/is.exec(value.trim());
+  if (!match) return null;
+  const at = match[2].lastIndexOf("@");
+  const hosts = match[2].slice(at + 1).split(",");
+  if (hosts.length < 2) return null;
+  const userinfo = match[2].slice(0, at + 1);
+  return { hosts, withHost: (host) => `${match[1]}${userinfo}${host}${match[3]}` };
+}
+
+export function connectionUrlString(value: string, kind = kindFromUrl(value)): string {
+  const url = parseConnectionUrl(value, kind);
+  return kind && MULTI_HOST_KINDS.includes(kind) && multiHostUrl(value)
+    ? value.trim()
+    : url.toString();
+}
+
 export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): URL {
   let text = value.trim();
   let resolved = kind;
@@ -71,10 +92,21 @@ export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): UR
   if (!resolved) throw new Error("Gib eine gültige Verbindungs-URL ein, z. B. postgresql://…");
   const info = providerForKind(resolved);
   if (info?.file_based) return parseFileUrl(text, resolved);
+  const multi = MULTI_HOST_KINDS.includes(resolved) ? multiHostUrl(text) : null;
+  if (multi) {
+    if (multi.hosts.some((host) => !host.trim()))
+      throw new Error("Die Host-Liste in der URL enthält einen leeren Eintrag.");
+    for (const host of multi.hosts.slice(1)) parseConnectionUrl(multi.withHost(host), resolved);
+    text = multi.withHost(multi.hosts[0]);
+  }
   let url: URL;
   try {
     url = new URL(text);
   } catch {
+    const port = /^[^:]+:\/\/(?:[^@/?#]*@)?(?:\[[^\]]*\]|[^:/?#]*):(\d+)(?:[/?#]|$)/.exec(
+      text,
+    )?.[1];
+    if (port && Number(port) > 65535) throw new Error("Der Port muss zwischen 1 und 65535 liegen.");
     throw new Error("Gib eine gültige Verbindungs-URL ein.");
   }
   const override = resolved === "oracle" ? oracleConnectString(url) : null;

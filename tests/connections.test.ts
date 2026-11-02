@@ -116,6 +116,7 @@ const {
   isTrustedConnection,
   updateOracleConnectionEndpoint,
   sslModeFromUrl,
+  connectionUrlString,
 } = await import("../src/lib/connection-url");
 const {
   withSslModeParam,
@@ -131,6 +132,7 @@ const {
   activateConnection,
   restoreSshTunnel,
   tunneledConnectionString,
+  readOnlyConnectionString,
 } = await import("../src/lib/ssh");
 const { truncateTable, executeQuery } = await import("../src/lib/db");
 
@@ -326,6 +328,41 @@ describe("Other providers", () => {
       database: "/tmp/app.db",
       user: "",
     });
+  });
+  test("accepts multi-host URLs with ports and keeps every host", () => {
+    const mongo = "mongodb://u:p@h1:27017,h2:27018/db?replicaSet=rs";
+    expect(parseConnectionUrl(mongo).hostname).toBe("h1");
+    expect(connectionUrlString(mongo)).toBe(mongo);
+    expect(connectionSummary(mongo).host).toBe("h1");
+    const pg = "postgresql://u@h1:5432,h2:5433/app";
+    expect(connectionUrlString(pg, "postgres")).toBe(pg);
+    expect(withSslModeParam(pg, "require")).toBe(`${pg}?sslmode=require`);
+    expect(() => parseConnectionUrl("mongodb://u@h1:27017,h2:99999/db")).toThrow("Port");
+    expect(() => parseConnectionUrl("mongodb://u@h1:27017,/db")).toThrow("leeren");
+  });
+  test("keeps own PostgreSQL options when forcing read-only", () => {
+    const result = readOnlyConnectionString(
+      "postgresql://u@h/db?options=-c%20search_path%3Dfoo&application_name=x",
+    );
+    expect(decodeURIComponent(new URL(result).searchParams.get("options") ?? "")).toBe(
+      "-c search_path=foo -c default_transaction_read_only=on",
+    );
+    expect(result).toContain("application_name=x");
+    expect(readOnlyConnectionString(result)).toBe(result);
+    expect(readOnlyConnectionString("postgresql://u@h/db")).toBe(
+      "postgresql://u@h/db?options=-c%20default_transaction_read_only%3Don",
+    );
+  });
+  test("connects tunneled MongoDB directly to the forwarded member", () => {
+    expect(tunneledConnectionString("mongodb://u@db:27017", 6502, "mongodb")).toBe(
+      "mongodb://u@127.0.0.1:6502/?directConnection=true",
+    );
+    expect(tunneledConnectionString("mongodb://db/app?replicaSet=rs", 6502, "mongodb")).toBe(
+      "mongodb://127.0.0.1:6502/app?replicaSet=rs&directConnection=true",
+    );
+    expect(
+      tunneledConnectionString("mongodb://db/app?directConnection=false", 6502, "mongodb"),
+    ).toBe("mongodb://127.0.0.1:6502/app?directConnection=false");
   });
   test("rewrites host and port for tunneled non-PostgreSQL URLs", () => {
     expect(

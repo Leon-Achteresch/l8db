@@ -7,7 +7,7 @@ import {
   parseOracleEndpoint,
 } from "./oracle-endpoint";
 import { isOracleKeyValue, parseOracleKeyValue } from "./oracle-key-value";
-import { filePath, kindFromUrl } from "./parse";
+import { filePath, kindFromUrl, multiHostUrl } from "./parse";
 
 function detectObjectStorage(value: string, candidates: ProviderInfo[]): string {
   let endpoint: URL | null = null;
@@ -102,7 +102,8 @@ export function connectionSummary(value: string, kind = kindFromUrl(value)) {
     }
   }
   try {
-    const url = new URL(value.trim());
+    const multi = multiHostUrl(value);
+    const url = new URL(multi ? multi.withHost(multi.hosts[0]) : value.trim());
     const override = resolved === "oracle" ? oracleConnectString(url) : null;
     if (override && !url.hostname) {
       const short = override.length > 48 ? "TNS-Verbindung" : override;

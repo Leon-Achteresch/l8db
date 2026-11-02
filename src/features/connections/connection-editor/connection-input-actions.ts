@@ -6,6 +6,7 @@ import {
   filePath,
   isTrustedConnection,
   kindFromUrl,
+  multiHostUrl,
   oracleConnectString,
   parseConnectionUrl,
 } from "@/lib/connection-url";
@@ -102,6 +103,8 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
         setProvider(detectProvider(value, inputKind));
         if (inputInfo.file_based) setFile(filePath(value));
         else {
+          if (multiHostUrl(value))
+            throw new Error("Mehrere Hosts lassen sich nur im URL-Modus bearbeiten.");
           const url = parseConnectionUrl(value, inputKind);
           const alias = inputKind === "oracle" ? oracleConnectString(url) : null;
           if (alias) setTnsAlias(alias);

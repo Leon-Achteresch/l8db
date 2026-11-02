@@ -1,5 +1,10 @@
 import { withTimeout } from "@/lib/async";
-import { kindFromUrl, parseConnectionUrl } from "@/lib/connection-url";
+import {
+  connectionUrlString,
+  kindFromUrl,
+  multiHostUrl,
+  parseConnectionUrl,
+} from "@/lib/connection-url";
 import {
   type CloudAuth,
   cloudAuthConnectionString,
@@ -90,7 +95,7 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
         );
       }
       if (inputInfo.file_based) return parseConnectionUrl(value, inputKind).toString();
-      const connectionString = parseConnectionUrl(value, inputKind).toString();
+      const connectionString = connectionUrlString(value, inputKind);
       return inputInfo.capabilities.ssl
         ? withSslModeParam(connectionString, ssl)
         : connectionString;
@@ -174,6 +179,16 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
       validatePort(network.proxyPort);
     }
     const useCommand = Boolean(target) && inputInfo.capabilities.ssh && network.commandEnabled;
+    if (useSsh || useProxy || useCommand) {
+      if (/^mongodb\+srv:/i.test(connectionString))
+        throw new Error(
+          "mongodb+srv über einen Tunnel geht nicht: die Hosts kommen per DNS, ein einzelner weitergeleiteter Port reicht nicht. Nutze mongodb:// mit einem Host.",
+        );
+      if (multiHostUrl(connectionString))
+        throw new Error(
+          "Mehrere Hosts lassen sich nicht über einen Tunnel verbinden. Gib genau einen Host an.",
+        );
+    }
     if (useCommand) {
       if (useSsh || useProxy)
         throw new Error("Ein Tunnel-Befehl lässt sich nicht mit SSH oder Proxy kombinieren.");

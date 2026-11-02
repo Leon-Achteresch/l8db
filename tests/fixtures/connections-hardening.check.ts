@@ -285,6 +285,13 @@ describe("editor password handling", () => {
     expect(await databasePasswordToSave("postgresql://app@db/app", existing)).toBe("kept");
     expect(await databasePasswordToSave("postgresql://app@db/app", undefined)).toBeNull();
   });
+
+  test("clearing a field prefilled from the keychain removes the stored password", async () => {
+    keychain.set("prefilled", "old");
+    const existing = { id: "prefilled", connectionString: "postgresql://app@db/app" };
+    expect(await databasePasswordToSave("postgresql://app@db/app", existing, true)).toBeNull();
+    expect(await databasePasswordToSave("postgresql://app:new@db/app", existing, true)).toBe("new");
+  });
 });
 
 describe("tunnels shared with other windows", () => {

@@ -203,13 +203,12 @@ export function replaceUrlUser(url: string, user: string): string {
 }
 
 export function withSslModeParam(value: string, sslMode: string): string {
-  if (!value.trim()) return "";
-  const url = new URL(value.trim());
-  const params = url.search
-    .slice(1)
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const query = trimmed.indexOf("?");
+  const params = (query < 0 ? "" : trimmed.slice(query + 1))
     .split("&")
     .filter((part) => part && decodeURIComponent(part.split("=")[0]) !== "sslmode");
   params.push(`sslmode=${encodeURIComponent(sslMode)}`);
-  url.search = params.join("&");
-  return url.toString();
+  return `${query < 0 ? trimmed : trimmed.slice(0, query)}?${params.join("&")}`;
 }
