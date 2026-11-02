@@ -1,4 +1,4 @@
-import { isReadOnlyStatement } from "@/lib/perf-test/sql-noise";
+import { isReadOnlyStatement } from "@/lib/read-only-statement";
 import { splitSqlStatements } from "@/lib/sql-statements/split";
 import type { QueryTab, Tab } from "./types";
 

@@ -34,6 +34,18 @@ export function environmentInfo(
   return ENVIRONMENTS.find((entry) => entry.value === environment) ?? null;
 }
 
+export function connectionsLeavingProduction<T extends EnvironmentTarget>(
+  connections: T[],
+  before: HostGroupRule[],
+  after: HostGroupRule[],
+): T[] {
+  return connections.filter(
+    (connection) =>
+      connectionEnvironment(connection, before) === "production" &&
+      connectionEnvironment(connection, after) !== "production",
+  );
+}
+
 export function connectionEnvironment(
   connection: EnvironmentTarget | null | undefined,
   rules: HostGroupRule[] = useConnectionsStore.getState().hostGroupRules,
