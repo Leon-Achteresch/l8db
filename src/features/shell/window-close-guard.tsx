@@ -11,19 +11,41 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConnectionsStore } from "@/lib/connections";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
-import { isQueryTabDirty, type Tab, useTableTabs } from "@/lib/table-tabs";
+import { type Tab, useTableTabs } from "@/lib/table-tabs";
+import { dirtyQueryFiles } from "@/lib/table-tabs-dirty-files";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
 
 const NO_TABS: Tab[] = [];
+const NO_GROUPS: Record<string, Tab[]> = {};
+
+function hasCloseBlockers() {
+  const state = useTableTabs.getState();
+  return (
+    dirtyQueryFiles(
+      state.tabs,
+      state.tabsByConnection,
+      useConnectionsStore.getState().activeId ?? null,
+    ).length > 0 ||
+    useTransactionStore.getState().transactions.length > 0 ||
+    useTasksStore.getState().tasks.some(isTaskActive)
+  );
+}
 
 export function WindowCloseGuard() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const allowClose = useRef(false);
   const tabs = useTableTabs((state) => (open ? state.tabs : NO_TABS));
-  const dirty = tabs.filter((tab) => tab.kind === "query" && isQueryTabDirty(tab));
+  const groups = useTableTabs((state) => (open ? state.tabsByConnection : NO_GROUPS));
+  const connections = useConnectionsStore((state) => state.connections);
+  const activeId = useConnectionsStore((state) => state.activeId ?? null);
+  const files = dirtyQueryFiles(tabs, groups, activeId);
+  const dirty = files.filter((file) => file.active);
+  const connectionName = (id: string | null) =>
+    connections.find((connection) => connection.id === id)?.name ?? "Ohne Verbindung";
   const transactions = useTransactionStore((state) => state.transactions);
   const activeTasks = useTasksStore((state) =>
     open ? state.tasks.filter(isTaskActive).length : 0,
@@ -34,15 +56,7 @@ export function WindowCloseGuard() {
     let unlisten: (() => void) | undefined;
     void getCurrentWindow()
       .onCloseRequested((event) => {
-        if (allowClose.current) return;
-        const state = useTableTabs.getState();
-        const allTabs = [...state.tabs, ...Object.values(state.tabsByConnection).flat()];
-        if (
-          !allTabs.some((tab) => tab.kind === "query" && isQueryTabDirty(tab)) &&
-          !useTransactionStore.getState().transactions.length &&
-          !useTasksStore.getState().tasks.some(isTaskActive)
-        )
-          return;
+        if (allowClose.current || !hasCloseBlockers()) return;
         event.preventDefault();
         setOpen(true);
       })
@@ -58,11 +72,23 @@ export function WindowCloseGuard() {
       unlisten?.();
     };
   }, []);
+  const closeWindow = () => {
+    allowClose.current = true;
+    void getCurrentWindow()
+      .close()
+      .catch((error) => {
+        allowClose.current = false;
+        toast.error(String(error));
+      });
+  };
   const saveFiles = async () => {
     setSaving(true);
     try {
-      for (const tab of dirty)
-        if (tab.kind === "query" && !(await saveQueryTabFile(tab.id))) return;
+      for (const file of dirty) if (!(await saveQueryTabFile(file.id))) return;
+      if (!hasCloseBlockers()) {
+        closeWindow();
+        return;
+      }
       toast.success("Dateien der aktiven Verbindung gespeichert");
     } finally {
       setSaving(false);
@@ -81,12 +107,30 @@ export function WindowCloseGuard() {
         </DialogHeader>
         <div className="space-y-2 text-sm">
           <p>
-            {dirty.length} ungespeicherte Dateien der aktiven Verbindung · {transactions.length}{" "}
-            offene Transaktionen · {activeTasks} laufende Aufgaben
+            {files.length} ungespeicherte Dateien · {transactions.length} offene Transaktionen ·{" "}
+            {activeTasks} laufende Aufgaben
           </p>
+          {files.length > 0 && (
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-md border p-2 text-xs">
+              {files.map((file) => (
+                <li key={file.id} className="flex min-w-0 gap-2">
+                  <span className="truncate font-medium">{file.title}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {connectionName(file.connectionId)}
+                    {file.active ? " (aktiv)" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {files.length > dirty.length && (
+            <p className="text-muted-foreground">
+              Dateien anderer Verbindungen speichern Sie nach einem Wechsel zu dieser Verbindung.
+            </p>
+          )}
           <p className="text-muted-foreground">
-            Prüfen Sie auch Dateientwürfe anderer Verbindungen. Beim Schließen gehen offene
-            Transaktionen und laufende Ergebnisse möglicherweise verloren.
+            Beim Schließen gehen offene Transaktionen und laufende Ergebnisse möglicherweise
+            verloren.
           </p>
           <div className="flex gap-2">
             <Button
@@ -120,19 +164,7 @@ export function WindowCloseGuard() {
               Dateien speichern
             </Button>
           )}
-          <Button
-            variant="destructive"
-            disabled={saving}
-            onClick={() => {
-              allowClose.current = true;
-              void getCurrentWindow()
-                .close()
-                .catch((error) => {
-                  allowClose.current = false;
-                  toast.error(String(error));
-                });
-            }}
-          >
+          <Button variant="destructive" disabled={saving} onClick={closeWindow}>
             Trotzdem schließen
           </Button>
         </DialogFooter>
