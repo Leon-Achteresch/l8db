@@ -14,7 +14,7 @@ import {
   sortConnectionsByName,
   useConnectionsStore,
 } from "@/lib/connections";
-import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
+import { compileSearchPatterns, searchMatcher } from "@/lib/regex-search";
 import { useRegexEnabled } from "@/lib/regex-search-prefs";
 import { cn } from "@/lib/utils";
 import { SidebarConnectionTriggerContent } from "./sidebar-connection-trigger";
@@ -102,18 +102,12 @@ export function SidebarConnectionPicker({
 
   const visible = useMemo(() => {
     const trimmed = query.trim();
-    const patterns = splitSearchPatterns(trimmed).map((pattern) => pattern.toLowerCase());
-    const compiled =
-      regexEnabled && trimmed ? compileSearchPatterns(trimmed, { global: false }) : null;
+    const matches = searchMatcher(
+      trimmed,
+      regexEnabled && trimmed ? compileSearchPatterns(trimmed, { global: false }) : null,
+    );
     return rows
-      .filter((row) => {
-        if (!trimmed) return true;
-        const lower = row.searchText.toLowerCase();
-        return (
-          patterns.some((pattern) => lower.includes(pattern)) ||
-          (compiled?.ok === true && compiled.regexes.some((regex) => regex.test(row.searchText)))
-        );
-      })
+      .filter((row) => !matches || matches(row.searchText))
       .sort((a, b) => {
         const priority = (row: (typeof rows)[number]) =>
           row.connection.id === activeConnection?.id ? 0 : row.favorite ? 1 : 2;
