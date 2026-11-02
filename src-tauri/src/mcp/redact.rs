@@ -71,6 +71,7 @@ impl Redactor {
             .iter()
             .filter(|rule| rule.enabled)
             .filter_map(|rule| compile(&rule.pattern, false).ok())
+            .filter(|re| !re.is_match(""))
             .collect();
         Self {
             columns,
@@ -2032,6 +2033,23 @@ mod tests {
         let ok = Redactor::new(&config.redaction, &["kunden_.*".into(), " ".into()]);
         assert!(ok.check_valid().is_ok());
         assert!(!ok.column_is_sensitive("id"));
+    }
+
+    #[test]
+    fn value_rules_matching_empty_text_are_ignored() {
+        let mut config = McpConfig::default();
+        for pattern in ["", "x*"] {
+            config.redaction.values = vec![super::super::config::RedactRule {
+                name: "Neu".into(),
+                pattern: pattern.into(),
+                enabled: true,
+                mask: None,
+            }];
+            assert_eq!(
+                Redactor::new(&config.redaction, &[]).redact_text("abc"),
+                "abc"
+            );
+        }
     }
 
     #[test]
