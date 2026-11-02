@@ -6,7 +6,13 @@ import { createGridWindowRange } from "@/lib/grid-window-range";
 import { IS_CHROMIUM } from "@/lib/platform";
 import { useGridVirtualizer } from "./use-transition-virtualizer";
 
-export type ColumnWindowItem = { index: number; span: number; width: number; spacer: boolean };
+export type ColumnWindowItem = {
+  index: number;
+  span: number;
+  width: number;
+  spacer: boolean;
+  key: string;
+};
 
 export function useColumnWindow(
   scrollRef: RefObject<HTMLDivElement | null>,
@@ -84,10 +90,16 @@ export function useColumnWindow(
       if (index > next) {
         let width = 0;
         for (let i = next; i < index; i++) width += widths[i];
-        result.push({ index: next, span: index - next, width, spacer: true });
+        result.push({
+          index: next,
+          span: index - next,
+          width,
+          spacer: true,
+          key: index === widths.length ? "gap-end" : `gap-${next}`,
+        });
       }
       if (index < widths.length) {
-        result.push({ index, span: 1, width: widths[index], spacer: false });
+        result.push({ index, span: 1, width: widths[index], spacer: false, key: String(index) });
       }
       next = index + 1;
     }

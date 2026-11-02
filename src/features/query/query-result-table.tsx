@@ -308,7 +308,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                 if (item.spacer)
                   return (
                     <th
-                      key={`gap-${item.index}`}
+                      key={item.key}
                       aria-hidden
                       colSpan={item.span}
                       style={{ width: item.width, padding: 0 }}
@@ -331,7 +331,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                   if (item.spacer)
                     return (
                       <th
-                        key={`gap-${item.index}`}
+                        key={item.key}
                         aria-hidden
                         colSpan={item.span}
                         style={{ width: item.width, padding: 0 }}
