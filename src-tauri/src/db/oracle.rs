@@ -3498,13 +3498,17 @@ impl DatabaseAdapter for OracleAdapter {
                 "SELECT owner, COUNT(*) FROM all_tables GROUP BY owner ORDER BY owner".to_string(),
             )
             .await?;
-        let sizes: Vec<(String, i64)> = self
+        let segments = match self
             .rows("SELECT owner, SUM(bytes) FROM dba_segments GROUP BY owner".to_string())
             .await
-            .unwrap_or_default()
-            .iter()
-            .map(|r| (s(r, 0), i(r, 1)))
-            .collect();
+        {
+            Ok(rows) => rows,
+            Err(_) => self
+                .rows("SELECT USER, SUM(bytes) FROM user_segments".to_string())
+                .await
+                .unwrap_or_default(),
+        };
+        let sizes: Vec<(String, i64)> = segments.iter().map(|r| (s(r, 0), i(r, 1))).collect();
         let schemas: Vec<SchemaSize> = tables
             .iter()
             .map(|r| {
