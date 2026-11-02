@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { McpAuditSection } from "@/features/mcp/mcp-audit-section";
 import { McpClientsSection } from "@/features/mcp/mcp-clients-section";
 import { McpConnectionsSection } from "@/features/mcp/mcp-connections-section";
@@ -21,6 +22,7 @@ import { McpStatsGrid } from "@/features/mcp/mcp-stats-grid";
 import { McpWorkflowsSection } from "@/features/mcp/mcp-workflows-section";
 import {
   listMcpClients,
+  loadMcpConfig,
   type McpAuditEntry,
   type McpClient,
   type McpConfig,
@@ -51,7 +53,9 @@ export function McpView() {
   const [audit, setAudit] = useState<McpAuditEntry[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<((current: McpConfig) => McpConfig)[]>([]);
 
   const refreshAudit = useCallback(() => {
     void mcpAuditTail(50)
@@ -59,10 +63,15 @@ export function McpView() {
       .catch(() => setAudit([]));
   }, []);
 
-  useEffect(() => {
+  const loadConfig = useCallback(() => {
+    setLoadError(null);
     void syncMcpConfig()
       .then(setConfig)
-      .catch((error) => toast.error(String(error)));
+      .catch((error) => setLoadError(String(error)));
+  }, []);
+
+  useEffect(() => {
+    loadConfig();
     void listMcpClients()
       .then(setClients)
       .catch(() => setClients([]));
@@ -70,20 +79,23 @@ export function McpView() {
       .then(setCommand)
       .catch(() => setCommand(""));
     refreshAudit();
-  }, [refreshAudit]);
+  }, [refreshAudit, loadConfig]);
 
   const update = (patch: (current: McpConfig) => McpConfig) => {
-    setConfig((current) => {
-      if (!current) return current;
-      const next = patch(current);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        saveMcpConfig(next)
-          .then(() => setSaveError(null))
-          .catch((error) => setSaveError(String(error)));
-      }, 300);
-      return next;
-    });
+    setConfig((current) => (current ? patch(current) : current));
+    pending.current.push(patch);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const patches = pending.current.splice(0);
+      loadMcpConfig()
+        .then(async (fresh) => {
+          const next = patches.reduce((current, apply) => apply(current), fresh);
+          await saveMcpConfig(next);
+          setConfig(pending.current.reduce((current, apply) => apply(current), next));
+          setSaveError(null);
+        })
+        .catch((error) => setSaveError(String(error)));
+    }, 300);
   };
 
   const updateConnection = (id: string, patch: Partial<McpConnection>) => {
@@ -111,10 +123,21 @@ export function McpView() {
   if (!config) {
     return (
       <main className="h-full min-h-0 w-full overflow-y-auto p-6 sm:p-8">
-        <div className="flex h-64 items-center justify-center">
-          <p className="text-sm text-muted-foreground animate-pulse">
-            MCP-Konfiguration wird geladen…
-          </p>
+        <div className="flex h-64 flex-col items-center justify-center gap-3">
+          {loadError ? (
+            <>
+              <p className="max-w-lg text-center text-sm text-destructive">
+                MCP-Konfiguration konnte nicht geladen werden: {loadError}
+              </p>
+              <Button size="sm" variant="outline" onClick={loadConfig}>
+                Erneut laden
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground animate-pulse">
+              MCP-Konfiguration wird geladen…
+            </p>
+          )}
         </div>
       </main>
     );
