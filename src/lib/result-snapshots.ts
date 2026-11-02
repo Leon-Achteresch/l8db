@@ -43,14 +43,12 @@ export interface ResultSnapshot {
 }
 
 export function encodeSnapshot(run: ResultRun): string {
-  if (
-    run.result.truncated ||
-    run.result.rows.length > SNAPSHOT_MAX_ROWS ||
-    run.result.columns.length > 200
-  )
+  if (run.result.truncated || run.result.rows.length > SNAPSHOT_MAX_ROWS)
     throw new Error(
-      "Ergebnisstände benötigen ein vollständiges Ergebnis mit höchstens 999 Zeilen und 200 Spalten.",
+      "Das Ergebnis wurde vom 1.000-Zeilen-Limit gekürzt. Für einen Ergebnisstand die Abfrage bitte mit LIMIT auf höchstens 999 Zeilen begrenzen.",
     );
+  if (run.result.columns.length > 200)
+    throw new Error("Ergebnisstände unterstützen höchstens 200 Spalten.");
   if (
     run.sql.length > SNAPSHOT_MAX_CHARS ||
     run.result.columns.reduce((sum, name) => sum + name.length, 0) > SNAPSHOT_MAX_CHARS
