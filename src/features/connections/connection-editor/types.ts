@@ -13,4 +13,3 @@ export type TestResult = {
   message?: string;
   ms?: number;
 };
-export const TEST_TIMEOUT_MS = 30_000;

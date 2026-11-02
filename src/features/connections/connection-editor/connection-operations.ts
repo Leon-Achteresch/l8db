@@ -43,6 +43,7 @@ type ConnectionUrlActions = ReturnType<typeof createConnectionUrlActions>;
 
 export interface ConnectionOperationsContext {
   operation: MutableRefObject<boolean>;
+  abort: MutableRefObject<AbortController | null>;
   setResult: (value: TestResult) => void;
   withLiveUrl: ConnectionUrlActions["withLiveUrl"];
   configuration: ConnectionUrlActions["configuration"];
@@ -114,6 +115,7 @@ export async function closeUnsharedTunnel(id: string): Promise<void> {
 export function createConnectionOperations(ctx: ConnectionOperationsContext) {
   const {
     operation,
+    abort,
     setResult,
     withLiveUrl,
     configuration,
@@ -145,15 +147,26 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     if (operation.current) return;
     operation.current = true;
     setResult({ status: "testing" });
+    const controller = new AbortController();
+    abort.current = controller;
     const started = performance.now();
     try {
-      await withLiveUrl((liveKind, url) => testConnectionString(liveKind, url));
+      await withLiveUrl((liveKind, url) => testConnectionString(liveKind, url), controller.signal);
       setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
-      setResult({ status: "error", message: connectionError(error) });
+      setResult(
+        controller.signal.aborted
+          ? { status: "idle" }
+          : { status: "error", message: connectionError(error) },
+      );
     } finally {
+      abort.current = null;
       operation.current = false;
     }
+  }
+
+  function cancelTest() {
+    abort.current?.abort();
   }
 
   async function scanSchemas() {
@@ -312,5 +325,5 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     }
   }
 
-  return { test, scanSchemas, save };
+  return { test, cancelTest, scanSchemas, save };
 }

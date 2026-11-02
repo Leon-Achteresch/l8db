@@ -103,6 +103,7 @@ export function useConnectionEditor({
   const [scanError, setScanError] = useState<string | null>(null);
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
+  const abort = useRef<AbortController | null>(null);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
   const windowsAuth = kind === "mssql" && trusted;
   const quickKind = kindFromUrl(value) ?? kind;
@@ -192,8 +193,9 @@ export function useConnectionEditor({
     cloudAuth: cloudAuthValue,
   });
 
-  const { test, scanSchemas, save } = createConnectionOperations({
+  const { test, cancelTest, scanSchemas, save } = createConnectionOperations({
     operation,
+    abort,
     setResult,
     withLiveUrl,
     configuration,
@@ -269,6 +271,7 @@ export function useConnectionEditor({
     advancedOpen,
     applySshConfig,
     busy,
+    cancelTest,
     caps,
     cloudAuth,
     cloudAuthActive: Boolean(cloudAuthValue),
@@ -304,6 +307,7 @@ export function useConnectionEditor({
     reduce,
     result,
     save,
+    saving,
     scanError,
     scanSchemas,
     scannedSchemas,

@@ -21,7 +21,7 @@ import {
   sshSecretAccount,
   tunneledConnectionString,
 } from "@/lib/ssh";
-import { type Mode, TEST_TIMEOUT_MS } from "./types";
+import type { Mode } from "./types";
 import type { NetworkDraft } from "./use-network-draft";
 
 export interface ConnectionUrlActionsContext {
@@ -258,31 +258,53 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
     };
   }
 
-  async function withLiveUrl<T>(run: (kind: DatabaseKind, url: string) => Promise<T>) {
+  async function withLiveUrl<T>(
+    run: (kind: DatabaseKind, url: string) => Promise<T>,
+    signal?: AbortSignal,
+  ) {
     const tunnelId = `test-${crypto.randomUUID()}`;
     let tunnelOpened = false;
+    let finished = false;
+    const aborted = new Promise<never>((_, reject) =>
+      signal?.addEventListener("abort", () => reject(new Error("Test abgebrochen.")), {
+        once: true,
+      }),
+    );
+    aborted.catch(() => undefined);
+    const step = <V>(task: Promise<V>) => (signal ? Promise.race([task, aborted]) : task);
     try {
-      const config = await configuration();
+      const config = await step(configuration());
       let url = cloudAuthConnectionString(config.connectionString, {
         kind: config.kind,
         cloudAuth,
       });
       if (config.ssh || config.proxy || config.commandTunnel) {
-        const tunnel = await openNetworkTunnel(
+        const opening = openNetworkTunnel(
           tunnelId,
           config,
           config.secrets,
           useSettingsStore.getState().sshTrustNewHosts,
         );
+        opening.then(
+          () => {
+            if (finished && !tunnelOpened) void closeSshTunnel(tunnelId).catch(() => undefined);
+          },
+          () => undefined,
+        );
+        const tunnel = await step(opening);
         tunnelOpened = true;
         url = tunneledConnectionString(url, tunnel.local_port, config.kind);
       }
-      return await withTimeout(
-        run(config.kind, url),
-        TEST_TIMEOUT_MS,
-        `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
+      const timeoutMs = (useSettingsStore.getState().connectionTimeout + 5) * 1000;
+      return await step(
+        withTimeout(
+          run(config.kind, url),
+          timeoutMs,
+          `Zeitüberschreitung nach ${timeoutMs / 1000} s. Prüfe Host, Port und Firewall.`,
+        ),
       );
     } finally {
+      finished = true;
       if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
     }
   }
