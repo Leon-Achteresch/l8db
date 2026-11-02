@@ -655,7 +655,7 @@ export function buildSyncScript(
     if (mysql) {
       if (typeChanged || changed("default") || changed("nullable") || changed("on_update"))
         emit(CREATE_PHASE.column ?? 13, `ALTER TABLE ${table} MODIFY COLUMN ${source.ddl}`, {
-          dangerous: typeChanged,
+          dangerous: typeChanged || (changed("nullable") && a.nullable === "NO"),
         });
       return;
     }
@@ -766,7 +766,7 @@ export function buildSyncScript(
     switch (item.type) {
       case "table":
         warnings.push(
-          `${label(source)}: ${item.differsBy.join(", ")} weichen ab und müssen manuell angepasst werden.`,
+          `${label(source)}: Abweichend: ${item.differsBy.join(", ")}. Bitte manuell anpassen.`,
         );
         return;
       case "column":
