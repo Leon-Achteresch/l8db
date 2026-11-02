@@ -179,7 +179,18 @@ describe("regexLiteralPrefilter", () => {
   test("findet die längste literale Zeichenfolge", () => {
     expect(regexLiteralPrefilter("create\\s+table")).toBe("create");
     expect(regexLiteralPrefilter("\\bWORT\\b")).toBe("WORT");
-    expect(regexLiteralPrefilter("(alpha|betaXY)")).toBe("betaXY");
+  });
+
+  test("nutzt nur Literale, die jeder Treffer enthalten muss", () => {
+    expect(regexLiteralPrefilter("(alpha|betaXY)")).toBe("");
+    expect(regexLiteralPrefilter("x|longername")).toBe("");
+    expect(regexLiteralPrefilter("(foo)?bar")).toBe("bar");
+    expect(regexLiteralPrefilter("(?:longprefix)*ab")).toBe("ab");
+    expect(regexLiteralPrefilter("(?:select){0,2}from")).toBe("from");
+    expect(regexLiteralPrefilter("(?!forbidden)ok")).toBe("ok");
+    expect(regexLiteralPrefilter("(?<name>group)x")).toBe("group");
+    expect(regexLiteralPrefilter("(?:create){1,2} table")).toBe("create");
+    expect(regexLiteralPrefilter("[a|b]value")).toBe("value");
   });
 
   test("lässt quantifizierte Endzeichen weg", () => {
