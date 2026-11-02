@@ -127,7 +127,7 @@ export function useRunSql({
         caps.query_language !== "redis" &&
         caps.query_language !== "json"
       ) {
-        const refs = editorBindParams(sql);
+        const refs = editorBindParams(sql, connection?.kind);
         if (refs.length > 0) {
           setBindValues((previous) => {
             const next: Record<string, BindParamValue> = {};
@@ -310,6 +310,12 @@ export function useRunSql({
       values: bindValues,
       onValuesChange: setBindValues,
       onConfirm: handleBindConfirm,
+      onSkip: () => {
+        const pending = bindPendingSql;
+        setBindDialogOpen(false);
+        setBindPendingSql(null);
+        if (pending) void runSql(pending, undefined, true);
+      },
     },
   };
 }

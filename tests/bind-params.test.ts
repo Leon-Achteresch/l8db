@@ -52,7 +52,35 @@ describe("detectBindParams", () => {
   });
 });
 
+describe("Dialekte und Bezeichner", () => {
+  test("MySQL-Backslash-Escapes, Backticks und #-Kommentare enthalten keine Parameter", () => {
+    expect(detectBindParams("SELECT 'it\\'s :x', :y", "mysql").map((r) => r.label)).toEqual([":y"]);
+    expect(
+      inlineBindValues("SELECT 'it\\'s :x', :y", { y: { type: "text", value: "Q" } }, "mysql"),
+    ).toBe("SELECT 'it\\'s :x', 'Q'");
+    expect(detectBindParams("SELECT `a:b` # :x\nFROM t", "mysql")).toEqual([]);
+    expect(detectBindParams("SELECT a # :x", "postgres").map((r) => r.label)).toEqual([":x"]);
+  });
+
+  test("Array-Slices, MSSQL-Klammern und ClickHouse-Platzhalter sind keine Parameter", () => {
+    expect(detectBindParams("SELECT a[1:n], a[lo:hi] FROM t")).toEqual([]);
+    expect(detectBindParams("SELECT [a:b] FROM t", "mssql")).toEqual([]);
+    expect(detectBindParams("SELECT {id:UInt32}", "clickhouse")).toEqual([]);
+    expect(detectBindParams("SELECT ARRAY[:a, :b] WHERE x=:c").map((r) => r.label)).toEqual([
+      ":a",
+      ":b",
+      ":c",
+    ]);
+  });
+});
+
 describe("validateBindParams", () => {
+  test("akzeptiert leeren Text", () => {
+    expect(
+      validateBindParams(detectBindParams("SELECT :t"), { t: { type: "text", value: "" } }),
+    ).toEqual([]);
+  });
+
   const refs = detectBindParams("SELECT $1, $2");
 
   test("meldet fehlende Werte", () => {
