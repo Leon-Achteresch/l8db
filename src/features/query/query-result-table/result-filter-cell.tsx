@@ -21,6 +21,7 @@ const FILTER_OPERATORS = OPERATORS.map((operator) => operator.key);
 
 interface ResultFilterCellProps {
   col: string;
+  gridColumn?: number;
   filters: ResultFilters;
   translatedOperators: boolean;
   setFilter: (column: string, patch: Partial<ResultFilters[string]>) => void;
@@ -28,6 +29,7 @@ interface ResultFilterCellProps {
 
 export function ResultFilterCell({
   col,
+  gridColumn,
   filters,
   translatedOperators,
   setFilter,
@@ -45,7 +47,13 @@ export function ResultFilterCell({
   };
   const needsValue = operatorNeedsValue(normalizeResultFilterOperator(filter.operator));
   return (
-    <th ref={releaseFocus} className="border-b border-r bg-muted px-1 py-1">
+    <th
+      ref={releaseFocus}
+      role={gridColumn ? "columnheader" : undefined}
+      aria-colindex={gridColumn}
+      style={gridColumn ? { gridColumn } : undefined}
+      className="border-b border-r bg-muted px-1 py-1"
+    >
       <div className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

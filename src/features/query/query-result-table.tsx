@@ -1,5 +1,6 @@
 import { defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import {
+  type CSSProperties,
   memo,
   useCallback,
   useContext,
@@ -10,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { gridColumnTemplate } from "@/lib/column-window";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { createGridWindowRange } from "@/lib/grid-window-range";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
@@ -218,6 +220,8 @@ export const QueryResultTable = memo(function QueryResultTable({
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
 
   const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS, 128);
+  const grid = columnWindow.enabled;
+  const gridColumns = useMemo(() => gridColumnTemplate(columnWidths), [columnWidths]);
   const dataColumnWindow = useMemo(
     () => columnWindow.items.filter((item) => item.index !== 0),
     [columnWindow.items],
@@ -284,14 +288,19 @@ export const QueryResultTable = memo(function QueryResultTable({
         className="relative min-h-0 flex-1 overflow-auto overscroll-none"
       >
         <table
+          data-grid-layout={grid || undefined}
+          role={grid ? "table" : undefined}
+          aria-colcount={grid ? columnWidths.length : undefined}
           className="w-full border-separate border-spacing-0 text-sm"
           style={
-            columnWindow.enabled || Object.keys(autoColumnWidths).length > 0
-              ? {
-                  tableLayout: "fixed",
-                  width: tableWidth,
-                }
-              : undefined
+            grid
+              ? ({ width: tableWidth, "--grid-columns": gridColumns } as CSSProperties)
+              : Object.keys(autoColumnWidths).length > 0
+                ? {
+                    tableLayout: "fixed",
+                    width: tableWidth,
+                  }
+                : undefined
           }
         >
           <colgroup>
@@ -299,24 +308,21 @@ export const QueryResultTable = memo(function QueryResultTable({
               <col key={index} style={{ width }} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-20 bg-muted">
-            <tr>
-              <th className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground">
+          <thead className="sticky top-0 z-20 bg-muted" role={grid ? "rowgroup" : undefined}>
+            <tr role={grid ? "row" : undefined}>
+              <th
+                role={grid ? "columnheader" : undefined}
+                aria-colindex={grid ? 1 : undefined}
+                style={grid ? { gridColumn: 1 } : undefined}
+                className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground"
+              >
                 #
               </th>
               {dataColumnWindow.map((item) => {
-                if (item.spacer)
-                  return (
-                    <th
-                      key={item.key}
-                      aria-hidden
-                      colSpan={item.span}
-                      style={{ width: item.width, padding: 0 }}
-                    />
-                  );
                 return (
                   <ResultSortHeader
                     key={`col-${item.index}`}
+                    gridColumn={grid ? item.index + 1 : undefined}
                     col={columns[item.index - 1]}
                     sorts={sorts}
                     setSorts={setSorts}
@@ -325,21 +331,18 @@ export const QueryResultTable = memo(function QueryResultTable({
               })}
             </tr>
             {filterRowOpen && (
-              <tr>
-                <th className="sticky left-0 z-20 border-b border-r bg-muted px-1 py-1" />
+              <tr role={grid ? "row" : undefined}>
+                <th
+                  role={grid ? "columnheader" : undefined}
+                  aria-colindex={grid ? 1 : undefined}
+                  style={grid ? { gridColumn: 1 } : undefined}
+                  className="sticky left-0 z-20 border-b border-r bg-muted px-1 py-1"
+                />
                 {dataColumnWindow.map((item) => {
-                  if (item.spacer)
-                    return (
-                      <th
-                        key={item.key}
-                        aria-hidden
-                        colSpan={item.span}
-                        style={{ width: item.width, padding: 0 }}
-                      />
-                    );
                   return (
                     <ResultFilterCell
                       key={`col-${item.index}`}
+                      gridColumn={grid ? item.index + 1 : undefined}
                       col={columns[item.index - 1]}
                       filters={filters}
                       translatedOperators={translatedOperators}
@@ -350,7 +353,7 @@ export const QueryResultTable = memo(function QueryResultTable({
               </tr>
             )}
           </thead>
-          <tbody>
+          <tbody role={grid ? "rowgroup" : undefined}>
             {paddingTop > 0 && (
               <tr aria-hidden style={{ height: paddingTop }}>
                 <td colSpan={columns.length + 1} className="p-0" />
@@ -378,6 +381,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                   fontSize={(workspace.resultFontSize * uiScale) / 100}
                   columnScale={columnScale}
                   columnWindow={dataColumnWindow}
+                  gridLayout={grid}
                   columns={columns}
                   onInspect={onInspect}
                   measureElement={

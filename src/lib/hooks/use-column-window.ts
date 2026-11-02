@@ -1,18 +1,12 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 
-import { columnWindowRange } from "@/lib/column-window";
+import { assignColumnSlots, columnWindowRange } from "@/lib/column-window";
 import { lastGridRect, rememberGridRect } from "@/lib/grid-rect";
 import { createGridWindowRange } from "@/lib/grid-window-range";
 import { IS_CHROMIUM } from "@/lib/platform";
 import { useGridVirtualizer } from "./use-transition-virtualizer";
 
-export type ColumnWindowItem = {
-  index: number;
-  span: number;
-  width: number;
-  spacer: boolean;
-  key: string;
-};
+export type ColumnWindowItem = { index: number; width: number; key: string };
 
 export function useColumnWindow(
   scrollRef: RefObject<HTMLDivElement | null>,
@@ -78,32 +72,15 @@ export function useColumnWindow(
         .map((column) => column.index)
         .join(",")
     : "";
+  const slots = useRef<ReadonlyMap<number, number>>(new Map());
   const items = useMemo<ColumnWindowItem[]>(() => {
-    const visible = enabled
-      ? indices === ""
-        ? pinned
-        : indices.split(",").map(Number)
-      : widths.map((_, index) => index);
-    const result: ColumnWindowItem[] = [];
-    let next = 0;
-    for (const index of [...visible, widths.length]) {
-      if (index > next) {
-        let width = 0;
-        for (let i = next; i < index; i++) width += widths[i];
-        result.push({
-          index: next,
-          span: index - next,
-          width,
-          spacer: true,
-          key: index === widths.length ? "gap-end" : `gap-${next}`,
-        });
-      }
-      if (index < widths.length) {
-        result.push({ index, span: 1, width: widths[index], spacer: false, key: String(index) });
-      }
-      next = index + 1;
-    }
-    return result;
+    if (!enabled) return widths.map((width, index) => ({ index, width, key: String(index) }));
+    const visible = indices === "" ? pinned : indices.split(",").map(Number);
+    const assigned = assignColumnSlots(visible, slots.current);
+    slots.current = assigned;
+    return [...assigned]
+      .sort((a, b) => a[1] - b[1])
+      .map(([index, slot]) => ({ index, width: widths[index], key: `slot-${slot}` }));
   }, [enabled, indices, widths, pinned]);
   return { items, virtualizer, enabled };
 }

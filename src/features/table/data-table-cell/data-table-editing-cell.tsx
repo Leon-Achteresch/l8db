@@ -18,9 +18,11 @@ export function DataTableEditingCell({
   setEditingCell,
   commitEditingCell,
   width,
+  gridColumn,
 }: Pick<DataTableRowProps, "isSaving" | "setEditingCell" | "commitEditingCell"> & {
   editingCell: NonNullable<DataTableRowProps["editingCell"]>;
   width: number;
+  gridColumn?: number;
 }) {
   const target = useContext(EditTargetContext);
   const valueOptions = useColumnValueOptions(
@@ -36,7 +38,9 @@ export function DataTableEditingCell({
   const setValue = (value: string) => setEditingCell((prev) => (prev ? { ...prev, value } : prev));
   return (
     <td
-      style={{ width }}
+      role={gridColumn ? "cell" : undefined}
+      aria-colindex={gridColumn}
+      style={{ width, gridColumn }}
       className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-hidden bg-primary/[0.04]"
     >
       <div className="flex flex-col">

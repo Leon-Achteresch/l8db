@@ -127,6 +127,7 @@ export function DataTableBody({
       <ContextMenuTrigger asChild highlight={false}>
         <tbody
           ref={tbodyRef}
+          role={columnWindow.enabled ? "rowgroup" : undefined}
           onContextMenuCapture={(event) => {
             const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ctid]");
             const ctid = tr?.dataset.ctid;
@@ -174,6 +175,7 @@ export function DataTableBody({
                     isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}
+                    gridLayout={columnWindow.enabled}
                     measureElement={measureRow}
                     editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
                     activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}

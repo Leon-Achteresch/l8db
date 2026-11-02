@@ -41,6 +41,7 @@ export type DataTableRowProps = {
   isContextMenuTarget?: boolean;
   toggleRowMarker: (row: TableRow) => void;
   columnWindow: ColumnWindowItem[];
+  gridLayout: boolean;
   measureElement: (
     element: HTMLTableRowElement | null,
     dynamicHeight: boolean,
@@ -86,6 +87,7 @@ export const DataTableRow = memo(function DataTableRow({
   fontSize,
   columnScale,
   columnWindow,
+  gridLayout,
   measureElement,
   editingCell,
   activeCell,
@@ -125,6 +127,7 @@ export const DataTableRow = memo(function DataTableRow({
   return (
     <tr
       ref={measureRow}
+      role={gridLayout ? "row" : undefined}
       data-index={rowIndex}
       data-row-index={rowIndex}
       data-ctid={rowCtid}
@@ -146,15 +149,6 @@ export const DataTableRow = memo(function DataTableRow({
       )}
     >
       {columnWindow.map((item) => {
-        if (item.spacer)
-          return (
-            <td
-              key={item.key}
-              aria-hidden
-              colSpan={item.span}
-              style={{ width: item.width, padding: 0 }}
-            />
-          );
         const cellIndex = item.index;
         const column = visibleColumns[cellIndex];
         const columnId = column.id;
@@ -170,7 +164,8 @@ export const DataTableRow = memo(function DataTableRow({
 
         return (
           <DataTableCell
-            key={columnId}
+            key={gridLayout ? item.key : columnId}
+            gridColumn={gridLayout ? cellIndex + 1 : undefined}
             row={row}
             isMarked={isMarked}
             toggleRowMarker={toggleRowMarker}

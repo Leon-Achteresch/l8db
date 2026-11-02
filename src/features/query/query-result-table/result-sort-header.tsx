@@ -12,15 +12,19 @@ import { cn } from "@/lib/utils";
 
 interface ResultSortHeaderProps {
   col: string;
+  gridColumn?: number;
   sorts: ResultSort[];
   setSorts: Dispatch<SetStateAction<ResultSort[]>>;
 }
 
-export function ResultSortHeader({ col, sorts, setSorts }: ResultSortHeaderProps) {
+export function ResultSortHeader({ col, gridColumn, sorts, setSorts }: ResultSortHeaderProps) {
   const direction = sortDirectionFor(sorts, col);
   const rank = sortRankFor(sorts, col);
   return (
     <th
+      role={gridColumn ? "columnheader" : undefined}
+      aria-colindex={gridColumn}
+      style={gridColumn ? { gridColumn } : undefined}
       aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}
       className="border-b border-r bg-muted p-0 text-left"
     >
