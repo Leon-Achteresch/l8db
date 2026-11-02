@@ -41,10 +41,13 @@ const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 
 let gotoModel: monaco.editor.ITextModel | null = null;
 let attachedEditors = 0;
+let preparing = false;
 
 function prepareAfterPaint() {
-  if (attachedEditors === 0) return;
+  if (attachedEditors === 0 || preparing) return;
+  preparing = true;
   afterPaint(() => {
+    preparing = false;
     if (attachedEditors > 0) prepareCompletions(ctx.registry);
   });
 }
