@@ -15,6 +15,7 @@ export type QueryTab = {
   title: string;
   sql: string;
   lastExecutedSql?: string;
+  variant?: { sourceId: string; title: string; sql: string };
   filePath?: string;
   savedSql?: string;
   fileMtime?: number | null;

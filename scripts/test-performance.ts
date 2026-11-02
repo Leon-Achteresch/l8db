@@ -31,6 +31,7 @@ const SUITES = {
     "tests/perf-home-atlas.test.ts",
     "tests/perf-result-compare.test.ts",
     "tests/perf-query-qol.test.ts",
+    "tests/perf-workbench-qol.test.ts",
     "tests/supabase-studio-redesign.test.ts",
     "tests/perf-history-modal-boundary.test.ts",
     "tests/perf-ai-persist.test.ts",

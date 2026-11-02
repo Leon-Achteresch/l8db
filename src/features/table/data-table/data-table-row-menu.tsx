@@ -24,6 +24,7 @@ type Props = {
   canDuplicate: boolean;
   duplicateDisabled: boolean;
   onDuplicate: () => void;
+  onWatch?: () => void;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
 };
 
@@ -35,6 +36,7 @@ export function DataTableRowMenu({
   duplicateDisabled,
   onDuplicate,
   onDeleteRow,
+  onWatch,
 }: Props) {
   return (
     <ContextMenuContent>
@@ -71,6 +73,7 @@ export function DataTableRowMenu({
           </ContextMenuItem>
         </ContextMenuSubContent>
       </ContextMenuSub>
+      {onWatch && <ContextMenuItem onSelect={onWatch}>Datensatz beobachten</ContextMenuItem>}
       {canDuplicate && (
         <ContextMenuItem disabled={duplicateDisabled} onSelect={onDuplicate}>
           Zeile duplizieren

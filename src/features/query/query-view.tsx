@@ -2,12 +2,12 @@ import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
-
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
+import { SqlStatesButton } from "@/features/query/sql-states-button";
 import { afterPaint } from "@/lib/after-paint";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -238,7 +238,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden border-b bg-card px-3"
           data-tour="query-toolbar"
         >
-          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
             <RunControls
               actions={actions}
               exec={exec}
@@ -273,6 +273,20 @@ export function QueryView({ tabId }: QueryViewProps) {
               />
             )}
             {isSql && <SelectRowLimit />}
+            {connection && isSql && (
+              <SqlStatesButton
+                key={JSON.stringify([connection.id, database, tabId])}
+                connectionId={connection.id}
+                database={database}
+                tabId={tabId}
+                sql={sql}
+                running={exec.isRunning}
+                onRestore={(text) => {
+                  editorApiRef.current?.replaceText(text);
+                  editorSync.flush();
+                }}
+              />
+            )}
           </div>
           <ToolbarViewControls
             isSql={isSql}

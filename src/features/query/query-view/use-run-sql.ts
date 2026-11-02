@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-
+import { toast } from "sonner";
 import {
   type BindParamRef,
   type BindParamValue,
@@ -25,6 +25,7 @@ import {
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
+import { recordSuccessfulSql } from "@/lib/workbench/sql-states";
 
 import { executeSqlWithTransactions } from "./execute-sql";
 import { rowCountOf, withCreateNotice } from "./result-text";
@@ -97,7 +98,13 @@ export function useRunSql({
   );
 
   const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
+    async (
+      text: string,
+      bound?: ParameterizedQuery,
+      skipBind = false,
+      previewed = false,
+      recoverySql = text,
+    ) => {
       let sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
       const split =
@@ -181,6 +188,11 @@ export function useRunSql({
           transactionsCapable: caps.transactions,
           onJob: setActiveJobId,
         });
+        void recordSuccessfulSql(connection.id, database, tabId, recoverySql).catch((error) =>
+          toast.error("Erfolgreicher SQL-Stand konnte nicht gespeichert werden", {
+            description: String(error),
+          }),
+        );
         setExecutedSql(sql);
         const viewText =
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
@@ -266,7 +278,13 @@ export function useRunSql({
       void runSql(pending, buildParameterizedQuery(pending, bindValues, connection?.kind));
     } else {
       markQueryTabExecuted(tabId, pending);
-      void runSql(inlineBindValues(pending, bindValues, connection?.kind), undefined, true);
+      void runSql(
+        inlineBindValues(pending, bindValues, connection?.kind),
+        undefined,
+        true,
+        false,
+        pending,
+      );
     }
   }, [
     bindPendingSql,
@@ -283,6 +301,7 @@ export function useRunSql({
     prepareSql,
     bind: {
       open: bindDialogOpen,
+      sql: bindPendingSql ?? "",
       onOpenChange: (open: boolean) => {
         setBindDialogOpen(open);
         if (!open) setBindPendingSql(null);
