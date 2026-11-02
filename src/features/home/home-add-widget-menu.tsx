@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CHARTS, useDashboardsStore } from "@/lib/dashboards";
-import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { useActiveDatabase } from "@/lib/db-selection";
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_WIDGETS,
@@ -22,7 +22,6 @@ import {
   useHomeLayoutStore,
 } from "@/lib/home-layout";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
-import { useSettingsStore } from "@/lib/settings";
 
 const SINGLE_KINDS = (Object.keys(HOME_WIDGETS) as HomeWidgetKind[]).filter(
   (kind) => HOME_WIDGETS[kind].single,
@@ -32,8 +31,6 @@ export function HomeAddWidgetMenu({ connectionId }: { connectionId: string }) {
   const widgets = useHomeLayoutStore((state) => state.layouts[connectionId] ?? DEFAULT_HOME_LAYOUT);
   const setLayout = useHomeLayoutStore((state) => state.setLayout);
   const database = useActiveDatabase();
-  const caps = useActiveCapabilities();
-  const easyMode = useSettingsStore((state) => state.easyMode);
   const allDashboards = useDashboardsStore((state) => state.dashboards);
   const dashboards = allDashboards.filter(
     (dashboard) =>
@@ -42,12 +39,7 @@ export function HomeAddWidgetMenu({ connectionId }: { connectionId: string }) {
       dashboard.widgets.some((widget) => !widget.block),
   );
   const saved = useSavedQueriesStore((state) => state.queries);
-  const available = SINGLE_KINDS.filter(
-    (kind) =>
-      (kind !== "storage" || caps.overview) &&
-      (kind !== "er-diagram" || !easyMode) &&
-      !widgets.some((widget) => widget.kind === kind),
-  );
+  const available = SINGLE_KINDS.filter((kind) => !widgets.some((widget) => widget.kind === kind));
 
   const add = (kind: HomeWidgetKind, extra?: Partial<HomeWidget>) => {
     let id = "";

@@ -8,6 +8,7 @@ export {
   useColumnsQuery,
   useDatabasesQuery,
   useRefreshConnection,
+  useSchemaMapQuery,
   useSchemasQuery,
   useSourceSearchQuery,
   useTablesQuery,
