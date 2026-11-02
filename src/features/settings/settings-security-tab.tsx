@@ -1,8 +1,8 @@
 import { KeyRound, Lock, ShieldCheck } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SecretStorageNotice } from "@/features/connections/secret-storage-notice";
+import { SettingsNumberInput } from "@/features/settings/settings-number-input";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { DML_PREVIEW_MODES, type DmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type SslDefaultMode, useSettingsStore } from "@/lib/settings";
@@ -88,70 +88,50 @@ export function SettingsSecurityTab() {
         <SettingsRow settingId="dml-preview-limits">
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Input
-                type="number"
+              <SettingsNumberInput
                 min={10}
                 max={1000}
                 step={1}
                 aria-label="Beispielzeilen der Vorschau"
                 value={dmlPreviewRowLimit}
-                onChange={(event) => {
-                  const value = Number.parseInt(event.target.value, 10);
-                  if (!Number.isNaN(value) && value >= 10 && value <= 1000)
-                    setDmlPreviewRowLimit(value);
-                }}
-                className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                onCommit={setDmlPreviewRowLimit}
+                className="w-16"
               />
               Zeilen
             </span>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Input
-                type="number"
+              <SettingsNumberInput
                 min={5}
                 max={60}
                 step={1}
                 aria-label="Zeitlimit der Vorschau"
                 value={dmlPreviewTimeout}
-                onChange={(event) => {
-                  const value = Number.parseInt(event.target.value, 10);
-                  if (!Number.isNaN(value) && value >= 5 && value <= 60)
-                    setDmlPreviewTimeout(value);
-                }}
-                className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                onCommit={setDmlPreviewTimeout}
+                className="w-16"
               />
               Sekunden
             </span>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Input
-                type="number"
+              <SettingsNumberInput
                 min={1}
                 max={30}
                 step={1}
                 aria-label="Zeitlimit bei offener Transaktion"
                 value={dmlPreviewLockTimeout}
-                onChange={(event) => {
-                  const value = Number.parseInt(event.target.value, 10);
-                  if (!Number.isNaN(value) && value >= 1 && value <= 30)
-                    setDmlPreviewLockTimeout(value);
-                }}
-                className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                onCommit={setDmlPreviewLockTimeout}
+                className="w-16"
               />
               Sekunden bei offener Transaktion
             </span>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Input
-                type="number"
+              <SettingsNumberInput
                 min={1}
                 max={10000000}
                 step={1}
                 aria-label="Warnschwelle betroffener Zeilen"
                 value={dmlPreviewWarnThreshold}
-                onChange={(event) => {
-                  const value = Number.parseInt(event.target.value, 10);
-                  if (!Number.isNaN(value) && value >= 1 && value <= 10000000)
-                    setDmlPreviewWarnThreshold(value);
-                }}
-                className="h-8 w-24 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                onCommit={setDmlPreviewWarnThreshold}
+                className="w-24"
               />
               Warnung ab
             </span>
@@ -160,20 +140,14 @@ export function SettingsSecurityTab() {
 
         <SettingsRow settingId="conn-timeout">
           <div className="flex items-center gap-2">
-            <Input
-              type="number"
+            <SettingsNumberInput
               min={3}
               max={60}
               step={1}
               aria-label="Verbindungs-Timeout"
               value={connectionTimeout}
-              onChange={(event) => {
-                const value = Number.parseInt(event.target.value, 10);
-                if (!Number.isNaN(value) && value >= 3 && value <= 60) {
-                  setConnectionTimeout(value);
-                }
-              }}
-              className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              onCommit={setConnectionTimeout}
+              className="w-16"
             />
             <span className="text-xs text-muted-foreground">Sekunden</span>
           </div>
