@@ -1168,11 +1168,13 @@ table[data-grid-layout] > * > tr {
   grid-template-columns: var(--grid-columns);
 }
 
-table[data-grid-layout] > * > tr > :is(td, th) {
+table[data-grid-layout] > * > tr > td,
+table[data-grid-layout] > * > tr > th {
   grid-row: 1;
   align-content: center;
 }
 
-table[data-grid-layout] > * > tr > :is(td, th)[colspan] {
+table[data-grid-layout] > * > tr > td[colspan],
+table[data-grid-layout] > * > tr > th[colspan] {
   grid-column: 1 / -1;
 }
