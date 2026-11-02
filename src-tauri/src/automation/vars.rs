@@ -366,6 +366,7 @@ impl Vars {
                 quoted[1..quoted.len() - 1].to_string()
             }
             "url" => utf8_percent_encode(&value, URL_SAFE).to_string(),
+            "shell" => crate::automation::os_scheduler::posix_quote(&value),
             "upper" => value.to_uppercase(),
             "lower" => value.to_lowercase(),
             "trim" => value.trim().to_string(),
@@ -602,6 +603,10 @@ mod tests {
         assert_eq!(v.render("${missing:-fallback}").unwrap(), "fallback");
         assert_eq!(v.render("${task}/${run_id}").unwrap(), "Bericht/run-1");
         assert_eq!(v.render("${environment}").unwrap(), "prod");
+        assert_eq!(
+            v.render("echo ${name|shell}").unwrap(),
+            r#"echo 'O'\''Brien'"#
+        );
         let task = task(serde_json::json!([{ "name": "x", "defaultValue": "1" }]));
         let overrides = BTreeMap::from([("x".to_string(), "2".to_string())]);
         let v = Vars::new(&task, "r", None, &overrides, &BTreeMap::new()).unwrap();
