@@ -36,10 +36,41 @@ pub struct Request {
     pub paths: Option<Vec<String>>,
     pub base: Option<String>,
     pub incoming: Option<String>,
+    pub limit: Option<u32>,
 }
 
 fn git_command() -> Command {
     crate::db::backup_tools::command(Path::new("git"))
+}
+
+fn git_spawn_error(error: std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        "Git wurde nicht gefunden. Bitte Git installieren und l8db neu starten.".into()
+    } else {
+        format!("Git konnte nicht gestartet werden: {error}")
+    }
+}
+
+fn git_error(stderr: &str) -> String {
+    let message = stderr.trim();
+    let lower = message.to_lowercase();
+    let hint = if lower.contains("terminal prompts disabled")
+        || lower.contains("could not read username")
+        || lower.contains("authentication failed")
+        || lower.contains("permission denied (publickey")
+    {
+        Some("Anmeldung am Remote fehlgeschlagen. Zugangsdaten im Credential-Helper oder SSH-Agent hinterlegen.")
+    } else if lower.contains("non-fast-forward") || lower.contains("fetch first") {
+        Some("Der Remote-Branch ist weiter. Zuerst Änderungen holen (Pull) und dann erneut pushen.")
+    } else if lower.contains("could not resolve host") || lower.contains("unable to access") {
+        Some("Remote nicht erreichbar. Netzwerk und Remote-URL prüfen.")
+    } else {
+        None
+    };
+    match hint {
+        Some(hint) => format!("{hint}\n{message}"),
+        None => message.to_string(),
+    }
 }
 
 async fn git(root: &Path, args: &[&str]) -> Result<String, String> {
@@ -54,12 +85,12 @@ async fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     let output = tokio::time::timeout(Duration::from_secs(60), command.output())
         .await
         .map_err(|_| "Git-Zeitlimit erreicht")?
-        .map_err(|e| e.to_string())?;
+        .map_err(git_spawn_error)?;
     if output.stdout.len() > LIMIT || output.stderr.len() > LIMIT {
         return Err("Git-Ausgabe zu groß".into());
     }
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        return Err(git_error(&String::from_utf8_lossy(&output.stderr)));
     }
     String::from_utf8(output.stdout).map_err(|_| "Git-Ausgabe ist kein UTF-8".into())
 }
@@ -148,10 +179,7 @@ fn write(path: &Path, content: &str, expected: Option<&str>) -> Result<(), Strin
 fn has_conflict_markers(content: &str) -> bool {
     content.lines().any(|line| {
         let line = line.trim_end_matches('\r');
-        line.starts_with("<<<<<<< ")
-            || line.starts_with("||||||| ")
-            || line == "======="
-            || line.starts_with(">>>>>>> ")
+        line.starts_with("<<<<<<< ") || line.starts_with("||||||| ") || line.starts_with(">>>>>>> ")
     })
 }
 
@@ -514,6 +542,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
             if revision(&root, "HEAD").await.is_err() {
                 return Ok(json!(""));
             }
+            let count = format!("-{}", request.limit.unwrap_or(120).clamp(1, 5000));
             Ok(json!(
                 git(
                     &root,
@@ -521,7 +550,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                         "log",
                         "--all",
                         "--topo-order",
-                        "-120",
+                        &count,
                         "--format=%H%x09%P%x09%D%x09%cI%x09%s"
                     ]
                 )
@@ -759,7 +788,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 )
                 .await
                 .map_err(|_| "Merge-Zeitlimit erreicht")?
-                .map_err(|e| e.to_string())?;
+                .map_err(git_spawn_error)?;
                 let code = output.status.code().ok_or("Merge wurde abgebrochen")?;
                 if !(0..=127).contains(&code) {
                     return Err(String::from_utf8_lossy(&output.stderr).into_owned());

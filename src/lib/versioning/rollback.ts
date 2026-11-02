@@ -49,25 +49,33 @@ export async function restoreReleaseFiles(
     for (const [path, content] of Object.entries(sourceFiles(snapshot))) files.set(path, content);
   const next = { ...project, objects: release.objects.map((snapshot) => snapshot.object) };
   parseProject(JSON.stringify(next));
-  const changed: string[] = [];
+  const writes: { path: string; content: string | null; current: string | null }[] = [];
   for (const [path, content] of files) {
     const current = await clean(path);
-    if (current === content) continue;
-    await saveFile(repo, path, content, current);
-    changed.push(path);
+    if (current !== content) writes.push({ path, content, current });
   }
   for (const object of project.objects)
     for (const path of [object.path, object.bodyPath]) {
       if (!path || files.has(path)) continue;
       const current = await clean(path);
-      if (current === null) continue;
-      await deleteFile(repo, path, current);
-      changed.push(path);
+      if (current !== null) writes.push({ path, content: null, current });
     }
   const text = encode(next);
-  if (text !== projectText) {
-    await saveFile(repo, PROJECT_PATH, text, projectText);
-    changed.push(PROJECT_PATH);
+  if (text !== projectText)
+    writes.push({ path: PROJECT_PATH, content: text, current: projectText });
+  const changed: string[] = [];
+  try {
+    for (const write of writes) {
+      if (write.content === null) await deleteFile(repo, write.path, write.current as string);
+      else await saveFile(repo, write.path, write.content, write.current);
+      changed.push(write.path);
+    }
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}${
+        changed.length ? ` Bereits geändert: ${changed.join(", ")}.` : ""
+      }`,
+    );
   }
   return { objects: next.objects, changed };
 }
