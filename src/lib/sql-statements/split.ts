@@ -78,6 +78,10 @@ const SLASH_LINE = /^[ \t]*\/[ \t\r]*$/gm;
 const WRAPPED_HEADER =
   /^\s+(?:BODY\s+)?(?:"[^"]+"|[A-Za-z][\w$#]*)(?:\s*\.\s*(?:"[^"]+"|[A-Za-z][\w$#]*))?\s+$/i;
 
+const BACKSLASH_DIALECTS = ["mysql", "clickhouse", "bigquery", "snowflake"];
+const MAX_GO_REPEAT = 10_000;
+const FLAT_COMMENT_DIALECTS = ["mysql", "oracle", "sqlite", "sqlite_http"];
+
 function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
 }
@@ -131,6 +135,7 @@ export function splitSqlStatements(
   let batch = false;
   let blockDepth = 0;
   let delimiter = ";";
+  let goFrom = 0;
   const leadingWords: string[] = [];
   let routine = false;
 
@@ -192,6 +197,8 @@ export function splitSqlStatements(
     index = lineEndFrom(match.index);
   };
 
+  const backslashStrings = BACKSLASH_DIALECTS.includes(dialect ?? "");
+  const nestedComments = !FLAT_COMMENT_DIALECTS.includes(dialect ?? "");
   while (index < length) {
     const ch = sql[index];
 
@@ -219,7 +226,7 @@ export function splitSqlStatements(
       index += 2;
       let depth = 1;
       while (index < length && depth > 0) {
-        if (sql[index] === "/" && sql[index + 1] === "*") {
+        if (nestedComments && sql[index] === "/" && sql[index + 1] === "*") {
           depth += 1;
           index += 2;
         } else if (sql[index] === "*" && sql[index + 1] === "/") {
@@ -378,7 +385,13 @@ export function splitSqlStatements(
     if (dialect !== "oracle" && isWordStart(ch) && !isWordChar(sql[index - 1])) {
       const start = index;
       index = readWord(start);
-      if (leadingWords.length >= 8 && !routine && dialect !== "mssql" && dialect !== "mysql") {
+      if (
+        leadingWords.length >= 8 &&
+        !routine &&
+        !batch &&
+        dialect !== "mssql" &&
+        dialect !== "mysql"
+      ) {
         hasCode = true;
         continue;
       }
@@ -387,8 +400,13 @@ export function splitSqlStatements(
         const lineStart = sql.lastIndexOf("\n", start - 1) + 1;
         const lineEnd = lineEndFrom(index);
         const rest = sql.slice(index, lineEnd).trim();
-        if (!sql.slice(lineStart, start).trim() && (!rest || rest.startsWith("--"))) {
+        const repeat = /^(\d*)\s*(--.*)?$/.exec(rest);
+        if (!sql.slice(lineStart, start).trim() && repeat) {
           flush(start);
+          const batchStatements = statements.slice(goFrom);
+          for (let run = 1; run < Math.min(Number(repeat[1]) || 1, MAX_GO_REPEAT); run += 1)
+            statements.push(...batchStatements);
+          goFrom = statements.length;
           index = lineEnd;
           continue;
         }
@@ -411,6 +429,12 @@ export function splitSqlStatements(
           leadingWords.slice(1).some((w) => ROUTINE_OBJECTS.includes(w));
       }
       const first = leadingWords[0];
+      if (dialect === "cassandra") {
+        if (word === "BATCH" && first === "BEGIN" && leadingWords.length <= 3) batch = true;
+        else if (batch && word === "APPLY" && /^\s+BATCH\b/i.test(sql.slice(index, index + 16)))
+          batch = false;
+        continue;
+      }
       if (dialect === "mssql") {
         if (!batch && (first === "CREATE" || first === "ALTER")) {
           const object = leadingWords.slice(1).find((w) => w !== "OR" && w !== "ALTER");
@@ -440,7 +464,7 @@ export function splitSqlStatements(
       hasCode = true;
       const prev = sql[index - 1];
       const backslashEscapes =
-        dialect === "mysql" ||
+        backslashStrings ||
         (dialect !== "oracle" &&
           (prev === "E" || prev === "e") &&
           !isWordChar(sql[index - 2]) &&
@@ -477,7 +501,7 @@ export function splitSqlStatements(
       index += 1;
       let closed = false;
       while (index < length) {
-        if (dialect === "mysql" && sql[index] === "\\") {
+        if (backslashStrings && sql[index] === "\\") {
           index += 2;
           continue;
         }
@@ -558,17 +582,34 @@ export function statementAtOffset(
   options?: SqlSplitOptions,
 ): SqlStatement | null {
   const split = splitSqlStatements(sql, dialect, options);
-  if (split.unterminated) return null;
   const statements = split.commands.length
     ? [...split.statements, ...split.commands].sort((a, b) => a.start - b.start)
     : split.statements;
   const position = Math.max(0, Math.min(offset, sql.length));
+  let previous: SqlStatement | null = null;
   for (const statement of statements) {
     if (position >= statement.start && position <= statement.end) return statement;
+    if (statement.end > position) break;
+    previous = statement;
   }
-  const last = statements.at(-1);
-  if (last && position > last.end && !sql.slice(last.end, position).trim()) return last;
+  if (previous && onlyGap(sql, previous.end, position)) return previous;
   return null;
+}
+
+function onlyGap(sql: string, from: number, to: number): boolean {
+  let index = from;
+  while (index < to) {
+    if (isSpace(sql[index])) index += 1;
+    else if (sql.startsWith("--", index)) {
+      const newline = sql.indexOf("\n", index);
+      index = newline < 0 ? sql.length : newline + 1;
+    } else if (sql.startsWith("/*", index)) {
+      const close = sql.indexOf("*/", index + 2);
+      if (close < 0) return false;
+      index = close + 2;
+    } else return false;
+  }
+  return true;
 }
 
 export function runsOneStatementPerCall(dialect?: string): boolean {
