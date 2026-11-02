@@ -258,7 +258,11 @@ export function QuerySchemaBrowser({
     );
   }
   return (
-    <aside className="flex h-full min-h-0 flex-col bg-muted/15" aria-label="Query-Navigator">
+    <aside
+      className="flex h-full min-h-0 flex-col bg-muted/15"
+      aria-label="Query-Navigator"
+      style={{ contain: "strict" }}
+    >
       <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
         {(["schema", "outline"] as const).map((id) => (
           <Button
@@ -282,210 +286,212 @@ export function QuerySchemaBrowser({
           <XIcon className="size-3.5" />
         </Button>
       </div>
-      {tab === "schema" ? (
-        <>
-          <div className="flex items-center gap-1 border-b p-2">
-            <Input
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                schemaScrollRef.current?.scrollTo({ top: 0 });
-              }}
-              placeholder="Tabellen und Spalten…"
-              aria-label="Schema durchsuchen"
-              className="h-7 min-w-0 text-xs"
-            />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={loading}
-              aria-label="Schema aktualisieren"
-              onClick={onRefresh}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {tab === "schema" ? (
+          <>
+            <div className="flex items-center gap-1 border-b p-2">
+              <Input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  schemaScrollRef.current?.scrollTo({ top: 0 });
+                }}
+                placeholder="Tabellen und Spalten…"
+                aria-label="Schema durchsuchen"
+                className="h-7 min-w-0 text-xs"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={loading}
+                aria-label="Schema aktualisieren"
+                onClick={onRefresh}
+              >
+                <RefreshCwIcon className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
+              </Button>
+            </div>
+            <div
+              ref={schemaScrollRef}
+              className="min-h-0 flex-1 overflow-auto p-2"
+              data-slot="query-schema-list"
+              style={{ contain: "strict" }}
             >
-              <RefreshCwIcon className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
-            </Button>
-          </div>
+              {error && (
+                <p role="alert" className="p-2 text-xs text-destructive">
+                  Metadaten konnten nicht vollständig geladen werden. Erneut laden, um es noch
+                  einmal zu versuchen.
+                </p>
+              )}
+              {sessionViews.length > 0 && (
+                <section
+                  aria-label="Sitzungs-Views"
+                  className="mb-2 rounded-md border border-dashed p-1.5"
+                >
+                  <p className="px-1 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                    Sitzungs-Views
+                  </p>
+                  {sessionViews.map((view) => (
+                    <div key={view.name} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-xs hover:bg-muted"
+                        title={view.sql}
+                        onClick={() => onInsert(view.name)}
+                      >
+                        {view.name}
+                      </button>
+                      {onRemoveSessionView && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Sitzungs-View ${view.name} entfernen`}
+                          onClick={() => onRemoveSessionView(view.name)}
+                        >
+                          <XIcon className="size-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </section>
+              )}
+              {loading && !tables.length && (
+                <p role="status" className="p-2 text-xs text-muted-foreground">
+                  Schema wird geladen…
+                </p>
+              )}
+              {!loading && !visible.length && (
+                <p className="p-2 text-xs text-muted-foreground">
+                  {term ? "Keine passenden Tabellen oder Spalten." : "Keine Tabellen verfügbar."}
+                </p>
+              )}
+              <div className="relative" style={{ height: schemaVirtualizer.getTotalSize() }}>
+                {schemaVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const table = visible[virtualRow.index];
+                  const key = tableKey(table);
+                  const isOpen = Boolean(term) || expanded.has(key);
+                  const qualified = [table.schema, table.name].filter(Boolean).map(quote).join(".");
+                  const fields = columnMap?.get(table.schema)?.get(table.name) ?? [];
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={schemaVirtualizer.measureElement}
+                      className="absolute top-0 left-0 w-full pb-1"
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    >
+                      <details
+                        className="group rounded-md open:bg-muted/40"
+                        open={isOpen}
+                        onToggle={(event) => {
+                          if (term) return;
+                          const open = event.currentTarget.open;
+                          setExpanded((previous) => {
+                            if (previous.has(key) === open) return previous;
+                            const next = new Set(previous);
+                            if (open) next.add(key);
+                            else next.delete(key);
+                            return next;
+                          });
+                        }}
+                      >
+                        <summary className="cursor-pointer rounded-md px-2 py-2 text-xs hover:bg-muted focus-visible:outline-ring">
+                          <span className="ml-1 font-mono" title={qualified}>
+                            {table.name}
+                          </span>
+                          <span className="ml-2 text-[10px] text-muted-foreground">
+                            {table.schema}
+                          </span>
+                        </summary>
+                        {isOpen && (
+                          <div className="px-2 pb-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mb-1 h-6 w-full justify-start gap-1 text-[10px]"
+                              onClick={() => onInsert(qualified)}
+                            >
+                              <PlusIcon className="size-3" />
+                              Tabellennamen einfügen
+                            </Button>
+                            {!fields.length && (
+                              <p className="py-2 text-[10px] text-muted-foreground">
+                                Keine Spaltenmetadaten verfügbar.
+                              </p>
+                            )}
+                            {fields.map((column) => (
+                              <button
+                                type="button"
+                                key={column.name}
+                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-ring"
+                                title={`${column.name} · ${column.data_type} · Einfügen`}
+                                onClick={() => onInsert(quote(column.name))}
+                              >
+                                <span className="min-w-0 flex-1 truncate font-mono">
+                                  {column.name}
+                                </span>
+                                <span className="max-w-24 truncate text-[10px] text-muted-foreground">
+                                  {column.data_type}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </details>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex h-7 shrink-0 items-center gap-2 border-t px-3 text-[10px] text-muted-foreground">
+              <DatabaseIcon className="size-3" />
+              {visible.length} / {tables.length} Tabellen
+            </div>
+          </>
+        ) : (
           <div
-            ref={schemaScrollRef}
+            ref={statementScrollRef}
             className="min-h-0 flex-1 overflow-auto p-2"
-            data-slot="query-schema-list"
+            data-slot="query-statement-list"
             style={{ contain: "strict" }}
           >
-            {error && (
-              <p role="alert" className="p-2 text-xs text-destructive">
-                Metadaten konnten nicht vollständig geladen werden. Erneut laden, um es noch einmal
-                zu versuchen.
-              </p>
-            )}
-            {sessionViews.length > 0 && (
-              <section
-                aria-label="Sitzungs-Views"
-                className="mb-2 rounded-md border border-dashed p-1.5"
-              >
-                <p className="px-1 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  Sitzungs-Views
-                </p>
-                {sessionViews.map((view) => (
-                  <div key={view.name} className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-xs hover:bg-muted"
-                      title={view.sql}
-                      onClick={() => onInsert(view.name)}
-                    >
-                      {view.name}
-                    </button>
-                    {onRemoveSessionView && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Sitzungs-View ${view.name} entfernen`}
-                        onClick={() => onRemoveSessionView(view.name)}
-                      >
-                        <XIcon className="size-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </section>
-            )}
-            {loading && !tables.length && (
-              <p role="status" className="p-2 text-xs text-muted-foreground">
-                Schema wird geladen…
-              </p>
-            )}
-            {!loading && !visible.length && (
+            {!statements.length && (
               <p className="p-2 text-xs text-muted-foreground">
-                {term ? "Keine passenden Tabellen oder Spalten." : "Keine Tabellen verfügbar."}
+                Statements erscheinen hier, sobald du SQL schreibst.
               </p>
             )}
-            <div className="relative" style={{ height: schemaVirtualizer.getTotalSize() }}>
-              {schemaVirtualizer.getVirtualItems().map((virtualRow) => {
-                const table = visible[virtualRow.index];
-                const key = tableKey(table);
-                const isOpen = Boolean(term) || expanded.has(key);
-                const qualified = [table.schema, table.name].filter(Boolean).map(quote).join(".");
-                const fields = columnMap?.get(table.schema)?.get(table.name) ?? [];
+            <div className="relative" style={{ height: statementVirtualizer.getTotalSize() }}>
+              {statementVirtualizer.getVirtualItems().map((virtualRow) => {
+                const statement = statements[virtualRow.index];
                 return (
                   <div
                     key={virtualRow.key}
                     data-index={virtualRow.index}
-                    ref={schemaVirtualizer.measureElement}
+                    ref={statementVirtualizer.measureElement}
                     className="absolute top-0 left-0 w-full pb-1"
                     style={{ transform: `translateY(${virtualRow.start}px)` }}
                   >
-                    <details
-                      className="group rounded-md open:bg-muted/40"
-                      open={isOpen}
-                      onToggle={(event) => {
-                        if (term) return;
-                        const open = event.currentTarget.open;
-                        setExpanded((previous) => {
-                          if (previous.has(key) === open) return previous;
-                          const next = new Set(previous);
-                          if (open) next.add(key);
-                          else next.delete(key);
-                          return next;
-                        });
-                      }}
+                    <button
+                      type="button"
+                      className="block w-full rounded-md p-2 text-left hover:bg-muted focus-visible:outline-ring"
+                      onClick={() => afterPaint(() => onJump(statement.line, statement.column))}
                     >
-                      <summary className="cursor-pointer rounded-md px-2 py-2 text-xs hover:bg-muted focus-visible:outline-ring">
-                        <span className="ml-1 font-mono" title={qualified}>
-                          {table.name}
+                      <span className="flex justify-between text-[10px] text-muted-foreground">
+                        <span>
+                          {String(virtualRow.index + 1).padStart(2, "0")} · {statement.summary.kind}
                         </span>
-                        <span className="ml-2 text-[10px] text-muted-foreground">
-                          {table.schema}
-                        </span>
-                      </summary>
-                      {isOpen && (
-                        <div className="px-2 pb-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mb-1 h-6 w-full justify-start gap-1 text-[10px]"
-                            onClick={() => onInsert(qualified)}
-                          >
-                            <PlusIcon className="size-3" />
-                            Tabellennamen einfügen
-                          </Button>
-                          {!fields.length && (
-                            <p className="py-2 text-[10px] text-muted-foreground">
-                              Keine Spaltenmetadaten verfügbar.
-                            </p>
-                          )}
-                          {fields.map((column) => (
-                            <button
-                              type="button"
-                              key={column.name}
-                              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-ring"
-                              title={`${column.name} · ${column.data_type} · Einfügen`}
-                              onClick={() => onInsert(quote(column.name))}
-                            >
-                              <span className="min-w-0 flex-1 truncate font-mono">
-                                {column.name}
-                              </span>
-                              <span className="max-w-24 truncate text-[10px] text-muted-foreground">
-                                {column.data_type}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </details>
+                        <span>Zeile {statement.line}</span>
+                      </span>
+                      <span className="mt-1 block truncate font-mono text-xs">
+                        {statement.summary.preview}
+                      </span>
+                    </button>
                   </div>
                 );
               })}
             </div>
           </div>
-          <div className="flex h-7 shrink-0 items-center gap-2 border-t px-3 text-[10px] text-muted-foreground">
-            <DatabaseIcon className="size-3" />
-            {visible.length} / {tables.length} Tabellen
-          </div>
-        </>
-      ) : (
-        <div
-          ref={statementScrollRef}
-          className="min-h-0 flex-1 overflow-auto p-2"
-          data-slot="query-statement-list"
-          style={{ contain: "strict" }}
-        >
-          {!statements.length && (
-            <p className="p-2 text-xs text-muted-foreground">
-              Statements erscheinen hier, sobald du SQL schreibst.
-            </p>
-          )}
-          <div className="relative" style={{ height: statementVirtualizer.getTotalSize() }}>
-            {statementVirtualizer.getVirtualItems().map((virtualRow) => {
-              const statement = statements[virtualRow.index];
-              return (
-                <div
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  ref={statementVirtualizer.measureElement}
-                  className="absolute top-0 left-0 w-full pb-1"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                >
-                  <button
-                    type="button"
-                    className="block w-full rounded-md p-2 text-left hover:bg-muted focus-visible:outline-ring"
-                    onClick={() => afterPaint(() => onJump(statement.line, statement.column))}
-                  >
-                    <span className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>
-                        {String(virtualRow.index + 1).padStart(2, "0")} · {statement.summary.kind}
-                      </span>
-                      <span>Zeile {statement.line}</span>
-                    </span>
-                    <span className="mt-1 block truncate font-mono text-xs">
-                      {statement.summary.preview}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </aside>
   );
 }
