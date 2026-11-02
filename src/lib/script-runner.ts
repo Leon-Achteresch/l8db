@@ -335,14 +335,6 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       } finally {
         currentJob = null;
         entry.durationMs = Math.round(performance.now() - started);
-        useQueryHistoryStore.getState().record({
-          connectionId: connection.id,
-          database,
-          sql: entry.sql,
-          durationMs: entry.durationMs,
-          rowCount: entry.rowCount ?? entry.rowsAffected,
-          error: entry.error,
-        });
         updateTask(jobId, {
           progress: entries.filter((item) => item.status !== "pending" && item.status !== "skipped")
             .length,
@@ -353,6 +345,16 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         publish();
       }
     }
+    const ran = entries.filter((entry) => entry.durationMs !== null);
+    if (ran.length)
+      useQueryHistoryStore.getState().record({
+        connectionId: connection.id,
+        database,
+        sql: request.sql,
+        durationMs: ran.reduce((sum, entry) => sum + (entry.durationMs ?? 0), 0),
+        rowCount: ran.length === 1 ? (ran[0].rowCount ?? ran[0].rowsAffected) : null,
+        error: ran.find((entry) => entry.error)?.error ?? null,
+      });
     const touchedTxId = txId;
     if (touchedTxId && entries.some((entry) => entry.status === "success"))
       await runManagedOperation(touchedTxId, () => refreshDatabaseChanges(connection, touchedTxId));
