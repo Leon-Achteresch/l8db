@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,7 @@ import {
   createConnectionId,
   useConnectionsStore,
 } from "@/lib/connections";
-import { ENVIRONMENTS } from "@/lib/environments";
+import { connectionsLeavingProduction, ENVIRONMENTS } from "@/lib/environments";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
 
 interface Props {
@@ -47,10 +47,32 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
     setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
   }
 
+  function move(index: number, delta: number) {
+    setRules((current) => {
+      const target = index + delta;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return next;
+    });
+  }
+
   function save() {
-    useConnectionsStore
-      .getState()
-      .setHostGroupRules(rules.filter((rule) => rule.pattern.trim() !== ""));
+    const next = rules.filter((rule) => rule.pattern.trim() !== "");
+    const state = useConnectionsStore.getState();
+    const leaving = connectionsLeavingProduction(state.connections, state.hostGroupRules, next);
+    if (
+      leaving.length &&
+      !window.confirm(
+        `${leaving.length === 1 ? "1 Verbindung verliert" : `${leaving.length} Verbindungen verlieren`} dadurch die Umgebung „Produktion“ und deren Schreibschutz (${leaving
+          .slice(0, 3)
+          .map((connection) => connection.name)
+          .join(", ")}${leaving.length > 3 ? ", …" : ""}). Trotzdem speichern?`,
+      )
+    )
+      return;
+    state.setHostGroupRules(next);
     onOpenChange(false);
   }
 
@@ -116,6 +138,24 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
                 <span className="w-24 shrink-0 text-right text-[11px] text-muted-foreground">
                   {count} {count === 1 ? "Verbindung" : "Verbindungen"}
                 </span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Regel nach oben"
+                  disabled={index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <ArrowUp className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Regel nach unten"
+                  disabled={index === rules.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <ArrowDown className="size-3.5" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon-xs"

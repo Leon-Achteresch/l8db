@@ -38,12 +38,12 @@ export function useDatasetSql(dataset: Dataset | null, period: Period): string {
   return dataset ? datasetSql(dataset, kind, period, scope) : "";
 }
 
-export function useSqlQuery(sql: string, refetchInterval?: number) {
+export function useSqlQuery(sql: string, refetchInterval?: number, maxRows?: number) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const parallel = useCapabilities(connection?.kind).dashboard_parallelism;
   return useQuery({
-    queryKey: ["dashboard-data", connection?.id, database, sql],
+    queryKey: ["dashboard-data", connection?.id, database, sql, ...(maxRows ? [maxRows] : [])],
     queryFn: (context) => {
       if (!connection) throw new Error("Keine Verbindung");
       const abort = new AbortController();
@@ -58,7 +58,7 @@ export function useSqlQuery(sql: string, refetchInterval?: number) {
               effectiveConnectionString(connection),
               sql,
               database ?? undefined,
-              { track: false, pooled: true, jobId },
+              { track: false, pooled: true, jobId, ...(maxRows ? { maxRows } : {}) },
             );
           }),
         (jobId) => {

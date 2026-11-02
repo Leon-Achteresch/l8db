@@ -392,6 +392,32 @@ describe("cancelling an editor connection test", () => {
   });
 });
 
+describe("host group rules", () => {
+  test("IPv6 hosts match patterns without brackets", () => {
+    const rule = { id: "r6", name: "v6", pattern: "::1" };
+    expect(
+      matchingHostRule({ kind: "postgres", connectionString: "postgresql://u@[::1]:5432/db" }, [
+        rule,
+      ])?.id,
+    ).toBe("r6");
+  });
+
+  test("lists connections that would lose production through a rule change", async () => {
+    const { connectionsLeavingProduction } = await import("../../src/lib/environments");
+    const prod = {
+      id: "p",
+      name: "Prod",
+      kind: "postgres" as const,
+      connectionString: "postgresql://u@db-prod1/db",
+      sslMode: "prefer" as const,
+    };
+    const own = { ...prod, id: "o", name: "Eigene", environment: "production" as const };
+    const rule = { id: "r", name: "Prod", pattern: "db-prod*", environment: "production" as const };
+    expect(connectionsLeavingProduction([prod, own], [rule], []).map((c) => c.id)).toEqual(["p"]);
+    expect(connectionsLeavingProduction([prod, own], [rule], [rule])).toEqual([]);
+  });
+});
+
 describe("editor fields mode", () => {
   test("host mistakes get German messages", () => {
     const info = {
