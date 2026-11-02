@@ -120,14 +120,23 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
             : "Der Host ist erforderlich.",
       );
     if (port) validatePort(port);
-    const hostname = host.includes(":") && !host.startsWith("[") ? `[${host.trim()}]` : host.trim();
+    const trimmedHost = host.trim();
+    if (/^[^:[\]]+:\d*$/.test(trimmedHost))
+      throw new Error("Trage den Port im Feld „Port“ ein, nicht im Host.");
+    const hostname =
+      trimmedHost.includes(":") && !trimmedHost.startsWith("[") ? `[${trimmedHost}]` : trimmedHost;
     const auth =
       user.trim() || password
         ? `${encodeURIComponent(user.trim())}${password ? `:${encodeURIComponent(password)}` : ""}@`
         : "";
-    const url = new URL(
-      `${info.url_schemes[0]}://${auth}${hostname}${port ? `:${port}` : ""}/${encodeURIComponent(database.trim())}`,
-    );
+    let url: URL;
+    try {
+      url = new URL(
+        `${info.url_schemes[0]}://${auth}${hostname}${port ? `:${port}` : ""}/${encodeURIComponent(database.trim())}`,
+      );
+    } catch {
+      throw new Error("Der Host enthält ungültige Zeichen, z. B. Leerzeichen.");
+    }
     url.search = extraParams;
     if (windowsAuth) url.searchParams.set("trusted_connection", "true");
     return withSsl(parseConnectionUrl(url.toString(), kind).toString());

@@ -196,6 +196,17 @@ describe("manual install", () => {
     expect(installed).toBe(true);
     expect(events).toEqual(["download", "install:flushed", "relaunch"]);
   });
+
+  test("a second click while installing joins the running install", async () => {
+    events.length = 0;
+    const update = fakeUpdate();
+    const [first, second] = await Promise.all([
+      installUpdateAndRelaunch(update as never),
+      installUpdateAndRelaunch(update as never),
+    ]);
+    expect([first, second]).toEqual([true, true]);
+    expect(events.filter((event) => event === "download")).toHaveLength(1);
+  });
 });
 
 describe("update blockers", () => {

@@ -201,6 +201,25 @@ export interface SettingsState {
   resetToDefaults: () => void;
 }
 
+export const LAYOUT_APPEARANCE_DEFAULTS = {
+  uiScale: 100,
+  uiDensity: "normal",
+  sidebarExtraCompact: false,
+  navInHeader: false,
+  dynamicIsland: true,
+  seasonalAccents: true,
+  lightTheme: DEFAULT_APP_THEME,
+  darkTheme: DEFAULT_APP_THEME,
+  dbThemes: true,
+} satisfies Partial<SettingsState>;
+
+export const TABLE_APPEARANCE_DEFAULTS = {
+  fitColumnsToHeader: true,
+  monochromeCells: true,
+  tableStyle: "classic",
+  filterBarStyle: "classic",
+} satisfies Partial<SettingsState>;
+
 export const UI_SCALE_MIN = 80;
 export const UI_SCALE_MAX = 150;
 export const UI_SCALE_STEP = 5;
@@ -412,22 +431,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       setFilterBarStyle: (filterBarStyle) =>
         set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
-      resetAppearance: () =>
-        set({
-          uiScale: 100,
-          uiDensity: "normal",
-          sidebarExtraCompact: false,
-          navInHeader: false,
-          dynamicIsland: true,
-          seasonalAccents: true,
-          lightTheme: DEFAULT_APP_THEME,
-          darkTheme: DEFAULT_APP_THEME,
-          dbThemes: true,
-          fitColumnsToHeader: true,
-          monochromeCells: true,
-          tableStyle: "classic",
-          filterBarStyle: "classic",
-        }),
+      resetAppearance: () => set({ ...LAYOUT_APPEARANCE_DEFAULTS, ...TABLE_APPEARANCE_DEFAULTS }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
       resetToDefaults: () =>

@@ -125,13 +125,17 @@ export function ConnectionPickCard({
                     label="Ähnliche erstellen"
                     onSelect={onCreateSimilar}
                   />
-                  <IconMenuSeparator />
-                  <IconMenuItem
-                    icon={<Trash2 />}
-                    label="Löschen"
-                    variant="destructive"
-                    onSelect={onDelete}
-                  />
+                  {!connection.team && (
+                    <>
+                      <IconMenuSeparator />
+                      <IconMenuItem
+                        icon={<Trash2 />}
+                        label="Löschen"
+                        variant="destructive"
+                        onSelect={onDelete}
+                      />
+                    </>
+                  )}
                 </IconMenuContent>
               </IconMenu>
             </div>
@@ -192,10 +196,14 @@ export function ConnectionPickCard({
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onDuplicate}>Duplizieren</ContextMenuItem>
         <ContextMenuItem onSelect={onCreateSimilar}>Ähnliche erstellen…</ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem variant="destructive" onSelect={onDelete}>
-          Löschen…
-        </ContextMenuItem>
+        {!connection.team && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" onSelect={onDelete}>
+              Löschen…
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
