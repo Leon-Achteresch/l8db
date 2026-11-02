@@ -29,6 +29,9 @@ import { useAtlasTrail } from "./use-atlas-trail";
 
 const NO_NEIGHBORS: AtlasNeighbors = { outgoing: [], incoming: [] };
 
+const ATLAS_GROUND =
+  "linear-gradient(140deg, color-mix(in oklch, var(--chart-2) 34%, var(--border)), color-mix(in oklch, var(--border) 75%, var(--background)) 48%, color-mix(in oklch, var(--chart-1) 42%, var(--border)))";
+
 export function HomeAtlas({ connection }: { connection: SavedConnection }) {
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -189,7 +192,8 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         </div>
         <div
           ref={mapRef}
-          className="h-[clamp(320px,calc(100vh-430px),640px)] overflow-hidden rounded-xl bg-[var(--atlas-ground)] p-[1.5px] [--atlas-ground:color-mix(in_oklch,var(--border)_70%,var(--background))]"
+          className="h-[clamp(320px,calc(100vh-430px),640px)] overflow-hidden rounded-xl p-0.5 shadow-[0_30px_70px_-42px_color-mix(in_oklch,var(--chart-1)_70%,transparent)]"
+          style={{ backgroundImage: ATLAS_GROUND }}
         >
           {body}
         </div>
