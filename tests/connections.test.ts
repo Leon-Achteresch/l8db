@@ -372,6 +372,16 @@ describe("Other providers", () => {
       "redis://127.0.0.1:6501/0",
     );
   });
+  test("keeps own SSH, proxy and validation messages instead of guessing", () => {
+    for (const message of [
+      "Der SSL-Modus in der URL wird nicht unterstützt.",
+      "SSH-Server bastion:22: TCP-Verbindung fehlgeschlagen: Connection refused",
+      "Weiterleitung zur Datenbank abgelehnt: Connection refused",
+      "Proxy: SOCKS5 connect timed out",
+    ])
+      expect(connectionError(new Error(message))).toBe(message);
+    expect(connectionError("SSL error: certificate verify failed")).toContain("TLS-Verbindung");
+  });
   test("redacts credentials of any scheme and maps foreign auth errors", () => {
     expect(connectionError("Failed mysql://user:secret@host/app")).not.toContain("secret");
     expect(connectionError("Access denied for user 'root'@'localhost'")).toContain("Anmeldung");

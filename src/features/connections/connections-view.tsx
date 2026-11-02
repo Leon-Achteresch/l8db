@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Upload } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ import { SecretStorageNotice } from "./secret-storage-notice";
 
 export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
+  const connecting = useRef(false);
   const activeId = useConnectionsStore((state) => state.activeId);
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
@@ -195,13 +196,13 @@ export function ConnectionsView() {
   }
 
   async function connect(id: string | null) {
-    if (useConnectionSwitch.getState().isSwitching) return;
-    if (id === null) {
-      await disconnectActiveConnection(queryClient);
-      return;
-    }
-    if (await activateConnectionWithToast(id)) {
-      await navigate({ to: "/" });
+    if (connecting.current || useConnectionSwitch.getState().isSwitching) return;
+    connecting.current = true;
+    try {
+      if (id === null) await disconnectActiveConnection(queryClient);
+      else if (await activateConnectionWithToast(id)) await navigate({ to: "/" });
+    } finally {
+      connecting.current = false;
     }
   }
 

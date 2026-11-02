@@ -6,6 +6,9 @@ const AUTH_ERROR_PATTERN =
 const INTERRUPTED_QUERY_PATTERN =
   /Query-Timeout|SQLSTATE (57014|55P03)|abgebrochen|Abbruch|canceling statement|lock timeout|Lock wait timeout|ORA-01013/i;
 
+const OWN_MESSAGE_PATTERN =
+  /^(SSH|Sprung-Host|Weiterleitung|Proxy|Verbindung zum Proxy|Tunnel-Befehl|Befehls-Tunnel|Lokaler|Zielhost|Pageant|known_hosts|Unbekannter SSH|Host-Key|Der |Die |Das |Gib |Setze |Wähle |Mehrere |Sonderzeichen |Ports )/;
+
 export const AUTH_FAILED_MESSAGE =
   "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
 
@@ -39,6 +42,8 @@ export function connectionError(error: unknown): string {
   );
   if (/__TAURI|invoke|undefined.*(properties|function)/i.test(message))
     return "Zum Testen und Verbinden öffne l8db als Desktop-App.";
+  const plain = message.replace(/^Error:\s*/, "");
+  if (OWN_MESSAGE_PATTERN.test(plain)) return plain;
   if (AUTH_ERROR_PATTERN.test(message)) return AUTH_FAILED_MESSAGE;
   if (
     /Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(

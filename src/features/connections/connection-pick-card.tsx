@@ -67,7 +67,10 @@ export function ConnectionPickCard({
         <ConnectionCardShell
           connection={connection}
           active={active}
-          onDoubleClick={onOpen}
+          onDoubleClick={(event) => {
+            if (active || (event.target as HTMLElement).closest("button")) return;
+            onOpen();
+          }}
           actions={
             <div className="flex items-center gap-0.5">
               <button
