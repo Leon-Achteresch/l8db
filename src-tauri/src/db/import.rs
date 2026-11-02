@@ -273,10 +273,13 @@ pub fn literal(dialect: Dialect, data_type: &str, value: Option<&str>) -> String
     let Some(value) = value else {
         return "NULL".into();
     };
-    if dialect == Dialect::Postgres {
-        return super::quote_literal(value);
-    }
     let class = classify(data_type);
+    if dialect == Dialect::Postgres {
+        return match (class, parse_bool(value)) {
+            (TypeClass::Bool, Some(flag)) => if flag { "'true'" } else { "'false'" }.into(),
+            _ => super::quote_literal(value),
+        };
+    }
     match class {
         TypeClass::Integer | TypeClass::Decimal if is_number(value) => value.trim().to_string(),
         TypeClass::Integer | TypeClass::Decimal
@@ -1455,6 +1458,12 @@ mod tests {
             "CAST('2024-01-02T03:04:05.500' AS datetime2)"
         );
         assert_eq!(literal(Dialect::Postgres, "integer", Some("7")), "'7'");
+        assert_eq!(literal(Dialect::Postgres, "boolean", Some("ja")), "'true'");
+        assert_eq!(literal(Dialect::Postgres, "bool", Some("Nein")), "'false'");
+        assert_eq!(
+            literal(Dialect::Postgres, "boolean", Some("vielleicht")),
+            "'vielleicht'"
+        );
         assert_eq!(literal(Dialect::Oracle, "VARCHAR2(10)", None), "NULL");
         let long = "x".repeat(3500);
         let clob = literal(Dialect::Oracle, "CLOB", Some(&long));
