@@ -4235,9 +4235,22 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn list_subscriptions(&self) -> Result<Vec<super::SubscriptionInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
+            let readable: bool = conn
+                .query_one(
+                    "SELECT has_column_privilege('pg_catalog.pg_subscription', 'subconninfo', 'SELECT')",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)?
+                .get(0);
             conn.query(
-                "SELECT subname, subenabled, subconninfo, subslotname, subpublications \
-                 FROM pg_subscription ORDER BY subname",
+                &format!(
+                    "SELECT subname, subenabled, {}, subslotname, subpublications \
+                     FROM pg_subscription \
+                     WHERE subdbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
+                     ORDER BY subname",
+                    if readable { "subconninfo" } else { "NULL::text" }
+                ),
                 &[],
             )
             .await
@@ -4245,11 +4258,13 @@ impl DatabaseAdapter for PostgresAdapter {
             .map(|rows| {
                 rows.into_iter()
                     .map(|row| {
-                        let raw: String = row.get(2);
+                        let raw: Option<String> = row.get(2);
                         super::SubscriptionInfo {
                             name: row.get(0),
                             enabled: row.get(1),
-                            connection_string: redact_connection_string(&raw),
+                            connection_string: raw
+                                .map(|raw| redact_connection_string(&raw))
+                                .unwrap_or_else(|| "(keine Leseberechtigung)".into()),
                             slot_name: row.get(3),
                             publications: row.get(4),
                         }
@@ -4286,7 +4301,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 .join(", ");
             let mut options = vec![format!(
                 "enabled = {}",
-                if req.enabled { "true" } else { "false" }
+                if req.enabled && req.connect {
+                    "true"
+                } else {
+                    "false"
+                }
             )];
             options.push(format!(
                 "connect = {}",

@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
 import { type CreateSubscriptionRequest, createSubscription } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { injectUrlPassword } from "@/lib/secrets";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export function CreateSubscriptionDialog({
@@ -30,6 +31,7 @@ export function CreateSubscriptionDialog({
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [providerUrl, setProviderUrl] = useState("");
+  const [providerPassword, setProviderPassword] = useState("");
   const [publications, setPublications] = useState("");
   const [slotName, setSlotName] = useState("");
   const [enabled, setEnabled] = useState(true);
@@ -37,16 +39,30 @@ export function CreateSubscriptionDialog({
 
   const handleSave = async () => {
     if (!connection || !name.trim() || !providerUrl.trim() || !publications.trim()) return;
+    const url = providerUrl.trim();
+    const injected = injectUrlPassword(url, providerPassword);
+    const connectionString =
+      !providerPassword || injected !== url
+        ? injected
+        : url.includes("://")
+          ? null
+          : `${url} password='${providerPassword.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+    if (connectionString === null) {
+      toast.error(
+        "Für das Passwort muss der Connection-String einen Benutzer enthalten (user@host).",
+      );
+      return;
+    }
     setSaving(true);
     try {
       const request: CreateSubscriptionRequest = {
         name: name.trim(),
-        connection_string: providerUrl.trim(),
+        connection_string: connectionString,
         publications: publications
           .split(",")
           .map((p) => p.trim())
           .filter(Boolean),
-        enabled,
+        enabled: enabled && connect,
         connect,
       };
       if (slotName.trim()) request.slot_name = slotName.trim();
@@ -61,6 +77,7 @@ export function CreateSubscriptionDialog({
       onOpenChange(false);
       setName("");
       setProviderUrl("");
+      setProviderPassword("");
       setPublications("");
       setSlotName("");
     } catch (err) {
@@ -92,7 +109,17 @@ export function CreateSubscriptionDialog({
               value={providerUrl}
               onChange={(e) => setProviderUrl(e.target.value)}
               className="h-8 text-xs font-mono"
-              placeholder="postgresql://user:pass@host:5432/db"
+              placeholder="postgresql://user@host:5432/db"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Provider-Passwort (optional)</Label>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={providerPassword}
+              onChange={(e) => setProviderPassword(e.target.value)}
+              className="h-8 text-xs font-mono"
             />
           </div>
           <div className="space-y-1.5">
@@ -112,9 +139,17 @@ export function CreateSubscriptionDialog({
               className="h-8 text-xs font-mono"
             />
           </div>
-          <label className="flex cursor-pointer items-center gap-2 text-xs">
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
-            Aktiviert (Worker starten)
+          <label className="flex cursor-pointer items-start gap-2 text-xs">
+            <Switch checked={enabled && connect} disabled={!connect} onCheckedChange={setEnabled} />
+            <span>
+              Aktiviert (Worker starten)
+              {!connect && (
+                <span className="block text-muted-foreground">
+                  Ohne Verbindung bleibt die Subskription deaktiviert. Slot und Aktivierung später
+                  per ALTER SUBSCRIPTION nachholen.
+                </span>
+              )}
+            </span>
           </label>
           <label className="flex cursor-pointer items-start gap-2 text-xs">
             <Switch checked={connect} onCheckedChange={setConnect} />
