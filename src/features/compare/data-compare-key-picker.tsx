@@ -3,6 +3,7 @@ import { useId } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { SavedConnection } from "@/lib/connections";
 import { listTableColumnsDetailed } from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { effectiveConnectionString } from "@/lib/ssh";
 import type { DataCompareSideSelection } from "./data-compare-side-picker";
 
@@ -31,7 +32,12 @@ export function DataCompareKeyPicker({
   return (
     <fieldset className="flex flex-wrap gap-2 text-xs">
       <legend className="mb-2">Vergleichsschlüssel (Standard: Primärschlüssel)</legend>
-      {columns.error && <span className="text-destructive">{String(columns.error)}</span>}
+      {columns.isLoading && <span className="text-muted-foreground">Spalten werden geladen…</span>}
+      {columns.error && (
+        <span role="alert" className="text-destructive">
+          Spalten konnten nicht geladen werden: {errorMessageOf(columns.error)}
+        </span>
+      )}
       {columns.data?.map((column) => (
         <label
           htmlFor={`${id}-${column.name}`}
