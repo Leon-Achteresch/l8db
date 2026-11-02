@@ -61,6 +61,7 @@ pub fn sql_search_path() -> Vec<String> {
 const ROUTINE_OBJECTS: &[&str] = &["TRIGGER", "PROCEDURE", "FUNCTION", "EVENT"];
 const MSSQL_BATCH_OBJECTS: &[&str] = &["PROCEDURE", "PROC", "FUNCTION", "TRIGGER"];
 const END_SUFFIXES: &[&str] = &["IF", "LOOP", "WHILE", "REPEAT"];
+const MAX_GO_REPEAT: usize = 10_000;
 
 fn word_char(byte: Option<&u8>) -> bool {
     byte.is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
@@ -123,6 +124,7 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
         words: Vec::new(),
     };
     let mut delimiter = String::from(";");
+    let mut go_from = 0;
     let mut i = 0;
     while i < bytes.len() {
         let c = bytes[i];
@@ -146,7 +148,7 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
             let mut depth = 1;
             i += 2;
             while i < bytes.len() && depth > 0 {
-                if bytes[i..].starts_with(b"/*") {
+                if !mysql && bytes[i..].starts_with(b"/*") {
                     depth += 1;
                     i += 2;
                 } else if bytes[i..].starts_with(b"*/") {
@@ -165,8 +167,20 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
             if dialect == Dialect::Mssql && word == "GO" && blank_before(sql, start) {
                 let end = line_end(sql, i);
                 let rest = sql[i..end].trim();
-                if rest.is_empty() || rest.starts_with("--") {
+                let digits =
+                    rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                let tail = rest[digits..].trim_start();
+                if tail.is_empty() || tail.starts_with("--") {
                     s.flush(start);
+                    let repeat = rest[..digits]
+                        .parse::<usize>()
+                        .unwrap_or(1)
+                        .clamp(1, MAX_GO_REPEAT);
+                    let batch = s.out[go_from..].to_vec();
+                    for _ in 1..repeat {
+                        s.out.extend(batch.iter().cloned());
+                    }
+                    go_from = s.out.len();
                     i = end;
                     continue;
                 }
@@ -333,6 +347,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn only_mysql_ends_block_comments_at_the_first_close() {
+        let sql = "/* alt: /* x */ select 1; select 2;";
+        assert_eq!(split_dialect(sql, Dialect::Mysql).len(), 2);
+        assert!(split_dialect(sql, Dialect::Mssql).is_empty());
+        assert!(split_postgres(sql).is_empty());
+        assert_eq!(split_mssql("select 1\nGO 3\n").len(), 3);
+    }
+
+    #[test]
     fn shared_corpus_matches_frontend_splitter() {
         let corpus: serde_json::Value = serde_json::from_str(include_str!(
             "../../../tests/fixtures/sql-splitter-corpus.json"
@@ -391,6 +414,10 @@ pub(crate) mod tests {
             vec![proc, "SELECT 1", "SELECT 2"]
         );
         assert_eq!(split_mssql(proc), vec![proc]);
+        assert_eq!(
+            split_mssql("SELECT 0\nGO\nSELECT 1;\nSELECT 2\nGO 2 -- zweimal\nSELECT 3"),
+            vec!["SELECT 0", "SELECT 1", "SELECT 2", "SELECT 1", "SELECT 2", "SELECT 3"]
+        );
     }
 
     #[test]
