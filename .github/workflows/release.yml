@@ -75,13 +75,6 @@ jobs:
     permissions:
       contents: read
 
-  performance:
-    needs: prepare
-    if: needs.prepare.outputs.mode == 'publish' && github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/performance.yml
-    permissions:
-      contents: read
-
   build:
     needs: prepare
     if: needs.prepare.outputs.mode == 'publish' && needs.prepare.outputs.reuse_run_id == ''
@@ -156,8 +149,8 @@ jobs:
           if-no-files-found: error
 
   draft:
-    needs: [prepare, checks, performance, build]
-    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.performance.result == 'success' || (github.ref == 'refs/heads/canary' && needs.performance.result == 'skipped')) && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
+    needs: [prepare, checks, build]
+    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reuse_run_id != '')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

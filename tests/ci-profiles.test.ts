@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 const read = (name: string) =>
   Bun.YAML.parse(readFileSync(`.github/workflows/${name}.yml`, "utf8"));
 const ci = read("ci");
-const perf = read("performance");
 const release = read("release");
 const nightly = read("nightly-release");
 
@@ -41,25 +40,18 @@ test("agent pushes and development PRs run quick checks while stable and manual 
       (step: { run?: string }) => step.run === "cargo check --locked",
     );
     expect(enabled(quick.if, event, branch, base, inputs)).toBe(!full);
-    for (const job of ["browser", "constrained", "database"]) {
-      expect(enabled(perf.jobs[job].if, event, branch, base)).toBe(full);
-    }
   }
   expect(ci.concurrency["cancel-in-progress"]).toBe(true);
-  expect(perf.concurrency["cancel-in-progress"]).toBe(true);
   expect(release.concurrency["cancel-in-progress"]).toBe(false);
   expect(release.jobs.checks.with.full).toContain("refs/heads/main");
-  expect(release.jobs.performance.if).toContain("refs/heads/main");
-  expect(release.jobs.draft.needs).toContain("performance");
-  expect(release.jobs.draft.if).toContain("needs.performance.result == 'success'");
-  expect(release.jobs.draft.if).toContain("github.ref == 'refs/heads/canary'");
+  expect(release.jobs.performance).toBeUndefined();
+  expect(release.jobs.draft.needs).not.toContain("performance");
 });
 
 test("unapproved nights never start builds or tests and all jobs use the event SHA", () => {
   expect(ci.on.schedule).toBeUndefined();
-  expect(perf.on.schedule).toBeUndefined();
   expect(nightly.jobs.promote.if).toContain("vars.NIGHTLY_RELEASE_SHA != ''");
-  for (const workflow of [ci, perf]) {
+  for (const workflow of [ci]) {
     for (const job of Object.values(workflow.jobs) as {
       steps: { uses?: string; with?: { ref: string } }[];
     }[]) {

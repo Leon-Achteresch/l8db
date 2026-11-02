@@ -152,4 +152,4 @@ Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64; Bun 1.4.3 und Bun
   - Jetzt: 1.796.638 Byte. Der Store des Schema-Vergleichs lag nur wegen `prepareConnection` im Startpaket. Die Funktion steht jetzt in `src/lib/prepare-connection.ts`.
 - **Zeilenfarben:** `rowTone` läuft einmal je Zeile und Grid. Beim Scrollen kommt die Farbe aus einem Cache. 40 Scrollschritte über 313 Zeilen ergeben 313 Aufrufe.
 
-Windows läuft nur in CI: `.github/workflows/performance.yml` führt `test:perf:core` samt `tests/perf-ui-plugins.test.ts` auf windows-2025 aus. Bedient wurde die App unter Windows nicht. Die Messungen mit gedrosselter CPU laufen ebenfalls nur dort.
+Windows wurde nur in CI geprüft: Die inzwischen entfernte Performance-CI hat `test:perf:core` samt `tests/perf-ui-plugins.test.ts` auf windows-2025 ausgeführt. Bedient wurde die App unter Windows nicht. Messungen mit gedrosselter CPU liefen ebenfalls nur dort.
