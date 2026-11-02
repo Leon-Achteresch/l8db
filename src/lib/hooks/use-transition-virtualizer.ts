@@ -13,6 +13,10 @@ import { IS_CHROMIUM } from "@/lib/platform";
 
 const useIsomorphicLayoutEffect = typeof document === "undefined" ? useEffect : useLayoutEffect;
 
+function flushLayout(element: Element | null) {
+  element?.getBoundingClientRect();
+}
+
 export function useTransitionVirtualizer<
   TScrollElement extends Element,
   TItemElement extends Element,
@@ -60,7 +64,13 @@ export function useTransitionVirtualizer<
   const [instance] = useState(() => new Virtualizer<TScrollElement, TItemElement>(resolvedOptions));
   instance.setOptions(resolvedOptions);
   useIsomorphicLayoutEffect(() => instance._didMount(), []);
-  useIsomorphicLayoutEffect(() => instance._willUpdate());
+  const committed = useRef(snapshot.current);
+  useIsomorphicLayoutEffect(() => {
+    instance._willUpdate();
+    if (committed.current === snapshot.current) return;
+    committed.current = snapshot.current;
+    flushLayout(instance.scrollElement);
+  });
   return instance;
 }
 
