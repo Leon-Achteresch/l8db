@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { appendLogLines, type BackupMode, formatBytes, progressPercent } from "@/lib/backup";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { SavedConnection } from "@/lib/connections";
 import {
   type BackupLogEvent,
@@ -32,7 +33,11 @@ export const useBackupToolPaths = create<BackupToolPathsState>()(
           return { paths };
         }),
     }),
-    { name: "l8db.backup-tools", partialize: (state) => ({ paths: state.paths }) },
+    {
+      name: "l8db.backup-tools",
+      storage: createSafeJsonStorage(),
+      partialize: (state) => ({ paths: state.paths }),
+    },
   ),
 );
 

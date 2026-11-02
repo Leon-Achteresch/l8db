@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 export type RegexSearchScope = "grid" | "tabs" | "source" | "sidebar";
 
@@ -18,7 +19,7 @@ export const useRegexSearchPrefs = create<RegexSearchPrefsState>()(
       toggleRegex: (scope) =>
         set((state) => ({ scopes: { ...state.scopes, [scope]: !state.scopes[scope] } })),
     }),
-    { name: "l8db.regex-search" },
+    { name: "l8db.regex-search", storage: createSafeJsonStorage() },
   ),
 );
 

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type HomeWidgetKind = "performance" | "chart" | "query" | "note";
@@ -107,6 +108,7 @@ export const useHomeLayoutStore = create<HomeLayoutState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createSafeJsonStorage(),
       merge: (persisted, current) => ({
         ...current,
         layouts: sanitizeHomeLayouts((persisted as Partial<HomeLayoutState> | undefined)?.layouts),

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface SavedQuery {
@@ -55,6 +56,7 @@ export const useSavedQueriesStore = create<SavedQueriesState>()(
     }),
     {
       name: "l8db.saved-queries",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({ queries: state.queries }),
     },
   ),

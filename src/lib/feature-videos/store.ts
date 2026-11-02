@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { DAY, FEED_URL, type FeatureVideoFeed, parseFeed } from "./model";
 
 type History = Record<string, { status: "offered" | "seen" | "dismissed"; at: number }>;
@@ -68,6 +69,7 @@ export const useFeatureVideoStore = create<VideoState>()(
     }),
     {
       name: "l8db.feature-videos",
+      storage: createSafeJsonStorage(),
       partialize: ({ feed, checkedAt, history }) => ({ feed, checkedAt, history }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<VideoState> | null;

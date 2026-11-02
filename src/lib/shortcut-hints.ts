@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { canonicalizeHotkey, commandById, HOTKEY_COMMANDS, useHotkeysStore } from "@/lib/hotkeys";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
@@ -90,6 +91,7 @@ export const useShortcutHintsStore = create<ShortcutHintsState>()(
     }),
     {
       name: "l8db.shortcut-hints",
+      storage: createSafeJsonStorage(),
       version: 1,
       partialize: (state) => ({ stats: state.stats, lastShownAt: state.lastShownAt }),
     },

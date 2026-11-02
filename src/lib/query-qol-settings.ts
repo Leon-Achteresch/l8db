@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { TimestampOptions } from "@/lib/timestamp-display";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
@@ -22,6 +23,7 @@ export const useQueryQolSettings = create<QueryQolSettings>()(
     }),
     {
       name: KEY,
+      storage: createSafeJsonStorage(),
       version: 1,
       partialize: ({ timestamps, notifications }) => ({ timestamps, notifications }),
       merge: (persisted, current) => {

@@ -1,6 +1,7 @@
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import {
   type CatalogObject,
@@ -65,6 +66,7 @@ export const useSchemaCompareStore = create<SchemaCompareState>()(
     }),
     {
       name: "l8db.schema-compare",
+      storage: createSafeJsonStorage(),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<SchemaCompareState>;
         return {

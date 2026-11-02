@@ -1,5 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { safeSetItem } from "@/lib/buffered-storage";
 import { csvFileName } from "@/lib/dashboards/csv";
 import type {
   StudioColumn,
@@ -135,7 +136,7 @@ export function rememberRecentTable(reference: string, table: StudioTableRef): S
       (item) => item.schema !== table.schema || item.name !== table.name,
     ),
   ].slice(0, 10);
-  localStorage.setItem(recentKey(reference), JSON.stringify(next));
+  safeSetItem(localStorage, recentKey(reference), JSON.stringify(next));
   return next;
 }
 

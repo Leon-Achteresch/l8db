@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { TableColumnPrefsState } from "./types";
 
 export const useTableColumnPrefs = create<TableColumnPrefsState>()(
@@ -22,6 +23,6 @@ export const useTableColumnPrefs = create<TableColumnPrefsState>()(
           profiles: { ...(state.profiles ?? {}), [key]: profiles },
         })),
     }),
-    { name: "l8db.table-column-prefs" },
+    { name: "l8db.table-column-prefs", storage: createSafeJsonStorage() },
   ),
 );

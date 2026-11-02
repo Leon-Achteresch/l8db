@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { BACKUP_FORMATS, backupFormat, backupToolFor, defaultBackupOptions } from "@/lib/backup";
 import { backupScope, runBackupJob, useBackupJobs } from "@/lib/backup-runner";
+import { safeSetItem } from "@/lib/buffered-storage";
 import { copyWithToast } from "@/lib/clipboard";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
@@ -93,7 +94,7 @@ export function BackupPanel({
       });
       if (typeof picked === "string") {
         setFolder(picked);
-        localStorage.setItem(FOLDER_KEY, picked);
+        safeSetItem(localStorage, FOLDER_KEY, picked);
       }
     } catch (failure) {
       setError(String(failure));
@@ -195,7 +196,7 @@ export function BackupPanel({
                     className="h-8 pl-8 font-mono text-xs md:text-xs"
                     onChange={(event) => setFolder(event.target.value)}
                     onBlur={() => {
-                      if (folder.trim()) localStorage.setItem(FOLDER_KEY, folder.trim());
+                      if (folder.trim()) safeSetItem(localStorage, FOLDER_KEY, folder.trim());
                     }}
                   />
                 </div>

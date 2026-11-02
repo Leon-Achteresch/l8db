@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_APP_THEME, normalizeAppTheme } from "@/lib/app-themes";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type FilterBarStyle, normalizeFilterBarStyle } from "@/lib/filter-bar-style";
 import { applyOrganizationSettings, withOrganizationSettings } from "@/lib/organization-state";
@@ -438,6 +439,7 @@ export const useSettingsStore = create<SettingsState>()(
     })),
     {
       name: "l8db.settings",
+      storage: createSafeJsonStorage(),
       version: 1,
       migrate: (persisted, version) =>
         version < 1

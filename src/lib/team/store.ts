@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export const TEAM_STORE_KEY = "l8db.team";
@@ -21,7 +22,12 @@ export const useTeamStore = create<TeamState>()(
       lastError: null,
       warnings: [],
     }),
-    { name: TEAM_STORE_KEY, version: 1, migrate: () => ({}) as TeamState },
+    {
+      name: TEAM_STORE_KEY,
+      storage: createSafeJsonStorage(),
+      version: 1,
+      migrate: () => ({}) as TeamState,
+    },
   ),
 );
 

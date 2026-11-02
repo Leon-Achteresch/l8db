@@ -1,9 +1,47 @@
+import { toast } from "sonner";
 import {
   createJSONStorage,
   type PersistStorage,
   type StateStorage,
   type StorageValue,
 } from "zustand/middleware";
+
+type KeyValueStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+let storageFullNotified = false;
+
+export function reportStorageFailure(key: string, error: unknown) {
+  console.warn(`Speichern von ${key} fehlgeschlagen.`, error);
+  if (
+    storageFullNotified ||
+    !(error instanceof DOMException && error.name === "QuotaExceededError")
+  )
+    return;
+  storageFullNotified = true;
+  toast.error("Lokaler Speicher ist voll", {
+    description:
+      "Einige Änderungen werden nicht dauerhaft gespeichert. Abfrageverlauf oder Aufgabenliste leeren schafft Platz.",
+  });
+}
+
+export function safeSetItem(storage: KeyValueStorage, key: string, value: string) {
+  try {
+    storage.setItem(key, value);
+  } catch (error) {
+    reportStorageFailure(key, error);
+  }
+}
+
+export function createSafeJsonStorage<S>(): PersistStorage<S> | undefined {
+  return createJSONStorage<S>(() => {
+    const storage = window.localStorage;
+    return {
+      getItem: (key) => storage.getItem(key),
+      setItem: (key, value) => safeSetItem(storage, key, value),
+      removeItem: (key) => storage.removeItem(key),
+    };
+  });
+}
 
 export function createQuotaSafeStorage(listKey: string): StateStorage {
   return {
@@ -29,7 +67,7 @@ export function createQuotaSafeStorage(listKey: string): StateStorage {
               continue;
             }
           }
-          console.warn(`${name} konnte nicht gespeichert werden.`, error);
+          reportStorageFailure(name, error);
           return;
         }
       }
@@ -38,14 +76,14 @@ export function createQuotaSafeStorage(listKey: string): StateStorage {
 }
 
 export function createChangedOnlyJsonStorage<S>(
-  getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => window.localStorage,
+  getStorage: () => KeyValueStorage = () => window.localStorage,
 ): PersistStorage<S> | undefined {
   return createJSONStorage<S>(() => {
     const storage = getStorage();
     return {
       getItem: (key) => storage.getItem(key),
       setItem: (key, value) => {
-        if (storage.getItem(key) !== value) storage.setItem(key, value);
+        if (storage.getItem(key) !== value) safeSetItem(storage, key, value);
       },
       removeItem: (key) => storage.removeItem(key),
     };
@@ -53,7 +91,7 @@ export function createChangedOnlyJsonStorage<S>(
 }
 
 export function createBufferedJsonStorage<S>(
-  getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  getStorage: () => KeyValueStorage,
   delay = 250,
 ): PersistStorage<S> & { flush: () => void; dispose: () => void } {
   const pending = new Map<string, StorageValue<S>>();
@@ -72,7 +110,7 @@ export function createBufferedJsonStorage<S>(
     try {
       flush();
     } catch (error) {
-      console.error("Tabs konnten nicht gespeichert werden.", error);
+      reportStorageFailure("Tabs und Arbeitsbereiche", error);
     }
   };
   const onVisibility = () => {

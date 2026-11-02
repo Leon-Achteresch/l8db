@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 import { type CsvOptions, DEFAULT_CSV_OPTIONS } from "@/lib/export";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -53,6 +54,7 @@ export const useExportTemplatesStore = create<ExportTemplatesState>()(
     }),
     {
       name: "l8db.export-templates",
+      storage: createSafeJsonStorage(),
       merge: (persisted, current) => {
         const state = persisted as Partial<ExportTemplatesState> | undefined;
         const templates = (state?.templates ?? [])
