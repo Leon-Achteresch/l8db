@@ -1031,3 +1031,62 @@ async fn tunnel_rsa_key_formats_end_to_end() {
         .is_err());
     assert!(manager.list().await.is_empty());
 }
+
+fn test_key(line: &str) -> russh::keys::PublicKey {
+    russh::keys::PublicKey::from_openssh(line).expect("key")
+}
+
+const KEY_A: &str =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDxjA3G46pzzFPqY7jiAJ0ryeZkPVD09vrLkCbwN3vxJ";
+const KEY_B: &str =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG449MS1c+jVEcBuWmXpElYa1qLisayjOl90Dk+657tF";
+const KEY_ECDSA: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEaL6irl9EXvk/Z/fJj8MMhYjYQUslZC34o0uritVl8foKZZdsKXLn3ybbZ0YSMHM/prTatjPE0nNEc27HpGl5U=";
+
+fn known_hosts_with(name: &str, line: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("l8db-known-hosts-{name}-{}", std::process::id()));
+    std::fs::write(&path, format!("[db.example]:2222 {line}\n")).expect("write");
+    path
+}
+
+#[test]
+fn changed_host_key_reports_a_clear_warning() {
+    let path = known_hosts_with("changed", KEY_A);
+    let error = super::verify_known_host(
+        Some(path.clone()),
+        "db.example",
+        2222,
+        &test_key(KEY_B),
+        true,
+    )
+    .unwrap_err()
+    .0;
+    assert!(error.contains("hat sich geändert"), "{error}");
+    assert!(error.contains("Zeile 1"), "{error}");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn key_of_another_type_is_never_learned_automatically() {
+    let path = known_hosts_with("other-type", KEY_ECDSA);
+    let error = super::verify_known_host(
+        Some(path.clone()),
+        "db.example",
+        2222,
+        &test_key(KEY_A),
+        true,
+    )
+    .unwrap_err()
+    .0;
+    assert!(error.contains("anderen Typs"), "{error}");
+    let content = std::fs::read_to_string(&path).expect("read");
+    assert_eq!(content.lines().count(), 1);
+    assert!(super::verify_known_host(
+        Some(path.clone()),
+        "db.example",
+        2222,
+        &test_key(KEY_ECDSA),
+        false
+    )
+    .is_ok());
+    let _ = std::fs::remove_file(path);
+}
