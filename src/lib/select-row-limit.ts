@@ -31,8 +31,9 @@ export function applySelectRowLimit(
   for (const statement of [...split.statements].reverse()) {
     const tokens = sqlTokens(statement.text, dialect);
     const words = tokens.filter((token) => token.depth === 0);
-    if (!["SELECT", "WITH"].includes(words[0]?.word)) continue;
-    if (!words.some((token) => token.word === "SELECT")) continue;
+    const table = words[0]?.word === "TABLE" && (dialect === "postgres" || dialect === "mysql");
+    if (!table && !["SELECT", "WITH"].includes(words[0]?.word)) continue;
+    if (!table && !words.some((token) => token.word === "SELECT")) continue;
     if (
       tokens.some(
         (token, index) =>
@@ -121,6 +122,7 @@ export function applySelectRowLimit(
     const boundary = words.find((token, index) => {
       const next = words[index + 1]?.word;
       if (token.word === ";") return true;
+      if (dialect === "mysql" && token.word === "LOCK" && next === "IN") return true;
       if (token.word === "FOR")
         return ["UPDATE", "SHARE", "NO", "KEY", "JSON", "XML"].includes(next);
       if (dialect === "cassandra" && token.word === "ALLOW" && next === "FILTERING") return true;
