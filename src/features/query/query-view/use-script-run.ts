@@ -9,6 +9,7 @@ import { beginQueryCompletion } from "@/lib/query-completion";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
+import { locateText } from "@/lib/sql-diagnostics";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { type AskVariables, substitutionSession } from "@/lib/sql-statements/sqlplus";
@@ -33,6 +34,7 @@ interface UseScriptRunParams {
   editorApiRef: RefObject<QueryEditorApi | null>;
   setEditorFocus: (focus: boolean) => void;
   collectOutput: () => Promise<void>;
+  cursorOffsetRef: RefObject<number>;
 }
 
 export function useScriptRun({
@@ -47,6 +49,7 @@ export function useScriptRun({
   editorApiRef,
   setEditorFocus,
   collectOutput,
+  cursorOffsetRef,
 }: UseScriptRunParams) {
   const queryClient = useQueryClient();
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
@@ -111,7 +114,7 @@ export function useScriptRun({
       setStatementRange(null);
       setError(null);
       setEditorFocus(false);
-      const base = Math.max(0, sql.indexOf(text));
+      const base = locateText(sql, text, cursorOffsetRef.current) ?? 0;
       const shift = (items: ScriptRunEntry[]) =>
         base ? items.map((e) => ({ ...e, start: e.start + base, end: e.end + base })) : items;
       const startedAt = performance.now();
@@ -206,6 +209,7 @@ export function useScriptRun({
       setExecutedSql,
       setResultOrigin,
       setEditorFocus,
+      cursorOffsetRef,
     ],
   );
 
