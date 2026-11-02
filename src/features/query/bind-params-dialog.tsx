@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ParameterSets } from "@/features/query/parameter-sets";
 import {
   BIND_PARAM_TYPE_LABELS,
   BIND_PARAM_TYPES,
@@ -34,6 +35,7 @@ interface BindParamsDialogProps {
   onValuesChange: (values: Record<string, BindParamValue>) => void;
   onConfirm: () => void;
   inline?: boolean;
+  context?: { connectionId: string; database: string | null; sql: string };
 }
 
 export function BindParamsDialog({
@@ -44,6 +46,7 @@ export function BindParamsDialog({
   onValuesChange,
   onConfirm,
   inline = false,
+  context,
 }: BindParamsDialogProps) {
   const errors = validateBindParams(refs, values);
   const update = (name: string, patch: Partial<BindParamValue>) => {
@@ -62,6 +65,15 @@ export function BindParamsDialog({
               : "Werte werden gebunden und nicht in den SQL-Text eingesetzt. Der Verlauf speichert nur die Abfrage mit Platzhaltern."}
           </DialogDescription>
         </DialogHeader>
+        {open && context && (
+          <ParameterSets
+            key={JSON.stringify(context)}
+            {...context}
+            refs={refs}
+            values={values}
+            onValuesChange={onValuesChange}
+          />
+        )}
         <ScrollArea className="max-h-80 pr-2">
           <div className="grid gap-3">
             {refs.map((ref) => {

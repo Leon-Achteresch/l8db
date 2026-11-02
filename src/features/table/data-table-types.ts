@@ -33,6 +33,7 @@ export type FkPickerCell = {
 
 export type DataTableProps = {
   stateKey?: string;
+  watchScope?: string;
   layoutKey?: string;
   scrollIdentity?: string;
   columns: string[];

@@ -19,6 +19,7 @@ import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
+import { InvestigationsButton } from "@/features/workbench/investigations-button";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
@@ -280,6 +281,7 @@ export function TableTabs() {
         </button>
       </Tooltip>
       <div className="min-w-0 flex-1" />
+      <InvestigationsButton />
 
       {!easyMode && (
         <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">

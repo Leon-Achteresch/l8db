@@ -4,6 +4,12 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.17.0";
 
 export const NEW_FEATURES = {
+  "query.editor.checkpoints": NEXT_FEATURE_VERSION,
+  "query.editor.last-success": NEXT_FEATURE_VERSION,
+  "query.editor.variants": NEXT_FEATURE_VERSION,
+  "query.parameters.sets": NEXT_FEATURE_VERSION,
+  "workspace.investigations": NEXT_FEATURE_VERSION,
+  "table.rows.watch": NEXT_FEATURE_VERSION,
   "query.results.keep-on-error": NEXT_FEATURE_VERSION,
   "query.results.timestamps": NEXT_FEATURE_VERSION,
   "query.results.content-width": NEXT_FEATURE_VERSION,

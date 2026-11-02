@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { type RefObject, useCallback, useMemo, useState } from "react";
-
+import { toast } from "sonner";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
@@ -14,6 +14,7 @@ import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statemen
 import { type AskVariables, substitutionSession } from "@/lib/sql-statements/sqlplus";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
 import { getQueryTransaction } from "@/lib/transactions";
+import { recordSuccessfulSql } from "@/lib/workbench/sql-states";
 
 import { SCRIPT_MODE_NOTE } from "./constants";
 import { withCreateNotice } from "./result-text";
@@ -134,6 +135,11 @@ export function useScriptRun({
         recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
         setScriptEntries(entries);
         if (!outcome.error) {
+          void recordSuccessfulSql(connection.id, database, tabId, text).catch((error) =>
+            toast.error("Erfolgreicher SQL-Stand konnte nicht gespeichert werden", {
+              description: String(error),
+            }),
+          );
           const successfulSql = entries.at(-1)?.sql ?? text;
           setResultState(withCreateNotice(outcome.lastResult, successfulSql));
           setExecutedSql(successfulSql);
