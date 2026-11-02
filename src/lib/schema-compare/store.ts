@@ -237,12 +237,17 @@ async function targetTablespaces(connection: SavedConnection, side: CompareSide)
   );
 }
 
+let latestRun = 0;
+
 export async function runSchemaCompare(sides?: {
   source: CompareSide;
   target: CompareSide;
 }): Promise<void> {
   const state = useSchemaCompareStore.getState();
-  const set = useSchemaCompareStore.setState;
+  const run = ++latestRun;
+  const set = (patch: Partial<SchemaCompareState>) => {
+    if (run === latestRun) useSchemaCompareStore.setState(patch);
+  };
   const { source, target } = sides ?? state;
   try {
     if (
@@ -339,7 +344,11 @@ export async function runSchemaCompare(sides?: {
       loading: null,
     });
   } catch (error) {
-    set({ loading: null, error: error instanceof Error ? error.message : String(error) });
+    set({
+      loading: null,
+      result: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
