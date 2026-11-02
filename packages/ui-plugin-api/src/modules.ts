@@ -1,4 +1,4 @@
-import { checkPluginElement } from "./elements";
+import { pluginElementProps } from "./elements";
 import { markPluginError } from "./errors";
 
 export const REACT_EXPORTS = [
@@ -75,10 +75,8 @@ export function createPluginModules(
   const source = react as Record<string, unknown>;
   const checked =
     (render: Render): Render =>
-    (type, props, key) => {
-      checkPluginElement(type, props);
-      return render(guard(type), props, key);
-    };
+    (type, props, key) =>
+      render(guard(type), pluginElementProps(type, props), key);
   return Object.freeze({
     react: Object.freeze({
       ...Object.fromEntries(
@@ -86,7 +84,9 @@ export function createPluginModules(
           name,
           name.startsWith("use")
             ? hook(name, source[name] as (...args: unknown[]) => unknown)
-            : source[name],
+            : name === "Children"
+              ? Object.freeze({ ...(source.Children as object) })
+              : source[name],
         ]),
       ),
       memo: (type: unknown, compare?: unknown) => (source.memo as Render)(guard(type), compare),

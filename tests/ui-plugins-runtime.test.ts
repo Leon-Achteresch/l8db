@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { createElement, isValidElement, type ReactElement } from "react";
+import { Children, createElement, isValidElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { isPluginError } from "../packages/ui-plugin-api/src/errors";
 
@@ -329,6 +329,9 @@ describe("runtime isolation", () => {
     expect(() => runtime.jsx("div", { ref: () => undefined })).toThrow("ref");
     expect(isValidElement(runtime.jsx("div", { children: "ok" }))).toBe(true);
     expect(Object.isFrozen(UI_PLUGIN_MODULES.react)).toBe(true);
+    const pluginChildren = (UI_PLUGIN_MODULES.react as { Children: object }).Children;
+    expect(Object.isFrozen(pluginChildren)).toBe(true);
+    expect(pluginChildren).not.toBe(Children);
     expect("createElement" in (UI_PLUGIN_MODULES.react as object)).toBe(false);
   });
 
@@ -367,6 +370,126 @@ describe("runtime isolation", () => {
     clearInterval(interval);
     expect(hostTicks).toBeGreaterThan(0);
     timers.dispose();
+  });
+
+  test("blocks every route from plugin code to Function, the global object and host intrinsics", async () => {
+    const { compilePlugin } = await import("../packages/ui-plugin-api/src/compile");
+    const outcome = (body: string) => {
+      const compiled = compilePlugin(body, "escape.tsx");
+      if (!compiled.ok) throw new Error(`compile: ${compiled.error.message}`);
+      try {
+        return { value: evaluatePlugin(compiled.code, {}) };
+      } catch (error) {
+        return { error: String(error) };
+      }
+    };
+    const constructorKey = `"con" + "structor"`;
+    const escapes = [
+      `const F = (() => 0)[${constructorKey}]; export default F("return this")();`,
+      `export default Reflect.get(() => 0, ${constructorKey})("return this")();`,
+      `const p = Object.getPrototypeOf(() => 0); export default Object.getOwnPropertyDescriptor(p, ${constructorKey}).get()("return this")();`,
+      `export default Object.getPrototypeOf(async () => 0)[${constructorKey}]("return this")();`,
+      `export default Object.getPrototypeOf(function* () {})[${constructorKey}]("return this")().next();`,
+      `export default Object.getPrototypeOf(async function* () {})[${constructorKey}]("return this");`,
+      `export default (class {})[${constructorKey}]("return this")();`,
+      `export default Object.values(Object.getOwnPropertyDescriptors(Object.getPrototypeOf(() => 0))).map((d) => { try { return d.get?.(); } catch { return undefined; } }).find((f) => typeof f === "function")("return this")();`,
+    ];
+    for (const body of escapes) {
+      expect(outcome(body)).toEqual({ error: expect.any(String) });
+    }
+    const scope = globalThis as Record<string, unknown>;
+    scope["__TA" + "URI_INTERNALS__"] = { invoke: () => "leak" };
+    try {
+      expect(
+        outcome(
+          `function f() { return this; } export default [f(), typeof Image, typeof Option, typeof customElements, typeof queueMicrotask, typeof Math.max];`,
+        ).value,
+      ).toEqual([undefined, "undefined", "undefined", "undefined", "function", "function"]);
+      outcome(`leaked = 1; export default 0;`);
+      expect(scope.leaked).toBeUndefined();
+      scope.lateGlobal = { leak: true };
+      expect(outcome(`export default typeof lateGlobal;`).value).toBe("undefined");
+    } finally {
+      delete scope["__TA" + "URI_INTERNALS__"];
+      delete scope.lateGlobal;
+    }
+    const pollution = [
+      `try { Object.defineProperty(Object.getPrototypeOf({}), "polluted", { get() { return this; } }); } catch {} export default 0;`,
+      `try { Object.getPrototypeOf([]).map = () => "polluted"; } catch {} export default 0;`,
+      `try { Object.getPrototypeOf([][Symbol.iterator]()).next = () => ({ done: true }); } catch {} export default 0;`,
+      `try { Object.getPrototypeOf(Promise.resolve()).then = () => "polluted"; } catch {} export default 0;`,
+      `try { Object.getPrototypeOf(new Map()).get = () => "polluted"; } catch {} export default 0;`,
+      `try { Object.setPrototypeOf(Object.getPrototypeOf([]), new Proxy({}, { get: (t, k, r) => r })); } catch {} export default 0;`,
+      `const p = Object.getPrototypeOf(() => 0); try { p[${constructorKey}] = (x) => x; } catch {} export default 0;`,
+    ];
+    for (const body of pollution) outcome(body);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect([1, 2].map((value) => value * 2)).toEqual([2, 4]);
+    expect([...new Set([3])]).toEqual([3]);
+    expect(new Map([[1, "a"]]).get(1)).toBe("a");
+    expect(await Promise.resolve(5)).toBe(5);
+    expect(() => (() => 0).constructor("return this")).toThrow("nicht erlaubt");
+  });
+
+  test("keeps host code working inside the hardened realm", () => {
+    class NamedError extends Error {
+      constructor() {
+        super("x");
+        this.name = "NamedError";
+      }
+    }
+    function Legacy() {}
+    Legacy.prototype.toString = () => "legacy";
+    Legacy.prototype.constructor = Legacy;
+    const plain: Record<string, unknown> = {};
+    plain.toString = () => "plain";
+    expect(new NamedError().name).toBe("NamedError");
+    expect(String(new (Legacy as unknown as new () => object)())).toBe("legacy");
+    expect(String(plain)).toBe("plain");
+    expect(new Function("return 1 + 1")()).toBe(2);
+    expect(Object.isFrozen(Object.prototype)).toBe(true);
+  });
+
+  test("hands plugin event handlers a copy without DOM or window references", () => {
+    const runtime = UI_PLUGIN_MODULES["react/jsx-runtime"] as {
+      jsx: (type: unknown, props: unknown) => ReactElement<Record<string, unknown>>;
+    };
+    const seen: Record<string, unknown>[] = [];
+    let prevented = 0;
+    const element = runtime.jsx("input", {
+      onChange: (event: Record<string, unknown>) => seen.push(event),
+    });
+    const view = { fetch: () => "leak" };
+    const node = {
+      value: "abc",
+      checked: true,
+      ownerDocument: { defaultView: view },
+      dataset: { x: "1" },
+    };
+    (element.props.onChange as (event: unknown) => void)({
+      type: "change",
+      key: "a",
+      view,
+      nativeEvent: { view, target: node },
+      target: node,
+      currentTarget: node,
+      relatedTarget: node,
+      preventDefault() {
+        prevented++;
+        return this;
+      },
+    });
+    const event = seen[0];
+    expect(event.type).toBe("change");
+    expect(event.view).toBeUndefined();
+    expect(event.nativeEvent).toBeUndefined();
+    expect(event.relatedTarget).toBeUndefined();
+    expect(event.target).toEqual({ value: "abc", checked: true, dataset: { x: "1" } });
+    expect((event.target as Record<string, unknown>).ownerDocument).toBeUndefined();
+    expect((event.preventDefault as () => unknown)()).toBeUndefined();
+    expect(prevented).toBe(1);
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(() => runtime.jsx("form", { action: () => undefined })).toThrow("keine Funktion");
   });
 
   test("shadows eval at runtime", () => {
