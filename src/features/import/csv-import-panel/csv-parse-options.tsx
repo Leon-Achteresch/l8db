@@ -16,7 +16,7 @@ import type { CsvImportState } from "./use-csv-import";
 
 type CsvParseOptionsProps = Pick<
   CsvImportState,
-  "quote" | "setDelimiter" | "setQuote" | "setHasHeader" | "emptyField" | "setEmptyField"
+  "quote" | "changeDelimiter" | "changeQuote" | "changeHasHeader" | "emptyField" | "setEmptyField"
 > & {
   parsed: CsvParseResult;
 };
@@ -24,15 +24,15 @@ type CsvParseOptionsProps = Pick<
 export function CsvParseOptions({
   parsed,
   quote,
-  setDelimiter,
-  setQuote,
-  setHasHeader,
+  changeDelimiter,
+  changeQuote,
+  changeHasHeader,
   emptyField,
   setEmptyField,
 }: CsvParseOptionsProps) {
   return (
     <div className="flex items-center gap-2">
-      <Select value={parsed.delimiter} onValueChange={setDelimiter}>
+      <Select value={parsed.delimiter} onValueChange={changeDelimiter}>
         <SelectTrigger size="sm" className="w-auto gap-1.5 text-xs" aria-label="Trennzeichen">
           <span className="text-muted-foreground">Trenner</span>
           <SelectValue />
@@ -50,7 +50,7 @@ export function CsvParseOptions({
           id="csv-header"
           size="sm"
           checked={parsed.hasHeader}
-          onCheckedChange={(checked) => setHasHeader(checked)}
+          onCheckedChange={changeHasHeader}
         />
         <Label htmlFor="csv-header" className="text-xs font-normal">
           Kopfzeile
@@ -65,7 +65,7 @@ export function CsvParseOptions({
         <PopoverContent align="end" className="w-72 gap-3">
           <div className="grid gap-1">
             <Label className="text-xs text-muted-foreground">Anführungszeichen</Label>
-            <Select value={quote} onValueChange={setQuote}>
+            <Select value={quote} onValueChange={changeQuote}>
               <SelectTrigger size="sm" className="w-full text-xs">
                 <SelectValue />
               </SelectTrigger>

@@ -29,6 +29,26 @@ export function suggestMappings(
   });
 }
 
+export function withDocumentFields(
+  headers: string[],
+  targets: ImportTargetColumn[],
+): ImportTargetColumn[] {
+  const known = new Set(targets.map((column) => column.name));
+  return [
+    ...targets,
+    ...headers
+      .filter((header) => header.trim() !== "" && !known.has(header))
+      .map((header) => ({
+        name: header,
+        data_type: "neues Feld",
+        is_nullable: true,
+        has_default: false,
+        is_identity: false,
+        is_generated: false,
+      })),
+  ];
+}
+
 export function validateMappings(
   mappings: CsvColumnMapping[],
   targets: ImportTargetColumn[],

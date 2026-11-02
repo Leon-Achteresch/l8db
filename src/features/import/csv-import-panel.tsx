@@ -71,11 +71,14 @@ export function CsvImportPanel({
     running,
     schema,
     setDelimiter,
+    changeDelimiter,
     setEmptyField,
     setFileError,
     setHasHeader,
+    changeHasHeader,
     setMappings,
     setQuote,
+    changeQuote,
     tables,
     targetColumns,
     targetTable,
@@ -145,9 +148,9 @@ export function CsvImportPanel({
             <CsvParseOptions
               parsed={parsed}
               quote={quote}
-              setDelimiter={setDelimiter}
-              setQuote={setQuote}
-              setHasHeader={setHasHeader}
+              changeDelimiter={changeDelimiter}
+              changeQuote={changeQuote}
+              changeHasHeader={changeHasHeader}
               emptyField={emptyField}
               setEmptyField={setEmptyField}
             />

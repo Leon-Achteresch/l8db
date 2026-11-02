@@ -9,6 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DELIMITER_OPTIONS } from "@/features/import/csv-import-panel/constants";
 import { CsvMappingTable } from "@/features/import/csv-mapping-table";
 import { CsvPreviewTable } from "@/features/import/csv-preview-table";
 import type { SavedConnection } from "@/lib/connections";
@@ -43,13 +51,19 @@ export function PasteRowsDialog({
 }) {
   const [text, setText] = useState("");
   const [header, setHeader] = useState(true);
+  const [delimiter, setDelimiter] = useState("auto");
   const [targets, setTargets] = useState<ImportTargetColumn[]>([]);
   const [mappings, setMappings] = useState<CsvColumnMapping[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const parsed = useMemo(
-    () => parseCsv(text, { hasHeader: header, maxRows: 1000 }),
-    [text, header],
+    () =>
+      parseCsv(text, {
+        hasHeader: header,
+        maxRows: 1000,
+        delimiter: delimiter !== "auto" ? delimiter : /^[^\r\n]*\t/.test(text) ? "\t" : undefined,
+      }),
+    [text, header, delimiter],
   );
   const issues = useMemo(
     () => validateMappings(mappings, targets, parsed.rows),
@@ -124,14 +138,34 @@ export function PasteRowsDialog({
                 else setError("Maximal 1 MiB Zwischenablagedaten.");
               }}
             />
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={header}
-                onChange={(event) => setHeader(event.target.checked)}
-              />
-              Erste Zeile enthält Spaltennamen
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={delimiter} onValueChange={setDelimiter}>
+                <SelectTrigger
+                  size="sm"
+                  className="w-auto gap-1.5 text-xs"
+                  aria-label="Trennzeichen"
+                >
+                  <span className="text-muted-foreground">Trenner</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Automatisch</SelectItem>
+                  {DELIMITER_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={header}
+                  onChange={(event) => setHeader(event.target.checked)}
+                />
+                Erste Zeile enthält Spaltennamen
+              </label>
+            </div>
             {text && (
               <>
                 <CsvMappingTable
