@@ -334,6 +334,30 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
     }
 }
 
+fn replace_view_sql(create: &str, check: &str, schema: &str, view: &str, body: &str) -> String {
+    let attributes = create
+        .find(" SQL SECURITY ")
+        .and_then(|start| {
+            create[start..]
+                .find(" VIEW ")
+                .map(|end| create["CREATE".len()..start + end].trim())
+        })
+        .unwrap_or("");
+    let body = body.trim().trim_end_matches(';').trim_end();
+    let check = match check {
+        "CASCADED" | "LOCAL" if !body.to_uppercase().ends_with("CHECK OPTION") => {
+            format!(" WITH {check} CHECK OPTION")
+        }
+        _ => String::new(),
+    };
+    format!(
+        "CREATE OR REPLACE {attributes}{}VIEW {}.{} AS {body}{check}",
+        if attributes.is_empty() { "" } else { " " },
+        quote(schema),
+        quote(view)
+    )
+}
+
 fn cell(row: &Row, index: usize) -> String {
     match row.as_ref(index) {
         Some(Value::Bytes(b)) => String::from_utf8_lossy(b).into_owned(),
@@ -951,13 +975,28 @@ impl DatabaseAdapter for MysqlAdapter {
         if dry_run {
             return self.exec(&format!("EXPLAIN {body}")).await;
         }
-        self.exec(&format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
-            quote(schema),
-            quote(view),
-            body
-        ))
-        .await
+        let create = self
+            .rows(&format!(
+                "SHOW CREATE VIEW {}.{}",
+                quote(schema),
+                quote(view)
+            ))
+            .await?
+            .first()
+            .map(|r| cell(r, 1))
+            .ok_or_else(|| "View nicht gefunden".to_string())?;
+        let check = self
+            .rows(&format!(
+                "SELECT CHECK_OPTION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}",
+                lit(schema),
+                lit(view)
+            ))
+            .await?
+            .first()
+            .map(|r| cell(r, 0))
+            .unwrap_or_default();
+        self.exec(&replace_view_sql(&create, &check, schema, view, body))
+            .await
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -1522,6 +1561,23 @@ mod tests {
     use crate::db::pool::create_pool_state;
 
     #[test]
+    fn view_replace_keeps_definer_security_and_check_option() {
+        let create = "CREATE ALGORITHM=MERGE DEFINER=`bob`@`%` SQL SECURITY INVOKER VIEW `v` AS select 1 AS `x`";
+        assert_eq!(
+            replace_view_sql(create, "CASCADED", "app", "v", "SELECT 2 AS x;"),
+            "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=`bob`@`%` SQL SECURITY INVOKER VIEW `app`.`v` AS SELECT 2 AS x WITH CASCADED CHECK OPTION"
+        );
+        assert_eq!(
+            replace_view_sql(create, "LOCAL", "app", "v", "SELECT 2 WITH LOCAL CHECK OPTION"),
+            "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=`bob`@`%` SQL SECURITY INVOKER VIEW `app`.`v` AS SELECT 2 WITH LOCAL CHECK OPTION"
+        );
+        assert_eq!(
+            replace_view_sql("", "NONE", "app", "v", "SELECT 1"),
+            "CREATE OR REPLACE VIEW `app`.`v` AS SELECT 1"
+        );
+    }
+
+    #[test]
     fn session_ids_never_wrap_to_other_sessions() {
         assert_eq!(session_pid(42), 42);
         assert_eq!(session_pid(i32::MAX as i64), i32::MAX);
@@ -1618,6 +1674,7 @@ mod tests {
             set_not_null: None,
             new_default: None,
             drop_default: false,
+            using: None,
         }
     }
 
@@ -2015,6 +2072,7 @@ mod tests {
                                 set_not_null: None,
                                 new_default: None,
                                 drop_default: false,
+                                using: None,
                             },
                         )
                         .await
@@ -2090,6 +2148,7 @@ mod tests {
                                 set_not_null,
                                 new_default: None,
                                 drop_default: false,
+                                using: None,
                             },
                         )
                         .await

@@ -143,6 +143,7 @@ export interface AlterColumnRequest {
   set_not_null?: boolean;
   new_default?: string;
   drop_default: boolean;
+  using?: string;
 }
 
 export async function listTableColumnsDetailed(
@@ -204,6 +205,7 @@ export async function dropColumn(
   table: string,
   column: string,
   database?: string,
+  cascade = false,
 ): Promise<void> {
   await invoke("drop_column", {
     kind,
@@ -212,6 +214,7 @@ export async function dropColumn(
     schema,
     table,
     column,
+    cascade,
   });
 }
 

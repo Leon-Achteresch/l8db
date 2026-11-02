@@ -3901,6 +3901,7 @@ dependencies = [
  "pkcs8",
  "portable-pty",
  "postgres-native-tls",
+ "postgres-protocol",
  "quick-xml 0.42.0",
  "rand 0.10.3",
  "redis",

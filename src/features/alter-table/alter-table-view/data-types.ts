@@ -245,3 +245,25 @@ export function isListedDataType(groups: DataTypeGroup[], value: string): boolea
   const needle = value.trim().toLowerCase();
   return groups.some((g) => g.types.some((t) => t.toLowerCase() === needle));
 }
+
+export function columnEditSupport(kind: DatabaseKind | undefined) {
+  return {
+    renameOnly: kind === "sqlite" || kind === "sqlite_http" || kind === "cassandra",
+    addConstraints: kind !== "cassandra",
+    using: kind === "postgres",
+    dropCascade: kind === "postgres",
+  };
+}
+
+export function nullableLocked(kind: DatabaseKind | undefined, dataType: string): boolean {
+  return kind === "clickhouse" && /^(?:Array|Map|Tuple|Nested|Variant)\(|^Dynamic\b/.test(dataType);
+}
+
+export function dropColumnDescription(kind: DatabaseKind | undefined): string {
+  if (kind === "postgres")
+    return "Die Spalte und ihre Daten werden unwiderruflich gelöscht. Hängen Views, Constraints oder andere Objekte von ihr ab, bricht PostgreSQL ab, solange CASCADE nicht aktiviert ist.";
+  return "Die Spalte und ihre Daten werden unwiderruflich gelöscht. Abhängige Indizes oder Constraints behandelt die Datenbank nach ihren eigenen Regeln.";
+}
+
+export const DEFAULT_EXPRESSION_HINT =
+  "Standardwert als SQL-Ausdruck: Text in einfachen Anführungszeichen ('abc'), Zahlen und Funktionen direkt (0, now()).";

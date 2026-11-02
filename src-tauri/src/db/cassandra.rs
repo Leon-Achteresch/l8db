@@ -770,6 +770,14 @@ impl DatabaseAdapter for CassandraAdapter {
         table: &str,
         column: &AddColumnRequest,
     ) -> Result<(), String> {
+        if !column.is_nullable
+            || column
+                .default_value
+                .as_deref()
+                .is_some_and(|d| !d.trim().is_empty())
+        {
+            return Err(unsupported("NOT NULL und Standardwerte für Spalten"));
+        }
         self.exec(&format!(
             "ALTER TABLE {}.{} ADD {} {}",
             quote(schema),

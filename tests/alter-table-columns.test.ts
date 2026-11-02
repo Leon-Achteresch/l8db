@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  columnEditSupport,
   defaultDataType,
+  dropColumnDescription,
   getDataTypeGroups,
   isListedDataType,
+  nullableLocked,
 } from "../src/features/alter-table/alter-table-view/data-types";
 import { columnTypeLabel } from "../src/lib/column-type";
 
@@ -36,5 +39,30 @@ describe("column type label", () => {
     expect(columnTypeLabel("nvarchar", -1)).toBe("nvarchar(max)");
     expect(columnTypeLabel("character varying", 40)).toBe("character varying(40)");
     expect(columnTypeLabel("integer", null)).toBe("integer");
+  });
+});
+
+describe("column edit support", () => {
+  test("limits edits to what each dialect can apply", () => {
+    expect(columnEditSupport("sqlite").renameOnly).toBe(true);
+    expect(columnEditSupport("cassandra")).toMatchObject({
+      renameOnly: true,
+      addConstraints: false,
+    });
+    expect(columnEditSupport("postgres")).toMatchObject({
+      renameOnly: false,
+      using: true,
+      dropCascade: true,
+    });
+    expect(columnEditSupport("mysql").dropCascade).toBe(false);
+    expect(dropColumnDescription("mysql")).not.toContain("CASCADE");
+  });
+
+  test("locks nullable for ClickHouse composite types only", () => {
+    expect(nullableLocked("clickhouse", "Array(String)")).toBe(true);
+    expect(nullableLocked("clickhouse", "Map(String, String)")).toBe(true);
+    expect(nullableLocked("clickhouse", "LowCardinality(String)")).toBe(false);
+    expect(nullableLocked("clickhouse", "String")).toBe(false);
+    expect(nullableLocked("postgres", "Array(String)")).toBe(false);
   });
 });
