@@ -51,7 +51,7 @@ const { isAuthFailure, connectionError, updateOracleConnectionTarget } = await i
   "../../src/lib/connection-url"
 );
 const { matchingHostRule, groupByServer } = await import("../../src/lib/connection-groups");
-const { databasePasswordToSave, closeUnsharedTunnel } = await import(
+const { databasePasswordToSave, closeUnsharedTunnel, endpointChanged } = await import(
   "../../src/features/connections/connection-editor/connection-operations"
 );
 const { schemaForUser } = await import(
@@ -291,6 +291,32 @@ describe("editor password handling", () => {
     const existing = { id: "prefilled", connectionString: "postgresql://app@db/app" };
     expect(await databasePasswordToSave("postgresql://app@db/app", existing, true)).toBeNull();
     expect(await databasePasswordToSave("postgresql://app:new@db/app", existing, true)).toBe("new");
+  });
+});
+
+describe("saving the active connection", () => {
+  test("stays connected for cosmetic changes and reconnects for endpoint changes", () => {
+    const saved = {
+      kind: "postgres" as const,
+      connectionString: "postgresql://app@db/app?sslmode=prefer",
+      sslMode: "prefer" as const,
+      ssh: undefined,
+      name: "Alt",
+      color: "#fff",
+    };
+    const next = { ...saved, ssh: null, name: "Neu", color: "#000", readOnly: false };
+    expect(endpointChanged(saved, next)).toBe(false);
+    expect(
+      endpointChanged(saved, {
+        ...next,
+        connectionString: "postgresql://app:pw@db/app?sslmode=prefer",
+      }),
+    ).toBe(false);
+    expect(endpointChanged(saved, { ...next, connectionString: "postgresql://app@db2/app" })).toBe(
+      true,
+    );
+    expect(endpointChanged(saved, { ...next, readOnly: true })).toBe(true);
+    expect(endpointChanged(saved, { ...next, environment: "production" })).toBe(true);
   });
 });
 

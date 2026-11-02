@@ -24,10 +24,12 @@ import {
   extractUrlPassword,
   loadSecret,
   rememberSecret,
+  scrubUrlPassword,
   storeSecret,
 } from "@/lib/secrets";
 import {
   activateConnection,
+  activateConnectionWithToast,
   closeSshTunnel,
   proxySecretAccount,
   serializeJumpSecrets,
@@ -77,6 +79,31 @@ export async function databasePasswordToSave(
   if (typed !== null || !connection || cleared) return typed;
   if (extractUrlPassword(connection.connectionString) !== null) return null;
   return loadSecret(connection.id);
+}
+
+const ENDPOINT_FIELDS = [
+  "kind",
+  "connectionString",
+  "sslMode",
+  "ssh",
+  "proxy",
+  "commandTunnel",
+  "readOnly",
+  "cloudAuth",
+  "environment",
+] as const;
+
+export function endpointChanged(
+  previous: Partial<SavedConnection>,
+  next: Partial<SavedConnection>,
+): boolean {
+  return ENDPOINT_FIELDS.some((key) => {
+    const normalize = (value: unknown) =>
+      key === "connectionString"
+        ? scrubUrlPassword(String(value ?? ""))
+        : JSON.stringify(value ?? (key === "readOnly" ? false : null));
+    return normalize(previous[key]) !== normalize(next[key]);
+  });
 }
 
 export async function closeUnsharedTunnel(id: string): Promise<void> {
@@ -162,10 +189,33 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         connection,
         passwordCleared,
       );
-      if (connection && useConnectionsStore.getState().activeId === id) {
-        const outcome = await activateConnection(null);
-        if (!outcome.ok) throw new Error(outcome.error);
+      const wasActive = Boolean(connection) && useConnectionsStore.getState().activeId === id;
+      const desiredSecrets: [string, string | null][] = [
+        [id, dbPassword],
+        [sshSecretAccount(id), config.ssh && config.secret ? config.secret : null],
+        [sshJumpSecretAccount(id), config.ssh ? serializeJumpSecrets(config.secrets.jumps) : null],
+        [proxySecretAccount(id), config.proxy ? config.secrets.proxy : null],
+      ];
+      let reconnect = false;
+      if (connection && wasActive) {
+        const stored = await Promise.all(
+          desiredSecrets.map(([account]) => loadSecret(account).catch(() => null)),
+        );
+        reconnect =
+          endpointChanged(connection, {
+            ...config,
+            sslMode: ssl,
+            readOnly,
+            cloudAuth,
+            environment,
+          }) ||
+          desiredSecrets.some(([, value], index) => (value || null) !== (stored[index] || null));
+        if (reconnect) {
+          const outcome = await activateConnection(null);
+          if (!outcome.ok) throw new Error(outcome.error);
+        }
       }
+      const keepConnected = wasActive && !reconnect;
       if (dbPassword) {
         await storeSecret(id, dbPassword).catch(() =>
           toast.warning(
@@ -184,12 +234,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
       } else if (connection) {
         await deleteSecret(sshSecretAccount(id));
       }
-      const jumpSecrets = config.ssh ? serializeJumpSecrets(config.secrets.jumps) : null;
-      const networkSecrets: [string, string | null][] = [
-        [sshJumpSecretAccount(id), jumpSecrets],
-        [proxySecretAccount(id), config.proxy ? config.secrets.proxy : null],
-      ];
-      for (const [account, value] of networkSecrets) {
+      for (const [account, value] of desiredSecrets.slice(2)) {
         if (value) {
           await storeSecret(account, value).catch(() =>
             toast.warning(
@@ -200,8 +245,12 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
           await deleteSecret(account).catch(() => undefined);
         }
       }
-      if (usesTunnel(connection)) await closeUnsharedTunnel(id);
-      queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
+      if (keepConnected)
+        void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[1] === id });
+      else {
+        if (usesTunnel(connection)) await closeUnsharedTunnel(id);
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
+      }
       const input = {
         name: name.trim(),
         kind: config.kind,
@@ -210,7 +259,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         ssh: config.ssh,
         proxy: config.proxy,
         commandTunnel: config.commandTunnel,
-        tunnelPort: null,
+        tunnelPort: keepConnected ? (connection?.tunnelPort ?? null) : null,
         favorite: connection?.favorite ?? false,
         readOnly,
         cloudAuth,
@@ -238,6 +287,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
           connections: [...state.connections, { ...input, id }],
         }));
       toast.success("Verbindung gespeichert");
+      if (reconnect) void activateConnectionWithToast(id);
       if (vault) {
         const stored = vaultSave(vault.host, id).then(async () => {
           useConnectionsStore.setState((state) => ({
