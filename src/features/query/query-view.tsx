@@ -136,6 +136,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     editorApiRef,
     setEditorFocus,
     collectOutput: output.collectOutput,
+    cursorOffsetRef: cursor.cursorOffsetRef,
   });
 
   const dmlPreview = useDmlPreview(connection, database, caps);
