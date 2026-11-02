@@ -33,6 +33,7 @@ const SQL_COMMANDS = new Set([
 ]);
 const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,
+  "explain_query",
   "preview_dml",
   "test_connection",
   "test_connection_string",
@@ -150,10 +151,12 @@ export function isReadOnlyActive(connectionString?: unknown): boolean {
   }
 }
 
-function needsProductionGuard(command: string): boolean {
-  return (
-    SQL_COMMANDS.has(command) || (WRITE_COMMANDS.has(command) && command !== "begin_transaction")
-  );
+function runsSql(command: string, args?: Record<string, unknown>): boolean {
+  return SQL_COMMANDS.has(command) || (command === "explain_query" && args?.analyze === true);
+}
+
+function needsProductionGuard(command: string, args?: Record<string, unknown>): boolean {
+  return runsSql(command, args) || (WRITE_COMMANDS.has(command) && command !== "begin_transaction");
 }
 
 function nestedConnectionString(value: unknown): string | undefined {
@@ -187,7 +190,7 @@ async function readOnlyGuard(args: Record<string, unknown>): Promise<void> {
 }
 
 async function productionGuard(command: string, args: Record<string, unknown>): Promise<void> {
-  const sqlCommand = SQL_COMMANDS.has(command);
+  const sqlCommand = runsSql(command, args);
   const [{ operationConnections }, { productionWriteBlock }] = await Promise.all([
     import("@/lib/operation-context"),
     import("@/lib/environments"),
@@ -224,7 +227,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
     throw new Error(READ_ONLY_MESSAGE);
-  if (SQL_COMMANDS.has(command)) {
+  if (runsSql(command, args)) {
     const { operationConnections } = await import("@/lib/operation-context");
     const { isReadOnlyConnection } = await import("@/lib/connections");
     const connection = operationConnections(args ?? {}, "exact").find(isReadOnlyConnection);
@@ -239,7 +242,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     if (isReadOnlyActive(args?.connectionString)) throw new Error(READ_ONLY_MESSAGE);
     await readOnlyGuard(args ?? {});
   }
-  if (needsProductionGuard(command)) await productionGuard(command, args ?? {});
+  if (needsProductionGuard(command, args)) await productionGuard(command, args ?? {});
   const settings = useSettingsStore.getState();
   const options = (args?.options ?? {}) as QueryExecutionOptions;
   let taskId: string | undefined;
@@ -249,7 +252,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     ...(options.jobId ? { jobId: options.jobId } : {}),
     ...(options.maxRows ? { maxRows: options.maxRows } : {}),
   };
-  if (SQL_COMMANDS.has(command)) {
+  if (runsSql(command, args)) {
     const { operationContext } = await import("@/lib/operation-context");
     const context = operationContext(args ?? {});
     if (!options.confirmed)
@@ -270,7 +273,12 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
       taskId = startTask(
         {
           id: jobId,
-          title: command === "execute_script" ? "SQL-Skript" : "SQL-Abfrage",
+          title:
+            command === "execute_script"
+              ? "SQL-Skript"
+              : command === "explain_query"
+                ? "EXPLAIN ANALYZE"
+                : "SQL-Abfrage",
           ...context,
         },
         cancellable

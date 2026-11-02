@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { type ExplainNode, explainQuery } from "@/lib/db";
+import { isProduction } from "@/lib/environments";
 import { normalizeExplainResult } from "@/lib/explain-normalize";
 import { supports } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
@@ -48,10 +49,12 @@ export function useExplainPlan({
         { blankLines: useSettingsStore.getState().editorBlankLineTerminator, sqlOnly: true },
       );
       if (!connection || !supports(connection, "explain") || !target.trim() || planLoading) return;
-      if (
+      const confirm =
         analyze &&
         useSettingsStore.getState().confirmDestructiveQueries &&
-        opensManagedTransaction(target, connection.kind) &&
+        opensManagedTransaction(target, connection.kind);
+      if (
+        confirm &&
         !(await requestSqlConfirmation({
           connection: connection.name,
           database,
@@ -76,6 +79,7 @@ export function useExplainPlan({
           expandSessionViews(target, sessionViewsFor(connection.id, database), connection.kind),
           analyze,
           database ?? undefined,
+          { confirmed: confirm && !isProduction(connection) },
         );
         const node = normalizeExplainResult(plans);
         if (!node) {

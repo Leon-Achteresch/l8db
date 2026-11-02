@@ -371,6 +371,7 @@ async fn dispatch(
             a(x, "sql")?,
             a(x, "analyze")?,
             st(&pool),
+            a(x, "options")?,
         )
         .await
         .map(|v| json!(v)),

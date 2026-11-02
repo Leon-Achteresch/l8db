@@ -1808,14 +1808,18 @@ pub async fn explain_query(
     sql: String,
     analyze: bool,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<serde_json::Value, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .explain_query(&sql, analyze)
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .explain_query(&sql, analyze)
+        .await
+    })
     .await
 }
 

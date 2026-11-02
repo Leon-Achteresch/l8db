@@ -182,8 +182,9 @@ export async function explainQuery(
   sql: string,
   analyze: boolean,
   database?: string,
+  options?: QueryExecutionOptions,
 ): Promise<ExplainPlan[]> {
-  return invoke("explain_query", { kind, connectionString, database, sql, analyze });
+  return invoke("explain_query", { kind, connectionString, database, sql, analyze, options });
 }
 
 export async function listViews(
