@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import type { ResultChartState } from "@/lib/result-chart";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 const MAX_ENTRIES = 200;
 
@@ -35,3 +36,5 @@ export const useResultChartStore = create<ResultChartStore>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.result-charts", () => void useResultChartStore.persist.rehydrate());

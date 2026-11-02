@@ -15,6 +15,7 @@ import {
 } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 interface BackupToolPathsState {
   paths: Record<string, string>;
@@ -40,6 +41,8 @@ export const useBackupToolPaths = create<BackupToolPathsState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.backup-tools", () => void useBackupToolPaths.persist.rehydrate());
 
 interface BackupJobState {
   logs: Record<string, string[]>;
