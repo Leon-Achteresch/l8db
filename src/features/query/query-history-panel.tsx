@@ -48,6 +48,11 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
     },
     [entries, removeEntry, restore],
   );
+  const renameSaved = useCallback((id: string, name: string) => {
+    const store = useSavedQueriesStore.getState();
+    const query = store.queries.find((item) => item.id === id);
+    if (query) store.updateQuery(id, name, query.sql);
+  }, []);
   const undoableDelete = useCallback(
     (id: string) => {
       const entry = savedQueries.find((item) => item.id === id);
@@ -214,6 +219,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
                     entry={saved[virtualRow.index]}
                     onLoad={onLoad}
                     onDelete={undoableDelete}
+                    onRename={renameSaved}
                   />
                 )}
               </div>
