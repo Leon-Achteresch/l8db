@@ -21,7 +21,7 @@ import {
 import { databaseFromConnectionString, useActiveDatabase } from "@/lib/db-selection";
 import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
-import { defaultCompareTypes } from "@/lib/schema-compare/types";
+import { compareTypesFor, defaultCompareTypes } from "@/lib/schema-compare/types";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { readTabState, tabStateKey, useTabState, writeTabState } from "@/lib/tab-state";
 import { nativeScript } from "@/lib/transfer/native-script";
@@ -51,7 +51,8 @@ async function withNativeStructure(
   onStep: (text: string) => void,
 ): Promise<TransferPlan> {
   const next: TransferPlan = { ...plan, preData: [], postData: [], warnings: [...plan.warnings] };
-  const types = defaultCompareTypes(source.kind);
+  const types =
+    source.kind === "oracle" ? compareTypesFor(source.kind) : defaultCompareTypes(source.kind);
   for (const pair of plan.schemas) {
     onStep(`Struktur von ${pair.source} wird gelesen…`);
     const objects = await loadSchemaCatalog(
@@ -112,6 +113,7 @@ export function useTransfer() {
     {},
   );
   const [foldNames, setFoldNames] = useTabState(tabStateKey(scope, "foldNames"), true);
+  const [replaceTarget, setReplace] = useTabState(tabStateKey(scope, "replace"), false);
   const [plan, setPlan] = useTabState<TransferPlan | null>(planStateKey, null);
   const [planning, setPlanning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,11 +124,19 @@ export function useTransfer() {
   const [startedAt, setStartedAt] = useState(0);
   const jobIdRef = useRef<string | null>(null);
   const planRunRef = useRef(0);
-  const configRef = useRef({ source, target, pairs: [] as TransferSchemaPair[], foldNames });
+  const configRef = useRef({
+    source,
+    target,
+    pairs: [] as TransferSchemaPair[],
+    foldNames,
+    replace: false,
+  });
 
   const sourceConnection = connections.find((entry) => entry.id === source.connectionId) ?? null;
   const targetConnection = connections.find((entry) => entry.id === target.connectionId) ?? null;
   const readOnly = isReadOnlyConnection(targetConnection);
+  const canReplace = sourceConnection?.kind === "oracle" && targetConnection?.kind === "oracle";
+  const replace = canReplace && replaceTarget;
   const pairs = schemas.map((schema) => ({
     source: schema,
     target: (mapping[schema] ?? "").trim() || schema,
@@ -141,8 +151,8 @@ export function useTransfer() {
     schemas.length > 0 &&
     !readOnly &&
     !sameEndpoint;
-  const planKey = ready ? JSON.stringify([source, target, pairs, foldNames]) : null;
-  configRef.current = { source, target, pairs, foldNames };
+  const planKey = ready ? JSON.stringify([source, target, pairs, foldNames, replace]) : null;
+  configRef.current = { source, target, pairs, foldNames, replace };
 
   useEffect(() => {
     if (!running) return;
@@ -179,7 +189,12 @@ export function useTransfer() {
         let next = await planTransfer(
           right.kind,
           effectiveConnectionString(right),
-          { source: from, schemas: config.pairs, foldNames: config.foldNames },
+          {
+            source: from,
+            schemas: config.pairs,
+            foldNames: config.foldNames,
+            replace: config.replace,
+          },
           config.target.database ?? undefined,
         );
         if (!alive()) return;
@@ -269,6 +284,9 @@ export function useTransfer() {
       setMapping((current) => ({ ...current, [schema]: value })),
     foldNames,
     setFoldNames,
+    canReplace,
+    replace,
+    setReplace,
     crossFamily: Boolean(
       sourceConnection && targetConnection && sourceConnection.kind !== targetConnection.kind,
     ),

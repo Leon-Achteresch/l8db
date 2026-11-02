@@ -371,6 +371,7 @@ async fn sqlite_to_duckdb_transfers_structure_and_data() {
             target: "shop".into(),
         }],
         fold_names: true,
+        replace: false,
     };
     let plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(!plan.native);
@@ -453,6 +454,7 @@ async fn sqlite_native_transfer_rolls_back_completely_on_failure() {
             target: "main".into(),
         }],
         fold_names: true,
+        replace: false,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(plan.native);
@@ -603,6 +605,7 @@ impl Live {
                 })
                 .collect(),
             fold_names: true,
+            replace: false,
         };
         let plan = plan(target, &request, self.pool.clone())
             .await
@@ -775,6 +778,7 @@ async fn transfer_live_matrix() {
                     target: schema.into(),
                 }],
                 fold_names: true,
+                replace: false,
             };
             let plan = plan(&target, &request, live.pool.clone())
                 .await
@@ -923,6 +927,7 @@ async fn transfer_live_oracle_native_packages() {
             target: "TR_DST".into(),
         }],
         fold_names: true,
+        replace: false,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(plan.native && !plan.atomic);
@@ -1102,6 +1107,7 @@ async fn transfer_live_mssql_snapshot_source() {
             target: "main".into(),
         }],
         fold_names: true,
+        replace: false,
     };
     let plan = plan(&target, &request, pool.clone()).await.unwrap();
     let outcome = run(
@@ -1142,4 +1148,273 @@ async fn transfer_live_mssql_snapshot_source() {
     let _ = master
         .execute_query("DROP DATABASE IF EXISTS tr_snap")
         .await;
+}
+
+#[test]
+fn oracle_copy_keeps_exotic_values_lossless() {
+    use super::oracle_copy::{bind_type, drop_statement, insert_expr, select_expr, unsupported};
+    use oracle::sql_type::OracleType;
+    assert_eq!(
+        select_expr("T", "TIMESTAMP(6) WITH TIME ZONE"),
+        "TO_CHAR(\"T\", 'SYYYY-MM-DD HH24:MI:SS.FF9 TZR TZD')"
+    );
+    assert_eq!(
+        select_expr("T", "TIMESTAMP(6) WITH LOCAL TIME ZONE"),
+        "\"T\""
+    );
+    assert_eq!(
+        insert_expr(3, "TIMESTAMP(9) WITH TIME ZONE"),
+        "TO_TIMESTAMP_TZ(:3, 'SYYYY-MM-DD HH24:MI:SS.FF9 TZR TZD')"
+    );
+    assert_eq!(
+        select_expr("X", "XMLTYPE"),
+        "XMLSERIALIZE(CONTENT \"X\" AS CLOB)"
+    );
+    assert_eq!(
+        insert_expr(1, "XMLTYPE"),
+        "XMLPARSE(DOCUMENT :1 WELLFORMED)"
+    );
+    assert_eq!(insert_expr(2, "JSON"), "JSON(:2)");
+    assert_eq!(insert_expr(2, "NUMBER(12,2)"), ":2");
+    assert_eq!(
+        bind_type(&OracleType::Number(12, 2)),
+        Some(OracleType::Number(0, 0))
+    );
+    assert_eq!(bind_type(&OracleType::BLOB), Some(OracleType::LongRaw));
+    assert_eq!(bind_type(&OracleType::Varchar2(10)), None);
+    for kind in ["BFILE", "ANYDATA", "VECTOR(3, FLOAT32)", "REF T_ADRESSE"] {
+        assert!(unsupported(kind), "{kind}");
+    }
+    for kind in [
+        "T_ADRESSE",
+        "SDO_GEOMETRY",
+        "XMLTYPE",
+        "LONG RAW",
+        "INTERVAL DAY(5) TO SECOND(9)",
+    ] {
+        assert!(!unsupported(kind), "{kind}");
+    }
+    assert_eq!(
+        drop_statement("S", "TABLE", "T"),
+        "DROP TABLE \"S\".\"T\" CASCADE CONSTRAINTS PURGE"
+    );
+    assert_eq!(
+        drop_statement("S", "TYPE", "T"),
+        "DROP TYPE \"S\".\"T\" FORCE"
+    );
+    assert_eq!(
+        drop_statement("S", "PACKAGE", "P"),
+        "DROP PACKAGE \"S\".\"P\""
+    );
+    assert_eq!(
+        drop_statement("S", "JOB", "J"),
+        "BEGIN DBMS_SCHEDULER.DROP_JOB('\"S\".\"J\"', TRUE); END;"
+    );
+}
+
+fn resident_kib() -> u64 {
+    std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .ok()
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .and_then(|text| text.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn transfer_live_oracle_bulk_budget() {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    let (Some(url), Some(system)) = (live_url("ORACLE"), live_url("ORACLE_SYSTEM")) else {
+        return;
+    };
+    let rows: u64 = std::env::var("L8DB_TR_ORACLE_PERF_ROWS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(100_000);
+    let pool = create_pool_state();
+    let admin =
+        create_adapter_from_string(DatabaseKind::Oracle, &system, None, pool.clone()).unwrap();
+    let columns = "(ID NUMBER(12) PRIMARY KEY, WERT NUMBER, NAME VARCHAR2(60), ZEIT TIMESTAMP(6), ZONE TIMESTAMP WITH TIME ZONE, ROH RAW(16), NOTIZ CLOB)";
+    for user in ["TR_PERF_SRC", "TR_PERF_DST"] {
+        let _ = admin
+            .execute_query(&format!("DROP USER {user} CASCADE"))
+            .await;
+        exec_all(
+            admin.as_ref(),
+            &[
+                &format!("CREATE USER {user} IDENTIFIED BY l8dbtest QUOTA UNLIMITED ON USERS"),
+                &format!("GRANT CREATE SESSION, CREATE TABLE TO {user}"),
+            ],
+        )
+        .await;
+    }
+    exec_all(admin.as_ref(), &[
+        &format!("CREATE TABLE TR_PERF_SRC.MESSUNG {columns}"),
+        &format!("INSERT INTO TR_PERF_SRC.MESSUNG SELECT LEVEL, LEVEL / 7, 'Messung ' || LEVEL, TIMESTAMP '2024-01-01 00:00:00' + NUMTODSINTERVAL(LEVEL, 'SECOND'), FROM_TZ(TIMESTAMP '2024-01-01 00:00:00', 'Europe/Berlin') + NUMTODSINTERVAL(LEVEL, 'MINUTE'), HEXTORAW(LPAD(TO_CHAR(LEVEL, 'FMXXXXXXXX'), 32, '0')), CASE WHEN MOD(LEVEL, 10) = 0 THEN TO_CLOB(RPAD('x', 4000, 'y')) END FROM DUAL CONNECT BY LEVEL <= {rows}"),
+    ]).await;
+    let user = |name: &str| url.replace("l8db:l8dbtest", &format!("{name}:l8dbtest"));
+    let source = endpoint(DatabaseKind::Oracle, &user("TR_PERF_SRC"));
+    let target = endpoint(DatabaseKind::Oracle, &user("TR_PERF_DST"));
+    let request = PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            source: "TR_PERF_SRC".into(),
+            target: "TR_PERF_DST".into(),
+        }],
+        fold_names: true,
+        replace: false,
+    };
+    let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
+    plan.pre_data = vec![Statement::object(
+        format!("CREATE TABLE TR_PERF_DST.MESSUNG {columns}"),
+        "table",
+        "TR_PERF_DST",
+        "MESSUNG",
+    )];
+    let inserts = || async {
+        scalar(
+            admin.as_ref(),
+            "SELECT TO_CHAR(NVL(SUM(executions), 0)) FROM v$sql WHERE parsing_schema_name = 'TR_PERF_DST' AND sql_text LIKE 'INSERT INTO \"TR_PERF_DST\".\"MESSUNG\"%'",
+        )
+        .await
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0)
+    };
+    let objects = || async {
+        scalar(
+            admin.as_ref(),
+            "SELECT TO_CHAR(COUNT(*)) FROM all_objects WHERE owner = 'TR_PERF_DST'",
+        )
+        .await
+        .unwrap_or_default()
+    };
+
+    let cancelled_at = Mutex::new(None::<Instant>);
+    let cancelled = crate::db::execution::run(
+        Some(crate::db::execution::ExecutionOptions {
+            job_id: Some("tr-perf-cancel".into()),
+            ..Default::default()
+        }),
+        true,
+        run(
+            &target,
+            &RunRequest {
+                source: source.clone(),
+                plan: plan.clone(),
+            },
+            pool.clone(),
+            &|progress: Progress| {
+                if progress.phase == "data" && progress.rows > 0 {
+                    let mut at = cancelled_at.lock().unwrap();
+                    if at.is_none() {
+                        *at = Some(Instant::now());
+                        let _ = crate::db::execution::cancel("tr-perf-cancel");
+                    }
+                }
+            },
+        ),
+    )
+    .await
+    .unwrap();
+    let reaction = cancelled_at
+        .lock()
+        .unwrap()
+        .expect("data progress before cancel")
+        .elapsed();
+    assert!(
+        cancelled
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("abgebrochen")),
+        "{cancelled:?}"
+    );
+    assert!(
+        cancelled.rolled_back && cancelled.leftovers.is_empty(),
+        "{cancelled:?}"
+    );
+    assert_eq!(objects().await, "0");
+    assert!(
+        reaction < Duration::from_secs(2),
+        "cancel took {reaction:?}"
+    );
+
+    let before = inserts().await;
+    let stamps = Mutex::new(Vec::new());
+    let baseline = resident_kib();
+    let peak = Arc::new(AtomicU64::new(baseline));
+    let stop = Arc::new(AtomicBool::new(false));
+    let sampler = std::thread::spawn({
+        let (peak, stop) = (peak.clone(), stop.clone());
+        move || {
+            while !stop.load(Ordering::Relaxed) {
+                peak.fetch_max(resident_kib(), Ordering::Relaxed);
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    });
+    let started = Instant::now();
+    let done = run(
+        &target,
+        &RunRequest { source, plan },
+        pool.clone(),
+        &|progress: Progress| {
+            if progress.phase == "data" && progress.rows > 0 {
+                stamps.lock().unwrap().push(Instant::now());
+            }
+        },
+    )
+    .await
+    .unwrap();
+    let elapsed = started.elapsed();
+    stop.store(true, Ordering::Relaxed);
+    sampler.join().unwrap();
+    assert!(done.error.is_none(), "{done:?}");
+    assert_eq!(done.rows, rows);
+
+    let digest = |owner: &str| {
+        format!(
+            "SELECT TO_CHAR(COUNT(*)) || '/' || TO_CHAR(SUM(ID)) || '/' || TO_CHAR(SUM(DBMS_LOB.GETLENGTH(NOTIZ))) || '/' || \
+             TO_CHAR(SUM(ORA_HASH(DBMS_LOB.SUBSTR(NOTIZ, 4000, 1)))) || '/' || \
+             TO_CHAR(SUM(ORA_HASH(TO_CHAR(WERT) || NAME || TO_CHAR(ZEIT, 'YYYYMMDDHH24MISSFF6') || TO_CHAR(ZONE, 'YYYYMMDDHH24MISSFF6 TZR TZD') || RAWTOHEX(ROH)))) FROM {owner}.MESSUNG"
+        )
+    };
+    assert_eq!(
+        scalar(admin.as_ref(), &digest("TR_PERF_SRC")).await,
+        scalar(admin.as_ref(), &digest("TR_PERF_DST")).await
+    );
+
+    let executions = inserts().await - before;
+    let stamps = stamps.into_inner().unwrap();
+    let mut gaps: Vec<u128> = stamps
+        .windows(2)
+        .map(|pair| pair[1].duration_since(pair[0]).as_millis())
+        .collect();
+    gaps.sort_unstable();
+    let pick = |q: f64| {
+        gaps.get(((gaps.len().saturating_sub(1)) as f64 * q).round() as usize)
+            .copied()
+            .unwrap_or_default()
+    };
+    let (median, p95) = (pick(0.5), pick(0.95));
+    let grown = peak.load(Ordering::Relaxed).saturating_sub(baseline) / 1024;
+    let throughput = rows as f64 / elapsed.as_secs_f64();
+    eprintln!(
+        "oracle bulk transfer: {rows} rows in {:.2}s ({throughput:.0} rows/s), batch median {median} ms, p95 {p95} ms, {executions} array inserts, peak RSS +{grown} MiB, cancel reaction {reaction:?}",
+        elapsed.as_secs_f64()
+    );
+    assert!(executions <= rows.div_ceil(500) + 1, "{executions} inserts");
+    assert!(grown < 64, "peak RSS grew by {grown} MiB");
+    assert!(p95 < 500, "batch p95 {p95} ms");
+    assert!(throughput > 5_000.0, "{throughput:.0} rows/s");
+
+    for user in ["TR_PERF_SRC", "TR_PERF_DST"] {
+        let _ = admin
+            .execute_query(&format!("DROP USER {user} CASCADE"))
+            .await;
+    }
 }

@@ -139,6 +139,27 @@ pub fn query_duration() -> Duration {
 
 pub const UNCLAMPED_MAX_SECONDS: u64 = 30 * 24 * 60 * 60;
 
+pub async fn shielded<T, F>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    match CONTEXT.try_with(Context::clone) {
+        Ok(context) => {
+            CONTEXT
+                .scope(
+                    Context {
+                        cancel: CancellationToken::new(),
+                        interrupted: Arc::new(AtomicBool::new(false)),
+                        ..context
+                    },
+                    future,
+                )
+                .await
+        }
+        Err(_) => future.await,
+    }
+}
+
 pub async fn without_query_limit<T, F>(future: F) -> T
 where
     F: Future<Output = T>,
@@ -502,5 +523,25 @@ mod tests {
         .await;
         assert_eq!(result.unwrap_err(), PANIC_MESSAGE);
         assert!(!cancel("execution-panic").unwrap());
+    }
+
+    #[tokio::test]
+    async fn shielded_cleanup_ignores_the_users_cancellation() {
+        run(
+            Some(ExecutionOptions {
+                job_id: Some("execution-shielded".into()),
+                ..Default::default()
+            }),
+            true,
+            async {
+                assert!(cancel("execution-shielded")?);
+                assert!(cancellation_token().is_cancelled());
+                assert!(!shielded(async { cancellation_token().is_cancelled() }).await);
+                assert!(cancellation_token().is_cancelled());
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
     }
 }
