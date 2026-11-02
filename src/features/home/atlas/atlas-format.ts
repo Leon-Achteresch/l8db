@@ -1,5 +1,5 @@
 import { formatBytes } from "@/features/monitor/monitor-view/format";
-import type { AtlasTable } from "./atlas-layout";
+import type { AtlasMetric, AtlasTable } from "./atlas-layout";
 
 const compact = new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 1 });
 const plain = new Intl.NumberFormat("de-DE");
@@ -8,12 +8,17 @@ export function formatRows(rows: number): string {
   return `${rows < 10_000 ? plain.format(rows) : compact.format(rows)} ${rows === 1 ? "Zeile" : "Zeilen"}`;
 }
 
+export function formatLinks(count: number): string {
+  return `${plain.format(count)} Fremdschlüssel`;
+}
+
 export function atlasFacts(
-  table: Pick<AtlasTable, "rows" | "bytes">,
-  metric: "bytes" | "rows" | null,
+  table: Pick<AtlasTable, "rows" | "bytes" | "links">,
+  metric: AtlasMetric,
 ): [string | null, string | null] {
   const rows = table.rows != null ? `≈ ${formatRows(table.rows)}` : null;
   const bytes = table.bytes != null ? formatBytes(table.bytes) : null;
+  if (metric === "links") return [table.links ? formatLinks(table.links) : null, rows ?? bytes];
   return metric === "rows" ? [rows, bytes] : [bytes, rows];
 }
 

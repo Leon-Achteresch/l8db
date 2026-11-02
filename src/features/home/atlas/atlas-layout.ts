@@ -1,9 +1,9 @@
 import { squarify } from "@/features/dashboard/charts/svg-geometry";
-import type { SchemaMap, SchemaMapLink, TableInfo } from "@/lib/db";
+import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/lib/db";
 
 export const ATLAS_TILE_LIMIT = 180;
 
-export type AtlasMetric = "bytes" | "rows" | null;
+export type AtlasMetric = "bytes" | "rows" | "links" | null;
 
 export interface AtlasTable {
   schema: string;
@@ -11,6 +11,7 @@ export interface AtlasTable {
   rows: number | null;
   bytes: number | null;
   comment: string | null;
+  links: number;
 }
 
 export interface Rect {
@@ -48,6 +49,13 @@ export function splitAtlasKey(key: string): [string, string] {
 
 export function joinAtlas(tables: TableInfo[], map: SchemaMap | undefined): AtlasTable[] {
   const stats = new Map(map?.tables?.map((table) => [table.name, table]));
+  const schema = tables[0]?.schema;
+  const degree = new Map<string, number>();
+  for (const { from, to } of map?.links ?? []) {
+    if (from[0] === to[0] && from[1] === to[1]) continue;
+    if (from[0] === schema) degree.set(from[1], (degree.get(from[1]) ?? 0) + 1);
+    if (to[0] === schema) degree.set(to[1], (degree.get(to[1]) ?? 0) + 1);
+  }
   return tables.map((table) => {
     const stat = stats.get(table.name);
     return {
@@ -56,6 +64,7 @@ export function joinAtlas(tables: TableInfo[], map: SchemaMap | undefined): Atla
       rows: stat?.rows ?? null,
       bytes: stat?.bytes ?? null,
       comment: stat?.comment ?? null,
+      links: table.schema === schema ? (degree.get(table.name) ?? 0) : 0,
     };
   });
 }
@@ -63,10 +72,36 @@ export function joinAtlas(tables: TableInfo[], map: SchemaMap | undefined): Atla
 export function atlasMetric(tables: AtlasTable[]): AtlasMetric {
   if (tables.some((table) => (table.bytes ?? 0) > 0)) return "bytes";
   if (tables.some((table) => (table.rows ?? 0) > 0)) return "rows";
+  if (tables.some((table) => table.links > 0)) return "links";
   return null;
 }
 
+export interface RankedSchema {
+  name: string;
+  bytes: number | null;
+  tables: number | null;
+  share: number;
+}
+
+export function rankSchemas(
+  names: string[],
+  overview: DatabaseOverview | undefined,
+): RankedSchema[] {
+  const sized = (overview?.size_bytes ?? 0) > 0;
+  const stats = new Map(overview?.schemas.map((entry) => [entry.schema, entry]));
+  const entries = names.map((name) => ({
+    name,
+    bytes: sized ? (stats.get(name)?.size_bytes ?? null) : null,
+    tables: stats.get(name)?.table_count ?? null,
+  }));
+  const measure = (entry: (typeof entries)[number]) => (sized ? entry.bytes : entry.tables) ?? -1;
+  entries.sort((a, b) => measure(b) - measure(a) || a.name.localeCompare(b.name));
+  const largest = Math.max(1, measure(entries[0] ?? { name: "", bytes: null, tables: null }));
+  return entries.map((entry) => ({ ...entry, share: Math.max(0, measure(entry)) / largest }));
+}
+
 function sizeOf(table: AtlasTable, metric: AtlasMetric): number {
+  if (metric === "links") return table.links;
   return (metric === "bytes" ? table.bytes : metric === "rows" ? table.rows : 0) ?? 0;
 }
 

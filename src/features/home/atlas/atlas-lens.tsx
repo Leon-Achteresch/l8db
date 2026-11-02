@@ -18,6 +18,7 @@ interface AtlasLensProps {
   neighbors: AtlasNeighbors;
   metric: AtlasMetric;
   sizesPending: boolean;
+  notice: string | null;
   hidden: number;
   matching: number;
   showRelations: boolean;
@@ -33,6 +34,7 @@ export function AtlasLens({
   neighbors,
   metric,
   sizesPending,
+  notice,
   hidden,
   matching,
   showRelations,
@@ -52,8 +54,15 @@ export function AtlasLens({
               ? "Fläche zeigt den Speicher, logarithmisch skaliert"
               : metric === "rows"
                 ? "Fläche zeigt die geschätzten Zeilen, logarithmisch skaliert"
-                : "Für diese Datenbank liegen keine Größen vor, alle Tabellen sind gleich groß"}
+                : metric === "links"
+                  ? "Keine Größen lesbar (Statistiken oder Leserechte fehlen), Fläche zeigt die Fremdschlüssel"
+                  : "Keine Größen lesbar (Statistiken oder Leserechte fehlen), alle Tabellen sind gleich groß"}
         </span>
+        {notice && (
+          <span title={notice} className="max-w-full truncate text-amber-600 dark:text-amber-400">
+            Katalog nur teilweise lesbar: {notice}
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-primary" /> geöffnet
         </span>

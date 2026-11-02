@@ -10,6 +10,7 @@ import { formatBytes } from "@/features/monitor/monitor-view/format";
 import { useActiveCapabilities, useDbSelectionStore } from "@/lib/db-selection";
 import { useDatabaseOverviewQuery, useSchemasQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { rankSchemas } from "./atlas-layout";
 
 const STRIP_LIMIT = 8;
 
@@ -17,17 +18,14 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
   const caps = useActiveCapabilities();
   const schemas = useSchemasQuery();
   const overview = useDatabaseOverviewQuery();
-  const entries = useMemo(() => {
-    const sizes = new Map(overview.data?.schemas.map((entry) => [entry.schema, entry]));
-    const names = schemas.data ?? overview.data?.schemas.map((entry) => entry.schema) ?? [];
-    return names
-      .map((name) => ({
-        name,
-        bytes: sizes.get(name)?.size_bytes ?? null,
-        tables: sizes.get(name)?.table_count ?? null,
-      }))
-      .sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1) || a.name.localeCompare(b.name));
-  }, [schemas.data, overview.data]);
+  const entries = useMemo(
+    () =>
+      rankSchemas(
+        schemas.data ?? overview.data?.schemas.map((entry) => entry.schema) ?? [],
+        overview.data,
+      ),
+    [schemas.data, overview.data],
+  );
   const { shown, rest } = useMemo(() => {
     const shown = entries.slice(0, STRIP_LIMIT);
     const active = entries.findIndex((entry) => entry.name === schema);
@@ -35,7 +33,6 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
     const visible = new Set(shown.map((entry) => entry.name));
     return { shown, rest: entries.filter((entry) => !visible.has(entry.name)) };
   }, [entries, schema]);
-  const largest = Math.max(1, entries[0]?.bytes ?? 0);
   if (!caps.schemas || entries.length < 2) return null;
   const select = (name: string) => useDbSelectionStore.getState().setSchema(connectionId, name);
 
@@ -68,7 +65,9 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             <span className="truncate text-[10px] tabular-nums text-muted-foreground">
               {[
                 entry.bytes != null ? formatBytes(entry.bytes) : null,
-                entry.tables != null ? `${entry.tables} Tab.` : null,
+                entry.tables != null
+                  ? `${entry.tables.toLocaleString("de-DE")} ${entry.tables === 1 ? "Tabelle" : "Tabellen"}`
+                  : null,
               ]
                 .filter(Boolean)
                 .join(" · ") || " "}
@@ -82,7 +81,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
                   "block h-full rounded-full",
                   active ? "bg-primary" : "bg-muted-foreground/45",
                 )}
-                style={{ width: `${Math.max(2, ((entry.bytes ?? 0) / largest) * 100)}%` }}
+                style={{ width: `${Math.max(2, entry.share * 100)}%` }}
               />
             </span>
           </button>

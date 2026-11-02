@@ -10,6 +10,7 @@ import {
   layoutAtlas,
   nextAtlasTile,
   type Rect,
+  rankSchemas,
 } from "../src/features/home/atlas/atlas-layout";
 import type { SchemaMapLink } from "../src/lib/db/schema-map";
 
@@ -24,7 +25,7 @@ function overlaps(a: Rect, b: Rect) {
 }
 
 function table(name: string, bytes: number | null, rows: number | null = null): AtlasTable {
-  return { schema: "public", name, rows, bytes, comment: null };
+  return { schema: "public", name, rows, bytes, comment: null, links: 0 };
 }
 
 test("Atlas-Kacheln füllen die Fläche lückenlos und ohne Überlappung", () => {
@@ -80,6 +81,63 @@ test("Atlas verbindet Statistiken, gewichtet logarithmisch und filtert nach Name
   expect(searched.tiles[0].w * searched.tiles[0].h).toBeCloseTo(600 * 400, 3);
 });
 
+test("ohne lesbare Größen gewichtet der Atlas nach Fremdschlüsseln und die Schemaleiste nach Tabellenzahl", () => {
+  const joined = joinAtlas(
+    [
+      { schema: "APP", name: "ORDERS" },
+      { schema: "APP", name: "CUSTOMERS" },
+      { schema: "APP", name: "AUDIT" },
+    ],
+    {
+      tables: [],
+      links: [
+        { from: ["APP", "ORDERS"], to: ["APP", "CUSTOMERS"] },
+        { from: ["APP", "ORDERS"], to: ["REF", "COUNTRIES"] },
+        { from: ["REF", "REGIONS"], to: ["APP", "CUSTOMERS"] },
+        { from: ["APP", "AUDIT"], to: ["APP", "AUDIT"] },
+      ],
+      warning: "ORA-00942: table or view does not exist",
+    },
+  );
+  expect(joined.map((entry) => entry.links)).toEqual([2, 2, 0]);
+  expect(atlasMetric(joined)).toBe("links");
+  const layout = layoutAtlas(joined, 600, 400);
+  expect(layout.metric).toBe("links");
+  expect(layout.tiles.map((tile) => tile.name)).toEqual(["CUSTOMERS", "ORDERS", "AUDIT"]);
+  expect(layout.tiles[0].heat).toBe(1);
+  expect(layout.tiles[2].heat).toBe(0);
+
+  const unsized = rankSchemas(["A", "B", "C"], {
+    database: "XE",
+    size_bytes: 0,
+    size_pretty: "0 B",
+    schemas: [
+      { schema: "A", table_count: 3, size_bytes: 0 },
+      { schema: "B", table_count: 40, size_bytes: 0 },
+    ],
+  });
+  expect(unsized.map((entry) => [entry.name, entry.bytes, entry.tables])).toEqual([
+    ["B", null, 40],
+    ["A", null, 3],
+    ["C", null, null],
+  ]);
+  expect(unsized.map((entry) => entry.share)).toEqual([1, 3 / 40, 0]);
+  const sized = rankSchemas(["A", "B"], {
+    database: "db",
+    size_bytes: 300,
+    size_pretty: "300 B",
+    schemas: [
+      { schema: "A", table_count: 3, size_bytes: 200 },
+      { schema: "B", table_count: 40, size_bytes: 100 },
+    ],
+  });
+  expect(sized.map((entry) => [entry.name, entry.bytes])).toEqual([
+    ["A", 200],
+    ["B", 100],
+  ]);
+  expect(rankSchemas(["Z", "A"], undefined).map((entry) => entry.name)).toEqual(["A", "Z"]);
+});
+
 test("Nachbarn einer Tabelle folgen den Fremdschlüsseln in beide Richtungen", () => {
   const links: SchemaMapLink[] = [
     { from: ["public", "orders"], to: ["public", "users"] },
@@ -124,6 +182,21 @@ test("große Schemas bleiben bei Kacheln und Layoutzeit begrenzt", async () => {
     to: ["public", tables[(index * 31 + 7) % count].name],
   }));
 
+  const infos = tables.map(({ schema, name }) => ({ schema, name }));
+  const stats = tables.map(({ name, rows, bytes }) => ({ name, rows, bytes, comment: null }));
+  let joined = joinAtlas(infos, { tables: stats, links });
+  const joinTiming = await measureScenario(() => {
+    for (let run = 0; run < 5; run++) joined = joinAtlas(infos, { tables: stats, links });
+  });
+  expect(joined.reduce((sum, entry) => sum + entry.links, 0)).toBe(2 * 60_000);
+  const linked = layoutAtlas(
+    joined.map((entry) => ({ ...entry, rows: null, bytes: null })),
+    1100,
+    560,
+  );
+  expect(linked.metric).toBe("links");
+  expect(linked.tiles).toHaveLength(ATLAS_TILE_LIMIT);
+
   const hub = atlasKey("public", tables[7].name);
   let neighbors = atlasNeighbors(links, hub);
   const linkTiming = await measureScenario(() => {
@@ -151,6 +224,7 @@ test("große Schemas bleiben bei Kacheln und Layoutzeit begrenzt", async () => {
   expect(layoutTiming.p95Ms / 5).toBeLessThan(25);
   expect(searchTiming.p95Ms / 5).toBeLessThan(15);
   expect(linkTiming.p95Ms / 20).toBeLessThan(12);
+  expect(joinTiming.p95Ms / 5).toBeLessThan(40);
   await reportScenario("home-atlas-layout", {
     tables: count,
     links: links.length,
@@ -161,5 +235,7 @@ test("große Schemas bleiben bei Kacheln und Layoutzeit begrenzt", async () => {
     searchP95Ms: searchTiming.p95Ms / 5,
     neighborsMedianMs: linkTiming.medianMs / 20,
     neighborsP95Ms: linkTiming.p95Ms / 20,
+    joinMedianMs: joinTiming.medianMs / 5,
+    joinP95Ms: joinTiming.p95Ms / 5,
   });
 });

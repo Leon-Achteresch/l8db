@@ -319,6 +319,19 @@ pub(crate) struct SchemaMapLink {
 pub(crate) struct SchemaMap {
     pub tables: Vec<SchemaMapTable>,
     pub links: Vec<SchemaMapLink>,
+    pub warning: Option<String>,
+}
+
+fn own_segments_sql(kind: DatabaseKind, schema: &str) -> Option<String> {
+    if kind != DatabaseKind::Oracle {
+        return None;
+    }
+    literal(schema).map(|schema| {
+        format!(
+            "SELECT segment_name AS a, SUM(bytes) AS b FROM user_segments WHERE USER = {schema} \
+             AND segment_type IN ('TABLE', 'TABLE PARTITION', 'TABLE SUBPARTITION') GROUP BY segment_name"
+        )
+    })
 }
 
 pub(crate) fn schema_map_supported(kind: DatabaseKind) -> bool {
@@ -340,19 +353,42 @@ pub(crate) async fn schema_map(
     schema: &str,
 ) -> Result<SchemaMap, String> {
     let scope = [schema.to_string()];
-    let tables = match relations_sql(kind, &scope, &scope) {
-        Some(sql) => parse_relations(kind, fetch(adapter, &sql).await?)
-            .into_iter()
-            .filter(|relation| relation.kind != Kind::View && relation.schema == schema)
-            .map(|relation| SchemaMapTable {
-                name: relation.name,
-                rows: relation.rows,
-                bytes: relation.bytes,
-                comment: relation.comment,
-            })
-            .collect(),
+    let mut warning = None;
+    let mut tables: Vec<SchemaMapTable> = match relations_sql(kind, &scope, &scope) {
+        Some(sql) => match fetch(adapter, &sql).await {
+            Ok(rows) => parse_relations(kind, rows)
+                .into_iter()
+                .filter(|relation| relation.kind != Kind::View && relation.schema == schema)
+                .map(|relation| SchemaMapTable {
+                    name: relation.name,
+                    rows: relation.rows,
+                    bytes: relation.bytes,
+                    comment: relation.comment,
+                })
+                .collect(),
+            Err(error) => {
+                warning = Some(error);
+                Vec::new()
+            }
+        },
         None => Vec::new(),
     };
+    if let Some(sql) = own_segments_sql(kind, schema) {
+        for row in fetch(adapter, &sql).await.unwrap_or_default() {
+            let Some(bytes) = int(&row[1]).filter(|bytes| *bytes > 0) else {
+                continue;
+            };
+            match tables.iter_mut().find(|table| table.name == row[0]) {
+                Some(table) => table.bytes = Some(bytes),
+                None if warning.is_some() => tables.push(SchemaMapTable {
+                    name: row[0].clone(),
+                    bytes: Some(bytes),
+                    ..SchemaMapTable::default()
+                }),
+                None => {}
+            }
+        }
+    }
     let links = match keys_query(kind, Some(schema)) {
         Some(sql) => {
             count();
@@ -364,7 +400,11 @@ pub(crate) async fn schema_map(
         }
         None => Vec::new(),
     };
-    Ok(SchemaMap { tables, links })
+    Ok(SchemaMap {
+        tables,
+        links,
+        warning,
+    })
 }
 
 fn schema_links(edges: Vec<super::insight::Edge>, schema: &str) -> Vec<SchemaMapLink> {
@@ -1343,6 +1383,17 @@ mod tests {
             .unwrap()
             .contains("{filter}"));
         assert!(keys_query(DatabaseKind::Mysql, Some("a\\b")).is_none());
+        assert!(bulk_query(DatabaseKind::Oracle).is_none());
+        let oracle = keys_query(DatabaseKind::Oracle, Some("HR")).unwrap();
+        assert!(oracle.contains("FROM all_constraints c"));
+        assert!(!oracle.contains("dba_"));
+        assert!(oracle
+            .contains("c.constraint_type = 'R' AND (c.owner = 'HR' OR r.owner = 'HR') ORDER BY"));
+        assert!(oracle.ends_with("WHERE ROWNUM <= 50000"));
+        let segments = own_segments_sql(DatabaseKind::Oracle, "HR").unwrap();
+        assert!(segments.contains("FROM user_segments WHERE USER = 'HR'"));
+        assert!(own_segments_sql(DatabaseKind::Postgres, "public").is_none());
+        assert!(own_segments_sql(DatabaseKind::Oracle, "a\\b").is_none());
     }
 
     #[cfg(feature = "duckdb")]
