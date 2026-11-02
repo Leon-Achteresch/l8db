@@ -41,6 +41,8 @@ export function useCsvImport() {
   const [quote, setQuote] = useCsvImportField(scopeKey, "quote");
   const [hasHeader, setHasHeader] = useCsvImportField(scopeKey, "hasHeader");
   const [emptyField, setEmptyField] = useCsvImportField(scopeKey, "emptyField");
+  const [storedNullText, setNullText] = useCsvImportField(scopeKey, "nullText");
+  const nullText = storedNullText ?? "";
   const [targetTable, setTargetTable] = useCsvImportField(scopeKey, "targetTable");
   const [targetColumns, setTargetColumns] = useCsvImportField(scopeKey, "targetColumns");
   const [mappings, setMappings] = useCsvImportField(scopeKey, "mappings");
@@ -163,10 +165,11 @@ export function useCsvImport() {
       quote,
       hasHeader: hasHeader ?? undefined,
       emptyField,
+      nullText,
       maxRows: CSV_MAX_IMPORT_ROWS,
       partial,
     });
-  }, [format, structured, text, delimiter, quote, hasHeader, emptyField, partial]);
+  }, [format, structured, text, delimiter, quote, hasHeader, emptyField, nullText, partial]);
 
   const documentTargets = caps.query_language === "json";
   const mappingTargets: ImportTargetColumn[] = useMemo(() => {
@@ -318,6 +321,7 @@ export function useCsvImport() {
                 quote,
                 has_header: parsed.hasHeader,
                 empty_as_null: emptyField === "null",
+                null_text: nullText || null,
                 indices: mappings
                   .filter((mapping) => mapping.target !== null)
                   .map((mapping) => mapping.csvIndex),
@@ -386,6 +390,8 @@ export function useCsvImport() {
     connection,
     database,
     emptyField,
+    nullText,
+    setNullText,
     fileError: parsed?.errors.map((error) => error.message).join(" ") || fileError,
     fileName,
     filePath,

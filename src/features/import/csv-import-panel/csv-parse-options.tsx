@@ -1,5 +1,6 @@
 import { SlidersHorizontalIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -16,7 +17,14 @@ import type { CsvImportState } from "./use-csv-import";
 
 type CsvParseOptionsProps = Pick<
   CsvImportState,
-  "quote" | "changeDelimiter" | "changeQuote" | "changeHasHeader" | "emptyField" | "setEmptyField"
+  | "quote"
+  | "changeDelimiter"
+  | "changeQuote"
+  | "changeHasHeader"
+  | "emptyField"
+  | "setEmptyField"
+  | "nullText"
+  | "setNullText"
 > & {
   parsed: CsvParseResult;
 };
@@ -29,6 +37,8 @@ export function CsvParseOptions({
   changeHasHeader,
   emptyField,
   setEmptyField,
+  nullText,
+  setNullText,
 }: CsvParseOptionsProps) {
   return (
     <div className="flex items-center gap-2">
@@ -88,6 +98,18 @@ export function CsvParseOptions({
             <Label htmlFor="csv-empty-null" className="text-xs font-normal">
               Leere Felder als NULL
             </Label>
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="csv-null-text" className="text-xs text-muted-foreground">
+              NULL-Text
+            </Label>
+            <Input
+              id="csv-null-text"
+              className="h-8 text-xs"
+              placeholder="z. B. NULL"
+              value={nullText}
+              onChange={(event) => setNullText(event.target.value)}
+            />
           </div>
         </PopoverContent>
       </Popover>

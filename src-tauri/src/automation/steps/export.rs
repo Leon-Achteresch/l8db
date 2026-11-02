@@ -149,6 +149,7 @@ pub fn csv_options(format: ExportFormat, settings: Option<&CsvSettings>) -> CsvE
             null_text: settings.null_text.clone(),
             line_ending: settings.line_ending.clone(),
             bom: settings.bom,
+            escape_formulas: true,
         },
         None => CsvExportOptions {
             delimiter: ",".into(),
@@ -157,6 +158,7 @@ pub fn csv_options(format: ExportFormat, settings: Option<&CsvSettings>) -> CsvE
             null_text: String::new(),
             line_ending: "\n".into(),
             bom: false,
+            escape_formulas: true,
         },
     };
     if format == ExportFormat::Tsv {

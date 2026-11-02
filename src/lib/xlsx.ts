@@ -101,13 +101,13 @@ export type XlsxCell =
   | { kind: "number"; text: string }
   | { kind: "text"; text: string };
 
-export function cellFor(value: unknown, nullText = ""): XlsxCell {
+export function cellFor(value: unknown, nullText = "", keepText = false): XlsxCell {
   const text = cellText(value) ?? nullText;
   if (text === "") return { kind: "empty" };
   if (typeof value === "number" || typeof value === "bigint") {
     return isNumericCellText(text) ? { kind: "number", text } : { kind: "text", text };
   }
-  if (typeof value !== "string") return { kind: "text", text };
+  if (typeof value !== "string" || keepText) return { kind: "text", text };
   return isNumericCellText(text) ? { kind: "number", text } : { kind: "text", text };
 }
 
@@ -121,6 +121,7 @@ export interface XlsxInput {
   columns: string[];
   rows: Record<string, unknown>[];
   options?: XlsxOptions;
+  textColumns?: string[];
 }
 
 function encode(text: string): Uint8Array {
@@ -138,6 +139,7 @@ function sheetXml(input: XlsxInput): string {
   const columns = input.columns;
   const header = input.options?.header !== false;
   const nullText = input.options?.nullText ?? "";
+  const textColumns = new Set(input.textColumns);
   const parts: string[] = [];
   parts.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
   parts.push(
@@ -153,7 +155,13 @@ function sheetXml(input: XlsxInput): string {
   }
   for (const row of input.rows) {
     const cells = columns
-      .map((column, i) => cellXml(`${columnRef(i)}${rowIndex}`, cellFor(row[column], nullText), 0))
+      .map((column, i) =>
+        cellXml(
+          `${columnRef(i)}${rowIndex}`,
+          cellFor(row[column], nullText, textColumns.has(column)),
+          0,
+        ),
+      )
       .join("");
     parts.push(`<row r="${rowIndex}">${cells}</row>`);
     rowIndex += 1;

@@ -561,6 +561,7 @@ pub async fn import_file(
             quote: "\"".into(),
             has_header: spec.has_header,
             empty_as_null: true,
+            null_text: None,
             indices: spec.columns.iter().map(|column| column.source).collect(),
             format,
             sheet: spec.sheet.map(str::to_string),

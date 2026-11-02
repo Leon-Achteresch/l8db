@@ -30,6 +30,7 @@ export interface CsvImportDraft {
   quote: string;
   hasHeader: boolean | null;
   emptyField: CsvEmptyFieldMode;
+  nullText?: string;
   targetTable: string | null;
   targetColumns: ImportTargetColumn[];
   mappings: CsvColumnMapping[];
@@ -58,6 +59,7 @@ export const EMPTY_CSV_IMPORT: CsvImportDraft = {
   quote: '"',
   hasHeader: null,
   emptyField: "null",
+  nullText: "",
   targetTable: null,
   targetColumns: [],
   mappings: [],

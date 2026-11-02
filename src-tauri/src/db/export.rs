@@ -17,6 +17,12 @@ pub struct CsvExportOptions {
     pub null_text: String,
     pub line_ending: String,
     pub bom: bool,
+    #[serde(default = "escape_formulas_default")]
+    pub escape_formulas: bool,
+}
+
+fn escape_formulas_default() -> bool {
+    true
 }
 
 pub use super::masking::MaskMode;
@@ -107,7 +113,19 @@ pub fn masked_text(
     }
 }
 
+fn formula_like(text: &str) -> bool {
+    text.starts_with(['=', '+', '-', '@', '\t', '\r'])
+        && !(text.parse::<f64>().is_ok()
+            && text
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || b"+-.eE".contains(&byte)))
+}
+
 pub fn csv_field(text: Option<&str>, options: &CsvExportOptions) -> String {
+    let guarded = text
+        .filter(|value| options.escape_formulas && formula_like(value))
+        .map(|value| format!("'{value}"));
+    let text = guarded.as_deref().or(text);
     let raw = text.unwrap_or(options.null_text.as_str());
     let needs_quote = text.is_some_and(|value| value.is_empty() || value == options.null_text)
         || raw.contains(&options.delimiter)
@@ -265,7 +283,24 @@ mod tests {
             null_text: String::new(),
             line_ending: "\n".to_string(),
             bom: false,
+            escape_formulas: true,
         }
+    }
+
+    #[test]
+    fn csv_fields_defuse_spreadsheet_formulas() {
+        let opts = options();
+        assert_eq!(csv_field(Some("=HYPERLINK(1)"), &opts), "'=HYPERLINK(1)");
+        assert_eq!(csv_field(Some("@SUM(A1)"), &opts), "'@SUM(A1)");
+        assert_eq!(csv_field(Some("-x"), &opts), "'-x");
+        assert_eq!(csv_field(Some("-5"), &opts), "-5");
+        assert_eq!(csv_field(Some("+1.5e3"), &opts), "+1.5e3");
+        assert_eq!(csv_field(Some("-inf"), &opts), "'-inf");
+        let raw = CsvExportOptions {
+            escape_formulas: false,
+            ..options()
+        };
+        assert_eq!(csv_field(Some("=1+1"), &raw), "=1+1");
     }
 
     #[test]

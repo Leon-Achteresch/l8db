@@ -105,7 +105,7 @@ fn quote(kind: DatabaseKind, ident: &str) -> String {
 
 fn lit(kind: DatabaseKind, value: &str) -> String {
     match kind {
-        DatabaseKind::Mysql => mysql::lit(value),
+        DatabaseKind::Mysql => mysql::value_lit(value),
         DatabaseKind::Mssql => mssql::lit(value),
         _ => format!("'{}'", value.replace('\'', "''")),
     }
@@ -1089,11 +1089,21 @@ mod tests {
             assert!(PgRowId::parse(invalid).is_err(), "{invalid}");
         }
         assert!(
-            !crate::db::postgres::table_page_sql("s", "t", "", None, true).contains("t.ctid AS")
+            !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
+                .contains("t.ctid AS")
         );
         assert!(
-            crate::db::postgres::table_page_sql("s", "t", "", None, true)
+            crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
                 .contains("t.ctid::text || '@' || t.tableoid::text")
+        );
+        let keyed =
+            |order| crate::db::postgres::table_page_sql("s", "t", "", order, true, &["id".into()]);
+        assert!(keyed(None).contains("ORDER BY t.\"id\" LIMIT"));
+        assert!(keyed(None).ends_with("ORDER BY p.\"id\""));
+        assert!(keyed(Some(("name", true))).contains("ORDER BY t.\"name\" DESC LIMIT"));
+        assert!(
+            !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
+                .contains("ORDER BY")
         );
     }
 
@@ -1121,7 +1131,7 @@ mod tests {
         );
         assert_eq!(
             super::value_lit(DatabaseKind::Mysql, &binary, "t", &value),
-            "'\\\\x0102'"
+            "_utf8mb4 X'5C7830313032'"
         );
     }
 

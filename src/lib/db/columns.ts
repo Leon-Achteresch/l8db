@@ -36,6 +36,7 @@ export interface ImportFileSource {
   quote: string;
   has_header: boolean;
   empty_as_null: boolean;
+  null_text?: string | null;
   indices: number[];
   format?: ImportFormat;
   sheet?: string | null;
@@ -97,6 +98,7 @@ export interface TableExportRequest {
     nullText: string;
     lineEnding: string;
     bom: boolean;
+    escapeFormulas?: boolean;
   };
   masks: { column: string; mode: MaskMode; text?: string | null }[];
   maxRows?: number | null;
