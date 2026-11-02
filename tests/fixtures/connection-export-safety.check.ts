@@ -58,6 +58,73 @@ function roundTrip(connection: typeof production) {
   return resolveImport(parsed.candidates, new Set([0]), "skip")[0];
 }
 
+describe("connection export keeps auth and metadata", () => {
+  test("cloud auth, proxy user and descriptions survive a round trip", () => {
+    const imported = roundTrip({
+      ...production,
+      cloudAuth: { mode: "aws_iam", awsProfile: "dev", awsRegion: "eu-central-1" },
+      proxyUser: "alice",
+      description: "Hauptdatenbank",
+      owner: "Team A",
+      runbook: "https://wiki/runbook",
+    } as typeof production);
+    expect(imported.cloudAuth).toEqual({
+      mode: "aws_iam",
+      awsProfile: "dev",
+      awsRegion: "eu-central-1",
+      tenant: null,
+    });
+    expect(imported.proxyUser).toBe("alice");
+    expect(imported.description).toBe("Hauptdatenbank");
+    expect(imported.owner).toBe("Team A");
+    expect(imported.runbook).toBe("https://wiki/runbook");
+  });
+
+  test("a command tunnel is never exported and blocks a tunnel-less import", () => {
+    const tunneled = {
+      ...production,
+      commandTunnel: { command: "kubectl port-forward svc/db {localPort}:5432" },
+    } as typeof production;
+    const text = JSON.stringify(buildConnectionExport([tunneled]));
+    expect(text).not.toContain("kubectl");
+    const [candidate] = parseConnectionImport(text, []).candidates;
+    expect(candidate.error).toContain("Tunnel-Befehl");
+    const [copy] = resolveImport(
+      parseConnectionImport(text, [tunneled as never]).candidates,
+      new Set([0]),
+      "copy",
+    );
+    expect(copy.commandTunnel?.command).toContain("kubectl");
+  });
+
+  test("duplicate and unsafe ids in a file get fresh ids", () => {
+    const entry = { name: "A", kind: "postgres", connectionString: "postgres://u@h/db" };
+    const text = JSON.stringify({
+      format: "l8db-connections",
+      version: 1,
+      connections: [
+        { ...entry, id: "same" },
+        { ...entry, id: "same", name: "B" },
+        { ...entry, id: "abc:ssh", name: "C" },
+      ],
+    });
+    const ids = parseConnectionImport(text, []).candidates.map(
+      (candidate) => candidate.profile?.id,
+    );
+    expect(ids[0]).toBe("same");
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[2]).not.toContain(":");
+    useConnectionsStore.setState({ connections: [] });
+    useConnectionsStore.getState().addImported([
+      { ...entry, id: "dup", sslMode: "prefer" },
+      { ...entry, id: "dup", sslMode: "prefer" },
+    ] as never);
+    expect(useConnectionsStore.getState().connections.map((connection) => connection.id)).toEqual([
+      "dup",
+    ]);
+  });
+});
+
 describe("connection export keeps safety settings", () => {
   test("file export and import keep environment, read-only and masking rules", () => {
     const file = buildConnectionExport([production]);
