@@ -108,7 +108,11 @@ export function ConnectionExportDialog({ open, connections, onOpenChange }: Prop
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Abbrechen
           </Button>
-          <Button onClick={() => void exportSelected()} disabled={busy || selected.size === 0}>
+          <Button
+            onClick={() => void exportSelected()}
+            disabled={busy || selected.size === 0}
+            disabledReason={busy ? "Export läuft bereits" : "Keine Verbindung ausgewählt"}
+          >
             {selected.size === 0 ? "Exportieren" : `${selected.size} exportieren`}
           </Button>
         </DialogFooter>

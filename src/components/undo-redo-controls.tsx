@@ -45,6 +45,7 @@ export function UndoRedoControls({
         variant="ghost"
         size="icon-sm"
         aria-label={`Rückgängig (${formatHotkeyDisplay(undoHotkey)})`}
+        data-hotkey="edit.undo"
         disabled={!enabled || !canUndo}
         onClick={onUndo}
       >
@@ -54,6 +55,7 @@ export function UndoRedoControls({
         variant="ghost"
         size="icon-sm"
         aria-label={`Wiederholen (${formatHotkeyDisplay(redoHotkey)})`}
+        data-hotkey="edit.redo"
         disabled={!enabled || !canRedo}
         onClick={onRedo}
       >

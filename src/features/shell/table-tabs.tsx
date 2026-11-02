@@ -272,6 +272,7 @@ export function TableTabs() {
         <button
           type="button"
           onClick={handleNewQueryTab}
+          data-hotkey="tab.newQuery"
           aria-label="Neue Abfrage öffnen"
           className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
         >

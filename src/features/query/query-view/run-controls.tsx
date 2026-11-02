@@ -40,6 +40,13 @@ export function RunControls({
 }: RunControlsProps) {
   const { isRunning, isChecking, activeJob, stopActiveJob } = exec;
   const runDisabled = isRunning || !connected || !hasSql;
+  const runBlockedReason = isRunning
+    ? "Eine Abfrage läuft bereits"
+    : !connected
+      ? "Keine Verbindung aktiv"
+      : !hasSql
+        ? "Kein SQL im Editor"
+        : undefined;
   return (
     <>
       <div className="flex shrink-0 items-stretch">
@@ -48,8 +55,10 @@ export function RunControls({
           variant="default"
           className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs @min-[42rem]/qtb:px-3"
           data-tour="query-run"
+          data-hotkey={hasSelection ? "query.runSelection" : "query.run"}
           onClick={actions.handleRun}
           disabled={runDisabled}
+          disabledReason={runBlockedReason}
           title={`${runLabel} (${shortcutLabel("query.run")})`}
         >
           <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
@@ -64,6 +73,7 @@ export function RunControls({
               aria-label="Weitere Ausführungsarten"
               title="Weitere Ausführungsarten"
               disabled={runDisabled}
+              disabledReason={runBlockedReason}
             >
               <ChevronDownIcon className="size-3.5" />
             </Button>
@@ -74,6 +84,7 @@ export function RunControls({
             </DropdownMenuLabel>
             <DropdownMenuItem
               data-tour="query-run-statement"
+              data-hotkey="query.runStatement"
               onClick={actions.handleRunStatement}
               disabled={runDisabled}
             >
@@ -83,6 +94,7 @@ export function RunControls({
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem
+              data-hotkey="query.runSelection"
               onClick={actions.handleRunSelection}
               disabled={isRunning || !connected || !hasSelection}
             >
@@ -107,8 +119,10 @@ export function RunControls({
         variant="outline"
         className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
         data-tour="query-check"
+        data-hotkey="query.check"
         onClick={() => void actions.handleCheck()}
         disabled={isRunning || isChecking || !connected || !hasSql}
+        disabledReason={isChecking ? "Prüfung läuft bereits" : runBlockedReason}
         title={`Nur prüfen — Änderungen werden zurückgerollt, nichts wird übernommen (${shortcutLabel("query.check")})`}
       >
         <MorphIcon
@@ -126,6 +140,12 @@ export function RunControls({
           variant="outline"
           className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
           disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
+          disabledReason={
+            activeJob?.status === "cancelling"
+              ? "Abbruch wurde bereits angefordert"
+              : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch"
+          }
+          data-hotkey="query.cancel"
           onClick={stopActiveJob}
           title={
             activeJob?.cancellable
