@@ -798,6 +798,7 @@ mod tests {
             url: path.display().to_string(),
             database: None,
             read_only: false,
+            production_locked: false,
             environment: None,
             via: Via::Direct,
         }

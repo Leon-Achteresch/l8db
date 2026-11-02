@@ -18,6 +18,7 @@ pub struct Resolved {
     pub url: String,
     pub database: Option<String>,
     pub read_only: bool,
+    pub production_locked: bool,
     pub environment: Option<String>,
     pub via: Via,
 }
@@ -531,6 +532,7 @@ pub async fn resolve(
         url,
         database: database.map(str::to_string),
         read_only: connection.read_only,
+        production_locked: connection.production_locked,
         environment: connection.environment,
         via,
     });
