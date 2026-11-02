@@ -5,6 +5,7 @@ import {
   dimKind,
   fmtDim,
   fmtDimLong,
+  numberOrNull,
   OTHER_LABEL,
   PALETTE,
   type Period,
@@ -92,7 +93,7 @@ export function categories(rows: Row[], shape: DatasetShape, offset = 0, metricI
 export function series(rows: Row[], shape: DatasetShape) {
   return rows.map((row) => {
     const out: Row = { name: shape.dimension ? toLabel(row[shape.dimension]) : "" };
-    for (const m of shape.metrics) out[m.key] = toNumber(row[m.key]);
+    for (const m of shape.metrics) out[m.key] = numberOrNull(row[m.key]);
     return out;
   });
 }
