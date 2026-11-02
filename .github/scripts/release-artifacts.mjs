@@ -211,7 +211,7 @@ export function verifyArtifactFormat(file, kind) {
     );
     assert(executable, "Missing macOS application executable");
     const binary = execFileSync("tar", ["-xOf", file, executable], {
-      maxBuffer: 256 * 1024 * 1024,
+      maxBuffer: 1024 * 1024 * 1024,
     });
     verifyExecutable(binary, "darwin-universal");
   } else throw new Error(`Unsupported artifact format: ${kind}`);
