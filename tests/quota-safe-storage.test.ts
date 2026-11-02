@@ -31,6 +31,7 @@ Object.defineProperty(window, "localStorage", { configurable: true, value: switc
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: switchable });
 
 const { finishTask, startTask, updateTask, useTasksStore } = await import("../src/lib/tasks");
+const { useQueryHistoryStore } = await import("../src/lib/query-history");
 const warn = spyOn(console, "warn").mockImplementation(() => {});
 
 function seed(count: number) {
@@ -73,7 +74,7 @@ test("a full localStorage never breaks starting, updating or finishing a task", 
   const task = useTasksStore.getState().tasks.find((entry) => entry.id === id);
   expect(task?.status).toBe("error");
   expect(task?.error).toBe("ORA-00942");
-  expect(backing.data.has(KEY)).toBe(false);
+  expect(backing.data.get(KEY)).toBe("stale");
   expect(warn).toHaveBeenCalled();
 });
 
@@ -124,5 +125,26 @@ test("a non-quota storage failure keeps the saved history and does not throw", (
 
   expect(() => startTask({ title: "SQL-Abfrage", connectionId: "c" })).not.toThrow();
   expect(backing.data.get(KEY)).toBe("previous");
+  expect(warn).toHaveBeenCalled();
+});
+
+test("recording query history on a full localStorage does not fail the query", () => {
+  backing = quotaStorage(0);
+  backing.data.set("l8db.query-history", "previous");
+  const before = useQueryHistoryStore.getState().entries.length;
+
+  expect(() =>
+    useQueryHistoryStore.getState().record({
+      connectionId: "c",
+      database: null,
+      sql: "SELECT * FROM kunden",
+      durationMs: 3,
+      rowCount: 50,
+      error: null,
+    }),
+  ).not.toThrow();
+
+  expect(useQueryHistoryStore.getState().entries.length).toBe(before + 1);
+  expect(backing.data.get("l8db.query-history")).toBe("previous");
   expect(warn).toHaveBeenCalled();
 });
