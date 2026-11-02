@@ -860,17 +860,34 @@ pub fn validate_read_query(kind: DatabaseKind, sql: String) -> Result<(), String
         allow_production_writes: false,
         database: None,
     };
-    match kind {
-        DatabaseKind::Mongodb => nosql::mongo_check(
-            &nosql::mongo_command(&sql)?,
-            false,
-            false,
-            &redactor,
-            &index,
-        ),
-        DatabaseKind::Redis => nosql::redis_check(&sql, false),
-        _ => check_read_sql(&sql, &connection, &index),
+    let statements = match kind {
+        DatabaseKind::Redis => sql.lines().map(str::to_string).collect(),
+        DatabaseKind::Mongodb => vec![sql.clone()],
+        _ if statement_count(kind, &sql) > 1 => db::sql_script::split_for(kind, &sql),
+        _ => vec![sql.clone()],
+    };
+    for statement in statements.iter().filter(|s| !s.trim().is_empty()) {
+        match kind {
+            DatabaseKind::Mongodb => nosql::mongo_check(
+                &nosql::mongo_command(statement)?,
+                false,
+                false,
+                &redactor,
+                &index,
+            ),
+            DatabaseKind::Redis => nosql::redis_check(statement, false),
+            _ => check_read_sql(statement, &connection, &index),
+        }
+        .map_err(|error| {
+            format!(
+                "Lesemodus: {}",
+                error
+                    .replace("query ist read-only, ", "")
+                    .replace(" über den MCP", "")
+            )
+        })?;
     }
+    Ok(())
 }
 
 pub(super) fn check_read_sql(
@@ -1463,6 +1480,15 @@ mod tests {
             }
         }
         assert!(validate_read_query(DatabaseKind::Redis, "GET example".into()).is_ok());
+        assert!(validate_read_query(DatabaseKind::Redis, "GET a\nGET b".into()).is_ok());
+        assert!(validate_read_query(DatabaseKind::Mysql, "SELECT 1; SELECT 2".into()).is_ok());
+        assert!(validate_read_query(DatabaseKind::Mysql, "SELECT * FROM sp_orders".into()).is_ok());
+        let error =
+            validate_read_query(DatabaseKind::Mssql, "SELECT xp_cmdshell".into()).unwrap_err();
+        assert!(
+            error.starts_with("Lesemodus:") && !error.contains("MCP"),
+            "{error}"
+        );
         assert!(validate_read_query(DatabaseKind::Redis, "SET example value".into()).is_err());
         assert!(validate_read_query(DatabaseKind::Postgres, " ".into()).is_err());
         assert!(

@@ -730,6 +730,8 @@ const DANGEROUS_PREFIXES: &[&str] = &[
     "pg_try_advisory_",
 ];
 
+const TABLE_POSITION: &[&str] = &["from", "join", "into", "update", "table"];
+
 const DDL_WORDS: &[&str] = &[
     "create", "alter", "drop", "truncate", "rename", "grant", "revoke", "comment", "reindex",
     "cluster", "attach", "detach", "install", "vacuum",
@@ -868,8 +870,18 @@ pub fn dangerous_word(sql: &str) -> Option<String> {
 fn dangerous_word_in(tokens: &[Token]) -> Option<String> {
     for (i, token) in tokens.iter().enumerate() {
         if let Token::Word(word) = token {
+            let next = tokens.get(i + 1);
+            let named = i > 0
+                && match &tokens[i - 1] {
+                    Token::Dot => true,
+                    Token::Word(previous) => TABLE_POSITION.contains(&previous.as_str()),
+                    _ => false,
+                }
+                && next != Some(&Token::Open)
+                && next != Some(&Token::Dot);
             let always = DANGEROUS_ALWAYS.contains(&word.as_str())
                 || (word != "dbms_output"
+                    && !named
                     && DANGEROUS_PREFIXES
                         .iter()
                         .any(|prefix| word.starts_with(prefix)));
@@ -1587,6 +1599,14 @@ mod tests {
             Some("waitfor".into())
         );
         assert_eq!(dangerous_word("select url, file, sleep_ms from logs"), None);
+        assert_eq!(
+            dangerous_word("select * from sp_orders o join app.utl_rates r on 1=1"),
+            None
+        );
+        assert_eq!(dangerous_word("select o.utl_rate from orders o"), None);
+        assert!(dangerous_word("select sys.dbms_random.value from dual").is_some());
+        assert!(dangerous_word("select * from dbms_xplan.display()").is_some());
+        assert!(dangerous_word("select * from pg_ls_dir('/')").is_some());
         assert_eq!(dangerous_word("select * from users"), None);
         assert_eq!(dangerous_word("begin dbms_output.put_line(1); end;"), None);
         assert!(dangerous_word("begin dbms_lock.sleep(5); end;").is_some());
