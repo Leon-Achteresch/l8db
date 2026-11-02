@@ -10,6 +10,7 @@ use crate::db::QueryResult;
 
 const MAX_ROWS: usize = 100_000;
 const MAX_LIST_ROWS: usize = 10_000;
+const MAX_RECORD_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
@@ -152,12 +153,14 @@ fn parse_headers(mut data: &[u8]) -> Vec<(String, String)> {
     out
 }
 
-pub fn decode_event_stream(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let mut records = Vec::new();
+fn decode_messages(bytes: &[u8], records: &mut Vec<u8>) -> Result<(usize, bool), String> {
     let mut pos = 0;
     while let (Some(total), Some(headers_len)) = (read_u32(bytes, pos), read_u32(bytes, pos + 4)) {
-        if total < 16 || pos + total > bytes.len() || 12 + headers_len > total - 4 {
+        if total < 16 || 12 + headers_len > total - 4 {
             return Err("S3 Select: beschädigter Event-Stream".to_string());
+        }
+        if pos + total > bytes.len() {
+            break;
         }
         let headers = parse_headers(&bytes[pos + 12..pos + 12 + headers_len]);
         let payload = &bytes[pos + 12 + headers_len..pos + total - 4];
@@ -167,6 +170,7 @@ pub fn decode_event_stream(bytes: &[u8]) -> Result<Vec<u8>, String> {
                 .find(|(k, _)| k == name)
                 .map(|(_, v)| v.as_str())
         };
+        pos += total;
         match (get(":message-type"), get(":event-type")) {
             (Some("error"), _) => {
                 return Err(format!(
@@ -176,21 +180,34 @@ pub fn decode_event_stream(bytes: &[u8]) -> Result<Vec<u8>, String> {
                 ))
             }
             (_, Some("Records")) => records.extend_from_slice(payload),
-            (_, Some("End")) => break,
+            (_, Some("End")) => return Ok((pos, true)),
             _ => {}
         }
-        pos += total;
+    }
+    Ok((pos, false))
+}
+
+pub fn decode_event_stream(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut records = Vec::new();
+    let (consumed, ended) = decode_messages(bytes, &mut records)?;
+    if !ended && consumed < bytes.len() {
+        return Err("S3 Select: beschädigter Event-Stream".to_string());
     }
     Ok(records)
 }
 
-pub fn records_to_result(records: &[u8], elapsed_ms: u64) -> QueryResult {
+pub fn records_to_result(records: &[u8], elapsed_ms: u64, truncated: bool) -> QueryResult {
     let mut columns: Vec<String> = Vec::new();
     let mut rows = Vec::new();
+    let mut truncated = truncated;
     for line in String::from_utf8_lossy(records).lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
+        }
+        if rows.len() >= MAX_ROWS {
+            truncated = true;
+            break;
         }
         let value: Value =
             serde_json::from_str(line).unwrap_or_else(|_| Value::String(line.to_string()));
@@ -204,27 +221,29 @@ pub fn records_to_result(records: &[u8], elapsed_ms: u64) -> QueryResult {
             }
         }
         rows.push(Value::Object(object));
-        if rows.len() >= MAX_ROWS {
-            break;
-        }
     }
     QueryResult {
         columns,
         rows,
         rows_affected: None,
         execution_time_ms: elapsed_ms,
-        truncated: false,
+        truncated,
     }
 }
 
-pub async fn select(s3: &S3, bucket: &str, key: &str, expression: &str) -> Result<Vec<u8>, String> {
+pub async fn select(
+    s3: &S3,
+    bucket: &str,
+    key: &str,
+    expression: &str,
+) -> Result<(Vec<u8>, bool), String> {
     let body = format!(
         "<SelectObjectContentRequest xmlns=\"{}\"><Expression>{}</Expression><ExpressionType>SQL</ExpressionType><InputSerialization>{}</InputSerialization><OutputSerialization><JSON><RecordDelimiter>\n</RecordDelimiter></JSON></OutputSerialization></SelectObjectContentRequest>",
         super::ops::S3_XMLNS,
         xml::escape(expression),
         input_serialization(key)?
     );
-    let response = s3
+    let mut response = s3
         .send(
             Request::new(Method::POST, Some(bucket), Some(key))
                 .query("select", "")
@@ -232,11 +251,30 @@ pub async fn select(s3: &S3, bucket: &str, key: &str, expression: &str) -> Resul
                 .xml(body, "application/xml"),
         )
         .await?;
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("S3 Select: Antwort unvollständig: {e}"))?;
-    decode_event_stream(&bytes)
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut records = Vec::new();
+    let mut lines = 0;
+    loop {
+        let seen = records.len();
+        let (consumed, ended) = decode_messages(&buffer, &mut records)?;
+        buffer.drain(..consumed);
+        if ended {
+            return Ok((records, false));
+        }
+        lines += records[seen..].iter().filter(|b| **b == b'\n').count();
+        if lines > MAX_ROWS || records.len() > MAX_RECORD_BYTES {
+            return Ok((records, true));
+        }
+        match response
+            .chunk()
+            .await
+            .map_err(|e| format!("S3 Select: Antwort unvollständig: {e}"))?
+        {
+            Some(chunk) => buffer.extend_from_slice(&chunk),
+            None if buffer.is_empty() => return Ok((records, false)),
+            None => return Err("S3 Select: beschädigter Event-Stream".to_string()),
+        }
+    }
 }
 
 pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
@@ -260,6 +298,7 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
         Statement::List { bucket, prefix } => {
             let mut rows = Vec::new();
             let mut token: Option<String> = None;
+            let mut truncated = false;
             loop {
                 let page = s3
                     .list_objects(&bucket, &prefix, Some("/"), token.as_deref(), None)
@@ -272,7 +311,11 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
                 }));
                 match page.next_token {
                     Some(next) if rows.len() < MAX_LIST_ROWS => token = Some(next),
-                    _ => break,
+                    Some(_) => {
+                        truncated = true;
+                        break;
+                    }
+                    None => break,
                 }
             }
             Ok(QueryResult {
@@ -289,7 +332,7 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
                 rows,
                 rows_affected: None,
                 execution_time_ms: elapsed(start),
-                truncated: false,
+                truncated,
             })
         }
         Statement::Select {
@@ -297,8 +340,8 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
             key,
             expression,
         } => {
-            let records = select(s3, &bucket, &key, &expression).await?;
-            Ok(records_to_result(&records, elapsed(start)))
+            let (records, truncated) = select(s3, &bucket, &key, &expression).await?;
+            Ok(records_to_result(&records, elapsed(start), truncated))
         }
     }
 }
@@ -406,9 +449,19 @@ mod tests {
             b"",
         ));
         let records = decode_event_stream(&stream).unwrap();
-        let result = records_to_result(&records, 1);
+        let result = records_to_result(&records, 1, false);
         assert_eq!(result.columns, vec!["a", "b"]);
         assert_eq!(result.rows.len(), 2);
+        assert!(!result.truncated);
+        let many = "{\"a\":1}\n".repeat(MAX_ROWS + 1);
+        let capped = records_to_result(many.as_bytes(), 1, false);
+        assert_eq!(capped.rows.len(), MAX_ROWS);
+        assert!(capped.truncated);
+        let mut partial = Vec::new();
+        assert_eq!(
+            decode_messages(&stream[..10], &mut partial).unwrap(),
+            (0, false)
+        );
         let error = message(
             &[
                 (":message-type", "error"),

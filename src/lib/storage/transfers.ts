@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { formatBytes } from "@/lib/backup";
 import type { SavedConnection } from "@/lib/connections";
 import {
+  cancelExecution,
   type ObjectProperties,
   s3CancelTransfer,
   s3Download,
@@ -84,17 +85,73 @@ async function runTransfer(
   }
 }
 
+export const CONFLICT_PREFIX = "Ziel existiert bereits:";
+
+export function isConflictError(error: unknown): boolean {
+  return (error instanceof Error ? error.message : String(error)).startsWith(CONFLICT_PREFIX);
+}
+
+export async function withOverwritePrompt<T>(run: (overwrite: boolean) => Promise<T>): Promise<T> {
+  try {
+    return await run(false);
+  } catch (error) {
+    if (!isConflictError(error)) throw error;
+    const message = (error instanceof Error ? error.message : String(error))
+      .slice(CONFLICT_PREFIX.length)
+      .trim();
+    if (!window.confirm(`${message}\n\nTrotzdem überschreiben?`))
+      throw new Error("Abgebrochen: vorhandene Objekte wurden nicht überschrieben.");
+    return run(true);
+  }
+}
+
+export async function runStorageJob<T>(
+  connection: SavedConnection | null | undefined,
+  bucket: string,
+  title: string,
+  run: (jobId: string) => Promise<T>,
+): Promise<T> {
+  const id = crypto.randomUUID();
+  startTask(
+    {
+      id,
+      title,
+      connectionId: connection?.id,
+      connectionName: connection?.name,
+      database: bucket,
+    },
+    () => cancelExecution(id),
+  );
+  try {
+    const result = await run(id);
+    finishTask(id, result);
+    return result;
+  } catch (error) {
+    finishTask(id, undefined, error);
+    throw error;
+  }
+}
+
 export function uploadPaths(
   connection: SavedConnection,
   bucket: string,
   prefix: string,
   paths: string[],
   properties?: ObjectProperties,
+  overwrite = false,
 ): Promise<TransferSummary> {
   const label =
     paths.length === 1 ? (paths[0].split(/[\\/]/).pop() ?? paths[0]) : `${paths.length} Elemente`;
   return runTransfer(connection, bucket, "upload", label, (id) =>
-    s3Upload(effectiveConnectionString(connection), bucket, prefix, paths, id, properties),
+    s3Upload(
+      effectiveConnectionString(connection),
+      bucket,
+      prefix,
+      paths,
+      id,
+      properties,
+      overwrite,
+    ),
   );
 }
 

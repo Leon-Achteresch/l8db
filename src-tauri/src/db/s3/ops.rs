@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use futures_util::{stream, StreamExt, TryStreamExt};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,13 @@ use super::xml::{self, Node};
 
 pub const MAX_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
 pub const MAX_TEXT_BYTES: u64 = 8 * 1024 * 1024;
+pub const CONFLICT_PREFIX: &str = "Ziel existiert bereits:";
+pub const CANCELLED: &str = "Vorgang vom Benutzer abgebrochen.";
+const COPY_CONCURRENCY: usize = 8;
+const HEAD_CHECK_LIMIT: usize = 200;
+const MAX_REPORTED_ERRORS: usize = 1000;
+const MAX_COPY_SIZE: u64 = 5 * 1024 * 1024 * 1024;
+const COPY_PART_SIZE: u64 = 512 * 1024 * 1024;
 pub const S3_XMLNS: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
 
 #[derive(Debug, Clone, Serialize)]
@@ -235,9 +243,22 @@ fn size_of(node: &Node) -> u64 {
         .unwrap_or(0)
 }
 
-fn entry(node: &Node) -> ObjectEntry {
+fn url_encoded(root: &Node) -> bool {
+    root.text_of("EncodingType").as_deref() == Some("url")
+}
+
+fn decode_key(value: String, encoded: bool) -> String {
+    if !encoded {
+        return value;
+    }
+    percent_encoding::percent_decode_str(&value.replace('+', " "))
+        .decode_utf8_lossy()
+        .into_owned()
+}
+
+fn entry(node: &Node, encoded: bool) -> ObjectEntry {
     ObjectEntry {
-        key: node.text_of("Key").unwrap_or_default(),
+        key: decode_key(node.text_of("Key").unwrap_or_default(), encoded),
         size: size_of(node),
         last_modified: node.text_of("LastModified"),
         etag: node.text_of("ETag"),
@@ -246,8 +267,10 @@ fn entry(node: &Node) -> ObjectEntry {
 }
 
 fn prefixes(root: &Node) -> Vec<String> {
+    let encoded = url_encoded(root);
     root.all("CommonPrefixes")
         .filter_map(|p| p.text_of("Prefix"))
+        .map(|p| decode_key(p, encoded))
         .collect()
 }
 
@@ -255,8 +278,7 @@ fn header(response: &reqwest::Response, name: &str) -> Option<String> {
     response
         .headers()
         .get(name)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string)
+        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
 }
 
 pub fn validate_bucket_name(name: &str) -> Result<(), String> {
@@ -330,10 +352,14 @@ impl S3 {
     }
 
     pub async fn head_bucket(&self, bucket: &str) -> Result<(), String> {
-        self.send(Request::new(Method::HEAD, Some(bucket), None))
-            .await
-            .map(|_| ())
-            .map_err(Into::into)
+        self.send(
+            Request::new(Method::GET, Some(bucket), None)
+                .query("list-type", "2")
+                .query("max-keys", "1"),
+        )
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
     }
 
     pub async fn create_bucket(
@@ -408,12 +434,17 @@ impl S3 {
                 max_keys.unwrap_or(1000).clamp(1, 1000).to_string(),
             )
             .query_opt("delimiter", delimiter)
-            .query_opt("continuation-token", token);
+            .query_opt("continuation-token", token)
+            .query("encoding-type", "url");
         let root = self.xml(req).await?;
         let truncated = root.text_of("IsTruncated").as_deref() == Some("true");
+        let encoded = url_encoded(&root);
         Ok(ObjectListing {
             prefixes: prefixes(&root),
-            objects: root.all("Contents").map(entry).collect(),
+            objects: root
+                .all("Contents")
+                .map(|node| entry(node, encoded))
+                .collect(),
             next_token: root
                 .text_of("NextContinuationToken")
                 .filter(|t| truncated && !t.is_empty()),
@@ -429,9 +460,7 @@ impl S3 {
     ) -> Result<bool, String> {
         let mut token: Option<String> = None;
         loop {
-            if super::super::execution::cancellation_token().is_cancelled() {
-                return Err("Abgebrochen".to_string());
-            }
+            check_cancelled()?;
             let page = self
                 .list_objects(bucket, prefix, None, token.as_deref(), None)
                 .await?;
@@ -465,15 +494,17 @@ impl S3 {
             )
             .query_opt("delimiter", delimiter)
             .query_opt("key-marker", key_marker)
-            .query_opt("version-id-marker", version_marker);
+            .query_opt("version-id-marker", version_marker)
+            .query("encoding-type", "url");
         let root = self.xml(req).await?;
         let truncated = root.text_of("IsTruncated").as_deref() == Some("true");
+        let encoded = url_encoded(&root);
         let versions = root
             .children
             .iter()
             .filter(|n| n.name == "Version" || n.name == "DeleteMarker")
             .map(|n| ObjectVersion {
-                key: n.text_of("Key").unwrap_or_default(),
+                key: decode_key(n.text_of("Key").unwrap_or_default(), encoded),
                 version_id: n.text_of("VersionId").unwrap_or_else(|| "null".into()),
                 is_latest: n.text_of("IsLatest").as_deref() == Some("true"),
                 delete_marker: n.name == "DeleteMarker",
@@ -488,6 +519,7 @@ impl S3 {
             versions,
             next_key_marker: root
                 .text_of("NextKeyMarker")
+                .map(|m| decode_key(m, encoded))
                 .filter(|m| truncated && !m.is_empty()),
             next_version_marker: root
                 .text_of("NextVersionIdMarker")
@@ -526,7 +558,7 @@ impl S3 {
         let mut headers = BTreeMap::new();
         let mut metadata = BTreeMap::new();
         for (name, value) in response.headers() {
-            let value = value.to_str().unwrap_or_default().to_string();
+            let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
             if let Some(meta) = name.as_str().strip_prefix("x-amz-meta-") {
                 metadata.insert(meta.to_string(), value.clone());
             }
@@ -647,9 +679,16 @@ impl S3 {
         text: String,
         content_type: Option<String>,
         fallback_type: &str,
+        expected_etag: Option<&str>,
     ) -> Result<Option<String>, String> {
         let (mut props, tagging) = match self.try_head_object(bucket, key, None).await {
             Ok(head) => {
+                if !etag_matches(expected_etag, head.etag.as_deref()) {
+                    return Err(
+                        "Das Objekt wurde seit dem Öffnen geändert. Bitte neu laden, um fremde Änderungen nicht zu überschreiben."
+                            .to_string(),
+                    );
+                }
                 let tagging = if head.tag_count > 0 {
                     match self.get_config(bucket, Some(key), None, "tagging").await? {
                         Some(xml_text) => Some(tagging_query(&xml_text)?),
@@ -660,7 +699,14 @@ impl S3 {
                 };
                 (ObjectProperties::from(&head), tagging)
             }
-            Err(e) if e.status == 404 || e.status == 405 => (ObjectProperties::default(), None),
+            Err(e) if e.status == 404 || e.status == 405 => {
+                if expected_etag.is_some() {
+                    return Err(
+                        "Das Objekt wurde seit dem Öffnen gelöscht oder verschoben.".to_string()
+                    );
+                }
+                (ObjectProperties::default(), None)
+            }
             Err(e) => return Err(e.into()),
         };
         if let Some(c) = content_type.filter(|c| !c.trim().is_empty()) {
@@ -747,10 +793,17 @@ impl S3 {
         all_versions: bool,
         bypass_governance: bool,
     ) -> Result<DeleteOutcome, String> {
-        let mut refs = Vec::new();
+        let mut outcome = DeleteOutcome::default();
+        let mut absorb = |page: DeleteOutcome| {
+            outcome.deleted += page.deleted;
+            if outcome.errors.len() < MAX_REPORTED_ERRORS {
+                outcome.errors.extend(page.errors);
+            }
+        };
         if all_versions {
             let (mut key_marker, mut version_marker) = (None::<String>, None::<String>);
             loop {
+                check_cancelled()?;
                 let page = self
                     .list_versions(
                         bucket,
@@ -761,30 +814,50 @@ impl S3 {
                         None,
                     )
                     .await?;
-                refs.extend(page.versions.into_iter().map(|v| ObjectRef {
-                    key: v.key,
-                    version_id: Some(v.version_id),
-                }));
-                if !page.truncated {
+                let refs: Vec<ObjectRef> = page
+                    .versions
+                    .into_iter()
+                    .map(|v| ObjectRef {
+                        key: v.key,
+                        version_id: Some(v.version_id),
+                    })
+                    .collect();
+                absorb(
+                    self.delete_objects(bucket, &refs, bypass_governance)
+                        .await?,
+                );
+                if !page.truncated || page.next_key_marker.is_none() {
                     break;
                 }
                 key_marker = page.next_key_marker;
                 version_marker = page.next_version_marker;
-                if key_marker.is_none() {
-                    break;
-                }
             }
         } else {
-            self.for_each_object(bucket, prefix, |o| {
-                refs.push(ObjectRef {
-                    key: o.key,
-                    version_id: None,
-                });
-                true
-            })
-            .await?;
+            let mut token: Option<String> = None;
+            loop {
+                check_cancelled()?;
+                let page = self
+                    .list_objects(bucket, prefix, None, token.as_deref(), None)
+                    .await?;
+                let refs: Vec<ObjectRef> = page
+                    .objects
+                    .into_iter()
+                    .map(|o| ObjectRef {
+                        key: o.key,
+                        version_id: None,
+                    })
+                    .collect();
+                absorb(
+                    self.delete_objects(bucket, &refs, bypass_governance)
+                        .await?,
+                );
+                match page.next_token {
+                    Some(next) => token = Some(next),
+                    None => break,
+                }
+            }
         }
-        self.delete_objects(bucket, &refs, bypass_governance).await
+        Ok(outcome)
     }
 
     pub async fn copy_object(
@@ -808,7 +881,7 @@ impl S3 {
             ));
         }
         let mut req = Request::new(Method::PUT, Some(bucket), Some(key))
-            .header("x-amz-copy-source", source)
+            .header("x-amz-copy-source", source.clone())
             .no_timeout();
         if let Some(props) = replace {
             req = req.header("x-amz-metadata-directive", "REPLACE");
@@ -816,18 +889,28 @@ impl S3 {
                 req = req.header(&name, value);
             }
         }
-        let text = self.text(req).await?;
-        if let Ok(root) = xml::parse(&text) {
-            if root.name == "Error" {
-                return Err(S3Error {
+        let error = match self.text(req).await {
+            Ok(text) => match xml::parse(&text) {
+                Ok(root) if root.name == "Error" => S3Error {
                     status: 200,
                     code: root.text_of("Code").unwrap_or_default(),
                     message: root.text_of("Message").unwrap_or_default(),
-                }
-                .into());
+                },
+                _ => return Ok(()),
+            },
+            Err(e) => e,
+        };
+        if matches!(error.code.as_str(), "InvalidRequest" | "EntityTooLarge") {
+            let head = self
+                .try_head_object(source_bucket, source_key, source_version)
+                .await?;
+            if head.size > MAX_COPY_SIZE {
+                return self
+                    .multipart_copy(source_bucket, &source, &head, bucket, key, replace)
+                    .await;
             }
         }
-        Ok(())
+        Err(error.into())
     }
 
     pub async fn update_properties(
@@ -954,6 +1037,115 @@ impl S3 {
         }
     }
 
+    pub async fn complete_multipart(
+        &self,
+        bucket: &str,
+        key: &str,
+        upload_id: &str,
+        parts: &[(u64, String)],
+    ) -> Result<(), String> {
+        let body: String = parts
+            .iter()
+            .map(|(n, etag)| {
+                format!(
+                    "<Part><PartNumber>{n}</PartNumber><ETag>{}</ETag></Part>",
+                    xml::escape(etag)
+                )
+            })
+            .collect();
+        let text = self
+            .text(
+                Request::new(Method::POST, Some(bucket), Some(key))
+                    .query("uploadId", upload_id)
+                    .xml(
+                        format!(
+                            "<CompleteMultipartUpload xmlns=\"{S3_XMLNS}\">{body}</CompleteMultipartUpload>"
+                        ),
+                        "application/xml",
+                    )
+                    .no_timeout(),
+            )
+            .await?;
+        match xml::parse(&text) {
+            Ok(root) if root.name == "Error" => Err(format!(
+                "S3 {}: {}",
+                root.text_of("Code").unwrap_or_default(),
+                root.text_of("Message").unwrap_or_default()
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    async fn multipart_copy(
+        &self,
+        source_bucket: &str,
+        source: &str,
+        head: &ObjectHead,
+        bucket: &str,
+        key: &str,
+        replace: Option<&ObjectProperties>,
+    ) -> Result<(), String> {
+        let props = replace
+            .cloned()
+            .unwrap_or_else(|| ObjectProperties::from(head));
+        let mut create = Request::new(Method::POST, Some(bucket), Some(key)).query("uploads", "");
+        for (name, value) in props.headers() {
+            create = create.header(&name, value);
+        }
+        if head.tag_count > 0 {
+            if let Some(tags) = self
+                .get_config(
+                    source_bucket,
+                    Some(&head.key),
+                    head.version_id.as_deref(),
+                    "tagging",
+                )
+                .await?
+            {
+                create = create.header("x-amz-tagging", tagging_query(&tags)?);
+            }
+        }
+        let root = self.xml(create).await?;
+        let upload_id = root
+            .text_of("UploadId")
+            .ok_or("Multipart-Kopie konnte nicht gestartet werden.")?;
+        let part_size = COPY_PART_SIZE.max(head.size.div_ceil(10_000));
+        let work = async {
+            let mut parts = Vec::new();
+            let mut start = 0;
+            while start < head.size {
+                let end = (start + part_size).min(head.size) - 1;
+                let number = parts.len() as u64 + 1;
+                let root = self
+                    .xml(
+                        Request::new(Method::PUT, Some(bucket), Some(key))
+                            .query("partNumber", number.to_string())
+                            .query("uploadId", upload_id.clone())
+                            .header("x-amz-copy-source", source)
+                            .header("x-amz-copy-source-range", format!("bytes={start}-{end}"))
+                            .no_timeout(),
+                    )
+                    .await?;
+                let etag = root.text_of("ETag").ok_or_else(|| {
+                    format!(
+                        "S3 {}: {}",
+                        root.text_of("Code").unwrap_or_default(),
+                        root.text_of("Message").unwrap_or_default()
+                    )
+                })?;
+                parts.push((number, etag));
+                start = end + 1;
+            }
+            self.complete_multipart(bucket, key, &upload_id, &parts)
+                .await
+        }
+        .await;
+        if work.is_err() {
+            let _ = self.abort_multipart(bucket, key, &upload_id).await;
+        }
+        work
+    }
+
     pub async fn abort_multipart(
         &self,
         bucket: &str,
@@ -1027,18 +1219,24 @@ impl S3 {
         bucket: &str,
         destination_prefix: &str,
         move_items: bool,
+        overwrite: bool,
     ) -> Result<DeleteOutcome, String> {
+        if source_bucket == bucket
+            && items
+                .iter()
+                .any(|item| item.is_prefix && destination_prefix.starts_with(item.key.as_str()))
+        {
+            return Err(
+                "Ein Ordner kann nicht in sich selbst kopiert oder verschoben werden.".to_string(),
+            );
+        }
         let mut plan: Vec<(String, Option<String>, String)> = Vec::new();
         for item in items {
             let base = parent_prefix(&item.key);
             if item.is_prefix {
                 for object in self.keys_under(source_bucket, &item.key).await? {
-                    let relative = &object.key[base.len()..];
-                    plan.push((
-                        object.key.clone(),
-                        None,
-                        format!("{destination_prefix}{relative}"),
-                    ));
+                    let target = format!("{destination_prefix}{}", &object.key[base.len()..]);
+                    plan.push((object.key, None, target));
                 }
             } else {
                 let relative = &item.key[base.len()..];
@@ -1055,11 +1253,69 @@ impl S3 {
         {
             return Err("Quelle und Ziel sind identisch.".to_string());
         }
-        let mut outcome = DeleteOutcome::default();
-        let mut copied = Vec::new();
-        for (source, version, target) in &plan {
-            match self
-                .copy_object(
+        if !overwrite {
+            self.ensure_free(bucket, plan.iter().map(|(_, _, target)| target.as_str()))
+                .await?;
+        }
+        self.copy_plan(source_bucket, bucket, &plan, move_items, false)
+            .await
+    }
+
+    pub async fn ensure_free<'a>(
+        &self,
+        bucket: &str,
+        targets: impl Iterator<Item = &'a str>,
+    ) -> Result<(), String> {
+        let targets: Vec<&str> = targets.collect();
+        let mut existing = Vec::new();
+        if targets.len() <= HEAD_CHECK_LIMIT {
+            let targets = &targets;
+            let found: Vec<Option<String>> = stream::iter(0..targets.len())
+                .map(|index| async move {
+                    let target = targets[index];
+                    match self.try_head_object(bucket, target, None).await {
+                        Ok(_) => Ok(Some(target.to_string())),
+                        Err(e) if e.is_missing() || e.status == 405 => Ok(None),
+                        Err(e) => Err(String::from(e)),
+                    }
+                })
+                .buffer_unordered(COPY_CONCURRENCY)
+                .try_collect()
+                .await?;
+            existing.extend(found.into_iter().flatten());
+        } else {
+            let wanted: std::collections::HashSet<&str> = targets.iter().copied().collect();
+            let prefix = common_prefix(&targets);
+            self.for_each_object(bucket, &prefix, |o| {
+                if wanted.contains(o.key.as_str()) {
+                    existing.push(o.key);
+                }
+                true
+            })
+            .await?;
+        }
+        match existing.first() {
+            None => Ok(()),
+            Some(first) => Err(format!(
+                "{CONFLICT_PREFIX} {} Objekt(e) am Ziel würden überschrieben, z. B. „{first}“.",
+                existing.len()
+            )),
+        }
+    }
+
+    async fn copy_plan(
+        &self,
+        source_bucket: &str,
+        bucket: &str,
+        plan: &[(String, Option<String>, String)],
+        move_items: bool,
+        all_or_nothing: bool,
+    ) -> Result<DeleteOutcome, String> {
+        let mut results = stream::iter(0..plan.len())
+            .map(|index| async move {
+                let (source, version, target) = &plan[index];
+                check_cancelled()?;
+                self.copy_object(
                     source_bucket,
                     source,
                     version.as_deref(),
@@ -1068,18 +1324,42 @@ impl S3 {
                     None,
                 )
                 .await
-            {
-                Ok(()) => {
+                .map(|()| source.clone())
+                .map_err(|e| format!("{source}: {e}"))
+            })
+            .buffer_unordered(COPY_CONCURRENCY);
+        let mut outcome = DeleteOutcome::default();
+        let mut copied = Vec::new();
+        let mut failed = 0usize;
+        while let Some(result) = results.next().await {
+            match result {
+                Ok(key) => {
                     outcome.deleted += 1;
                     copied.push(ObjectRef {
-                        key: source.clone(),
+                        key,
                         version_id: None,
                     });
                 }
-                Err(e) => outcome.errors.push(format!("{source}: {e}")),
+                Err(e) => {
+                    failed += 1;
+                    if outcome.errors.len() < MAX_REPORTED_ERRORS {
+                        outcome.errors.push(e);
+                    }
+                }
             }
         }
-        if move_items && !copied.is_empty() {
+        if copied.is_empty() && outcome.errors.iter().any(|e| e.ends_with(CANCELLED)) {
+            return Err(CANCELLED.to_string());
+        }
+        if failed > outcome.errors.len() {
+            outcome.errors.push(format!(
+                "… und {} weitere Fehler",
+                failed - outcome.errors.len()
+            ));
+        }
+        let remove =
+            move_items && !copied.is_empty() && (!all_or_nothing || outcome.errors.is_empty());
+        if remove {
             let removed = self.delete_objects(source_bucket, &copied, false).await?;
             outcome.errors.extend(removed.errors);
         }
@@ -1091,6 +1371,7 @@ impl S3 {
         bucket: &str,
         from: &str,
         to: &str,
+        overwrite: bool,
     ) -> Result<DeleteOutcome, String> {
         let to = to.trim_start_matches('/');
         if to.is_empty() || to == from {
@@ -1101,29 +1382,23 @@ impl S3 {
             if target.starts_with(from) {
                 return Err("Ein Ordner kann nicht in sich selbst verschoben werden.".to_string());
             }
-            let mut outcome = DeleteOutcome::default();
-            let mut copied = Vec::new();
-            for object in self.keys_under(bucket, from).await? {
-                let new_key = format!("{target}{}", &object.key[from.len()..]);
-                match self
-                    .copy_object(bucket, &object.key, None, bucket, &new_key, None)
-                    .await
-                {
-                    Ok(()) => {
-                        outcome.deleted += 1;
-                        copied.push(ObjectRef {
-                            key: object.key,
-                            version_id: None,
-                        });
-                    }
-                    Err(e) => outcome.errors.push(format!("{}: {e}", object.key)),
-                }
+            let plan: Vec<(String, Option<String>, String)> = self
+                .keys_under(bucket, from)
+                .await?
+                .into_iter()
+                .map(|object| {
+                    let new_key = format!("{target}{}", &object.key[from.len()..]);
+                    (object.key, None, new_key)
+                })
+                .collect();
+            if !overwrite {
+                self.ensure_free(bucket, plan.iter().map(|(_, _, t)| t.as_str()))
+                    .await?;
             }
-            if outcome.errors.is_empty() {
-                let removed = self.delete_objects(bucket, &copied, false).await?;
-                outcome.errors.extend(removed.errors);
-            }
-            return Ok(outcome);
+            return self.copy_plan(bucket, bucket, &plan, true, true).await;
+        }
+        if !overwrite {
+            self.ensure_free(bucket, std::iter::once(to)).await?;
         }
         self.copy_object(bucket, from, None, bucket, to, None)
             .await?;
@@ -1151,6 +1426,65 @@ pub struct TransferItem {
     pub version_id: Option<String>,
     #[serde(default)]
     pub is_prefix: bool,
+}
+
+fn check_cancelled() -> Result<(), String> {
+    if super::super::execution::cancellation_token().is_cancelled() {
+        Err(CANCELLED.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn common_prefix(keys: &[&str]) -> String {
+    let Some(first) = keys.first() else {
+        return String::new();
+    };
+    let mut len = first.len();
+    for key in &keys[1..] {
+        len = first
+            .bytes()
+            .zip(key.bytes())
+            .take(len)
+            .take_while(|(a, b)| a == b)
+            .count();
+    }
+    while !first.is_char_boundary(len) {
+        len -= 1;
+    }
+    first[..len].to_string()
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn decodes_url_encoded_listing_keys_only_when_flagged() {
+        assert_eq!(decode_key("a+b%2Bc%0D%2F.txt".into(), true), "a b+c\r/.txt");
+        assert_eq!(decode_key("a+b.txt".into(), false), "a+b.txt");
+    }
+
+    #[test]
+    fn etag_comparison_ignores_quotes() {
+        assert!(etag_matches(Some("\"abc\""), Some("abc")));
+        assert!(!etag_matches(Some("abc"), Some("def")));
+        assert!(etag_matches(None, Some("def")));
+    }
+
+    #[test]
+    fn common_prefix_respects_char_boundaries() {
+        assert_eq!(common_prefix(&["a/ü1", "a/ü2"]), "a/ü");
+        assert_eq!(common_prefix(&["a/üx", "a/öx"]), "a/");
+        assert_eq!(common_prefix(&[]), "");
+    }
+}
+
+fn etag_matches(expected: Option<&str>, actual: Option<&str>) -> bool {
+    match (expected, actual) {
+        (Some(expected), Some(actual)) => expected.trim_matches('"') == actual.trim_matches('"'),
+        _ => true,
+    }
 }
 
 #[cfg(test)]

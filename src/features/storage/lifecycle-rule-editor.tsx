@@ -133,7 +133,7 @@ export function LifecycleRuleEditor({
             Verwaiste Delete-Marker entfernen
           </label>
         )}
-        {rule.extra && (
+        {(rule.extra || rule.filterConditions.length > 0) && (
           <span className="text-[11px] text-muted-foreground">
             + weitere Bedingungen bleiben erhalten
           </span>
