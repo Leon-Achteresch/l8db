@@ -110,3 +110,24 @@ describe("session views", () => {
     expect(Object.keys(useSessionViewsStore.getState().views)).toEqual([scopeKey("c2", null)]);
   });
 });
+
+describe("session actions", () => {
+  test("report sessions that were already gone", async () => {
+    const { sessionActionMessage } = await import("../src/lib/session-actions");
+    expect(sessionActionMessage("terminate", true, "postgres", 7)).toBe("Sitzung PID 7 beendet.");
+    expect(sessionActionMessage("terminate", false, "postgres", 7)).toBe(
+      "Sitzung PID 7 war bereits beendet.",
+    );
+    expect(sessionActionMessage("cancel", false, "oracle", 9)).toBe("SID 9: nichts abzubrechen.");
+  });
+});
+
+describe("admin polling", () => {
+  test("stops polling after a failure without data", async () => {
+    const { pollUntilFailure } = await import("../src/lib/queries/admin-queries");
+    const interval = pollUntilFailure<number[]>(15_000);
+    expect(interval({ state: { status: "error", data: undefined } })).toBe(false);
+    expect(interval({ state: { status: "error", data: [1] } })).toBe(15_000);
+    expect(interval({ state: { status: "success", data: [] } })).toBe(15_000);
+  });
+});

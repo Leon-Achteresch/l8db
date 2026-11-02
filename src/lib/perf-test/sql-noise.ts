@@ -1,7 +1,10 @@
 const READ_ONLY_START = /^(select|with|table|values|show)\b/i;
 
 const WRITING_KEYWORD =
-  /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|call|do|vacuum|refresh)\b/i;
+  /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|call|do|vacuum|refresh|into)\b/i;
+
+const SIDE_EFFECT_FUNCTION =
+  /\b(pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_rotate_logfile|pg_switch_wal|pg_promote|pg_create_\w+|pg_drop_\w+|pg_stat_reset\w*|pg_advisory\w*|pg_notify|pg_file_write|set_config|setval|nextval|lo_\w+|dblink\w*|get_lock|release_lock|load_file|xp_cmdshell)\s*\(/i;
 
 const MONGO_READ_METHODS = new Set([
   "find",
@@ -89,7 +92,7 @@ export function isReadOnlyStatement(sql: string): boolean {
   if (cleaned.length === 0) return false;
   if (cleaned.includes(";")) return false;
   if (!READ_ONLY_START.test(cleaned)) return false;
-  return !WRITING_KEYWORD.test(cleaned);
+  return !WRITING_KEYWORD.test(cleaned) && !SIDE_EFFECT_FUNCTION.test(cleaned);
 }
 
 function isReadOnlyMongo(text: string): boolean {

@@ -102,6 +102,11 @@ export function useSubscriptionsQuery() {
   });
 }
 
+export function pollUntilFailure<T>(refetchInterval: number | false) {
+  return (query: { state: { status: string; data: T | undefined } }) =>
+    query.state.status === "error" && query.state.data === undefined ? false : refetchInterval;
+}
+
 export function useSessionsQuery(refetchInterval: number | false = 5000) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -110,8 +115,7 @@ export function useSessionsQuery(refetchInterval: number | false = 5000) {
     queryFn: () =>
       listSessions(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "sessions"),
-    refetchInterval: (query) =>
-      query.state.status === "error" && query.state.data === undefined ? false : refetchInterval,
+    refetchInterval: pollUntilFailure(refetchInterval),
   });
 }
 
@@ -139,8 +143,7 @@ export function useLocksQuery(refetchInterval: number | false = 5000) {
     queryFn: () =>
       listLocks(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "locks"),
-    refetchInterval: (query) =>
-      query.state.status === "error" && query.state.data === undefined ? false : refetchInterval,
+    refetchInterval: pollUntilFailure(refetchInterval),
   });
 }
 
@@ -206,7 +209,7 @@ export function useSchedulerJobsQuery(refetchInterval = 15000) {
         database ?? undefined,
       ),
     enabled: supports(connection, "scheduler_jobs"),
-    refetchInterval,
+    refetchInterval: pollUntilFailure(refetchInterval),
     retry: false,
   });
 }
