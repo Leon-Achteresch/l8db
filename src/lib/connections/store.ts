@@ -320,7 +320,11 @@ export const useConnectionsStore = create<ConnectionsState>()(
       addImported: (imported) =>
         set((state) => {
           const known = new Set(state.connections.map((connection) => connection.id));
-          const fresh = imported.filter((connection) => !known.has(connection.id));
+          const fresh = imported.filter((connection) => {
+            if (known.has(connection.id)) return false;
+            known.add(connection.id);
+            return true;
+          });
           return { connections: [...state.connections, ...fresh] };
         }),
       setActiveId: (id) =>

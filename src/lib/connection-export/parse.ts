@@ -1,4 +1,5 @@
 import {
+  type CloudAuth,
   createConnectionId,
   type NetworkProxy,
   type SavedConnection,
@@ -18,6 +19,7 @@ import {
   type ExportedSsh,
   KINDS,
   SSL_MODES,
+  TEXT_FIELDS,
 } from "./types";
 
 export type DuplicateStrategy = "skip" | "copy";
@@ -142,6 +144,37 @@ function parseSafety(value: Record<string, unknown>): Partial<ExportedConnection
   };
 }
 
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+function optionalText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parseCloudAuth(value: unknown): CloudAuth | null {
+  if (!isRecord(value) || (value.mode !== "aws_iam" && value.mode !== "entra")) return null;
+  return {
+    mode: value.mode,
+    awsProfile: optionalText(value.awsProfile),
+    awsRegion: optionalText(value.awsRegion),
+    tenant: optionalText(value.tenant),
+  };
+}
+
+function parseDetails(value: Record<string, unknown>): Partial<ExportedConnection> {
+  const cloudAuth = parseCloudAuth(value.cloudAuth);
+  const proxyUser = optionalText(value.proxyUser);
+  const details: Partial<ExportedConnection> = {
+    ...(cloudAuth ? { cloudAuth } : {}),
+    ...(proxyUser ? { proxyUser } : {}),
+    ...(value.commandTunnelOmitted === true ? { commandTunnelOmitted: true } : {}),
+  };
+  for (const key of TEXT_FIELDS) {
+    const text = optionalText(value[key]);
+    if (text) details[key] = text;
+  }
+  return details;
+}
+
 function parseProfile(value: unknown): ExportedConnection | string {
   if (!isRecord(value)) return "Eintrag ist kein Objekt.";
   const name = typeof value.name === "string" ? value.name.trim() : "";
@@ -170,7 +203,7 @@ function parseProfile(value: unknown): ExportedConnection | string {
         }))
     : [];
   return {
-    id: typeof value.id === "string" && value.id ? value.id : createConnectionId(),
+    id: typeof value.id === "string" && SAFE_ID.test(value.id) ? value.id : createConnectionId(),
     name,
     kind: kind as DatabaseKind,
     connectionString: stripConnectionSecrets(connectionString),
@@ -185,6 +218,7 @@ function parseProfile(value: unknown): ExportedConnection | string {
       : null,
     showSingleSchemaSwitcher: value.showSingleSchemaSwitcher !== false,
     ...parseSafety(value),
+    ...parseDetails(value),
   };
 }
 
@@ -240,15 +274,21 @@ export function parseConnectionImport(
     };
   if (!Array.isArray(raw.connections))
     return { candidates: [], error: "Die Datei enthält keine Verbindungsliste.", source: "l8db" };
-  const candidates: ImportCandidate[] = raw.connections.map((entry, index) =>
-    toCandidate(
-      parseProfile(entry),
+  const seen = new Set<string>();
+  const candidates: ImportCandidate[] = raw.connections.map((entry, index) => {
+    const parsed = parseProfile(entry);
+    if (typeof parsed !== "string") {
+      if (seen.has(parsed.id)) parsed.id = createConnectionId();
+      seen.add(parsed.id);
+    }
+    return toCandidate(
+      parsed,
       index,
       isRecord(entry) && typeof entry.name === "string" && entry.name
         ? entry.name
         : `Eintrag ${index + 1}`,
       existing,
-    ),
-  );
+    );
+  });
   return { candidates, error: null, source: "l8db" };
 }

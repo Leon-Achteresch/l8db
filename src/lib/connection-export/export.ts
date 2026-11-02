@@ -7,6 +7,7 @@ import {
   type ExportedConnection,
   type ExportedSsh,
   SECRET_PARAM,
+  TEXT_FIELDS,
 } from "./types";
 
 function isSecretParam(pair: string): boolean {
@@ -130,6 +131,12 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
       enabled: rule.enabled,
       mask: rule.mask ?? null,
     })),
+    ...(connection.cloudAuth ? { cloudAuth: { ...connection.cloudAuth } } : {}),
+    ...(connection.proxyUser?.trim() ? { proxyUser: connection.proxyUser.trim() } : {}),
+    ...Object.fromEntries(
+      TEXT_FIELDS.filter((key) => connection[key]?.trim()).map((key) => [key, connection[key]]),
+    ),
+    ...(connection.commandTunnel?.command?.trim() ? { commandTunnelOmitted: true } : {}),
   };
 }
 
