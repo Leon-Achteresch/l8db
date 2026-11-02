@@ -232,6 +232,19 @@ export async function seedUiPluginApp(
       const invoke = async (command: string, args: Record<string, unknown> = {}) => {
         if (!command.startsWith("plugin:event")) calls.push({ command, args });
         switch (command) {
+          case "organization_policy":
+            return {
+              managed: false,
+              path: "/etc/l8db/policy.json",
+              organization: "",
+              support: "",
+              settings: {},
+              allowAi: true,
+              allowExtensions: true,
+              allowPersonalSync: true,
+              allowMcp: true,
+              connections: [],
+            };
           case "load_secret":
             return args.account === "shop" ? "demo" : null;
           case "list_databases":
