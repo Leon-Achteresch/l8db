@@ -4,7 +4,7 @@ import { createStore, useStore } from "zustand";
 import { relationKey } from "@/features/query-builder/query-builder-join";
 import type { SavedConnection } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
-import { useActiveSchema } from "@/lib/db-selection";
+import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { useDetailedColumnsQuery, useForeignKeysQuery, useTablesQuery } from "@/lib/queries";
 import {
   type BuilderCondition,
@@ -41,9 +41,10 @@ export function queryBuilderScope(connection: SavedConnection | null): string {
 
 export function useQueryBuilderState(connection: SavedConnection | null) {
   const schema = useActiveSchema();
+  const database = useActiveDatabase();
   const kind = connection?.kind ?? null;
   const scope = queryBuilderScope(connection);
-  const storeKey = tabStateKey(scope, "store");
+  const storeKey = tabStateKey(`${scope}:${database ?? ""}:${schema}`, "store");
   const store = useMemo(
     () => readTabState<ReturnType<typeof createBuilderStore>>(storeKey) ?? createBuilderStore(kind),
     [storeKey, kind],
