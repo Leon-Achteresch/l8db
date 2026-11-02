@@ -4,12 +4,14 @@ import {
   buildImportPayload,
   CSV_MAX_IMPORT_ROWS,
   CSV_PREVIEW_ROWS,
+  type CsvParseOptions,
   type CsvParseResult,
   type ImportTargetColumn,
   inferColumnTypes,
   parseCsv,
   suggestMappings,
   validateMappings,
+  withDocumentFields,
 } from "@/lib/csv-import";
 import { runCsvImport } from "@/lib/csv-import-runner";
 import { listImportColumns, readImportPreview } from "@/lib/db";
@@ -169,21 +171,40 @@ export function useCsvImport() {
   const documentTargets = caps.query_language === "json";
   const mappingTargets: ImportTargetColumn[] = useMemo(() => {
     if (!documentTargets || !parsed || !targetTable) return targetColumns;
-    const known = new Set(targetColumns.map((column) => column.name));
-    return [
-      ...targetColumns,
-      ...parsed.headers
-        .filter((header) => header.trim() !== "" && !known.has(header))
-        .map((header) => ({
-          name: header,
-          data_type: "neues Feld",
-          is_nullable: true,
-          has_default: false,
-          is_identity: false,
-          is_generated: false,
-        })),
-    ];
+    return withDocumentFields(parsed.headers, targetColumns);
   }, [documentTargets, parsed, targetColumns, targetTable]);
+
+  const resuggestMappings = (
+    options: Pick<CsvParseOptions, "delimiter" | "quote" | "hasHeader">,
+  ) => {
+    if (format !== "csv" || text === null || targetColumns.length === 0) return;
+    const next = parseCsv(text, {
+      delimiter: delimiter ?? undefined,
+      quote,
+      hasHeader: hasHeader ?? undefined,
+      ...options,
+      maxRows: CSV_PREVIEW_ROWS,
+      partial,
+    });
+    setMappings(
+      suggestMappings(
+        next.headers,
+        documentTargets ? withDocumentFields(next.headers, targetColumns) : targetColumns,
+      ),
+    );
+  };
+  const changeDelimiter = (value: string) => {
+    setDelimiter(value);
+    resuggestMappings({ delimiter: value });
+  };
+  const changeQuote = (value: string) => {
+    setQuote(value);
+    resuggestMappings({ quote: value });
+  };
+  const changeHasHeader = (value: boolean) => {
+    setHasHeader(value);
+    resuggestMappings({ hasHeader: value });
+  };
 
   const inferredTypes = useMemo(
     () => (parsed ? inferColumnTypes(parsed.columnCount, parsed.rows) : []),
@@ -251,19 +272,7 @@ export function useCsvImport() {
         parsed
           ? suggestMappings(
               parsed.headers,
-              documentTargets
-                ? [
-                    ...columns,
-                    ...parsed.headers.map((name) => ({
-                      name,
-                      data_type: "neues Feld",
-                      is_nullable: true,
-                      has_default: false,
-                      is_identity: false,
-                      is_generated: false,
-                    })),
-                  ]
-                : columns,
+              documentTargets ? withDocumentFields(parsed.headers, columns) : columns,
             )
           : [],
       );
@@ -394,11 +403,14 @@ export function useCsvImport() {
     running,
     schema,
     setDelimiter,
+    changeDelimiter,
     setEmptyField,
     setFileError,
     setHasHeader,
+    changeHasHeader,
     setMappings,
     setQuote,
+    changeQuote,
     tables,
     targetColumns,
     targetTable,
