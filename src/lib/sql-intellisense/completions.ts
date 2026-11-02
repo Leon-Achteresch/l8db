@@ -1,4 +1,5 @@
 import type { ColumnInfo, DatabaseKind, FunctionInfo, TableInfo } from "@/lib/db";
+import { toMonacoSnippet } from "@/lib/snippets";
 import { BUILTIN_FUNCTIONS } from "./builtin-functions";
 import { quoteIdent } from "./hover";
 import { SQL_KEYWORDS } from "./keywords";
@@ -321,7 +322,7 @@ export function suggestCompletions(
       detail: snippet.category ? `${snippet.name} · ${snippet.category}` : snippet.name,
       documentation: snippet.description || undefined,
       filterText: `${snippet.shortcut} ${snippet.name}`,
-      insertText: snippet.body,
+      insertText: toMonacoSnippet(snippet.body),
       snippet: true,
       sortText: `0_${snippet.shortcut}`,
     });
