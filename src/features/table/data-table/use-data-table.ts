@@ -125,7 +125,14 @@ export function useDataTable(props: DataTableProps) {
     handleSaveCell,
     commitEditingCell,
     handleCellEdit,
-  } = useCellEditing({ onSaveRow, columnNames, emptyEditValue, canEditCell, setActiveCell });
+  } = useCellEditing({
+    onSaveRow,
+    columnNames,
+    emptyEditValue,
+    canEditCell,
+    setActiveCell,
+    setInspectCell,
+  });
   const windowOffset = infinite ? rowOffset : 0;
   const [shiftedOffset, setShiftedOffset] = useState(windowOffset);
   const shiftedData = useRef(data);

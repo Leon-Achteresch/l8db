@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { cellEditCommitValue } from "../src/features/table/data-table/use-cell-editing";
+import {
+  cellEditCommitValue,
+  needsMultilineEditor,
+} from "../src/features/table/data-table/use-cell-editing";
 import { buildRowUpdates, valueToUpdateText } from "../src/lib/cell-editor";
 
 const cell = (original: unknown, value: string) => ({
@@ -38,5 +41,15 @@ describe("cellEditCommitValue", () => {
   test("passes typed values through", () => {
     expect(cellEditCommitValue(cell("", "x"), undefined)).toBe("x");
     expect(cellEditCommitValue(cell(null, " "), undefined)).toBe(" ");
+  });
+});
+
+describe("needsMultilineEditor", () => {
+  test("routes values with line breaks to the dialog instead of the single-line input", () => {
+    expect(needsMultilineEditor("Zeile1\nZeile2")).toBe(true);
+    expect(needsMultilineEditor("a\r\nb")).toBe(true);
+    expect(needsMultilineEditor("einzeilig")).toBe(false);
+    expect(needsMultilineEditor(null)).toBe(false);
+    expect(needsMultilineEditor({ a: "x\ny" })).toBe(false);
   });
 });

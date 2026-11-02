@@ -3,7 +3,7 @@ import { type Dispatch, type SetStateAction, useCallback, useRef, useState } fro
 import { toast } from "sonner";
 import { buildRowUpdates } from "@/lib/cell-editor";
 import type { GridCellRef } from "@/lib/grid-selection";
-import type { DataTableProps, EditingCell, TableRow } from "../data-table-types";
+import type { DataTableProps, EditingCell, InspectCell, TableRow } from "../data-table-types";
 
 type Options = {
   onSaveRow: DataTableProps["onSaveRow"];
@@ -11,7 +11,12 @@ type Options = {
   emptyEditValue: string | undefined;
   canEditCell: DataTableProps["canEditCell"];
   setActiveCell: Dispatch<SetStateAction<GridCellRef | null>>;
+  setInspectCell: Dispatch<SetStateAction<InspectCell | null>>;
 };
+
+export function needsMultilineEditor(value: unknown): boolean {
+  return typeof value === "string" && /[\r\n]/.test(value);
+}
 
 export function cellEditCommitValue(
   editingCell: EditingCell,
@@ -28,6 +33,7 @@ export function useCellEditing({
   emptyEditValue,
   canEditCell,
   setActiveCell,
+  setInspectCell,
 }: Options) {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -75,6 +81,15 @@ export function useCellEditing({
       const ctid = row.original.__ctid__ as string | undefined;
       if (!ctid || (canEditCell && !canEditCell(row.original, columnId))) return;
       const val = row.original[columnId];
+      if (needsMultilineEditor(val)) {
+        setInspectCell({
+          columnName: columnId,
+          value: val,
+          ctid,
+          originalValues: { ...row.original },
+        });
+        return;
+      }
       let value: string;
       if (val === null || val === undefined) {
         value = "";
@@ -92,7 +107,7 @@ export function useCellEditing({
       });
       setActiveCell(null);
     },
-    [canEditCell, setActiveCell],
+    [canEditCell, setActiveCell, setInspectCell],
   );
 
   return {
