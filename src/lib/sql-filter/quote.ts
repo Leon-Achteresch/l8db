@@ -13,6 +13,20 @@ export function quoteIdent(name: string, kind?: FilterKind): string {
   );
 }
 
+export function previewQuery(
+  schema: string,
+  name: string,
+  kind?: FilterKind,
+  language?: string,
+): string {
+  if (language === "json") return JSON.stringify({ find: name, filter: {} }, null, 2);
+  if (language === "redis") return "SCAN 0 MATCH * COUNT 100";
+  const table = `${schema ? `${quoteIdent(schema, kind)}.` : ""}${quoteIdent(name, kind)}`;
+  if (kind === "mssql") return `SELECT TOP (100) * FROM ${table}`;
+  if (kind === "oracle") return `SELECT * FROM ${table} FETCH FIRST 100 ROWS ONLY`;
+  return `SELECT * FROM ${table} LIMIT 100`;
+}
+
 export function quoteLiteral(value: string, kind?: FilterKind, dataType?: string): string {
   const trimmed = value.trim();
   const type = (dataType?.toLowerCase() ?? "").replace(
