@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { stat } from "@tauri-apps/plugin-fs";
 import { ArchiveIcon, FileIcon, FolderIcon, TerminalIcon } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -60,6 +61,7 @@ export function BackupPanel({
   const [pattern, setPattern] = useState<string | null>(null);
   const [serverPath, setServerPath] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [overwrite, setOverwrite] = useState<string | null>(null);
   const scope = backupScope("backup", connection.id, database);
   const jobId = useBackupJobs((state) => state.lastJob[scope]);
   const command = useBackupJobs((state) => (jobId ? state.outcomes[jobId]?.command : undefined));
@@ -103,6 +105,17 @@ export function BackupPanel({
 
   const start = async () => {
     setError(null);
+    if (path && !format?.serverSide && overwrite !== path) {
+      const exists = await stat(path).then(
+        () => true,
+        () => false,
+      );
+      if (exists) {
+        setOverwrite(path);
+        return;
+      }
+    }
+    setOverwrite(null);
     const previous = useBackupJobs.getState().lastJob[scope];
     try {
       await runBackupJob({ mode: "backup", connection, database, path, options });
@@ -259,6 +272,12 @@ export function BackupPanel({
             </Button>
           </p>
         )}
+        {overwrite === path && (
+          <p role="alert" className="text-xs text-amber-600 dark:text-amber-400">
+            {fileName} existiert bereits und wird erst nach erfolgreicher Sicherung ersetzt. Zum
+            Fortfahren auf „Überschreiben“ klicken.
+          </p>
+        )}
         {error && (
           <p role="alert" className="whitespace-pre-wrap break-words text-xs text-destructive">
             {error}
@@ -290,7 +309,9 @@ export function BackupPanel({
                 ? "Sicherung läuft…"
                 : format?.noFile
                   ? "BGSAVE auslösen"
-                  : "Sicherung starten"}
+                  : overwrite === path
+                    ? "Überschreiben"
+                    : "Sicherung starten"}
             </Button>
           </>,
           actions,
