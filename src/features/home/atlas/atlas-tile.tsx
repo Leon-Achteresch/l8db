@@ -4,6 +4,11 @@ import { cn } from "@/lib/utils";
 import { atlasFacts, describeAtlasTable } from "./atlas-format";
 import type { AtlasMetric, AtlasTile as Tile } from "./atlas-layout";
 
+const AURORA = [
+  "radial-gradient(60% 75% at 0% 0%, var(--chart-1), transparent)",
+  "linear-gradient(135deg, var(--chart-1), var(--chart-2) 55%, var(--chart-3))",
+];
+
 export type AtlasTone = "idle" | "active" | "neighbor" | "dim";
 export type AtlasMark = "open" | "favorite" | null;
 
@@ -33,7 +38,17 @@ export const AtlasTile = memo(function AtlasTile({
   const showMeta = tile.w >= 64 && tile.h >= 44;
   const facts = describeAtlasTable(tile);
   const [primary, secondary] = atlasFacts(tile, metric);
-  const fill = 5 + tile.heat * 40;
+  const lift =
+    tone === "active"
+      ? Math.max(tile.heat, 0.8)
+      : tone === "neighbor"
+        ? Math.max(tile.heat, 0.55)
+        : tile.heat;
+  const veil = 82 - lift * 36;
+  const span = `${(width / tile.w) * 100}% ${(height / tile.h) * 100}%`;
+  const at = `${tile.w < width ? (tile.x / (width - tile.w)) * 100 : 0}% ${
+    tile.h < height ? (tile.y / (height - tile.h)) * 100 : 0
+  }%`;
   return (
     <button
       type="button"
@@ -48,12 +63,14 @@ export const AtlasTile = memo(function AtlasTile({
         .join(", ")}
       title={facts ? `${tile.name} · ${facts}` : tile.name}
       className={cn(
-        "group absolute flex flex-col items-start justify-between overflow-hidden rounded-[3px] border-[1.5px] border-[var(--atlas-ground)] px-2 py-1.5 text-left outline-none",
+        "group absolute flex flex-col items-start justify-between overflow-hidden rounded-[7px] border-2 border-transparent bg-clip-padding px-2 py-1.5 text-left outline-none",
+        "shadow-[inset_0_1px_0_color-mix(in_oklch,white_10%,transparent)]",
         "transition-[left,top,width,height,opacity,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         "focus-visible:z-10 focus-visible:shadow-[inset_0_0_0_2px_var(--primary)]",
-        tone === "active" && "z-10 shadow-[inset_0_0_0_2px_var(--primary)]",
+        tone === "active" &&
+          "z-10 shadow-[inset_0_0_0_1.5px_var(--primary),0_12px_32px_-12px_color-mix(in_oklch,var(--primary)_80%,transparent)]",
         tone === "neighbor" &&
-          "shadow-[inset_0_0_0_1.5px_color-mix(in_oklch,var(--primary)_70%,transparent)]",
+          "shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary)_65%,transparent)]",
         tone === "dim" && "opacity-40",
       )}
       style={{
@@ -61,9 +78,12 @@ export const AtlasTile = memo(function AtlasTile({
         top: `${(tile.y / height) * 100}%`,
         width: `${(tile.w / width) * 100}%`,
         height: `${(tile.h / height) * 100}%`,
-        background: `color-mix(in oklch, var(--chart-1) ${
-          tone === "neighbor" || tone === "active" ? Math.max(fill, 30) : fill
-        }%, var(--card))`,
+        backgroundImage: [
+          `linear-gradient(color-mix(in oklch, var(--card) ${Math.min(94, veil + 8)}%, transparent), color-mix(in oklch, var(--card) ${veil - 6}%, transparent))`,
+          ...AURORA,
+        ].join(", "),
+        backgroundSize: ["100% 100%", ...AURORA.map(() => span)].join(", "),
+        backgroundPosition: ["0 0", ...AURORA.map(() => at)].join(", "),
       }}
     >
       {showName && (

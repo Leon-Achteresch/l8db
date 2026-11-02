@@ -79,7 +79,9 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
               <span
                 className={cn(
                   "block h-full rounded-full",
-                  active ? "bg-primary" : "bg-muted-foreground/45",
+                  active
+                    ? "bg-linear-to-r from-chart-2 to-chart-1"
+                    : "bg-muted-foreground/40 group-hover:bg-linear-to-r group-hover:from-chart-2/70 group-hover:to-chart-1/70",
                 )}
                 style={{ width: `${Math.max(2, entry.share * 100)}%` }}
               />
