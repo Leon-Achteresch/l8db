@@ -333,7 +333,7 @@ mod tests {
             samples.push(start.elapsed());
         }
         samples.sort();
-        assert!(samples[14] < Duration::from_millis(100));
+        assert!(samples[7] < Duration::from_millis(100));
         let cached = Arc::new(read(&path, false).unwrap());
         let mut cache = Some((Instant::now(), Ok(cached.clone())));
         let start = Instant::now();

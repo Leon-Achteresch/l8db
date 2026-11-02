@@ -23,6 +23,7 @@ const {
 const { destructiveStatements, writesData } = await import("../src/lib/sql-safety");
 const { invoke } = await import("../src/lib/db/core");
 const { effectiveConnectionString } = await import("../src/lib/ssh");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("../src/lib/providers");
 
 const prod = {
   id: "p1",
@@ -76,6 +77,7 @@ describe("Umgebungen", () => {
   });
 
   test("invoke blockiert Schreibbefehle auf gesperrter Produktion", async () => {
+    useProvidersStore.setState({ providers: FALLBACK_PROVIDERS });
     useConnectionsStore.setState({ connections: [{ ...prod, environment: "production" }] });
     useSettingsStore.setState({ productionReadOnly: true });
     const locked = effectiveConnectionString({ ...prod, environment: "production" });
