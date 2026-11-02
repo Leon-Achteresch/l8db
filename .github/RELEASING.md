@@ -172,7 +172,7 @@ Team-ID, Hardened Runtime, Ticket und Gatekeeper geprüft. Schlägt eine Prüfun
 fehl, bleibt der Release ein Entwurf. Der temporäre Schlüsselbund wird auch nach
 Fehlern entfernt. Es gibt keinen unsignierten Fallback.
 
-Windows benötigt die Repository-Secrets `WINDOWS_CERTIFICATE` (Base64-kodiertes exportierbares PFX mit privatem Codesigning-Key) und `WINDOWS_CERTIFICATE_PASSWORD`. Die Pipeline importiert den Schlüssel ausschließlich im Paketierjob, aktiviert SHA-256-Authenticode und Zeitstempel und prüft Binary, MSI und NSIS gegen denselben Herausgeber. Temporäre PFX-Datei und Zertifikat werden anschließend entfernt. Hardwaregebundene Schlüssel benötigen stattdessen einen passenden externen Signierdienst; dafür ist diese PFX-Konfiguration nicht geeignet. Ohne gültiges Zertifikat bleibt die Veröffentlichung gesperrt.
+Windows-Codesigning ist optional. Fehlt `WINDOWS_CERTIFICATE`, werden Binary und Installer unsigniert veröffentlicht. Für eine Signatur braucht es die Repository-Secrets `WINDOWS_CERTIFICATE` (Base64-kodiertes exportierbares PFX mit privatem Codesigning-Key) und `WINDOWS_CERTIFICATE_PASSWORD`. Die Pipeline importiert den Schlüssel ausschließlich im Paketierjob, aktiviert SHA-256-Authenticode und Zeitstempel und prüft Binary, MSI und NSIS gegen denselben Herausgeber. Temporäre PFX-Datei und Zertifikat werden anschließend entfernt. Hardwaregebundene Schlüssel benötigen stattdessen einen passenden externen Signierdienst; dafür ist diese PFX-Konfiguration nicht geeignet. Ist ein Zertifikat hinterlegt, aber ungültig, bricht der Lauf ab.
 
 Eine gültige Signatur verhindert nicht jede zusätzliche Reputationsprüfung; Windows kann beim Installieren
 oder ersten Start warnen. macOS wird ab Version 12 mit aktuellem WebKit
