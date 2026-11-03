@@ -1,0 +1,12 @@
+name = "l8db-issue-relay"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+REPOSITORY = "Leon-Achteresch/l8db"
+ASSETS_REPOSITORY = "Leon-Achteresch/l8db-issue-assets"
+
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 3, period = 60 }

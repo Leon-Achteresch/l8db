@@ -19,6 +19,7 @@ mod extension_process;
 mod file_open;
 mod firebase;
 mod index_advisor;
+mod issues;
 mod mcp;
 mod organization;
 mod pocketbase;

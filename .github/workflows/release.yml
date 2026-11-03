@@ -106,6 +106,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_PLATFORM: ${{ matrix.platform }}
       RELEASE_BINARY: ${{ matrix.binary }}
+      L8DB_ISSUE_RELAY_URL: ${{ vars.L8DB_ISSUE_RELAY_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
