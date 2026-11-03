@@ -211,6 +211,9 @@ pub async fn call(
     if name == "notebook" {
         return notebook(config, run, args).await;
     }
+    if name == "report_issue" {
+        return report_issue(run, args).await;
+    }
     if name == "sandbox" {
         return sandbox(server, config, run, args).await;
     }
@@ -409,6 +412,44 @@ async fn notebook(config: &McpConfig, run: &Run, mut args: Value) -> Value {
     run.emit(
         "tool",
         json!({"id": id, "name": "notebook", "result": result, "status": status(&result)}),
+    );
+    result
+}
+
+async fn report_issue(run: &Run, args: Value) -> Value {
+    if run.plan_only {
+        return text_result(Err("Issues melden ist im Plan-Modus gesperrt.".into()));
+    }
+    if let Err(error) = crate::issues::compose(&args, "") {
+        return text_result(Err(error));
+    }
+    let capture = run.issue(json!({})).await.unwrap_or_default();
+    let screenshot = capture["screenshot"].as_str().filter(|png| !png.is_empty());
+    let (title, body) =
+        match crate::issues::compose(&args, capture["diagnostics"].as_str().unwrap_or("")) {
+            Ok(issue) => issue,
+            Err(error) => return text_result(Err(error)),
+        };
+    let mut details = json!({"message": format!("{title}\n\n{body}"), "public": "Wird öffentlich auf github.com/Leon-Achteresch/l8db angelegt."});
+    if let Some(png) = screenshot {
+        details["screenshot"] = json!(format!("data:image/png;base64,{png}"));
+    }
+    if !run
+        .approve("GitHub-Issue erstellen", details)
+        .await
+        .unwrap_or(false)
+    {
+        return text_result(Err("Benutzer hat das Issue abgelehnt.".into()));
+    }
+    let id = super::new_id();
+    run.emit(
+        "tool",
+        json!({"id": id, "name": "report_issue", "arguments": args, "status": "running"}),
+    );
+    let result = text_result(crate::issues::submit(&title, &body, screenshot).await);
+    run.emit(
+        "tool",
+        json!({"id": id, "name": "report_issue", "result": result, "status": status(&result)}),
     );
     result
 }
