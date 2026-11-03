@@ -510,6 +510,11 @@ async function openTransfer(page: Page) {
     );
   });
   await openOracleApp(page, "/transfer");
+  const source = page.getByRole("combobox", { name: "Quelle: Verbindung" });
+  if (!(await source.innerText()).includes("TR Quelle")) {
+    await source.click();
+    await page.getByRole("option", { name: "TR Quelle" }).click();
+  }
   await page.getByRole("combobox", { name: "Ziel: Verbindung" }).click();
   await page.getByRole("option", { name: "TR Ziel" }).click();
   await page.getByRole("textbox", { name: "Schemas filtern" }).fill("TR_SRC");
@@ -543,6 +548,131 @@ afterAll(async () => {
   await browser?.close();
   await dropUsers();
 }, 120_000);
+
+async function pickTables(page: Page, tables: string[]) {
+  await page.getByRole("button", { name: "Tabellen aus TR_SRC" }).click();
+  const popover = page.locator('[data-slot="popover-content"]');
+  const list = popover.getByRole("group", { name: "Tabellen aus TR_SRC" });
+  await list.waitFor();
+  await popover.getByRole("button", { name: "Keine" }).click();
+  for (const table of tables) {
+    await popover.getByRole("textbox", { name: "Tabellen filtern" }).fill(table);
+    await list.locator(`[data-table="${table}"]`).click();
+  }
+  await page.keyboard.press("Escape");
+}
+
+async function pickContent(page: Page, label: string) {
+  await page.getByRole("combobox", { name: "Umfang" }).click();
+  await page.getByRole("option", { name: label }).click();
+}
+
+async function finish(page: Page, done: RegExp) {
+  await page.getByRole("button", { name: "Übertragung starten" }).click();
+  await page.getByRole("dialog", { name: "Transfer läuft" }).waitFor();
+  const outcome = page.getByText(new RegExp(`${done.source}|Transfer fehlgeschlagen`)).first();
+  await outcome.waitFor({ timeout: 600_000 });
+  if (await page.getByText("Transfer fehlgeschlagen").count())
+    throw new Error(await page.locator("pre").first().innerText());
+  await page.getByRole("dialog", { name: "Transfer läuft" }).waitFor({ state: "hidden" });
+}
+
+const CLEAR_TARGET = `BEGIN
+  FOR l IN (SELECT master FROM dba_mview_logs WHERE log_owner = 'TR_DST') LOOP
+    EXECUTE IMMEDIATE 'DROP MATERIALIZED VIEW LOG ON TR_DST."' || l.master || '"';
+  END LOOP;
+  FOR o IN (SELECT object_name, object_type FROM dba_objects WHERE owner = 'TR_DST'
+            AND object_type IN ('TABLE', 'SEQUENCE', 'PACKAGE') AND object_name NOT LIKE 'ISEQ$$%'
+            ORDER BY object_type DESC) LOOP
+    EXECUTE IMMEDIATE 'DROP ' || o.object_type || ' TR_DST."' || o.object_name || '"'
+      || CASE WHEN o.object_type = 'TABLE' THEN ' CASCADE CONSTRAINTS PURGE' END;
+  END LOOP;
+END;`;
+
+test.skipIf(!enabled)(
+  "Oracle → Oracle copies chosen tables as structure first and loads their data afterwards",
+  async () => {
+    try {
+      await withPage("transfer-scope", async (page) => {
+        await openTransfer(page);
+        await page.getByText(/\d+ Tabellen bereit/).waitFor({ timeout: 120_000 });
+        await pickTables(page, ["AUFTRAG", "KUNDE"]);
+        expect(await page.getByRole("button", { name: "Tabellen aus TR_SRC" }).innerText()).toMatch(
+          /^2 von \d+/,
+        );
+        await pickContent(page, "Nur Struktur");
+        await page.getByText("2 Tabellen bereit, nur Struktur").waitFor({ timeout: 120_000 });
+        expect(await page.getByText("Ziel vollständig überschreiben").count()).toBe(0);
+        await finish(page, /Struktur von 2 Tabellen angelegt/);
+
+        const objects = await sql(
+          "system",
+          "SELECT object_type || ' ' || object_name AS o FROM dba_objects WHERE owner = 'TR_DST' AND object_name NOT LIKE 'ISEQ$$%' AND object_name NOT LIKE 'SYS_%' ORDER BY 1",
+        );
+        expect(objects.map((row) => row.O)).toEqual([
+          "INDEX AUFTRAG_KUNDE_IX",
+          "INDEX AUFTRAG_PK",
+          "INDEX AUFTRAG_UNIQUE_IX",
+          "INDEX I_MLOG$_KUNDE",
+          "INDEX KUNDE_LAND_BX",
+          "INDEX KUNDE_NAME_UK",
+          "INDEX KUNDE_UPPER_IX",
+          "PACKAGE BODY KONTO",
+          "PACKAGE KONTO",
+          "SEQUENCE BELEG_SEQ",
+          "TABLE AUFTRAG",
+          "TABLE KUNDE",
+          "TABLE MLOG$_KUNDE",
+          "TRIGGER AUFTRAG_BI",
+          "TRIGGER KUNDE_AU",
+        ]);
+        expect(await value("system", "SELECT COUNT(*) FROM tr_dst.auftrag")).toBe("0");
+        expect(
+          await value(
+            "system",
+            "SELECT COUNT(*) FROM dba_constraints WHERE owner = 'TR_DST' AND constraint_type = 'R'",
+          ),
+        ).toBe("2");
+
+        await pickContent(page, "Nur Daten");
+        await page.getByText("2 Tabellen bereit, nur Daten").waitFor({ timeout: 120_000 });
+        await finish(page, /Zeilen in 2 Tabellen übertragen und verifiziert/);
+        for (const [table, columns] of [
+          ["kunde", "id || name || land || saldo || angelegt || geheim"],
+          ["auftrag", "id || pos || kunde_id || betrag || status"],
+        ]) {
+          const digest = (owner: string) =>
+            value(
+              "system",
+              `SELECT COUNT(*) || '/' || SUM(ORA_HASH(${columns})) FROM ${owner}.${table}`,
+            );
+          expect(await digest("tr_dst")).toBe(await digest("tr_src"));
+        }
+        expect(
+          await value(
+            "system",
+            "SELECT generation_type FROM dba_tab_identity_cols WHERE owner = 'TR_DST' AND table_name = 'KUNDE'",
+          ),
+        ).toBe("ALWAYS");
+        expect(
+          (
+            await sql(
+              "system",
+              "SELECT trigger_name || ' ' || status AS t FROM dba_triggers WHERE owner = 'TR_DST' ORDER BY 1",
+            )
+          ).map((row) => row.T),
+        ).toEqual(["AUFTRAG_BI ENABLED", "KUNDE_AU DISABLED"]);
+
+        await page.getByRole("button", { name: "Übertragung starten" }).waitFor();
+        await pickContent(page, "Struktur und Daten");
+        await page.getByText(/Objekte im Ziel bereits vorhanden/).waitFor({ timeout: 120_000 });
+      });
+    } finally {
+      await sql("system", CLEAR_TARGET);
+    }
+  },
+  900_000,
+);
 
 test.skipIf(!enabled)(
   "Oracle → Oracle copies every object, every value and keeps it usable",

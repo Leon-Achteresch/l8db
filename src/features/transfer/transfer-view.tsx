@@ -53,7 +53,11 @@ export function TransferView() {
         ? `${conflicts.length} Objekte im Ziel bereits vorhanden`
         : plan.replace
           ? `${plan.tables.length} Tabellen bereit, Ziel wird überschrieben`
-          : `${plan.tables.length} Tabellen bereit`
+          : plan.content === "structure"
+            ? `${plan.tables.length} Tabellen bereit, nur Struktur`
+            : plan.content === "data"
+              ? `${plan.tables.length} Tabellen bereit, nur Daten`
+              : `${plan.tables.length} Tabellen bereit`
       : transfer.outcome?.committed
         ? "Abgeschlossen. Für einen weiteren Transfer die Auswahl ändern."
         : "Quelle, Ziel und mindestens ein Schema wählen.";
@@ -137,6 +141,7 @@ export function TransferView() {
         {(transfer.running || transfer.outcome) && (
           <div className="shrink-0 rounded-xl border bg-card p-3">
             <TransferRunStatus
+              content={plan?.content ?? transfer.content}
               running={transfer.running}
               progress={transfer.progress}
               outcome={transfer.outcome}
@@ -148,15 +153,21 @@ export function TransferView() {
           {transfer.sourceConnection ? (
             <TransferSchemas
               scope={transfer.scope}
+              connectionId={transfer.sourceConnection.id}
+              database={transfer.source.database}
               schemas={transfer.sourceSchemas}
               existing={transfer.targetSchemas}
               selected={transfer.schemas}
               mapping={transfer.mapping}
+              tables={transfer.tables}
+              content={transfer.content}
               plan={plan}
               sizes={sizes}
               onToggle={transfer.toggleSchema}
               onSelectAll={transfer.setSchemas}
               onMap={transfer.setMapping}
+              onTables={transfer.setTables}
+              onContent={transfer.setContent}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">

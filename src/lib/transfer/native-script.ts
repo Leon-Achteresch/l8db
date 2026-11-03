@@ -67,3 +67,57 @@ export function nativeScript(
   }
   return { preData, postData, warnings: script.warnings };
 }
+
+const TABLE_PARTS = new Set(["column", "constraint", "index", "trigger", "comment", "grant"]);
+const DEPENDENCIES = new Set([
+  "sequence",
+  "type",
+  "type_body",
+  "function",
+  "procedure",
+  "package",
+  "package_body",
+]);
+const WORD = /[\p{L}\p{N}_$#]+/gu;
+
+export function selectTables(
+  objects: CatalogObject[],
+  tables: string[] | undefined,
+): { objects: CatalogObject[]; warnings: string[] } {
+  if (!tables) return { objects, warnings: [] };
+  const chosen = new Set(tables);
+  const warnings: string[] = [];
+  const kept = objects.filter((object) => {
+    if (object.object_type === "table") return chosen.has(object.name);
+    if (!object.parent || !chosen.has(object.parent) || !TABLE_PARTS.has(object.object_type))
+      return false;
+    const references = object.attributes.references;
+    if (object.object_type !== "constraint" || !references || chosen.has(references)) return true;
+    warnings.push(
+      `Fremdschlüssel ${object.parent}.${object.name} entfällt, weil ${references} nicht ausgewählt ist.`,
+    );
+    return false;
+  });
+  const candidates = new Map<string, CatalogObject[]>();
+  for (const object of objects) {
+    if (!DEPENDENCIES.has(object.object_type)) continue;
+    const key = object.name.toLowerCase();
+    const list = candidates.get(key);
+    if (list) list.push(object);
+    else candidates.set(key, [object]);
+  }
+  const needed = new Set<CatalogObject>();
+  const queue = [...kept];
+  while (queue.length > 0) {
+    const object = queue.pop() as CatalogObject;
+    const text = `${object.ddl}\n${object.attributes.type ?? ""}\n${(object.depends_on ?? []).join("\n")}`;
+    for (const [word] of text.matchAll(WORD)) {
+      for (const candidate of candidates.get(word.toLowerCase()) ?? []) {
+        if (needed.has(candidate)) continue;
+        needed.add(candidate);
+        queue.push(candidate);
+      }
+    }
+  }
+  return { objects: [...objects.filter((object) => needed.has(object)), ...kept], warnings };
+}
