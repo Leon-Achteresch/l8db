@@ -33,6 +33,10 @@ export function removeUiPlugin(name: string): Promise<void> {
   return invoke<void>("ui_plugins_remove", { name });
 }
 
+export function writeUiPluginSdk(): Promise<void> {
+  return invoke<void>("ui_plugins_write_sdk");
+}
+
 export function writeUiPluginSupport(name: UiPluginSupportFile, contents: string): Promise<void> {
   return invoke<void>("ui_plugins_write_support", { name, contents });
 }

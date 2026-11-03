@@ -653,6 +653,7 @@ pub fn run() {
             ui_plugins::ui_plugins_write,
             ui_plugins::ui_plugins_remove,
             ui_plugins::ui_plugins_write_support,
+            ui_plugins::ui_plugins_write_sdk,
             ui_plugins::ui_plugins_watch,
             sync::sync_test,
             sync::sync_fetch,

@@ -34,7 +34,9 @@ Ohne Plugins bekommen die Zellen kein Plugin-Prop und keine zusätzlichen Hooks.
    - Grenzen: höchstens 200 Dateien mit je 256 KB.
    - Nur `.tsx`, `.ts`, `.jsx` und `.js` zählen, `.d.ts` nicht.
    - `ui_plugins_watch` meldet Änderungen mit 120 ms Entprellung als `ui-plugins-changed`.
-   - `ui_plugins_write`, `ui_plugins_remove` und `ui_plugins_write_support` schreiben Plugins und die Hilfsdateien: `AGENTS.md`, `CLAUDE.md`, `l8db-ui.d.ts`, `tsconfig.json` und `.status.json`.
+   - `ui_plugins_write` und `ui_plugins_remove` schreiben und löschen Plugins.
+   - `ui_plugins_write_sdk` schreibt die Hilfsdateien `AGENTS.md`, `CLAUDE.md`, `l8db-ui.d.ts` und `tsconfig.json`. Das Backend bettet sie beim Kompilieren aus `packages/ui-plugin-api/` ein, damit das Frontend sie nicht beim Start lädt.
+   - Das Frontend nutzt `ui_plugins_write_support` nur noch für `.status.json`.
 2. **Start**: `src/features/ui-plugins/boot.ts` lädt den Host als eigenen Chunk erst nach dem ersten Render.
    - Die Shell importiert nur den Store (`store.ts` mit leerer Registry und `errorMessage`) sowie die Anbindung von Tabs und Split-Ansicht.
    - Registry, Validatoren, `SlotGuard`, SDK-Module und der Neuaufbau bei geänderten Einstellungen kommen erst mit dem Host.

@@ -17,6 +17,7 @@ Object.defineProperty(globalThis, "window", {
 
 const files = new Map<string, string>();
 const support = new Map<string, string>();
+let sdkWrites = 0;
 let changed: (() => void) | null = null;
 
 mock.module("@tauri-apps/api/core", () => ({
@@ -28,6 +29,7 @@ mock.module("@tauri-apps/api/core", () => ({
         skipped: [],
       };
     if (command === "ui_plugins_write_support") support.set(args.name, args.contents);
+    if (command === "ui_plugins_write_sdk") sdkWrites++;
     if (command === "ui_plugins_write") files.set(args.name, args.source);
     if (command === "ui_plugins_remove") files.delete(args.name);
     return null;
@@ -291,13 +293,8 @@ export default definePlugin({ id: "test.ticker", slots: { grid: { cell: () => un
     );
   });
 
-  test("writes the AI support files into the plugin folder", () => {
-    expect(support.get("CLAUDE.md")).toBe("@AGENTS.md\n");
-    expect(support.get("AGENTS.md")).toContain(".status.json");
-    expect(support.get("l8db-ui.d.ts")).toContain("export interface Slots");
-    expect(
-      JSON.parse(support.get("tsconfig.json") ?? "{}").compilerOptions.paths["@l8db/ui"],
-    ).toEqual(["./l8db-ui.d.ts"]);
+  test("asks the backend to write the AI support files into the plugin folder", () => {
+    expect(sdkWrites).toBe(1);
   });
 
   test("checks catalog sources before installing", async () => {
