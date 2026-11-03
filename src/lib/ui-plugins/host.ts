@@ -6,10 +6,9 @@ import {
   UI_PLUGINS_CHANGED_EVENT,
   type UiPluginFile,
   watchUiPlugins,
+  writeUiPluginSdk,
   writeUiPluginSupport,
 } from "@/lib/db";
-import agentsGuide from "../../../packages/ui-plugin-api/folder-agents.md?raw";
-import sdkTypes from "../../../packages/ui-plugin-api/l8db-ui.d.ts?raw";
 import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
 import type { SlotName } from "./guard";
@@ -90,24 +89,6 @@ useUiPluginSettings.subscribe((state, previous) => {
 });
 
 type Compiler = typeof import("../../../packages/ui-plugin-api/src/compile");
-
-const TSCONFIG = `${JSON.stringify(
-  {
-    compilerOptions: {
-      target: "ES2022",
-      module: "ESNext",
-      moduleResolution: "bundler",
-      jsx: "react-jsx",
-      strict: true,
-      noEmit: true,
-      skipLibCheck: true,
-      paths: { "@l8db/ui": ["./l8db-ui.d.ts"] },
-    },
-    include: ["*.ts", "*.tsx"],
-  },
-  null,
-  2,
-)}\n`;
 
 let modules: Readonly<Record<string, unknown>> = {};
 let running: Promise<void> | null = null;
@@ -280,13 +261,6 @@ export function reloadUiPlugins(): Promise<void> {
   return running;
 }
 
-async function writeSupportFiles() {
-  await writeUiPluginSupport("AGENTS.md", agentsGuide);
-  await writeUiPluginSupport("CLAUDE.md", "@AGENTS.md\n");
-  await writeUiPluginSupport("l8db-ui.d.ts", sdkTypes);
-  await writeUiPluginSupport("tsconfig.json", TSCONFIG);
-}
-
 export async function startUiPluginHost(sdkModules: Readonly<Record<string, unknown>>) {
   if (started) return;
   started = true;
@@ -307,5 +281,5 @@ export async function startUiPluginHost(sdkModules: Readonly<Record<string, unkn
   void watchUiPlugins().catch((error) =>
     console.warn("UI-Plugin-Ordner wird nicht beobachtet", error),
   );
-  if (isMainWindow) void writeSupportFiles().catch(() => undefined);
+  if (isMainWindow) void writeUiPluginSdk().catch(() => undefined);
 }
