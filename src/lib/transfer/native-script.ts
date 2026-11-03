@@ -87,37 +87,51 @@ export function selectTables(
   if (!tables) return { objects, warnings: [] };
   const chosen = new Set(tables);
   const warnings: string[] = [];
-  const kept = objects.filter((object) => {
-    if (object.object_type === "table") return chosen.has(object.name);
-    if (!object.parent || !chosen.has(object.parent) || !TABLE_PARTS.has(object.object_type))
-      return false;
-    const references = object.attributes.references;
-    if (object.object_type !== "constraint" || !references || chosen.has(references)) return true;
-    warnings.push(
-      `Fremdschlüssel ${object.parent}.${object.name} entfällt, weil ${references} nicht ausgewählt ist.`,
-    );
-    return false;
-  });
+  const kept: CatalogObject[] = [];
+  const dependencies: CatalogObject[] = [];
   const candidates = new Map<string, CatalogObject[]>();
   for (const object of objects) {
-    if (!DEPENDENCIES.has(object.object_type)) continue;
-    const key = object.name.toLowerCase();
-    const list = candidates.get(key);
-    if (list) list.push(object);
-    else candidates.set(key, [object]);
+    const type = object.object_type;
+    if (type === "table") {
+      if (chosen.has(object.name)) kept.push(object);
+    } else if (DEPENDENCIES.has(type)) {
+      dependencies.push(object);
+      const key = object.name.toLowerCase();
+      const list = candidates.get(key);
+      if (list) list.push(object);
+      else candidates.set(key, [object]);
+    } else if (object.parent && TABLE_PARTS.has(type) && chosen.has(object.parent)) {
+      const references = type === "constraint" ? object.attributes.references : undefined;
+      if (!references || chosen.has(references)) kept.push(object);
+      else
+        warnings.push(
+          `Fremdschlüssel ${object.parent}.${object.name} entfällt, weil ${references} nicht ausgewählt ist.`,
+        );
+    }
   }
+  if (candidates.size === 0) return { objects: kept, warnings };
   const needed = new Set<CatalogObject>();
   const queue = [...kept];
-  while (queue.length > 0) {
-    const object = queue.pop() as CatalogObject;
-    const text = `${object.ddl}\n${object.attributes.type ?? ""}\n${(object.depends_on ?? []).join("\n")}`;
+  const visit = (text: string | undefined) => {
+    if (!text) return;
     for (const [word] of text.matchAll(WORD)) {
-      for (const candidate of candidates.get(word.toLowerCase()) ?? []) {
+      const found = candidates.get(word.toLowerCase());
+      if (!found) continue;
+      for (const candidate of found) {
         if (needed.has(candidate)) continue;
         needed.add(candidate);
         queue.push(candidate);
       }
     }
+  };
+  while (queue.length > 0) {
+    const object = queue.pop() as CatalogObject;
+    visit(object.ddl);
+    visit(object.attributes.type);
+    for (const dependency of object.depends_on ?? []) visit(dependency);
   }
-  return { objects: [...objects.filter((object) => needed.has(object)), ...kept], warnings };
+  return {
+    objects: [...dependencies.filter((object) => needed.has(object)), ...kept],
+    warnings,
+  };
 }
