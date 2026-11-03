@@ -23,21 +23,22 @@ export default {
         method: "POST",
         body: JSON.stringify({ title: quiet(report.title.trim()), body, labels: LABELS }),
       });
-      if (report.screenshot) {
-        const path = `screenshots/${issue.number}-${crypto.randomUUID()}.png`;
-        await github(token, `/repos/${env.ASSETS_REPOSITORY}/contents/${path}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            message: `Screenshot for issue #${issue.number}`,
-            content: report.screenshot,
-          }),
-        });
-        await github(token, `/repos/${env.REPOSITORY}/issues/${issue.number}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            body: `${body}\n\n![Geschwärzter Screenshot](https://raw.githubusercontent.com/${env.ASSETS_REPOSITORY}/HEAD/${path})`,
-          }),
-        });
+      const base = env.SCREENSHOT_BASE_URL?.replace(/\/$/, "");
+      if (report.screenshot && base?.startsWith("https://") && !base.includes("REPLACE")) {
+        const key = `${issue.number}-${crypto.randomUUID()}.png`;
+        try {
+          await env.SCREENSHOTS.put(
+            key,
+            Uint8Array.from(atob(report.screenshot), (char) => char.charCodeAt(0)),
+            { httpMetadata: { contentType: "image/png" } },
+          );
+          await github(token, `/repos/${env.REPOSITORY}/issues/${issue.number}`, {
+            method: "PATCH",
+            body: JSON.stringify({ body: `${body}\n\n![Geschwärzter Screenshot](${base}/${key})` }),
+          });
+        } catch (error) {
+          console.error(error);
+        }
       }
       return reply({ url: issue.html_url, number: issue.number }, 201);
     } catch (error) {
@@ -54,7 +55,13 @@ export function invalid(report) {
     return `Titel fehlt oder ist länger als ${MAX_TITLE} Zeichen.`;
   if (typeof body !== "string" || !body.trim() || [...body].length > MAX_BODY)
     return `Beschreibung fehlt oder ist länger als ${MAX_BODY} Zeichen.`;
-  if (screenshot != null && (typeof screenshot !== "string" || !screenshot.startsWith(PNG_PREFIX)))
+  if (
+    screenshot != null &&
+    (typeof screenshot !== "string" ||
+      !screenshot.startsWith(PNG_PREFIX) ||
+      screenshot.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(screenshot))
+  )
     return "Screenshot muss ein PNG sein.";
   return null;
 }
