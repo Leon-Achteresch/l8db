@@ -322,14 +322,18 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
-        "plan_transfer" => crate::db::transfer::plan(
-            &crate::db::transfer::Endpoint {
-                kind: a(x, "kind")?,
-                connection_string: a(x, "connectionString")?,
-                database: a(x, "database")?,
-            },
-            &a(x, "request")?,
-            pool.clone(),
+        "plan_transfer" => crate::db::execution::run(
+            a(x, "options")?,
+            true,
+            crate::db::transfer::plan(
+                &crate::db::transfer::Endpoint {
+                    kind: a(x, "kind")?,
+                    connection_string: a(x, "connectionString")?,
+                    database: a(x, "database")?,
+                },
+                &a(x, "request")?,
+                pool.clone(),
+            ),
         )
         .await
         .map(|v| json!(v)),

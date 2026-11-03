@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use oracle::sql_type::{
@@ -7,10 +8,13 @@ use oracle::{Connection, SqlValue};
 use tokio_util::sync::CancellationToken;
 
 use super::super::import::Dialect;
-use super::super::oracle::OracleAdapter;
+use super::super::oracle::{quote, OracleAdapter};
 use super::super::pool::PoolState;
-use super::super::DatabaseAdapter;
-use super::{Endpoint, SchemaPair, TransferTable};
+use super::super::{
+    ConstraintInfo, DatabaseAdapter, DetailedColumnInfo, ForeignKeyInfo, ImportColumnInfo,
+    IndexInfo,
+};
+use super::{Endpoint, Need, SchemaPair, TableMeta, TransferTable, PLAN_CANCELLED};
 
 const BATCH_ROWS: usize = 500;
 const BATCH_BYTES: usize = 16 << 20;
@@ -568,6 +572,321 @@ pub async fn recompile(
         }
     }
     Ok((broken, inherited))
+}
+
+const CATALOG_FETCH: u32 = 1000;
+
+const CATALOG_COLUMNS: &str = "SELECT c.table_name, c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
+     c.nullable, c.column_id, c.char_length, \
+     CASE WHEN c.identity_column = 'YES' THEN 1 ELSE 0 END, \
+     CASE WHEN c.virtual_column = 'YES' AND c.default_length > 0 THEN 1 ELSE 0 END \
+     FROM all_tab_cols c WHERE c.owner = :owner AND (c.hidden_column = 'NO' OR c.user_generated = 'YES') \
+     ORDER BY c.table_name, c.column_id, c.internal_column_id";
+
+const CATALOG_DEFAULTS: &str = "SELECT table_name, column_name, data_default FROM all_tab_cols \
+     WHERE owner = :owner AND default_length > 0 AND (hidden_column = 'NO' OR user_generated = 'YES')";
+
+const CATALOG_INDEXES: &str = "SELECT i.table_name, i.index_name, i.uniqueness, i.index_type, ic.column_name, CASE WHEN p.index_name IS NULL THEN 0 ELSE 1 END \
+     FROM all_indexes i JOIN all_ind_columns ic ON ic.index_owner = i.owner AND ic.index_name = i.index_name \
+     LEFT JOIN (SELECT DISTINCT owner, index_name FROM all_constraints WHERE owner = :owner AND constraint_type = 'P' AND index_name IS NOT NULL) p \
+     ON p.owner = i.owner AND p.index_name = i.index_name \
+     WHERE i.table_owner = :owner ORDER BY i.table_name, i.index_name, ic.column_position";
+
+const CATALOG_FOREIGN_KEYS: &str = "SELECT c.table_name, c.constraint_name, cc.column_name, r.owner, r.table_name, rc.column_name FROM all_constraints c \
+     JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
+     JOIN all_constraints r ON r.owner = c.r_owner AND r.constraint_name = c.r_constraint_name \
+     JOIN all_cons_columns rc ON rc.owner = r.owner AND rc.constraint_name = r.constraint_name AND rc.position = cc.position \
+     WHERE c.constraint_type = 'R' AND c.owner = :owner ORDER BY c.table_name, c.constraint_name, cc.position";
+
+fn catalog_constraints(primary_only: bool) -> String {
+    format!(
+        "SELECT c.table_name, c.constraint_name, c.constraint_type, cc.column_name, c.search_condition_vc \
+         FROM all_constraints c LEFT JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
+         WHERE c.owner = :owner{} ORDER BY c.table_name, c.constraint_type, c.constraint_name, cc.position",
+        if primary_only { " AND c.constraint_type = 'P'" } else { "" }
+    )
+}
+
+fn scan(
+    conn: &Connection,
+    sql: &str,
+    owner: &String,
+    cancel: &CancellationToken,
+    mut visit: impl FnMut(&oracle::Row) -> oracle::Result<()>,
+) -> Result<(), String> {
+    let error = |e: oracle::Error| format!("Oracle-Katalog von {owner} lesen: {e}");
+    let mut statement = conn
+        .statement(sql)
+        .fetch_array_size(CATALOG_FETCH)
+        .prefetch_rows(CATALOG_FETCH + 1)
+        .build()
+        .map_err(error)?;
+    for row in statement.query_named(&[("owner", owner)]).map_err(error)? {
+        if cancel.is_cancelled() {
+            return Err(PLAN_CANCELLED.into());
+        }
+        visit(&row.map_err(error)?).map_err(error)?;
+    }
+    Ok(())
+}
+
+fn read_catalog(
+    conn: &Connection,
+    owner: &String,
+    tables: Vec<String>,
+    need: Need,
+    cancel: &CancellationToken,
+) -> Result<Vec<TableMeta>, String> {
+    let position: HashMap<String, usize> = tables
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.clone(), i))
+        .collect();
+    let mut metas: Vec<TableMeta> = tables
+        .into_iter()
+        .map(|name| TableMeta {
+            name,
+            columns: Vec::new(),
+            flags: Vec::new(),
+            constraints: Vec::new(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        })
+        .collect();
+    let slot = |table: &str| position.get(table).copied();
+    scan(conn, CATALOG_COLUMNS, owner, cancel, |row| {
+        let Some(i) = slot(&row.get::<_, String>(0)?) else {
+            return Ok(());
+        };
+        let name: String = row.get(1)?;
+        let data_type: String = row.get(2)?;
+        let is_nullable = row.get::<_, Option<String>>(3)?.as_deref() == Some("Y");
+        let ordinal_position = row.get::<_, Option<i64>>(4)?.unwrap_or(0) as i32;
+        metas[i].flags.push(ImportColumnInfo {
+            name: name.clone(),
+            data_type: data_type.clone(),
+            is_nullable,
+            has_default: false,
+            is_identity: row.get::<_, i64>(6)? > 0,
+            is_generated: row.get::<_, i64>(7)? > 0,
+            ordinal_position,
+        });
+        metas[i].columns.push(DetailedColumnInfo {
+            name,
+            data_type,
+            is_nullable,
+            column_default: None,
+            is_primary_key: false,
+            ordinal_position,
+            character_maximum_length: row
+                .get::<_, Option<i64>>(5)?
+                .map(|length| length as i32)
+                .filter(|length| *length > 0),
+            comment: None,
+        });
+        Ok(())
+    })?;
+    if need.details {
+        scan(conn, CATALOG_DEFAULTS, owner, cancel, |row| {
+            let Some(i) = slot(&row.get::<_, String>(0)?) else {
+                return Ok(());
+            };
+            let column: String = row.get(1)?;
+            let default = row
+                .get::<_, Option<String>>(2)?
+                .map(|d| d.trim().to_string());
+            if let Some(entry) = metas[i].columns.iter_mut().find(|c| c.name == column) {
+                entry.column_default = default;
+            }
+            Ok(())
+        })?;
+    }
+    scan(
+        conn,
+        &catalog_constraints(!need.details),
+        owner,
+        cancel,
+        |row| {
+            let Some(i) = slot(&row.get::<_, String>(0)?) else {
+                return Ok(());
+            };
+            let name: String = row.get(1)?;
+            let column: Option<String> = row.get(3)?;
+            let constraints = &mut metas[i].constraints;
+            if let Some(last) = constraints.last_mut().filter(|c| c.name == name) {
+                last.columns.extend(column);
+                return Ok(());
+            }
+            let constraint_type = match row.get::<_, String>(2)?.as_str() {
+                "P" => "PRIMARY KEY",
+                "U" => "UNIQUE",
+                "R" => "FOREIGN KEY",
+                "C" => "CHECK",
+                other => {
+                    return Ok(constraints.push(ConstraintInfo {
+                        name,
+                        constraint_type: other.to_string(),
+                        columns: column.into_iter().collect(),
+                        definition: String::new(),
+                    }))
+                }
+            }
+            .to_string();
+            let check: Option<String> = row.get(4)?;
+            constraints.push(ConstraintInfo {
+                name,
+                definition: check
+                    .map(|check| format!("CHECK ({check})"))
+                    .unwrap_or_default(),
+                constraint_type,
+                columns: column.into_iter().collect(),
+            });
+            Ok(())
+        },
+    )?;
+    for meta in &mut metas {
+        for constraint in &mut meta.constraints {
+            if constraint.definition.is_empty() {
+                constraint.definition = format!(
+                    "{} ({})",
+                    constraint.constraint_type,
+                    constraint.columns.join(", ")
+                );
+            }
+        }
+        let key: Vec<String> = meta
+            .constraints
+            .iter()
+            .find(|c| c.constraint_type == "PRIMARY KEY")
+            .map(|c| c.columns.clone())
+            .unwrap_or_default();
+        for column in &mut meta.columns {
+            column.is_primary_key = key.contains(&column.name);
+        }
+    }
+    if need.details {
+        scan(conn, CATALOG_INDEXES, owner, cancel, |row| {
+            let Some(i) = slot(&row.get::<_, String>(0)?) else {
+                return Ok(());
+            };
+            let name: String = row.get(1)?;
+            let column: String = row.get(4)?;
+            let indexes = &mut metas[i].indexes;
+            if let Some(last) = indexes.last_mut().filter(|index| index.name == name) {
+                last.columns.push(column);
+                return Ok(());
+            }
+            indexes.push(IndexInfo {
+                is_unique: row.get::<_, String>(2)? == "UNIQUE",
+                is_primary: row.get::<_, i64>(5)? > 0,
+                index_type: row.get::<_, String>(3)?.to_lowercase(),
+                columns: vec![column],
+                definition: String::new(),
+                name,
+            });
+            Ok(())
+        })?;
+        for meta in &mut metas {
+            for index in &mut meta.indexes {
+                index.definition = format!(
+                    "CREATE {}INDEX {} ON {}.{} ({})",
+                    if index.is_unique { "UNIQUE " } else { "" },
+                    quote(&index.name),
+                    quote(owner),
+                    quote(&meta.name),
+                    index
+                        .columns
+                        .iter()
+                        .map(|c| quote(c))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
+    }
+    if need.details || need.foreign_keys {
+        scan(conn, CATALOG_FOREIGN_KEYS, owner, cancel, |row| {
+            let from_table: String = row.get(0)?;
+            let Some(i) = slot(&from_table) else {
+                return Ok(());
+            };
+            metas[i].foreign_keys.push(ForeignKeyInfo {
+                constraint_name: row.get(1)?,
+                from_schema: owner.clone(),
+                from_table,
+                from_column: row.get(2)?,
+                to_schema: row.get(3)?,
+                to_table: row.get(4)?,
+                to_column: row.get(5)?,
+            });
+            Ok(())
+        })?;
+    }
+    Ok(metas)
+}
+
+pub(super) async fn table_metas(
+    endpoint: &Endpoint,
+    pool: &PoolState,
+    schema: &str,
+    tables: Vec<String>,
+    need: Need,
+) -> Result<Vec<TableMeta>, String> {
+    if tables.is_empty() {
+        return Ok(Vec::new());
+    }
+    let connection = open(endpoint, pool).await?;
+    let cancel = super::super::execution::cancellation_token();
+    let owner = schema.to_string();
+    blocking(move || {
+        let conn = lock(&connection)?;
+        let result = read_catalog(&conn, &owner, tables, need, &cancel);
+        let _ = conn.rollback();
+        result
+    })
+    .await
+}
+
+pub(super) async fn trigger_switches(
+    adapter: &dyn DatabaseAdapter,
+    tables: &[TransferTable],
+) -> Result<(Vec<super::Statement>, Vec<super::Statement>), String> {
+    let d = Dialect::Oracle;
+    let mut planned: HashMap<&str, std::collections::HashSet<&str>> = HashMap::new();
+    for table in tables {
+        planned
+            .entry(table.target_schema.as_str())
+            .or_default()
+            .insert(table.target_name.as_str());
+    }
+    let (mut disable, mut enable) = (Vec::new(), Vec::new());
+    for (schema, names) in planned {
+        let result = adapter
+            .execute_query(&format!(
+                "SELECT owner AS o, trigger_name AS n, table_name AS t FROM all_triggers \
+                 WHERE table_owner = {} AND status = 'ENABLED' AND base_object_type = 'TABLE' ORDER BY owner, trigger_name",
+                super::super::quote_literal(schema)
+            ))
+            .await?;
+        for row in &result.rows {
+            let text = |key: &str| {
+                row.get(key)
+                    .and_then(super::super::export::value_text)
+                    .unwrap_or_default()
+            };
+            if !names.contains(text("T").as_str()) {
+                continue;
+            }
+            let trigger = d.target(&text("O"), &text("N"));
+            disable.push(super::Statement::plain(format!(
+                "ALTER TRIGGER {trigger} DISABLE"
+            )));
+            enable.push(super::Statement::plain(format!(
+                "ALTER TRIGGER {trigger} ENABLE"
+            )));
+        }
+    }
+    Ok((disable, enable))
 }
 
 pub async fn container_id(adapter: &dyn DatabaseAdapter) -> Result<String, String> {

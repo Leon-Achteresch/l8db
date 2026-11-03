@@ -57,7 +57,10 @@ export interface TransferEndpoint {
 export interface TransferSchemaPair {
   source: string;
   target: string;
+  tables?: string[];
 }
+
+export type TransferContent = "all" | "structure" | "data";
 
 export interface TransferStatement {
   sql: string;
@@ -114,6 +117,7 @@ export interface TransferPlan {
   conflicts: string[];
   replace: boolean;
   replaced: string[];
+  content: TransferContent;
 }
 
 export interface TransferOutcome {
@@ -149,10 +153,12 @@ export async function planTransfer(
     schemas: TransferSchemaPair[];
     foldNames: boolean;
     replace: boolean;
+    content: TransferContent;
   },
   database?: string,
+  options?: QueryExecutionOptions,
 ): Promise<TransferPlan> {
-  return invoke("plan_transfer", { kind, connectionString, database, request });
+  return invoke("plan_transfer", { kind, connectionString, database, request, options });
 }
 
 export async function runTransfer(
