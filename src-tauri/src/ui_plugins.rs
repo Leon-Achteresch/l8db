@@ -20,6 +20,39 @@ const SUPPORT_FILES: [&str; 5] = [
     ".status.json",
 ];
 pub const CHANGED_EVENT: &str = "ui-plugins-changed";
+const SDK_TSCONFIG: &str = r#"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@l8db/ui": [
+        "./l8db-ui.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "*.ts",
+    "*.tsx"
+  ]
+}
+"#;
+const SDK_FILES: [(&str, &str); 4] = [
+    (
+        "AGENTS.md",
+        include_str!("../../packages/ui-plugin-api/folder-agents.md"),
+    ),
+    ("CLAUDE.md", "@AGENTS.md\n"),
+    (
+        "l8db-ui.d.ts",
+        include_str!("../../packages/ui-plugin-api/l8db-ui.d.ts"),
+    ),
+    ("tsconfig.json", SDK_TSCONFIG),
+];
 
 #[derive(Default)]
 pub struct UiPluginWatcher(Mutex<Option<RecommendedWatcher>>);
@@ -214,6 +247,18 @@ pub fn ui_plugins_write_support(name: String, contents: String) -> Result<(), St
     write_support(&plugin_dir()?, &name, &contents)
 }
 
+fn write_sdk(dir: &Path) -> Result<(), String> {
+    for (name, contents) in SDK_FILES {
+        write_support(dir, name, contents)?;
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn ui_plugins_write_sdk() -> Result<(), String> {
+    write_sdk(&plugin_dir()?)
+}
+
 #[tauri::command]
 pub fn ui_plugins_watch<R: Runtime>(
     app: AppHandle<R>,
@@ -260,6 +305,22 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("l8db-ui-{}", rand::random::<u64>()));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn writes_the_ai_sdk_files_into_the_plugin_folder() {
+        let dir = temp_dir();
+        write_sdk(&dir).unwrap();
+        let read = |name: &str| fs::read_to_string(dir.join(name)).unwrap();
+        assert_eq!(read("CLAUDE.md"), "@AGENTS.md\n");
+        assert!(read("AGENTS.md").contains(".status.json"));
+        assert!(read("l8db-ui.d.ts").contains("export interface Slots"));
+        let config: serde_json::Value = serde_json::from_str(&read("tsconfig.json")).unwrap();
+        assert_eq!(
+            config["compilerOptions"]["paths"]["@l8db/ui"],
+            serde_json::json!(["./l8db-ui.d.ts"])
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
