@@ -266,10 +266,12 @@ pub async fn run_transfer(
                 .map(|pair| transfer::SchemaPair {
                     source: pair.source.clone(),
                     target: pair.target.clone(),
+                    tables: None,
                 })
                 .collect(),
             fold_names,
             replace: false,
+            content: transfer::Content::All,
         },
         pool.clone(),
     )

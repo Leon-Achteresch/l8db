@@ -137,6 +137,7 @@ fn table(name: &str, parents: &[&str]) -> SourceTable {
         pair: SchemaPair {
             source: "s".into(),
             target: "t".into(),
+            tables: None,
         },
         name: name.into(),
         columns: Vec::new(),
@@ -178,6 +179,142 @@ fn loads_parents_before_children_and_survives_cycles() {
     let order = load_order(&cycle);
     assert_eq!(order.len(), 3);
     assert_eq!(cycle[order[0]].name, "c");
+}
+
+fn quadratic_order(tables: &[SourceTable]) -> Vec<usize> {
+    let index: HashMap<(&str, &str), usize> = tables
+        .iter()
+        .enumerate()
+        .map(|(i, t)| ((t.pair.source.as_str(), t.name.as_str()), i))
+        .collect();
+    let parents: Vec<HashSet<usize>> = tables
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            t.foreign_keys
+                .iter()
+                .filter_map(|fk| index.get(&(fk.ref_schema.as_str(), fk.ref_table.as_str())))
+                .copied()
+                .filter(|parent| *parent != i)
+                .collect()
+        })
+        .collect();
+    let mut placed = vec![false; tables.len()];
+    let mut order = Vec::new();
+    while order.len() < tables.len() {
+        let next = (0..tables.len())
+            .find(|i| !placed[*i] && parents[*i].iter().all(|p| placed[*p]))
+            .or_else(|| (0..tables.len()).find(|i| !placed[*i]))
+            .unwrap_or_default();
+        placed[next] = true;
+        order.push(next);
+    }
+    order
+}
+
+#[test]
+fn selected_partitioned_parents_bring_their_partitions() {
+    let partitions: HashMap<String, String> = [
+        ("umsatz_2025", "umsatz"),
+        ("umsatz_2026", "umsatz"),
+        ("umsatz_2026_q1", "umsatz_2026"),
+        ("log_alt", "log"),
+    ]
+    .into_iter()
+    .map(|(child, parent)| (child.to_string(), parent.to_string()))
+    .collect();
+    let chosen: HashSet<&str> = ["umsatz", "kunde"].into_iter().collect();
+    let kept: Vec<&str> = [
+        "umsatz",
+        "umsatz_2025",
+        "umsatz_2026",
+        "umsatz_2026_q1",
+        "log",
+        "log_alt",
+        "kunde",
+    ]
+    .into_iter()
+    .filter(|name| within(&partitions, &chosen, name))
+    .collect();
+    assert_eq!(
+        kept,
+        [
+            "umsatz",
+            "umsatz_2025",
+            "umsatz_2026",
+            "umsatz_2026_q1",
+            "kunde"
+        ]
+    );
+    let looped: HashMap<String, String> = [("a", "b"), ("b", "a")]
+        .into_iter()
+        .map(|(child, parent)| (child.to_string(), parent.to_string()))
+        .collect();
+    assert!(!within(&looped, &chosen, "a"));
+}
+
+#[test]
+fn load_order_matches_reference_and_scales_to_huge_schemas() {
+    let mut seed = 7u64;
+    let mut next = move || {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) as usize
+    };
+    for size in [1, 2, 5, 30, 200, 1000] {
+        let names: Vec<String> = (0..size).map(|i| format!("t{i}")).collect();
+        let tables: Vec<SourceTable> = (0..size)
+            .map(|i| {
+                let parents: Vec<&str> = (0..next() % 4)
+                    .map(|_| names[next() % size].as_str())
+                    .collect();
+                table(&names[i], &parents)
+            })
+            .collect();
+        assert_eq!(load_order(&tables), quadratic_order(&tables), "size {size}");
+    }
+    let size = 50_000;
+    let names: Vec<String> = (0..size).map(|i| format!("t{i}")).collect();
+    let tables: Vec<SourceTable> = (0..size)
+        .map(|i| {
+            let parents: Vec<&str> = names.get(i + 1).map(String::as_str).into_iter().collect();
+            table(&names[i], &parents)
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let order = load_order(&tables);
+    let elapsed = started.elapsed();
+    eprintln!("load order for {size} chained tables: {elapsed:?}");
+    assert_eq!(order.first(), Some(&(size - 1)));
+    assert_eq!(order.last(), Some(&0));
+    assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+}
+
+#[test]
+fn plan_requests_default_to_everything() {
+    let request: PlanRequest = serde_json::from_value(serde_json::json!({
+        "source": { "kind": "sqlite", "connectionString": "sqlite://x", "database": null },
+        "schemas": [{ "source": "main", "target": "main" }],
+    }))
+    .unwrap();
+    assert_eq!(request.content, Content::All);
+    assert_eq!(request.schemas[0].tables, None);
+    let scoped: PlanRequest = serde_json::from_value(serde_json::json!({
+        "source": { "kind": "sqlite", "connectionString": "sqlite://x", "database": null },
+        "schemas": [{ "source": "main", "target": "main", "tables": ["a"] }],
+        "content": "data",
+    }))
+    .unwrap();
+    assert_eq!(scoped.content, Content::Data);
+    assert_eq!(scoped.schemas[0].tables, Some(vec!["a".to_string()]));
+    let plan: TransferPlan = serde_json::from_value(serde_json::json!({
+        "native": true, "atomic": true, "schemas": [], "createSchemas": [], "tables": [],
+        "preData": [], "beforeLoad": [], "postData": [], "finalize": [], "sequences": [],
+        "manual": [], "warnings": [], "conflicts": [],
+    }))
+    .unwrap();
+    assert_eq!(plan.content, Content::All);
 }
 
 #[test]
@@ -369,9 +506,11 @@ async fn sqlite_to_duckdb_transfers_structure_and_data() {
         schemas: vec![SchemaPair {
             source: "main".into(),
             target: "shop".into(),
+            tables: None,
         }],
         fold_names: true,
         replace: false,
+        content: Content::All,
     };
     let plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(!plan.native);
@@ -438,6 +577,137 @@ async fn sqlite_to_duckdb_transfers_structure_and_data() {
     assert!(rejected.is_err(), "foreign key must exist in the target");
 }
 
+#[cfg(feature = "duckdb")]
+#[tokio::test]
+async fn sqlite_to_duckdb_selected_tables_structure_then_data() {
+    let lab = Lab::new("scope");
+    let source_url = lab.url("sqlite", "source.sqlite");
+    let target_url = lab.url("duckdb", "target.duckdb");
+    seed_source(&source_url).await;
+    let pool = create_pool_state();
+    let target = endpoint(DatabaseKind::Duckdb, &target_url);
+    let duck =
+        create_adapter_from_string(DatabaseKind::Duckdb, &target_url, None, pool.clone()).unwrap();
+    let rows = |table: &'static str| {
+        let duck = &duck;
+        async move {
+            let result = duck
+                .execute_query(&format!("SELECT COUNT(*) AS n FROM shop.{table}"))
+                .await
+                .unwrap();
+            super::super::export::value_text(&result.rows[0]["n"]).unwrap()
+        }
+    };
+    let source = endpoint(DatabaseKind::Sqlite, &source_url);
+    let request = |content: Content, tables: &[&str]| PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            source: "main".into(),
+            target: "shop".into(),
+            tables: Some(tables.iter().map(|t| t.to_string()).collect()),
+        }],
+        fold_names: true,
+        replace: false,
+        content,
+    };
+    let empty = plan(&target, &request(Content::All, &[]), pool.clone())
+        .await
+        .unwrap_err();
+    assert!(empty.contains("keine Tabelle ausgewählt"), "{empty}");
+    let missing = plan(
+        &target,
+        &request(Content::Data, &["customer"]),
+        pool.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        missing.contains("Zielschema shop existiert nicht"),
+        "{missing}"
+    );
+
+    let structure = plan(
+        &target,
+        &request(Content::Structure, &["orders", "customer", "gone"]),
+        pool.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(structure.content, Content::Structure);
+    let names: Vec<&str> = structure
+        .tables
+        .iter()
+        .map(|t| t.target_name.as_str())
+        .collect();
+    assert_eq!(names, vec!["customer", "orders"]);
+    assert!(structure.manual.iter().all(|m| m.object_type != "view"));
+    assert!(
+        structure.warnings.iter().any(|w| w.contains("gone")),
+        "{:?}",
+        structure.warnings
+    );
+    let built = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: structure,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(built.error, None, "{built:?}");
+    assert!(built.committed);
+    assert_eq!(built.rows, 0);
+    assert_eq!(rows("orders").await, "0");
+
+    let absent = plan(
+        &target,
+        &request(Content::Data, &["customer", "tag"]),
+        pool.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(absent.contains("shop.tag"), "{absent}");
+
+    let data = plan(
+        &target,
+        &request(Content::Data, &["orders", "customer"]),
+        pool.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(data.pre_data.is_empty() && data.post_data.is_empty());
+    assert!(data.conflicts.is_empty() && data.manual.is_empty());
+    let names: Vec<&str> = data.tables.iter().map(|t| t.target_name.as_str()).collect();
+    assert_eq!(names, vec!["customer", "orders"]);
+    let loaded = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: data.clone(),
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(loaded.error, None, "{loaded:?}");
+    assert_eq!(loaded.rows, 12_345 + 50);
+    assert_eq!(rows("orders").await, "12345");
+    let refused = run(
+        &target,
+        &RunRequest { source, plan: data },
+        pool,
+        &no_progress,
+    )
+    .await
+    .unwrap_err();
+    assert!(refused.contains("enthält bereits Zeilen"), "{refused}");
+    assert_eq!(rows("customer").await, "50");
+}
+
 #[tokio::test]
 async fn sqlite_native_transfer_rolls_back_completely_on_failure() {
     let lab = Lab::new("rollback");
@@ -452,9 +722,11 @@ async fn sqlite_native_transfer_rolls_back_completely_on_failure() {
         schemas: vec![SchemaPair {
             source: "main".into(),
             target: "main".into(),
+            tables: None,
         }],
         fold_names: true,
         replace: false,
+        content: Content::All,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(plan.native);
@@ -602,10 +874,12 @@ impl Live {
                 .map(|(s, t)| SchemaPair {
                     source: s.to_string(),
                     target: t.to_string(),
+                    tables: None,
                 })
                 .collect(),
             fold_names: true,
             replace: false,
+            content: Content::All,
         };
         let plan = plan(target, &request, self.pool.clone())
             .await
@@ -776,9 +1050,11 @@ async fn transfer_live_matrix() {
                 schemas: vec![SchemaPair {
                     source: "tr_src".into(),
                     target: schema.into(),
+                    tables: None,
                 }],
                 fold_names: true,
                 replace: false,
+                content: Content::All,
             };
             let plan = plan(&target, &request, live.pool.clone())
                 .await
@@ -925,9 +1201,11 @@ async fn transfer_live_oracle_native_packages() {
         schemas: vec![SchemaPair {
             source: "TR_SRC".into(),
             target: "TR_DST".into(),
+            tables: None,
         }],
         fold_names: true,
         replace: false,
+        content: Content::All,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(plan.native && !plan.atomic);
@@ -1105,9 +1383,11 @@ async fn transfer_live_mssql_snapshot_source() {
         schemas: vec![SchemaPair {
             source: "dbo".into(),
             target: "main".into(),
+            tables: None,
         }],
         fold_names: true,
         replace: false,
+        content: Content::All,
     };
     let plan = plan(&target, &request, pool.clone()).await.unwrap();
     let outcome = run(
@@ -1265,9 +1545,11 @@ async fn transfer_live_oracle_bulk_budget() {
         schemas: vec![SchemaPair {
             source: "TR_PERF_SRC".into(),
             target: "TR_PERF_DST".into(),
+            tables: None,
         }],
         fold_names: true,
         replace: false,
+        content: Content::All,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
     plan.pre_data = vec![Statement::object(
@@ -1413,6 +1695,463 @@ async fn transfer_live_oracle_bulk_budget() {
     assert!(throughput > 5_000.0, "{throughput:.0} rows/s");
 
     for user in ["TR_PERF_SRC", "TR_PERF_DST"] {
+        let _ = admin
+            .execute_query(&format!("DROP USER {user} CASCADE"))
+            .await;
+    }
+}
+
+fn shape(table: &SourceTable, defaults: bool) -> String {
+    let mut identity: Vec<&String> = table.identity.iter().collect();
+    identity.sort();
+    let mut generated: Vec<&String> = table.generated.iter().collect();
+    generated.sort();
+    let mut ordered: Vec<&DetailedColumnInfo> = table.columns.iter().collect();
+    ordered.sort_by_key(|c| (c.ordinal_position == 0).then(|| c.name.clone()));
+    let columns: Vec<String> = ordered
+        .into_iter()
+        .map(|c| {
+            format!(
+                "{}|{}|{}|{:?}|{}|{}|{:?}",
+                c.name,
+                c.data_type,
+                c.is_nullable,
+                if defaults {
+                    c.column_default.clone()
+                } else {
+                    None
+                },
+                c.is_primary_key,
+                c.ordinal_position,
+                c.character_maximum_length
+            )
+        })
+        .collect();
+    let mut constraints: Vec<String> = table
+        .constraints
+        .iter()
+        .map(|c| {
+            format!(
+                "{}|{}|{:?}|{}",
+                c.name, c.constraint_type, c.columns, c.definition
+            )
+        })
+        .collect();
+    constraints.sort();
+    let indexes: Vec<String> = table
+        .indexes
+        .iter()
+        .map(|i| {
+            format!(
+                "{}|{}|{}|{:?}|{}|{}",
+                i.name, i.is_unique, i.is_primary, i.columns, i.index_type, i.definition
+            )
+        })
+        .collect();
+    format!(
+        "{}\n{columns:?}\n{identity:?}\n{generated:?}\n{:?}\n{indexes:?}\n{constraints:?}\n{:?}",
+        table.name, table.primary_key, table.foreign_keys
+    )
+}
+
+async fn per_table(
+    source: &dyn DatabaseAdapter,
+    pair: &SchemaPair,
+    names: &[String],
+    need: Need,
+) -> Vec<SourceTable> {
+    let mut actions: HashMap<String, HashMap<String, String>> = HashMap::new();
+    if need.details {
+        for object in source
+            .schema_catalog(&pair.source, &["constraint".to_string()])
+            .await
+            .unwrap()
+        {
+            if let Some(definition) = object.attributes.get("definition").cloned() {
+                actions
+                    .entry(object.parent.unwrap_or_default())
+                    .or_default()
+                    .insert(object.name, definition);
+            }
+        }
+    }
+    let none = HashMap::new();
+    let mut out = Vec::new();
+    for name in names {
+        let meta = fetch_meta(source, Dialect::Oracle, &pair.source, name.clone(), need)
+            .await
+            .unwrap();
+        let actions = actions.get(name).unwrap_or(&none);
+        out.extend(assemble(
+            DatabaseKind::Oracle,
+            pair,
+            meta,
+            actions,
+            false,
+            need,
+        ));
+    }
+    out
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn transfer_live_oracle_plan_budget() {
+    use std::time::{Duration, Instant};
+
+    let (Some(url), Some(system)) = (live_url("ORACLE"), live_url("ORACLE_SYSTEM")) else {
+        return;
+    };
+    let count: usize = std::env::var("L8DB_TR_ORACLE_PLAN_TABLES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1500);
+    let pool = create_pool_state();
+    let admin =
+        create_adapter_from_string(DatabaseKind::Oracle, &system, None, pool.clone()).unwrap();
+    for user in ["TR_BIG_SRC", "TR_BIG_DST"] {
+        let _ = admin
+            .execute_query(&format!("DROP USER {user} CASCADE"))
+            .await;
+        exec_all(
+            admin.as_ref(),
+            &[
+                &format!("CREATE USER {user} IDENTIFIED BY l8dbtest QUOTA UNLIMITED ON USERS"),
+                &format!(
+                    "GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE VIEW TO {user}"
+                ),
+            ],
+        )
+        .await;
+    }
+    let started = Instant::now();
+    let script = format!(
+        "BEGIN
+  FOR i IN 1 .. {count} LOOP
+    EXECUTE IMMEDIATE 'CREATE TABLE TR_BIG_SRC.T_' || i || ' (ID NUMBER(10) PRIMARY KEY, PARENT_ID NUMBER(10)'
+      || CASE WHEN i > 1 THEN ' REFERENCES TR_BIG_SRC.T_' || (i - 1) || ' (ID) ON DELETE CASCADE' END
+      || ', NAME VARCHAR2(40 CHAR) DEFAULT ''neu'' NOT NULL, BETRAG NUMBER(12,2) CHECK (BETRAG >= 0), ZEIT TIMESTAMP(6), KURZ CHAR(3), NOTIZ VARCHAR2(200), MENGE NUMBER, FLAG NUMBER(1), CODE NVARCHAR2(20)'
+      || ', CONSTRAINT T_' || i || '_UK UNIQUE (NAME, KURZ))';
+    EXECUTE IMMEDIATE 'CREATE INDEX TR_BIG_SRC.T_' || i || '_IX ON TR_BIG_SRC.T_' || i || ' (ZEIT, MENGE)';
+  END LOOP;
+END;"
+    );
+    let results = admin.execute_script(&script).await.unwrap();
+    assert!(results.iter().all(|r| r.success), "{results:?}");
+    exec_all(admin.as_ref(), &[
+        "CREATE TABLE TR_BIG_SRC.SPEZIAL (ID NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, NAME VARCHAR2(30) NOT NULL, GEHEIM VARCHAR2(10) INVISIBLE, BRUTTO NUMBER GENERATED ALWAYS AS (ID * 1.19) VIRTUAL, NETTO NUMBER INVISIBLE GENERATED ALWAYS AS (ID * 2) VIRTUAL, NOTE CLOB)",
+        "CREATE INDEX TR_BIG_SRC.SPEZIAL_UPPER_IX ON TR_BIG_SRC.SPEZIAL (UPPER(NAME))",
+        "CREATE TABLE TR_BIG_SRC.ZWEI (A NUMBER, B VARCHAR2(5), C DATE, CONSTRAINT ZWEI_PK PRIMARY KEY (B, A))",
+        "CREATE TABLE TR_BIG_DST.T_1 (ID NUMBER(10) PRIMARY KEY, PARENT_ID NUMBER(10), NAME VARCHAR2(40 CHAR) DEFAULT 'neu' NOT NULL, BETRAG NUMBER(12,2) CHECK (BETRAG >= 0), ZEIT TIMESTAMP(6), KURZ CHAR(3), NOTIZ VARCHAR2(200), MENGE NUMBER, FLAG NUMBER(1), CODE NVARCHAR2(20))",
+        "CREATE TABLE TR_BIG_DST.T_2 (ID NUMBER(10) PRIMARY KEY, PARENT_ID NUMBER(10) REFERENCES TR_BIG_DST.T_1 (ID), NAME VARCHAR2(40 CHAR) DEFAULT 'neu' NOT NULL, BETRAG NUMBER(12,2), ZEIT TIMESTAMP(6), KURZ CHAR(3), NOTIZ VARCHAR2(200), MENGE NUMBER, FLAG NUMBER(1), CODE NVARCHAR2(20))",
+        "CREATE TABLE TR_BIG_DST.T_3 (ID NUMBER(10) PRIMARY KEY, PARENT_ID NUMBER(10) REFERENCES TR_BIG_DST.T_2 (ID), NAME VARCHAR2(40 CHAR) DEFAULT 'neu' NOT NULL, BETRAG NUMBER(12,2) CONSTRAINT T3_KLEIN CHECK (BETRAG < 900), ZEIT TIMESTAMP(6), KURZ CHAR(3), NOTIZ VARCHAR2(200), MENGE NUMBER, FLAG NUMBER(1), CODE NVARCHAR2(20))",
+        "CREATE TABLE TR_BIG_DST.SPEZIAL (ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, NAME VARCHAR2(30) NOT NULL, GEHEIM VARCHAR2(10) INVISIBLE, BRUTTO NUMBER GENERATED ALWAYS AS (ID * 1.19) VIRTUAL, NETTO NUMBER INVISIBLE GENERATED ALWAYS AS (ID * 2) VIRTUAL, NOTE CLOB)",
+        "INSERT INTO TR_BIG_SRC.T_1 (ID, NAME, BETRAG, KURZ) SELECT LEVEL, 'Eins ' || LEVEL, LEVEL, 'A' FROM DUAL CONNECT BY LEVEL <= 800",
+        "INSERT INTO TR_BIG_SRC.T_2 (ID, PARENT_ID, NAME, BETRAG, KURZ) SELECT LEVEL, MOD(LEVEL, 800) + 1, 'Zwei ' || LEVEL, LEVEL, 'B' FROM DUAL CONNECT BY LEVEL <= 1200",
+        "INSERT INTO TR_BIG_SRC.T_3 (ID, PARENT_ID, NAME, BETRAG, KURZ) SELECT LEVEL, MOD(LEVEL, 1200) + 1, 'Drei ' || LEVEL, LEVEL, 'C' FROM DUAL CONNECT BY LEVEL <= 1000",
+        "INSERT INTO TR_BIG_SRC.SPEZIAL (NAME, GEHEIM, NOTE) SELECT 'S' || LEVEL, 'g', RPAD('n', 50, 'x') FROM DUAL CONNECT BY LEVEL <= 40",
+        "COMMIT",
+    ])
+    .await;
+    eprintln!(
+        "oracle plan lab: {count} tables created in {:.1}s",
+        started.elapsed().as_secs_f64()
+    );
+    let user = |name: &str| url.replace("l8db:l8dbtest", &format!("{name}:l8dbtest"));
+    let source = endpoint(DatabaseKind::Oracle, &user("TR_BIG_SRC"));
+    let target = endpoint(DatabaseKind::Oracle, &user("TR_BIG_DST"));
+    let src = create_adapter_from_string(
+        DatabaseKind::Oracle,
+        &source.connection_string,
+        None,
+        pool.clone(),
+    )
+    .unwrap();
+    let pair = SchemaPair {
+        source: "TR_BIG_SRC".into(),
+        target: "TR_BIG_DST".into(),
+        tables: None,
+    };
+    let names: Vec<String> = src
+        .list_tables(Some("TR_BIG_SRC"))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names.len(), count + 2);
+
+    let mut sample: Vec<String> = names.iter().step_by(25).cloned().collect();
+    sample.extend(["SPEZIAL".to_string(), "ZWEI".to_string(), "T_2".to_string()]);
+    sample.sort();
+    sample.dedup();
+    for (need, defaults) in [
+        (
+            Need {
+                details: false,
+                foreign_keys: false,
+            },
+            false,
+        ),
+        (
+            Need {
+                details: false,
+                foreign_keys: true,
+            },
+            false,
+        ),
+        (
+            Need {
+                details: true,
+                foreign_keys: false,
+            },
+            true,
+        ),
+    ] {
+        let subset = SchemaPair {
+            tables: Some(sample.clone()),
+            ..pair.clone()
+        };
+        let mut warnings = Vec::new();
+        let bulk = read_tables(src.as_ref(), &source, &pool, &subset, need, &mut warnings)
+            .await
+            .unwrap();
+        let ordered: Vec<String> = names
+            .iter()
+            .filter(|n| sample.contains(n))
+            .cloned()
+            .collect();
+        let reference = per_table(src.as_ref(), &subset, &ordered, need).await;
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(bulk.len(), reference.len());
+        for (mut left, right) in bulk.into_iter().zip(&reference) {
+            if left.name == "SPEZIAL" {
+                assert!(left.generated.remove("NETTO"), "{need:?}");
+            }
+            assert_eq!(shape(&left, defaults), shape(right, defaults), "{need:?}");
+        }
+    }
+    let spezial = read_tables(
+        src.as_ref(),
+        &source,
+        &pool,
+        &SchemaPair {
+            tables: Some(vec!["SPEZIAL".into()]),
+            ..pair.clone()
+        },
+        Need {
+            details: true,
+            foreign_keys: true,
+        },
+        &mut Vec::new(),
+    )
+    .await
+    .unwrap();
+    assert!(spezial[0].identity.contains("ID"));
+    assert!(spezial[0].generated.contains("BRUTTO"));
+    assert!(spezial[0].generated.contains("NETTO"));
+    assert!(spezial[0].columns.iter().any(|c| c.name == "GEHEIM"));
+    assert!(spezial[0]
+        .columns
+        .iter()
+        .all(|c| !c.name.starts_with("SYS_")));
+
+    let baseline_started = Instant::now();
+    let baseline = per_table(
+        src.as_ref(),
+        &pair,
+        &names,
+        Need {
+            details: false,
+            foreign_keys: false,
+        },
+    )
+    .await;
+    let baseline_time = baseline_started.elapsed();
+    assert_eq!(baseline.len(), names.len());
+
+    let request = |content: Content, tables: Option<Vec<&str>>| PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            tables: tables.map(|t| t.into_iter().map(String::from).collect()),
+            ..pair.clone()
+        }],
+        fold_names: true,
+        replace: false,
+        content,
+    };
+    let full = request(Content::All, None);
+    let mut times = Vec::new();
+    let baseline_rss = resident_kib();
+    let mut peak = baseline_rss;
+    let mut planned = None;
+    for _ in 0..5 {
+        let started = Instant::now();
+        let result = plan(&target, &full, pool.clone()).await.unwrap();
+        times.push(started.elapsed());
+        peak = peak.max(resident_kib());
+        planned = Some(result);
+    }
+    let planned = planned.unwrap();
+    assert_eq!(planned.tables.len(), count + 2);
+    assert_eq!(planned.conflicts.len(), 4, "{:?}", planned.conflicts);
+    times.sort();
+    let (median, p95) = (times[2], times[4]);
+    let grown = peak.saturating_sub(baseline_rss) / 1024;
+
+    let subset_started = Instant::now();
+    let small = plan(
+        &target,
+        &request(Content::All, Some(vec!["T_7", "T_8"])),
+        pool.clone(),
+    )
+    .await
+    .unwrap();
+    let subset_time = subset_started.elapsed();
+    assert_eq!(small.tables.len(), 2);
+    assert!(small.sequences.is_empty());
+
+    let job = "tr-plan-cancel";
+    let cancel = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let at = Instant::now();
+        while crate::db::execution::cancel(job).ok() != Some(true) && at.elapsed().as_secs() < 5 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        at
+    });
+    let cancelled = crate::db::execution::run(
+        Some(crate::db::execution::ExecutionOptions {
+            job_id: Some(job.into()),
+            ..Default::default()
+        }),
+        true,
+        plan(&target, &full, pool.clone()),
+    )
+    .await;
+    let reaction = cancel.await.unwrap().elapsed();
+    assert_eq!(cancelled.err().as_deref(), Some(PLAN_CANCELLED));
+
+    eprintln!(
+        "oracle plan: {} tables, per-table read (old path) {:.2}s, full plan median {:.2}s p95 {:.2}s, 2-table plan {:.2}s, peak RSS +{grown} MiB, cancel reaction {reaction:?}",
+        count + 2,
+        baseline_time.as_secs_f64(),
+        median.as_secs_f64(),
+        p95.as_secs_f64(),
+        subset_time.as_secs_f64()
+    );
+    assert!(
+        median * 5 < baseline_time,
+        "plan {median:?} vs old read {baseline_time:?}"
+    );
+    assert!(subset_time < Duration::from_secs(3), "{subset_time:?}");
+    assert!(grown < 128, "peak RSS grew by {grown} MiB");
+    assert!(
+        reaction < Duration::from_secs(2),
+        "cancel took {reaction:?}"
+    );
+
+    let data = plan(
+        &target,
+        &request(Content::Data, Some(vec!["T_3", "SPEZIAL", "T_1", "T_2"])),
+        pool.clone(),
+    )
+    .await
+    .unwrap();
+    let order: Vec<&str> = data.tables.iter().map(|t| t.target_name.as_str()).collect();
+    let at = |name: &str| order.iter().position(|t| *t == name).unwrap();
+    assert!(at("T_1") < at("T_2") && at("T_2") < at("T_3"), "{order:?}");
+    assert!(data.pre_data.is_empty() && data.post_data.is_empty());
+    assert_eq!(data.before_load.len(), 1, "{:?}", data.before_load);
+    let missing = plan(
+        &target,
+        &request(Content::Data, Some(vec!["T_4"])),
+        pool.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(missing.contains("TR_BIG_DST.T_4"), "{missing}");
+
+    let live = Live { pool: pool.clone() };
+    let failed = live.run(&source, &target, data.clone()).await;
+    assert!(
+        failed
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("ORA-02290")),
+        "{failed:?}"
+    );
+    assert!(failed.rolled_back, "{failed:?}");
+    for table in ["T_1", "T_2", "T_3", "SPEZIAL"] {
+        assert_eq!(
+            scalar(
+                admin.as_ref(),
+                &format!("SELECT TO_CHAR(COUNT(*)) FROM TR_BIG_DST.{table}")
+            )
+            .await
+            .as_deref(),
+            Some("0"),
+            "{table} after rollback"
+        );
+    }
+    assert_eq!(
+        scalar(admin.as_ref(), "SELECT generation_type FROM all_tab_identity_cols WHERE owner = 'TR_BIG_DST' AND table_name = 'SPEZIAL'").await.as_deref(),
+        Some("ALWAYS")
+    );
+    exec_all(
+        admin.as_ref(),
+        &["ALTER TABLE TR_BIG_DST.T_3 DROP CONSTRAINT T3_KLEIN"],
+    )
+    .await;
+    let done = live.run(&source, &target, data.clone()).await;
+    assert_eq!(done.error, None, "{done:?}");
+    assert_eq!(done.rows, 800 + 1200 + 1000 + 40);
+    let digest = |owner: &str| {
+        format!(
+            "SELECT TO_CHAR(COUNT(*)) || '/' || TO_CHAR(SUM(ORA_HASH(ID || NAME || PARENT_ID || BETRAG || KURZ))) FROM {owner}.T_3"
+        )
+    };
+    assert_eq!(
+        scalar(admin.as_ref(), &digest("TR_BIG_SRC")).await,
+        scalar(admin.as_ref(), &digest("TR_BIG_DST")).await
+    );
+    assert_eq!(
+        scalar(admin.as_ref(), "SELECT generation_type FROM all_tab_identity_cols WHERE owner = 'TR_BIG_DST' AND table_name = 'SPEZIAL'").await.as_deref(),
+        Some("ALWAYS")
+    );
+    exec_all(
+        admin.as_ref(),
+        &[
+            "INSERT INTO TR_BIG_DST.SPEZIAL (NAME) VALUES ('neu')",
+            "COMMIT",
+        ],
+    )
+    .await;
+    assert_eq!(
+        scalar(
+            admin.as_ref(),
+            "SELECT TO_CHAR(MAX(ID)) FROM TR_BIG_DST.SPEZIAL WHERE NAME = 'neu'"
+        )
+        .await
+        .as_deref(),
+        Some("41")
+    );
+    let again = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: data,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        again.contains("TR_BIG_DST.SPEZIAL enthält bereits Zeilen"),
+        "{again}"
+    );
+    for user in ["TR_BIG_SRC", "TR_BIG_DST"] {
         let _ = admin
             .execute_query(&format!("DROP USER {user} CASCADE"))
             .await;

@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
+use futures_util::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
 use super::import::{self, BatchWriter, Dialect, ImportPlan, TypeClass};
@@ -24,6 +25,17 @@ pub struct Endpoint {
 pub struct SchemaPair {
     pub source: String,
     pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tables: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Content {
+    #[default]
+    All,
+    Structure,
+    Data,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -35,6 +47,8 @@ pub struct PlanRequest {
     pub fold_names: bool,
     #[serde(default)]
     pub replace: bool,
+    #[serde(default)]
+    pub content: Content,
 }
 
 fn enabled() -> bool {
@@ -135,6 +149,8 @@ pub struct TransferPlan {
     pub replace: bool,
     #[serde(default)]
     pub replaced: Vec<String>,
+    #[serde(default)]
+    pub content: Content,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -404,15 +420,35 @@ fn load_order(tables: &[SourceTable]) -> Vec<usize> {
                 .collect()
         })
         .collect();
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); tables.len()];
+    for (child, set) in parents.iter().enumerate() {
+        for &parent in set {
+            children[parent].push(child);
+        }
+    }
+    let mut waiting: Vec<usize> = parents.iter().map(HashSet::len).collect();
+    let mut ready: BTreeSet<usize> = (0..tables.len()).filter(|i| waiting[*i] == 0).collect();
     let mut placed = vec![false; tables.len()];
     let mut order = Vec::with_capacity(tables.len());
+    let mut cursor = 0;
     while order.len() < tables.len() {
-        let next = (0..tables.len())
-            .find(|i| !placed[*i] && parents[*i].iter().all(|p| placed[*p]))
-            .or_else(|| (0..tables.len()).find(|i| !placed[*i]))
-            .unwrap_or_default();
+        let next = match ready.pop_first() {
+            Some(next) => next,
+            None => {
+                while placed[cursor] {
+                    cursor += 1;
+                }
+                cursor
+            }
+        };
         placed[next] = true;
         order.push(next);
+        for &child in &children[next] {
+            waiting[child] -= 1;
+            if waiting[child] == 0 && !placed[child] {
+                ready.insert(child);
+            }
+        }
     }
     order
 }
@@ -435,27 +471,35 @@ fn identity_canonical(canonical: Canonical) -> Canonical {
     }
 }
 
-async fn partition_info(
-    source: &dyn DatabaseAdapter,
-    schema: &str,
-) -> (HashSet<String>, HashSet<String>) {
+async fn partition_info(source: &dyn DatabaseAdapter, schema: &str) -> HashMap<String, String> {
     let sql = format!(
         "SELECT c.relname AS child, p.relname AS parent FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = {} AND p.relkind = 'p'",
         super::quote_literal(schema)
     );
-    let mut children = HashSet::new();
-    let mut parents = HashSet::new();
+    let mut partitions = HashMap::new();
     if let Ok(result) = source.execute_query(&sql).await {
         for row in &result.rows {
-            if let Some(child) = row.get("child").and_then(super::export::value_text) {
-                children.insert(child);
-            }
-            if let Some(parent) = row.get("parent").and_then(super::export::value_text) {
-                parents.insert(parent);
+            let text = |key: &str| row.get(key).and_then(super::export::value_text);
+            if let (Some(child), Some(parent)) = (text("child"), text("parent")) {
+                partitions.insert(child, parent);
             }
         }
     }
-    (children, parents)
+    partitions
+}
+
+fn within(partitions: &HashMap<String, String>, chosen: &HashSet<&str>, name: &str) -> bool {
+    let mut at = name;
+    for _ in 0..=partitions.len() {
+        if chosen.contains(at) {
+            return true;
+        }
+        match partitions.get(at) {
+            Some(parent) => at = parent,
+            None => return false,
+        }
+    }
+    false
 }
 
 async fn owned_sequences(source: &dyn DatabaseAdapter, schema: &str) -> HashSet<String> {
@@ -476,127 +520,272 @@ async fn owned_sequences(source: &dyn DatabaseAdapter, schema: &str) -> HashSet<
         .unwrap_or_default()
 }
 
-async fn read_tables(
+const METADATA_CONCURRENCY: usize = 8;
+const PLAN_CANCELLED: &str = "Planung abgebrochen.";
+
+#[derive(Debug, Clone, Copy)]
+struct Need {
+    details: bool,
+    foreign_keys: bool,
+}
+
+struct TableMeta {
+    name: String,
+    columns: Vec<DetailedColumnInfo>,
+    flags: Vec<ImportColumnInfo>,
+    constraints: Vec<super::ConstraintInfo>,
+    indexes: Vec<super::IndexInfo>,
+    foreign_keys: Vec<super::ForeignKeyInfo>,
+}
+
+fn ensure_planning() -> Result<(), String> {
+    if super::execution::cancellation_token().is_cancelled() {
+        return Err(PLAN_CANCELLED.into());
+    }
+    Ok(())
+}
+
+fn preview(names: &[&str]) -> String {
+    let mut text = names
+        .iter()
+        .take(20)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if names.len() > 20 {
+        text.push_str(&format!(" und {} weitere", names.len() - 20));
+    }
+    text
+}
+
+async fn fetch_meta(
     source: &dyn DatabaseAdapter,
+    source_dialect: Dialect,
+    schema: &str,
+    name: String,
+    need: Need,
+) -> Result<TableMeta, String> {
+    ensure_planning()?;
+    let columns = source.list_table_columns_detailed(schema, &name).await?;
+    if columns.is_empty() {
+        return Ok(TableMeta {
+            name,
+            columns,
+            flags: Vec::new(),
+            constraints: Vec::new(),
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+        });
+    }
+    let flags = import::list_import_columns(source_dialect, source, schema, &name)
+        .await
+        .unwrap_or_default();
+    let constraints = source
+        .list_constraints(schema, &name)
+        .await
+        .unwrap_or_default();
+    let indexes = if need.details {
+        source.list_indexes(schema, &name).await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let foreign_keys = if need.details || need.foreign_keys {
+        source
+            .list_foreign_keys(schema, &name)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    Ok(TableMeta {
+        name,
+        columns,
+        flags,
+        constraints,
+        indexes,
+        foreign_keys,
+    })
+}
+
+fn assemble(
     source_kind: DatabaseKind,
     pair: &SchemaPair,
-    native: bool,
-) -> Result<Vec<SourceTable>, String> {
-    let source_dialect = dialect(source_kind)?;
-    let (children, parents) = if source_kind == DatabaseKind::Postgres && !native {
-        partition_info(source, &pair.source).await
-    } else {
-        Default::default()
+    meta: TableMeta,
+    actions: &HashMap<String, String>,
+    partitioned: bool,
+    need: Need,
+) -> Option<SourceTable> {
+    let TableMeta {
+        name,
+        columns,
+        flags,
+        constraints,
+        indexes,
+        foreign_keys,
+    } = meta;
+    let columns: Vec<DetailedColumnInfo> = columns
+        .into_iter()
+        .filter(|column| column.name != "__ctid__")
+        .collect();
+    if columns.is_empty() {
+        return None;
+    }
+    let primary_key = constraints
+        .iter()
+        .find(|c| c.constraint_type == "PRIMARY KEY" && !c.columns.is_empty())
+        .map(|c| c.columns.clone())
+        .unwrap_or_else(|| {
+            columns
+                .iter()
+                .filter(|column| column.is_primary_key)
+                .map(|column| column.name.clone())
+                .collect()
+        });
+    let flagged = |name: &str, pick: fn(&ImportColumnInfo) -> bool| {
+        flags.iter().any(|d| d.name == name && pick(d))
     };
-    let actions: HashMap<(String, String), String> = if native {
-        HashMap::new()
+    let identity = columns
+        .iter()
+        .filter(|column| {
+            let auto = if source_kind == DatabaseKind::Sqlite {
+                primary_key.len() == 1 && primary_key[0] == column.name
+            } else {
+                flagged(&column.name, |d| d.is_identity)
+                    || column
+                        .column_default
+                        .as_deref()
+                        .is_some_and(|d| d.trim_start().starts_with("nextval("))
+            };
+            auto && integerish(table_copy::canonical(
+                source_kind,
+                &column.data_type,
+                column.character_maximum_length,
+            ))
+        })
+        .map(|column| column.name.clone())
+        .collect();
+    let generated = columns
+        .iter()
+        .filter(|column| flagged(&column.name, |d| d.is_generated))
+        .map(|column| column.name.clone())
+        .collect();
+    let (indexes, constraints) = if need.details {
+        (
+            indexes
+                .into_iter()
+                .filter(|index| !index.is_primary)
+                .collect(),
+            with_catalog_checks(constraints, actions),
+        )
     } else {
-        source
+        (Vec::new(), Vec::new())
+    };
+    let foreign_keys = if need.details || need.foreign_keys {
+        group_foreign_keys(
+            foreign_keys
+                .into_iter()
+                .filter(|fk| fk.from_table == name && fk.from_schema == pair.source)
+                .collect(),
+            actions,
+        )
+    } else {
+        Vec::new()
+    };
+    Some(SourceTable {
+        pair: pair.clone(),
+        partitioned,
+        name,
+        columns,
+        identity,
+        generated,
+        primary_key,
+        indexes,
+        constraints,
+        foreign_keys,
+    })
+}
+
+async fn read_tables(
+    source: &dyn DatabaseAdapter,
+    endpoint: &Endpoint,
+    pool: &PoolState,
+    pair: &SchemaPair,
+    need: Need,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<SourceTable>, String> {
+    let source_kind = endpoint.kind;
+    let source_dialect = dialect(source_kind)?;
+    let partitions =
+        if source_kind == DatabaseKind::Postgres && (need.details || pair.tables.is_some()) {
+            partition_info(source, &pair.source).await
+        } else {
+            HashMap::new()
+        };
+    let parents: HashSet<&str> = if need.details {
+        partitions.values().map(String::as_str).collect()
+    } else {
+        HashSet::new()
+    };
+    let mut actions: HashMap<String, HashMap<String, String>> = HashMap::new();
+    if need.details {
+        for object in source
             .schema_catalog(&pair.source, &["constraint".to_string()])
             .await
             .unwrap_or_default()
-            .into_iter()
-            .filter_map(|object| {
-                let definition = object.attributes.get("definition").cloned()?;
-                Some(((object.parent.unwrap_or_default(), object.name), definition))
-            })
-            .collect()
-    };
-    let mut out = Vec::new();
-    for info in source.list_tables(Some(&pair.source)).await? {
-        if children.contains(&info.name) {
-            continue;
+        {
+            if let Some(definition) = object.attributes.get("definition").cloned() {
+                actions
+                    .entry(object.parent.unwrap_or_default())
+                    .or_default()
+                    .insert(object.name, definition);
+            }
         }
-        let columns: Vec<DetailedColumnInfo> = source
-            .list_table_columns_detailed(&pair.source, &info.name)
-            .await?
-            .into_iter()
-            .filter(|column| column.name != "__ctid__")
-            .collect();
-        if columns.is_empty() {
-            continue;
-        }
-        let details = import::list_import_columns(source_dialect, source, &pair.source, &info.name)
-            .await
-            .unwrap_or_default();
-        let primary_key = table_copy::primary_key(source, &pair.source, &info.name, &columns).await;
-        let flagged = |name: &str, pick: fn(&ImportColumnInfo) -> bool| {
-            details.iter().any(|d| d.name == name && pick(d))
-        };
-        let identity = columns
-            .iter()
-            .filter(|column| {
-                let auto = if source_kind == DatabaseKind::Sqlite {
-                    primary_key.len() == 1 && primary_key[0] == column.name
-                } else {
-                    flagged(&column.name, |d| d.is_identity)
-                        || column
-                            .column_default
-                            .as_deref()
-                            .is_some_and(|d| d.trim_start().starts_with("nextval("))
-                };
-                auto && integerish(table_copy::canonical(
-                    source_kind,
-                    &column.data_type,
-                    column.character_maximum_length,
-                ))
-            })
-            .map(|column| column.name.clone())
-            .collect();
-        let generated = columns
-            .iter()
-            .filter(|column| flagged(&column.name, |d| d.is_generated))
-            .map(|column| column.name.clone())
-            .collect();
-        let (indexes, constraints, foreign_keys) = if native {
-            (Vec::new(), Vec::new(), Vec::new())
-        } else {
-            let table_actions: HashMap<String, String> = actions
-                .iter()
-                .filter(|((table, _), _)| table == &info.name)
-                .map(|((_, name), definition)| (name.clone(), definition.clone()))
-                .collect();
-            (
-                source
-                    .list_indexes(&pair.source, &info.name)
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|index| !index.is_primary)
-                    .collect(),
-                with_catalog_checks(
-                    source
-                        .list_constraints(&pair.source, &info.name)
-                        .await
-                        .unwrap_or_default(),
-                    &table_actions,
-                ),
-                group_foreign_keys(
-                    source
-                        .list_foreign_keys(&pair.source, &info.name)
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|fk| fk.from_table == info.name && fk.from_schema == pair.source)
-                        .collect(),
-                    &table_actions,
-                ),
-            )
-        };
-        out.push(SourceTable {
-            pair: pair.clone(),
-            partitioned: parents.contains(&info.name),
-            name: info.name,
-            columns,
-            identity,
-            generated,
-            primary_key,
-            indexes,
-            constraints,
-            foreign_keys,
-        });
     }
-    Ok(out)
+    let mut names: Vec<String> = source
+        .list_tables(Some(&pair.source))
+        .await?
+        .into_iter()
+        .map(|info| info.name)
+        .filter(|name| !(need.details && partitions.contains_key(name)))
+        .collect();
+    if let Some(selected) = &pair.tables {
+        let chosen: HashSet<&str> = selected.iter().map(String::as_str).collect();
+        let missing: Vec<&str> = {
+            let present: HashSet<&str> = names.iter().map(String::as_str).collect();
+            selected
+                .iter()
+                .map(String::as_str)
+                .filter(|name| !present.contains(name))
+                .collect()
+        };
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "In {} nicht gefunden und übersprungen: {}",
+                pair.source,
+                preview(&missing)
+            ));
+        }
+        names.retain(|name| within(&partitions, &chosen, name));
+    }
+    ensure_planning()?;
+    let metas = if source_kind == DatabaseKind::Oracle {
+        oracle_copy::table_metas(endpoint, pool, &pair.source, names, need).await?
+    } else {
+        futures_util::stream::iter(names)
+            .map(|name| fetch_meta(source, source_dialect, &pair.source, name, need))
+            .buffered(METADATA_CONCURRENCY)
+            .try_collect::<Vec<_>>()
+            .await?
+    };
+    let none = HashMap::new();
+    Ok(metas
+        .into_iter()
+        .filter_map(|meta| {
+            let partitioned = parents.contains(meta.name.as_str());
+            let actions = actions.get(&meta.name).unwrap_or(&none);
+            assemble(source_kind, pair, meta, actions, partitioned, need)
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -786,14 +975,42 @@ struct Mapper<'a> {
     target: Dialect,
     fold: bool,
     tables: &'a [SourceTable],
+    lookup: HashMap<(&'a str, &'a str), usize>,
+    schemas: HashMap<&'a str, &'a str>,
 }
 
-impl Mapper<'_> {
+impl<'a> Mapper<'a> {
+    fn new(
+        source_kind: DatabaseKind,
+        target: Dialect,
+        fold: bool,
+        tables: &'a [SourceTable],
+    ) -> Self {
+        let mut schemas = HashMap::new();
+        for table in tables {
+            schemas
+                .entry(table.pair.source.as_str())
+                .or_insert(table.pair.target.as_str());
+        }
+        Self {
+            source_kind,
+            target,
+            fold,
+            tables,
+            lookup: tables
+                .iter()
+                .enumerate()
+                .rev()
+                .map(|(i, t)| ((t.pair.source.as_str(), t.name.as_str()), i))
+                .collect(),
+            schemas,
+        }
+    }
+
     fn schema(&self, source_schema: &str) -> String {
-        self.tables
-            .iter()
-            .find(|t| t.pair.source == source_schema)
-            .map(|t| t.pair.target.clone())
+        self.schemas
+            .get(source_schema)
+            .map(|target| target.to_string())
             .unwrap_or_else(|| source_schema.to_string())
     }
 
@@ -802,9 +1019,7 @@ impl Mapper<'_> {
     }
 
     fn table(&self, schema: &str, name: &str) -> Option<&SourceTable> {
-        self.tables
-            .iter()
-            .find(|t| t.pair.source == schema && t.name == name)
+        self.lookup.get(&(schema, name)).map(|i| &self.tables[*i])
     }
 }
 
@@ -1246,7 +1461,7 @@ fn cross_ddl(plan: &mut TransferPlan, mapper: &Mapper, order: &[usize]) {
                     super::quote_literal(&identity.target),
                     d.quote(&identity.target)
                 ))),
-                Dialect::Oracle => plan.finalize.push(Statement::plain(format!(
+                Dialect::Oracle if plan.content != Content::Data => plan.finalize.push(Statement::plain(format!(
                     "ALTER TABLE {qualified} MODIFY ({} GENERATED BY DEFAULT ON NULL AS IDENTITY (START WITH LIMIT VALUE))",
                     d.quote(&identity.target)
                 ))),
@@ -1305,13 +1520,15 @@ fn native_tables(plan: &mut TransferPlan, tables: &[SourceTable], order: &[usize
 
 async fn oracle_identity(
     plan: &mut TransferPlan,
-    source: &dyn DatabaseAdapter,
-    pair: &SchemaPair,
+    adapter: &dyn DatabaseAdapter,
+    owner: &str,
+    target: &str,
+    planned: HashSet<String>,
 ) -> Result<(), String> {
-    let result = source
+    let result = adapter
         .execute_query(&format!(
             "SELECT i.table_name AS t, i.column_name AS c, i.generation_type AS g, c.default_on_null AS n FROM all_tab_identity_cols i JOIN all_tab_columns c ON c.owner = i.owner AND c.table_name = i.table_name AND c.column_name = i.column_name WHERE i.owner = {}",
-            super::quote_literal(&pair.source)
+            super::quote_literal(owner)
         ))
         .await?;
     let d = Dialect::Oracle;
@@ -1322,14 +1539,10 @@ async fn oracle_identity(
                 .unwrap_or_default()
         };
         let (table, column) = (get("T"), get("C"));
-        if !plan
-            .tables
-            .iter()
-            .any(|t| t.source_schema == pair.source && t.source_name == table)
-        {
+        if !planned.contains(&table) {
             continue;
         }
-        let qualified = d.target(&pair.target, &table);
+        let qualified = d.target(target, &table);
         let always = get("G") == "ALWAYS";
         if always {
             plan.before_load.push(Statement::plain(format!(
@@ -1352,10 +1565,19 @@ async fn oracle_identity(
     Ok(())
 }
 
+fn planned_tables(plan: &TransferPlan, pair: &SchemaPair) -> HashSet<String> {
+    plan.tables
+        .iter()
+        .filter(|t| t.source_schema == pair.source)
+        .map(|t| t.source_name.clone())
+        .collect()
+}
+
 async fn oracle_mviews(
     plan: &mut TransferPlan,
     source: &dyn DatabaseAdapter,
     pair: &SchemaPair,
+    create_logs: bool,
 ) -> Result<(), String> {
     let owner = super::quote_literal(&pair.source);
     let mviews: HashSet<String> = source
@@ -1369,6 +1591,10 @@ async fn oracle_mviews(
         .collect();
     plan.tables
         .retain(|t| t.source_schema != pair.source || !mviews.contains(&t.source_name));
+    if !create_logs {
+        return Ok(());
+    }
+    let planned = planned_tables(plan, pair);
     let result = source
         .execute_query(&format!(
             "SELECT l.master AS m, l.rowids AS r, l.primary_key AS p, l.object_id AS o, l.sequence AS s, \
@@ -1389,11 +1615,7 @@ async fn oracle_mviews(
                 .unwrap_or_default()
         };
         let master = get("M");
-        if !plan
-            .tables
-            .iter()
-            .any(|t| t.source_schema == pair.source && t.source_name == master)
-        {
+        if !planned.contains(&master) {
             continue;
         }
         let with: Vec<&str> = [
@@ -1550,6 +1772,22 @@ async fn existing_objects(
     target: Dialect,
     schema: &str,
 ) -> HashSet<String> {
+    if target == Dialect::Oracle {
+        if let Ok(result) = adapter
+            .execute_query(&format!(
+                "SELECT object_name AS n FROM all_objects WHERE owner = {} AND object_type IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'SYNONYM', 'FUNCTION', 'PROCEDURE', 'PACKAGE', 'TYPE')",
+                super::quote_literal(schema)
+            ))
+            .await
+        {
+            return result
+                .rows
+                .iter()
+                .filter_map(|row| row.get("N").and_then(super::export::value_text))
+                .map(|name| object_key(target, &name))
+                .collect();
+        }
+    }
     let mut names: Vec<String> = Vec::new();
     names.extend(
         adapter
@@ -1591,17 +1829,6 @@ async fn existing_objects(
             .into_iter()
             .map(|f| f.name),
     );
-    if target == Dialect::Oracle {
-        if let Ok(result) = adapter
-            .execute_query(&format!(
-                "SELECT object_name AS n FROM all_objects WHERE owner = {} AND object_type IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'SYNONYM', 'FUNCTION', 'PROCEDURE', 'PACKAGE', 'TYPE')",
-                super::quote_literal(schema)
-            ))
-            .await
-        {
-            names.extend(result.rows.iter().filter_map(|row| row.get("N").and_then(super::export::value_text)));
-        }
-    }
     names.iter().map(|name| object_key(target, name)).collect()
 }
 
@@ -1636,6 +1863,7 @@ pub async fn conflicts(
     }
     let mut inventory: HashMap<String, HashSet<String>> = HashMap::new();
     let mut out = Vec::new();
+    let mut seen = HashSet::new();
     for (schema, name) in planned {
         if plan.create_schemas.contains(&schema) {
             continue;
@@ -1645,11 +1873,35 @@ pub async fn conflicts(
             inventory.insert(schema.clone(), existing);
         }
         let label = format!("{schema}.{name}");
-        if inventory[&schema].contains(&object_key(target, &name)) && !out.contains(&label) {
+        if inventory[&schema].contains(&object_key(target, &name)) && seen.insert(label.clone()) {
             out.push(label);
         }
     }
     out
+}
+
+async fn missing_tables(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    plan: &TransferPlan,
+) -> Result<Vec<String>, String> {
+    let mut inventory: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut missing = Vec::new();
+    for table in &plan.tables {
+        if !inventory.contains_key(&table.target_schema) {
+            let names = adapter
+                .list_tables(Some(&table.target_schema))
+                .await?
+                .into_iter()
+                .map(|t| object_key(target, &t.name))
+                .collect();
+            inventory.insert(table.target_schema.clone(), names);
+        }
+        if !inventory[&table.target_schema].contains(&object_key(target, &table.target_name)) {
+            missing.push(format!("{}.{}", table.target_schema, table.target_name));
+        }
+    }
+    Ok(missing)
 }
 
 pub async fn plan(
@@ -1663,6 +1915,18 @@ pub async fn plan(
     if request.schemas.is_empty() {
         return Err("Bitte mindestens ein Quellschema wählen.".into());
     }
+    if let Some(pair) = request
+        .schemas
+        .iter()
+        .find(|pair| pair.tables.as_ref().is_some_and(Vec::is_empty))
+    {
+        return Err(format!(
+            "Für Schema {} ist keine Tabelle ausgewählt.",
+            pair.source
+        ));
+    }
+    let content = request.content;
+    let subset = request.schemas.iter().any(|pair| pair.tables.is_some());
     let source = adapter(&request.source, &pool)?;
     let target_adapter = adapter(target, &pool)?;
     let native = native_family(request.source.kind, target.kind);
@@ -1670,6 +1934,11 @@ pub async fn plan(
     let oracle_native = native && target_dialect == Dialect::Oracle;
     if request.replace && !oracle_native {
         return Err("Überschreiben wird nur für Oracle → Oracle unterstützt.".into());
+    }
+    if request.replace && (subset || content == Content::Data) {
+        return Err(
+            "Überschreiben ist nur ohne Tabellenauswahl und nicht für „Nur Daten“ möglich.".into(),
+        );
     }
     if request.replace {
         replace_guard(source.as_ref(), target_adapter.as_ref(), &request.schemas).await?;
@@ -1679,6 +1948,7 @@ pub async fn plan(
         atomic: atomic(target_dialect),
         schemas: request.schemas.clone(),
         replace: request.replace,
+        content,
         ..Default::default()
     };
     let existing = target_adapter.list_schemas().await?;
@@ -1690,6 +1960,12 @@ pub async fn plan(
             continue;
         }
         match target_dialect {
+            _ if content == Content::Data => {
+                return Err(format!(
+                    "Zielschema {} existiert nicht. „Nur Daten“ lädt nur in vorhandene Tabellen.",
+                    pair.target
+                ))
+            }
             Dialect::Oracle => {
                 return Err(format!(
                     "Zielschema {} existiert nicht. Oracle-Schemas sind Benutzer und müssen vorher angelegt werden.",
@@ -1700,13 +1976,28 @@ pub async fn plan(
             _ => plan.create_schemas.push(pair.target.clone()),
         }
     }
+    let need = Need {
+        details: !native,
+        foreign_keys: content == Content::Data,
+    };
     let mut tables = Vec::new();
     for pair in &request.schemas {
-        tables.extend(read_tables(source.as_ref(), request.source.kind, pair, native).await?);
+        tables.extend(
+            read_tables(
+                source.as_ref(),
+                &request.source,
+                &pool,
+                pair,
+                need,
+                &mut plan.warnings,
+            )
+            .await?,
+        );
     }
     if tables.is_empty() {
         return Err("Die gewählten Schemas enthalten keine Tabellen.".into());
     }
+    ensure_planning()?;
     let order = load_order(&tables);
     if native {
         native_tables(&mut plan, &tables, &order);
@@ -1733,23 +2024,37 @@ pub async fn plan(
                 ));
             }
             for pair in &request.schemas {
-                oracle_identity(&mut plan, source.as_ref(), pair).await?;
-                oracle_mviews(&mut plan, source.as_ref(), pair).await?;
+                if content != Content::Data {
+                    let planned = planned_tables(&plan, pair);
+                    oracle_identity(
+                        &mut plan,
+                        source.as_ref(),
+                        &pair.source,
+                        &pair.target,
+                        planned,
+                    )
+                    .await?;
+                }
+                oracle_mviews(&mut plan, source.as_ref(), pair, content != Content::Data).await?;
             }
         }
     } else {
-        let mapper = Mapper {
-            source_kind: request.source.kind,
-            target: target_dialect,
-            fold: fold_names,
-            tables: &tables,
-        };
+        let mapper = Mapper::new(request.source.kind, target_dialect, fold_names, &tables);
+        let warnings = plan.warnings.len();
         cross_ddl(&mut plan, &mapper, &order);
-        for pair in &request.schemas {
+        if content == Content::Data {
+            plan.warnings.truncate(warnings);
+            plan.manual.clear();
+        }
+        for pair in request
+            .schemas
+            .iter()
+            .filter(|pair| pair.tables.is_none() && content != Content::Data)
+        {
             manual_objects(&mut plan, source.as_ref(), pair).await;
         }
     }
-    for pair in &request.schemas {
+    for pair in request.schemas.iter().filter(|pair| pair.tables.is_none()) {
         plan_sequences(
             &mut plan,
             source.as_ref(),
@@ -1761,7 +2066,46 @@ pub async fn plan(
         .await;
     }
     check_names(target_dialect, &plan)?;
-    if plan.replace {
+    ensure_planning()?;
+    if content == Content::Data {
+        plan.pre_data.clear();
+        plan.post_data.clear();
+        plan.manual.clear();
+        let missing = missing_tables(target_adapter.as_ref(), target_dialect, &plan).await?;
+        if !missing.is_empty() {
+            let names: Vec<&str> = missing.iter().map(String::as_str).collect();
+            return Err(format!(
+                "Für „Nur Daten“ müssen die Zieltabellen existieren. Es fehlen: {}",
+                preview(&names)
+            ));
+        }
+        if target_dialect == Dialect::Oracle {
+            let mut targets: HashMap<String, HashSet<String>> = HashMap::new();
+            for table in &plan.tables {
+                targets
+                    .entry(table.target_schema.clone())
+                    .or_default()
+                    .insert(table.target_name.clone());
+            }
+            for (schema, planned) in targets {
+                oracle_identity(
+                    &mut plan,
+                    target_adapter.as_ref(),
+                    &schema,
+                    &schema,
+                    planned,
+                )
+                .await?;
+            }
+            let (disable, enable) =
+                oracle_copy::trigger_switches(target_adapter.as_ref(), &plan.tables).await?;
+            plan.before_load.splice(0..0, disable);
+            plan.finalize.extend(enable);
+        } else {
+            plan.warnings
+                .push("„Nur Daten“: Aktive Trigger der Zieltabellen feuern beim Laden.".into());
+        }
+    } else if plan.replace {
         for pair in &request.schemas {
             for (kind, name) in oracle_copy::objects(target_adapter.as_ref(), &pair.target).await? {
                 plan.replaced.push(format!("{kind} {}.{name}", pair.target));
@@ -2222,6 +2566,7 @@ struct Runner<'a> {
     session: Option<Box<dyn TxSession>>,
     journal: Vec<Statement>,
     created_schemas: Vec<String>,
+    loaded: Vec<String>,
 }
 
 impl Runner<'_> {
@@ -2468,6 +2813,26 @@ impl Runner<'_> {
         Ok(())
     }
 
+    async fn unload(&mut self, plan: &TransferPlan) -> Vec<String> {
+        let d = self.dialect;
+        let mut leftovers = Vec::new();
+        for table in std::mem::take(&mut self.loaded).iter().rev() {
+            let sql = match d {
+                Dialect::Clickhouse => format!("TRUNCATE TABLE {table}"),
+                _ => format!("DELETE FROM {table}"),
+            };
+            if let Err(error) = self.adapter.execute_query(&sql).await {
+                leftovers.push(format!("Zeilen in {table} nicht entfernt: {error}"));
+            }
+        }
+        for statement in &plan.finalize {
+            if let Err(error) = self.exec(statement).await {
+                leftovers.push(format!("Nicht wiederhergestellt: {error}"));
+            }
+        }
+        leftovers
+    }
+
     async fn compensate(&mut self) -> Vec<String> {
         let d = self.dialect;
         let mut leftovers = Vec::new();
@@ -2576,6 +2941,59 @@ async fn refuse_conflicts(
     ))
 }
 
+fn any_row_sql(target: Dialect, qualified: &str) -> String {
+    match target {
+        Dialect::Oracle => format!("SELECT 1 AS x FROM {qualified} WHERE ROWNUM = 1"),
+        Dialect::Mssql => format!("SELECT TOP 1 1 AS x FROM {qualified}"),
+        _ => format!("SELECT 1 AS x FROM {qualified} LIMIT 1"),
+    }
+}
+
+async fn filled(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    table: &TransferTable,
+) -> Option<String> {
+    let qualified = target.target(&table.target_schema, &table.target_name);
+    let label = format!("{}.{}", table.target_schema, table.target_name);
+    match adapter
+        .execute_query(&any_row_sql(target, &qualified))
+        .await
+    {
+        Ok(result) if result.rows.is_empty() => None,
+        Ok(_) => Some(format!("{label} enthält bereits Zeilen")),
+        Err(error) => Some(format!("{label}: {error}")),
+    }
+}
+
+async fn refuse_filled(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    plan: &TransferPlan,
+) -> Result<(), String> {
+    let mut problems: Vec<String> = Vec::new();
+    for chunk in plan.tables.chunks(METADATA_CONCURRENCY) {
+        let checks: Vec<_> = chunk
+            .iter()
+            .map(|table| filled(adapter, target, table))
+            .collect();
+        problems.extend(
+            futures_util::future::join_all(checks)
+                .await
+                .into_iter()
+                .flatten(),
+        );
+    }
+    if problems.is_empty() {
+        return Ok(());
+    }
+    let names: Vec<&str> = problems.iter().map(String::as_str).collect();
+    Err(format!(
+        "„Nur Daten“ lädt nur in leere Zieltabellen; es wurde nichts geschrieben: {}",
+        preview(&names)
+    ))
+}
+
 pub async fn run(
     target: &Endpoint,
     request: &RunRequest,
@@ -2615,6 +3033,8 @@ pub async fn run(
                 unconfirmed.join(", ")
             ));
         }
+    } else if plan.content == Content::Data {
+        refuse_filled(target_adapter.as_ref(), d, plan).await?;
     } else {
         refuse_conflicts(
             target_adapter.as_ref(),
@@ -2624,14 +3044,18 @@ pub async fn run(
         )
         .await?;
     }
-    let (mut reader, warnings) = if oracle_native {
+    let (mut reader, warnings) = if plan.content == Content::Structure {
+        (None, Vec::new())
+    } else if oracle_native {
         (
-            Source::Oracle(oracle_copy::Copier::open(&request.source, target, &pool).await?),
+            Some(Source::Oracle(
+                oracle_copy::Copier::open(&request.source, target, &pool).await?,
+            )),
             Vec::new(),
         )
     } else {
         let (reader, warnings) = Reader::open(&request.source, &pool).await?;
-        (Source::Generic(reader), warnings)
+        (Some(Source::Generic(reader)), warnings)
     };
     let mut outcome = TransferOutcome {
         atomic: plan.atomic,
@@ -2658,7 +3082,9 @@ pub async fn run(
         }
         .await;
         if let Err(error) = cleared {
-            reader.close().await;
+            if let Some(reader) = reader {
+                reader.close().await;
+            }
             return Err(error);
         }
     }
@@ -2670,6 +3096,7 @@ pub async fn run(
         session: None,
         journal: Vec::new(),
         created_schemas: Vec::new(),
+        loaded: Vec::new(),
     };
     let tables = plan.tables.len();
     let emit = |phase: &'static str, table: Option<String>, index: usize, rows: u64, total: u64| {
@@ -2717,9 +3144,17 @@ pub async fn run(
             let base = total;
             let mut report =
                 |rows: u64| emit("data", Some(label.clone()), index, rows, base + rows);
+            if plan.content == Content::Data && !plan.atomic {
+                runner
+                    .loaded
+                    .push(d.target(&table.target_schema, &table.target_name));
+            }
             let rows = match &mut reader {
-                Source::Generic(reader) => runner.load_table(reader, table, &mut report).await?,
-                Source::Oracle(copier) => copier.copy(table, &mut report).await?,
+                None => 0,
+                Some(Source::Generic(reader)) => {
+                    runner.load_table(reader, table, &mut report).await?
+                }
+                Some(Source::Oracle(copier)) => copier.copy(table, &mut report).await?,
             };
             total += rows;
             outcome.tables.push(TableResult {
@@ -2764,7 +3199,9 @@ pub async fn run(
         Ok(())
     }
     .await;
-    reader.close().await;
+    if let Some(reader) = reader {
+        reader.close().await;
+    }
     match result {
         Ok(()) => {
             if let Some(mut session) = runner.session.take() {
@@ -2793,6 +3230,9 @@ pub async fn run(
                     }
                 }
                 outcome.rolled_back = outcome.leftovers.is_empty();
+            } else if plan.content == Content::Data {
+                outcome.leftovers = super::execution::shielded(runner.unload(plan)).await;
+                outcome.rolled_back = outcome.leftovers.is_empty();
             } else {
                 outcome.leftovers = super::execution::shielded(runner.compensate()).await;
                 outcome.rolled_back = outcome.leftovers.is_empty();
@@ -2808,6 +3248,7 @@ pub async fn plan_transfer(
     connection_string: String,
     database: Option<String>,
     request: PlanRequest,
+    options: Option<super::execution::ExecutionOptions>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<TransferPlan, String> {
     let target = Endpoint {
@@ -2815,7 +3256,12 @@ pub async fn plan_transfer(
         connection_string,
         database,
     };
-    plan(&target, &request, pool_state.inner().clone()).await
+    super::execution::run(
+        options,
+        true,
+        plan(&target, &request, pool_state.inner().clone()),
+    )
+    .await
 }
 
 #[tauri::command]

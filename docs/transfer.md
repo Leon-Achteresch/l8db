@@ -4,6 +4,23 @@
 
 A transfer runs in two steps. `plan_transfer` reads the source and returns a plan with DDL statements per phase, the table load order, column mappings, warnings and objects that need manual work. The UI shows the plan; `run_transfer` executes exactly this plan.
 
+## Selection and scope
+
+- **Schemas and tables.** Every checked schema has a table dropdown ("Tabellen" column). By default all tables are transferred; the dropdown (search, virtualized list, "Treffer wählen", "Alle", "Keine") narrows a schema to chosen tables (`SchemaPair.tables`, `None` = all). With a table selection only those tables move, together with their columns, keys, indexes, constraints, triggers, comments and grants. Foreign keys to tables that are not selected are dropped with a plan warning. Sequences, object types, functions, procedures and packages whose names appear in the DDL of the chosen tables and their parts (defaults, triggers, column types) are kept, transitively, so a trigger keeps the package it calls; views and unreferenced objects are not transferred. PostgreSQL partitions of a chosen partitioned table are added to the selection. Selected tables that no longer exist in the source are skipped with a warning; an empty selection is rejected.
+- **Scope ("Umfang", `PlanRequest.content`).** `all` (default) creates structure and loads data. `structure` runs only the DDL phases and opens no source reader. `data` loads into existing, empty target tables: the plan contains no DDL, fails when a target schema or table is missing, reads foreign keys to load parents first, keeps identity handling (identity columns of the Oracle target tables that are `GENERATED ALWAYS` are switched to `BY DEFAULT` for the load and restored with `START WITH LIMIT VALUE`; the target's own identity settings are kept) and sequence sync. Enabled Oracle triggers on the target tables are disabled for the load and re-enabled afterwards, so the copied rows are not changed again; other families keep their triggers active and the plan warns about it. Before writing, every target table is checked to be empty. On targets without transactional DDL (Oracle, MySQL, ClickHouse) a failure deletes the rows of already loaded tables in reverse load order and restores identity settings.
+- Overwrite (section 5) is only available for `all`/`structure` without a table selection.
+
+## Planning large databases
+
+Planning reads the source catalog once per schema instead of once per table:
+
+- **Oracle source:** one dedicated connection streams a handful of schema-wide dictionary queries (`ALL_TAB_COLS`, `ALL_CONSTRAINTS`/`ALL_CONS_COLUMNS`, `ALL_INDEXES`/`ALL_IND_COLUMNS`, foreign keys, and defaults only for mapped transfers, since `DATA_DEFAULT` is a `LONG` and prevents array fetches), 1,000 rows per round trip. Previously every table cost three to six dictionary queries.
+- **Other sources:** per-table catalog reads run with at most 8 in flight and without the duplicate constraint read.
+- Load order, table lookups, identity/materialized-view matching and conflict checks are linear (`load_order` is Kahn's algorithm with the previous tie-breaking).
+- A plan runs as a cancellable job; the UI cancels an abandoned plan when the selection changes.
+
+Measured with `transfer_live_oracle_plan_budget` on macOS 27.0, Apple M3 (8 cores, 16 GB), Oracle AI Database 26ai Free 23.26 in Docker (`gvenzl/oracle-free:23-slim`, arm64), debug build, 1,502 tables (each with primary key, foreign key, unique key, check and index): the old per-table read took 63.9–67.4 s; the complete plan now takes 0.23–0.33 s median and 2.0–3.2 s p95 (first, cold run) over five runs, a two-table selection 0.18–0.26 s, peak RSS +22–31 MiB, cancellation 32–101 ms (three test runs). The test also checks that the bulk reader returns exactly what the per-table reader returns. Other database families, Linux, Windows and release builds were not measured.
+
 ## 1. Type conventions
 
 There are two modes, chosen automatically:
@@ -64,7 +81,7 @@ The order follows what `pg_dump`/`pg_restore` do:
 
 Data path: the source is read in pages of 5,000 rows. PostgreSQL uses a server-side cursor (`DECLARE … NO SCROLL CURSOR`, `FETCH FORWARD`). Other sources use keyset pagination on a single-column primary key, and ordered `OFFSET` pages otherwise. Rows are written as multi-row INSERT batches through the shared import writer (`import::BatchWriter`: Oracle 100, SQL Server 500, ClickHouse 5,000, otherwise 1,000 rows or 2 MiB of SQL), with explicit identity values (`OVERRIDING SYSTEM VALUE` for PostgreSQL, `IDENTITY_INSERT` for SQL Server). No per-row round trip is made; a failing batch is replayed row by row only to name the exact failing row.
 
-What is deliberately not done: disabling constraints or triggers on existing objects (`session_replication_role`, `FOREIGN_KEY_CHECKS=0`, `NOCHECK`). These need elevated rights, and they leave the database without integrity checks if the run dies halfway. Because the transfer creates the constraints itself after the load, nothing needs to be disabled.
+What is deliberately not done: disabling constraints or triggers on existing objects (`session_replication_role`, `FOREIGN_KEY_CHECKS=0`, `NOCHECK`). These need elevated rights, and they leave the database without integrity checks if the run dies halfway. Because the transfer creates the constraints itself after the load, nothing needs to be disabled. Exception: "Nur Daten" into Oracle disables the enabled triggers of the target tables (`ALTER TRIGGER … DISABLE`, needs `ALTER ANY TRIGGER` for foreign schemas) and re-enables them at the end, also after a failed run; if the app process dies during the load, they stay disabled.
 
 ## 4. Consistency: never half a database
 
@@ -106,7 +123,7 @@ A conflict aborts with the list of conflicting names. The transfer never overwri
 `cargo test transfer` runs the unit tests plus live SQLite → DuckDB and SQLite rollback tests. The ignored live tests need throwaway databases, passed as env vars:
 
 - `L8DB_TR_PG_URL` (required for the matrix), `L8DB_TR_MYSQL_URL`, `L8DB_TR_ORACLE_URL`, `L8DB_TR_MSSQL_URL`
-- `L8DB_TR_ORACLE_SYSTEM_URL` for `transfer_live_oracle_native_packages` (creates and drops the users `TR_SRC` and `TR_DST`) and `transfer_live_oracle_bulk_budget` (users `TR_PERF_SRC`/`TR_PERF_DST`, row count via `L8DB_TR_ORACLE_PERF_ROWS`, default 100,000)
+- `L8DB_TR_ORACLE_SYSTEM_URL` for `transfer_live_oracle_native_packages` (creates and drops the users `TR_SRC` and `TR_DST`), `transfer_live_oracle_bulk_budget` (users `TR_PERF_SRC`/`TR_PERF_DST`, row count via `L8DB_TR_ORACLE_PERF_ROWS`, default 100,000) and `transfer_live_oracle_plan_budget` (users `TR_BIG_SRC`/`TR_BIG_DST`, table count via `L8DB_TR_ORACLE_PLAN_TABLES`, default 1,500; plan speed against the per-table path, equality of both readers, cancellation, memory, and "Nur Daten" with a table selection including failure cleanup)
 
 ```sh
 cargo test --lib transfer_live -- --ignored --test-threads=1
@@ -114,7 +131,9 @@ cargo test --lib transfer_live -- --ignored --test-threads=1
 
 `transfer_live_oracle_bulk_budget` copies 100,000 rows (`NUMBER`, `VARCHAR2`, `TIMESTAMP`, `TIMESTAMP WITH TIME ZONE`, `RAW`, every tenth row a 4 KB `CLOB`) Oracle → Oracle, cancels a first run after the first batch and checks the cleanup, then verifies content hashes of both sides. Budgets: at most rows / 500 + 1 array inserts (`V$SQL` executions), peak RSS growth below 64 MiB, batch p95 below 500 ms, more than 5,000 rows/s, cancellation below 2 s. Measured on macOS 27.0.1, Apple M3 (8 cores, 16 GB), Oracle AI Database 26ai Free 23.26.3 in Docker (`gvenzl/oracle-free:23-slim`, arm64), debug build, five runs: 3.7–5.1 s (19,400–27,300 rows/s), batch median 14–20 ms and p95 21–43 ms, 199 array inserts, peak RSS +12–17 MiB, cancellation reacted in about 20 ms and left nothing behind. The previous text path was not measured for comparison; Linux, Windows, release builds and other Oracle versions were not measured.
 
-The complete Oracle → Oracle path (every object type, every value, overwrite, failure cleanup) is covered end to end by `tests/oracle-transfer-browser.test.ts`, which drives the real UI against the Oracle lab (`bun run test:oracle-browser`).
+`sqlite_to_duckdb_selected_tables_structure_then_data` covers table selection, "Nur Struktur" and "Nur Daten" locally. `tests/perf-transfer-selection.test.tsx` bounds the table dropdown (50,000 tables render 19 rows) and the catalog filter for a table selection (652,000 catalog objects in about 25–30 ms).
+
+The complete Oracle → Oracle path (every object type, every value, overwrite, failure cleanup, table selection with "Nur Struktur" followed by "Nur Daten") is covered end to end by `tests/oracle-transfer-browser.test.ts`, which drives the real UI against the Oracle lab (`bun run test:oracle-browser`).
 
 ## 5. Oracle → Oracle
 
