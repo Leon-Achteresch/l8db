@@ -1,36 +1,53 @@
 import { ArrowRightIcon, ChevronRightIcon, FilterIcon, LayersIcon, TableIcon } from "lucide-react";
 import { Fragment } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatBytes } from "@/lib/backup";
-import type { SchemaSize, TransferPlan } from "@/lib/db";
+import type { SchemaSize, TransferContent, TransferPlan } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cn } from "@/lib/utils";
+import { TransferContentSelect } from "./transfer-content-select";
+import { TransferTablePicker } from "./transfer-table-picker";
 
 export function TransferSchemas({
   scope,
+  connectionId,
+  database,
   schemas,
   existing,
   selected,
   mapping,
+  tables: picked,
+  content,
   plan,
   sizes,
   onToggle,
   onSelectAll,
   onMap,
+  onTables,
+  onContent,
 }: {
   scope: string;
+  connectionId: string;
+  database: string | null;
   schemas: string[];
   existing: string[];
   selected: string[];
   mapping: Record<string, string>;
+  tables: Record<string, string[]>;
+  content: TransferContent;
   plan: TransferPlan | null;
   sizes: Record<string, SchemaSize>;
   onToggle: (schema: string) => void;
   onSelectAll: (value: string[]) => void;
   onMap: (schema: string, target: string) => void;
+  onTables: (schema: string, value: string[] | null) => void;
+  onContent: (value: TransferContent) => void;
 }) {
+  const picker = useNewFeatureVisibility<HTMLTableCellElement>("transfer.tables");
   const [query, setQuery] = useTabState(tabStateKey(scope, "schemaQuery"), "");
   const [only, setOnly] = useTabState<"all" | "selected">(
     tabStateKey(scope, "schemaFilter"),
@@ -76,6 +93,7 @@ export function TransferSchemas({
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        <TransferContentSelect value={content} onChange={onContent} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full table-fixed border-collapse text-[13px]">
@@ -83,7 +101,7 @@ export function TransferSchemas({
             <col className="w-10" />
             <col />
             <col className="w-44" />
-            <col className="w-22" />
+            <col className="w-36" />
             <col className="w-22" />
             <col className="w-36" />
           </colgroup>
@@ -92,7 +110,12 @@ export function TransferSchemas({
               <th className="py-2 pl-3" aria-label="Auswahl" />
               <th className="py-2 text-left font-medium">Objekt</th>
               <th className="py-2 pr-3 text-left font-medium">Ziel</th>
-              <th className="py-2 pr-4 text-right font-medium">Tabellen</th>
+              <th ref={picker.ref} className="py-2 pr-4 text-right font-medium">
+                <span className="inline-flex items-center gap-1.5">
+                  {picker.isNew && <NewBadge />}
+                  Tabellen
+                </span>
+              </th>
               <th className="py-2 pr-4 text-right font-medium">Größe</th>
               <th className="py-2 pr-3 text-left font-medium">Im Ziel</th>
             </tr>
@@ -167,17 +190,16 @@ export function TransferSchemas({
                         </div>
                       )}
                     </td>
-                    <td className="py-1.5 pr-4 text-right tabular-nums">
-                      {checked && plan ? (
-                        <>
-                          {tables.length.toLocaleString("de-DE")}
-                          {size && (
-                            <span className="text-muted-foreground">
-                              {" "}
-                              / {size.table_count.toLocaleString("de-DE")}
-                            </span>
-                          )}
-                        </>
+                    <td className="py-1 pr-4 text-right tabular-nums">
+                      {checked ? (
+                        <TransferTablePicker
+                          connectionId={connectionId}
+                          database={database}
+                          schema={schema}
+                          total={size?.table_count ?? null}
+                          selected={picked[schema]}
+                          onChange={(value) => onTables(schema, value)}
+                        />
                       ) : size ? (
                         size.table_count.toLocaleString("de-DE")
                       ) : (
@@ -194,6 +216,8 @@ export function TransferSchemas({
                         <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
                           {blocked} vorhanden
                         </span>
+                      ) : content === "data" ? (
+                        "Leere Tabellen nötig"
                       ) : isNew ? (
                         "Schema neu anlegen"
                       ) : (
@@ -231,7 +255,13 @@ export function TransferSchemas({
                                 Vorhanden, blockiert
                               </span>
                             ) : (
-                              <span className="text-muted-foreground">Neu anlegen</span>
+                              <span className="text-muted-foreground">
+                                {content === "data"
+                                  ? "Daten laden"
+                                  : content === "structure"
+                                    ? "Nur anlegen"
+                                    : "Neu anlegen"}
+                              </span>
                             )}
                           </td>
                         </tr>
