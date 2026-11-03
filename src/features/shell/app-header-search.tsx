@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
+import type { CommandItem } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
@@ -38,6 +38,11 @@ import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_RESULTS = 60;
 const NO_ITEMS: CommandItem[] = [];
+const CommandPalette = lazy(() =>
+  import("@/components/motion/command-palette").then(({ CommandPalette }) => ({
+    default: CommandPalette,
+  })),
+);
 const ObjectSearchDialog = lazy(() =>
   import("@/features/objects/object-search-dialog").then(({ ObjectSearchDialog }) => ({
     default: ObjectSearchDialog,
@@ -54,6 +59,8 @@ export function AppHeaderSearch() {
   const dynamicIsland = useSettingsStore((state) => state.dynamicIsland);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const paletteMounted = useRef(false);
+  if (open) paletteMounted.current = true;
   const [builders, setBuilders] = useState<typeof import("./app-header-search/command-items")>();
   const [initialQuery, setInitialQuery] = useState("");
   const paletteHistory = usePaletteHistoryStore((state) => state.history);
@@ -375,21 +382,25 @@ export function AppHeaderSearch() {
   return (
     <>
       {searchButton}
-      <CommandPalette
-        lockDocumentScroll={false}
-        items={items}
-        open={open}
-        onOpenChange={setOpen}
-        placeholder="Suchen… · > für Befehle"
-        emptyMessage={builders ? "Keine Treffer" : "Suchbefehle laden…"}
-        maxVisible={MAX_VISIBLE_RESULTS}
-        featureId="search.fuzzy"
-        queryItem={askAiItem}
-        initialQuery={initialQuery}
-        commandFeatureId="search.commands"
-        history={paletteHistory}
-        onSelectItem={(item) => recordPaletteUse(item.id)}
-      />
+      {paletteMounted.current && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            lockDocumentScroll={false}
+            items={items}
+            open={open}
+            onOpenChange={setOpen}
+            placeholder="Suchen… · > für Befehle"
+            emptyMessage={builders ? "Keine Treffer" : "Suchbefehle laden…"}
+            maxVisible={MAX_VISIBLE_RESULTS}
+            featureId="search.fuzzy"
+            queryItem={askAiItem}
+            initialQuery={initialQuery}
+            commandFeatureId="search.commands"
+            history={paletteHistory}
+            onSelectItem={(item) => recordPaletteUse(item.id)}
+          />
+        </Suspense>
+      )}
       {objectSearchMounted.current && (
         <Suspense fallback={null}>
           <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
