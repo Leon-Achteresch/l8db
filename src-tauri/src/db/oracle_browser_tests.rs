@@ -108,6 +108,20 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
+        "execute_with_binds" => crate::db::commands::execute_with_binds(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "txId")?,
+            a(x, "sql")?,
+            a(x, "binds")?,
+            st(&pool),
+            st(&tx),
+            a(x, "options")?,
+            a(x, "session")?,
+        )
+        .await
+        .map(|v| json!(v)),
         "transaction_database_changes" => {
             crate::db::commands::transaction_database_changes(a(x, "txId")?, st(&tx))
                 .await

@@ -36,8 +36,16 @@ test("@, @@ and START are SQL*Plus commands in the Oracle splitter", () => {
   ]);
   expect(split.statements.map((statement) => statement.text)).toEqual(["SELECT 1 FROM dual;"]);
   expect(splitSqlStatements("SELECT 1 FROM dual WHERE a = 1\n@x", "oracle").commands).toEqual([]);
-  expect(includeTarget("@@ sub/next.sql")).toEqual({ name: "sub/next.sql", nested: true });
-  expect(includeTarget('start "my file.sql"')).toEqual({ name: "my file.sql", nested: false });
+  expect(includeTarget("@@ sub/next.sql")).toEqual({
+    name: "sub/next.sql",
+    nested: true,
+    args: [],
+  });
+  expect(includeTarget('start "my file.sql"')).toEqual({
+    name: "my file.sql",
+    nested: false,
+    args: [],
+  });
   expect(includeTarget("STARTUP")).toBeNull();
   expect(includeCandidates("a", ["/s", null, "/s", "C:\\w"])).toEqual(["/s/a.sql", "C:\\w\\a.sql"]);
   expect(includeCandidates("/abs/b.pls", ["/s"])).toEqual(["/abs/b.pls"]);

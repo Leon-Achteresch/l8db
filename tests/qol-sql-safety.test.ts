@@ -66,9 +66,8 @@ test("does not confuse grants and escaped literals with destructive commands", (
 });
 
 test("managed scripts reject implicit commits and SQL transaction control", () => {
-  expect(scriptPolicyIssue("CREATE TABLE t(id int)", "oracle", true)).toContain(
-    "implizitem Commit",
-  );
+  expect(scriptPolicyIssue("CREATE TABLE t(id int)", "mysql", true)).toContain("implizitem Commit");
+  expect(scriptPolicyIssue("CREATE TABLE t(id int)", "oracle", true)).toBeNull();
   expect(scriptPolicyIssue("CREATE TABLE t(id int)", "postgres", true)).toBeNull();
   expect(scriptPolicyIssue("COMMIT", "postgres", false)).toContain("Transaktionsbefehle");
   expect(scriptPolicyIssue("BEGIN NULL; END;\n/", "oracle", true)).toBeNull();

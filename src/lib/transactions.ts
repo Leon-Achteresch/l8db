@@ -55,6 +55,7 @@ interface TransactionStoreState {
   addTransaction: (tx: ActiveTransaction) => void;
   removeTransaction: (txId: string) => void;
   addChange: (txId: string, change: TransactionChange) => void;
+  clearChanges: (txId: string) => void;
   setDatabaseChanges: (txId: string, databaseChanges: DatabaseChanges) => void;
   syncWithBackend: () => Promise<void>;
 }
@@ -81,6 +82,13 @@ export const useTransactionStore = create<TransactionStoreState>()(
         set((s) => ({
           transactions: s.transactions.map((t) =>
             t.txId === txId ? { ...t, changes: [...t.changes, change] } : t,
+          ),
+        })),
+
+      clearChanges: (txId) =>
+        set((s) => ({
+          transactions: s.transactions.map((t) =>
+            t.txId === txId ? { ...t, changes: [], databaseChanges: undefined } : t,
           ),
         })),
 

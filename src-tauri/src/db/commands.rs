@@ -927,6 +927,35 @@ pub async fn delete_row_in_transaction(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_with_binds(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    tx_id: Option<String>,
+    sql: String,
+    binds: Vec<super::BindVariable>,
+    pool_state: tauri::State<'_, PoolState>,
+    tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
+    session: Option<String>,
+) -> Result<super::BoundResult, String> {
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        if let Some(tx_id) = tx_id {
+            return tx_state.execute_with_binds(&tx_id, &sql, &binds).await;
+        }
+        let adapter = create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?;
+        super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds)).await
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn commit_transaction(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,

@@ -564,6 +564,7 @@ pub fn run() {
             db::commands::execute_in_transaction_with_params,
             db::commands::transaction_database_changes,
             db::commands::transaction_server_output,
+            db::commands::execute_with_binds,
             db::commands::update_row_in_transaction,
             db::commands::insert_row_in_transaction,
             db::commands::duplicate_row_in_transaction,

@@ -43,36 +43,63 @@ const ORACLE_CREATE_MODIFIERS = [
   "NOFORCE",
 ];
 const ORACLE_PLSQL_OBJECTS = ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER"];
-const SQLPLUS_COMMANDS = new Set([
-  "SET",
-  "PROMPT",
-  "SPOOL",
-  "WHENEVER",
-  "DEFINE",
-  "UNDEFINE",
-  "REM",
-  "REMARK",
-  "SHOW",
-  "EXIT",
-  "QUIT",
-  "PAUSE",
-  "ACCEPT",
-  "COLUMN",
-  "TTITLE",
-  "BTITLE",
-  "BREAK",
-  "CLEAR",
-  "TIMING",
-  "START",
-  "STA",
-  ...[
-    "PRO DEF UNDEF COL SPO SHO ACC PAU VAR VARIABLE PRINT HOST CONNECT CONN DISCONNECT DISC",
-    "PASSWORD STORE COMPUTE REPHEADER REPFOOTER STARTUP SHUTDOWN RECOVER ARCHIVE COPY XQUERY",
-    "ATTRIBUTE SAVE GET EDIT INPUT LIST APPEND CHANGE DEL RUN HELP DESC DESCRIBE",
-  ]
-    .join(" ")
-    .split(" "),
-]);
+const SQLPLUS_COMMAND_FORMS: [string, number][] = [
+  ["ACCEPT", 3],
+  ["APPEND", 6],
+  ["ARCHIVE", 7],
+  ["ATTRIBUTE", 4],
+  ["BREAK", 3],
+  ["BTITLE", 3],
+  ["CHANGE", 6],
+  ["CLEAR", 2],
+  ["COLUMN", 3],
+  ["COMPUTE", 4],
+  ["CONNECT", 4],
+  ["COPY", 4],
+  ["DEFINE", 3],
+  ["DEL", 3],
+  ["DESCRIBE", 4],
+  ["DISCONNECT", 4],
+  ["EDIT", 2],
+  ["EXIT", 4],
+  ["GET", 3],
+  ["HELP", 4],
+  ["HISTORY", 4],
+  ["HOST", 2],
+  ["INPUT", 5],
+  ["LIST", 4],
+  ["PASSWORD", 5],
+  ["PAUSE", 3],
+  ["PRINT", 3],
+  ["PROMPT", 3],
+  ["QUIT", 4],
+  ["RECOVER", 7],
+  ["REMARK", 3],
+  ["REPFOOTER", 4],
+  ["REPHEADER", 4],
+  ["RUN", 3],
+  ["SAVE", 3],
+  ["SET", 3],
+  ["SHOW", 3],
+  ["SHUTDOWN", 8],
+  ["SPOOL", 3],
+  ["START", 3],
+  ["STARTUP", 7],
+  ["STORE", 5],
+  ["TIMING", 4],
+  ["TTITLE", 3],
+  ["UNDEFINE", 5],
+  ["VARIABLE", 3],
+  ["WHENEVER", 8],
+  ["XQUERY", 6],
+];
+
+function isSqlPlusCommand(word: string): boolean {
+  return SQLPLUS_COMMAND_FORMS.some(
+    ([full, min]) => word.length >= min && word.length <= full.length && full.startsWith(word),
+  );
+}
+
 const SQL_SET_TARGETS = ["TRANSACTION", "ROLE", "CONSTRAINT", "CONSTRAINTS"];
 const SLASH_LINE = /^[ \t]*\/[ \t\r]*$/gm;
 const WRAPPED_HEADER =
@@ -178,7 +205,9 @@ export function splitSqlStatements(
   const blankBefore = (at: number) => !sql.slice(sql.lastIndexOf("\n", at - 1) + 1, at).trim();
 
   const pushCommand = (from: number) => {
-    const next = lineEndFrom(from);
+    let next = lineEndFrom(from);
+    while (next < length && /[ \t]-[ \t\r]*$/.test(sql.slice(from, next)))
+      next = lineEndFrom(next + 1);
     let end = next;
     while (end > from && isSpace(sql[end - 1])) end -= 1;
     commands.push({ text: sql.slice(from, end), start: from, end });
@@ -291,7 +320,7 @@ export function splitSqlStatements(
           continue;
         }
         const word = sql.slice(start, index).toUpperCase();
-        if (!hasCode && SQLPLUS_COMMANDS.has(word)) {
+        if (!hasCode && isSqlPlusCommand(word)) {
           let next = index;
           while (next < length && isSpace(sql[next])) next += 1;
           const target = sql.slice(next, readWord(next)).toUpperCase();
