@@ -37,7 +37,6 @@ const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,
   "explain_query",
   "preview_dml",
-  "test_connection",
   "test_connection_string",
   "list_databases",
   "list_schemas",

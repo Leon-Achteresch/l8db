@@ -13,15 +13,15 @@ pub fn configure_execution_defaults(
 use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
-    create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
-    AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
-    CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest,
-    CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
-    CreateTableRequest, DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
-    ObjectGrantInfo, PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo,
-    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    create_adapter_from_string, AddColumnRequest, AlterColumnRequest, AlterRoleOptions,
+    AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo,
+    CompileResult, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
+    CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
+    DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo,
+    FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo,
+    PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
+    SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData,
+    TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -67,23 +67,6 @@ pub fn oracle_open_tnsnames(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     super::provider::install_driver(kind).await
-}
-
-#[tauri::command]
-pub async fn test_connection(
-    config: ConnectionConfig,
-    pool_state: tauri::State<'_, PoolState>,
-    options: Option<super::execution::ExecutionOptions>,
-) -> Result<(), String> {
-    super::execution::run(options, false, async {
-        super::execution::connect(async {
-            create_adapter(config, pool_state.inner().clone())?
-                .test_connection()
-                .await
-        })
-        .await
-    })
-    .await
 }
 
 #[tauri::command]

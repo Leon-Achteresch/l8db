@@ -12,12 +12,12 @@ use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent
 use super::{
     map_pg_err, quote_ident, quote_literal, redact_connection_string, AddColumnRequest,
     AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo,
-    ColumnMatch, CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo,
-    CreateRoleOptions, DatabaseAdapter, DependencyInfo, DetailedColumnInfo, ERColumn, ERSchema,
-    ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
+    ColumnMatch, CompileErrorInfo, CompileResult, ConstraintInfo, CreateRoleOptions,
+    DatabaseAdapter, DependencyInfo, DetailedColumnInfo, ERColumn, ERSchema, ERTable,
+    ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
     InvalidObjectInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
-    RowCount, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode, TableData,
-    TableInfo, TablePrivileges, TriggerInfo,
+    RowCount, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, TableData, TableInfo,
+    TablePrivileges, TriggerInfo,
 };
 
 const SEARCH_SNIPPET_LEN: usize = 240;
@@ -152,37 +152,6 @@ impl PostgresAdapter {
             pool_key: String::new(),
             ssl,
             read_only: false,
-        }
-    }
-
-    pub fn from_config(config: ConnectionConfig, pool_state: PoolState) -> Self {
-        let ssl = super::connection::PgTls {
-            mode: config.ssl_mode.unwrap_or(SslMode::Prefer),
-            ..Default::default()
-        };
-        let mut pg = Config::new();
-        pg.host(&config.host)
-            .port(config.port)
-            .user(&config.user)
-            .password(&config.password)
-            .dbname(&config.database)
-            .ssl_mode(ssl.mode.to_pg())
-            .application_name("l8db")
-            .connect_timeout(super::execution::connection_duration());
-        if config.read_only {
-            pg.options(super::connection::READ_ONLY_OPTION);
-        }
-        let pool_key = super::connection::connection_key(
-            &format!("{pg:?}{:?}{}", config.password, ssl.mode.as_url_param()),
-            None,
-        );
-        Self {
-            session: None,
-            config: pg,
-            pool_state,
-            pool_key,
-            ssl,
-            read_only: config.read_only,
         }
     }
 

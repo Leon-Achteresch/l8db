@@ -517,7 +517,6 @@ pub fn run() {
             db::commands::install_driver,
             db::commands::oracle_tns_names,
             db::commands::oracle_open_tnsnames,
-            db::commands::test_connection,
             db::commands::test_connection_string,
             db::commands::list_databases,
             db::commands::list_schemas,
