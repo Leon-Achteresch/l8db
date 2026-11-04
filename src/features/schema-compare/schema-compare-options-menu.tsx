@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useHasNewFeatures } from "@/lib/new-features";
-import { activeTypes, sideKind, useSchemaCompareStore } from "@/lib/schema-compare/store";
+import { activeTypes, sideKind, useSchemaCompareInstance } from "@/lib/schema-compare/store";
 import {
   type CompareFlag,
   compareTypesFor,
@@ -92,8 +92,9 @@ const OPTION_LABELS: { key: CompareFlag; label: string; hint: string }[] = [
 const keep = (event: Event) => event.preventDefault();
 
 export function SchemaCompareOptionsMenu() {
-  const state = useSchemaCompareStore();
-  const set = useSchemaCompareStore.setState;
+  const store = useSchemaCompareInstance();
+  const state = store();
+  const set = store.setState;
   const kind = sideKind(state.source) ?? sideKind(state.target);
   const supported = compareTypesFor(kind);
   const selected = activeTypes(state, kind);

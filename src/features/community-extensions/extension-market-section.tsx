@@ -51,10 +51,13 @@ export function ExtensionMarketSection({ community = false }: { community?: bool
     setPending(entry.id);
     try {
       const archive = await downloadMarketExtension(entry, fetch, catalogUrl);
-      if (installed.some((item) => item.archive.manifest.id === entry.id))
+      if (installed.some((item) => item.archive.manifest.id === entry.id)) {
         await host.updateExtension(archive);
-      else await host.installExtension(archive);
-      toast.success(`${entry.name} installiert. Jetzt unter „Installiert“ aktivieren.`);
+        toast.success(`${entry.name} aktualisiert.`);
+      } else {
+        await host.installExtension(archive);
+        toast.success(`${entry.name} installiert. Jetzt unter „Installiert“ aktivieren.`);
+      }
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {

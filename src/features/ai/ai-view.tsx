@@ -19,7 +19,7 @@ import {
   resolveChatContext,
 } from "@/lib/ai/chat-context";
 import { chatWireMessages, summarizeChat } from "@/lib/ai/chat-history";
-import { aiConnections, mergeAiModels } from "@/lib/ai/context";
+import { aiConnections, fastSupported, mergeAiModels } from "@/lib/ai/context";
 import { setAiDropHandler } from "@/lib/ai/drop-target";
 import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
 import { editorAiController } from "@/lib/ai/editor/controller";
@@ -68,6 +68,7 @@ import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
 import { AiContextChips } from "./ai-context-chips";
+import { AiFastToggle } from "./ai-fast-toggle";
 import { AiIssueIntro } from "./ai-issue-intro";
 import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
 import { AiOnboarding } from "./ai-onboarding";
@@ -475,7 +476,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       await aiRun(
         {
           runId: id,
-          profile,
+          profile: { ...profile, fast: Boolean(profile.fast) && fastSupported(profile, models) },
           cwd,
           sessionId: resume,
           messages: wire.messages,
@@ -590,6 +591,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               saveLive();
             }
           } else if (event.kind === "status") setRunStatus(String(event.data.status ?? ""));
+          else if (event.kind === "notice") toast.info(String(event.data.message ?? ""));
           else if (event.kind === "error") {
             if (liveSession.current) liveSession.current = { ...liveSession.current, failed: true };
             updateLast((last) => ({
@@ -1332,6 +1334,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           }
           trailingAction={
             <>
+              <AiFastToggle profile={profile} models={models} disabled={busy} />
               <AiReasoningPicker profile={profile} models={models} disabled={busy} />
               <AiProviderPicker
                 profile={profile}

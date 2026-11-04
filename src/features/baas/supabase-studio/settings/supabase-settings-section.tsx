@@ -8,10 +8,10 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { BaasSidebarItem } from "../../baas-sidebar-item";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import { SupabaseBackupsView } from "../../supabase-backups-view";
-import { SupabaseSectionHeader } from "../supabase-section-header";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseSettingsApi } from "./supabase-settings-api";
 import { SupabaseSettingsDanger } from "./supabase-settings-danger";
@@ -53,7 +53,7 @@ export function SupabaseSettingsSection({ project, capabilities }: SupabaseStudi
           ))}
         </nav>
       </BaasSidebarPortal>
-      <SupabaseSectionHeader
+      <BaasSectionHeader
         title="Einstellungen"
         titleRef={feature.ref}
         isNew={feature.isNew}
@@ -81,7 +81,7 @@ export function SupabaseSettingsSection({ project, capabilities }: SupabaseStudi
           </div>
         </>
       ) : (
-        <p className="rounded-2xl border bg-card p-5 text-xs text-muted-foreground">
+        <p className="rounded-2xl bg-muted/25 p-5 text-xs text-muted-foreground">
           Data-API-, Postgres-, Netzwerk- und Backup-Einstellungen gibt es nur für Supabase-Cloud-
           Projekte mit Zugangstoken. Selbst gehostet werden sie in der docker-compose.yml und .env
           der Instanz gepflegt.

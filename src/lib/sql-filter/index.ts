@@ -18,7 +18,6 @@ export {
   parseFilterList,
 } from "./operators";
 export {
-  literalIsText,
   quoteIdent,
   quoteLike,
   quoteLiteral,

@@ -8,6 +8,7 @@ import { seedAiWorkspace } from "../../tests/fixtures/ai-workspace";
 import { seedApp } from "../../tests/fixtures/perf-app";
 import { seedDashboardVideo } from "./dashboard-scenario";
 import { chat, seedMcpOpenVideo } from "./mcp-open-scenario";
+import { dragTo, inside, seedSplitDndVideo } from "./split-dnd-scenario";
 
 const output = resolve(process.env.FEATURE_VIDEO_OUTPUT ?? "test-artifacts/feature-videos");
 const catalog = JSON.parse(await readFile(new URL("catalog.json", import.meta.url), "utf8"));
@@ -74,6 +75,7 @@ try {
     });
     if (item.id === "dashboard-workspace") await seedDashboardVideo(page);
     if (item.id === "mcp-open") await seedMcpOpenVideo(page);
+    if (item.id === "split-dnd") await seedSplitDndVideo(page);
     await page.route("https://api.github.com/**", (route) =>
       route.fulfill({ status: 404, body: "{}" }),
     );
@@ -116,7 +118,9 @@ try {
         ? "/dashboard"
         : item.id === "mcp-open" || item.id === "ai-issue-report"
           ? "/"
-          : `/settings?tab=${tab}`;
+          : item.id === "split-dnd"
+            ? "/tables/public/table_0000"
+            : `/settings?tab=${tab}`;
     await page.goto(`http://localhost:${server.port}${start}`);
     if (item.id === "ai-issue-report") {
       await page.getByRole("button", { name: "AI-Arbeitsbereich", exact: true }).click();
@@ -125,6 +129,7 @@ try {
       await page.getByText("Shop · Beispieldaten").first().waitFor();
     else if (item.id === "dashboard-workspace")
       await page.getByRole("button", { name: "Chart bearbeiten", exact: true }).waitFor();
+    else if (item.id === "split-dnd") await page.locator("tbody tr[data-index]").first().waitFor();
     else await page.getByRole("heading", { name: "Einstellungen", exact: true }).waitFor();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForTimeout(1000);
@@ -362,11 +367,49 @@ try {
       await resetCamera();
       await caption(page, "Nur wenn du darum bittest – sonst bleibt alles, wie es ist.");
       await page.waitForTimeout(2600);
+    } else if (item.id === "split-dnd") {
+      const master = (table: string) =>
+        page.locator(`nav[aria-label='Geöffnete Objekte'] [data-tab-key='table:public.${table}']`);
+      await caption(page, "Tabellen per Drag & Drop nebeneinander anordnen.");
+      await page.waitForTimeout(1800);
+      await caption(page, "Tab an den Rand ziehen – die Vorschau zeigt den neuen Bereich.");
+      await dragTo(
+        page,
+        master("table_0001"),
+        await inside(page.locator("[data-drop-zone='pane:single']"), 0.9, 0.5),
+      );
+      await page.locator("[data-pane-strip='1'] [data-tab-key]").first().waitFor();
+      await caption(page, "Zwei Tabellen nebeneinander, jede mit eigener Tab-Leiste.");
+      await page.waitForTimeout(2600);
+      await caption(page, "Nach unten ziehen teilt einen Bereich noch einmal.");
+      await dragTo(
+        page,
+        master("table_0002"),
+        await inside(page.locator("[data-drop-zone='pane:1']"), 0.5, 0.88),
+      );
+      await page.locator("[data-pane-strip='2'] [data-tab-key]").first().waitFor();
+      await page.waitForTimeout(2200);
+      await caption(page, "Weitere Tabs einfach in eine Tab-Leiste ziehen.");
+      await dragTo(
+        page,
+        master("table_0003"),
+        await inside(page.locator("[data-pane-strip='0']"), 0.6, 0.5),
+      );
+      await page
+        .locator("[data-pane-strip='0'] [data-tab-key='table:public.table_0003']")
+        .waitFor();
+      await page.waitForTimeout(2200);
+      await page.mouse.move(1240, 700, { steps: 20 });
+      await caption(page, "Deine Anordnung bleibt erhalten. Jetzt selbst ausprobieren.");
+      await page.waitForTimeout(2800);
     }
     if (errors.length) throw new Error(`App-Fehler während Aufnahme: ${errors.join("; ")}`);
     const recordedDuration = (performance.now() - recordingStart) / 1000 - trimStart;
     const speedUp =
-      item.id === "dashboard-workspace" || item.id === "mcp-open" || item.id === "ai-issue-report";
+      item.id === "dashboard-workspace" ||
+      item.id === "mcp-open" ||
+      item.id === "ai-issue-report" ||
+      item.id === "split-dnd";
     const duration = Math.min(speedUp ? 29.5 : 25, recordedDuration);
     const videoFilter = speedUp
       ? `trim=duration=${recordedDuration.toFixed(3)},setpts=${duration / recordedDuration}*(PTS-STARTPTS),scale=1280:720`

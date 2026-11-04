@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { SupabaseBucket } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
-import { SupabaseSectionHeader } from "../supabase-section-header";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseStorageBrowser } from "./supabase-storage-browser";
 import { SupabaseStorageBucketHeader } from "./supabase-storage-bucket-header";
@@ -23,7 +23,7 @@ export function SupabaseStorageSection({ project, capabilities }: SupabaseStudio
 
   return (
     <div className="space-y-5">
-      <SupabaseSectionHeader
+      <BaasSectionHeader
         title="Storage"
         titleRef={feature.ref}
         isNew={feature.isNew}

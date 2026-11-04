@@ -144,10 +144,16 @@ pub async fn connect(connection_string: &str, database: &str) -> Result<Client, 
 }
 
 pub async fn maintenance(connection_string: &str) -> Result<Client, String> {
-    connect(connection_string, "postgres")
+    let first = match connect(connection_string, "postgres").await {
+        Ok(client) => return Ok(client),
+        Err(error) => error,
+    };
+    connect(connection_string, "template1")
         .await
-        .map_err(|error| {
-            format!("Verbindung zur Wartungsdatenbank „postgres“ fehlgeschlagen: {error}")
+        .map_err(|second| {
+            format!(
+                "Keine Wartungsdatenbank erreichbar. „postgres“: {first}; „template1“: {second}"
+            )
         })
 }
 

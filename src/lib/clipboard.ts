@@ -1,4 +1,5 @@
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { toast } from "sonner";
 import { showCopiedMessage } from "@/lib/workspace-status";
 
 export async function copyText(
@@ -8,7 +9,12 @@ export async function copyText(
   try {
     await writeText(text);
   } catch {
-    await navigator.clipboard.writeText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      toast.error("Kopieren fehlgeschlagen: Kein Zugriff auf die Zwischenablage.");
+      throw error;
+    }
   }
   showCopiedMessage(message);
 }

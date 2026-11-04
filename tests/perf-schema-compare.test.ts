@@ -7,13 +7,16 @@ import {
   defaultSelection,
   limitDifferences,
 } from "../src/lib/schema-compare/diff";
+import { loadCompareResult } from "../src/lib/schema-compare/persistence";
 import { buildSyncScript } from "../src/lib/schema-compare/script";
+import { schemaCompareStore } from "../src/lib/schema-compare/store";
 import { type CompareResult, DEFAULT_COMPARE_OPTIONS } from "../src/lib/schema-compare/types";
 import {
   buildCatalogSnapshot,
   parseCatalogSnapshot,
   serializeSnapshot,
 } from "../src/lib/schema-snapshot";
+import { useTableTabs } from "../src/lib/table-tabs";
 
 const TABLES = 1_000;
 const VIEWS = 1_000;
@@ -229,4 +232,76 @@ test("5k-object sync script rebuild per checkbox click stays bounded for every p
   for (const scenario of [drop, alter, rename, rebuild, limit])
     expect(scenario.p95Ms).toBeLessThan(150);
   expect(exclude.p95Ms).toBeLessThan(400);
+});
+
+test("12 open schema-compare tabs persist, restore and release 5k-object results within budget", async () => {
+  const TABS = 12;
+  const base = result(catalog("DEV", true, 7), catalog("PROD", true, 11));
+  const bytes = JSON.stringify(base).length;
+  const put = IDBObjectStore.prototype.put;
+  let puts = 0;
+  IDBObjectStore.prototype.put = function (...args: Parameters<typeof put>) {
+    puts++;
+    return put.apply(this, args);
+  };
+  const ids = Array.from({ length: TABS }, (_, index) => `perf-${index}`);
+  try {
+    useTableTabs.setState({ tabs: [], tabsByConnection: {}, recentlyClosed: [] });
+    for (let pass = 0; pass < 3; pass++) Bun.gc(true);
+    const before = heapSize();
+    for (const id of ids) {
+      useTableTabs.getState().openToolTab("schema-compare", id);
+      const copy = structuredClone(base);
+      schemaCompareStore(id).setState({ result: copy, selection: defaultSelection(copy.items) });
+    }
+    const saved = async () => {
+      for (const id of ids)
+        while (!(await loadCompareResult(`l8db.schema-compare:${id}`))) await Bun.sleep(5);
+    };
+    await saved();
+    const resultPuts = puts;
+    const store = schemaCompareStore(ids[0]);
+    const keys = store.getState().result?.items.map((item) => item.key) ?? [];
+    let click = 0;
+    const toggle = await measureScenario(() => {
+      const key = keys[click++ % keys.length];
+      store.setState((state) => ({
+        selection: { ...state.selection, [key]: !state.selection[key] },
+      }));
+    }, 50);
+    await Bun.sleep(20);
+    const togglePuts = puts - resultPuts;
+    const stored = window.localStorage.getItem(`l8db.schema-compare:${ids[0]}`) ?? "";
+    const restore = await measureScenario(async () => {
+      await loadCompareResult(`l8db.schema-compare:${ids[1]}`);
+    }, 5);
+    for (const id of ids) useTableTabs.getState().closeTab(`tool:schema-compare:${id}`);
+    for (const entry of [...useTableTabs.getState().recentlyClosed])
+      useTableTabs.getState().forgetClosedTab(entry.recoveryId);
+    for (const id of ids)
+      while (await loadCompareResult(`l8db.schema-compare:${id}`)) await Bun.sleep(5);
+    for (let pass = 0; pass < 3; pass++) Bun.gc(true);
+    const retainedBytes = heapSize() - before;
+    await reportScenario("schema-compare-tabs", {
+      tabs: TABS,
+      itemsPerResult: base.items.length,
+      resultJsonBytes: bytes,
+      localStorageBytesPerTab: stored.length,
+      resultWrites: resultPuts,
+      writesPerSelectionClicks: togglePuts,
+      selectionClick: toggle,
+      restoreFromIndexedDb: restore,
+      retainedAfterCloseBytes: retainedBytes,
+      note: "IndexedDB is fake-indexeddb under Bun; WebKit timings are not measured here",
+    });
+    expect(resultPuts).toBe(TABS);
+    expect(togglePuts).toBe(0);
+    expect(stored).not.toContain("CREATE TABLE");
+    expect(stored.length).toBeLessThan(bytes / 20);
+    expect(toggle.p95Ms).toBeLessThan(20);
+    expect(restore.p95Ms).toBeLessThan(1_500);
+    expect(retainedBytes).toBeLessThan(16 * 1024 * 1024);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
 });

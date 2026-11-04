@@ -1,14 +1,14 @@
 import { ClockIcon } from "lucide-react";
+import { IconMenuSubTrigger } from "@/components/icon-menu";
 import { NewBadge } from "@/components/new-badge";
-import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuPortal,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useQueryQolSettings } from "@/lib/query-qol-settings";
@@ -19,49 +19,45 @@ const LABELS = { raw: "Original", utc: "UTC", local: "Lokal" };
 export function TimestampDisplayMenu() {
   const options = useQueryQolSettings((s) => s.timestamps);
   const update = useQueryQolSettings((s) => s.setTimestamps);
-  const feature = useNewFeatureVisibility<HTMLButtonElement>("query.results.timestamps");
+  const feature = useNewFeatureVisibility<HTMLDivElement>("query.results.timestamps");
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          ref={feature.ref}
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
-          title="Zeitdarstellung ändern; Kopieren und Export behalten die Rohwerte"
-        >
-          <ClockIcon className="size-3.5" />
-          Zeit: {LABELS[options.mode]}
-          {feature.isNew && <NewBadge />}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Zeitdarstellung</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={options.mode}
-          onValueChange={(mode) => update({ ...options, mode: mode as TimestampOptions["mode"] })}
-        >
-          {Object.entries(LABELS).map(([mode, label]) => (
-            <DropdownMenuRadioItem key={mode} value={mode}>
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup
-          value={options.precision}
-          onValueChange={(precision) =>
-            update({ ...options, precision: precision as TimestampOptions["precision"] })
-          }
-        >
-          <DropdownMenuRadioItem value="seconds">Sekunden</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="milliseconds">Millisekunden</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-        <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">
-          Werte ohne Zeitzone bleiben unverändert. Kopieren, Bearbeiten und Export verwenden die
-          Rohwerte.
-        </p>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <DropdownMenuSub>
+      <IconMenuSubTrigger icon={<ClockIcon />} label={`Zeitdarstellung: ${LABELS[options.mode]}`}>
+        {feature.isNew && <NewBadge className="absolute -right-1 -top-1" />}
+      </IconMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent className="w-64 whitespace-normal" sideOffset={8}>
+          <div ref={feature.ref}>
+            <DropdownMenuLabel>Zeitdarstellung</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={options.mode}
+              onValueChange={(mode) =>
+                update({ ...options, mode: mode as TimestampOptions["mode"] })
+              }
+            >
+              <DropdownMenuRadioItem value="raw">Original</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="utc">UTC</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="local">Lokale Zeitzone</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Genauigkeit</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={options.precision}
+              onValueChange={(precision) =>
+                update({ ...options, precision: precision as TimestampOptions["precision"] })
+              }
+            >
+              <DropdownMenuRadioItem value="seconds">Sekunden</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="milliseconds">Millisekunden</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <p className="px-2 py-2 text-xs leading-relaxed text-muted-foreground">
+              Nur die Anzeige ändert sich. Kopieren, Bearbeiten und Export behalten die Rohwerte.
+              Werte ohne Zeitzone bleiben unverändert.
+            </p>
+          </div>
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
   );
 }

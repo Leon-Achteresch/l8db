@@ -126,17 +126,44 @@ test.skipIf(!process.env.L8DB_AI_ISSUE_BROWSER)(
               .length,
         ),
       ).toBe(0);
-      await card.getByRole("button", { name: "Issue prüfen", exact: true }).click();
+      await card.getByRole("button", { name: "Vorschau", exact: true }).click();
       const modal = page.getByRole("dialog", { name: "Issue-Vorschau" });
       await modal.getByRole("heading", { name: "Umgebung", exact: true }).waitFor();
       await modal.getByAltText("Geschwärzter Screenshot für das GitHub-Issue").waitFor();
+      await modal.evaluate((element) =>
+        Promise.all(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        ),
+      );
       await mkdir(resolve("test-artifacts/ai-issue"), { recursive: true });
       await page.screenshot({ path: resolve("test-artifacts/ai-issue/preview.png") });
+      const layout = await modal.evaluate((dialog) => {
+        const scroller = dialog.querySelector<HTMLElement>("[data-issue-preview-scroll]");
+        if (!scroller) throw new Error("Scrollbereich fehlt");
+        const box = dialog.getBoundingClientRect();
+        scroller.scrollTop = scroller.scrollHeight;
+        const last = scroller.querySelector("img")?.getBoundingClientRect();
+        const view = scroller.getBoundingClientRect();
+        return {
+          width: box.width,
+          fits:
+            box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth,
+          overflowY: getComputedStyle(scroller).overflowY,
+          horizontal: scroller.scrollWidth - scroller.clientWidth,
+          endVisible: !!last && last.bottom <= view.bottom + 1,
+        };
+      });
+      expect(layout.width).toBeGreaterThan(1100);
+      expect(layout.fits).toBe(true);
+      expect(layout.overflowY).toBe("auto");
+      expect(layout.horizontal).toBeLessThanOrEqual(0);
+      expect(layout.endVisible).toBe(true);
+      await page.screenshot({ path: resolve("test-artifacts/ai-issue/preview-end.png") });
       await page.keyboard.press("Escape");
       await card.getByRole("button", { name: "Abbrechen", exact: true }).click();
       await panel.getByText("Der Bericht wurde nicht veröffentlicht.", { exact: true }).waitFor();
       await prepare();
-      await card.getByRole("button", { name: "Issue prüfen", exact: true }).click();
+      await card.getByRole("button", { name: "Vorschau", exact: true }).click();
       await modal
         .getByRole("button", { name: "Öffentliches Issue erstellen", exact: true })
         .click();

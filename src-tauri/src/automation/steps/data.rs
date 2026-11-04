@@ -18,9 +18,14 @@ use crate::db::{data_compare, datagen, table_copy, transfer, DatabaseKind};
 use super::output;
 
 fn read_only_error(resolved: &Resolved, what: &str) -> Result<(), String> {
-    if resolved.read_only {
+    if resolved.read_only || resolved.production_locked {
         Err(format!(
-            "Lesemodus: {what} ist für „{}“ gesperrt.",
+            "{}: {what} ist für „{}“ gesperrt.",
+            if resolved.read_only {
+                "Lesemodus"
+            } else {
+                "Produktionssperre"
+            },
             resolved.name
         ))
     } else {
@@ -445,9 +450,7 @@ pub async fn generate(
     pool: &PoolState,
     transactions: &TransactionState,
 ) -> Result<u64, String> {
-    if resolved.read_only {
-        return Err("Lesemodus: Testdaten können nicht geschrieben werden.".into());
-    }
+    read_only_error(resolved, "Testdaten schreiben")?;
     let database = datagen::scoped_database(resolved.kind, resolved.database.clone(), schema);
     let adapter = crate::db::create_adapter_from_string(
         resolved.kind,
@@ -896,6 +899,15 @@ mod tests {
             read_only: true,
             ..sqlite(&target_path, "")
         };
+        assert!(read_only_error(
+            &Resolved {
+                production_locked: true,
+                ..sqlite(&target_path, "")
+            },
+            "Schreiben"
+        )
+        .unwrap_err()
+        .starts_with("Produktionssperre"));
         assert!(copy_tables(
             &source,
             &locked,

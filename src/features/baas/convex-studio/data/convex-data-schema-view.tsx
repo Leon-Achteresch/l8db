@@ -57,7 +57,7 @@ export function ConvexDataSchemaView({
             <span className="font-mono">{validatorText(schemaTable.documentType)}</span>
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg">
             <table className="min-w-full text-left text-xs">
               <caption className="sr-only">Felder von {table}</caption>
               <thead className="bg-muted/50">
@@ -98,7 +98,7 @@ export function ConvexDataSchemaView({
         {all.length === 0 ? (
           <p className="text-xs text-muted-foreground">Keine Indizes außer den Standardindizes.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg">
             <table className="min-w-full text-left text-xs">
               <caption className="sr-only">Indizes von {table}</caption>
               <thead className="bg-muted/50">
@@ -180,7 +180,7 @@ export function ConvexDataSchemaView({
             {String(inferred.error)}
           </p>
         ) : (
-          <pre className="max-h-80 overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs">
+          <pre className="max-h-80 overflow-auto rounded-lg bg-muted/30 p-3 font-mono text-xs">
             {`${table}: ${inferred.data}`}
           </pre>
         )}

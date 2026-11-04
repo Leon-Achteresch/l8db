@@ -1,10 +1,11 @@
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight, Code2, Search, SearchX } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { sidebarMenuButtonVariants } from "@/components/ui/sidebar/shared";
 import type { ConvexStudioModule, ConvexUdfType } from "@/lib/db/convex-studio-functions";
 import { cn } from "@/lib/utils";
+import { BaasEmptyState } from "../../baas-empty-state";
 
 const TYPE_LABEL: Record<ConvexUdfType, string> = {
   query: "Q",
@@ -62,9 +63,16 @@ export function ConvexFunctionTree({
       </div>
       {loading && <p className="text-xs text-muted-foreground">Funktionen werden geladen…</p>}
       {!loading && visible.length === 0 && (
-        <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-          {total === 0 ? "Dieses Deployment hat noch keine Funktionen." : "Keine Treffer."}
-        </p>
+        <BaasEmptyState
+          compact
+          icon={total === 0 ? Code2 : SearchX}
+          title={total === 0 ? "Dieses Deployment hat noch keine Funktionen." : "Keine Treffer."}
+          description={
+            total === 0
+              ? "Deploye Queries, Mutations oder Actions mit npx convex deploy."
+              : undefined
+          }
+        />
       )}
       <ul className="grid gap-0.5">
         {visible.map(({ module, functions }) => (

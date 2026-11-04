@@ -85,7 +85,7 @@ export function ConvexHttpTester({
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">{routes.length} Routen</p>
         {routes.length === 0 && (
-          <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          <p className="rounded-lg p-3 text-xs text-muted-foreground bg-muted/30">
             Keine HTTP-Aktionen in convex/http.ts definiert.
           </p>
         )}
@@ -183,7 +183,7 @@ export function ConvexHttpTester({
           </p>
         )}
         {response && (
-          <div className="space-y-2 rounded-xl border p-3">
+          <div className="space-y-2 rounded-xl p-3 bg-muted/30">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Badge variant={response.status < 400 ? "secondary" : "destructive"}>
                 HTTP {response.status}

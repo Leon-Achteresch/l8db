@@ -48,7 +48,7 @@ export function ConvexDataFilterPanel({
 
   return (
     <form
-      className="grid gap-3 rounded-lg border bg-muted/20 p-3"
+      className="grid gap-3 rounded-lg bg-muted/20 p-3"
       onSubmit={(event) => {
         event.preventDefault();
         onApply(state);
