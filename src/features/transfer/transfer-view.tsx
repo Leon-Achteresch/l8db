@@ -1,11 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { ArrowRightIcon, FileCodeIcon, PlayIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useConnectionsStore } from "@/lib/connections";
 import { getDatabaseOverview, type SchemaSize } from "@/lib/db";
+import { useDbSelectionStore } from "@/lib/db-selection";
 import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { activateConnectionWithToast } from "@/lib/ssh/activation";
+import { useTableTabs } from "@/lib/table-tabs";
 import { TransferCinema } from "./cinema/transfer-cinema";
 import { TransferEndpoint } from "./transfer-endpoint";
 import { TransferPlanDetails } from "./transfer-plan";
@@ -20,6 +25,21 @@ export function TransferView() {
   const { plan } = transfer;
   const [planTab, setPlanTab] = useState<string | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const navigate = useNavigate();
+  const openInEditor = async (sql: string) => {
+    const target = transfer.targetConnection;
+    if (!target) return;
+    if (
+      useConnectionsStore.getState().activeId !== target.id &&
+      !(await activateConnectionWithToast(target.id))
+    )
+      return;
+    if (transfer.target.database)
+      useDbSelectionStore.getState().setDatabase(target.id, transfer.target.database);
+    const id = useTableTabs.getState().openQueryTabWithSql(sql, `Transfer nach ${target.name}`);
+    setPlanTab(null);
+    void navigate({ to: "/query/$id", params: { id } });
+  };
   const conflicts = plan?.conflicts ?? [];
   const canStart = Boolean(plan) && conflicts.length === 0 && !transfer.running;
   const hint = transfer.readOnly
@@ -131,8 +151,21 @@ export function TransferView() {
             value={transfer.target}
             onChange={transfer.setTarget}
             onSchemas={transfer.setTargetSchemas}
+            focus={Boolean(transfer.source.connectionId) && !transfer.target.connectionId}
           />
         </div>
+        {transfer.planning && (
+          <div
+            role="status"
+            className="flex shrink-0 items-center gap-3 overflow-hidden rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
+          >
+            <Spinner className="size-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 truncate font-medium">{transfer.planning}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              Liest Struktur aus Quelle und Ziel, noch nichts wird geändert
+            </span>
+          </div>
+        )}
         {hint && (
           <p role="alert" className="shrink-0 text-xs text-destructive">
             {hint}
@@ -155,11 +188,14 @@ export function TransferView() {
               scope={transfer.scope}
               connectionId={transfer.sourceConnection.id}
               database={transfer.source.database}
-              schemas={transfer.sourceSchemas}
-              existing={transfer.targetSchemas}
+              schemas={transfer.sourceSchemas ?? []}
+              existing={transfer.targetSchemas ?? []}
+              loading={transfer.sourceSchemas === null}
               selected={transfer.schemas}
               mapping={transfer.mapping}
               tables={transfer.tables}
+              objects={transfer.objects}
+              pickObjects={transfer.pickObjects}
               content={transfer.content}
               plan={plan}
               sizes={sizes}
@@ -167,6 +203,7 @@ export function TransferView() {
               onSelectAll={transfer.setSchemas}
               onMap={transfer.setMapping}
               onTables={transfer.setTables}
+              onObjects={transfer.setObjects}
               onContent={transfer.setContent}
             />
           ) : (
@@ -204,6 +241,9 @@ export function TransferView() {
           plan={plan}
           open={planTab !== null}
           tab={planTab ?? "tables"}
+          targetName={transfer.targetConnection?.name ?? "Ziel"}
+          busy={transfer.running || Boolean(transfer.planning)}
+          onOpenEditor={(sql) => void openInEditor(sql)}
           onOpenChange={(open) => {
             if (!open) setPlanTab(null);
           }}
