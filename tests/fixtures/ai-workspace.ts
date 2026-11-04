@@ -15,6 +15,10 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
     };
     Object.assign(window, { aiFixture: mock });
     const runs = new Map<string, { events: Channel; resolve: () => void }>();
+    const issueRuns = new Set<string>();
+    const issueTitle = "Abfrage-Ergebnis bleibt nach Aktualisieren leer";
+    const issueBody =
+      "### Beschreibung\nNach dem Aktualisieren bleibt das Ergebnis leer.\n\n### Schritte\n1. Abfrage ausführen\n2. Ergebnis aktualisieren\n\n### Erwartet\nDas Ergebnis wird erneut angezeigt.\n\n### Tatsächlich\nDie Ergebnisansicht bleibt leer.\n\n### Umgebung\n```\nl8db · Demo-Aufnahme\nKeine echten Verbindungs- oder Nutzerdaten.\n```";
     const keys = new Set<string>();
     const setItem = Storage.prototype.setItem;
     const enrich = (value: string) => {
@@ -79,6 +83,40 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
           const events = args.events as Channel;
           const runId = String(request.runId);
           const last = (request.messages as { role: string; text: string }[]).at(-1)?.text;
+          if (last === "Erstelle dafür ein Issue.") {
+            issueRuns.add(runId);
+            const canvas = document.createElement("canvas");
+            canvas.width = 640;
+            canvas.height = 200;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) throw new Error("Demo-Screenshot fehlt");
+            ctx.fillStyle = "#202027";
+            ctx.fillRect(0, 0, 640, 200);
+            ctx.fillStyle = "#08080b";
+            for (let y = 20; y < 180; y += 35) ctx.fillRect(20, y, 580, 20);
+            events.onmessage({
+              kind: "text",
+              data: {
+                delta:
+                  "Ich habe den Fehlerbericht vorbereitet. Prüfe bitte die Vorschau vor dem Veröffentlichen.",
+              },
+            });
+            events.onmessage({
+              kind: "approval",
+              data: {
+                id: "issue-approval",
+                title: "GitHub-Issue erstellen",
+                details: {
+                  tool: "report_issue",
+                  title: issueTitle,
+                  body: issueBody,
+                  public: "Wird öffentlich angelegt.",
+                  screenshot: canvas.toDataURL("image/png"),
+                },
+              },
+            });
+            return new Promise<void>((resolve) => runs.set(runId, { events, resolve }));
+          }
           if (last === "choice-fixture") {
             events.onmessage({
               kind: "input",
@@ -220,6 +258,42 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
             kind: "approvalResolved",
             data: { id: args.approvalId, allowed: args.allow },
           });
+          if (issueRuns.delete(String(args.runId))) {
+            if (args.allow) {
+              run?.events.onmessage({
+                kind: "tool",
+                data: {
+                  id: "issue-result",
+                  name: "report_issue",
+                  status: "running",
+                  arguments: { title: issueTitle, body: issueBody },
+                },
+              });
+              run?.events.onmessage({
+                kind: "tool",
+                data: {
+                  id: "issue-result",
+                  name: "report_issue",
+                  status: "completed",
+                  result: {
+                    content: [
+                      {
+                        type: "text",
+                        text: "Issue erstellt: https://github.com/Leon-Achteresch/l8db/issues/123",
+                      },
+                    ],
+                  },
+                },
+              });
+            } else
+              run?.events.onmessage({
+                kind: "text",
+                data: { delta: "\n\nDer Bericht wurde nicht veröffentlicht." },
+              });
+            run?.resolve();
+            runs.delete(String(args.runId));
+            return;
+          }
           run?.events.onmessage({
             kind: "input",
             data: {

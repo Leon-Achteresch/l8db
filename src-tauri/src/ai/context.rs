@@ -430,7 +430,7 @@ async fn report_issue(run: &Run, args: Value) -> Value {
             Ok(issue) => issue,
             Err(error) => return text_result(Err(error)),
         };
-    let mut details = json!({"message": format!("{title}\n\n{body}"), "public": "Wird öffentlich auf github.com/Leon-Achteresch/l8db angelegt."});
+    let mut details = json!({"tool": "report_issue", "title": title, "body": body, "message": format!("{title}\n\n{body}"), "public": "Wird öffentlich auf github.com/Leon-Achteresch/l8db angelegt."});
     if let Some(png) = screenshot {
         details["screenshot"] = json!(format!("data:image/png;base64,{png}"));
     }
@@ -444,7 +444,7 @@ async fn report_issue(run: &Run, args: Value) -> Value {
     let id = super::new_id();
     run.emit(
         "tool",
-        json!({"id": id, "name": "report_issue", "arguments": args, "status": "running"}),
+        json!({"id": id, "name": "report_issue", "arguments": {"title": title, "body": body}, "status": "running"}),
     );
     let result = text_result(crate::issues::submit(&title, &body, screenshot).await);
     run.emit(

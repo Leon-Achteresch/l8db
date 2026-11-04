@@ -21,6 +21,7 @@ import { TaskRows } from "@/components/primitives/task-rows";
 import { parseAiDiff } from "@/lib/ai/diff";
 import { parseAiTable } from "@/lib/ai/result";
 import type { AiRichBlock } from "@/lib/ai/rich";
+import { AiIssueResult } from "./ai-issue-result";
 import { AiResultCard } from "./ai-result-card";
 import { AiToolDetail } from "./ai-tool-detail";
 import { AiWorkRow } from "./ai-work-row";
@@ -87,6 +88,8 @@ export function AiRichContent({
     <div>
       {blocks.map((block) => {
         if (block.type === "tool") {
+          if (block.name === "report_issue")
+            return <AiIssueResult key={block.id} block={block} running={running} />;
           const status = block.status === "running" && !running ? "cancelled" : block.status;
           if (block.name === "visualize" && status === "success" && parseAiTable(block.output))
             return <AiResultCard key={block.id} block={block} />;
