@@ -46,9 +46,17 @@ export function UiPluginGallery() {
 
   const install = async (entry: UiPluginCatalogEntry) => {
     if (pending) return;
+    const file = catalogPluginFileName(entry);
+    if (
+      present(file) &&
+      installed[entry.id]?.file !== file &&
+      !window.confirm(
+        `Im Plugin-Ordner liegt bereits „${file}“, das nicht aus der Galerie stammt. Überschreiben? Die eigene Datei geht dabei verloren.`,
+      )
+    )
+      return;
     setPending(entry.id);
     try {
-      const file = catalogPluginFileName(entry);
       const source = await downloadUiPlugin(entry);
       await checkUiPluginSource(file, source, entry.id);
       await writeUiPlugin(file, source);
