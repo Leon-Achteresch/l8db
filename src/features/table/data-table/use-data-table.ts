@@ -194,6 +194,7 @@ export function useDataTable(props: DataTableProps) {
   }, [columnDetails]);
 
   const { autoRefreshMs, setAutoRefreshMs, autoRefreshPause } = useAutoRefresh({
+    stateKey: props.stateKey,
     connection,
     onRefresh,
     hasDraft,

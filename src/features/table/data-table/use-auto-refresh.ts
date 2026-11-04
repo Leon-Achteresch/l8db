@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type AutoRefreshConditions,
   autoRefreshPauseReason,
   shouldAutoRefresh,
+  useAutoRefreshStore,
 } from "@/lib/auto-refresh";
 import { useTransactionStore } from "@/lib/transactions";
 import type { EditingCell, FkPickerCell, InspectCell } from "../data-table-types";
 
 type Options = {
+  stateKey: string | undefined;
   connection: { id: string } | null | undefined;
   onRefresh: (() => void | Promise<void>) | undefined;
   hasDraft: boolean;
@@ -20,6 +22,7 @@ type Options = {
 };
 
 export function useAutoRefresh({
+  stateKey,
   connection,
   onRefresh,
   hasDraft,
@@ -29,7 +32,16 @@ export function useAutoRefresh({
   isSaving,
   isFetching,
 }: Options) {
-  const [autoRefreshMs, setAutoRefreshMs] = useState(0);
+  const [localMs, setLocalMs] = useState(0);
+  const storedMs = useAutoRefreshStore((state) => (stateKey ? state.intervals[stateKey] : 0));
+  const autoRefreshMs = stateKey ? (storedMs ?? 0) : localMs;
+  const setAutoRefreshMs = useCallback(
+    (ms: number) => {
+      if (stateKey) useAutoRefreshStore.getState().setIntervalMs(stateKey, ms);
+      else setLocalMs(ms);
+    },
+    [stateKey],
+  );
   const [isWindowVisible, setIsWindowVisible] = useState(true);
 
   const hasOpenTransaction = useTransactionStore((state) =>
