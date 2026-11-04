@@ -51,5 +51,18 @@
     "requiredCapabilities": [],
     "modes": ["easy", "normal"],
     "actionId": "settings"
+  },
+  {
+    "id": "ai-issue-report",
+    "revision": "1",
+    "title": "Probleme direkt im KI-Chat melden",
+    "summary": "Lass einen Fehlerbericht vorbereiten, prüfe die Issue-Card mit geschwärztem Screenshot und veröffentliche ihn nach deiner Freigabe auf GitHub.",
+    "sourceCommit": "846eb4c9",
+    "introducedIn": "0.17.0",
+    "priority": 96,
+    "platforms": ["macos", "windows", "linux"],
+    "requiredCapabilities": [],
+    "modes": ["easy", "normal"],
+    "actionId": "settings"
   }
 ]

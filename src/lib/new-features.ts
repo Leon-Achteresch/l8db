@@ -57,7 +57,7 @@ export const NEW_FEATURES = {
   "settings.editor.ai-metrics": "0.14.0",
   "ai.chat.context-mentions": "0.14.0",
   "ai.chat.dry-run": "0.15.0",
-  "ai.chat.issue-report": NEXT_FEATURE_VERSION,
+  "ai.chat.issue-cards": NEXT_FEATURE_VERSION,
   "ai.chat.editor-edits": "0.14.0",
   "ai.chat.editor-context": "0.14.0",
   "ai.chat.plus.knowledge.rules": "0.14.0",
