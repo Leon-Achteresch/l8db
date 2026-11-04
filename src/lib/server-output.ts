@@ -80,14 +80,25 @@ export async function collectServerOutput(
   connectionId: string,
   database?: string,
 ): Promise<void> {
-  const messages = await takeServerOutput(kind, connectionString, database);
+  deliverServerOutput(
+    connectionId,
+    database ?? null,
+    await takeServerOutput(kind, connectionString, database),
+  );
+}
+
+export function deliverServerOutput(
+  connectionId: string,
+  database: string | null,
+  messages: ServerMessage[],
+): void {
   if (isServerOutputEnabled(connectionId)) {
-    useServerOutputStore.getState().append(connectionId, database ?? null, messages);
+    useServerOutputStore.getState().append(connectionId, database, messages);
     return;
   }
   for (const message of messages) {
     if (message.level !== "WARNING") continue;
-    useServerOutputStore.getState().append(connectionId, database ?? null, [message]);
+    useServerOutputStore.getState().append(connectionId, database, [message]);
     const [title, ...lines] = message.message.split("\n");
     const more = lines.length > 3 ? [`… ${lines.length - 3} weitere in der Server-Ausgabe`] : [];
     toast.warning(title, { description: [...lines.slice(0, 3), ...more].join("\n") || undefined });

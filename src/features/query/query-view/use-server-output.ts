@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { transactionServerOutput } from "@/lib/db";
 import {
   collectServerOutput,
-  isServerOutputEnabled,
+  deliverServerOutput,
   toggleServerOutput,
   useServerOutputStore,
 } from "@/lib/server-output";
@@ -27,15 +27,9 @@ export function useServerOutput(
   const collectOutput = useCallback(async () => {
     if (!connection || !caps.server_output) return;
     try {
-      const tx = connection.kind === "oracle" && getQueryTransaction(connection.id, database);
+      const tx = getQueryTransaction(connection.id, database);
       if (tx) {
-        const lines = await transactionServerOutput(tx.txId);
-        if (isServerOutputEnabled(connection.id))
-          useServerOutputStore.getState().append(
-            connection.id,
-            database,
-            lines.map((message) => ({ level: "OUTPUT", message })),
-          );
+        deliverServerOutput(connection.id, database, await transactionServerOutput(tx.txId));
         return;
       }
       await collectServerOutput(

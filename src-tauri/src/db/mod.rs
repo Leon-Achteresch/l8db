@@ -922,10 +922,10 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
         let _ = enabled;
-        Err(unsupported("Server-Ausgabe"))
+        Ok(())
     }
     async fn take_server_output(&self) -> Result<Vec<server_output::ServerMessage>, String> {
-        Err(unsupported("Server-Ausgabe"))
+        Ok(Vec::new())
     }
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
         let _ = req;
