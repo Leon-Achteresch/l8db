@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
@@ -13,10 +13,6 @@ import { SettingsDesignLab } from "./settings-design-lab";
 import { TabPreview } from "./tab-preview";
 import { ToastDropLab } from "./toast-drop-lab";
 import { TransferCinematicLab } from "./transfer-cinematic-lab";
-
-const AiDesignLab = lazy(() =>
-  import("./ai-design-lab").then((module) => ({ default: module.AiDesignLab })),
-);
 
 const variants = [
   {
@@ -53,10 +49,7 @@ export function DevView() {
 
   return (
     <main className="min-w-0 flex-1 overflow-auto bg-background px-6 py-8 md:px-10">
-      <Tabs
-        defaultValue={window.location.hash === "#ai-chat" ? "ai-chat" : "feature-video"}
-        className="mx-auto max-w-[1440px] gap-7"
-      >
+      <Tabs defaultValue="feature-video" className="mx-auto max-w-[1440px] gap-7">
         <div className="space-y-5">
           <div className="space-y-2">
             <p className="text-xs font-medium tracking-widest text-muted-foreground">
@@ -67,14 +60,7 @@ export function DevView() {
               Interaktive Entwürfe mit Beispieldaten, direkt im App-Kontext.
             </p>
           </div>
-          <TabsList
-            variant="line"
-            aria-label="Komponenten-Vorschau"
-            className="w-fit max-w-full justify-start overflow-x-auto"
-          >
-            <TabsTrigger value="ai-chat" className="flex-none px-4">
-              KI-Chat & MCP
-            </TabsTrigger>
+          <TabsList variant="line" aria-label="Komponenten-Vorschau" className="w-fit max-w-full">
             <TabsTrigger value="feature-video" className="flex-none px-4">
               Feature-Popup
             </TabsTrigger>
@@ -110,13 +96,6 @@ export function DevView() {
             </TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="ai-chat">
-          <Suspense
-            fallback={<p className="text-sm text-muted-foreground">KI-Vorschau wird geladen …</p>}
-          >
-            <AiDesignLab />
-          </Suspense>
-        </TabsContent>
         <TabsContent value="feature-video">
           <FeatureVideoPreview />
         </TabsContent>
