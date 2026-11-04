@@ -1,5 +1,6 @@
 import { type Hotkey, validateHotkey } from "@tanstack/react-hotkeys";
 import { HOTKEY_COMMANDS } from "./commands";
+import { detectHotkeyPlatform } from "./display";
 import { useHotkeysStore } from "./use-hotkeys-store";
 
 export function canonicalizeHotkey(value: string): string {
@@ -25,6 +26,10 @@ export function canonicalizeHotkey(value: string): string {
     .join("+");
 }
 
+export function conflictKey(hotkey: string, mac = detectHotkeyPlatform() === "mac"): string {
+  return canonicalizeHotkey(mac ? hotkey : hotkey.replace(/(^|\+)\s*mod\s*(?=\+|$)/gi, "$1ctrl"));
+}
+
 export interface HotkeyConflict {
   hotkey: string;
   ids: string[];
@@ -48,7 +53,7 @@ export function detectHotkeyConflicts(resolved?: Record<string, string>): Hotkey
   }
   const byKey = new Map<string, string[]>();
   for (const [id, hotkey] of Object.entries(full)) {
-    const key = canonicalizeHotkey(hotkey);
+    const key = conflictKey(hotkey);
     const list = byKey.get(key) ?? [];
     list.push(id);
     byKey.set(key, list);
@@ -70,12 +75,12 @@ export function findHotkeyConflict(
   resolved?: Record<string, string>,
 ): string[] {
   const store = resolved ?? useHotkeysStore.getState().overrides;
-  const wanted = canonicalizeHotkey(hotkey);
+  const wanted = conflictKey(hotkey);
   const hits: string[] = [];
   for (const command of HOTKEY_COMMANDS) {
     if (command.id === ignoreId) continue;
     const candidates = [store[command.id] ?? command.defaultHotkey, ...(command.aliases ?? [])];
-    if (candidates.some((candidate) => canonicalizeHotkey(candidate) === wanted)) {
+    if (candidates.some((candidate) => conflictKey(candidate) === wanted)) {
       if (ignoreId && isAllowedOverlap([ignoreId, command.id])) continue;
       hits.push(command.id);
     }

@@ -82,7 +82,7 @@ export function ConvexScheduledJobSheet({ target, job, onCancel, onClose }: Prop
                   {String(args.error)}
                 </p>
               ) : (
-                <pre className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-2 font-mono">
+                <pre className="max-h-96 overflow-auto rounded-md bg-muted/40 p-2 font-mono">
                   {formatJson(value)}
                 </pre>
               )}

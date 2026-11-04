@@ -148,6 +148,21 @@ pub fn validate(command: &str, options: &ProcessOptions) -> Result<u64, String> 
     Ok(timeout)
 }
 
+async fn read_capped(
+    handle: &mut (impl tokio::io::AsyncRead + Unpin),
+    out: &mut Vec<u8>,
+) -> std::io::Result<()> {
+    let mut chunk = [0u8; 8192];
+    loop {
+        let read = handle.read(&mut chunk).await?;
+        if read == 0 {
+            return Ok(());
+        }
+        let room = (MAX_OUTPUT + 4).saturating_sub(out.len());
+        out.extend_from_slice(&chunk[..read.min(room)]);
+    }
+}
+
 fn truncate(mut text: String) -> String {
     text.truncate(text.floor_char_boundary(MAX_OUTPUT));
     text
@@ -221,13 +236,13 @@ pub async fn extension_process_run(
         let mut err = Vec::new();
         let read_out = async {
             match stdout.as_mut() {
-                Some(handle) => handle.read_to_end(&mut out).await.map(|_| ()),
+                Some(handle) => read_capped(handle, &mut out).await,
                 None => Ok(()),
             }
         };
         let read_err = async {
             match stderr.as_mut() {
-                Some(handle) => handle.read_to_end(&mut err).await.map(|_| ()),
+                Some(handle) => read_capped(handle, &mut err).await,
                 None => Ok(()),
             }
         };
@@ -495,6 +510,13 @@ mod tests {
         assert!(dirs().contains(&std::path::PathBuf::from(
             "/l8db-test/Program Files (x86)/Keeper Commander"
         )));
+    }
+    #[tokio::test]
+    async fn output_is_capped_while_reading() {
+        let data = vec![b'x'; 4 * MAX_OUTPUT];
+        let mut out = Vec::new();
+        read_capped(&mut data.as_slice(), &mut out).await.unwrap();
+        assert_eq!(out.len(), MAX_OUTPUT + 4);
     }
     #[tokio::test]
     async fn scripts_find_their_interpreter_without_an_inherited_path() {

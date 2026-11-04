@@ -40,7 +40,7 @@ export function SupabaseTableFilters({
 
   return (
     <form
-      className="grid gap-2 rounded-lg border bg-muted/20 p-3"
+      className="grid gap-2 rounded-lg bg-muted/20 p-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (valid)

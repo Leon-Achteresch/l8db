@@ -160,7 +160,7 @@ export function SupabaseTableEditor({
         </TabsContent>
         {hasDefinition && (
           <TabsContent value="definition" className="min-h-0 flex-1 overflow-auto p-4">
-            <pre className="rounded-lg border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
+            <pre className="rounded-lg bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
               {data.view_definition}
             </pre>
           </TabsContent>

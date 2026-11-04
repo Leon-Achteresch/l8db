@@ -41,7 +41,7 @@ export function ConvexLogsList({
   const padBottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0);
 
   return (
-    <div ref={scrollRef} className="h-[52vh] overflow-auto rounded-xl border bg-background">
+    <div ref={scrollRef} className="h-[52vh] overflow-auto rounded-xl bg-background">
       <div style={{ paddingTop: padTop, paddingBottom: padBottom }}>
         {items.map((item) => {
           const row = rows[item.index];

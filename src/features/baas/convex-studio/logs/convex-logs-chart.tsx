@@ -18,7 +18,7 @@ const clock = (value: number) =>
 export function ConvexLogsChart({ buckets, size }: { buckets: LogBucket[]; size: number }) {
   const minutes = size / 60_000;
   return (
-    <div className="rounded-xl border p-3">
+    <div className="rounded-xl p-3 bg-muted/30">
       <p className="mb-2 text-xs text-muted-foreground">
         Ausführungen und Fehler {minutes === 1 ? "pro Minute" : `pro ${minutes} Minuten`} im Puffer
       </p>

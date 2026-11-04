@@ -7,6 +7,21 @@ use super::{
 use serde_json::{json, Value};
 use std::time::Duration;
 
+const CODEX_FAST_TIER: &str = "priority";
+
+pub(super) fn claude_fast_notice(profile: &Profile, event: &Value) -> Option<String> {
+    if !profile.fast || event["subtype"] != "init" || event["fast_mode_state"] != "off" {
+        return None;
+    }
+    Some(match event["fast_mode_disabled_reason"].as_str() {
+        Some("extra_usage_disabled") => {
+            "Fast-Modus ist aus: Im Claude-Konto muss Extra-Usage aktiviert sein.".into()
+        }
+        Some(reason) => format!("Claude Code hat den Fast-Modus nicht aktiviert ({reason})."),
+        None => "Claude Code hat den Fast-Modus für dieses Modell nicht aktiviert.".into(),
+    })
+}
+
 fn optional(text: &str) -> Value {
     if text.trim().is_empty() {
         Value::Null
@@ -236,13 +251,13 @@ pub async fn models(profile: &Profile, cwd: Option<&str>) -> Result<Value, Strin
             initialize(&rpc, true).await?;
             let result = rpc.request("model/list", json!({"limit": 100})).await?;
             Ok(
-                json!({"models": result["data"].as_array().into_iter().flatten().map(|model| json!({"id": model["model"], "name": model["displayName"], "efforts": model["supportedReasoningEfforts"]})).collect::<Vec<_>>()}),
+                json!({"models": result["data"].as_array().into_iter().flatten().map(|model| json!({"id": model["model"], "name": model["displayName"], "efforts": model["supportedReasoningEfforts"], "default": model["isDefault"], "fast": model["serviceTiers"].as_array().is_some_and(|tiers| tiers.iter().any(|tier| tier["id"] == CODEX_FAST_TIER))})).collect::<Vec<_>>()}),
             )
         }
         "claude" => {
             let result = claude_init(&mut rpc).await?;
             Ok(
-                json!({"models": result["models"].as_array().into_iter().flatten().map(|model| json!({"id": model["value"], "name": model["displayName"], "efforts": model["supportedEffortLevels"]})).collect::<Vec<_>>(), "commands": result["commands"]}),
+                json!({"models": result["models"].as_array().into_iter().flatten().map(|model| json!({"id": model["value"], "name": model["displayName"], "efforts": model["supportedEffortLevels"], "fast": model["supportsFastMode"] == true})).collect::<Vec<_>>(), "commands": result["commands"]}),
             )
         }
         _ => {
@@ -622,7 +637,7 @@ async fn codex(
         .ok_or("Codex-Sitzungs-ID fehlt")?;
     run.emit("session", json!({"sessionId": id}));
     run.emit("metadata", json!({"model": session["model"]}));
-    let mut parameters = json!({"threadId": id, "input": [{"type": "text", "text": conversation(request, request.session_id.is_some())}], "model": optional(&request.profile.model), "effort": optional(&request.profile.effort), "approvalPolicy": approval, "sandboxPolicy": {"type": "readOnly", "networkAccess": false}});
+    let mut parameters = json!({"threadId": id, "input": [{"type": "text", "text": conversation(request, request.session_id.is_some())}], "model": optional(&request.profile.model), "effort": optional(&request.profile.effort), "serviceTier": if request.profile.fast { json!(CODEX_FAST_TIER) } else { Value::Null }, "approvalPolicy": approval, "sandboxPolicy": {"type": "readOnly", "networkAccess": false}});
     if plan_mode(&request.profile.mode) {
         parameters["input"][0]["text"] = json!(format!(
             "Plan only; do not execute writes or modify files.\n{}",
@@ -903,6 +918,9 @@ async fn claude(
     if !request.profile.effort.is_empty() {
         command.arg("--effort").arg(&request.profile.effort);
     }
+    command
+        .arg("--settings")
+        .arg(json!({"fastMode": request.profile.fast}).to_string());
     if let Some(session) = &request.session_id {
         command.arg("--resume").arg(session);
     }
@@ -935,41 +953,112 @@ async fn claude(
                 let response = match request["subtype"].as_str().unwrap_or("") {
                     "can_use_tool" if request["tool_name"] == "AskUserQuestion" => {
                         let mut questions = request["input"].clone();
-                        for question in questions["questions"].as_array_mut().into_iter().flatten() {
+                        for question in questions["questions"].as_array_mut().into_iter().flatten()
+                        {
                             question["id"] = question["question"].clone();
                         }
                         let answer = run.input("Claude-Rückfrage", questions).await?;
                         if answer["answers"].is_object() {
                             let mut updated = request["input"].clone();
-                            updated["answers"] = Value::Object(answer["answers"].as_object().into_iter().flatten().map(|(key, value)| {
-                                let text = value.as_str().map(str::to_string).unwrap_or_else(|| value["answers"].as_array().into_iter().flatten().filter_map(Value::as_str).collect::<Vec<_>>().join(", "));
-                                (key.clone(), json!(text))
-                            }).collect());
+                            updated["answers"] = Value::Object(
+                                answer["answers"]
+                                    .as_object()
+                                    .into_iter()
+                                    .flatten()
+                                    .map(|(key, value)| {
+                                        let text = value
+                                            .as_str()
+                                            .map(str::to_string)
+                                            .unwrap_or_else(|| {
+                                                value["answers"]
+                                                    .as_array()
+                                                    .into_iter()
+                                                    .flatten()
+                                                    .filter_map(Value::as_str)
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ")
+                                            });
+                                        (key.clone(), json!(text))
+                                    })
+                                    .collect(),
+                            );
                             json!({"behavior": "allow", "updatedInput": updated})
-                        } else { json!({"behavior": "deny", "message": "Benutzer hat die Rückfrage abgebrochen"}) }
+                        } else {
+                            json!({"behavior": "deny", "message": "Benutzer hat die Rückfrage abgebrochen"})
+                        }
                     }
                     "can_use_tool" => {
-                        if run.plan_only && matches!(request["tool_name"].as_str(), Some("ExitPlanMode" | "Bash" | "PowerShell" | "Edit" | "Write" | "NotebookEdit")) {
+                        if run.plan_only
+                            && matches!(
+                                request["tool_name"].as_str(),
+                                Some(
+                                    "ExitPlanMode"
+                                        | "Bash"
+                                        | "PowerShell"
+                                        | "Edit"
+                                        | "Write"
+                                        | "NotebookEdit"
+                                )
+                            )
+                        {
                             rpc.send(json!({"type":"control_response","response":{"subtype":"success","request_id":event["request_id"],"response":{"behavior":"deny","message":"Im Planmodus sind Änderungen und Shell-Ausführung gesperrt"}}})).await?;
                             continue;
                         }
-                        let allowed = run.approve_tool(request["tool_name"].as_str().is_some_and(|name| name.starts_with("mcp__")), &format!("Claude-Tool: {}", request["tool_name"].as_str().unwrap_or("Tool")), request["input"].clone()).await?;
-                        if allowed { json!({"behavior": "allow", "updatedInput": request["input"]}) } else { json!({"behavior": "deny", "message": "Benutzer hat die Aktion abgelehnt"}) }
+                        let allowed = run
+                            .approve_tool(
+                                request["tool_name"]
+                                    .as_str()
+                                    .is_some_and(|name| name.starts_with("mcp__")),
+                                &format!(
+                                    "Claude-Tool: {}",
+                                    request["tool_name"].as_str().unwrap_or("Tool")
+                                ),
+                                request["input"].clone(),
+                            )
+                            .await?;
+                        if allowed {
+                            json!({"behavior": "allow", "updatedInput": request["input"]})
+                        } else {
+                            json!({"behavior": "deny", "message": "Benutzer hat die Aktion abgelehnt"})
+                        }
                     }
-                    _ => json!({"behavior": "deny", "message": "Client capability unavailable"})
+                    _ => json!({"behavior": "deny", "message": "Client capability unavailable"}),
                 };
                 rpc.send(json!({"type": "control_response", "response": {"subtype": "success", "request_id": event["request_id"], "response": response}})).await?;
             }
             "assistant" => {
                 for block in event["message"]["content"].as_array().into_iter().flatten() {
-                    if block["type"] == "text" && !partial { if let Some(text) = block["text"].as_str() { run.emit("text", json!({"delta": text})); } }
-                    if block["type"] == "tool_use" { run.emit("tool", json!({"id": block["id"], "name": block["name"], "arguments": block["input"], "status": "running"})); }
+                    if block["type"] == "text" && !partial {
+                        if let Some(text) = block["text"].as_str() {
+                            run.emit("text", json!({"delta": text}));
+                        }
+                    }
+                    if block["type"] == "tool_use" {
+                        run.emit("tool", json!({"id": block["id"], "name": block["name"], "arguments": block["input"], "status": "running"}));
+                    }
                 }
                 partial = false;
             }
-            "user" => for block in event["message"]["content"].as_array().into_iter().flatten() { if block["type"] == "tool_result" { run.emit("tool", json!({"id": block["tool_use_id"], "result": block["content"], "status": if block["is_error"] == true { "error" } else { "completed" }})); } },
-            "result" => { run.emit("usage", json!({"usage": event["usage"], "modelUsage": event["modelUsage"], "total_cost_usd": event["total_cost_usd"]})); if event["is_error"] == true { return Err("Claude Code konnte die Anfrage nicht abschließen. Anmeldung und Kontingent prüfen.".into()); } return Ok(()); }
-            "system" => run.emit("metadata", json!({"tools": event["tools"], "mcpServers": event["mcp_servers"], "skills": event["skills"], "model": event["model"]})),
+            "user" => {
+                for block in event["message"]["content"].as_array().into_iter().flatten() {
+                    if block["type"] == "tool_result" {
+                        run.emit("tool", json!({"id": block["tool_use_id"], "result": block["content"], "status": if block["is_error"] == true { "error" } else { "completed" }}));
+                    }
+                }
+            }
+            "result" => {
+                run.emit("usage", json!({"usage": event["usage"], "modelUsage": event["modelUsage"], "total_cost_usd": event["total_cost_usd"]}));
+                if event["is_error"] == true {
+                    return Err("Claude Code konnte die Anfrage nicht abschließen. Anmeldung und Kontingent prüfen.".into());
+                }
+                return Ok(());
+            }
+            "system" => {
+                if let Some(message) = claude_fast_notice(&request.profile, &event) {
+                    run.emit("notice", json!({"message": message}));
+                }
+                run.emit("metadata", json!({"tools": event["tools"], "mcpServers": event["mcp_servers"], "skills": event["skills"], "model": event["model"]}))
+            }
             _ => {}
         }
     }

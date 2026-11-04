@@ -1040,11 +1040,11 @@ test.skipIf(!enabled || !convexUrl)(
         .waitFor();
       timings.convexDataFirstData = Math.round(performance.now() - started);
       expect(timings.convexDataFirstData).toBeLessThan(2000);
-      await main.getByText("Seite 1 · 50 Dokumente").waitFor();
-      await main.getByRole("button", { name: "Weiter" }).click();
-      await main.getByText(/^Seite 2 · \d+ Dokumente$/).waitFor();
-      await main.getByRole("button", { name: "Zurück" }).click();
-      await main.getByText("Seite 1 · 50 Dokumente").waitFor();
+      await main.getByText(/^1–50 von /).waitFor();
+      await main.getByRole("button", { name: "Nächste Seite" }).click();
+      await main.getByText(/^51–\d+ von /).waitFor();
+      await main.getByRole("button", { name: "Vorherige Seite" }).click();
+      await main.getByText(/^1–50 von /).waitFor();
       await shot(page, "convex-02-data-messages");
 
       await main.getByRole("button", { name: "Filter", exact: true }).click();
@@ -1052,11 +1052,11 @@ test.skipIf(!enabled || !convexUrl)(
       await main.getByLabel("Feld", { exact: true }).fill("author");
       await main.getByLabel("Wert", { exact: true }).fill('"Grace"');
       await main.getByRole("button", { name: "Anwenden" }).click();
-      await main.getByText("Seite 1 · 20 Dokumente").waitFor();
+      await main.getByText("1–20 von 20").waitFor();
       expect(await main.locator("tbody").getByText("Ada", { exact: true }).count()).toBe(0);
       await shot(page, "convex-03-data-filter");
       await main.getByRole("button", { name: "Zurücksetzen" }).click();
-      await main.getByText("Seite 1 · 50 Dokumente").waitFor();
+      await main.getByText(/^1–50 von /).waitFor();
 
       await main.getByRole("tab", { name: "Spalten" }).click();
       await main.getByText("by_author", { exact: true }).waitFor();
@@ -1079,7 +1079,8 @@ test.skipIf(!enabled || !convexUrl)(
       await main.getByText("2 Dokumente eingefügt.").waitFor();
       await main.getByText(/^"?eins"?$/).waitFor();
 
-      await main.getByText(/^"?zwei"?$/).click();
+      await main.getByText(/^"?zwei"?$/).click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Dokument öffnen" }).click();
       const sheet = page.getByRole("dialog");
       await sheet.getByRole("button", { name: "Bearbeiten" }).click();
       const edit = page.getByRole("dialog", { name: /Dokument bearbeiten/ });

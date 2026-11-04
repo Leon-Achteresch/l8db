@@ -94,7 +94,7 @@ export function SupabaseStorageObjectPanel({
       : null;
 
   return (
-    <aside className="space-y-4 rounded-xl border bg-background/50 p-4" aria-label="Datei-Details">
+    <aside className="space-y-4 rounded-xl bg-background/50 p-4" aria-label="Datei-Details">
       <div className="flex items-start justify-between gap-2">
         <p className="flex min-w-0 items-center gap-2 text-sm font-semibold">
           <FileText className="size-4 shrink-0 text-muted-foreground" />

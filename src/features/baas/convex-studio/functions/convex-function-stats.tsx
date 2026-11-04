@@ -104,7 +104,7 @@ export function ConvexFunctionStats({
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {tiles.map((tile) => (
-              <div key={tile.label} className="rounded-xl border p-3">
+              <div key={tile.label} className="rounded-xl p-3 bg-muted/30">
                 <p className="text-[11px] text-muted-foreground">{tile.label}</p>
                 <p className="text-lg font-semibold tabular-nums">{tile.value}</p>
               </div>

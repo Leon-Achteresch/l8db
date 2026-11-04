@@ -5,10 +5,12 @@ import {
   Copy,
   File,
   Folder,
+  FolderOpen,
   FolderPlus,
   MoveRight,
   RefreshCw,
   Search,
+  SearchX,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -34,6 +36,7 @@ import {
   supabaseStudioStorageObjects,
   supabaseStudioStorageUpload,
 } from "@/lib/db/supabase-studio-storage";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { formatBytes, formatDate, storageQueryKey, validStorageName } from "./storage-format";
 import { SupabaseStorageConfirmDialog } from "./supabase-storage-confirm-dialog";
 import { SupabaseStorageObjectPanel } from "./supabase-storage-object-panel";
@@ -237,7 +240,7 @@ export function SupabaseStorageBrowser({
         </form>
       )}
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-xs">
           <span>{selected.size} ausgewählt</span>
           {singleSelection && (
             <>
@@ -266,7 +269,7 @@ export function SupabaseStorageBrowser({
         </div>
       )}
       <div className={`grid gap-4 ${active ? "xl:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
-        <div className="min-w-0 overflow-x-auto rounded-xl border">
+        <div className="min-w-0 overflow-x-auto rounded-xl">
           {objects.isPending ? (
             <p className="p-4 text-xs text-muted-foreground">Dateien werden geladen…</p>
           ) : objects.isError ? (
@@ -274,9 +277,15 @@ export function SupabaseStorageBrowser({
               {String(objects.error)}
             </p>
           ) : rows.length === 0 ? (
-            <p className="p-4 text-xs text-muted-foreground">
-              {search ? "Keine passenden Dateien." : "Dieser Ordner ist leer."}
-            </p>
+            <BaasEmptyState
+              icon={search ? SearchX : FolderOpen}
+              title={search ? "Keine passenden Dateien." : "Dieser Ordner ist leer."}
+              description={
+                search
+                  ? "Ändere den Suchbegriff oder leere die Suche."
+                  : "Lade Dateien hoch oder lege einen Unterordner an."
+              }
+            />
           ) : (
             <table className="w-full text-xs">
               <thead className="border-b bg-muted/40 text-left text-muted-foreground">

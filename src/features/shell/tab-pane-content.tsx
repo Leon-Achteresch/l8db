@@ -7,6 +7,12 @@ const CompareView = lazy(() =>
   import("@/features/compare/compare-view").then((m) => ({ default: m.CompareView })),
 );
 
+const SchemaCompareView = lazy(() =>
+  import("@/features/schema-compare/schema-compare-view").then((m) => ({
+    default: m.SchemaCompareView,
+  })),
+);
+
 const AlterTableView = lazy(() =>
   import("@/features/alter-table/alter-table-view").then((module) => ({
     default: module.AlterTableView,
@@ -85,6 +91,7 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
     case "tool": {
       if (tab.tool === "workbench") return <WorkbenchView tabId={tab.id} />;
       if (tab.tool === "compare") return <CompareView tabId={tab.id} />;
+      if (tab.tool === "schema-compare") return <SchemaCompareView tabId={tab.id} />;
       const ToolComponent = TOOL_TABS[tab.tool].Component;
       return <ToolComponent />;
     }

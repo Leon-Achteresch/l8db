@@ -185,11 +185,17 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
       await page.locator('tr[data-ctid="0"]').waitFor();
       await page.locator('tr[data-ctid="0"]').click({ button: "right" });
       await page.getByRole("menuitem", { name: "Datensatz beobachten", exact: true }).click();
-      await page.getByRole("button", { name: /Beobachtete Datensätze \(1\)/ }).waitFor();
+      await page.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: /Beobachtete Zeilen \(1\)/ }).waitFor();
+      await page.keyboard.press("Escape");
       const beforeWatch = calls.length;
       await page.getByRole("button", { name: "Neu laden", exact: true }).click();
-      await page.getByRole("button", { name: /1 geändert/ }).click();
-      await page.getByText(/value: "Original" → "geändert"/).waitFor();
+      await page.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: /1 geändert/ }).click();
+      await page
+        .getByRole("dialog", { name: "Beobachtete Zeilen" })
+        .getByText('"geändert"', { exact: true })
+        .waitFor();
       expect(calls.length).toBe(beforeWatch);
       expect(await page.locator("tbody tr").count()).toBeLessThan(90);
       await mkdir("test-artifacts/workbench-qol", { recursive: true });
@@ -202,7 +208,9 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
           path: `test-artifacts/workbench-qol/${browser.browserType().name()}-${width}.png`,
         });
       }
+      await page.setViewportSize({ width: 1440, height: 940 });
       await page.getByRole("button", { name: "Design wechseln", exact: true }).click();
+      await page.setViewportSize({ width: 390, height: 940 });
       await page.screenshot({
         path: `test-artifacts/workbench-qol/${browser.browserType().name()}-light-390.png`,
       });
@@ -213,7 +221,7 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
       await page.getByRole("button", { name: "Stand übernehmen", exact: true }).click();
       await page.getByText("Geladene Werte unverändert", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Beobachtung id=0 entfernen", exact: true }).click();
-      await page.getByRole("button", { name: /Beobachtete Datensätze \(0\)/ }).waitFor();
+      await page.getByText("Wichtige Zeilen im Blick behalten", { exact: true }).waitFor();
       expect(errors).toEqual([]);
     } finally {
       await mkdir("test-artifacts/workbench-qol", { recursive: true });
