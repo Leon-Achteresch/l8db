@@ -2,12 +2,14 @@
 
 Nimmt Fehlerberichte aus l8db an (KI-Chat-Tool und MCP-Tool `report_issue`) und legt sie als GitHub-Issue in `Leon-Achteresch/l8db` an. Geschwärzte Screenshots werden öffentlich gespeichert und im Issue eingebettet. Der Relay läuft wahlweise auf einem eigenen VPS mit lokalem Volume oder als Cloudflare-Worker mit R2. Ein separates GitHub-Assets-Repository ist nicht nötig. Nutzer brauchen kein GitHub-Konto.
 
+Die tatsächlich eingerichtete VPS-Instanz und ihre Live-Prüfung sind in [LIVE-SETUP.md](LIVE-SETUP.md) dokumentiert.
+
 ## Eigener VPS mit Docker / Coolify
 
 Diese Variante nutzt vorhandenen VPS-Speicher und braucht kein R2-Abonnement. Der Docker-Server läuft mit Node.js 24 und führt denselben Relay-Kern aus wie der Worker. Die Projekt-Toolchain und Bun-Tests bleiben bei Bun 1.3.10.
 
 1. Die GitHub-App wie unten in Schritt 1–2 einrichten. Den PKCS#8-Schlüssel ausschließlich über SSH nach `/data/l8db-issue-relay/secrets/github-app.pem` übertragen. Verzeichnis mit Modus `0700`, Schlüssel mit Modus `0400`, lesbar für Container-UID `1000`. Keine Schlüssel ins Repository, Docker-Image oder über das unverschlüsselte Coolify-Dashboard übertragen.
-2. Im Ordner `services/issue-relay` bauen: `docker build -t l8db-issue-relay:local .`. Für Updates einen neuen Tag aus dem Commit verwenden und `compose.yaml` entsprechend anpassen.
+2. Im Ordner `services/issue-relay` bauen: `docker build -t l8db-issue-relay:local .`. Für Updates einen neuen Tag aus dem Commit verwenden und `compose.yaml` entsprechend anpassen; bei einer bestehenden Coolify-Ressource zusätzlich deren Feld **Image** aktualisieren.
 3. In Coolify einen Docker-Compose-Service mit `compose.yaml` erstellen. App-ID, Installations-ID und `PUBLIC_URL` an die eigene Einrichtung anpassen. Dem Service die HTTPS-Domain mit Zielport `3000` zuweisen. Der A-Record muss auf den VPS zeigen. Coolify/Traefik verwaltet TLS. Keinen direkten Host-Port freigeben.
 4. `TRUST_PROXY=1` setzt genau einen vorgeschalteten Traefik-Proxy voraus: verwendet wird der letzte Eintrag im von Traefik ergänzten `X-Forwarded-For`. Vorgeschaltetes CDN oder weitere Proxy-Hops benötigen eine angepasste Vertrauenskonfiguration. Ohne Proxy `TRUST_PROXY` weglassen; dann zählt die Socket-IP. Vom Client gelieferte `CF-Connecting-IP`-Header werden immer ersetzt.
 5. Das benannte Volume `screenshots` enthält unter `/data/screenshots` die PNGs; den Schlüssel separat sichern. Volume und Schlüssel bei Redeploys erhalten. Ein volles Volume verhindert neue Bilder, bestehende Issues bleiben erhalten.
