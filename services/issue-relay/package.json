@@ -1,0 +1,8 @@
+{
+  "name": "l8db-issue-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/serve.js"
+  }
+}
