@@ -1049,6 +1049,148 @@ describe("Server groups", () => {
 });
 
 describe("Passwort-Abfrage", () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test("lädt gespeicherte Passwörter auch nach der Startinitialisierung", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const connection = {
+      ...direct,
+      id: "late-keychain-password",
+      connectionString: scrubUrlPassword(direct.connectionString),
+    };
+    useConnectionsStore.setState({ connections: [connection] });
+    keychain.set(connection.id, "saved@password");
+    const pending = ensurePassword(connection.id);
+    await tick();
+    const prompted = usePasswordPrompt.getState().connection;
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await pending).toBe(true);
+    expect(prompted).toBeNull();
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "saved@password",
+    );
+    expect(storage.get("l8db.connections")).not.toContain("saved");
+  });
+
+  test("nutzt Sitzungspasswörter ohne erneuten Schlüsselbundzugriff", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "cached-prompt-password";
+    await storeSecret(id, "session-password");
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    calls.length = 0;
+    const pending = ensurePassword(id);
+    await tick();
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await pending).toBe(true);
+    expect(calls).not.toContain("load_secret");
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "session-password",
+    );
+  });
+
+  test("fragt bei Schlüsselbundfehlern und versucht beim nächsten Verbinden erneut zu laden", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "transient-keychain-password";
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    keychain.set(id, "recovered-password");
+    keychainUnavailable = true;
+    const first = ensurePassword(id);
+    await tick();
+    expect(usePasswordPrompt.getState().connection?.id).toBe(id);
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await first).toBe(false);
+    keychainUnavailable = false;
+    const retry = ensurePassword(id);
+    await tick();
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await retry).toBe(true);
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "recovered-password",
+    );
+  });
+
+  test("fragt bei fehlendem gespeicherten Passwort weiterhin nach", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "missing-keychain-password";
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    const pending = ensurePassword(id);
+    await tick();
+    expect(usePasswordPrompt.getState().connection?.id).toBe(id);
+    usePasswordPrompt.getState().resolve?.({ password: "entered-password", save: false });
+    expect(await pending).toBe(true);
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "entered-password",
+    );
+    expect(keychain.has(id)).toBe(false);
+  });
+
+  test.each(["abort", "remove", "retarget"] as const)(
+    "verwirft verspätete Passwortantworten nach %s",
+    async (action) => {
+      const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+      const id = `late-password-${action}`;
+      const url = scrubUrlPassword(direct.connectionString);
+      useConnectionsStore.setState({ connections: [{ ...direct, id, connectionString: url }] });
+      keychain.set(id, "old-target-password");
+      pausedSecretAccount = id;
+      const controller = new AbortController();
+      let settled = false;
+      const pending = ensurePassword(id, undefined, controller.signal).then((result) => {
+        settled = true;
+        return result;
+      });
+      await tick();
+      expect(resumeSecretLoad).toBeTruthy();
+      if (action === "abort") {
+        controller.abort();
+        await tick();
+      }
+      if (action === "remove") useConnectionsStore.setState({ connections: [] });
+      if (action === "retarget")
+        useConnectionsStore.setState({
+          connections: [{ ...direct, id, connectionString: "postgresql://user@other-host/app" }],
+        });
+      const settledBeforeResume = settled;
+      resumeSecretLoad?.();
+      await tick();
+      const prompted = usePasswordPrompt.getState().connection;
+      usePasswordPrompt.getState().resolve?.(null);
+      expect(await pending).toBe(false);
+      if (action === "abort") expect(settledBeforeResume).toBe(true);
+      expect(prompted).toBeNull();
+      expect(useConnectionsStore.getState().connections[0]?.connectionString ?? "").not.toContain(
+        "old-target-password",
+      );
+    },
+  );
+
+  test("bewahrt ein Passwort, das während des Ladens eingegeben wurde", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "concurrent-password-entry";
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    keychain.set(id, "stored-password");
+    pausedSecretAccount = id;
+    const pending = ensurePassword(id);
+    await tick();
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: "postgresql://user:typed@localhost/app" }],
+    });
+    resumeSecretLoad?.();
+    expect(await pending).toBe(true);
+    expect(usePasswordPrompt.getState().connection).toBeNull();
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "typed",
+    );
+  });
+
   test("fragt nur bei Benutzer ohne Passwort", async () => {
     const { needsPassword } = await import("../src/lib/password-prompt");
     const base = { id: "1", name: "x", kind: "postgres" } as const;
