@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { convexStudioFunctionsList } from "@/lib/db/convex-studio-functions";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexComponentsList } from "./convex-components-list";
@@ -41,26 +41,25 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 ref={feature.ref} className="flex items-center gap-2 text-lg font-semibold">
-            Funktionen {feature.isNew && <NewBadge />}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Queries, Mutationen, Aktionen und HTTP-Aktionen ansehen, als Admin ausführen und
-            auswerten.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={catalog.isFetching}
-          onClick={() => void catalog.refetch()}
-        >
-          <RefreshCw className="size-3.5" />
-          Neu laden
-        </Button>
-      </div>
+      <BaasSectionHeader
+        title="Funktionen"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Queries, Mutationen, Aktionen und HTTP-Aktionen ansehen, als Admin ausführen und auswerten."
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={catalog.isFetching}
+              onClick={() => void catalog.refetch()}
+            >
+              <RefreshCw className="size-3.5" />
+              Neu laden
+            </Button>
+          </>
+        }
+      />
       {catalog.isError && (
         <p role="alert" className="text-xs text-destructive">
           {String(catalog.error)}

@@ -275,6 +275,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       rowOffset={rowOffset}
                       onInsertRow={onInsertRow}
                       onDeleteRow={onDeleteRow}
+                      rowMenuItems={props.rowMenuItems}
                       columnDetails={columnDetails}
                     />
                   </table>
@@ -301,6 +302,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                   : rows.length
               }
               page={navPage}
+              rowOffset={rowOffset}
               pageSize={pageSize}
               totalCount={totalCount}
               countLabel={countLabel}

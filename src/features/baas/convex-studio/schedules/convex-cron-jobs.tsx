@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Play } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronRight, Play } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import {
   convexCronJobs,
   convexRunCron,
 } from "@/lib/db/convex-studio-schedules";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { ConvexCronRuns } from "./convex-cron-runs";
 import { ConvexSchedulesConfirmDialog } from "./convex-schedules-confirm-dialog";
 import {
@@ -52,9 +53,16 @@ export function ConvexCronJobs({ target, refetchInterval }: Props) {
   if (crons.isPending) return <p className="text-xs text-muted-foreground">Wird geladen…</p>;
   if (crons.data.length === 0)
     return (
-      <p className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
-        Keine Cron-Jobs. Lege sie in <code>convex/crons.ts</code> an und deploye die App.
-      </p>
+      <BaasEmptyState
+        compact
+        icon={CalendarClock}
+        title="Keine Cron-Jobs."
+        description={
+          <>
+            Lege sie in <code>convex/crons.ts</code> an und deploye die App.
+          </>
+        }
+      />
     );
   return (
     <div className="overflow-x-auto rounded-xl border">

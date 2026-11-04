@@ -5,10 +5,12 @@ import {
   Copy,
   File,
   Folder,
+  FolderOpen,
   FolderPlus,
   MoveRight,
   RefreshCw,
   Search,
+  SearchX,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -34,6 +36,7 @@ import {
   supabaseStudioStorageObjects,
   supabaseStudioStorageUpload,
 } from "@/lib/db/supabase-studio-storage";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { formatBytes, formatDate, storageQueryKey, validStorageName } from "./storage-format";
 import { SupabaseStorageConfirmDialog } from "./supabase-storage-confirm-dialog";
 import { SupabaseStorageObjectPanel } from "./supabase-storage-object-panel";
@@ -274,9 +277,15 @@ export function SupabaseStorageBrowser({
               {String(objects.error)}
             </p>
           ) : rows.length === 0 ? (
-            <p className="p-4 text-xs text-muted-foreground">
-              {search ? "Keine passenden Dateien." : "Dieser Ordner ist leer."}
-            </p>
+            <BaasEmptyState
+              icon={search ? SearchX : FolderOpen}
+              title={search ? "Keine passenden Dateien." : "Dieser Ordner ist leer."}
+              description={
+                search
+                  ? "Ändere den Suchbegriff oder leere die Suche."
+                  : "Lade Dateien hoch oder lege einen Unterordner an."
+              }
+            />
           ) : (
             <table className="w-full text-xs">
               <thead className="border-b bg-muted/40 text-left text-muted-foreground">

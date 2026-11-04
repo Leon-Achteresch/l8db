@@ -24,7 +24,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { SupabaseStudioCapabilities } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { SupabaseSectionHeader } from "../supabase-section-header";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { SupabaseSectionTitle } from "../supabase-section-title";
 import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
@@ -113,7 +113,7 @@ export function SupabaseLogsSection({ project, capabilities }: SupabaseStudioSec
   const reference = project.reference;
   return (
     <div className="space-y-5">
-      <SupabaseSectionHeader
+      <BaasSectionHeader
         title={
           <SupabaseSectionTitle
             section="Logs & Leistung"

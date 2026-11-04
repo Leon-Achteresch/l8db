@@ -1,8 +1,9 @@
-import { Pause, Play, Trash2 } from "lucide-react";
+import { Pause, Play, Radio, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { MAX_REALTIME_MESSAGES, type RealtimeEntry } from "./use-realtime-session";
 
 type Filter = "all" | "postgres_changes" | "broadcast" | "presence" | "system";
@@ -88,8 +89,12 @@ export function RealtimeMessageList({
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <ul className="h-[50vh] min-h-64 overflow-auto rounded-xl border">
           {visible.length === 0 && (
-            <li className="p-4 text-center text-xs text-muted-foreground">
-              Noch keine Nachrichten.
+            <li className="flex h-full">
+              <BaasEmptyState
+                icon={Radio}
+                title="Noch keine Nachrichten."
+                description="Tritt einem Kanal bei oder sende einen Broadcast, um Nachrichten live zu sehen."
+              />
             </li>
           )}
           {visible.map((entry) => (

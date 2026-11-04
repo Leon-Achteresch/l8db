@@ -220,11 +220,12 @@ export function useDataTable(props: DataTableProps) {
   );
   const changePage = infinite ? scrollToPage : onPageChange;
   const hasNextPage =
-    totalCount != null
+    props.hasNextPage ??
+    (totalCount != null
       ? navPage < Math.ceil(totalCount / pageSize) - 1
       : infinite
         ? (props.rowExtent ?? 0) > (navPage + 1) * pageSize
-        : countLabel !== undefined && data.length >= pageSize;
+        : countLabel !== undefined && data.length >= pageSize);
   useGridHotkeys({
     rootRef,
     searchInputRef: search.searchInputRef,

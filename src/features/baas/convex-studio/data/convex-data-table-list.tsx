@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Table2 } from "lucide-react";
+import { Plus, RefreshCw, SearchX, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { convexDataCreateTable, convexDataTables } from "@/lib/db/convex-studio-data";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { BaasSidebarItem } from "../../baas-sidebar-item";
 import type { ConvexStudioDeployment } from "../convex-studio-sections";
 import { ConvexDataCreateTableDialog } from "./convex-data-create-table-dialog";
@@ -70,9 +71,18 @@ export function ConvexDataTableList({
           {String(tables.error)}
         </p>
       ) : visible.length === 0 ? (
-        <p className="px-2 text-xs text-muted-foreground">
-          {needle ? "Keine passende Tabelle." : "Noch keine Tabellen."}
-        </p>
+        <BaasEmptyState
+          compact
+          className="p-4"
+          icon={needle ? SearchX : Table2}
+          title={needle ? "Keine passende Tabelle." : "Noch keine Tabellen."}
+        >
+          {!needle && (
+            <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
+              <Plus className="size-3.5" /> Tabelle erstellen
+            </Button>
+          )}
+        </BaasEmptyState>
       ) : (
         <div className="grid gap-0.5">
           {visible.map((table) => (

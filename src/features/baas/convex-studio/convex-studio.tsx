@@ -38,20 +38,15 @@ export function ConvexStudio({
         featureScope: `baas.convex.studio.${section.id}`,
       }))}
       value={active.id}
+      fullBleed={active.fullBleed}
       onValueChange={async (id) => {
         await navigate({ to: "/baas", search: { ...search, studio: id } });
       }}
     >
-      <div
-        className={
-          active.fullBleed ? "flex min-h-0 flex-1 flex-col" : "min-h-0 flex-1 overflow-auto p-5"
-        }
-      >
-        <Section
-          key={`${deployment.profileId}:${deployment.deploymentName}:${active.id}`}
-          deployment={deployment}
-        />
-      </div>
+      <Section
+        key={`${deployment.profileId}:${deployment.deploymentName}:${active.id}`}
+        deployment={deployment}
+      />
     </BaasStudioFrame>
   );
 }

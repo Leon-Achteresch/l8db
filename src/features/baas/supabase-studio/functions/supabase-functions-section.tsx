@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { SupabaseSectionHeader } from "../supabase-section-header";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import {
@@ -26,7 +26,7 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
 
   return (
     <div className="space-y-5">
-      <SupabaseSectionHeader
+      <BaasSectionHeader
         title="Edge Functions"
         titleRef={feature.ref}
         isNew={feature.isNew}

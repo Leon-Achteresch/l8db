@@ -1,9 +1,10 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Inbox, Search, SearchX } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DatabaseListPage } from "@/lib/db/supabase-studio-database";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { PAGE_SIZE } from "./use-database-list";
 
 interface Props<T> {
@@ -44,7 +45,11 @@ export function DatabaseListFrame<T>({ list, toolbar, empty, children }: Props<T
       ) : query.isPending ? (
         <p className="text-xs text-muted-foreground">Wird geladen…</p>
       ) : items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{empty}</p>
+        <BaasEmptyState
+          compact
+          icon={search ? SearchX : Inbox}
+          title={search ? "Keine Treffer." : empty}
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border">{children(items)}</div>
       )}

@@ -187,6 +187,7 @@ export const NEW_FEATURES = {
   "baas.convex.studio": "0.16.0",
   "baas.convex.studio.overview": "0.16.0",
   "baas.convex.studio.data": "0.16.0",
+  "baas.convex.studio.data.grid": NEXT_FEATURE_VERSION,
   "baas.convex.studio.functions": "0.16.0",
   "baas.convex.studio.logs": "0.16.0",
   "baas.convex.studio.files": "0.16.0",
