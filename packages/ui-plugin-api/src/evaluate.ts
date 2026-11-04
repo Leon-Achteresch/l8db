@@ -72,6 +72,19 @@ function referencedNames(code: string) {
   return names;
 }
 
+function hostGlobalNames() {
+  const names = new Set<string>();
+  for (let scope: object | null = globalThis; scope; scope = Object.getPrototypeOf(scope))
+    for (const name of Object.getOwnPropertyNames(scope)) names.add(name);
+  return names;
+}
+
+function hostValue(name: string) {
+  if (name === "NaN") return Number.NaN;
+  if (name === "Infinity") return Number.POSITIVE_INFINITY;
+  return undefined;
+}
+
 export function evaluatePlugin(
   code: string,
   modules: Readonly<Record<string, unknown>>,
@@ -85,10 +98,12 @@ export function evaluatePlugin(
   };
   const values: Record<string, unknown> = Object.create(null);
   Object.assign(values, baseScope(), globals, { require, module, exports: module.exports });
-  const names = [...new Set([...Object.keys(values), ...referencedNames(code)])].filter(
-    (name) => IDENTIFIER.test(name) && !RESERVED.has(name),
-  );
+  const names = [
+    ...new Set([...Object.keys(values), ...referencedNames(code), ...hostGlobalNames()]),
+  ].filter((name) => IDENTIFIER.test(name) && !RESERVED.has(name));
   const factory = new Function(...names, `return function () { "use strict";\n${code}\n};`);
-  factory(...names.map((name) => values[name])).call(undefined);
+  factory(
+    ...names.map((name) => (Object.hasOwn(values, name) ? values[name] : hostValue(name))),
+  ).call(undefined);
   return Object.hasOwn(module.exports, "default") ? module.exports.default : module.exports;
 }

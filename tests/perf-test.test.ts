@@ -248,6 +248,21 @@ describe("Freie Abfrage als Performance-Test", () => {
       "SELECT * FROM dblink('x', 'delete from t') AS t(a int)",
     ])
       expect(isReadOnlyStatement(sql)).toBe(false);
+    for (const sql of [
+      `SELECT "setval"('s', 1)`,
+      "SELECT pg_try_advisory_lock(1)",
+      "SELECT public.nextval('s')",
+    ])
+      expect(isReadOnlyStatement(sql)).toBe(false);
+    for (const sql of [
+      `SELECT "a'b", setval('s', 1), "c'd"`,
+      "SELECT `a'b`, setval(1), `c'd`",
+      "SELECT [a'b], setval(1), [c'd]",
+      "SELECT $$'$$, setval(1), $$'$$",
+      "SELECT E'\\'', setval(1), ''",
+    ])
+      expect(isReadOnlyStatement(sql)).toBe(false);
+    expect(isReadOnlyStatement("SELECT 'insert into' AS hint, 'it''s' FROM t")).toBe(true);
     expect(isReadOnlyStatement("SELECT pg_stat_activity_count FROM stats")).toBe(true);
     expect(isReadOnlyStatement("   ")).toBe(false);
   });
