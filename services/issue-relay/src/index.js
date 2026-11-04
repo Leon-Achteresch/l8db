@@ -17,25 +17,35 @@ export default {
     const problem = invalid(report);
     if (problem) return reply({ error: problem }, 400);
     try {
-      const token = await installationToken(env);
+      const token = await installationToken(env, request.signal);
       const body = `${quiet(report.body)}\n\n_Automatisch aus l8db gemeldet._`;
-      const issue = await github(token, `/repos/${env.REPOSITORY}/issues`, {
-        method: "POST",
-        body: JSON.stringify({ title: quiet(report.title.trim()), body, labels: LABELS }),
-      });
+      const issue = await github(
+        token,
+        `/repos/${env.REPOSITORY}/issues`,
+        {
+          method: "POST",
+          body: JSON.stringify({ title: quiet(report.title.trim()), body, labels: LABELS }),
+        },
+        request.signal,
+      );
       const base = env.SCREENSHOT_BASE_URL?.replace(/\/$/, "");
       if (report.screenshot && base?.startsWith("https://") && !base.includes("REPLACE")) {
         const key = `${issue.number}-${crypto.randomUUID()}.png`;
         try {
-          await env.SCREENSHOTS.put(
-            key,
-            Uint8Array.from(atob(report.screenshot), (char) => char.charCodeAt(0)),
-            { httpMetadata: { contentType: "image/png" } },
-          );
-          await github(token, `/repos/${env.REPOSITORY}/issues/${issue.number}`, {
-            method: "PATCH",
-            body: JSON.stringify({ body: `${body}\n\n![Geschwärzter Screenshot](${base}/${key})` }),
+          await env.SCREENSHOTS.put(key, decodeScreenshot(report.screenshot), {
+            httpMetadata: { contentType: "image/png" },
           });
+          await github(
+            token,
+            `/repos/${env.REPOSITORY}/issues/${issue.number}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                body: `${body}\n\n![Geschwärzter Screenshot](${base}/${key})`,
+              }),
+            },
+            request.signal,
+          );
         } catch (error) {
           console.error(error);
         }
@@ -47,6 +57,13 @@ export default {
     }
   },
 };
+
+function decodeScreenshot(base64) {
+  const decoded = atob(base64);
+  const bytes = new Uint8Array(decoded.length);
+  for (let index = 0; index < decoded.length; index++) bytes[index] = decoded.charCodeAt(index);
+  return bytes;
+}
 
 export function invalid(report) {
   if (!report || typeof report !== "object") return "Ungültiger Bericht.";
@@ -77,9 +94,12 @@ function reply(payload, status) {
   });
 }
 
-async function github(token, path, init) {
+async function github(token, path, init, signal) {
   const response = await fetch(`https://api.github.com${path}`, {
     ...init,
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+      : AbortSignal.timeout(15_000),
     headers: {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${token}`,
@@ -91,7 +111,7 @@ async function github(token, path, init) {
   return response.json();
 }
 
-async function installationToken(env) {
+async function installationToken(env, signal) {
   const now = Math.floor(Date.now() / 1000);
   const unsigned = `${encode({ alg: "RS256", typ: "JWT" })}.${encode({ iat: now - 60, exp: now + 540, iss: env.GITHUB_APP_ID })}`;
   const der = Uint8Array.from(
@@ -114,6 +134,7 @@ async function installationToken(env) {
     `${unsigned}.${base64url(new Uint8Array(signature))}`,
     `/app/installations/${env.GITHUB_INSTALLATION_ID}/access_tokens`,
     { method: "POST" },
+    signal,
   );
   return answer.token;
 }
