@@ -303,3 +303,33 @@ at the root. The Rust suite rejects an outdated native OpenSSL release, verifies
 RSA signatures independently with ring, and covers malformed keys and encrypted
 PKCS#8 exports. Deepmerge tests exercise the actual Shadcn/registry resolution,
 null-prototype objects, source/target poisoning, nested arrays and option compatibility.
+
+## Table helper menus
+
+Measured on 4 November 2026 on macOS (Darwin 27.0.0), arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.3.10, Playwright Chromium. Tests use real UI components and mocked Tauri transport; no live database, native Tauri webview, Windows, Linux, WebKit or CPU/heap simulation was exercised.
+
+Run the scoped interaction and performance scenario:
+
+```sh
+L8DB_WORKBENCH_BROWSER=1 bun test tests/table-helper-menus-browser.test.ts
+```
+
+The fixture simulates the next release through its package manifest response to exercise the existing `table.rows.watch` and `query.results.timestamps` registrations and NEW badges without changing the repository version.
+
+The scenario covers menu discovery, time zone and precision persistence, observing a row through its context menu, changed values, accepting a baseline, deletion, empty state, Escape, and 1440/760/390 px layouts. The watch panel stays open during interactions with the underlying table. Only one observation can expand at a time; closing the panel unmounts its contents. Opening and closing do not repeat the comparison over loaded rows, add polling, or issue database requests.
+
+| Workload | Measurement | Limit |
+| --- | --- | --- |
+| Open 200 observations over 5,000 loaded rows, 5 cycles | Median 576.46 ms; p95 578.09 ms | p95 < 1,000 ms |
+| Watch panel DOM | 2,230 descendants | < 4,000 |
+| Table DOM | 41 mounted rows | < 90 |
+| Closed panel after settling | 0 panel nodes | 0 |
+| Additional database requests during settings, comparison and panel cycles | 0 | 0 |
+
+No background work is introduced. Closing uses Escape, and after 400 ms idle the panel is unmounted with unchanged transport call counts. Existing workbench unit tests cover subscription disposal and idle behavior. Resource evidence for this UI is bounded DOM, not a measured native-process memory limit.
+
+The related SQL result browser scenario (`L8DB_PERF_BROWSER=1 bun test tests/query-qol-browser.test.ts`) passed with 999 loaded rows, 45 mounted rows, no browser errors and exactly the seven explicitly executed SQL requests. Retained-result latency was median 35.4 ms / p95 36.2 ms.
+
+The unchanged core watch scenario (`tests/perf-workbench-qol.test.ts`) exceeded its existing 250 ms p95 comparison budget at 302.30 ms for 200 observations over 100,000 loaded rows during concurrent browser/typecheck work. It failed before reaching its retained-heap assertion. No budget or comparison implementation was changed and that scenario was not rerun. The other 25 scoped unit/core tests passed. These results do not establish native or all-provider performance.
+
+The broader workbench browser scenario stopped on an existing Monaco undo expectation before reaching the table controls (`tests/workbench-qol-browser.test.ts:102`). The scoped table helper scenario above passed independently; the editor undo path was not changed or repaired.

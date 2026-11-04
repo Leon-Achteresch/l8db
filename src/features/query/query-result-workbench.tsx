@@ -28,6 +28,7 @@ import {
   IconMenuSubContent,
   IconMenuSubTrigger,
 } from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { SeasonalCorner } from "@/components/seasonal/seasonal-corner";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,12 +39,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { CreateViewDialog, isViewableSelect } from "@/features/query/create-view-dialog";
 import { ResultTitle } from "@/features/query/query-view/result-title";
+import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
 import { afterPaint } from "@/lib/after-paint";
 import { copyText } from "@/lib/clipboard";
 import { useConnectionsStore } from "@/lib/connections/store";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { temporaryViewMode } from "@/lib/session-views";
@@ -87,6 +90,7 @@ export function QueryResultWorkbench({
   chart?: ResultChartBinding;
   previous?: boolean;
 }) {
+  const timeNew = useHasNewFeatures("query.results.timestamps");
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -224,11 +228,18 @@ export function QueryResultWorkbench({
         <div className="ml-auto flex items-center gap-1">
           <IconMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" className="size-7" variant="ghost" aria-label="Ergebnisoptionen">
+              <Button
+                size="icon"
+                className="relative size-7"
+                variant="ghost"
+                aria-label="Ergebnisoptionen"
+              >
                 <MoreHorizontal className="size-4" />
+                {timeNew && <NewBadge className="absolute -right-1 -top-1" />}
               </Button>
             </DropdownMenuTrigger>
             <IconMenuContent>
+              <TimestampDisplayMenu />
               <DropdownMenuRadioGroup
                 value={chartView ? "chart" : workspace.resultView}
                 onValueChange={(value) =>
@@ -310,6 +321,7 @@ export function QueryResultWorkbench({
             isLoading={false}
             error={null}
             masked
+            timestampMenu={false}
             onInspect={inspectCell}
           />
         </div>
