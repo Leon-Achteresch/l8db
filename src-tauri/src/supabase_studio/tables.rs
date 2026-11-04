@@ -711,7 +711,7 @@ async fn rest_send(request: reqwest::RequestBuilder) -> Result<Value, String> {
     let response = request
         .send()
         .await
-        .map_err(|error| format!("Supabase Data API ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase Data API", &error))?;
     let status = response.status();
     if status.is_success() {
         return response
@@ -783,7 +783,7 @@ async fn openapi_info(
     .header("Accept-Profile", schema)
     .send()
     .await
-    .map_err(|error| format!("Supabase Data API ist nicht erreichbar: {error}"))?;
+    .map_err(|error| crate::supabase::network_error("Supabase Data API", &error))?;
     if matches!(response.status().as_u16(), 401 | 403 | 406) {
         return Ok(info);
     }

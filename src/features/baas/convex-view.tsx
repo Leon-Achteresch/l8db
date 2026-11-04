@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Cloud, Plus, RefreshCw, Unplug } from "lucide-react";
+import { ArrowLeft, Cloud, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,12 @@ import {
   convexProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasDisconnectButton } from "./baas-disconnect-button";
 import { BaasStudioFooter } from "./baas-studio-footer";
 import { BaasStudioHeader } from "./baas-studio-header";
 import { ConvexProjectView } from "./convex-project-view";
 import { ConvexStudio } from "./convex-studio/convex-studio";
+import { disconnectDescription } from "./disconnect-baas";
 
 const route = getRouteApi("/baas");
 
@@ -186,6 +188,9 @@ export function ConvexView({ initialId }: { initialId?: string }) {
               void queryClient.invalidateQueries({ queryKey: ["convex", selected.id] })
             }
             onDisconnect={() => void disconnect()}
+            disconnectDescription={disconnectDescription(
+              selected?.url ? "Convex (selbst gehostet)" : `Convex-Team ${selected?.team_id ?? ""}`,
+            )}
             busy={busy}
           />
         }
@@ -331,14 +336,15 @@ export function ConvexView({ initialId }: { initialId?: string }) {
                   >
                     <RefreshCw className="size-3.5" /> Aktualisieren
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void disconnect()}
-                    disabled={busy}
-                  >
-                    <Unplug className="size-3.5" /> Trennen
-                  </Button>
+                  <BaasDisconnectButton
+                    description={disconnectDescription(
+                      selected?.url
+                        ? "Convex (selbst gehostet)"
+                        : `Convex-Team ${selected?.team_id ?? ""}`,
+                    )}
+                    busy={busy}
+                    onConfirm={() => void disconnect()}
+                  />
                 </div>
               </div>
               {selected.url ? null : projects.isPending ? (

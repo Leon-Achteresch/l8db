@@ -83,10 +83,6 @@ export interface SupabaseAuthUsersPage {
   users: SupabaseAuthUser[];
 }
 
-export const supabaseCreateAuthUser = (reference: string, email: string, password: string) =>
-  invoke<void>("supabase_create_auth_user", { reference, email, password });
-export const supabaseUpdateAuthUserEmail = (reference: string, userId: string, email: string) =>
-  invoke<void>("supabase_update_auth_user_email", { reference, userId, email });
 export const supabaseDeleteAuthUser = (reference: string, userId: string) =>
   invoke<void>("supabase_delete_auth_user", { reference, userId });
 
@@ -128,15 +124,12 @@ export interface SupabaseDatabaseEndpoint {
 }
 export const supabaseDatabaseEndpoint = (reference: string) =>
   invoke<SupabaseDatabaseEndpoint>("supabase_database_endpoint", { reference });
-export const supabaseProjects = () => invoke<SupabaseProject[]>("supabase_projects");
-export const supabaseBuckets = (reference: string) =>
-  invoke<SupabaseBucket[]>("supabase_buckets", { reference });
-export const supabaseBucketDetails = (reference: string, bucket: string) =>
-  invoke<SupabaseBucket>("supabase_bucket_details", { reference, bucket });
-export const supabaseCreateBucket = (reference: string, name: string, isPublic: boolean) =>
-  invoke<void>("supabase_create_bucket", { reference, name, public: isPublic });
-export const supabaseUpdateBucketPublic = (reference: string, bucket: string, isPublic: boolean) =>
-  invoke<void>("supabase_update_bucket_public", { reference, bucket, public: isPublic });
+export interface SupabaseProjectList {
+  projects: SupabaseProject[];
+  cloud_error: string | null;
+}
+
+export const supabaseProjects = () => invoke<SupabaseProjectList>("supabase_projects");
 export const supabaseDeleteBucket = (reference: string, bucket: string) =>
   invoke<void>("supabase_delete_bucket", { reference, bucket });
 export const supabaseFunctions = (reference: string) =>
@@ -145,16 +138,6 @@ export const supabaseHealth = (reference: string) =>
   invoke<SupabaseServiceHealth[]>("supabase_health", { reference });
 export const supabaseBackups = (reference: string) =>
   invoke<SupabaseBackups>("supabase_backups", { reference });
-export const supabaseTables = (reference: string, offset: number) =>
-  invoke<SupabaseTablesPage>("supabase_tables", { reference, offset });
-export const supabaseTableColumns = (reference: string, schema: string, table: string) =>
-  invoke<SupabaseColumn[]>("supabase_table_columns", { reference, schema, table });
-export const supabaseTableRows = (
-  reference: string,
-  schema: string,
-  table: string,
-  offset: number,
-) => invoke<SupabaseRowsPage>("supabase_table_rows", { reference, schema, table, offset });
 export const supabaseHasProjectKey = (reference: string) =>
   invoke<boolean>("supabase_has_project_key", { reference });
 export const supabaseSetProjectKey = (reference: string, apiKey: string) =>
@@ -163,25 +146,7 @@ export const supabaseImportProjectKey = (reference: string) =>
   invoke<void>("supabase_import_project_key", { reference });
 export const supabaseDeleteProjectKey = (reference: string) =>
   invoke<void>("supabase_delete_project_key", { reference });
-export const supabaseObjects = (
-  reference: string,
-  bucket: string,
-  prefix: string,
-  offset: number,
-) => invoke<SupabaseObject[]>("supabase_objects", { reference, bucket, prefix, offset });
-export const supabaseUploadObject = (reference: string, bucket: string, prefix: string) =>
-  invoke<string | null>("supabase_upload_object", { reference, bucket, prefix });
-export const supabaseDeleteObject = (reference: string, bucket: string, objectKey: string) =>
-  invoke<void>("supabase_delete_object", { reference, bucket, objectKey });
-export const supabaseMoveObject = (
-  reference: string,
-  bucket: string,
-  sourceKey: string,
-  destinationKey: string,
-) => invoke<void>("supabase_move_object", { reference, bucket, sourceKey, destinationKey });
 export const supabasePreviewObject = (reference: string, bucket: string, objectKey: string) =>
   invoke<BaasFilePreview>("supabase_preview_object", { reference, bucket, objectKey });
 export const supabaseDownloadObject = (reference: string, bucket: string, objectKey: string) =>
   invoke<boolean>("supabase_download_object", { reference, bucket, objectKey });
-export const supabaseAuthUsers = (reference: string, page: number) =>
-  invoke<SupabaseAuthUsersPage>("supabase_auth_users", { reference, page });
