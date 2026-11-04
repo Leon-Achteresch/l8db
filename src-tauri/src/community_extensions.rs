@@ -95,7 +95,9 @@ fn validate_archive(archive: &Value) -> Result<String, String> {
             .iter()
             .any(|(path, value)| !safe_path(path) || !value.is_string())
     {
-        return Err("Ungültige Dateipfade oder ungültiger Einstiegspunkt im Erweiterungsarchiv.".into());
+        return Err(
+            "Ungültige Dateipfade oder ungültiger Einstiegspunkt im Erweiterungsarchiv.".into(),
+        );
     }
     if serde_json::to_vec(archive)
         .map_err(|e| e.to_string())?
@@ -249,7 +251,10 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
             let extension_id = validate_archive(archive)?;
             let directory = location(root, &extension_id)?;
             if directory.exists() {
-                return Err("Die Erweiterung ist bereits installiert. Zum Ersetzen erst deinstallieren.".into());
+                return Err(
+                    "Die Erweiterung ist bereits installiert. Zum Ersetzen erst deinstallieren."
+                        .into(),
+                );
             }
             let staging = root.join(format!("{extension_id}.installing"));
             if staging.exists() {
