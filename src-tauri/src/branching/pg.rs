@@ -705,6 +705,43 @@ pub async fn try_lock(client: &Client, name: &str) -> Result<(), String> {
 
 const USER_TABLES: &str = "n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp%'";
 
+pub async fn check_fixed(
+    client: &Client,
+    rules: &[mask::MaskRule],
+    columns: &[mask::Column],
+) -> Result<(), String> {
+    for rule in rules
+        .iter()
+        .filter(|rule| rule.strategy == mask::Strategy::Fixed)
+    {
+        let Some(column) = columns.iter().find(|column| {
+            column.schema == rule.schema
+                && column.table == rule.table
+                && column.column == rule.column
+        }) else {
+            continue;
+        };
+        if column.category == mask::Category::Text {
+            continue;
+        }
+        let value = rule.value.clone().unwrap_or_default();
+        client
+            .query_one(&format!("SELECT $1::text::{}", column.data_type), &[&value])
+            .await
+            .map_err(|error| {
+                format!(
+                    "Fester Wert für {}.{}.{} passt nicht zu {}: {}",
+                    rule.schema,
+                    rule.table,
+                    rule.column,
+                    column.data_type,
+                    map_pg_err(error)
+                )
+            })?;
+    }
+    Ok(())
+}
+
 pub async fn columns(client: &Client) -> Result<Vec<mask::Column>, String> {
     let rows = client
         .query(
@@ -714,7 +751,15 @@ pub async fn columns(client: &Client) -> Result<Vec<mask::Column>, String> {
                  CASE WHEN coalesce(nullif(t.typbasetype, 0), a.atttypid) IN ('varchar'::regtype, 'bpchar'::regtype) \
                       AND (CASE WHEN t.typbasetype <> 0 THEN t.typtypmod ELSE a.atttypmod END) > 4 \
                       THEN (CASE WHEN t.typbasetype <> 0 THEN t.typtypmod ELSE a.atttypmod END) - 4 END, \
-                 rn.nspname::text, rc.relname::text \
+                 rn.nspname::text, rc.relname::text, \
+                 EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisunique AND a.attnum = ANY(i.indkey::int2[])), \
+                 ARRAY(SELECT fn.nspname || '.' || fc.relname || '.' || fa.attname \
+                       FROM pg_constraint f \
+                       CROSS JOIN LATERAL unnest(f.conkey, f.confkey) AS k(child, parent) \
+                       JOIN pg_class fc ON fc.oid = f.confrelid \
+                       JOIN pg_namespace fn ON fn.oid = fc.relnamespace \
+                       JOIN pg_attribute fa ON fa.attrelid = f.confrelid AND fa.attnum = k.parent \
+                       WHERE f.contype = 'f' AND f.conrelid = c.oid AND f.conparentid = 0 AND k.child = a.attnum) \
                  FROM pg_attribute a \
                  JOIN pg_class c ON c.oid = a.attrelid \
                  JOIN pg_namespace n ON n.oid = c.relnamespace \
@@ -735,10 +780,18 @@ pub async fn columns(client: &Client) -> Result<Vec<mask::Column>, String> {
             let category = mask::category(&base);
             let not_null: bool = row.get(5);
             let name: String = row.get(2);
+            let unique: bool = row.get(10);
+            let pii = mask::detect(&name, category, not_null);
             mask::Column {
                 schema: row.get(0),
                 table: row.get(1),
-                pii: mask::detect(&name, category, not_null),
+                pii: if unique {
+                    mask::unique_suggestion(pii, category, not_null)
+                } else {
+                    pii
+                },
+                unique,
+                references: row.get(11),
                 column: name,
                 data_type: row.get(3),
                 category,

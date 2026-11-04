@@ -128,6 +128,21 @@ fn global_options_work_before_and_after_the_command() {
     assert_eq!(after.global.connection.as_deref(), Some("prod"));
     assert_eq!(after.global.output, Some(output::Format::Json));
     assert!(parse("l8db q -c a --url postgres://x/y \"select 1\"").is_err());
+    for invalid in [
+        "l8db table rows t -n 0",
+        "l8db table rows t --limit -5",
+        "l8db table rows t --offset -1",
+        "l8db q -n 0 x",
+        "l8db q --timeout 1 x",
+    ] {
+        assert!(parse(invalid).is_err(), "{invalid}");
+    }
+    let timeout = german(&parse("l8db q --timeout 1 x").unwrap_err());
+    assert!(timeout.contains("mindestens 5 Sekunden"), "{timeout}");
+    let limit = german(&parse("l8db table rows t --limit -5").unwrap_err());
+    assert!(limit.contains("ab 1"), "{limit}");
+    assert!(parse("l8db q --timeout 0 x").is_ok());
+    assert!(parse("l8db q --timeout 5 x").is_ok());
 }
 
 #[test]
@@ -147,6 +162,9 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "--url postgres://x/y q x",
         "quer",
         "tabel list",
+        "-cprod conn list",
+        "-ojson db list",
+        "-dapp q x",
     ] {
         assert!(wants(cli), "{cli} sollte die CLI starten");
     }
@@ -304,6 +322,35 @@ fn table_names_accept_schema_and_quotes() {
         (Some("My Schema".into()), "Order".into())
     );
     assert_eq!(split_table("[dbo].[x]"), (Some("dbo".into()), "x".into()));
+    assert_eq!(
+        split_table("\"Weird.Schema\".\"a.b\""),
+        (Some("Weird.Schema".into()), "a.b".into())
+    );
+    assert_eq!(split_table("\"a.b\""), (None, "a.b".into()));
+    assert_eq!(
+        split_table("\"Mixed\"\"Case.Tbl\""),
+        (None, "Mixed\"Case.Tbl".into())
+    );
+    assert_eq!(split_table("`a.b`"), (None, "a.b".into()));
+    assert_eq!(split_table("[a.b].[c]"), (Some("a.b".into()), "c".into()));
+}
+
+#[test]
+fn postgres_text_values_become_json_types() {
+    use super::run::postgres_json;
+    use serde_json::json;
+    assert_eq!(postgres_json("int4", json!("1")), json!(1));
+    assert_eq!(
+        postgres_json("int8", json!("9007199254740993")),
+        json!("9007199254740993")
+    );
+    assert_eq!(postgres_json("numeric", json!("1.5000")), json!("1.5000"));
+    assert_eq!(postgres_json("numeric", json!("2.5")), json!(2.5));
+    assert_eq!(postgres_json("float8", json!("1.1")), json!(1.1));
+    assert_eq!(postgres_json("float8", json!("NaN")), json!("NaN"));
+    assert_eq!(postgres_json("bool", json!("t")), json!(true));
+    assert_eq!(postgres_json("text", json!("1")), json!("1"));
+    assert_eq!(postgres_json("int4", json!(null)), json!(null));
 }
 
 #[test]

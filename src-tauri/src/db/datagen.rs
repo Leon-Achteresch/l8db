@@ -1076,7 +1076,7 @@ pub fn qualified(kind: DatabaseKind, schema: &str, table: &str) -> String {
 
 fn text_literal(kind: DatabaseKind, text: &str) -> String {
     match kind {
-        DatabaseKind::Mysql => super::mysql::lit(text),
+        DatabaseKind::Mysql => super::mysql::value_lit(text),
         DatabaseKind::Mssql => super::mssql::lit(text),
         _ => super::quote_literal(text),
     }
@@ -2277,7 +2277,7 @@ mod tests {
         );
         let my = insert_statement(DatabaseKind::Mysql, "app", "t", &columns, &rows).unwrap();
         assert!(my.starts_with("INSERT INTO `app`.`t` (`name`, `active`, `at`) VALUES"));
-        assert!(my.contains("'a\\\\b'"));
+        assert!(my.contains("_utf8mb4 X'615C62'"));
         let ms = insert_statement(DatabaseKind::Mssql, "dbo", "t", &columns, &rows).unwrap();
         assert!(ms.contains("(N'O''Neil', 1, N'2020-01-01T10:00:00')"));
         let ora = insert_statement(DatabaseKind::Oracle, "APP", "T", &columns, &rows).unwrap();

@@ -56,18 +56,35 @@ pub fn services() -> Result<Arc<Services>, String> {
 pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
     if let Some((scheme, _)) = url.split_once("://") {
         let scheme = scheme.to_ascii_lowercase();
-        return db::provider::list_providers()
-            .into_iter()
-            .find(|p| p.url_schemes.contains(&scheme.as_str()))
-            .map(|p| p.kind)
-            .ok_or_else(|| {
-                format!(
-                    "Datenbanktyp für „{scheme}://“ unbekannt. Beispiel: postgres://user@host/db"
-                )
-            });
+        let mut kinds: Vec<(DatabaseKind, String)> = Vec::new();
+        for provider in db::provider::list_providers() {
+            if provider.url_schemes.contains(&scheme.as_str())
+                && !kinds.iter().any(|(kind, _)| *kind == provider.kind)
+            {
+                let own = provider.url_schemes.first().copied().unwrap_or_default();
+                kinds.push((provider.kind, format!("{own}://")));
+            }
+        }
+        return match kinds.as_slice() {
+            [] => Err(format!(
+                "Datenbanktyp für „{scheme}://“ unbekannt. Beispiel: postgres://user@host/db"
+            )),
+            [(kind, _)] => Ok(*kind),
+            many => Err(format!(
+                "„{scheme}://“ ist mehrdeutig. Nutze stattdessen {}.",
+                many.iter()
+                    .map(|(_, own)| own.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        };
     }
     let lower = url.to_ascii_lowercase();
-    if lower.ends_with(".duckdb") || lower.ends_with(".ddb") {
+    if lower.starts_with("duckdb:") {
+        Ok(DatabaseKind::Duckdb)
+    } else if lower.starts_with("sqlite:") {
+        Ok(DatabaseKind::Sqlite)
+    } else if lower.ends_with(".duckdb") || lower.ends_with(".ddb") {
         Ok(DatabaseKind::Duckdb)
     } else if [".db", ".sqlite", ".sqlite3", ".db3"]
         .iter()
@@ -86,7 +103,11 @@ pub fn ad_hoc(url: &str) -> Result<Source, String> {
     let kind = detect_kind(url)?;
     let url = match kind {
         DatabaseKind::Sqlite | DatabaseKind::Duckdb if !url.contains("://") => {
-            let path = std::path::absolute(url).map_err(|e| format!("{url}: {e}"))?;
+            let file = db::sqlite::file_path(url)?;
+            if file == ":memory:" {
+                return Err("--url braucht eine vorhandene Datenbankdatei.".into());
+            }
+            let path = std::path::absolute(&file).map_err(|e| format!("{url}: {e}"))?;
             if !path.exists() {
                 return Err(format!("Datei {} gibt es nicht.", path.display()));
             }
@@ -145,6 +166,17 @@ mod tests {
         assert_eq!(detect_kind("x.duckdb").unwrap(), DatabaseKind::Duckdb);
         assert!(detect_kind("nope://x").unwrap_err().contains("nope://"));
         assert!(detect_kind("readme.txt").is_err());
+        assert_eq!(detect_kind("sqlite:data").unwrap(), DatabaseKind::Sqlite);
+        assert_eq!(detect_kind("duckdb:x.db").unwrap(), DatabaseKind::Duckdb);
+        let http = detect_kind("http://127.0.0.1:9").unwrap_err();
+        assert!(
+            http.contains("clickhouse://") && http.contains("elasticsearch://"),
+            "{http}"
+        );
+        assert_eq!(
+            detect_kind("elasticsearch://h:9200").unwrap(),
+            DatabaseKind::Elasticsearch
+        );
     }
 
     #[test]

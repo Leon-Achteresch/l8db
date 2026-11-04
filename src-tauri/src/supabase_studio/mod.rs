@@ -117,7 +117,7 @@ pub(crate) async fn management(
     let response = request
         .send()
         .await
-        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     checked(response, action).await
 }
 
