@@ -136,7 +136,7 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
         }
       />
 
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Variable hinzufügen</h3>
         <form
           className="mt-3 flex flex-wrap gap-2"
@@ -175,7 +175,7 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
         )}
       </section>
 
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">
             Variablen{variables.data ? ` (${variables.data.length})` : ""}
@@ -207,7 +207,7 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
             }
           />
         ) : (
-          <div className="mt-3 overflow-x-auto rounded-lg border bg-background/50">
+          <div className="mt-3 overflow-x-auto rounded-lg bg-background/50">
             <table className="w-full text-left">
               <thead className="text-[11px] text-muted-foreground">
                 <tr>

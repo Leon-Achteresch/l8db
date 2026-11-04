@@ -24,7 +24,7 @@ export function ConvexSettingsInfo({ deployment }: { deployment: ConvexStudioDep
 
   return (
     <>
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Deployment</h3>
         {info.isError ? (
           <p role="alert" className="mt-3 text-xs text-destructive">
@@ -60,7 +60,7 @@ export function ConvexSettingsInfo({ deployment }: { deployment: ConvexStudioDep
           </p>
         ))}
       </section>
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">Verbindung für Apps</h3>
           <Button
@@ -72,7 +72,7 @@ export function ConvexSettingsInfo({ deployment }: { deployment: ConvexStudioDep
             <Copy className="size-3.5" /> Kopieren
           </Button>
         </div>
-        <pre className="mt-3 overflow-x-auto rounded-lg border bg-background/50 p-3 font-mono text-[11px]">
+        <pre className="mt-3 overflow-x-auto rounded-lg bg-background/50 p-3 font-mono text-[11px]">
           {snippet}
         </pre>
         <p className="mt-2 text-[11px] text-muted-foreground">

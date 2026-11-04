@@ -1,6 +1,6 @@
 export function LogsSelfHostedNotice() {
   return (
-    <div className="space-y-2 rounded-xl border p-4 text-xs">
+    <div className="space-y-2 rounded-xl p-4 text-xs bg-muted/30">
       <p className="text-sm font-medium">Logs liegen im Analytics-Container</p>
       <p>
         Bei selbst gehosteten Instanzen sammelt der Container <code>analytics</code> (Logflare) die

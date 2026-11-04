@@ -29,7 +29,7 @@ export function SupabaseTableCellDialog({
             {cell?.value === null || cell?.value === undefined ? " · NULL" : ""}
           </DialogDescription>
         </DialogHeader>
-        <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap break-words">
+        <pre className="max-h-[60vh] overflow-auto rounded-lg bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap break-words">
           {cell?.value === null || cell?.value === undefined ? "NULL" : text}
         </pre>
         <DialogFooter>

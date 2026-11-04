@@ -87,7 +87,7 @@ export function RealtimeMessageList({
         </div>
       </div>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <ul className="h-[50vh] min-h-64 overflow-auto rounded-xl border">
+        <ul className="h-[50vh] min-h-64 overflow-auto rounded-xl">
           {visible.length === 0 && (
             <li className="flex h-full">
               <BaasEmptyState
@@ -113,7 +113,7 @@ export function RealtimeMessageList({
             </li>
           ))}
         </ul>
-        <pre className="h-[50vh] min-h-64 overflow-auto rounded-xl border bg-muted/30 p-3 font-mono text-xs">
+        <pre className="h-[50vh] min-h-64 overflow-auto rounded-xl bg-muted/30 p-3 font-mono text-xs">
           {current ? JSON.stringify(current.payload, null, 2) : "Nachricht auswählen."}
         </pre>
       </div>

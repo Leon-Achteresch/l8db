@@ -51,7 +51,7 @@ export function DatabaseListFrame<T>({ list, toolbar, empty, children }: Props<T
           title={search ? "Keine Treffer." : empty}
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border">{children(items)}</div>
+        <div className="overflow-x-auto rounded-xl">{children(items)}</div>
       )}
       {(offset > 0 || query.data?.has_more) && (
         <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">

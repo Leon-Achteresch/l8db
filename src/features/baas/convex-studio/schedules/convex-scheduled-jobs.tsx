@@ -145,7 +145,7 @@ export function ConvexScheduledJobs({ target, refetchInterval }: Props) {
           description="Aufrufe über ctx.scheduler.runAfter oder runAt erscheinen hier, bis sie ausgeführt sind."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
+        <div className="overflow-x-auto rounded-xl">
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/40 text-muted-foreground">
               <tr>

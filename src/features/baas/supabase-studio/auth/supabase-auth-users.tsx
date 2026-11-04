@@ -149,7 +149,7 @@ export function SupabaseAuthUsers({ reference, capabilities }: Props) {
         </p>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/40 text-muted-foreground">
                 <tr>

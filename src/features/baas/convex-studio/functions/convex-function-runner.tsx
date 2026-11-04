@@ -106,7 +106,7 @@ export function ConvexFunctionRunner({
         </p>
       )}
       {result && (
-        <div className="space-y-2 rounded-xl border p-3">
+        <div className="space-y-2 rounded-xl p-3 bg-muted/30">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <Badge variant={result.success ? "secondary" : "destructive"}>
               {result.success ? "Erfolgreich" : "Fehler"}

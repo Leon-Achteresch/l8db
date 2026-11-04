@@ -28,17 +28,12 @@ export function BaasEmptyState({
   return (
     <Empty
       role="status"
-      className={cn(
-        compact
-          ? "flex-none gap-3 rounded-xl border border-dashed border-border/80 bg-muted/20 p-6"
-          : "gap-5 p-10",
-        className,
-      )}
+      className={cn(compact ? "flex-none gap-3 rounded-xl p-6" : "gap-5 p-10", className)}
     >
       <EmptyHeader className="gap-1.5">
         <EmptyMedia
           className={cn(
-            "relative mb-2 rounded-2xl border border-border/70 bg-linear-to-b from-background to-muted text-muted-foreground shadow-sm ring-4 ring-muted/40",
+            "relative mb-2 rounded-2xl bg-muted text-muted-foreground",
             compact ? "size-9 [&_svg]:size-4" : "size-12 [&_svg]:size-5",
           )}
         >

@@ -17,7 +17,7 @@ export function ConvexOverviewErrors({ deployment }: { deployment: ConvexStudioD
   });
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Letzte Fehler</h3>
         <div className="flex items-center gap-1">
@@ -50,7 +50,7 @@ export function ConvexOverviewErrors({ deployment }: { deployment: ConvexStudioD
           Keine Fehler im aktuellen Log-Puffer des Deployments.
         </p>
       ) : (
-        <ul className="mt-3 divide-y rounded-lg border bg-background/50">
+        <ul className="mt-3 divide-y rounded-lg bg-background/50">
           {errors.data.map((error) => (
             <li
               key={`${error.requestId ?? ""}:${error.timestamp}:${error.identifier}`}
