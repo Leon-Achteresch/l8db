@@ -60,8 +60,16 @@ export function compatible(
   }
 }
 
-export function strategiesFor(column: Pick<MaskColumn, "category" | "notNull">): MaskStrategy[] {
-  return ORDER.filter((strategy) => compatible(strategy, column.category, column.notNull));
+const UNIQUE_SAFE: MaskStrategy[] = ["keep", "null", "hash", "email", "uuid"];
+
+export function strategiesFor(
+  column: Pick<MaskColumn, "category" | "notNull" | "unique">,
+): MaskStrategy[] {
+  return ORDER.filter(
+    (strategy) =>
+      compatible(strategy, column.category, column.notNull) &&
+      (!column.unique || UNIQUE_SAFE.includes(strategy)),
+  );
 }
 
 export function columnKey(column: Pick<MaskRule, "schema" | "table" | "column">): string {
@@ -82,7 +90,7 @@ export function uncovered(columns: MaskColumn[], rules: MaskRule[]): MaskColumn[
 
 export function invalidRules(columns: MaskColumn[], rules: MaskRule[]): string[] {
   const known = new Map(columns.map((column) => [columnKey(column), column]));
-  return rules.flatMap((rule) => {
+  const invalid = rules.flatMap((rule) => {
     const column = known.get(columnKey(rule));
     if (!column) return [`${columnKey(rule)}: Spalte existiert nicht`];
     if (column.generated) return [`${columnKey(rule)}: berechnete Spalte`];
@@ -91,8 +99,25 @@ export function invalidRules(columns: MaskColumn[], rules: MaskRule[]): string[]
         `${columnKey(rule)}: „${STRATEGY_LABELS[rule.strategy]}“ passt nicht zu ${column.dataType}`,
       ];
     if (rule.strategy === "fixed" && !rule.value) return [`${columnKey(rule)}: fester Wert fehlt`];
+    if (column.unique && !UNIQUE_SAFE.includes(rule.strategy))
+      return [
+        `${columnKey(rule)}: eindeutige Spalte, „${STRATEGY_LABELS[rule.strategy]}“ erzeugt Duplikate`,
+      ];
     return [];
   });
+  const strategy = (key: string) => {
+    const rule = rules.find((item) => columnKey(item) === key);
+    return rule ? `${rule.strategy}\0${rule.value ?? ""}` : "keep\0";
+  };
+  const foreign = columns.flatMap((column) => {
+    const key = columnKey(column);
+    const own = strategy(key);
+    if (own.startsWith("null\0")) return [];
+    return (column.references ?? [])
+      .filter((parent) => strategy(parent) !== own)
+      .map((parent) => `${key}: braucht dieselbe Maskierung wie ${parent} (Fremdschlüssel)`);
+  });
+  return [...invalid, ...foreign];
 }
 
 export function suggestedRules(columns: MaskColumn[], rules: MaskRule[]): MaskRule[] {

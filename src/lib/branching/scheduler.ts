@@ -1,7 +1,13 @@
 import { useEffect } from "react";
 import { useBackupToolPaths } from "@/lib/backup-runner";
 import { isMainWindow, useConnectionsStore } from "@/lib/connections";
-import { branchingSchedules, branchingSnapshot, type ScheduleEntry } from "@/lib/db";
+import {
+  branchingLocal,
+  branchingSchedules,
+  branchingSnapshot,
+  type ScheduleEntry,
+} from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { needsPassword } from "@/lib/password-prompt";
 import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -30,7 +36,19 @@ export async function runDueSnapshots(now = Date.now()): Promise<void> {
     const connection = useConnectionsStore
       .getState()
       .connections.find((item) => item.id === entry.schedule.connectionId);
-    if (connection?.kind !== "postgres" || needsPassword(connection)) continue;
+    const skip = (reason: string) =>
+      branchingLocal({ action: "schedule_skipped", key: entry.key, reason }).catch(() => undefined);
+    if (!connection) {
+      await skip("Sicherung übersprungen: Die Verbindung existiert nicht mehr.");
+      continue;
+    }
+    if (connection.kind !== "postgres") continue;
+    if (needsPassword(connection)) {
+      await skip(
+        "Sicherung übersprungen: Für die Verbindung ist eine Passworteingabe nötig. Passwort speichern, damit die Sicherung automatisch laufen kann.",
+      );
+      continue;
+    }
     try {
       const ready = await prepareConnection(connection.id);
       const url = effectiveConnectionString(ready);
@@ -45,7 +63,9 @@ export async function runDueSnapshots(now = Date.now()): Promise<void> {
         ready,
         entry.database,
       ).catch(() => undefined);
-    } catch {}
+    } catch (error) {
+      await skip(`Sicherung übersprungen: Verbindung nicht möglich (${errorMessageOf(error)}).`);
+    }
   }
 }
 

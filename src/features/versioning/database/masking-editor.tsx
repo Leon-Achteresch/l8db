@@ -65,6 +65,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
     scope === "local" ? rules : local,
   );
   const open = query.data ? uncovered(columns, effective) : [];
+  const manual = open.filter((column) => !column.pii?.strategy);
   const needle = search.trim().toLowerCase();
   const visible = columns.filter(
     (column) =>
@@ -137,8 +138,13 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
               {open.length
                 ? `${open.length} ohne Regel – anonymisierte Branches werden abgelehnt`
                 : "alle abgedeckt"}
+              {manual.length > 0 &&
+                ` · ${manual.length} ohne passenden Vorschlag, bitte manuell wählen (z. B. Unverändert oder Fester Wert): ${manual
+                  .slice(0, 3)
+                  .map((column) => `${column.table}.${column.column}`)
+                  .join(", ")}${manual.length > 3 ? " …" : ""}`}
             </span>
-            {open.length > 0 && editable && (
+            {open.length > manual.length && editable && (
               <Button
                 size="sm"
                 variant="outline"

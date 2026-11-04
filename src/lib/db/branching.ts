@@ -174,6 +174,8 @@ export interface MaskColumn {
   rootSchema: string;
   rootTable: string;
   pii: PiiHint | null;
+  unique?: boolean;
+  references?: string[];
 }
 
 export type BranchingJobState = "running" | "succeeded" | "failed" | "cancelled";
@@ -269,7 +271,8 @@ export type BranchingLocal =
       expiresAt: string | null;
     }
   | { action: "delete_snapshot"; id: string }
-  | { action: "policy"; key: string; policy: DatabasePolicy };
+  | { action: "policy"; key: string; policy: DatabasePolicy }
+  | { action: "schedule_skipped"; key: string; reason: string };
 
 export type SchemaSource = { kind: "live"; database: string } | { kind: "snapshot"; id: string };
 
