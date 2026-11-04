@@ -29,6 +29,14 @@ pub fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
+pub fn value_lit(value: &str) -> String {
+    if !value.contains('\\') {
+        return lit(value);
+    }
+    let hex: String = value.bytes().map(|b| format!("{b:02X}")).collect();
+    format!("_utf8mb4 X'{hex}'")
+}
+
 struct ColumnDefinition {
     data_type: String,
     nullable: bool,
@@ -864,13 +872,14 @@ impl DatabaseAdapter for MysqlAdapter {
             .map(|c| c.name.clone())
             .collect();
         let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => String::new(),
+        let order = order_by
+            .filter(|col| columns.iter().any(|c| c == col))
+            .map(|col| (col, order_desc));
+        let terms = super::stable_order_terms(order, &pk, quote);
+        let order_sql = if terms.is_empty() {
+            String::new()
+        } else {
+            format!(" ORDER BY {}", terms.join(", "))
         };
         let sql = format!(
             "SELECT * FROM {}.{}{}{} LIMIT {} OFFSET {}",
@@ -1559,6 +1568,12 @@ mod catalog;
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn value_literals_do_not_depend_on_backslash_escapes() {
+        assert_eq!(value_lit("it's"), "'it''s'");
+        assert_eq!(value_lit("a\\b"), "_utf8mb4 X'615C62'");
+    }
 
     #[test]
     fn view_replace_keeps_definer_security_and_check_option() {

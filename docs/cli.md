@@ -11,13 +11,13 @@ Aufbau nach dem Muster von `gh`/`kubectl`: `l8db <nomen> <verb>`, kurze Aliase f
 | `conn list` / `use` / `test` / `show` | Gespeicherte Verbindungen; `use` setzt den Standard (`cli.json`) |
 | `query [SQL]` (`q`) | SQL als Argument, `-f datei`, `-` oder Standardeingabe |
 | `db list`, `schema list` | Datenbanken, Schemas |
-| `table list` / `describe` / `rows` / `count` | Tabellen; Name oder `schema.name`, Groß-/Kleinschreibung egal |
+| `table list` / `describe` / `rows` / `count` | Tabellen und Views; Name oder `schema.name`, Groß-/Kleinschreibung egal, Namen mit Punkt in Anführungszeichen (`'"a.b"'`) |
 | `open [name]` | Verbindung in der App öffnen (`--menu=dock.connection:<id>`) |
 | `task list` / `run`, `check`, `mcp` | Bestehende Modi `--run-task`, `--check`, `--mcp` unter neuen Namen; die alten Flags bleiben |
 | `doctor [--test-keychain] [--strict]` | Arbeitsplatz, IT-Richtlinie und Team-Datei ohne Zugangsdaten prüfen |
 | `completions <shell>` | bash, zsh, fish, PowerShell |
 
-Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).
+Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. NULL ist in TSV `\N`, in CSV ein leeres Feld; ein Leerstring steht in CSV als `""`. `--url http(s)://…` ist mehrdeutig, dafür `clickhouse://`, `elasticsearch://` oder `influxdb://` nutzen; `--timeout` braucht mindestens 5 Sekunden (0 = ohne Grenze). Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).
 
 Hilfe, Fehlermeldungen und Vorschläge („Meintest du …?“) sind deutsch; `localize` setzt Überschriften und Standardwerte für alle Befehle, `german` übersetzt clap-Fehler. `every_documented_example_parses` prüft jedes Beispiel aus den Hilfetexten.
 
@@ -32,7 +32,7 @@ Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `c
 - Schreibgeschützte Verbindungen (auch Produktion mit „Produktion schreibgeschützt öffnen“) lehnen schreibendes SQL ab, bevor eine Verbindung aufgebaut wird; Postgres erzwingt das zusätzlich serverseitig.
 - Schreibendes SQL auf Produktion verlangt im Terminal das Eintippen des Verbindungsnamens, sonst `--yes`.
 - Postgres liest Einzelabfragen mit Limit in einer Read-only-Transaktion; schreibt eine Funktion darin, gelten dieselben Schutzregeln und die Abfrage läuft danach normal mit Commit.
-- `table rows/count --where` nimmt nur eine Bedingung an (kein `;`, `--`, `/* */`, `UNION`, `INTO`, `RETURNING`), wie der einfache Filter in der App. Eigenes SQL gehört in `l8db q`.
+- `table rows/count --where` nimmt nur eine Bedingung an (kein `;`, `--`, `/* */`, `#` außer bei Postgres, `UNION`, `INTO`, `RETURNING`, keine schreibenden Schlüsselwörter, Klammern ausgeglichen) und wird geklammert eingesetzt, wie der einfache Filter in der App. MongoDB erwartet JSON (`'{"status":"open"}'`), Redis ein Key-Muster (`'user:*'`). Eigenes SQL gehört in `l8db q`.
 - Mehrere Anweisungen mit Schreibzugriff laufen in einer Transaktion (Postgres, Oracle u. a.); beim ersten Fehler wird zurückgerollt. MySQL und Oracle schreiben DDL sofort fest; die Fehlermeldung sagt dann, dass solche Anweisungen bestehen bleiben. `--no-transaction` schaltet das ab (z. B. für `CREATE INDEX CONCURRENTLY`).
 - `conn list/show` zeigen Adressen ohne Passwort.
 

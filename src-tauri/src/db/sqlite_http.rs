@@ -1009,7 +1009,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             select.json()["sql"],
-            json!("SELECT * FROM \"users\" WHERE \"name\" <> 'x' ORDER BY \"name\" DESC LIMIT 10 OFFSET 0")
+            json!("SELECT * FROM \"users\" WHERE (\"name\" <> 'x') ORDER BY \"name\" DESC LIMIT 10 OFFSET 0")
         );
         assert_eq!(
             requests.iter().filter(|r| r.method == "GET").count(),

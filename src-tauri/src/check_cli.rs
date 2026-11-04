@@ -77,7 +77,7 @@ struct CliArgs {
 }
 
 const USAGE: &str =
-    "Aufruf: l8db --check --config <checks.json> --url-env <NAME> [--output <report.json>]";
+    "Aufruf: l8db check --config <checks.json> --url-env <NAME> [--report <report.json>]";
 
 fn parse_args(args: &[String]) -> Result<CliArgs, String> {
     let mut config = None;
@@ -90,7 +90,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             "--check" => {}
             "--config" => config = Some(value()?),
             "--url-env" => url_env = Some(value()?),
-            "--output" => output = Some(value()?),
+            "--output" | "--report" => output = Some(value()?),
             _ => return Err(format!("Unbekanntes Argument. {USAGE}")),
         }
     }
@@ -145,12 +145,13 @@ fn validate_sql(sql: &str) -> Result<(), String> {
 fn load_config(path: &str) -> Result<CheckFile, String> {
     let path = Path::new(path);
     let size = std::fs::metadata(path)
-        .map_err(|_| "Prüfdatei nicht lesbar.".to_string())?
+        .map_err(|error| format!("Prüfdatei {} nicht lesbar: {error}", path.display()))?
         .len();
     if size > MAX_CONFIG_BYTES {
         return Err("Prüfdatei ist zu groß.".into());
     }
-    let data = std::fs::read(path).map_err(|_| "Prüfdatei nicht lesbar.".to_string())?;
+    let data = std::fs::read(path)
+        .map_err(|error| format!("Prüfdatei {} nicht lesbar: {error}", path.display()))?;
     let config: CheckFile =
         serde_json::from_slice(&data).map_err(|error| format!("Ungültige Prüfdatei: {error}"))?;
     if config.format != 1 || config.checks.is_empty() || config.checks.len() > MAX_CHECKS {
@@ -250,6 +251,10 @@ fn scalar_query(sql: &str) -> String {
     format!("SELECT * FROM ({statement}) AS l8db_check LIMIT 1")
 }
 
+fn failure(what: &str, error: &str) -> String {
+    format!("{what}: {}", crate::desktop::redact(error))
+}
+
 async fn run_check(adapter: &dyn DatabaseAdapter, check: &CheckSpec) -> CheckResult {
     match check {
         CheckSpec::ScalarEquals { id, sql, expected } => {
@@ -265,11 +270,14 @@ async fn run_check(adapter: &dyn DatabaseAdapter, check: &CheckSpec) -> CheckRes
                     } else {
                         (
                             "failed",
-                            "Skalarwert weicht vom erwarteten Wert ab.".to_string(),
+                            format!(
+                                "Skalarwert weicht vom erwarteten Wert ab: erwartet {expected}, erhalten {}.",
+                                actual.unwrap_or(&Value::Null)
+                            ),
                         )
                     }
                 }
-                Err(_) => ("error", "Abfrage fehlgeschlagen.".to_string()),
+                Err(error) => ("error", failure("Abfrage fehlgeschlagen", &error)),
             };
             CheckResult {
                 id: id.clone(),
@@ -329,7 +337,11 @@ async fn run_check(adapter: &dyn DatabaseAdapter, check: &CheckSpec) -> CheckRes
                         };
                         (status, message, index_suggestions)
                     }
-                    Err(_) => ("error", "Indexanalyse fehlgeschlagen.".into(), Vec::new()),
+                    Err(error) => (
+                        "error",
+                        failure("Indexanalyse fehlgeschlagen", &error),
+                        Vec::new(),
+                    ),
                 };
                 CheckResult {
                     id: id.clone(),
@@ -341,11 +353,11 @@ async fn run_check(adapter: &dyn DatabaseAdapter, check: &CheckSpec) -> CheckRes
                     index_suggestions,
                 }
             }
-            Err(_) => CheckResult {
+            Err(error) => CheckResult {
                 id: id.clone(),
                 kind: "plan",
                 status: "error",
-                message: "EXPLAIN fehlgeschlagen.".into(),
+                message: failure("EXPLAIN fehlgeschlagen", &error),
                 total_cost: None,
                 seq_scans: None,
                 index_suggestions: Vec::new(),
@@ -361,7 +373,7 @@ async fn run_checks(config: &CheckFile, url: &str) -> Result<CheckReport, String
     adapter
         .test_connection()
         .await
-        .map_err(|_| "Datenbankverbindung fehlgeschlagen.".to_string())?;
+        .map_err(|error| failure("Datenbankverbindung fehlgeschlagen", &error))?;
     let mut checks = Vec::new();
     for check in &config.checks {
         checks.push(run_check(adapter.as_ref(), check).await);
@@ -378,7 +390,7 @@ pub fn cli(args: &[String]) -> i32 {
     let parsed = match parse_args(args) {
         Ok(parsed) => parsed,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("Fehler: {error}");
             return 2;
         }
     };
@@ -389,12 +401,12 @@ pub fn cli(args: &[String]) -> i32 {
                 .zip(std::fs::canonicalize(&parsed.config).ok())
                 .is_some_and(|(output, config)| output == config);
         if same_path {
-            eprintln!("Bericht und Prüfdatei müssen verschiedene Dateien sein.");
+            eprintln!("Fehler: Bericht und Prüfdatei müssen verschiedene Dateien sein.");
             return 2;
         }
         if let Err(error) = std::fs::remove_file(path) {
             if error.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("Alter Bericht konnte nicht entfernt werden: {error}");
+                eprintln!("Fehler: Alter Bericht konnte nicht entfernt werden: {error}");
                 return 2;
             }
         }
@@ -402,7 +414,7 @@ pub fn cli(args: &[String]) -> i32 {
     let config = match load_config(&parsed.config) {
         Ok(config) => config,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("Fehler: {error}");
             return 2;
         }
     };
@@ -412,7 +424,7 @@ pub fn cli(args: &[String]) -> i32 {
     {
         Ok(url) => url,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("Fehler: {error}");
             return 2;
         }
     };
@@ -422,27 +434,27 @@ pub fn cli(args: &[String]) -> i32 {
     {
         Ok(runtime) => runtime,
         Err(_) => {
-            eprintln!("Tokio-Runtime konnte nicht gestartet werden.");
+            eprintln!("Fehler: Tokio-Runtime konnte nicht gestartet werden.");
             return 2;
         }
     };
     let report = match runtime.block_on(run_checks(&config, &url)) {
         Ok(report) => report,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("Fehler: {error}");
             return 1;
         }
     };
     let json = match serde_json::to_string_pretty(&report) {
         Ok(json) => json,
         Err(_) => {
-            eprintln!("Bericht konnte nicht serialisiert werden.");
+            eprintln!("Fehler: Bericht konnte nicht serialisiert werden.");
             return 1;
         }
     };
     if let Some(path) = parsed.output {
         if let Err(error) = std::fs::write(&path, &json) {
-            eprintln!("Bericht konnte nicht geschrieben werden: {error}");
+            eprintln!("Fehler: Bericht konnte nicht geschrieben werden: {error}");
             return 1;
         }
     }
@@ -500,6 +512,25 @@ mod tests {
         let plus = read_only_url("postgres://u:p@localhost/db?application_name=a+b").unwrap();
         let config = tokio_postgres::Config::from_str(&plus).unwrap();
         assert_eq!(config.get_application_name(), Some("a+b"));
+    }
+
+    #[test]
+    fn failures_keep_the_cause_without_secrets() {
+        let message = super::failure(
+            "Abfrage fehlgeschlagen",
+            "relation \"typo_table\" does not exist (postgres://u:geheim@h/db password=geheim)",
+        );
+        assert!(message.contains("typo_table"), "{message}");
+        assert!(!message.contains("geheim"), "{message}");
+        assert!(super::parse_args(&[
+            "--config".into(),
+            "c.json".into(),
+            "--url-env".into(),
+            "DB".into(),
+            "--report".into(),
+            "r.json".into()
+        ])
+        .is_ok());
     }
 
     #[test]
